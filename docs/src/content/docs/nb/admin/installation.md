@@ -415,6 +415,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   ikke navngir verten) på både tjenesten `vantigo-migrate` og `vantigo` — rediger
   `compose.yaml`, ikke `vantigo.env`, siden det er `compose.yaml` som bygger
   tilkoblings-URL-en.
+- `vantigo.env.example` dokumenterer også innstillingene for e-faktura,
+  `INVOICES_EHF_ENABLED` og `INVOICES_STORECOVE_BASE_URL`, ved siden av
+  Peppol-oppslagets; å sette opp sending som EHF — Storecove-kontoen, påloggingsdataene
+  og KID-avtalen — er en egen prosedyre ([E-faktura](/nb/admin/e-invoicing/)).
 - `vantigo.env.example` dokumenterer de statiske OIDC- og SCIM-innstillingene.
   Konfigurasjonen er bundet til utrullingen, og endringer krever omstart. Ikke legg
   leverandør- eller SCIM-hemmeligheter i filer under versjonskontroll — injiser

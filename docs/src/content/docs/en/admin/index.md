@@ -31,6 +31,10 @@ application.
   private status endpoint a control plane polls, and the way the first Owner is seated by
   invitation. [Object storage](/en/admin/object-storage/) describes where receipts, PDFs
   and attachments live.
+- **E-invoicing.** [E-invoicing](/en/admin/e-invoicing/) sets up sending invoices as EHF
+  over the Peppol network: the Storecove account and its credentials, the switches, the
+  two workers that carry each document, what to do when one is unconfirmed or failed,
+  and the KID agreement to ask the bank for.
 
 ## The complete configuration reference
 

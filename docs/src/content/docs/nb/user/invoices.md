@@ -10,8 +10,9 @@ sources:
 Fakturaer-appen utsteder salgsdokumentene i bokføringen din: et utkast blir en
 nummerert faktura eller kreditnota i det øyeblikket det utstedes, får en PDF, og endres
 aldri etter det. Appen har tre områder i sidemenyen: **Fakturaer**, **Fakturajournal**
-og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen, og en faktura leveres
-som PDF — ved nedlasting eller på e-post — ikke som EHF-faktura
+og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
+PDF — ved nedlasting eller på e-post — eller som EHF-faktura i Peppol-nettverket, når
+installasjonen er satt opp for det
 ([det loven krever](/en/reference/invoices/#the-law-in-one-page)).
 
 Å åpne appen i det hele tatt krever `invoices:access`; de andre rettighetene nevnes der
@@ -48,24 +49,114 @@ Fyll ut feltene og klikk **Lagre**:
 - **Nummerserien starter på** — nummeret det første dokumentet får. Det låses i det noe
   utstedes, og feltet sier da *Låst: det er utstedt dokumenter fra denne serien*.
 
-Lagring beholder to ting siden ennå ikke har felter for: selgerens **Peppol-ID** —
-adressen EHF-fakturaer sendes fra, fylt ut som `0192:` og organisasjonsnummeret når du
-har et, og som følger nummeret når du endrer det — og **KID-avtalen** med banken, lengden og kontrollsifferet (MOD10 eller MOD11).
-Til de får egne felter, settes de gjennom API-et
-([Peppol-ID og KID-avtalen](/en/reference/invoices/#the-peppol-id-and-the-kid-agreement)).
-Med en KID-avtale får hver faktura som utstedes fra da av en KID, betalingsreferansen
-banken kobler betalingen til; en kreditnota får aldri det.
-Sending som EHF finnes ikke i appen ennå; serveren svarer allerede på om denne
-installasjonen kunne sendt — driftsansvarliges EHF-bryter og Peppol-oppslaget på,
-legitimasjonen til aksesspunktet lagret og Peppol-ID-en satt
-([bryterne](/en/reference/invoices/#permissions)). Aksesspunktet — leverandøren som
-bringer en EHF-faktura ut på nettverket — settes foreløpig opp av en administrator
-gjennom API-et; skjermbildet for det kommer senere
-([legitimasjonen til aksesspunktet](/en/reference/invoices/#the-access-points-credentials)).
+Under **Selgeren** har siden to kort til, **E-faktura** og **KID**, som beskrives
+nedenfor. Knappen **Lagre** nederst på siden lagrer selgeren, Peppol-ID-en og
+KID-avtalen samtidig; aksesspunktet har sin egen lagreknapp.
 
 Lagret en kollega innstillingene mens du redigerte, sier skjemaet **Innstillingene er
 endret** og tilbyr **Last inn på nytt**; de ulagrede endringene dine forkastes, de
 flettes aldri.
+
+### Sett opp e-faktura
+
+EHF er den norske e-fakturaen: dokumentet som data kundens system leser, med PDF-en
+inni, levert gjennom Peppol-nettverket. Vantigo overleverer den til et **aksesspunkt**,
+en leverandør som bringer den ut på nettverket; Storecove er den Vantigo støtter. Å
+skaffe en Storecove-konto og nøkkelen til den er administratorens jobb
+([administrasjon av e-faktura](/nb/admin/e-invoicing/)); å legge dem inn her krever
+`invoices:manage`, som resten av siden.
+
+Kortet **E-faktura** — *Send dokumenter som EHF i Peppol-nettverket, gjennom et
+aksesspunkt* — starter med **Hva e-faktura trenger**:
+
+- **Peppol-ID 0192:974760673** med en hake når selgerens Peppol-ID er satt, eller
+  *Selgerens Peppol-ID mangler: fyll den inn, eller organisasjonsnummeret den utledes
+  av.* Linjen gjelder bare e-faktura: utstedelse venter aldri på den.
+- En informativ linje: *Sending som EHF er tilgjengelig*, eller *Sending som EHF er ikke
+  tilgjengelig. Det krever at driftsansvarlig har slått på e-faktura og Peppol-oppslag,
+  og at aksesspunktets påloggingsdata og selgerens Peppol-ID er lagt inn.* De to første
+  er driftsinnstillinger, ikke noe denne siden styrer.
+
+**Peppol-ID** er adressen din i Peppol-nettverket, den EHF-fakturaene sendes fra. Står
+den tom, er den `0192:` og organisasjonsnummeret — feltet viser det som plassholder, og
+lagringen fyller det inn. En norsk virksomhet trenger ikke noe mer her; en `0192`-ID må
+være ditt eget organisasjonsnummer. Den lagres med sidens **Lagre**, og en endring
+gjelder alt som sendes som EHF fra da av, også dokumenter utstedt tidligere.
+
+Under **Aksesspunkt** viser kortet det som er lagret:
+
+- **Leverandør** er **Storecove**, den eneste så langt.
+- **ID for juridisk enhet** er den juridiske enheten i Storecove som dokumentene sendes
+  som, et heltall administratoren får fra Storecove; når den er lagret, viser feltet den.
+- **API-nøkkel** er nøkkelen fra Storecove. Den lagres kryptert og vises aldri igjen: når
+  en er lagret, viser kortet **Nøkkel lagret**, feltet står tomt, og en ny nøkkel du
+  skriver inn, erstatter den. La feltet stå tomt for å beholde den lagrede.
+
+Klikk **Lagre aksesspunkt**; meldingen sier *Aksesspunktet er lagret*. **Kontroller** og
+**Fjern påloggingsdataene** tilbys når en nøkkel er lagret. Klikk **Kontroller**: Vantigo
+spør Storecove med den lagrede nøkkelen og svarer på én av tre måter —
+
+- *Aksesspunktet godtok nøkkelen.* Da er du ferdig.
+- *Aksesspunktet avviste nøkkelen. Kontroller den og lagre den på nytt.*
+- *Aksesspunktet kunne ikke nås, eller nøkkelen gir ikke tilgang til denne juridiske
+  enheten. Kontroller ID-en for den juridiske enheten, eller prøv igjen senere.*
+
+**Fjern påloggingsdataene** spør først — **Fjerne aksesspunktets påloggingsdata?** — fordi
+den lagrede nøkkelen slettes og ikke kan vises igjen, og ingenting kan sendes som EHF før
+en nøkkel er lagret på nytt; bekreft med **Fjern påloggingsdataene**. Fjerningen avvises
+mens et dokument fortsatt er underveis — *Et dokument er fortsatt underveis gjennom
+dette aksesspunktet. Vent til det er levert eller feilet før du fjerner eller bytter
+legitimasjonen.* Å bytte til en ny nøkkel avvises aldri.
+
+Avviser Storecove den lagrede nøkkelen mens dokumenter sendes, viser **Aksesspunkt**-delen
+av kortet et rødt **Aksesspunktet avviste nøkkelen**, med datoen det skjedde når den er
+kjent: *Leverandøren avviste den lagrede API-nøkkelen. Dokumentene venter i køen til en
+gyldig nøkkel er lagret.* Lagre riktig nøkkel snart —
+varselet forsvinner straks du gjør det, og dokumentene som venter, går ut — for et
+dokument som fortsatt står i kø 48 timer etter at det ble sendt, tas ut av køen som
+**Feilet** (eller **Ubekreftet**, når Storecove kan ha det) og må følges opp av en person
+([tilstandene](#følg-sendingen-på-kortet-e-faktura-ehf)).
+
+### Avtal KID med banken
+
+En KID er betalingsreferansen banken kobler en innbetaling til. For å bruke den ber du
+banken om en KID-avtale (OCR giro) på kontoen i innstillingene: banken registrerer en
+**lengde** og en metode for **kontrollsifferet**. Legg inn nøyaktig det banken
+registrerte på kortet **KID** — *Kundeidentifikasjonen banken har avtalt for
+innbetalinger* — og klikk sidens **Lagre**:
+
+- **KID-lengde**: 4 til 25 tegn, kontrollsifferet medregnet.
+- **Kontrollsiffer**: **MOD10 (anbefalt)** eller **MOD11**. Med MOD11 får et nummer der
+  kontrollen ville blitt 10, en `-` som kontrollsiffer, noe som forvirrer enkelte
+  betalere; derfor er MOD10 det vanlige valget.
+
+Oppgi begge eller ingen (*Velg både lengde og kontrollsiffer, eller ingen av dem.*). Uten
+avtale sier kortet *Ingen KID-avtale: fakturaene har nummeret sitt som
+betalingsreferanse.*
+
+Med en avtale viser kortet den neste, ut fra neste fakturanummer serveren oppgir, for
+eksempel *Neste KID: 0010017 (faktura 1001)*: fakturanummeret fylt ut med nuller foran
+til lengden minus én, så kontrollsifferet. To
+advarsler kan dukke opp:
+
+- I rødt: *Faktura 1042, den neste som utstedes, får ikke plass i 4 tegn med
+  kontrollsifferet. Velg en lengre KID.* — lagringen avvises til den får plass.
+- Etter en lagring, i gult: *Neste fakturanummer gir mindre enn to sifre å gå på i
+  KID-lengden. Be banken om en lengre KID før numrene vokser forbi den.*
+
+Hva som endres: hver faktura som utstedes fra da av, får en KID. Den skrives som **KID**
+i PDF-ens betalingsfelt, e-posten ber kjøperen merke betalingen med den i stedet for
+fakturanummeret, og en EHF har den som betalingsreferanse. En kreditnota får aldri en, og
+en faktura utstedt før avtalen får ingen i ettertid — en EHF uten KID har ingen
+betalingsreferanse i det hele tatt, så kjøperens system aldri tar fakturanummeret for en
+KID.
+
+Avtalen kan endres eller fjernes senere. Når det er utstedt dokumenter, minner kortet
+deg på: *Utstedte fakturaer beholder KID-ene som ble beregnet under avtalen de ble
+utstedt med. Be banken holde den gamle lengden gyldig til de er betalt.* Gjøres avtalen
+så kort at neste nummer ikke lenger får plass, avvises utstedelsen — *Neste
+fakturanummer passer ikke lenger i KID-avtalens lengde. Endre KID-avtalen i
+innstillingene.*
 
 ### Mva-koder
 
@@ -90,8 +181,11 @@ og 7), så de fleste bedrifter trenger ikke endre noe her.
 
 **Fakturaer** i sidemenyen lister hvert utkast og hvert utstedte dokument: utkast først,
 så etter nummer, nyeste først. Hver rad viser **Nummer** (eller *Utkast*), **Type**,
-**Tilstand**, **Kunde**, **Fakturadato**, **Forfallsdato**, **Sum** og — for en utstedt
-faktura — det som er **Utestående**. Klikk nummeret i en rad for å åpne dokumentet.
+**Tilstand**, **Kunde**, **Fakturadato**, **Forfallsdato**, **Sum**, det som er
+**Utestående** på en utstedt faktura, og under **EHF** hvor et utstedt dokument står som
+e-faktura: *Ikke sendt*, *I kø*, *Overlevert*, *Levert*, *Feilet*, *Ubekreftet* eller
+*Avbrutt* ([hva hver betyr](#følg-sendingen-på-kortet-e-faktura-ehf)); for et utkast er
+den tom. Klikk nummeret i en rad for å åpne dokumentet.
 
 Snevre inn listen med knappene og feltene over den:
 
@@ -141,7 +235,13 @@ før du forhåndsviser eller utsteder*.
   å oppgi et leveringssted, som bare da skrives på dokumentet.
 - **Deres referanse** (kjøperens; mens det er tomt, sier feltet at en EHF-faktura vil
   trenge det), **Vår referanse**, **Ordrereferanse** og **Betalingsfrist (dager)**, 0 til
-  365. Forfallsdatoen er fakturadatoen pluss fristen, fastsatt ved utstedelse.
+  365. Forfallsdatoen er fakturadatoen pluss fristen, fastsatt ved utstedelse. Faktureres
+  kunden med EHF — faktureringsprofilen foretrekker det, eller kunden har en Peppol-ID —
+  og både **Deres referanse** og **Ordrereferanse** er tomme, sier en gul advarsel ved
+  referansene *Denne kunden faktureres med EHF, som krever kundens referanse eller en
+  ordrereferanse. Legg inn en før du utsteder: ingen av dem kan endres etterpå.* Ta den
+  på alvor: et utstedt dokument uten noen av dem kan aldri sendes som EHF, bare
+  krediteres og utstedes på nytt.
 - **Linjer**: **Legg til en linje**, deretter **Beskrivelse**, **Antall** (inntil tre
   desimaler), **Enhet**, **Enhetspris** (inntil fire desimaler), **Rabatt %** og
   **Mva-kode** fra kodene som tilbys på nye linjer; **Beløp** er linjens nettobeløp.
@@ -200,7 +300,7 @@ utstedelse, levert nøyaktig som lagret hver gang ([PDF-en](/en/reference/invoic
 Alle med `invoices:access` kan laste den ned.
 
 En faktura med KID viser den i betalingsfeltet, som **KID**, og ber kjøperen betale med
-den i stedet for fakturanummeret.
+den i stedet for fakturanummeret ([KID-avtalen](#avtal-kid-med-banken)).
 
 Kunne lageret ikke nås ved utstedelse, sier siden *PDF-en kunne ikke lagres da dokumentet
 ble utstedt. Den lagres første gang den lastes ned* — en nedlasting eller en sending lagrer den.
@@ -266,7 +366,9 @@ en.
 
 Over feltet viser dialogen det du bør vite før du sender. To er røde og kan ikke
 overses: **Kunden forventer EHF** og, fra 1. januar 2027 for en norsk virksomhet,
-**Elektronisk faktura er påkrevd** — en PDF på e-post oppfyller ikke plikten. Resten er
+**Elektronisk faktura er påkrevd** — en PDF på e-post oppfyller ikke plikten; kan
+dokumentet sendes som EHF i stedet, sier den første det
+([e-post eller EHF](#når-kunden-forventer-ehf-men-du-sender-e-post)). Resten er
 merknader: kjøperen er en norsk virksomhet (før 2027), eller kunden foretrekker eFaktura
 eller papir. Ingen av dem stopper sendingen. På en faktura som er delvis betalt eller
 kreditert, sier en merknad at e-posten bare ber om det utestående beløpet; på en som er
@@ -292,21 +394,112 @@ dokument kan sendes på nytt, og loggføres da på nytt.
 
 ## Sende som EHF
 
-Appen får knappen **Send som EHF** i en senere versjon; fram til da finnes den i
-serverens API, for den som har `invoices:issue` på en installasjon som kan sende som
-EHF. Sending som EHF kontrollerer det utstedte dokumentet, lager EHF-en — e-fakturaen,
-med PDF-en inni — spør Peppol-nettverket om kunden tar imot den, og legger den i en kø
-serveren arbeider seg gjennom; dokumentet viser deretter om den står i kø, er sendt inn,
-levert, feilet eller venter på bekreftelse. Sendingen avvises når dokumentet ble utstedt
-til en kunde uten Peppol-ID, når det verken har kundens referanse eller en
-ordrereferanse, når det allerede er underveis eller levert, når EHF-en bryter en
-Peppol-regel, når kunden ikke er i Peppol-nettverket eller ikke tar imot denne typen
-dokument der, eller når nettverket ikke kan spørres. En sending som fortsatt venter i
-køen kan avbrytes, og en som leverandøren aldri bekreftet, avklares av en person etter å
-ha sjekket med leverandøren. Fordi referansene ikke kan endres etter utstedelse, varsler
-et utkast for en kunde som faktureres med EHF så lenge det mangler begge — *Denne kunden
-faktureres med EHF, som krever kundens referanse eller en ordrereferanse* — så legg inn
-en før du utsteder ([reglene](/en/reference/invoices/#sending-as-ehf)).
+Å sende som EHF overleverer en utstedt faktura eller kreditnota til kundens eget system
+gjennom Peppol-nettverket, med PDF-en inni. Det krever `invoices:issue` og en
+installasjon som er satt opp for det — kortet **E-faktura** i innstillingene sier
+*Sending som EHF er tilgjengelig* ([Sett opp e-faktura](#sett-opp-e-faktura)) — og et
+dokument utstedt til en kunde som hadde en Peppol-ID da.
+
+### Send en faktura som EHF
+
+Åpne det utstedte dokumentet. Hvilken knapp som kommer først, avhenger av kunden:
+
+- Foretrekker kundens faktureringsprofil EHF — eller har kunden en Peppol-ID og ingen
+  preferanse — og dokumentet kan sendes, er **Send som EHF** sidens hovedknapp, ved
+  siden av **Last ned PDF**, og **Send** (på e-post) står ved siden av som andrevalg.
+- Ellers ligger **Send som EHF** på kortet **E-faktura (EHF)**, og tilbys så lenge
+  dokumentet kan sendes.
+
+Kan dokumentet ikke sendes, sier kortet hvorfor, med de samme ordene en avvist sending
+ville brukt (nedenfor) — eller, når installasjonen ikke er satt opp, *Denne
+installasjonen kan ikke sende EHF ennå: se E-faktura i fakturainnstillingene.*
+
+Klikk **Send som EHF**. Dialogen viser hvor dokumentet skal — *Til Peppol-ID 0192:…*,
+ID-en dokumentet ble utstedt med — og dokumentet og beløpet, og forklarer hva som skjer:
+*Før dokumentet legges i kø, spørres Peppol-nettverket om mottakeren tar imot denne
+typen dokument. Et aksesspunkt leverer det deretter, og E-faktura-kortet følger det.*
+Er dokumentet allerede sendt på e-post, sier en merknad *Dette dokumentet er allerede
+sendt på e-post*; å sende det som EHF i tillegg er lov. Klikk **Send som EHF** i
+dialogen. Meldingen *Lagt i kø for sending som EHF* bekrefter det, og kortet viser
+**I kø**.
+
+En sending kan avvises; dialogen sier da *Kunne ikke sende som EHF* og hvorfor:
+
+- *Dokumentet ble utstedt til en kjøper uten Peppol-ID, så det kan ikke sendes som EHF.
+  Send det på e-post, eller krediter det og utsted det på nytt når kunden har en.*
+  Dokumentet beholder kunden slik den var ved utstedelse, så å legge Peppol-ID-en inn på
+  kunden etterpå hjelper ikke for dette dokumentet.
+- *EHF krever kjøperens referanse eller en ordrereferanse, og dokumentet har ingen av
+  dem. Krediter det og utsted det på nytt med en.* Det er fellen utkastet advarer mot.
+- *Dokumentet er allerede underveis som EHF, eller levert. Avbryt eller avklar den
+  sendingen først.*
+- *EHF-en til dokumentet bryter en Peppol-regel, så det kan ikke sendes som EHF*, fulgt
+  av *Reglene den bryter:* — en linje med mva-kategori K sies med ord (*En linje har
+  mva-kategori K (levering innen EU), som ikke sendes som EHF*), enhver annen regel med
+  den offisielle ID-en. Send et slikt dokument på e-post.
+- *Mottakeren tar ikke imot dette dokumentet som EHF i Peppol-nettverket. Send det på
+  e-post i stedet*, med det nettverket svarte: *Mottakeren er ikke registrert i
+  Peppol-nettverket*, eller *Mottakeren er registrert i Peppol-nettverket, men tar ikke
+  imot denne typen dokument* — noen mottakere tar imot fakturaer, men ikke kreditnotaer.
+- *Peppol-nettverket kunne ikke svare på om mottakeren tar imot EHF. Prøv igjen.*
+- *E-faktura er utilgjengelig* — slått av, eller påloggingsdataene til aksesspunktet
+  mangler eller kan ikke lenger leses; en administrator legger inn nøkkelen på nytt.
+- *Dokumentlageret er utilgjengelig*, *Kunden er anonymisert, og det sendes ikke mer til
+  den*, eller mer enn 60 sendinger som EHF på ti minutter fra ett sted.
+
+### Følg sendingen på kortet E-faktura (EHF)
+
+Hvert utstedte dokument har kortet **E-faktura (EHF)** ved siden av **Sendt på e-post**.
+Det viser siste tilstand med ord, med når dokumentet ble lagt i kø, overlevert, levert
+eller feilet, og — for den som har `invoices:issue` — leverandørens referanse og årsaken
+til at en sending feilet. Under lister **Sendinger** hvert forsøk, nyeste først, med når
+det ble **Lagt i kø**, **Status** og **Mottaker**.
+
+| Kortet sier | Hva det betyr for deg |
+| --- | --- |
+| **Ikke sendt** | *Ikke sendt som EHF ennå.* |
+| **I kø** | Vantigo holder dokumentet og overleverer det til aksesspunktet i løpet av sekunder. Til Vantigo første gang prøver å overlevere det, kan det avbrytes. |
+| **Overlevert aksesspunktet** | Aksesspunktet har dokumentet og leverer det. Du trenger ikke gjøre noe: Vantigo får beskjed fra leverandøren og sjekker selv etter fem minutter, igjen etter femten, og så hver time. |
+| **Levert til mottakerens aksesspunkt** | Mottakerens aksesspunkt har bekreftet at det fikk dokumentet. Det er det sterkeste beviset Peppol gir — ikke at noen har lest eller godkjent det. Dokumentet kan ikke sendes som EHF igjen. |
+| **Feilet** | Det ble ikke levert: aksesspunktet avviste det, mottakeren har forlatt nettverket, eller det sto i kø i to døgn uten å nå leverandøren. Les årsaken, rett det den peker på, og send på nytt — **Send som EHF** tilbys igjen — eller send på e-post. |
+| **Ubekreftet – må sjekkes med leverandøren** | Vantigo kan ikke vite om det kom fram: leverandøren tok imot det, men har ikke bekreftet leveringen på sju dager, eller overleveringen ble avbrutt, og leverandøren kan ha det eller ikke. En ny sending venter til en person har avklart den. |
+| **Avbrutt** | Noen avbrøt sendingen før den ble overlevert. Dokumentet kan sendes på nytt. |
+
+**Avbryt sendingen** tilbys på en rad i kø for den som har `invoices:issue`, helt til
+Vantigo har prøvd å overlevere dokumentet til aksesspunktet; da forsvinner knappen, og
+utfallet avgjør. Starter overleveringen idet du klikker, er svaret *Sendingen kan
+allerede ha nådd aksesspunktet, så den kan ikke lenger avbrytes* — vent da på
+utfallet.
+
+**Avklar** tilbys på en ubekreftet rad. Sjekk først med leverandøren: slå opp sendingen
+hos Storecove med leverandørens referanse på kortet, eller med når den ble lagt i kø —
+eller spør den i bedriften som har Storecove-kontoen — og se om den ble levert til
+mottakerens aksesspunkt eller feilet. Kan ikke leverandøren svare, spør kunden om de
+fikk fakturaen. Velg så **Utfall**, **Levert** eller **Feilet**, i **Avklar den
+ubekreftede sendingen**, skriv **Hva leverandøren sa** (1 til 500 tegn) og klikk
+**Avklar**: *Sendingen er avklart*, og raden viser merknaden som *Avklart: …*. **Levert**
+lukker den. **Feilet** lar deg sende dokumentet på nytt, og den sendingen har nøyaktig
+den samme EHF-en, slik at kunden, om den første likevel kom fram, har to kopier av ett
+dokument, aldri to forskjellige. Vantigo spør også selv leverandøren om en ubekreftet
+sending én gang i døgnet i tretti dager, og avklarer den på egen hånd om leverandøren
+til slutt svarer.
+
+**Last ned EHF (XML)** på hver rad laster ned EHF-en nøyaktig slik Vantigo lagret den da
+den ble lagt i kø, navngitt som PDF-en med sendingens nummer lagt til — `faktura-1001-7.xml`
+eller `invoice-1001-7.xml` — for alle med `invoices:access`. Aksesspunktet bygger EHF-en
+det leverer, på nytt ut fra denne filen; kopien det faktisk leverte, oppbevares sammen
+med kvitteringen i installasjonens dokumentlager.
+
+### Når kunden forventer EHF, men du sender e-post
+
+E-post er alltid mulig, og ingen av kanalene stopper den andre. Foretrekker kundens
+faktureringsprofil EHF, og kan dokumentet sendes som EHF, viser dialogen **Send på
+e-post** det røde **Kunden forventer EHF**: *Denne kunden forventer EHF, og dokumentet
+kan sendes som EHF. En PDF på e-post oppfyller ikke plikten til e-faktura.* Lukk den og
+bruk **Send som EHF** i stedet, med mindre du har avtalt noe annet med kunden. Er
+dokumentet allerede underveis som EHF, eller levert, sier e-postdialogen *Dette
+dokumentet er allerede underveis som EHF, eller levert*; en e-post sender da kunden en
+kopi til.
 
 ## Kontrollere journalen
 
@@ -363,14 +556,16 @@ sperret, sammenslått eller anonymisert.
 
 ## Oppbevaring og anonymiserte kunder
 
-Ingenting utstedt slettes noensinne: et utstedt dokument, betalingene og sendingsloggen
-er bokføringsmateriale som oppbevares fem år etter regnskapsårets slutt, og PDF-ene
-ligger i installasjonens dokumentlager, der sikkerhetskopiene er en del av oppbevaringen
+Ingenting utstedt slettes noensinne: et utstedt dokument, betalingene, sendingsloggen og
+EHF-sendingene er bokføringsmateriale som oppbevares fem år etter regnskapsårets slutt,
+og PDF-ene og EHF-filene ligger i installasjonens dokumentlager, der sikkerhetskopiene er
+en del av oppbevaringen
 ([oppbevaring](/en/reference/invoices/#retention-and-personal-data)). Slås to kunder
 sammen, følger dokumentene den gjenværende kunden, men beholder kjøperen som står på
 dem. Anonymiseres en person i Kunder, slettes utkastene deres, mottakeren på hver sending
-blankes — kolonnen **Til** viser da *(anonymisert)* — og merknadene på betalingene deres
-tømmes; de utstedte dokumentene, med kjøperen de navngir, blir stående. Ingen dokumenter
+blankes — kolonnen **Til** viser da *(anonymisert)* — merknadene på betalingene deres
+tømmes, og en EHF som fortsatt venter i køen og aldri er overlevert aksesspunktet,
+avbrytes; de utstedte dokumentene, med kjøperen de navngir, blir stående. Ingen dokumenter
 sendes til en anonymisert kunde igjen, men en kreditnota kan fortsatt utstedes, med
 kjøperen originalen navnga.
 
@@ -381,8 +576,8 @@ Ingen innebygd rolle har disse; en eier har alt
 
 | Du vil | Du trenger |
 | --- | --- |
-| Åpne appen, lese hvert dokument, laste ned PDF-er, se betalinger og sendinger, lese journalen, eksportere CSV-filen, se kortet på dashbordet | `invoices:access` |
+| Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet | `invoices:access` |
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
-| Utstede et utkast, lage en kreditnota, sende et dokument, se hvor hver sending gikk | `invoices:issue` |
+| Utstede et utkast, lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending | `invoices:issue` |
 | Registrere en betaling eller fjerne en med begrunnelse | `invoices:payments` |
-| Redigere selgeropplysningene, nummerserien og mva-kodene | `invoices:manage` |
+| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen og mva-kodene | `invoices:manage` |

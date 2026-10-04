@@ -408,6 +408,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   not name the host) on both the `vantigo-migrate` and `vantigo` services — edit
   `compose.yaml`, not `vantigo.env`, since `compose.yaml` is what builds the
   connection URL.
+- `vantigo.env.example` also documents the e-invoicing settings, `INVOICES_EHF_ENABLED`
+  and `INVOICES_STORECOVE_BASE_URL`, beside the Peppol lookup's; setting up sending as
+  EHF — the Storecove account, the credentials and the KID agreement — is its own
+  procedure ([E-invoicing](/en/admin/e-invoicing/)).
 - `vantigo.env.example` documents the static OIDC and SCIM settings. Configuration is
   deployment-bound and changes require a restart. Do not put provider or SCIM secrets
   in source-controlled files — inject `OIDC_CLIENT_SECRET`, `SCIM_TOKEN`,

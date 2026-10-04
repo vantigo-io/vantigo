@@ -1212,7 +1212,7 @@ No built-in role holds any of these; Owner has the wildcard.
 | `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats. |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft. |
 | `invoices:issue` | yes | Issue a draft; create a credit-note draft; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one. |
-| `invoices:manage` | yes | The seller record, the series start, VAT codes and their rates, and the access point's credentials. |
+| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, VAT codes and their rates, and the access point's credentials. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason. |
 
 `invoices:payments` is sensitive because a registration changes what the company says it

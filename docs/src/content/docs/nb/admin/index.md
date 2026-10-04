@@ -31,6 +31,10 @@ applikasjonen.
   statusendepunktet et kontrollplan spør, og måten den første eieren settes inn ved
   invitasjon. [Objektlagring](/nb/admin/object-storage/) beskriver hvor kvitteringer,
   PDF-er og vedlegg ligger.
+- **E-faktura.** [E-faktura](/nb/admin/e-invoicing/) setter opp sending av fakturaer som
+  EHF i Peppol-nettverket: kontoen hos Storecove og påloggingsdataene, bryterne, de to
+  bakgrunnsjobbene som bærer hvert dokument, hva du gjør når en sending er ubekreftet
+  eller feilet, og KID-avtalen du ber banken om.
 
 ## Den komplette konfigurasjonsreferansen
 
