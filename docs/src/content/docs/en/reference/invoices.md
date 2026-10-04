@@ -449,7 +449,13 @@ O** (BR-O-05). In a VAT summary row, AE, G and O carry `cbc:TaxExemptionReasonCo
 `VATEX-EU-AE`, `VATEX-EU-G` and `VATEX-EU-O`; **E alone carries the free-text reason**
 as `cbc:TaxExemptionReason`; Z carries nothing (BR-Z-10 forbids any reason on Z), and
 nor does S. A final credit note's squaring row — a taxable amount of 0.00 with a small
-negative VAT — is written as stored. Category K needs the buyer's VAT identifier, which
+negative VAT — is written as stored, inside BR-CO-17's and BR-S-09's one-krone
+tolerance; and since BR-S-08 requires a line at a VAT row's rate to exist, **every VAT
+row with no line at its category and rate gets a zero line** after the real ones: the
+next position after the highest, a quantity of `0.000` `C62`, a line amount of `0.00`,
+the name "Avrunding merverdiavgift 15 %" / "VAT rounding 15 %" in the document's
+language, the row's category and rate, and a price of `0.0000`. It adds nothing to any
+sum, and the stored document is unchanged. Category K needs the buyer's VAT identifier, which
 the module does not hold, so a document with a K line is never sent as EHF (the
 pre-check below); its PDF is unaffected.
 
@@ -493,7 +499,9 @@ whole from the Peppol BIS release `v3.0.20`); a seller VAT id beginning `NO` tha
 `NO`, a valid organisation number and `MVA` (`NO-R-001`); a K category
 (`vat_category_k_unsupported`). **The invariants** are what only the module could get
 wrong, and a broken one is an error, never a refusal in words: the totals re-summed from
-the lines and the VAT (`BR-CO-10`, `BR-CO-13`, `BR-CO-15`); the KID re-verified against
+the lines and the VAT (`BR-CO-10`, `BR-CO-13`, `BR-CO-15`), and the VAT rows re-summed
+against them — their VAT against the VAT total (`BR-CO-14`) and their taxable amounts
+against the net (`vat_taxable_sum`); the KID re-verified against
 its stored algorithm and the payment id equal to it, with no payment id without a KID
 (`kid_invalid`, `payment_id_without_kid`); the stored PDF attached
 (`pdf_attachment_missing`); every unit code one of the table's (`unit_code_unknown`).

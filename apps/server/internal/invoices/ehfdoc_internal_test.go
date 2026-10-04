@@ -163,13 +163,17 @@ func TestEHFDocumentOf_ACreditNoteToAPerson(t *testing.T) {
 }
 
 // What cannot be an EHF is an error: a draft, a stored KID that does not
-// verify against its stored algorithm (D3), a line without its VAT snapshot.
+// verify against its stored algorithm (D3), a line without its VAT snapshot,
+// a credit note without the original it credits (BT-25).
 func TestEHFDocumentOf_Refuses(t *testing.T) {
 	t.Parallel()
 	for name, mutate := range map[string]func(*store.InvoicesInvoice, []store.InvoicesLine){
-		"a draft":              func(inv *store.InvoicesInvoice, _ []store.InvoicesLine) { inv.Status = statusDraft },
-		"a tampered KID":       func(inv *store.InvoicesInvoice, _ []store.InvoicesLine) { k := "00010018"; inv.Kid = &k },
-		"another algorithm":    func(inv *store.InvoicesInvoice, _ []store.InvoicesLine) { a := "mod11"; inv.KidAlgorithm = &a },
+		"a draft":           func(inv *store.InvoicesInvoice, _ []store.InvoicesLine) { inv.Status = statusDraft },
+		"a tampered KID":    func(inv *store.InvoicesInvoice, _ []store.InvoicesLine) { k := "00010018"; inv.Kid = &k },
+		"another algorithm": func(inv *store.InvoicesInvoice, _ []store.InvoicesLine) { a := "mod11"; inv.KidAlgorithm = &a },
+		"a credit note without its original": func(inv *store.InvoicesInvoice, _ []store.InvoicesLine) {
+			inv.Kind, inv.DueDate, inv.Kid, inv.KidAlgorithm = kindCreditNote, pgtype.Date{}, nil, nil
+		},
 		"no VAT snapshot":      func(_ *store.InvoicesInvoice, l []store.InvoicesLine) { l[1].VatCategory = nil },
 		"an unreadable amount": func(_ *store.InvoicesInvoice, l []store.InvoicesLine) { l[0].LineGross = pgtype.Numeric{} },
 	} {

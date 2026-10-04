@@ -160,17 +160,27 @@ func TestInvariants_EachCheck(t *testing.T) {
 			d.NetTotal = rat("10296.41")
 			d.GrossTotal = rat("12870.51")
 			return invariants(t, mustRender(t, d), d)
-		}, []string{ehf.RuleLineTotal}},
+		}, []string{ehf.RuleLineTotal, ehf.RuleTaxableSum}},
 		"the tax-exclusive amount is not the line extension (BR-CO-13)": {func(t *testing.T) []string {
 			d := fixture(t, "invoice-person")
 			doc := tamper(t, mustRender(t, d), `<cbc:TaxExclusiveAmount currencyID="NOK">2000.00`, `<cbc:TaxExclusiveAmount currencyID="NOK">1900.00`)
 			return invariants(t, doc, d)
-		}, []string{ehf.RuleTaxExclusive, ehf.RuleTaxInclusive}},
+		}, []string{ehf.RuleTaxExclusive, ehf.RuleTaxInclusive, ehf.RuleTaxableSum}},
 		"the gross is not net plus VAT (BR-CO-15)": {func(t *testing.T) []string {
 			d := fixture(t, "invoice-person")
 			d.GrossTotal = rat("2500.01")
 			return invariants(t, mustRender(t, d), d)
 		}, []string{ehf.RuleTaxInclusive}},
+		"the VAT rows do not sum to the VAT total (BR-CO-14)": {func(t *testing.T) []string {
+			d := fixture(t, "invoice-every-category")
+			d.VAT[0].Amount = rat("2999.00")
+			return invariants(t, mustRender(t, d), d)
+		}, []string{ehf.RuleTaxTotal}},
+		"the VAT rows' taxable amounts do not sum to the net": {func(t *testing.T) []string {
+			d := fixture(t, "invoice-every-category")
+			d.VAT[0].Taxable = rat("11000.00")
+			return invariants(t, mustRender(t, d), d)
+		}, []string{ehf.RuleTaxableSum}},
 		"a KID failing its stored algorithm": {func(t *testing.T) []string {
 			d := fixture(t, "invoice-kid-mod10")
 			d.Payment.KIDAlgorithm = kid.Mod11
@@ -231,7 +241,8 @@ type manifest struct {
 // knownRules is every id the pre-check and the invariants can report.
 var knownRules = []string{
 	ehf.RuleBuyerReference, ehf.RuleBuyerEndpoint, ehf.RuleEndpointScheme, ehf.RuleSellerVATID, ehf.RuleCategoryK,
-	ehf.RuleLineTotal, ehf.RuleTaxExclusive, ehf.RuleTaxInclusive, ehf.RuleKID, ehf.RulePaymentIDWithoutKID,
+	ehf.RuleLineTotal, ehf.RuleTaxExclusive, ehf.RuleTaxInclusive, ehf.RuleTaxTotal, ehf.RuleTaxableSum,
+	ehf.RuleKID, ehf.RulePaymentIDWithoutKID,
 	ehf.RuleAttachment, ehf.RuleUnitCode,
 }
 

@@ -58,6 +58,7 @@
         <cbc:StreetName>Kungsgatan 8</cbc:StreetName>
         <cbc:CityName>Stockholm</cbc:CityName>
         <cbc:PostalZone>111 43</cbc:PostalZone>
+        <cbc:CountrySubentity>Stockholms län</cbc:CountrySubentity>
         <cac:Country>
           <cbc:IdentificationCode>SE</cbc:IdentificationCode>
         </cac:Country>

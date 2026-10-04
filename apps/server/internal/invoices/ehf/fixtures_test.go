@@ -148,7 +148,7 @@ func fixtures(t *testing.T) map[string]ehf.Document {
 	foreign.BuyerReference = "Anna Svensson"
 	foreign.Buyer = ehf.Buyer{
 		PeppolID: "0007:5560360793", Name: "Svea Maskin AB",
-		Address:   ehf.Address{Line1: "Kungsgatan 8", PostalCode: "111 43", City: "Stockholm", Country: "SE"},
+		Address:   ehf.Address{Line1: "Kungsgatan 8", PostalCode: "111 43", City: "Stockholm", Region: "Stockholms län", Country: "SE"},
 		ForeignID: "SE5560360793",
 	}
 	foreign.Lines = []ehf.Line{line("1", "Machine parts", "pcs", "10", "320", "0", "G", "0")}

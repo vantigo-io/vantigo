@@ -24,6 +24,9 @@ func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 	if inv.Status != statusIssued || inv.Number == nil {
 		return ehf.Document{}, fmt.Errorf("invoices: document %d is not issued; it has no EHF", inv.ID)
 	}
+	if inv.Kind == kindCreditNote && (original == nil || original.Number == nil) {
+		return ehf.Document{}, fmt.Errorf("invoices: credit note %d without its issued original; its EHF needs the original's number and date", inv.ID)
+	}
 	p, err := pdfDocumentOf(inv, lines, sums, original)
 	if err != nil {
 		return ehf.Document{}, err

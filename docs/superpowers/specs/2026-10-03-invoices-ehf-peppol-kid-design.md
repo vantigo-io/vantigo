@@ -170,9 +170,17 @@ the module does not hold: a document with a K line is refused at send with 409
 
 **Amounts are positive on a credit note** — the type code signals the credit (research
 §2.5); the module stores them positive already. The credit note's **squaring row** (a
-taxable amount of 0.00 with a small negative VAT) is **lawful as it is**: BR-CO-17 and
+taxable amount of 0.00 with a small negative VAT) is carried as stored: BR-CO-17 and
 BR-S-09 test `abs(…) ± 1`, a one-krone tolerance, and the walked example passes
-(research §2.5); nothing is added for it.
+(research §2.5). **But BR-S-08 (fatal) requires a line at the row's rate to exist**
+before its tolerance applies, and a final note's squaring row usually has none (amended
+after the Task 4 review, from the 1.3.16 Schematron source). So the writer adds, for
+every VAT row with no line at its (category, rate) — generic over the category — a
+**synthetic zero line** after the real ones: `cbc:ID` the highest position plus one
+(then two, …), a quantity of `0.000` `C62`, a line amount of `0.00`, the name
+"Avrunding merverdiavgift <rate> %" / "VAT rounding <rate> %" by the document's
+language, the row's category and rate under the line rules, and a price of `0.0000`.
+It is a rendering concern: the stored document is unchanged.
 
 **Deterministic and stored once per bytes.** `renderEHF(doc, sellerPeppolID, pdf)` builds
 the XML from the document's rows, the seller's current Peppol id and the stored PDF's
@@ -685,6 +693,8 @@ Per `AGENTS.md`'s page map:
     and the drain acknowledges every event.
 19. The Peppol artefact is pinned at `v3.0.20`, the newest tag; 3.0.21 is adopted the
     day it is tagged.
+20. A VAT row without a line at its category and rate gets a zero-quantity line in the
+    EHF, because BR-S-08 requires one; the stored document is unchanged.
 
 ## Testing
 
