@@ -337,6 +337,9 @@ type fakeObjectStore struct {
 	deletes int
 	putErr  error
 	getErr  error
+	// onGet, when set, is called with each key read, before the read and
+	// outside the store's lock.
+	onGet func(key string)
 }
 
 // failPuts makes every Put fail with err, nil to stop.
@@ -406,7 +409,20 @@ func (s *fakeObjectStore) Put(_ context.Context, key string, r io.Reader, _ stri
 	return nil
 }
 
+// beforeGets calls fn with the key of every read from then on, nil to stop.
+func (s *fakeObjectStore) beforeGets(fn func(key string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onGet = fn
+}
+
 func (s *fakeObjectStore) Get(_ context.Context, key string) (io.ReadCloser, error) {
+	s.mu.Lock()
+	onGet := s.onGet
+	s.mu.Unlock()
+	if onGet != nil {
+		onGet(key)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.getErr != nil {

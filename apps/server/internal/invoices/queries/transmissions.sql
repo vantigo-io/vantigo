@@ -241,12 +241,13 @@ SELECT count(*) FROM invoices.transmissions WHERE status IN ('queued', 'submitte
 
 -- name: CancelCustomerUnattemptedTransmissions :execrows
 -- CancelCustomerUnattemptedTransmissions cancels, at an erase, every queued
--- transmission of the customer's documents that was never attempted and is
--- not leased (D12).
+-- transmission of the customer's documents that was never attempted, leased
+-- or not (D12): a worker holding one stamps its marker only on a row still
+-- queued (MarkSubmitAttempted), so it finds the row cancelled and never
+-- posts it.
 UPDATE invoices.transmissions SET status = 'cancelled', cancelled_at = @now::timestamptz
 WHERE invoice_id IN (SELECT i.id FROM invoices.invoices i WHERE i.customer_id = @customer_id)
-  AND status = 'queued' AND submit_attempted_at IS NULL
-  AND (lease_until IS NULL OR lease_until < @now::timestamptz);
+  AND status = 'queued' AND submit_attempted_at IS NULL;
 
 -- name: TransmissionsOfDocuments :many
 -- TransmissionsOfDocuments is the newest transmission of each of a page of
@@ -255,3 +256,10 @@ SELECT DISTINCT ON (invoice_id) *
 FROM invoices.transmissions
 WHERE invoice_id = ANY(@invoice_ids::bigint[])
 ORDER BY invoice_id, id DESC;
+
+-- name: EveryTransmissionOfDocuments :many
+-- EveryTransmissionOfDocuments is every transmission of a set of documents,
+-- each document's oldest first: a person's export (D12).
+SELECT * FROM invoices.transmissions
+WHERE invoice_id = ANY(@invoice_ids::bigint[])
+ORDER BY invoice_id, id;

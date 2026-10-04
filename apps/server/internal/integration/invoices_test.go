@@ -66,20 +66,21 @@ func (s *smtpRecorder) mails() []mail.Outbound {
 // with the SMTP seam recorded — config.Load refuses the smtp driver without a
 // host and a from. The seller is saved complete, its e-mail sellerEmail, and
 // the one caller answered may do everything both modules' fixtures need.
-func invoicesInstallation(t *testing.T) (*modtest.Harness, *modtest.Client, *smtpRecorder) {
+// opts are applied after these, so one of them may replace one of these.
+func invoicesInstallation(t *testing.T, opts ...modtest.Option) (*modtest.Harness, *modtest.Client, *smtpRecorder) {
 	t.Helper()
 	objects, err := storage.NewFS(t.TempDir(), true, true)
 	if err != nil {
 		t.Fatalf("storage.NewFS: %v", err)
 	}
 	smtp := &smtpRecorder{}
-	h := newInstallationWith(t, []modtest.Option{
+	h := newInstallationWith(t, append([]modtest.Option{
 		modtest.WithObjectStore(objects),
 		modtest.WithSMTPSend(smtp.send),
 		modtest.WithEnv("MAIL_DRIVER", "smtp"),
 		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"),
 		modtest.WithEnv("SMTP_FROM", "faktura@example.invalid"),
-	}, modCustomers, modInvoices)
+	}, opts...), modCustomers, modInvoices)
 	admin := h.SignIn(t,
 		"customers:view", "customers:create", "customers:update", "customers:delete", "customers:merge",
 		"customers:billing-manage", "customers:legal-identity-view", "customers:legal-identity-manage",

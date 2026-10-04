@@ -564,8 +564,11 @@ error log**, never a user-facing refusal.
 - **Merge**: transmissions hang off the document by id; nothing to re-point.
 - **Export**: each document's section gains `transmissions` (provider, state,
   timestamps, the receiver participant id, the UBL's hash, the resolution) — no bytes.
-- **Erase**: a `queued` transmission never attempted is **cancelled** (the cancel rule's
-  conditional update, reported as `invoices.transmissions` with the count); every other
+- **Erase**: a `queued` transmission never attempted is **cancelled**, leased or not
+  (`WHERE status = 'queued' AND submit_attempted_at IS NULL`, reported as
+  `invoices.transmissions` with the count; amended at Task 9's review: the cancel
+  endpoint's lease clause is dropped here, since the worker's status-guarded marker —
+  `MarkSubmitAttempted … AND status = 'queued'` — stops its POST); every other
   row is kept untouched: the UBL, like the PDF, is the sales document under § 13 and
   carries the buyer snapshot; the receiver's identifier is an organisation's or the
   snapshot's own. The anonymisation table in the customers reference gains the row.
@@ -693,7 +696,7 @@ Per `AGENTS.md`'s page map:
    UBL; a 422 on a retry is read as a possible duplicate, never as a refusal.
 10. The access-point client is unguarded like Brreg's; the URL is the operator's.
 11. Transmissions are kept through anonymisation; a never-attempted queued one is
-    cancelled.
+    cancelled, leased or not; the worker's status-guarded marker stops its POST.
 12. Channel precedence is decided by the profile's preference and the buyer's Peppol
     id; the receiver's acceptance is the send's re-check.
 13. Category K is refused at send.
