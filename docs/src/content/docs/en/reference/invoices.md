@@ -398,6 +398,110 @@ opens it in a new browser tab — opened with the click, before the PDF is fetch
 the browser's pop-up blocker never sees a `window.open` outside a click — and falls
 back to a plain download when the tab could not be opened at all.
 
+## The EHF document
+
+An issued document can be rendered as **EHF Billing 3.0** — a Peppol BIS Billing 3.0
+UBL 2.1 `Invoice` or `CreditNote` (EHF is Peppol BIS plus the two Norwegian checks
+NO-R-001 and NO-R-002, with no customization id of its own) — by the package
+[`apps/server/internal/invoices/ehf`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/invoices/ehf).
+This section is the document; storing it and transmitting it over Peppol belong to the
+send.
+
+**Identifiers.** `cbc:CustomizationID`
+`urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0`,
+`cbc:ProfileID` `urn:fdc:peppol.eu:2017:poacc:billing:01:1.0`, no `cbc:UBLVersionID`,
+`cbc:InvoiceTypeCode` **380** or `cbc:CreditNoteTypeCode` **381** — a credit note is
+never a negative invoice, and its amounts are positive, as stored.
+
+**Deterministic.** The EHF is a pure function of the document's own rows and snapshots,
+the seller's Peppol id at the time of rendering (not part of the snapshot) and the
+stored PDF's bytes: no clock, no randomness, and the same inputs render the same bytes.
+It is written by a small hand writer over Go's `encoding/xml` encoder with literal
+`cac:`/`cbc:` element names, the three namespace declarations on the root and the
+elements in the UBL schema's order. Amounts have exactly two decimals, quantities their
+stored three and unit prices their stored four, never in exponent form; an empty value
+is left out rather than written as an empty element (PEPPOL-EN16931-R008).
+
+**The mapping**, from the snapshot and nothing else (the directory is never read; the
+buyer is the snapshot's, as the PDF prints it):
+
+| UBL | From |
+| --- | --- |
+| `cbc:ID`, `cbc:IssueDate`, `cbc:DueDate` (invoice only) | `number`, `issue_date`, `due_date` |
+| `cbc:DocumentCurrencyCode` | `currency` (NOK) |
+| `cbc:BuyerReference` (BT-10) | `your_reference`, when set |
+| `cac:OrderReference/cbc:ID` | `order_reference`, when set. Peppol needs one of the two references (PEPPOL-EN16931-R003) |
+| `cac:BillingReference/cac:InvoiceDocumentReference` (credit note) | the original's `number` and `issue_date` |
+| `cac:InvoicePeriod` (`cbc:StartDate`, `cbc:EndDate`) | `delivery_from`, `delivery_to` |
+| `cac:Delivery/cbc:ActualDeliveryDate` | `delivery_date` |
+| `cac:Delivery/cac:DeliveryLocation/cac:Address` | the place of delivery, **only when it has a country** (BR-57); one without a country is left out of the EHF, the PDF still prints it |
+| `cac:AdditionalDocumentReference` | the stored PDF: `cbc:ID` the number, `cbc:DocumentDescription` "Faktura (PDF)" / "Invoice (PDF)" ("Kreditnota (PDF)" / "Credit note (PDF)" on a credit note), `cac:Attachment/cbc:EmbeddedDocumentBinaryObject` the bytes in Base64 with `mimeCode="application/pdf"` and `filename` the download's name |
+| `cac:AccountingSupplierParty/cac:Party` | `cbc:EndpointID@schemeID` the seller's Peppol id split at its colon; `cac:PartyName/cbc:Name` and `cac:PostalAddress` from the seller snapshot; `cac:PartyTaxScheme` with `cbc:CompanyID` `NO<organisation number>MVA` under `VAT` **only when VAT-registered** (NO-R-001), and `Foretaksregisteret` under `TAX` **only when registered there** (NO-R-002, a warning when absent); `cac:PartyLegalEntity` the legal name and the organisation number under `schemeID="0192"`; `cac:Contact/cbc:ElectronicMail` the seller's e-mail when set |
+| `cac:AccountingCustomerParty/cac:Party` | `cbc:EndpointID@schemeID` from `buyer_peppol_id` (the scheme its prefix, the value the rest); `cac:PostalAddress` from the buyer snapshot, the region as `cbc:CountrySubentity`; `cac:PartyLegalEntity/cbc:RegistrationName` **always** (BR-07), with `cbc:CompanyID@schemeID="0192"` for a Norwegian business's organisation number, `cbc:CompanyID` without a scheme for a foreign id, and none for a person |
+| `cac:PaymentMeans` (invoice only) | **one**, `cbc:PaymentMeansCode` **30** (credit transfer); `cac:PayeeFinancialAccount/cbc:ID` the domestic account, or for a buyer whose country is not NO the IBAN with `cac:FinancialInstitutionBranch/cbc:ID` the BIC when the seller has an IBAN; `cbc:PaymentID` the KID, and **no `PaymentID` at all without one** — Norwegian receivers read it as a KID |
+| `cac:PaymentTerms/cbc:Note` | "Forfall 15.10.2026" / "Due 2026-10-15" on an invoice; "Kreditnota – beløpet godskrives" / "Credit note – the amount is credited" on a credit note, which has no due date (BR-CO-25) |
+| `cac:TaxTotal` | `cbc:TaxAmount` the VAT total; one `cac:TaxSubtotal` per VAT summary row, in the document's order: `cbc:TaxableAmount`, `cbc:TaxAmount`, and `cac:TaxCategory` by the category rules below |
+| `cac:LegalMonetaryTotal` | `cbc:LineExtensionAmount` and `cbc:TaxExclusiveAmount` the net total, `cbc:TaxInclusiveAmount` and `cbc:PayableAmount` the gross total; no rounding amount |
+| `cac:InvoiceLine` / `cac:CreditNoteLine` | `cbc:ID` the position; `cbc:InvoicedQuantity` / `cbc:CreditedQuantity` with `unitCode` from the unit table; `cbc:LineExtensionAmount` the line net; when the discount is not zero, `cac:AllowanceCharge` with `cbc:ChargeIndicator` false, reason code `95` and reason "Rabatt" / "Discount" (BR-42), `cbc:MultiplierFactorNumeric` the discount percent, `cbc:Amount` the line allowance and `cbc:BaseAmount` the line gross (PEPPOL-EN16931-R040–R042); `cac:Item/cbc:Name` the description; `cac:Item/cac:ClassifiedTaxCategory` the line's snapshot category, with `cbc:Percent` except for O; `cac:Price/cbc:PriceAmount` the unit price |
+
+**The category rules.** `cbc:Percent` is written for S, Z, E, AE, G and K, **never for
+O** (BR-O-05). In a VAT summary row, AE, G and O carry `cbc:TaxExemptionReasonCode`
+`VATEX-EU-AE`, `VATEX-EU-G` and `VATEX-EU-O`; **E alone carries the free-text reason**
+as `cbc:TaxExemptionReason`; Z carries nothing (BR-Z-10 forbids any reason on Z), and
+nor does S. A final credit note's squaring row — a taxable amount of 0.00 with a small
+negative VAT — is written as stored. Category K needs the buyer's VAT identifier, which
+the module does not hold, so a document with a K line is never sent as EHF (the
+pre-check below); its PDF is unaffected.
+
+### Units
+
+A line's `unit` is free text; EHF needs a UN/ECE Recommendation 20 code on every
+quantity. The module maps the common words, trimmed, case-insensitively and with
+trailing punctuation stripped (`Stk.` is `stk`), by one table:
+
+| Code | Words |
+| --- | --- |
+| `C62` (one) | `stk`, `pcs`, `piece` — and every unit not below, the empty one included |
+| `HUR` | `time`, `timer`, `h`, `hour`, `hours` |
+| `MIN` | `min` |
+| `DAY` | `dag`, `day` |
+| `WEE` | `uke`, `week` |
+| `MON` | `mnd`, `month` |
+| `ANN` | `år`, `year` |
+| `KGM` | `kg` |
+| `GRM` | `g` |
+| `MTR` | `m` |
+| `MTK` | `m2`, `m²` |
+| `MTQ` | `m3`, `m³` |
+| `LTR` | `l`, `liter`, `litre` |
+| `KMT` | `km` |
+| `XPK` | `pakke`, `pack`, `pk` |
+| `SET` | `sett`, `set` |
+| `KWH` | `kWh` |
+
+`t` is deliberately not mapped — hour or tonne — and falls back to `C62`, as does any
+other word; the description carries the meaning. There is no unit-code column and no
+picker.
+
+### The pre-check
+
+Two checks run on the rendered bytes. **The pre-check** reads the XML alone and names
+the rules a person can be told about: neither a buyer reference nor an order reference
+(`PEPPOL-EN16931-R003`); no buyer endpoint (`PEPPOL-EN16931-R010`), or a buyer endpoint
+scheme not on the Peppol EAS code list (`PEPPOL-EN16931-CL008`; the list is vendored
+whole from the Peppol BIS release `v3.0.20`); a seller VAT id beginning `NO` that is not
+`NO`, a valid organisation number and `MVA` (`NO-R-001`); a K category
+(`vat_category_k_unsupported`). **The invariants** are what only the module could get
+wrong, and a broken one is an error, never a refusal in words: the totals re-summed from
+the lines and the VAT (`BR-CO-10`, `BR-CO-13`, `BR-CO-15`); the KID re-verified against
+its stored algorithm and the payment id equal to it, with no payment id without a KID
+(`kid_invalid`, `payment_id_without_kid`); the stored PDF attached
+(`pdf_attachment_missing`); every unit code one of the table's (`unit_code_unknown`).
+Neither replaces the official XSD and Schematron artefacts, which validate the committed
+golden documents (`apps/server/internal/invoices/ehf/testdata/golden`); hand-tampered
+documents under `testdata/invalid`, with a manifest of the rule ids each must trip, hold
+the pre-check to the same ids.
+
 ## Sending a document
 
 `POST /invoices/{id}/send` e-mails an issued document's **stored PDF** — an invoice's or
