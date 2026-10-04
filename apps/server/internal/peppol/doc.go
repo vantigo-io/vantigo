@@ -44,7 +44,9 @@
 // network the server runs in.
 //
 // The package is pure network plumbing: no database, no HTTP contract, no
-// module. Callers (Customers today, Invoices later) hold a *Client built from
-// configuration and hand it a participant identifier value such as
-// "0192:923609016".
+// module. Callers (Customers, and Invoices for the receiver re-check before a
+// send) hold a *Client built from configuration and hand it a participant
+// identifier value such as "0192:923609016". The Billing 3.0 identifiers are
+// exported (InvoiceDocumentType, CreditNoteDocumentType, BillingProcessID) for
+// the caller that writes the document as well as asks about it.
 package peppol

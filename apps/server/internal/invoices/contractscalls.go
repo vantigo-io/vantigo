@@ -2,22 +2,24 @@ package invoices
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
+	"github.com/vantigo-io/vantigo/server/internal/peppol"
 )
 
 // This file is the whole of this module's reach outside its own schema: the
-// customer directory (deps.Directory), the object store (server.objects) and
-// the SMTP seam (deps.SMTPSend).
+// customer directory (deps.Directory), the object store (server.objects), the
+// SMTP seam (deps.SMTPSend) and the Peppol network (server.peppolLookup).
 // Every call is made through one of the thin accessors below and through
 // nowhere else, so "what does Invoices ask of its neighbours, and when" has one
 // place to read the answer and one place to check it from.
 //
 // What is checked is the rule of D6 and D7: no directory call, no
-// object-store call and no send is ever made inside a transaction holding locks
+// object-store call, no lookup and no send is ever made inside a transaction holding locks
 // (withLockedTx). The directory reads through the same connection pool, and a
 // slow store under a row lock is the same hazard by another route.
 // noteContractCall pins the rule on every path, at a production cost of one nil
@@ -77,4 +79,26 @@ func (s *server) smtpSend(ctx context.Context, cfg config.MailConfig, out mail.O
 		return s.deps.SMTPSend(ctx, cfg, out)
 	}
 	return mail.SendOutbound(ctx, cfg, out)
+}
+
+// errPeppolLookupDisabled is lookupReceiver's answer when PEPPOL_LOOKUP_ENABLED
+// is off. A caller judges ehfAvailable first and never gets here; the error
+// keeps a slip from being a nil call.
+var errPeppolLookupDisabled = errors.New("invoices: the peppol lookup is disabled")
+
+// lookupReceiver asks the Peppol network whether participant can receive an
+// invoice or a credit note (EHF and KID design D6): the send's re-check, made
+// at request time and never read from the customers module's stored answer.
+// A failure is logged by its kind only — its message can carry the
+// organisation number — and returned for the caller to answer.
+func (s *server) lookupReceiver(ctx context.Context, participant string) (peppol.Result, error) {
+	if s.peppolLookup == nil {
+		return peppol.Result{}, errPeppolLookupDisabled
+	}
+	noteContractCall(ctx, "Peppol.Lookup")
+	res, err := s.peppolLookup(ctx, participant)
+	if err != nil {
+		s.deps.Logger.WarnContext(ctx, "invoices: peppol lookup failed", "errorKind", peppolErrorKind(err))
+	}
+	return res, err
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/peppol"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
 
@@ -28,6 +29,13 @@ type server struct {
 	// the store answers storage.ErrNotConfigured to everything, and issuing is
 	// refused before any number is allocated (D6).
 	storageConfigured bool
+	// peppolLookup answers whether a participant can receive an invoice or a
+	// credit note (EHF and KID design D6): the send's receiver re-check. Nil
+	// whenever Config.PeppolLookupEnabled is false — EHF is then off too —
+	// otherwise Deps.PeppolLookup when a harness set one, or a real
+	// *peppol.Client's Lookup, the customers module's shape. Called only
+	// through lookupReceiver (contractscalls.go).
+	peppolLookup func(ctx context.Context, participant string) (peppol.Result, error)
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
@@ -42,12 +50,13 @@ const storageScope = "invoices"
 // the process starts, and issuing and downloading fail closed with a 503 at the
 // operation (docs/src/content/docs/en/admin/object-storage.md), never at startup.
 func newServer(d module.Deps) (*server, error) {
-	if d.ObjectStore != nil {
-		return &server{deps: d, objects: d.ObjectStore, storageConfigured: true}, nil
-	}
 	cfg := d.Config
 	if cfg == nil {
 		cfg = &config.Config{}
+	}
+	lookup := newPeppolLookup(d, cfg)
+	if d.ObjectStore != nil {
+		return &server{deps: d, objects: d.ObjectStore, storageConfigured: true, peppolLookup: lookup}, nil
 	}
 	base, err := storage.New(cfg)
 	if err != nil {
@@ -57,7 +66,27 @@ func newServer(d module.Deps) (*server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invoices: scope the object store: %w", err)
 	}
-	return &server{deps: d, objects: scoped, storageConfigured: cfg.StorageProvider != ""}, nil
+	return &server{deps: d, objects: scoped, storageConfigured: cfg.StorageProvider != "", peppolLookup: lookup}, nil
+}
+
+// newPeppolLookup resolves server.peppolLookup once, as the customers module
+// does (customers/server.go): nil when the lookup is disabled — the seam is
+// never even read then — else Deps.PeppolLookup when a harness set one, else
+// a real client built from the four PEPPOL_* settings, dialling through
+// Deps.HTTPTransport.
+func newPeppolLookup(d module.Deps, cfg *config.Config) func(ctx context.Context, participant string) (peppol.Result, error) {
+	if !cfg.PeppolLookupEnabled {
+		return nil
+	}
+	if d.PeppolLookup != nil {
+		return d.PeppolLookup
+	}
+	return peppol.NewClient(peppol.Options{
+		Zone:          cfg.PeppolSMLZone,
+		DNSServers:    peppolDNSServers(cfg.PeppolDNSServer),
+		Timeout:       cfg.PeppolTimeout,
+		HTTPTransport: d.HTTPTransport,
+	}).Lookup
 }
 
 // has reports whether the caller holds one global permission key, evaluated

@@ -55,6 +55,10 @@ digit (MOD10 or MOD11). Until they get their own fields, they are set through th
 ([the Peppol id and the KID agreement](/en/reference/invoices/#the-peppol-id-and-the-kid-agreement)).
 With a KID agreement every invoice issued from then on gets a KID, the payment
 reference the bank matches the payment by; a credit note never does.
+Sending as EHF is not in the app yet; the server already answers whether this
+installation could — the operator's EHF switch and the Peppol lookup on, the access
+point's credentials stored and the Peppol id set
+([the switches](/en/reference/invoices/#permissions)).
 
 If a colleague saved the settings while you were editing, the form says **The settings
 changed** and offers **Reload**; your unsaved edits are dropped, never merged.

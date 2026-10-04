@@ -11,9 +11,10 @@ import (
 	"strings"
 )
 
-// The two document type identifiers that answer "can this customer receive an
-// EHF invoice / credit note?": Peppol BIS Billing 3.0, which is what EHF 3.0 is
-// in Peppol terms.
+// InvoiceDocumentType and CreditNoteDocumentType are the two document type
+// identifiers that answer "can this customer receive an EHF invoice / credit
+// note?": Peppol BIS Billing 3.0, which is what EHF 3.0 is in Peppol terms.
+// They are exported for Invoices, which names the one it sends.
 //
 // They are compared as whole strings and nothing looser — not a prefix, not a
 // substring, not a wildcard — and two participants seen live on 2026-09-21 are
@@ -34,12 +35,18 @@ import (
 // nothing and risks sending a document in a profile the receiver does not
 // actually take.
 const (
-	invoiceDocumentType = "busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice" +
+	InvoiceDocumentType = "busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice" +
 		"##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0::2.1"
 
-	creditNoteDocumentType = "busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2::CreditNote" +
+	CreditNoteDocumentType = "busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2::CreditNote" +
 		"##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0::2.1"
 )
+
+// BillingProcessID is the Peppol BIS Billing 3.0 process identifier: the
+// ProfileID of every invoice and credit note in that profile, and the process
+// an SMP registers the two document types under. This package matches on the
+// document types alone; Invoices writes it into the UBL it sends.
+const BillingProcessID = "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
 
 const (
 	// servicesSegment separates the participant identifier from the document
@@ -234,9 +241,9 @@ func documentTypesFrom(body []byte) ([]string, error) {
 func capabilities(documentTypes []string) (invoice, creditNote bool) {
 	for _, documentType := range documentTypes {
 		switch documentType {
-		case invoiceDocumentType:
+		case InvoiceDocumentType:
 			invoice = true
-		case creditNoteDocumentType:
+		case CreditNoteDocumentType:
 			creditNote = true
 		}
 	}
