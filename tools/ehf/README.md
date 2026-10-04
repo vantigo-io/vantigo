@@ -26,7 +26,7 @@ mise run ehf:validate
 | Saxon-HE (+ `org.xmlresolver:xmlresolver` and its `data` jar, as its POM requires) | 12.7 (xmlresolver 5.3.3) | The artefacts are XSLT 2.0. |
 | SchXslt (`name.dmaus.schxslt:schxslt`) | 1.10.1 | The Peppol repository ships Schematron sources only — at `v3.0.20`, `rules/sch` holds no XSLT and the GitHub release has no assets — so the oracle compiles `PEPPOL-EN16931-UBL.sch` itself. SchXslt handles its `xsl:function`s (`u:mod11`, `u:gln`, …). |
 | CEN EN 16931 UBL (`en16931-ubl-*.zip`) | `validation-1.3.16` | The BR-* and UBL-CR-* rules, shipped as compiled XSLT. |
-| Peppol BIS Billing 3.0 (`OpenPEPPOL/peppol-bis-invoice-3`, tag zipball) | `v3.0.20` | The PEPPOL-EN16931-* and NO-R-* rules. |
+| Peppol BIS Billing 3.0 (`OpenPEPPOL/peppol-bis-invoice-3`, the raw `rules/sch/PEPPOL-EN16931-UBL.sch` at the tag's commit `261c4584…`) | `v3.0.20` | The PEPPOL-EN16931-* and NO-R-* rules. The file is self-contained. |
 | UBL 2.1 (OASIS Standard) | `os-UBL-2.1` | The XSD: Schematron checks nothing about element order or names. |
 
 ## Bumping a pin
@@ -35,7 +35,11 @@ The CEN and Peppol artefacts are released each spring and autumn, each mandatory
 about three months later; adopt a release when it is tagged.
 
 1. Change the URL and file name in `artefacts.lock`, and put a placeholder in the
-   hash column.
+   hash column. Keep the file name's prefix — `Saxon-HE-`, `xmlresolver-`, `schxslt-`,
+   `en16931-ubl-`, `peppol-bis-invoice-3-`, `UBL-` — because `validate.sh` finds each
+   artefact by it. For Peppol, pin the raw `rules/sch/PEPPOL-EN16931-UBL.sch` at the
+   tag's commit (`https://raw.githubusercontent.com/OpenPEPPOL/peppol-bis-invoice-3/<commit>/rules/sch/PEPPOL-EN16931-UBL.sch`),
+   not the tag's archive, and check it still includes nothing.
 2. Download the file and take its hash: `curl -fsSL <url> | shasum -a 256`. Where the
    publisher states a hash (GitHub release assets, Maven Central's `.sha1`), check it
    against yours. Write the hash into the lock.

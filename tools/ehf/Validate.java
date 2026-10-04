@@ -92,6 +92,7 @@ public class Validate {
         int warnings = 0;
         int knownSeen = 0;
         Set<String> seenInvalid = new TreeSet<>();
+        Set<String> seenGolden = new TreeSet<>();
         for (Path file : files) {
             String name = file.getFileName().toString();
             boolean invalid = file.toAbsolutePath().getParent().equals(invalidDir);
@@ -143,6 +144,7 @@ public class Validate {
                 verdict = "invalid " + fatal;
             } else {
                 goldens++;
+                seenGolden.add(name);
                 Set<String> tolerated = known.getOrDefault(name, Set.of());
                 Set<String> unexpected = new TreeSet<>(fatal);
                 unexpected.removeAll(tolerated);
@@ -183,6 +185,14 @@ public class Validate {
         for (String name : expected.keySet()) {
             if (!seenInvalid.contains(name)) {
                 System.out.println("FAIL invalid/" + name + ": in the manifest but not validated (missing file?)");
+                failures++;
+            }
+        }
+
+        for (String name : known.keySet()) {
+            if (!seenGolden.contains(name)) {
+                System.out.println("FAIL golden/" + name + ": in known-failures.txt but not validated as a golden"
+                        + " (renamed, deleted, or an invalid fixture?)");
                 failures++;
             }
         }
