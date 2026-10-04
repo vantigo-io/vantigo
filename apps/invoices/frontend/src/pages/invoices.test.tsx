@@ -23,6 +23,7 @@ const server = (options: { canCreate?: boolean; totalPages?: number } = {}) =>
             canManage: false,
             canRegisterPayments: true,
             canSend: true,
+            canSendEhf: false,
           },
         }),
       );

@@ -1225,3 +1225,37 @@ func TestLoad_CustomersAnonymisationWorker(t *testing.T) {
 		}
 	}
 }
+
+// The two Invoices e-invoicing settings (EHF and KID design D1): the switch
+// defaults on, like PEPPOL_LOOKUP_ENABLED, and is strict; the Storecove base
+// URL defaults to the production API, takes http or https as BRREG_BASE_URL
+// does — an operator points it at the sandbox or a mock host — and loses any
+// trailing slash, so the adapter's fixed paths never double one.
+func TestLoad_InvoicesEhfSettings(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.InvoicesEhfEnabled {
+		t.Error("INVOICES_EHF_ENABLED unset did not default to on")
+	}
+	if cfg.InvoicesStorecoveBaseURL != "https://api.storecove.com/api/v2" {
+		t.Errorf("InvoicesStorecoveBaseURL = %q, want the production API without its trailing slash", cfg.InvoicesStorecoveBaseURL)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "INVOICES_EHF_ENABLED", "0")); cfg.InvoicesEhfEnabled {
+		t.Error("INVOICES_EHF_ENABLED=0 left the switch on")
+	}
+	if msg := loadError(t, with(validEnv(), "INVOICES_EHF_ENABLED", "yes")); !strings.Contains(msg, `INVOICES_EHF_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	for given, want := range map[string]string{
+		"https://sandbox.example.test/api/v2/": "https://sandbox.example.test/api/v2",
+		"http://127.0.0.1:8099":                "http://127.0.0.1:8099",
+	} {
+		if cfg := mustLoad(t, with(validEnv(), "INVOICES_STORECOVE_BASE_URL", given)); cfg.InvoicesStorecoveBaseURL != want {
+			t.Errorf("INVOICES_STORECOVE_BASE_URL %q = %q, want %q", given, cfg.InvoicesStorecoveBaseURL, want)
+		}
+	}
+	for _, bad := range []string{"not-a-url", "ftp://storecove.example.test", "https://"} {
+		if msg := loadError(t, with(validEnv(), "INVOICES_STORECOVE_BASE_URL", bad)); !strings.Contains(msg, "INVOICES_STORECOVE_BASE_URL: must be an absolute http or https URL") {
+			t.Errorf("%q: error = %q", bad, msg)
+		}
+	}
+}

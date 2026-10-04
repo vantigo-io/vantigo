@@ -398,9 +398,13 @@ export interface components {
             canRegisterPayments: boolean;
             /** @description invoices:issue and mailAvailable — send an issued document to the customer by e-mail. */
             canSend: boolean;
+            /** @description invoices:issue and ehfAvailable — send an issued document to the customer as EHF over Peppol. */
+            canSendEhf: boolean;
         };
         /** @description What every Invoices page needs before it draws anything (invoices foundation design D2). */
         InvoicesMetaResponse: {
+            /** @description Whether the access-point provider refused the stored API key (a 401 or 403, or a key that could not be opened). Cleared by the next accepted call or a new key. False without credentials. It does not change ehfAvailable. */
+            accessPointCredentialsRejected: boolean;
             /** @description Whether any document has been issued — the counter row exists. Once true the series start is locked. */
             anythingIssued: boolean;
             capabilities: components["schemas"]["InvoicesMetaCapabilities"];
@@ -411,6 +415,8 @@ export interface components {
              * @description The seller's default payment terms, which a new draft takes when neither the request nor the customer's billing profile decides.
              */
             defaultPaymentTermsDays: number;
+            /** @description Whether this installation can send EHF over Peppol — INVOICES_EHF_ENABLED is on, the Peppol lookup is enabled (PEPPOL_LOOKUP_ENABLED), access-point credentials are stored and the seller's Peppol id is set. Without it canSendEhf is false. */
+            ehfAvailable: boolean;
             /** @description Whether this installation's mail driver is smtp. Without it nothing can be sent (503 mail_unavailable), and canSend is false. */
             mailAvailable: boolean;
             /** @description The seller fields issuing still needs, by their camelCase names (legalName, organisationNumber, addressLine1, postalCode, city, bankAccount). Empty when the seller is complete. */

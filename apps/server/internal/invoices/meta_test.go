@@ -1,12 +1,16 @@
 package invoices_test
 
 import (
+	"context"
 	"net/http"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/peppol"
 )
 
 // metaJSON is GET /meta as a client reads it.
@@ -19,6 +23,8 @@ type metaJSON struct {
 	SeriesStart             int64    `json:"seriesStart"`
 	StorageAvailable        bool     `json:"storageAvailable"`
 	MailAvailable           bool     `json:"mailAvailable"`
+	EhfAvailable            bool     `json:"ehfAvailable"`
+	AccessPointRejected     bool     `json:"accessPointCredentialsRejected"`
 	Today                   string   `json:"today"`
 	VatCodes                []struct {
 		ID              int32   `json:"id"`
@@ -35,6 +41,7 @@ type metaJSON struct {
 		CanManage           bool `json:"canManage"`
 		CanRegisterPayments bool `json:"canRegisterPayments"`
 		CanSend             bool `json:"canSend"`
+		CanSendEhf          bool `json:"canSendEhf"`
 	} `json:"capabilities"`
 }
 
@@ -173,5 +180,82 @@ func TestMeta_MailAvailabilityAndTheNewCapabilities(t *testing.T) {
 		if meta := getMeta(t, h, "invoices:access", "invoices:create", "invoices:issue", "invoices:manage"); meta.Capabilities.CanRegisterPayments {
 			t.Errorf("canRegisterPayments = true without invoices:payments")
 		}
+	}
+}
+
+// plantAccessPointCredentials stores a credentials row as PUT
+// /settings/access-point will (EHF and KID design D7). Meta reads only that
+// the row exists and whether it was rejected, never the key, so the
+// ciphertext here is a stand-in.
+func plantAccessPointCredentials(t *testing.T, h *harness) {
+	t.Helper()
+	if _, err := store.New(h.Pool()).UpsertAccessPointCredentials(context.Background(), store.UpsertAccessPointCredentialsParams{
+		Provider: "storecove", SettingsJson: `{"legalEntityId":1}`, SecretCiphertext: "sealed", Now: h.Now(),
+	}); err != nil {
+		t.Fatalf("plant the access point credentials: %v", err)
+	}
+}
+
+// EHF is available only when all four hold (EHF and KID design D1): the
+// INVOICES_EHF_ENABLED switch, the Peppol lookup (PEPPOL_LOOKUP_ENABLED — a
+// send that cannot re-check the receiver does not send), stored access-point
+// credentials and the seller's Peppol id. canSendEhf is that and
+// invoices:issue. A key the provider refused is flagged beside, without
+// taking EHF away: the settings page and the send dialog say so. Meta asks
+// the network nothing.
+func TestMeta_EhfAvailabilityAndCanSendEhf(t *testing.T) {
+	t.Parallel()
+	var lookups atomic.Int32
+	lookup := modtest.WithPeppolLookup(func(context.Context, string) (peppol.Result, error) {
+		lookups.Add(1)
+		return peppol.Result{}, nil
+	})
+	ready := func(t *testing.T, opts ...modtest.Option) *harness {
+		t.Helper()
+		h := newHarness(t, append([]modtest.Option{lookup}, opts...)...)
+		h.Exec(t, `UPDATE invoices.settings SET peppol_id = '0192:974760673'`)
+		plantAccessPointCredentials(t, h)
+		return h
+	}
+
+	h := ready(t)
+	if meta := getMeta(t, h, "invoices:access", "invoices:issue"); !meta.EhfAvailable || !meta.Capabilities.CanSendEhf || meta.AccessPointRejected {
+		t.Errorf("all four set, an issuer: ehfAvailable %v, canSendEhf %v, rejected %v; want true, true, false",
+			meta.EhfAvailable, meta.Capabilities.CanSendEhf, meta.AccessPointRejected)
+	}
+	if meta := getMeta(t, h, "invoices:access", "invoices:create", "invoices:manage", "invoices:payments"); !meta.EhfAvailable || meta.Capabilities.CanSendEhf {
+		t.Errorf("all four set, no invoices:issue: ehfAvailable %v, canSendEhf %v; want true, false", meta.EhfAvailable, meta.Capabilities.CanSendEhf)
+	}
+
+	switchOff := ready(t, modtest.WithEnv("INVOICES_EHF_ENABLED", "0"))
+	lookupOff := ready(t, modtest.WithEnv("PEPPOL_LOOKUP_ENABLED", "0"))
+	noCredentials := newHarness(t, lookup)
+	noCredentials.Exec(t, `UPDATE invoices.settings SET peppol_id = '0192:974760673'`)
+	noPeppolID := ready(t)
+	noPeppolID.Exec(t, `UPDATE invoices.settings SET peppol_id = NULL`)
+	for name, h := range map[string]*harness{
+		"INVOICES_EHF_ENABLED=0": switchOff, "PEPPOL_LOOKUP_ENABLED=0": lookupOff,
+		"no credentials": noCredentials, "no Peppol id": noPeppolID,
+	} {
+		if meta := getMeta(t, h, "invoices:access", "invoices:issue"); meta.EhfAvailable || meta.Capabilities.CanSendEhf || meta.AccessPointRejected {
+			t.Errorf("%s, an issuer: ehfAvailable %v, canSendEhf %v, rejected %v; want false, false, false",
+				name, meta.EhfAvailable, meta.Capabilities.CanSendEhf, meta.AccessPointRejected)
+		}
+	}
+
+	if err := store.New(h.Pool()).MarkAccessPointRejected(context.Background(), h.Now()); err != nil {
+		t.Fatalf("mark the key rejected: %v", err)
+	}
+	if meta := getMeta(t, h, "invoices:access", "invoices:issue"); !meta.AccessPointRejected || !meta.EhfAvailable || !meta.Capabilities.CanSendEhf {
+		t.Errorf("a rejected key: rejected %v, ehfAvailable %v, canSendEhf %v; want true, true, true",
+			meta.AccessPointRejected, meta.EhfAvailable, meta.Capabilities.CanSendEhf)
+	}
+	plantAccessPointCredentials(t, h)
+	if meta := getMeta(t, h, "invoices:access"); meta.AccessPointRejected {
+		t.Error("rejected = true after a new key was stored")
+	}
+
+	if n := lookups.Load(); n != 0 {
+		t.Errorf("meta made %d Peppol lookups, want none", n)
 	}
 }

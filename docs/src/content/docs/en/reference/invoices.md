@@ -809,6 +809,16 @@ that can send — `MAIL_DRIVER=smtp` and the `SMTP_*` configuration
 `mailAvailable`, `capabilities.canSend` — `invoices:issue` and `mailAvailable` — and
 `capabilities.canRegisterPayments`, so no client re-derives either rule.
 
+**Sending as EHF will be under `invoices:issue` too**, and needs an installation that
+can: `GET /meta` answers `ehfAvailable` — `INVOICES_EHF_ENABLED` on, the Peppol lookup
+enabled (`PEPPOL_LOOKUP_ENABLED`; a send that cannot re-check its receiver does not
+send), an access-point credentials row stored and the seller's Peppol id set, all four
+([configuration](/en/admin/authentication/#transport-storage-and-modules)) —
+`capabilities.canSendEhf`, `invoices:issue` and `ehfAvailable`, and
+`accessPointCredentialsRejected`, whether the provider refused the stored key. A refused
+key is reported beside `ehfAvailable`, never folded into it. Meta asks the Peppol network
+nothing; the receiver is re-checked when a document is sent.
+
 **Creating a draft in the app also needs `customers:view`**: the directory has no
 search, so the buyer picker reads the customers module's own list. The API takes a
 customer id and checks nothing more; the app hides "New invoice" without it.

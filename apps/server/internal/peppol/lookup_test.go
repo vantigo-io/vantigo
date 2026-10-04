@@ -73,7 +73,7 @@ func TestLookup_RegisteredParticipant(t *testing.T) {
 func TestLookup_InvoiceWithoutCreditNote(t *testing.T) {
 	t.Parallel()
 	dns := newStubDNS(t, answersWith(t, reply{answers: smpNAPTR(testBase)}))
-	client, _ := lookupClient(t, dns, serviceGroupHandler("0192:923609016", []string{orderDocumentType, invoiceDocumentType}))
+	client, _ := lookupClient(t, dns, serviceGroupHandler("0192:923609016", []string{orderDocumentType, InvoiceDocumentType}))
 
 	got, err := client.Lookup(context.Background(), "0192:923609016")
 	if err != nil {

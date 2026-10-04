@@ -18,16 +18,23 @@ components:
                 canSend:
                     description: invoices:issue and mailAvailable — send an issued document to the customer by e-mail.
                     type: boolean
+                canSendEhf:
+                    description: invoices:issue and ehfAvailable — send an issued document to the customer as EHF over Peppol.
+                    type: boolean
             required:
                 - canCreate
                 - canIssue
                 - canManage
                 - canRegisterPayments
                 - canSend
+                - canSendEhf
             type: object
         InvoicesMetaResponse:
             description: What every Invoices page needs before it draws anything (invoices foundation design D2).
             properties:
+                accessPointCredentialsRejected:
+                    description: Whether the access-point provider refused the stored API key (a 401 or 403, or a key that could not be opened). Cleared by the next accepted call or a new key. False without credentials. It does not change ehfAvailable.
+                    type: boolean
                 anythingIssued:
                     description: Whether any document has been issued — the counter row exists. Once true the series start is locked.
                     type: boolean
@@ -40,6 +47,9 @@ components:
                     description: The seller's default payment terms, which a new draft takes when neither the request nor the customer's billing profile decides.
                     format: int32
                     type: integer
+                ehfAvailable:
+                    description: Whether this installation can send EHF over Peppol — INVOICES_EHF_ENABLED is on, the Peppol lookup is enabled (PEPPOL_LOOKUP_ENABLED), access-point credentials are stored and the seller's Peppol id is set. Without it canSendEhf is false.
+                    type: boolean
                 mailAvailable:
                     description: Whether this installation's mail driver is smtp. Without it nothing can be sent (503 mail_unavailable), and canSend is false.
                     type: boolean
@@ -76,6 +86,8 @@ components:
                 - seriesStart
                 - storageAvailable
                 - mailAvailable
+                - ehfAvailable
+                - accessPointCredentialsRejected
                 - today
                 - vatCodes
                 - capabilities

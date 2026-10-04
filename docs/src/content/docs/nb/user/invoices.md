@@ -55,6 +55,10 @@ Til de får egne felter, settes de gjennom API-et
 ([Peppol-ID og KID-avtalen](/en/reference/invoices/#the-peppol-id-and-the-kid-agreement)).
 Med en KID-avtale får hver faktura som utstedes fra da av en KID, betalingsreferansen
 banken kobler betalingen til; en kreditnota får aldri det.
+Sending som EHF finnes ikke i appen ennå; serveren svarer allerede på om denne
+installasjonen kunne sendt — driftsansvarliges EHF-bryter og Peppol-oppslaget på,
+legitimasjonen til aksesspunktet lagret og Peppol-ID-en satt
+([bryterne](/en/reference/invoices/#permissions)).
 
 Lagret en kollega innstillingene mens du redigerte, sier skjemaet **Innstillingene er
 endret** og tilbyr **Last inn på nytt**; de ulagrede endringene dine forkastes, de

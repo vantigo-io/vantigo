@@ -500,6 +500,7 @@ describe("what the editor offers", () => {
             canManage: false,
             canRegisterPayments: false,
             canSend: false,
+            canSendEhf: false,
           },
         },
       },

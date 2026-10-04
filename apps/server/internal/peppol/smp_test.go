@@ -66,8 +66,8 @@ func everyDocumentType() []string {
 		"busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:DespatchAdvice-2::DespatchAdvice##urn:fdc:peppol.eu:poacc:trns:despatch_advice:3::2.1",
 		"busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:ApplicationResponse-2::ApplicationResponse##urn:fdc:peppol.eu:poacc:trns:mlr:3::2.1",
 		"busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:ApplicationResponse-2::ApplicationResponse##urn:fdc:peppol.eu:poacc:trns:invoice_response:3::2.1",
-		invoiceDocumentType,
-		creditNoteDocumentType,
+		InvoiceDocumentType,
+		CreditNoteDocumentType,
 		reminderDocumentType,
 		"busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice##urn:fdc:anskaffelser.no:2019:ehf:payment-request:3.0::2.2",
 		wildcardInvoiceDocumentType,
@@ -534,7 +534,7 @@ func TestDocumentTypesFrom_LiveHref(t *testing.T) {
 	if err != nil {
 		t.Fatalf("documentTypesFrom: %v", err)
 	}
-	if len(documentTypes) != 1 || documentTypes[0] != invoiceDocumentType {
+	if len(documentTypes) != 1 || documentTypes[0] != InvoiceDocumentType {
 		t.Fatalf("documentTypesFrom = %q, want the invoice document type", documentTypes)
 	}
 }
@@ -584,12 +584,12 @@ func TestCapabilities(t *testing.T) {
 		},
 		{
 			name:          "invoices but no credit notes",
-			documentTypes: []string{invoiceDocumentType},
+			documentTypes: []string{InvoiceDocumentType},
 			wantInvoice:   true,
 		},
 		{
 			name:           "credit notes but no invoices",
-			documentTypes:  []string{creditNoteDocumentType},
+			documentTypes:  []string{CreditNoteDocumentType},
 			wantCreditNote: true,
 		},
 		{
@@ -610,15 +610,15 @@ func TestCapabilities(t *testing.T) {
 		},
 		{
 			name:          "the invoice id with something appended",
-			documentTypes: []string{invoiceDocumentType + "#extra"},
+			documentTypes: []string{InvoiceDocumentType + "#extra"},
 		},
 		{
 			name:          "the invoice id with a leading space",
-			documentTypes: []string{" " + invoiceDocumentType},
+			documentTypes: []string{" " + InvoiceDocumentType},
 		},
 		{
 			name:          "an older billing version",
-			documentTypes: []string{strings.Replace(invoiceDocumentType, "::2.1", "::2.0", 1)},
+			documentTypes: []string{strings.Replace(InvoiceDocumentType, "::2.1", "::2.0", 1)},
 		},
 	}
 	for _, tc := range cases {
@@ -654,6 +654,25 @@ func TestFetchDocumentTypes_ReadsTheWholeAnswer(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("document type %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestPeppol_TheBillingIdentifiersArePinned: the three Peppol BIS Billing 3.0
+// identifiers this package exports are spelled out here in full, once, so a
+// change to any of them is a change to this test too. Invoices puts the
+// process id in the UBL's ProfileID and names the document type it sends;
+// customers and invoices both ask the SMP for the two document types exactly.
+func TestPeppol_TheBillingIdentifiersArePinned(t *testing.T) {
+	for _, tc := range []struct{ name, got, want string }{
+		{"InvoiceDocumentType", InvoiceDocumentType,
+			"busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0::2.1"},
+		{"CreditNoteDocumentType", CreditNoteDocumentType,
+			"busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2::CreditNote##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0::2.1"},
+		{"BillingProcessID", BillingProcessID, "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
 		}
 	}
 }

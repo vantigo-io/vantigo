@@ -351,10 +351,16 @@ type InvoicesMetaCapabilities struct {
 
 	// CanSend invoices:issue and mailAvailable — send an issued document to the customer by e-mail.
 	CanSend bool `json:"canSend"`
+
+	// CanSendEhf invoices:issue and ehfAvailable — send an issued document to the customer as EHF over Peppol.
+	CanSendEhf bool `json:"canSendEhf"`
 }
 
 // InvoicesMetaResponse What every Invoices page needs before it draws anything (invoices foundation design D2).
 type InvoicesMetaResponse struct {
+	// AccessPointCredentialsRejected Whether the access-point provider refused the stored API key (a 401 or 403, or a key that could not be opened). Cleared by the next accepted call or a new key. False without credentials. It does not change ehfAvailable.
+	AccessPointCredentialsRejected bool `json:"accessPointCredentialsRejected"`
+
 	// AnythingIssued Whether any document has been issued — the counter row exists. Once true the series start is locked.
 	AnythingIssued bool `json:"anythingIssued"`
 
@@ -366,6 +372,9 @@ type InvoicesMetaResponse struct {
 
 	// DefaultPaymentTermsDays The seller's default payment terms, which a new draft takes when neither the request nor the customer's billing profile decides.
 	DefaultPaymentTermsDays int32 `json:"defaultPaymentTermsDays"`
+
+	// EhfAvailable Whether this installation can send EHF over Peppol — INVOICES_EHF_ENABLED is on, the Peppol lookup is enabled (PEPPOL_LOOKUP_ENABLED), access-point credentials are stored and the seller's Peppol id is set. Without it canSendEhf is false.
+	EhfAvailable bool `json:"ehfAvailable"`
 
 	// MailAvailable Whether this installation's mail driver is smtp. Without it nothing can be sent (503 mail_unavailable), and canSend is false.
 	MailAvailable bool `json:"mailAvailable"`

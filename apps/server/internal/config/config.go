@@ -219,6 +219,22 @@ type Config struct {
 	// days). It is deliberately a duration rather than a day count, so an
 	// installation can shorten it to something a test or a pilot can observe.
 	CustomersPeppolRecheckAge time.Duration
+	// InvoicesEhfEnabled is the on/off switch for sending invoices as EHF over
+	// Peppol (INVOICES_EHF_ENABLED, EHF and KID design D1). Default ON, like
+	// PEPPOL_LOOKUP_ENABLED: an installation still needs access-point
+	// credentials and the seller's Peppol id before anything is sent. A 0
+	// turns the feature off: the send answers 503 ehf_unavailable and the EHF
+	// workers are never handed to the runner. Effective only alongside
+	// PeppolLookupEnabled — a send that cannot re-check its receiver does not
+	// send.
+	InvoicesEhfEnabled bool
+	// InvoicesStorecoveBaseURL is the origin and path the Storecove
+	// access-point adapter calls (INVOICES_STORECOVE_BASE_URL, design D1),
+	// default the production API; no trailing slash. The operator's, never the
+	// tenant's: an operator points it at the sandbox or a mock host, and an
+	// invoices:manage holder cannot aim the client anywhere.
+	InvoicesStorecoveBaseURL string
+
 	// CustomersAnonymisationEnabled is the on/off switch for the customers
 	// module's anonymisation worker (CUSTOMERS_ANONYMISATION_ENABLED,
 	// customers GDPR design D4). Default ON, like the registry workers, and for
@@ -403,6 +419,7 @@ func Load(env map[string]string) (*Config, error) {
 	peppolLookup(&p, env, c)
 	customersRegistryWorkers(&p, env, c)
 	customersAnonymisation(&p, env, c)
+	invoicesEhf(&p, env, c)
 
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)
@@ -599,6 +616,30 @@ func customersRegistryWorkers(p *problems, env map[string]string, c *Config) {
 func customersAnonymisation(p *problems, env map[string]string, c *Config) {
 	c.CustomersAnonymisationEnabled = boolean(p, env, "CUSTOMERS_ANONYMISATION_ENABLED", true)
 	c.CustomersAnonymisationPoll = duration(p, env, "CUSTOMERS_ANONYMISATION_POLL", 24*time.Hour)
+}
+
+// defaultStorecoveBaseURL is Storecove's production API (EHF and KID design
+// D1, the spike's OpenAPI document); the sandbox is the same host with a
+// sandbox key.
+const defaultStorecoveBaseURL = "https://api.storecove.com/api/v2/"
+
+// invoicesEhf loads the Invoices e-invoicing settings (EHF and KID design D1):
+// the switch, on by default, and the Storecove base URL, validated as
+// brregBaseURL validates BRREG_BASE_URL — an absolute http or https URL, any
+// trailing slash trimmed so the adapter's fixed paths never double one.
+func invoicesEhf(p *problems, env map[string]string, c *Config) {
+	c.InvoicesEhfEnabled = boolean(p, env, "INVOICES_EHF_ENABLED", true)
+	c.InvoicesStorecoveBaseURL = strings.TrimSuffix(defaultStorecoveBaseURL, "/")
+	v := env["INVOICES_STORECOVE_BASE_URL"]
+	if v == "" {
+		return
+	}
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		p.add("INVOICES_STORECOVE_BASE_URL", "must be an absolute http or https URL")
+		return
+	}
+	c.InvoicesStorecoveBaseURL = strings.TrimSuffix(v, "/")
 }
 
 // isNumericPort reports whether port is all ASCII digits, at least one:

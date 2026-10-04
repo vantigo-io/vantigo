@@ -370,6 +370,8 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `PEPPOL_SML_ZONE` | SML zone a participant identifier is hashed into; must be a plain hostname — no scheme, path or whitespace | `participant.sml.prod.tech.peppol.org` |
 | `PEPPOL_DNS_SERVER` | `host:port` of a resolver to use instead of `/etc/resolv.conf`; the port is required and must be numeric | unset |
 | `PEPPOL_TIMEOUT` | Budget for one lookup end to end (DNS and SMP together) | `10s` |
+| `INVOICES_EHF_ENABLED` | On/off switch for sending invoices as EHF over Peppol; also needs `PEPPOL_LOOKUP_ENABLED=1`, access-point credentials and the seller's Peppol id | `1` |
+| `INVOICES_STORECOVE_BASE_URL` | Base URL of the Storecove access point's API — an absolute http or https URL, any trailing slash trimmed; point it at a sandbox or a mock host | `https://api.storecove.com/api/v2/` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding | unset |
 
 The Peppol lookup treats NXDOMAIN and NOERROR-with-no-NAPTR-records as the same
