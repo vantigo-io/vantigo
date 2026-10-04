@@ -28,6 +28,8 @@ interface World {
   /** Whether a transmission is queued, submitted or unconfirmed: DELETE is then refused (D7). */
   transmissionsActive: boolean;
   verify: string;
+  /** Whether the stored key can no longer be opened: PUT without a key and Verify answer 503 ehf_unavailable (D7). */
+  keyUnreadable: boolean;
 }
 
 const world = (overrides: Partial<World> = {}): World => ({
@@ -36,6 +38,7 @@ const world = (overrides: Partial<World> = {}): World => ({
   accessPoint: null,
   transmissionsActive: false,
   verify: "ok",
+  keyUnreadable: false,
   ...overrides,
 });
 
@@ -78,6 +81,7 @@ const server = (state: World = world()) =>
       return jsonResponse(200, state.accessPoint ?? { hasCredentials: false });
     }
     if (url === "/api/v1/invoices/settings/access-point" && method === "PUT") {
+      if (!body.apiKey && state.keyUnreadable) return refusal(503, "ehf_unavailable");
       if (!body.apiKey && !state.accessPoint) {
         return problemResponse(400, "Invalid access point", { apiKey: ["is required"] });
       }
@@ -90,6 +94,7 @@ const server = (state: World = world()) =>
       return new Response(null, { status: 204 });
     }
     if (url === "/api/v1/invoices/settings/access-point/verify" && method === "POST") {
+      if (state.keyUnreadable) return refusal(503, "ehf_unavailable");
       return jsonResponse(200, { result: state.verify });
     }
     return new Response(null, { status: 404 });
@@ -276,6 +281,25 @@ describe("the access point", () => {
     await userEvent.click(await within(card).findByRole("button", { name: "Verify" }));
     expect(await within(card).findByText(words)).toBeInTheDocument();
   });
+
+  it.each([
+    ["Verify", "Could not verify the access point"],
+    ["Save access point", "Could not save the access point"],
+  ])(
+    "says a stored key that can no longer be read when %s answers 503, not the installation's switch",
+    async (button, title) => {
+      server(world({ keyUnreadable: true, accessPoint: accessPoint(), meta: { ehfAvailable: true } }));
+      renderWithProviders(<SettingsPage />);
+
+      const card = await eInvoicingCard();
+      await userEvent.click(await within(card).findByRole("button", { name: button }));
+      expect(await within(card).findByText(title)).toBeInTheDocument();
+      expect(
+        within(card).getByText("No key is stored, or the stored key can no longer be read here. Enter the key again."),
+      ).toBeInTheDocument();
+      expect(within(card).queryByText(/E-invoicing is not available here/)).not.toBeInTheDocument();
+    },
+  );
 
   it("says a removal refused while a transmission is active in the 409's words, and keeps the key", async () => {
     server(world({ transmissionsActive: true, accessPoint: accessPoint(), meta: { ehfAvailable: true } }));

@@ -994,10 +994,13 @@ always redacted as `reason` is. What a claim does depends on the row:
 (Storecove's pull queue: `GET webhook_instances/`, `DELETE webhook_instances/{guid}`)
 under a PostgreSQL advisory lock (key `0x494E5645484631`, "INVEHF1"), so one replica
 drains at a time. It asks the provider nothing unless a row awaits an event — one
-`submitted`, `unconfirmed` and still probed, or `queued` with the marker set — and then
-reads until the queue is empty, at most 500 events a cycle; the next cycle reads on. An `unconfirmed` row parked at
-`'infinity'` does not count as awaiting an event: it waits for a person, and Storecove
-retries its events for five days only. Each event is applied **idempotently and without a row lease**: matched
+`submitted`; `unconfirmed` and still probed, or without a provider reference and queued
+less than fourteen days ago; or `queued` with the marker set — and then reads until the
+queue is empty, at most 500 events a cycle; the next cycle reads on. An `unconfirmed` row
+parked at `'infinity'` with a reference waits for a person and is not listened for; one
+parked without a reference is, for fourteen days from its queueing, since an event
+matched by its idempotency key is the machine's only way to resolve it. An event for any
+row still in the queue is applied whenever a drain runs. Each event is applied **idempotently and without a row lease**: matched
 by its provider reference, or by its idempotency key when the row never learned the
 reference (which it then takes), and only while the row is `queued`, `submitted` or
 `unconfirmed`. `succeeded` makes it `delivered` at the worker's clock (Storecove's

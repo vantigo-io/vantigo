@@ -110,7 +110,7 @@ den lagrede nøkkelen slettes og ikke kan vises igjen, og ingenting kan sendes s
 en nøkkel er lagret på nytt; bekreft med **Fjern påloggingsdataene**. Fjerningen avvises
 mens et dokument fortsatt er underveis — *Et dokument er fortsatt underveis gjennom
 dette aksesspunktet. Vent til det er levert eller feilet før du fjerner eller bytter
-legitimasjonen.* Å bytte til en ny nøkkel avvises aldri.
+påloggingsdataene.* Å bytte til en ny nøkkel avvises aldri.
 
 Avviser Storecove den lagrede nøkkelen mens dokumenter sendes, viser
 **Aksesspunkt**-delen av kortet et rødt **Aksesspunktet avviste nøkkelen**, med datoen

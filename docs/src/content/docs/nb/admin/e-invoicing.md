@@ -155,8 +155,8 @@ følger de fortsatt opp det som allerede er overlevert, men overleverer ikke noe
     gang.
 - **`invoices-ehf-events`** kjører hvert 30. sekund, under en rådgivende lås (advisory
   lock, `pg_try_advisory_lock`) i PostgreSQL, så bare én replika tømmer køen om gangen:
-  mens en sending er overlevert eller ubekreftet, eller står i kø etter at en
-  overlevering er forsøkt, leser den Storecoves hendelseskø til den er tom — høyst 500
+  mens en sending er overlevert, ubekreftet og fortsatt etterspørres eller nylig satt i
+  kø uten referanse, eller står i kø etter at en overlevering er forsøkt, leser den Storecoves hendelseskø til den er tom — høyst 500
   hendelser per runde — merker hvert dokument levert (Storecoves `succeeded`:
   mottakeraksesspunktets kvittering) eller feilet (`failed`, `no_action_taken`), også et
   ubekreftet, og kvitterer for hver hendelse. En hendelse databasen avviser helt,
