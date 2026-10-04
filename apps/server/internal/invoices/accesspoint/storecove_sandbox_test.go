@@ -57,7 +57,7 @@ func sandbox(t *testing.T) accesspoint.AccessPoint {
 	if base == "" {
 		base = "https://api.storecove.com/api/v2"
 	}
-	return accesspoint.NewStorecove(base, key, id, nil)
+	return accesspoint.NewStorecove(base, key, id, nil, nil)
 }
 
 func sellerOrg() string {
