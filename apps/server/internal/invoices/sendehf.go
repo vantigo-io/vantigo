@@ -291,20 +291,18 @@ func (s *server) loadStoredUBL(ctx context.Context, t store.InvoicesTransmission
 	return body, nil
 }
 
-// reusedEHF is the latest transmission's UBL when the reuse rule holds (D4,
-// reading 13): that transmission was unconfirmed and a person resolved it as
-// failed, so its bytes may have reached the receiver and a new send carries
-// the same ones. ok is false when the rule does not hold.
+// reusedEHF is the UBL the reuse rule holds a send to (D4, reading 13): the
+// newest transmission a person resolved as failed, among all of the
+// document's — it was unconfirmed, so its bytes may have reached the receiver
+// and every later send carries the same ones, a reused send that was then
+// cancelled included. ok is false when the document has none.
 func (s *server) reusedEHF(ctx context.Context, q *store.Queries, invoiceID int64) (renderedEHF, bool, error) {
-	latest, err := q.LatestTransmission(ctx, invoiceID)
+	latest, err := q.LatestPersonResolvedFailedTransmission(ctx, invoiceID)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return renderedEHF{}, false, nil
 	case err != nil:
-		return renderedEHF{}, false, fmt.Errorf("invoices: read document %d's latest transmission: %w", invoiceID, err)
-	}
-	if latest.Status != "failed" || latest.ResolvedByUserID == nil {
-		return renderedEHF{}, false, nil
+		return renderedEHF{}, false, fmt.Errorf("invoices: read document %d's person-resolved transmissions: %w", invoiceID, err)
 	}
 	body, err := s.loadStoredUBL(ctx, latest)
 	if err != nil {

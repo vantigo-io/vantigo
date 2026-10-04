@@ -37,6 +37,17 @@ SELECT * FROM invoices.transmissions WHERE invoice_id = @invoice_id ORDER BY id 
 -- EHF state, and the UBL reuse rule's question (D4). No row is pgx.ErrNoRows.
 SELECT * FROM invoices.transmissions WHERE invoice_id = @invoice_id ORDER BY id DESC LIMIT 1;
 
+-- name: LatestPersonResolvedFailedTransmission :one
+-- LatestPersonResolvedFailedTransmission is the newest of one document's
+-- transmissions that was unconfirmed and that a person resolved as failed,
+-- among all of the document's rows: its bytes may have reached the receiver,
+-- so every later send carries them (D4's reuse rule) — a reused send that is
+-- later cancelled leaves the next send carrying them still. No row is
+-- pgx.ErrNoRows: the send renders fresh.
+SELECT * FROM invoices.transmissions
+WHERE invoice_id = @invoice_id AND status = 'failed' AND resolved_by_user_id IS NOT NULL
+ORDER BY id DESC LIMIT 1;
+
 -- name: ActiveTransmissionExists :one
 -- ActiveTransmissionExists is whether a live transmission blocks a new send:
 -- the predicate of ux_transmissions_active.

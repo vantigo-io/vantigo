@@ -77,8 +77,9 @@ var beforeDeliveryWrite func(ctx context.Context, invoiceID int64)
 // buyer_norwegian_business_required from it. The server judges the date on
 // today, the Oslo business day of its own clock — the browser has neither.
 // profile is the customer's current billing profile, nil when the directory
-// knows none. canSendEhf is whether the caller can send as EHF on this
-// installation (meta's capability): then a customer expecting EHF is told
+// knows none. canSendEhf is whether this document can go as EHF — the caller
+// may send as EHF on this installation (meta's capability) and the document's
+// ehf block names nothing blocking it: then a customer expecting EHF is told
 // ehf_preferred — send it as EHF instead — in place of
 // delivery_preference_ehf (EHF and KID design D10, reading 14).
 func sendWarnings(inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, today time.Time, canSendEhf bool) []string {
@@ -180,7 +181,11 @@ func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv sto
 		return nil
 	}
 	today := businessDay(s.deps.Clock())
-	defaults := gen.InvoicesSendDefaults{Warnings: sendWarnings(inv, profile, today, canSendEhf)}
+	// ehf_preferred only for a document that can go: one blocked — no
+	// Peppol id in its snapshot, no reference, already sent — keeps the
+	// warning that an e-mailed PDF does not meet the duty.
+	documentCanGo := canSendEhf && resp.Ehf != nil && resp.Ehf.BlockedBy == nil
+	defaults := gen.InvoicesSendDefaults{Warnings: sendWarnings(inv, profile, today, documentCanGo)}
 	if profile != nil && profile.InvoiceEmail != "" {
 		defaults.Recipient = ptr(profile.InvoiceEmail)
 	}

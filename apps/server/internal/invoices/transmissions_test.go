@@ -18,6 +18,16 @@ func transmissionPath(id, tid int64, action string) string {
 	return fmt.Sprintf("%s/%d/transmissions/%d/%s", invoicesPath, id, tid, action)
 }
 
+// sameInstant is whether a wire timestamp is the instant want.
+func sameInstant(t *testing.T, wire string, want time.Time) bool {
+	t.Helper()
+	at, err := time.Parse(time.RFC3339Nano, wire)
+	if err != nil {
+		t.Fatalf("parse %q: %v", wire, err)
+	}
+	return at.Equal(want.Truncate(time.Microsecond))
+}
+
 // transmissionStatus is a transmission row's status.
 func transmissionStatus(t *testing.T, h *harness, tid int64) string {
 	t.Helper()
@@ -60,7 +70,10 @@ func TestTransmissions_CancelOnlyNeverAttempted(t *testing.T) {
 	var got invoiceJSON
 	res.JSON(&got)
 	if got.Ehf == nil || got.Ehf.Status != "cancelled" || got.Ehf.Transmissions[0].CancelledAt == nil || !got.Ehf.CanSend {
-		t.Errorf("after the cancel ehf = %+v, want cancelled, with cancelledAt, sendable again", got.Ehf)
+		t.Fatalf("after the cancel ehf = %+v, want cancelled, with cancelledAt, sendable again", got.Ehf)
+	}
+	if at := *got.Ehf.Transmissions[0].CancelledAt; !sameInstant(t, at, h.Now()) {
+		t.Errorf("cancelledAt = %s, want the module clock's %s — never SQL now()", at, h.Now().Format(time.RFC3339Nano))
 	}
 	sendRefused(t, "a second cancel", c.Do(http.MethodPost, transmissionPath(inv.ID, tid, "cancel"), nil),
 		http.StatusConflict, "transmission_not_cancellable")
@@ -158,8 +171,12 @@ func TestTransmissions_ResolveOnlyUnconfirmed(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("resolve as delivered = %d %s, want 200", status, body)
 	}
-	if tr := got.Ehf.Transmissions[0]; tr.Status != "delivered" || tr.DeliveredAt == nil || got.Ehf.DeliveredAt == nil || got.Ehf.CanSend {
-		t.Errorf("resolved as delivered = %+v, ehf %+v; want delivered with deliveredAt, not sendable", tr, got.Ehf)
+	tr = got.Ehf.Transmissions[0]
+	if tr.Status != "delivered" || tr.DeliveredAt == nil || got.Ehf.DeliveredAt == nil || got.Ehf.CanSend {
+		t.Fatalf("resolved as delivered = %+v, ehf %+v; want delivered with deliveredAt, not sendable", tr, got.Ehf)
+	}
+	if !sameInstant(t, *tr.DeliveredAt, h.Now()) {
+		t.Errorf("deliveredAt = %s, want the module clock's %s — never SQL now()", *tr.DeliveredAt, h.Now().Format(time.RFC3339Nano))
 	}
 }
 

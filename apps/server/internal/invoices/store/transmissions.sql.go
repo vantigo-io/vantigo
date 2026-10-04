@@ -389,6 +389,59 @@ func (q *Queries) InsertTransmission(ctx context.Context, arg InsertTransmission
 	return i, err
 }
 
+const latestPersonResolvedFailedTransmission = `-- name: LatestPersonResolvedFailedTransmission :one
+SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id FROM invoices.transmissions
+WHERE invoice_id = $1 AND status = 'failed' AND resolved_by_user_id IS NOT NULL
+ORDER BY id DESC LIMIT 1
+`
+
+// LatestPersonResolvedFailedTransmission is the newest of one document's
+// transmissions that was unconfirmed and that a person resolved as failed,
+// among all of the document's rows: its bytes may have reached the receiver,
+// so every later send carries them (D4's reuse rule) — a reused send that is
+// later cancelled leaves the next send carrying them still. No row is
+// pgx.ErrNoRows: the send renders fresh.
+func (q *Queries) LatestPersonResolvedFailedTransmission(ctx context.Context, invoiceID int64) (InvoicesTransmission, error) {
+	row := q.db.QueryRow(ctx, latestPersonResolvedFailedTransmission, invoiceID)
+	var i InvoicesTransmission
+	err := row.Scan(
+		&i.ID,
+		&i.InvoiceID,
+		&i.Provider,
+		&i.IdempotencyKey,
+		&i.SenderParticipant,
+		&i.ReceiverParticipant,
+		&i.DocumentType,
+		&i.ProcessID,
+		&i.UblObjectKey,
+		&i.UblSha256,
+		&i.PdfSha256,
+		&i.Status,
+		&i.ProviderRef,
+		&i.EvidenceObjectKey,
+		&i.EvidenceSha256,
+		&i.SubmitAttempts,
+		&i.PollAttempts,
+		&i.NextAttemptAt,
+		&i.SubmitAttemptedAt,
+		&i.LeaseID,
+		&i.LeaseUntil,
+		&i.LastError,
+		&i.LookupRegistered,
+		&i.LookupCanReceive,
+		&i.LookupAt,
+		&i.QueuedAt,
+		&i.SubmittedAt,
+		&i.DeliveredAt,
+		&i.FailedAt,
+		&i.CancelledAt,
+		&i.ResolvedByUserID,
+		&i.ResolutionNote,
+		&i.CreatedByUserID,
+	)
+	return i, err
+}
+
 const latestTransmission = `-- name: LatestTransmission :one
 SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id FROM invoices.transmissions WHERE invoice_id = $1 ORDER BY id DESC LIMIT 1
 `
