@@ -223,7 +223,7 @@ components:
                 - transmissions
             type: object
         InvoicesTransmission:
-            description: 'One EHF transmission of an issued document (EHF and KID design D9): its identity, its state and when it reached each, the receiver it was addressed to, the SHA-256 of the UBL it carries, the resolution of an unconfirmed one — resolvedByUserId absent when the provider''s evidence resolved it — and ublUrl, where the stored UBL is downloaded. providerRef and reason are answered only to a caller with invoices:issue.'
+            description: 'One EHF transmission of an issued document (EHF and KID design D9): its identity, its state and when it reached each, the receiver it was addressed to, the SHA-256 of the UBL it carries, the resolution of an unconfirmed one — resolvedByUserId absent when the provider''s evidence resolved it — and ublUrl, where the stored UBL is downloaded. providerRef, reason and submitAttemptedAt are answered only to a caller with invoices:issue.'
             properties:
                 cancelledAt:
                     format: date-time
@@ -257,6 +257,10 @@ components:
                     format: uuid
                     type: string
                 status:
+                    type: string
+                submitAttemptedAt:
+                    description: When the worker last stamped the crash marker, immediately before it called the provider — absent while the transmission was never attempted, which is when a queued one can still be cancelled. Answered only to a caller with invoices:issue.
+                    format: date-time
                     type: string
                 submittedAt:
                     format: date-time
@@ -421,6 +425,10 @@ components:
                     type: string
                 postalCode:
                     type: string
+                nextNumber:
+                    description: The number the next issue takes — the counter's next once anything is issued, else seriesStart (the same figure the KID agreement's fit is judged against).
+                    format: int64
+                    type: integer
                 revision:
                     format: int32
                     type: integer
@@ -458,6 +466,7 @@ components:
                 - footerText
                 - seriesStart
                 - seriesLocked
+                - nextNumber
                 - peppolId
                 - kidLength
                 - kidAlgorithm
@@ -482,7 +491,7 @@ components:
                 - legalEntityId
             type: object
         InvoicesAccessPointResponse:
-            description: The stored access-point credentials as a client may see them — never the key. hasCredentials is whether a key is stored; rejectedAt is when the provider first refused it (a 401 or 403, or a stored key the server could not open), absent while it has not, cleared by a new PUT and by the next call the provider accepts.
+            description: The stored access-point credentials as a client may see them — never the key. provider and legalEntityId are absent only on GET /invoices/settings/access-point when none are stored, which also answers hasCredentials false. hasCredentials is whether a key is stored; rejectedAt is when the provider first refused it (a 401 or 403, or a stored key the server could not open), absent while it has not, cleared by a new PUT and by the next call the provider accepts.
             properties:
                 hasCredentials:
                     type: boolean
@@ -495,8 +504,6 @@ components:
                     format: date-time
                     type: string
             required:
-                - provider
-                - legalEntityId
                 - hasCredentials
             type: object
         InvoicesAccessPointVerifyResponse:
@@ -1618,6 +1625,32 @@ paths:
                 - Invoices
             x-vantigo-access: permission:invoices:access+invoices:manage
     /api/v1/invoices/settings/access-point:
+        get:
+            description: The stored access-point credentials (EHF and KID design D7) — the provider, its legal entity, whether a key is stored and when the provider refused it — never the key. With none stored the answer is 200 with hasCredentials false and neither provider nor legalEntityId, so the settings page opens an empty card rather than handling an error.
+            operationId: getInvoicesSettingsAccessPoint
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesAccessPointResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the access-point credentials
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:manage
         delete:
             description: Removes the access-point credentials (EHF and KID design D7); EHF is unavailable until new ones are stored. Refused with 409 transmissions_active while any transmission is queued, submitted or unconfirmed — the provider still holds what it needs to finish them. Removing what is not there is a 204 too.
             operationId: deleteInvoicesSettingsAccessPoint

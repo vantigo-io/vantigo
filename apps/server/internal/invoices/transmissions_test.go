@@ -101,6 +101,29 @@ func TestTransmissions_CancelOnlyNeverAttempted(t *testing.T) {
 	}
 }
 
+// A transmission carries its crash marker — when the worker last stamped it,
+// right before calling the provider — for an issuer only (reading 19): absent
+// while never attempted, which is when a queued one can still be cancelled.
+func TestTransmissions_CarryTheirAttemptMarker(t *testing.T) {
+	t.Parallel()
+	h, _ := ehfReady(t)
+	inv := issuedAcme(t, h)
+	sent := sentAsEhf(t, h, inv.ID)
+	if m := sent.Ehf.Transmissions[0].SubmitAttemptedAt; m != nil {
+		t.Errorf("a never-attempted transmission's submitAttemptedAt = %s, want absent", *m)
+	}
+	tid := sent.Ehf.Transmissions[0].ID
+	at := h.Now().Add(-time.Minute)
+	h.Exec(t, `UPDATE invoices.transmissions SET submit_attempted_at = $2 WHERE id = $1`, tid, at)
+	got := readAs(t, issuer(t, h), inv.ID).Ehf.Transmissions[0]
+	if got.SubmitAttemptedAt == nil || !sameInstant(t, *got.SubmitAttemptedAt, at) {
+		t.Errorf("an issuer's submitAttemptedAt = %v, want %s", got.SubmitAttemptedAt, at.Format(time.RFC3339Nano))
+	}
+	if m := readAs(t, h.SignIn(t, "invoices:access"), inv.ID).Ehf.Transmissions[0].SubmitAttemptedAt; m != nil {
+		t.Errorf("a reader's submitAttemptedAt = %s, want absent", *m)
+	}
+}
+
 // Only an unconfirmed transmission is resolved, by a person with a note (D9):
 // failed allows a new send, delivered closes it with its delivery time. The
 // outcome is delivered or failed — anything else is a 400 from the

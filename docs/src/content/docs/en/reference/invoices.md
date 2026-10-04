@@ -129,7 +129,9 @@ value, or the request's own `seriesStart` before the first issue — judged unde
 settings row's lock. The response warns `kid_headroom_low` (on `GET /settings` too) when
 fewer than two digits remain to spare, a hundredfold growth. Clearing or changing the
 pair is allowed: every issued invoice keeps the KID and the algorithm it was issued
-with.
+with. The same figure is on every settings answer, `GET` and `PUT` alike, as
+`nextNumber`: the number the next issue takes — the counter's next value once anything
+is issued, else `seriesStart`.
 
 **The KID** of an invoice issued under the agreement is its number zero-padded to
 `kidLength − 1` digits, then the check digit: MOD10 is Luhn (weights 2 and 1 from the
@@ -163,7 +165,10 @@ also when there is none), and a switch to another provider would replace it: bot
 refused with 409 `transmissions_active` while any transmission is `queued`, `submitted`
 or `unconfirmed`, because the provider still holds what those need. A new key or legal
 entity for the same provider is not refused — a refused key must be replaceable while
-documents wait for it. `POST /settings/access-point/verify` makes the provider's
+documents wait for it. `GET /settings/access-point` (`invoices:manage`) answers the same shape, never the key;
+with nothing stored it is a 200 with `hasCredentials: false` and neither `provider`
+nor `legalEntityId` — an empty setting, not a missing resource, so the settings page
+opens an empty card. `POST /settings/access-point/verify` makes the provider's
 cheapest authenticated read with the stored key (Storecove: `GET legal_entities/{id}`)
 and answers `{result}`: `ok`, which clears `rejectedAt`; `unauthorized`, a 401 or 403,
 which sets it; or `unreachable` for anything else — the network, a timeout, a 5xx, a
@@ -872,10 +877,13 @@ log, never a render; a store that cannot be read is 503 `storage_unavailable`.
 canSend, blockedBy?, preference?, buyerPeppolId?, transmissions}`. `status` and the four
 timestamps are the latest transmission's, or `not_sent`. `transmissions` is every one,
 the newest first — `{id, status, provider, idempotencyKey, receiverParticipant,
-ublSha256, queuedAt, submittedAt?, deliveredAt?, failedAt?, cancelledAt?, providerRef?,
-reason?, resolvedByUserId?, resolutionNote?, ublUrl}`, `resolvedByUserId` absent when the
-provider's evidence resolved it. **`providerRef` and `reason` are answered only to a
-caller with `invoices:issue`**; `reason` is `last_error` with every e-mail address
+ublSha256, queuedAt, submitAttemptedAt?, submittedAt?, deliveredAt?, failedAt?,
+cancelledAt?, providerRef?, reason?, resolvedByUserId?, resolutionNote?, ublUrl}`,
+`resolvedByUserId` absent when the provider's evidence resolved it, and
+`submitAttemptedAt` the crash marker — when the worker last stamped it, right before
+calling the provider; absent while the transmission was never attempted, which is when
+a queued one can still be cancelled. **`providerRef`, `reason` and `submitAttemptedAt`
+are answered only to a caller with `invoices:issue`**; `reason` is `last_error` with every e-mail address
 replaced by `<e-mail>` and every `NNNN:` participant identifier by `<participant>`, cut
 to 500 characters on a character boundary — never the provider's words to a reader.
 **`canSend`** is what the send would answer without the network and without a render,
@@ -1123,6 +1131,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `GET /meta` | | |
 | `GET /settings` | | |
 | `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent); 409 `series_locked`, or a stale revision (no code) |
+| `GET /settings/access-point` | `invoices:manage` | none: 200 with `hasCredentials: false` when nothing is stored |
 | `PUT /settings/access-point` | `invoices:manage` | 400 on `provider`, `legalEntityId` or `apiKey` (blank, too long, or omitted while none is stored); 409 `transmissions_active` on a provider switch; 503 `ehf_unavailable`, a kept key that cannot be opened |
 | `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
 | `POST /settings/access-point/verify` | `invoices:manage` | 409 `ehf_unavailable`, no credentials; 503 `ehf_unavailable`, a stored key that cannot be opened |

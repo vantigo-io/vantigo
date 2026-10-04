@@ -53,7 +53,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get the access-point credentials
+         * @description The stored access-point credentials (EHF and KID design D7) — the provider, its legal entity, whether a key is stored and when the provider refused it — never the key. With none stored the answer is 200 with hasCredentials false and neither provider nor legalEntityId, so the settings page opens an empty card rather than handling an error.
+         */
+        get: operations["getInvoicesSettingsAccessPoint"];
         /**
          * Store the access-point credentials
          * @description Stores the access point's provider, its legal entity and its API key (EHF and KID design D7), in their own row, the key sealed by the secrets box under invoices/access-point-credential. An omitted key keeps the stored one, opened and sealed again in the same transaction. The answer never carries the key. A PUT clears rejectedAt. Switching to another provider is refused with 409 transmissions_active while any transmission is queued, submitted or unconfirmed; changing the key or the legal entity is not, so a refused key can be replaced while documents wait for it.
@@ -633,7 +637,7 @@ export interface components {
             submittedAt?: string;
             transmissions: components["schemas"]["InvoicesTransmission"][];
         };
-        /** @description One EHF transmission of an issued document (EHF and KID design D9): its identity, its state and when it reached each, the receiver it was addressed to, the SHA-256 of the UBL it carries, the resolution of an unconfirmed one — resolvedByUserId absent when the provider's evidence resolved it — and ublUrl, where the stored UBL is downloaded. providerRef and reason are answered only to a caller with invoices:issue. */
+        /** @description One EHF transmission of an issued document (EHF and KID design D9): its identity, its state and when it reached each, the receiver it was addressed to, the SHA-256 of the UBL it carries, the resolution of an unconfirmed one — resolvedByUserId absent when the provider's evidence resolved it — and ublUrl, where the stored UBL is downloaded. providerRef, reason and submitAttemptedAt are answered only to a caller with invoices:issue. */
         InvoicesTransmission: {
             /** Format: date-time */
             cancelledAt?: string;
@@ -655,6 +659,11 @@ export interface components {
             /** Format: uuid */
             resolvedByUserId?: string;
             status: string;
+            /**
+             * Format: date-time
+             * @description When the worker last stamped the crash marker, immediately before it called the provider — absent while the transmission was never attempted, which is when a queued one can still be cancelled. Answered only to a caller with invoices:issue.
+             */
+            submitAttemptedAt?: string;
             /** Format: date-time */
             submittedAt?: string;
             ublSha256: string;
@@ -728,6 +737,11 @@ export interface components {
             /** @description The seller's Peppol participant id; null when neither set nor derivable from the organisation number. */
             peppolId: string | null;
             postalCode: string;
+            /**
+             * Format: int64
+             * @description The number the next issue takes — the counter's next once anything is issued, else seriesStart (the same figure the KID agreement's fit is judged against).
+             */
+            nextNumber: number;
             /** Format: int32 */
             revision: number;
             seriesLocked: boolean;
@@ -746,12 +760,12 @@ export interface components {
             legalEntityId: number;
             provider: string;
         };
-        /** @description The stored access-point credentials as a client may see them — never the key. hasCredentials is whether a key is stored; rejectedAt is when the provider first refused it (a 401 or 403, or a stored key the server could not open), absent while it has not, cleared by a new PUT and by the next call the provider accepts. */
+        /** @description The stored access-point credentials as a client may see them — never the key. provider and legalEntityId are absent only on GET /invoices/settings/access-point when none are stored, which also answers hasCredentials false. hasCredentials is whether a key is stored; rejectedAt is when the provider first refused it (a 401 or 403, or a stored key the server could not open), absent while it has not, cleared by a new PUT and by the next call the provider accepts. */
         InvoicesAccessPointResponse: {
             hasCredentials: boolean;
             /** Format: int64 */
-            legalEntityId: number;
-            provider: string;
+            legalEntityId?: number;
+            provider?: string;
             /** Format: date-time */
             rejectedAt?: string;
         };
@@ -1465,6 +1479,44 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesSettingsAccessPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesAccessPointResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

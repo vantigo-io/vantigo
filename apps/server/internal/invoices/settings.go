@@ -337,7 +337,7 @@ func settingsResponse(row store.InvoicesSetting, locked bool, next int64) gen.In
 		PostalCode: row.PostalCode, City: row.City, Country: row.Country,
 		BankAccount: row.BankAccount, Iban: row.Iban, Bic: row.Bic, Email: row.Email,
 		DefaultPaymentTermsDays: row.DefaultPaymentTermsDays, DefaultCurrency: row.DefaultCurrency,
-		FooterText: row.FooterText, SeriesStart: row.SeriesStart, SeriesLocked: locked,
+		FooterText: row.FooterText, SeriesStart: row.SeriesStart, SeriesLocked: locked, NextNumber: next,
 		MissingSellerFields: sellerMissingFields(row),
 		Revision:            row.Revision, UpdatedAt: row.UpdatedAt,
 	}

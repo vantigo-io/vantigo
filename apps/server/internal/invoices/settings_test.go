@@ -30,6 +30,7 @@ type settingsJSON struct {
 	FooterText              string   `json:"footerText"`
 	SeriesStart             int64    `json:"seriesStart"`
 	SeriesLocked            bool     `json:"seriesLocked"`
+	NextNumber              *int64   `json:"nextNumber"`
 	PeppolID                *string  `json:"peppolId"`
 	KidLength               *int32   `json:"kidLength"`
 	KidAlgorithm            *string  `json:"kidAlgorithm"`
@@ -219,6 +220,37 @@ func TestSettings_TheSeriesStartLocksAtTheFirstIssue(t *testing.T) {
 	if saved := saveSeller(t, h, body); !saved.SeriesLocked || saved.LegalName != "Kraft-Verket Norge AS" {
 		t.Errorf("saved = %+v, want the name changed and the series locked", saved)
 	}
+}
+
+// The settings answer the number the next issue takes (reading 19): the
+// series start while nothing is issued — the request's own on a PUT — and the
+// counter's next from the first issue on, on GET and PUT alike.
+func TestSettings_TheNextNumber(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	next := func(what string, s settingsJSON, want int64) {
+		t.Helper()
+		if s.NextNumber == nil || *s.NextNumber != want {
+			t.Errorf("%s: nextNumber = %v, want %d", what, s.NextNumber, want)
+		}
+	}
+	get := func() settingsJSON {
+		t.Helper()
+		var read settingsJSON
+		h.SignIn(t, "invoices:access").Do(http.MethodGet, settingsPath, nil).JSON(&read)
+		return read
+	}
+	next("a fresh installation's GET", get(), get().SeriesStart)
+	body := completeSeller(1)
+	body["seriesStart"] = 1000
+	next("the PUT that moves the start", saveSeller(t, h, body), 1000)
+	next("the GET after it", get(), 1000)
+
+	issuedAcme(t, h)
+	next("the GET after the first issue", get(), 1001)
+	body = completeSeller(2)
+	body["seriesStart"] = 1000
+	next("a PUT after the first issue", saveSeller(t, h, body), 1001)
 }
 
 // The seller's Peppol id (EHF and KID design D2): null or empty defaults it

@@ -473,6 +473,7 @@ export const settings = (overrides: Partial<InvoiceSettings> = {}): InvoiceSetti
   footerText: "",
   seriesStart: 1000,
   seriesLocked: true,
+  nextNumber: 1003,
   peppolId: null,
   kidLength: null,
   kidAlgorithm: null,
