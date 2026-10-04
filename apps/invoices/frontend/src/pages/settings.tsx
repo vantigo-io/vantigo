@@ -55,7 +55,7 @@ import {
 } from "../api/vat-codes";
 import { StaleAlert } from "../components/stale-alert";
 import { invoicesCatalog } from "../i18n";
-import { fieldRefusals, refusalMessage } from "../lib/errors";
+import { fieldRefusals, refusalCode, refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { computeKid, kidFits } from "../lib/kid";
 import { rateOn } from "../lib/vat";
@@ -584,6 +584,12 @@ const AccessPointForm = ({ meta, stored }: { meta: InvoicesMeta; stored: AccessP
     setVerified(null);
     setRefused(null);
   };
+  // The access point's own ehf_unavailable (D7) is about its key — none
+  // stored (Verify's 409) or a stored one that can no longer be opened (the
+  // 503) — not about the installation's switch, which the module-wide words
+  // describe.
+  const accessPointRefusal = (error: unknown) =>
+    refusalCode(error) === "ehf_unavailable" ? t("accessPointKeyUnreadable") : refusalMessage(error, t, date);
   const save = useMutation({
     mutationFn: () =>
       putAccessPoint({
@@ -613,7 +619,7 @@ const AccessPointForm = ({ meta, stored }: { meta: InvoicesMeta; stored: AccessP
         }
         return;
       }
-      setRefused({ title: t("couldNotSaveAccessPoint"), message: refusalMessage(error, t, date) });
+      setRefused({ title: t("couldNotSaveAccessPoint"), message: accessPointRefusal(error) });
     },
   });
   const verify = useMutation({
@@ -623,7 +629,7 @@ const AccessPointForm = ({ meta, stored }: { meta: InvoicesMeta; stored: AccessP
       setVerified(result);
       await refresh();
     },
-    onError: (error) => setRefused({ title: t("couldNotVerifyAccessPoint"), message: refusalMessage(error, t, date) }),
+    onError: (error) => setRefused({ title: t("couldNotVerifyAccessPoint"), message: accessPointRefusal(error) }),
   });
   const remove = useMutation({
     mutationFn: deleteAccessPoint,

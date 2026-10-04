@@ -154,7 +154,8 @@ still follow what was already handed over, but hand over nothing new.
     waits for a person. Without a reference it waits for a person at once.
 - **`invoices-ehf-events`**, every 30 seconds, under a PostgreSQL advisory lock
   (`pg_try_advisory_lock`) so one replica drains at a time: while a transmission is
-  submitted or unconfirmed, or queued after a hand-over was tried, it reads Storecove's
+  submitted, unconfirmed and still being asked about or recently queued without a
+  reference, or queued after a hand-over was tried, it reads Storecove's
   event queue until it is empty — at most 500 events a cycle — marks each document
   delivered (Storecove's `succeeded`: the receiving access point's receipt) or failed
   (`failed`, `no_action_taken`), an unconfirmed one included, and acknowledges every

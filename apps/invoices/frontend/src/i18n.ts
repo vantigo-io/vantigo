@@ -321,7 +321,7 @@ export const invoicesCatalog = {
     documentNotFound: "The document no longer exists.",
     couldNotSend: "Could not send",
     "sendWarning.delivery_preference_ehf":
-      "This customer prefers EHF, but this document cannot be sent as EHF from here: you or this installation cannot send EHF. An e-mailed PDF does not meet the e-invoicing duty.",
+      "This customer expects EHF, but this document cannot be sent as EHF from here. An e-mailed PDF does not meet the e-invoicing duty.",
     "sendWarning.buyer_norwegian_business_required":
       "Norwegian businesses must receive an e-invoice: an e-mailed PDF no longer meets the duty.",
     "sendWarning.buyer_norwegian_business":
@@ -451,6 +451,7 @@ export const invoicesCatalog = {
     "verify.unreachable":
       "The access point could not be reached, or the key does not reach this legal entity. Check the legal entity id, or try again later.",
     couldNotVerifyAccessPoint: "Could not verify the access point",
+    accessPointKeyUnreadable: "No key is stored, or the stored key can no longer be read here. Enter the key again.",
     removeAccessPoint: "Remove the credentials",
     accessPointRemoved: "The access point's credentials are removed",
     couldNotRemoveAccessPoint: "Could not remove the credentials",
@@ -877,11 +878,11 @@ export const invoicesCatalog = {
     documentNotFound: "Dokumentet finnes ikke lenger.",
     couldNotSend: "Kunne ikke sende",
     "sendWarning.delivery_preference_ehf":
-      "Denne kunden foretrekker EHF, men dokumentet kan ikke sendes som EHF herfra: du eller denne installasjonen kan ikke sende EHF. En PDF på e-post oppfyller ikke plikten til e-faktura.",
+      "Denne kunden forventer EHF, men dokumentet kan ikke sendes som EHF herfra. En PDF på e-post oppfyller ikke plikten til e-faktura.",
     "sendWarning.buyer_norwegian_business_required":
-      "Norske virksomheter skal motta elektronisk faktura: en PDF på e-post oppfyller ikke lenger plikten.",
+      "Norske virksomheter skal motta e-faktura: en PDF på e-post oppfyller ikke lenger plikten.",
     "sendWarning.buyer_norwegian_business":
-      "Fra 1. januar 2027 skal norske virksomheter motta elektronisk faktura; dette er en PDF.",
+      "Fra 1. januar 2027 skal norske virksomheter motta e-faktura; dette er en PDF.",
     "sendWarning.delivery_preference_other": "Denne kunden foretrekker {{preference}}; dette sender en PDF på e-post.",
     "sendWarning.ehf_preferred":
       "Denne kunden forventer EHF, og dokumentet kan sendes som EHF. En PDF på e-post oppfyller ikke plikten til e-faktura.",
@@ -1005,6 +1006,8 @@ export const invoicesCatalog = {
     "verify.unreachable":
       "Aksesspunktet kunne ikke nås, eller nøkkelen gir ikke tilgang til denne juridiske enheten. Kontroller ID-en for den juridiske enheten, eller prøv igjen senere.",
     couldNotVerifyAccessPoint: "Kunne ikke kontrollere aksesspunktet",
+    accessPointKeyUnreadable:
+      "Ingen nøkkel er lagret, eller den lagrede nøkkelen kan ikke lenger leses her. Skriv inn nøkkelen på nytt.",
     removeAccessPoint: "Fjern påloggingsdataene",
     accessPointRemoved: "Aksesspunktets påloggingsdata er fjernet",
     couldNotRemoveAccessPoint: "Kunne ikke fjerne påloggingsdataene",

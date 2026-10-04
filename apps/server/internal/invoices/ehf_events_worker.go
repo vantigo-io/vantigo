@@ -96,7 +96,7 @@ func (w *EhfEventsWorker) RunCycle(ctx context.Context) (bool, error) {
 	}
 	return w.underLease(ctx, func(ctx context.Context) error {
 		q := store.New(w.deps.Pool)
-		awaiting, err := q.AnyAwaitingEvents(ctx)
+		awaiting, err := q.AnyAwaitingEvents(ctx, w.now())
 		if err != nil {
 			return fmt.Errorf("invoices: read whether a transmission awaits an event: %w", err)
 		}
