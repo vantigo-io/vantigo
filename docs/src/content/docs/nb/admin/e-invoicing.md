@@ -120,7 +120,7 @@ Vantigo leser den juridiske enheten fra Storecove med den lagrede nøkkelen og s
 | *Aksesspunktet godtok nøkkelen.* (`ok`) | Nøkkelen virker for den juridiske enheten; et flagg om avvist nøkkel fjernes. |
 | *Aksesspunktet avviste nøkkelen.* (`unauthorized`) | Storecove svarte 401 eller 403: en feil, tilbakekalt eller utløpt nøkkel. Flagget settes. |
 | *Aksesspunktet kunne ikke nås, eller nøkkelen gir ikke tilgang til denne juridiske enheten.* (`unreachable`) | Nettverket, et tidsavbrudd, en serverfeil hos Storecove, eller en ID for en juridisk enhet nøkkelen ikke dekker. |
-| E-faktura er utilgjengelig (503 `ehf_unavailable`) | Vantigo kan ikke lese den lagrede nøkkelen — `APP_SECRET` er endret, eller raden er endret. Flagget settes og en feil logges; legg inn nøkkelen på nytt. Uten lagrede påloggingsdata svarer Kontroller 409 `ehf_unavailable`. |
+| *Ingen nøkkel er lagret, eller den lagrede nøkkelen kan ikke lenger leses her.* (503 `ehf_unavailable`) | Vantigo kan ikke lese den lagrede nøkkelen — `APP_SECRET` er endret, eller raden er endret. Flagget settes og en feil logges; legg inn nøkkelen på nytt. Uten lagrede påloggingsdata svarer Kontroller 409 `ehf_unavailable`. |
 
 Sjekk så at kortets **Hva e-faktura trenger** sier *Sending som EHF er tilgjengelig*. Den
 første virkelige sendingen er det endelige beviset: send én faktura til en kunde som
@@ -156,7 +156,8 @@ følger de fortsatt opp det som allerede er overlevert, men overleverer ikke noe
 - **`invoices-ehf-events`** kjører hvert 30. sekund, under en rådgivende lås (advisory
   lock, `pg_try_advisory_lock`) i PostgreSQL, så bare én replika tømmer køen om gangen:
   mens en sending er overlevert, ubekreftet og fortsatt etterspørres eller nylig satt i
-  kø uten referanse, eller står i kø etter at en overlevering er forsøkt, leser den Storecoves hendelseskø til den er tom — høyst 500
+  kø uten referanse, eller står i kø etter at en overlevering er forsøkt, leser den
+Storecoves hendelseskø til den er tom — høyst 500
   hendelser per runde — merker hvert dokument levert (Storecoves `succeeded`:
   mottakeraksesspunktets kvittering) eller feilet (`failed`, `no_action_taken`), også et
   ubekreftet, og kvitterer for hver hendelse. En hendelse databasen avviser helt,

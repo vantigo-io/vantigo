@@ -102,8 +102,9 @@ Vantigo spør Storecove med den lagrede nøkkelen og svarer på én av tre måte
   enheten. Kontroller ID-en for den juridiske enheten, eller prøv igjen senere.*
 
 Kan ikke Vantigo lese den lagrede nøkkelen i det hele tatt — installasjonens hemmelighet
-er byttet — sier Kontroller i stedet at e-faktura er utilgjengelig: legg inn nøkkelen på
-nytt og lagre den.
+er byttet — sier Kontroller i stedet *Ingen nøkkel er lagret, eller den lagrede nøkkelen
+kan ikke lenger leses her. Skriv inn nøkkelen på nytt.*: legg inn nøkkelen på nytt og
+lagre den.
 
 **Fjern påloggingsdataene** spør først — **Fjerne aksesspunktets påloggingsdata?** — fordi
 den lagrede nøkkelen slettes og ikke kan vises igjen, og ingenting kan sendes som EHF før
