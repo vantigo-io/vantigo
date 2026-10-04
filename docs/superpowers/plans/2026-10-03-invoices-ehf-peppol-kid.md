@@ -51,6 +51,7 @@
 16. The settings' `peppolId`, `kidLength` and `kidAlgorithm` are required-nullable on `PUT /invoices/settings` (every caller sends them; NULL clears), and the KID fit is judged against the request's own `seriesStart`.
 17. One Storecove account or key per installation: the drain acknowledges every event it reads, and a shared account would lose another system's events; the admin page says so.
 18. The Peppol artefact is pinned at `v3.0.20`, the newest tag; 3.0.21 is adopted the day it is tagged (a pin bump).
+19. **Three reads the app needs: the stored access point, the next invoice number, and a transmission's attempt marker** (added after Task 7, for Task 10; D14 left them out). `GET /invoices/settings/access-point` (`invoices:access+invoices:manage`) answers `InvoicesAccessPointResponse`, never the key — with nothing stored, **200 with `hasCredentials: false`** and neither `provider` nor `legalEntityId` (the module's 404 is a bare "does not exist" with no code, and the one credentials row is a setting that may be empty; the two fields become optional in the schema PUT shares). `InvoicesSettingsResponse.nextNumber` (required) is the number the next issue takes — `nextNumber(q)`, the counter's next once anything is issued, else the series start, the figure the KID fit is judged against. `InvoicesTransmission.submitAttemptedAt` (optional) is the crash marker, for `invoices:issue` holders only, so the app knows when a cancel is still possible.
 
 ## File Structure
 
@@ -267,7 +268,7 @@ Every completion is `… WHERE id = @id AND lease_id = @lease AND status = @clai
 ### Task 12: Verify the whole branch and open the PR
 
 - [ ] **Step 1:** generate and gen:client → no drift; gofmt; vet; lint; `go test -count=1 ./...`; race on invoices and integration; govulncheck; every frontend package's checks; `mise run docs:check`; `check-coverage.ts --base 00daa9f5` with the trailers' waivers in mind (re-run per commit as each task did); `mise run ehf:validate`; the greps.
-- [ ] **Step 2:** the PR in PR #129's shape (What; Decisions — the spec's nineteen readings and this plan's eighteen; Things to know — the Java/Saxon CI job, the Storecove onboarding and one-account rule, the KID agreement, the switch defaults, the artefact pin; How it was built; Verification). `gh pr create --base main --head feat/invoices-ehf-peppol-kid`. Watch CI; do not merge.
+- [ ] **Step 2:** the PR in PR #129's shape (What; Decisions — the spec's nineteen readings and this plan's nineteen; Things to know — the Java/Saxon CI job, the Storecove onboarding and one-account rule, the KID agreement, the switch defaults, the artefact pin; How it was built; Verification). `gh pr create --base main --head feat/invoices-ehf-peppol-kid`. Watch CI; do not merge.
 - [ ] **Step 3: Report.**
 
 ## Spike findings (Task 1)

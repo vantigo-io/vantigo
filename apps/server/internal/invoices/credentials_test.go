@@ -323,6 +323,7 @@ func TestAccessPoint_NeedsManage(t *testing.T) {
 			method, path string
 			body         any
 		}{
+			{http.MethodGet, accessPointPath, nil},
 			{http.MethodPut, accessPointPath, accessPointBody(&key)},
 			{http.MethodDelete, accessPointPath, nil},
 			{http.MethodPost, accessPointVerifyPath, nil},
@@ -334,6 +335,52 @@ func TestAccessPoint_NeedsManage(t *testing.T) {
 	}
 	if h.Count(t, `SELECT count(*) FROM invoices.access_point_credentials`) != 0 {
 		t.Error("a refused PUT stored a row")
+	}
+}
+
+// The stored credentials are readable by a manager, never the key: with none
+// stored the answer is 200 with hasCredentials false and neither provider nor
+// legal entity (reading 19); once stored, what the PUT answered, and the
+// provider's refusal once it is on record.
+func TestAccessPoint_IsReadable(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager := h.SignIn(t, "invoices:access", "invoices:manage")
+	read := func() (accessPointJSON, map[string]any, []byte) {
+		t.Helper()
+		res := manager.Do(http.MethodGet, accessPointPath, nil)
+		if res.Status != http.StatusOK {
+			t.Fatalf("GET %s = %d %s, want 200", accessPointPath, res.Status, res.Body)
+		}
+		var out accessPointJSON
+		var raw map[string]any
+		res.JSON(&out)
+		res.JSON(&raw)
+		return out, raw, res.Body
+	}
+
+	none, raw, _ := read()
+	if _, has := raw["provider"]; has || none.HasCredentials || none.RejectedAt != nil {
+		t.Errorf("with nothing stored = %v, want only hasCredentials false", raw)
+	}
+	if _, has := raw["legalEntityId"]; has {
+		t.Errorf("with nothing stored = %v, want no legalEntityId", raw)
+	}
+
+	key := storecovetest.APIKey
+	put := putAccessPoint(t, h, accessPointBody(&key))
+	got, _, body := read()
+	if got != put || !got.HasCredentials || got.Provider != "storecove" || got.LegalEntityID != storecovetest.LegalEntityID {
+		t.Errorf("after the PUT = %+v, want what it answered, %+v", got, put)
+	}
+	if strings.Contains(string(body), key) || strings.Contains(string(body), "apiKey") {
+		t.Errorf("the GET carries the key: %s", body)
+	}
+	if err := store.New(h.Pool()).MarkAccessPointRejected(context.Background(), h.Now()); err != nil {
+		t.Fatalf("mark the key rejected: %v", err)
+	}
+	if got, _, _ := read(); got.RejectedAt == nil || !got.RejectedAt.Equal(h.Now().Truncate(time.Microsecond)) {
+		t.Errorf("after a refusal rejectedAt = %v, want %s", got.RejectedAt, h.Now())
 	}
 }
 

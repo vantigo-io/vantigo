@@ -45,11 +45,11 @@ type InvoicesAccessPointRequest struct {
 	Provider      string  `json:"provider"`
 }
 
-// InvoicesAccessPointResponse The stored access-point credentials as a client may see them — never the key. hasCredentials is whether a key is stored; rejectedAt is when the provider first refused it (a 401 or 403, or a stored key the server could not open), absent while it has not, cleared by a new PUT and by the next call the provider accepts.
+// InvoicesAccessPointResponse The stored access-point credentials as a client may see them — never the key. provider and legalEntityId are absent only on GET /invoices/settings/access-point when none are stored, which also answers hasCredentials false. hasCredentials is whether a key is stored; rejectedAt is when the provider first refused it (a 401 or 403, or a stored key the server could not open), absent while it has not, cleared by a new PUT and by the next call the provider accepts.
 type InvoicesAccessPointResponse struct {
 	HasCredentials bool       `json:"hasCredentials"`
-	LegalEntityId  int64      `json:"legalEntityId"`
-	Provider       string     `json:"provider"`
+	LegalEntityId  *int64     `json:"legalEntityId,omitempty"`
+	Provider       *string    `json:"provider,omitempty"`
 	RejectedAt     *time.Time `json:"rejectedAt,omitempty"`
 }
 
@@ -586,7 +586,10 @@ type InvoicesSettingsResponse struct {
 
 	// MissingSellerFields What issuing still needs, as GET /meta names it.
 	MissingSellerFields []string `json:"missingSellerFields"`
-	OrganisationNumber  string   `json:"organisationNumber"`
+
+	// NextNumber The number the next issue takes — the counter's next once anything is issued, else seriesStart (the same figure the KID agreement's fit is judged against).
+	NextNumber         int64  `json:"nextNumber"`
+	OrganisationNumber string `json:"organisationNumber"`
 
 	// PeppolId The seller's Peppol participant id; null when neither set nor derivable from the organisation number.
 	PeppolId      *string   `json:"peppolId"`
@@ -618,7 +621,7 @@ type InvoicesStatsSummaryResponse struct {
 	To                    time.Time `json:"to"`
 }
 
-// InvoicesTransmission One EHF transmission of an issued document (EHF and KID design D9): its identity, its state and when it reached each, the receiver it was addressed to, the SHA-256 of the UBL it carries, the resolution of an unconfirmed one — resolvedByUserId absent when the provider's evidence resolved it — and ublUrl, where the stored UBL is downloaded. providerRef and reason are answered only to a caller with invoices:issue.
+// InvoicesTransmission One EHF transmission of an issued document (EHF and KID design D9): its identity, its state and when it reached each, the receiver it was addressed to, the SHA-256 of the UBL it carries, the resolution of an unconfirmed one — resolvedByUserId absent when the provider's evidence resolved it — and ublUrl, where the stored UBL is downloaded. providerRef, reason and submitAttemptedAt are answered only to a caller with invoices:issue.
 type InvoicesTransmission struct {
 	CancelledAt         *time.Time          `json:"cancelledAt,omitempty"`
 	DeliveredAt         *time.Time          `json:"deliveredAt,omitempty"`
@@ -633,9 +636,12 @@ type InvoicesTransmission struct {
 	ResolutionNote      *string             `json:"resolutionNote,omitempty"`
 	ResolvedByUserId    *openapi_types.UUID `json:"resolvedByUserId,omitempty"`
 	Status              string              `json:"status"`
-	SubmittedAt         *time.Time          `json:"submittedAt,omitempty"`
-	UblSha256           string              `json:"ublSha256"`
-	UblUrl              string              `json:"ublUrl"`
+
+	// SubmitAttemptedAt When the worker last stamped the crash marker, immediately before it called the provider — absent while the transmission was never attempted, which is when a queued one can still be cancelled. Answered only to a caller with invoices:issue.
+	SubmitAttemptedAt *time.Time `json:"submitAttemptedAt,omitempty"`
+	SubmittedAt       *time.Time `json:"submittedAt,omitempty"`
+	UblSha256         string     `json:"ublSha256"`
+	UblUrl            string     `json:"ublUrl"`
 }
 
 // InvoicesTransmissionResolution POST /invoices/{id}/transmissions/{transmissionId}/resolve's body (EHF and KID design D9): a person's verdict on an unconfirmed transmission after checking with the provider — delivered or failed — and a note saying why, 1 to 500 characters once trimmed.
@@ -835,6 +841,9 @@ type ServerInterface interface {
 	// DeleteInvoicesSettingsAccessPoint Remove the access-point credentials
 	// (DELETE /api/v1/invoices/settings/access-point)
 	DeleteInvoicesSettingsAccessPoint(w http.ResponseWriter, r *http.Request)
+	// GetInvoicesSettingsAccessPoint Get the access-point credentials
+	// (GET /api/v1/invoices/settings/access-point)
+	GetInvoicesSettingsAccessPoint(w http.ResponseWriter, r *http.Request)
 	// PutInvoicesSettingsAccessPoint Store the access-point credentials
 	// (PUT /api/v1/invoices/settings/access-point)
 	PutInvoicesSettingsAccessPoint(w http.ResponseWriter, r *http.Request)
@@ -1228,6 +1237,20 @@ func (siw *ServerInterfaceWrapper) DeleteInvoicesSettingsAccessPoint(w http.Resp
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteInvoicesSettingsAccessPoint(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesSettingsAccessPoint operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesSettingsAccessPoint(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesSettingsAccessPoint(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1950,6 +1973,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings", wrapper.GetInvoicesSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings", wrapper.PutInvoicesSettings)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.DeleteInvoicesSettingsAccessPoint)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.GetInvoicesSettingsAccessPoint)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.PutInvoicesSettingsAccessPoint)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/settings/access-point/verify", wrapper.PostInvoicesSettingsAccessPointVerify)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/vat-codes", wrapper.GetInvoicesVatCodes)
@@ -2485,6 +2509,55 @@ func (response DeleteInvoicesSettingsAccessPoint409ApplicationProblemPlusJSONRes
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsAccessPointRequestObject struct {
+}
+
+type GetInvoicesSettingsAccessPointResponseObject interface {
+	VisitGetInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesSettingsAccessPoint200JSONResponse InvoicesAccessPointResponse
+
+func (response GetInvoicesSettingsAccessPoint200JSONResponse) VisitGetInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsAccessPoint401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesSettingsAccessPoint401JSONResponse) VisitGetInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsAccessPoint403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesSettingsAccessPoint403JSONResponse) VisitGetInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4396,6 +4469,9 @@ type StrictServerInterface interface {
 	// DeleteInvoicesSettingsAccessPoint Remove the access-point credentials
 	// (DELETE /api/v1/invoices/settings/access-point)
 	DeleteInvoicesSettingsAccessPoint(ctx context.Context, request DeleteInvoicesSettingsAccessPointRequestObject) (DeleteInvoicesSettingsAccessPointResponseObject, error)
+	// GetInvoicesSettingsAccessPoint Get the access-point credentials
+	// (GET /api/v1/invoices/settings/access-point)
+	GetInvoicesSettingsAccessPoint(ctx context.Context, request GetInvoicesSettingsAccessPointRequestObject) (GetInvoicesSettingsAccessPointResponseObject, error)
 	// PutInvoicesSettingsAccessPoint Store the access-point credentials
 	// (PUT /api/v1/invoices/settings/access-point)
 	PutInvoicesSettingsAccessPoint(ctx context.Context, request PutInvoicesSettingsAccessPointRequestObject) (PutInvoicesSettingsAccessPointResponseObject, error)
@@ -4708,6 +4784,30 @@ func (sh *strictHandler) DeleteInvoicesSettingsAccessPoint(w http.ResponseWriter
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DeleteInvoicesSettingsAccessPointResponseObject); ok {
 		if err := validResponse.VisitDeleteInvoicesSettingsAccessPointResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesSettingsAccessPoint operation middleware
+func (sh *strictHandler) GetInvoicesSettingsAccessPoint(w http.ResponseWriter, r *http.Request) {
+	var request GetInvoicesSettingsAccessPointRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesSettingsAccessPoint(ctx, request.(GetInvoicesSettingsAccessPointRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesSettingsAccessPoint")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesSettingsAccessPointResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesSettingsAccessPointResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

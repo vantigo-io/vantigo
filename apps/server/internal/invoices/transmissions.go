@@ -29,9 +29,9 @@ const invalidResolutionTitle = "Invalid resolution"
 // errNoSuchTransmission is a transmission that is not the document's.
 var errNoSuchTransmission = errors.New("invoices: no such transmission on the document")
 
-// transmissionResponse is one transmission on the wire. providerRef and the
-// reason — the provider's and the receiver's words, redacted — are an
-// issuer's only (D10).
+// transmissionResponse is one transmission on the wire. providerRef, the
+// reason — the provider's and the receiver's words, redacted — and the crash
+// marker, operational detail (reading 19), are an issuer's only (D10).
 func transmissionResponse(t store.InvoicesTransmission, issuerFields bool) gen.InvoicesTransmission {
 	out := gen.InvoicesTransmission{
 		Id: t.ID, Status: t.Status, Provider: t.Provider, IdempotencyKey: t.IdempotencyKey,
@@ -40,7 +40,7 @@ func transmissionResponse(t store.InvoicesTransmission, issuerFields bool) gen.I
 		ResolvedByUserId: t.ResolvedByUserID, ResolutionNote: t.ResolutionNote, UblUrl: ublPath(t.InvoiceID, t.ID),
 	}
 	if issuerFields {
-		out.ProviderRef = t.ProviderRef
+		out.ProviderRef, out.SubmitAttemptedAt = t.ProviderRef, t.SubmitAttemptedAt
 		if t.LastError != nil && strings.TrimSpace(*t.LastError) != "" {
 			out.Reason = ptr(redactReason(*t.LastError))
 		}
@@ -104,7 +104,7 @@ func (s *server) ehfState(ctx context.Context, q *store.Queries, inv store.Invoi
 		issuerFields = *canIssue
 	default:
 		for _, t := range rows {
-			if t.ProviderRef != nil || t.LastError != nil {
+			if t.ProviderRef != nil || t.LastError != nil || t.SubmitAttemptedAt != nil {
 				issuerFields = s.has(ctx, "invoices:issue")
 				break
 			}

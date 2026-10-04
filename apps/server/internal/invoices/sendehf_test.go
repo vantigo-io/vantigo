@@ -48,6 +48,7 @@ type transmissionJSON struct {
 	UblSha256           string  `json:"ublSha256"`
 	QueuedAt            string  `json:"queuedAt"`
 	SubmittedAt         *string `json:"submittedAt"`
+	SubmitAttemptedAt   *string `json:"submitAttemptedAt"`
 	DeliveredAt         *string `json:"deliveredAt"`
 	FailedAt            *string `json:"failedAt"`
 	CancelledAt         *string `json:"cancelledAt"`

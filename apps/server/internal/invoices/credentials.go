@@ -117,7 +117,7 @@ func accessPointResponse(row store.InvoicesAccessPointCredential) (gen.InvoicesA
 		return gen.InvoicesAccessPointResponse{}, err
 	}
 	return gen.InvoicesAccessPointResponse{
-		Provider: row.Provider, LegalEntityId: settings.LegalEntityID,
+		Provider: ptr(row.Provider), LegalEntityId: ptr(settings.LegalEntityID),
 		HasCredentials: row.SecretCiphertext != "", RejectedAt: row.RejectedAt,
 	}, nil
 }
@@ -139,6 +139,29 @@ func (s *server) flagUnreadableAccessPointKey(ctx context.Context) {
 	if err := store.New(s.deps.Pool).MarkAccessPointRejected(ctx, s.deps.Clock()); err != nil {
 		s.deps.Logger.ErrorContext(ctx, "invoices: flag the access point key as rejected", "error", err.Error())
 	}
+}
+
+// GetInvoicesSettingsAccessPoint Get the access-point credentials
+// (GET /api/v1/invoices/settings/access-point)
+//
+// What is stored, never the key. With nothing stored the answer is 200 with
+// hasCredentials false and neither provider nor legal entity (reading 19):
+// this module's 404 is for a resource that does not exist and carries no
+// code, and the one credentials row is a setting that may be empty, not a
+// resource a client names.
+func (s *server) GetInvoicesSettingsAccessPoint(ctx context.Context, _ gen.GetInvoicesSettingsAccessPointRequestObject) (gen.GetInvoicesSettingsAccessPointResponseObject, error) {
+	row, err := store.New(s.deps.Pool).GetAccessPointCredentials(ctx)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return gen.GetInvoicesSettingsAccessPoint200JSONResponse(gen.InvoicesAccessPointResponse{HasCredentials: false}), nil
+	case err != nil:
+		return nil, fmt.Errorf("invoices: read the access point credentials: %w", err)
+	}
+	resp, err := accessPointResponse(row)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetInvoicesSettingsAccessPoint200JSONResponse(resp), nil
 }
 
 // PutInvoicesSettingsAccessPoint Store the access-point credentials
