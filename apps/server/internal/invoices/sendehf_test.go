@@ -278,7 +278,20 @@ func TestSendEhf_RefusesADraftAndAnAnonymisedCustomer(t *testing.T) {
 			t.Errorf("erase during the lookup: %v", err)
 		}
 	})
-	sendRefused(t, "an erasure committed during the lookup", sendEhfAs(issuer(t, during), first.ID), http.StatusConflict, "customer_anonymised")
+	// The judgment under the lock refuses it on its own: the insert — and
+	// its trigger — is never reached.
+	var reached atomic.Int32
+	unseam := invoices.SetBeforeTransmissionInsert(func(_ context.Context, id int64) {
+		if id == first.ID {
+			reached.Add(1)
+		}
+	})
+	res := sendEhfAs(issuer(t, during), first.ID)
+	unseam()
+	sendRefused(t, "an erasure committed during the lookup", res, http.StatusConflict, "customer_anonymised")
+	if n := reached.Load(); n != 0 {
+		t.Errorf("the send reached the insert %d times after an erasure committed during the lookup, want the judgment under the lock to refuse it first", n)
+	}
 	if n := transmissionRows(t, during, first.ID); n != 0 {
 		t.Errorf("%d transmissions after an erasure committed during the lookup, want none", n)
 	}
@@ -525,6 +538,44 @@ func TestSendEhf_ReusesTheBytesAfterAResolvedUnconfirmed(t *testing.T) {
 	}
 }
 
+// The reuse rule looks at all of the document's transmissions, not only the
+// latest (D4, reading 13): T1 unconfirmed and resolved as failed by a person,
+// T2 carrying T1's bytes and then cancelled — T3 still carries T1's bytes,
+// though the latest row is a cancel and a fresh render would now differ.
+func TestSendEhf_ReusesTheBytesAcrossALaterCancel(t *testing.T) {
+	t.Parallel()
+	h, _ := ehfReady(t)
+	inv := issuedAcme(t, h)
+	c := issuer(t, h)
+	sentAsEhf(t, h, inv.ID)
+	t1, key, hash, sender := latestTransmission(t, h, inv.ID)
+	h.Exec(t, `UPDATE invoices.transmissions SET status = 'unconfirmed', submit_attempted_at = $2, submitted_at = $2 WHERE id = $1`, t1, h.Now())
+	if res := c.Do(http.MethodPost, transmissionPath(inv.ID, t1, "resolve"), map[string]any{
+		"outcome": "failed", "note": "Storecove has no record of it",
+	}); res.Status != http.StatusOK {
+		t.Fatalf("resolve T1 = %d %s", res.Status, res.Body)
+	}
+	h.Exec(t, `UPDATE invoices.settings SET peppol_id = '0192:910000000'`)
+
+	sentAsEhf(t, h, inv.ID)
+	t2, key2, _, _ := latestTransmission(t, h, inv.ID)
+	if key2 != key {
+		t.Fatalf("T2 carries %q, want T1's %q", key2, key)
+	}
+	if res := c.Do(http.MethodPost, transmissionPath(inv.ID, t2, "cancel"), nil); res.Status != http.StatusOK {
+		t.Fatalf("cancel T2 = %d %s", res.Status, res.Body)
+	}
+
+	sentAsEhf(t, h, inv.ID)
+	t3, key3, hash3, sender3 := latestTransmission(t, h, inv.ID)
+	if t3 == t2 || key3 != key || hash3 != hash || sender3 != sender {
+		t.Errorf("T3 = %d %q %q %q after a cancelled reuse, want T1's %q %q %q", t3, key3, hash3, sender3, key, hash, sender)
+	}
+	if keys := ublKeys(h); len(keys) != 1 {
+		t.Errorf("UBL objects = %v, want T1's alone", keys)
+	}
+}
+
 // After any other failure, and after a cancel, the send renders fresh (D4):
 // a corrected seller id is not locked out, and the new bytes are a new
 // object beside the old.
@@ -568,9 +619,12 @@ func TestSendEhf_TwoRacingSendsOneQueued(t *testing.T) {
 	second := issuer(t, h)
 	var secondRes *modtest.Response
 	done := make(chan struct{})
-	var fired atomic.Bool
+	// Every arrival at the seam is counted: the second send is refused by
+	// the judgment under the lock, before the insert, so only the first
+	// arrives.
+	var arrivals atomic.Int32
 	restore := invoices.SetBeforeTransmissionInsert(func(_ context.Context, id int64) {
-		if id != inv.ID || fired.Swap(true) {
+		if id != inv.ID || arrivals.Add(1) != 1 {
 			return
 		}
 		go func() {
@@ -582,15 +636,19 @@ func TestSendEhf_TwoRacingSendsOneQueued(t *testing.T) {
 		}
 	})
 	first := sendEhfAs(issuer(t, h), inv.ID)
-	restore()
-	if !fired.Load() {
+	if arrivals.Load() == 0 {
+		restore()
 		t.Fatalf("the first send never reached the seam: %d %s", first.Status, first.Body)
 	}
 	<-done
+	restore()
 	if first.Status != http.StatusOK {
 		t.Errorf("the first send = %d %s, want 200", first.Status, first.Body)
 	}
 	sendRefused(t, "the second send", secondRes, http.StatusConflict, "ehf_already_sent")
+	if n := arrivals.Load(); n != 1 {
+		t.Errorf("%d sends reached the insert, want only the first — the second refused under the lock", n)
+	}
 	if n := transmissionRows(t, h, inv.ID); n != 1 {
 		t.Errorf("%d transmissions, want one", n)
 	}
@@ -818,9 +876,10 @@ func TestDrafts_WarnsEhfBuyerReferenceMissing(t *testing.T) {
 	}
 }
 
-// When the caller can send as EHF, the e-mail dialog's warning for a
-// customer preferring EHF is ehf_preferred — send it as EHF instead — in
-// place of delivery_preference_ehf (D10, reading 14); without EHF it stays.
+// When the caller can send as EHF and nothing blocks the document, the e-mail
+// dialog's warning for a customer preferring EHF is ehf_preferred — send it as
+// EHF instead — in place of delivery_preference_ehf (D10, reading 14); a
+// document that cannot go, or an installation without EHF, keeps the old one.
 func TestSend_EhfPreferredReplacesThePreferenceWarning(t *testing.T) {
 	t.Parallel()
 	h, _ := ehfReady(t, modtest.WithEnv("MAIL_DRIVER", "smtp"),
@@ -831,6 +890,12 @@ func TestSend_EhfPreferredReplacesThePreferenceWarning(t *testing.T) {
 	inv := issuedAcme(t, h)
 	if d := readAs(t, issuer(t, h), inv.ID).SendDefaults; d == nil || !slices.Equal(d.Warnings, []string{"ehf_preferred", "buyer_norwegian_business"}) {
 		t.Errorf("with EHF available: sendDefaults %+v, want ehf_preferred in place of delivery_preference_ehf", d)
+	}
+	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) { p.PeppolID = "" })
+	blocked := issuedAcme(t, h)
+	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) { p.PeppolID = "0192:923609016" })
+	if d := readAs(t, issuer(t, h), blocked.ID).SendDefaults; d == nil || !slices.Equal(d.Warnings, []string{"delivery_preference_ehf", "buyer_norwegian_business"}) {
+		t.Errorf("a document whose snapshot has no Peppol id: sendDefaults %+v, want delivery_preference_ehf — it cannot go as EHF", d)
 	}
 	h.Exec(t, `DELETE FROM invoices.access_point_credentials`)
 	if d := readAs(t, issuer(t, h), inv.ID).SendDefaults; d == nil || !slices.Equal(d.Warnings, []string{"delivery_preference_ehf", "buyer_norwegian_business"}) {

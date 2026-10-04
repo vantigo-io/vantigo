@@ -725,8 +725,8 @@ code is what a test with a fixed clock can pin.
 
 | Warning | When |
 | --- | --- |
-| `delivery_preference_ehf` | the customer's current billing profile says `ehf`: the customer expects EHF, and an e-mailed PDF does not meet the e-invoicing duty — when the caller cannot send as EHF here |
-| `ehf_preferred` | the same preference, **in place of** `delivery_preference_ehf`, when the caller can send as EHF on this installation (`capabilities.canSendEhf`): send it as EHF instead ([Sending as EHF](#sending-as-ehf)) |
+| `delivery_preference_ehf` | the customer's current billing profile says `ehf`: the customer expects EHF, and an e-mailed PDF does not meet the e-invoicing duty — when this document cannot go as EHF |
+| `ehf_preferred` | the same preference, **in place of** `delivery_preference_ehf`, when the caller can send as EHF on this installation (`capabilities.canSendEhf`) **and** the document's `ehf.blockedBy` is empty: send it as EHF instead ([Sending as EHF](#sending-as-ehf)). A document that cannot go — no Peppol id in its snapshot, no reference, already sent — keeps `delivery_preference_ehf` |
 | `delivery_preference_other` | the profile says `efaktura` or `paper` |
 | `buyer_norwegian_business` | the buyer snapshot has an organisation number and today is before 2027-01-01: from that day a Norwegian business must receive an e-invoice, and this is a PDF |
 | `buyer_norwegian_business_required` | the same buyer from **2027-01-01**, when an e-mailed PDF no longer meets the B2B duty |
@@ -818,13 +818,15 @@ queued. In order:
 8. **The UBL stored once** by its SHA-256 under `documents/<id>/<number>-<sha256>.xml` in
    the `invoices` scope (`application/xml`), outside any lock — `Exists` before `Put`, so
    a send after a cancel that renders the same bytes stores nothing again; 503
-   `storage_unavailable`. **The reuse rule:** when the document's latest transmission is
+   `storage_unavailable`. **The reuse rule:** when any of the document's transmissions is
    `failed` with `resolved_by_user_id` set — it was `unconfirmed`, and a person resolved
    it as failed — its bytes may have reached the receiver, so the new transmission
-   carries the same object, hash, PDF hash and sender, read back and verified against its
-   hash (a 500 when it is gone or altered). After any other `failed`, or a `cancelled`,
-   the send renders fresh, so a corrected seller id or a mapping fixed in a later release
-   is not locked out.
+   carries the same object, hash, PDF hash and sender as the newest such one, read back
+   and verified against its hash (a 500 when it is gone or altered). All of the
+   document's rows are looked at, not only the latest: a reused send that is then
+   cancelled leaves the next send carrying the same bytes still. Without one, after any
+   other `failed`, or a `cancelled`, the send renders fresh, so a corrected seller id or
+   a mapping fixed in a later release is not locked out.
 9. **One transaction**: the document `FOR UPDATE` — two sends serialise on it; the
    anonymisation judged again (an erasure that committed meanwhile has, by then); the
    access-point credentials row `FOR SHARE` — a `DELETE` of them locks it `FOR UPDATE`
@@ -836,7 +838,9 @@ queued. In order:
    under, queued and due now, and who sent it. **The floor** is `ux_transmissions_active`
    — one live transmission per document — whose violation is `ehf_already_sent` too; the
    insert trigger's own refusal of an anonymised customer, an erasure committing after
-   the judgment, is `customer_anonymised` — never a 500.
+   the judgment, is `customer_anonymised` — never a 500. The locks are always taken in
+   this order — the document, then the credentials — and the workers lock no document,
+   so the send cannot deadlock against them.
 10. The answer is the document with its `ehf` block, without `sendDefaults`.
 
 It is rate limited apart from the e-mail send: 60 per client per 10 minutes under the
@@ -888,8 +892,8 @@ transmission's status, or `not_sent`, the page's in one query.
 
 **Channel precedence** is the app's: the receiver's acceptance is known only at the
 send's re-check. The e-mail dialog's `ehf_preferred` (in place of
-`delivery_preference_ehf` when the caller can send as EHF) says so; neither channel is
-refused for the other.
+`delivery_preference_ehf` when the caller can send as EHF and nothing blocks the
+document) says so; neither channel is refused for the other.
 
 ## The journal
 
@@ -1139,7 +1143,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /{id}/payments` | `invoices:payments` | 400 a body that does not decode; 404; 409 `credit_note_no_payments`, `invoice_draft`; 400 on the field; 409 `invoice_settled`, `payment_exceeds_open` (with `openAmount`) |
 | `POST /{id}/payments/{paymentId}/remove` | `invoices:payments` | 400 on `reason`; 404 the document, or a payment not its own; 409 `payment_removed` |
 | `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable`; 500 a directory that fails, a missing or altered stored object, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |
-| `POST /{id}/send-ehf` | `invoices:issue` | 429 `rate_limited`; 503 `ehf_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`, `no_peppol_id`, `buyer_reference_missing`, `ehf_already_sent`; 503 `storage_unavailable`; 500 a missing or altered stored PDF or reused UBL, a render that fails or breaks an invariant; 409 `ehf_invalid` (with `rules`); 409 `peppol_not_receivable` (with `peppolRegistered`, `peppolCanReceive`); 502 `peppol_lookup_failed` |
+| `POST /{id}/send-ehf` | `invoices:issue` | 429 `rate_limited`; 503 `ehf_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`, `no_peppol_id`, `buyer_reference_missing`, `ehf_already_sent`; 503 `storage_unavailable`; 500 a missing or altered stored PDF, a render that fails or breaks an invariant; 409 `ehf_invalid` (with `rules`); 409 `peppol_not_receivable` (with `peppolRegistered`, `peppolCanReceive`); 502 `peppol_lookup_failed`; 500 a missing or altered reused UBL; 503 `storage_unavailable`; then under the lock 409 `customer_anonymised`, 503 `ehf_unavailable` when the credentials vanished, 409 `ehf_already_sent` |
 | `POST /{id}/transmissions/{transmissionId}/cancel` | `invoices:issue` | 404 the document, or a transmission not its own; 409 `transmission_not_cancellable` |
 | `POST /{id}/transmissions/{transmissionId}/resolve` | `invoices:issue` | 400 on `outcome` (not `delivered` or `failed`) or `note` (empty, over 500); 404 the document, or a transmission not its own; 409 `transmission_not_resolvable` |
 | `GET /{id}/transmissions/{transmissionId}/ubl` | | 404 the document, or a transmission not its own; 500 a missing or altered stored UBL; 503 `storage_unavailable` |

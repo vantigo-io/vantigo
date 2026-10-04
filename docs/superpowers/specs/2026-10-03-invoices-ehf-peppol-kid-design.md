@@ -191,14 +191,18 @@ a transmission is created, keyed by its hash, and its key and hash go on the
 transmission (D9), never on the document row. Storing at send, not at issue: the UBL is
 the sales document only once it is transmitted (§ 5-2-9: the bytes that may have reached
 the receiver are the record), and a document only ever e-mailed has no UBL to keep.
-**A later send reuses the previous transmission's stored UBL only when that
-transmission was `unconfirmed` and a person resolved it as failed** (`failed` with
-`resolved_by_user_id` set) — the bytes may have reached the receiver, so a second send
-must carry the same ones; after any other `failed` (a provider 4xx, a provider-reported
-failure before the AS4 receipt, the age cap on a never-attempted row) or a `cancelled`
-the send **renders fresh**, so a mapping fix in a later release or a corrected
-seller id is not locked out, and the content-addressed key keeps store-once per bytes.
-The send finds the previous object through the latest transmission's `ubl_object_key`.
+**A later send reuses a previous transmission's stored UBL only when a transmission was
+`unconfirmed` and a person resolved it as failed** (`failed` with
+`resolved_by_user_id` set) — the bytes may have reached the receiver, so every later
+send must carry the same ones; the send reuses **the newest transmission a person
+resolved as failed, among all of the document's** — not only the latest, so a reused
+send that is then cancelled does not let a third send render fresh (amended after the
+Task 7 review). Without one, after any other `failed` (a provider 4xx, a
+provider-reported failure before the AS4 receipt, the age cap on a never-attempted row)
+or a `cancelled` the send **renders fresh**, so a mapping fix in a later release or a
+corrected seller id is not locked out, and the content-addressed key keeps store-once
+per bytes. The send finds the previous object through that transmission's
+`ubl_object_key`.
 
 ### D5 — Units: the one free-text field that needs a code
 
@@ -361,8 +365,8 @@ the key. `DELETE` clears it and a provider switch replaces it — **both refused
    or registered without the document's kind → 409 `peppol_not_receivable` carrying
    `peppolRegistered` and `peppolCanReceive`; could not find out → 502
    `peppol_lookup_failed`.
-8. The UBL stored once by its hash, unless the latest transmission's bytes are reused
-   (D4) — outside any lock; 503 `storage_unavailable`.
+8. The UBL stored once by its hash, unless a person-resolved failed transmission's
+   bytes are reused (D4) — outside any lock; 503 `storage_unavailable`.
 9. One `withLockedTx`: **the document `FOR UPDATE`** (two sends serialise here; `FOR
    SHARE` would not — the 1B payments precedent), `ehf_already_sent` judged under the
    lock, then `INSERT invoices.transmissions` as `queued`. **The floor** is a partial
@@ -465,8 +469,8 @@ no-op when the lease changed (the outbox's rule, copied).
   **blocks a new send** (D8's index includes it) until an `invoices:issue` holder
   resolves it with `POST /invoices/{id}/transmissions/{transmissionId}/resolve
   {outcome: "delivered" | "failed", note}` after checking with the provider — the
-  outcome, who and the note are recorded; `failed` then allows a new send (with a fresh
-  render, D4), `delivered` closes it. The worker keeps probing an `unconfirmed` row with
+  outcome, who and the note are recorded; `failed` then allows a new send (with the
+  same bytes, D4's reuse rule), `delivered` closes it. The worker keeps probing an `unconfirmed` row with
   a provider reference once a day for thirty days and resolves it itself if the
   provider finally answers (`resolved_by_user_id` NULL, the note saying so); after
   thirty days, or at once without a reference, `next_attempt_at = 'infinity'` and the
@@ -665,7 +669,9 @@ Per `AGENTS.md`'s page map:
 3. The headroom rule refuses only what does not fit and warns under two digits.
 4. Units map by a word table with `C62` as the fallback; `t` is not mapped.
 5. The UBL is stored at the first send and reused only after an `unconfirmed` outcome
-   a person resolved as failed; any other failure or a cancel renders fresh.
+   a person resolved as failed — the newest transmission a person resolved as failed,
+   among all of the document's; without one, any other failure or a cancel renders
+   fresh.
 6. No `PaymentID` without a KID; one `PaymentMeans`, code 30, the IBAN for a foreign
    buyer.
 7. The send queues under the document's `FOR UPDATE`; the worker submits once per
