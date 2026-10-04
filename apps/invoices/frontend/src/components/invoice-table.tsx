@@ -3,6 +3,7 @@ import type { InvoiceList } from "../api/invoices";
 import "../i18n";
 import { useInvoiceFormat } from "../lib/format";
 import { DocumentLink } from "./document-link";
+import { EhfBadge } from "./ehf-badge";
 import { StateBadge } from "./state-badge";
 
 export interface InvoiceTableProps {
@@ -13,7 +14,9 @@ export interface InvoiceTableProps {
 
 /**
  * The documents as the list shows them: each linked, badged with its state
- * (D3) and, on an issued invoice, with its open amount beside its total.
+ * (D3) and, on an issued invoice, with its open amount beside its total; an
+ * issued document's EHF state in its own column, blank on a draft (EHF and
+ * KID design D10).
  */
 export const InvoiceTable = ({ rows, showCustomer }: InvoiceTableProps) => {
   const { t, money, date } = useInvoiceFormat();
@@ -30,6 +33,7 @@ export const InvoiceTable = ({ rows, showCustomer }: InvoiceTableProps) => {
             <Table.Th>{t("dueDate")}</Table.Th>
             <Table.Th ta="right">{t("grossTotal")}</Table.Th>
             <Table.Th ta="right">{t("openAmount")}</Table.Th>
+            <Table.Th>{t("ehfColumn")}</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -49,6 +53,7 @@ export const InvoiceTable = ({ rows, showCustomer }: InvoiceTableProps) => {
               <Table.Td ta="right" data-testid="open-amount">
                 {row.openAmount !== undefined ? money(row.openAmount, row.currency) : t("notAvailable")}
               </Table.Td>
+              <Table.Td>{row.ehfStatus && <EhfBadge status={row.ehfStatus} testId="ehf-badge" />}</Table.Td>
             </Table.Tr>
           ))}
         </Table.Tbody>

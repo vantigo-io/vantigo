@@ -237,3 +237,17 @@ describe("the invoice list", () => {
     expect(await screen.findByText("Could not load the invoices")).toBeInTheDocument();
   });
 });
+
+describe("the invoice list's EHF column", () => {
+  it("badges each issued document's EHF state and leaves a draft's blank", async () => {
+    server();
+    renderRoute("/invoices");
+
+    const rows = await screen.findAllByRole("row");
+    expect(within(rows[0]).getByRole("columnheader", { name: "EHF" })).toBeInTheDocument();
+    expect(within(rows[1]).queryByTestId("ehf-badge")).not.toBeInTheDocument();
+    expect(within(rows[2]).getByTestId("ehf-badge")).toHaveTextContent("Not sent");
+    expect(within(rows[3]).getByTestId("ehf-badge")).toHaveTextContent("Delivered");
+    expect(within(rows[3]).getByTestId("ehf-badge")).toHaveAttribute("data-status", "delivered");
+  });
+});

@@ -28,6 +28,7 @@ import {
   IconEye,
   IconMail,
   IconPlus,
+  IconSend,
   IconTrash,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -50,6 +51,7 @@ import { vatCodesQueryOptions } from "../api/vat-codes";
 import { CustomerPicker } from "../components/customer-picker";
 import { DeliveriesCard } from "../components/deliveries-card";
 import { DocumentLink } from "../components/document-link";
+import { EhfCard } from "../components/ehf-card";
 import { PaymentsCard } from "../components/payments-card";
 import { PdfButton } from "../components/pdf-button";
 import { StaleAlert } from "../components/stale-alert";
@@ -62,6 +64,7 @@ import { invoiceLinkOptions } from "../lib/routes";
 import { draftRate } from "../lib/vat";
 import { IssueModal } from "./-issue-modal";
 import { SendDialog } from "./-send-dialog";
+import { SendEhfDialog } from "./-send-ehf-dialog";
 
 export interface InvoicePageProps {
   invoiceId: number;
@@ -221,6 +224,10 @@ const DraftEditor = ({
   const navigate = useNavigate() as (options: unknown) => Promise<void>;
   const heading = useHeading(draft);
   const credit = draft.kind === "credit_note";
+  // EHF's missing reference is said beside the references it asks for (EHF
+  // and KID design D8, D15); every other warning in the list above.
+  const referenceWarning = draft.warnings.includes("ehf_buyer_reference_missing");
+  const listedWarnings = draft.warnings.filter((w) => w !== "ehf_buyer_reference_missing");
   const original = useQuery({
     ...invoiceQueryOptions(draft.credits?.id ?? 0),
     enabled: credit && Boolean(draft.credits),
@@ -519,10 +526,10 @@ const DraftEditor = ({
           {t("storageUnavailableHint")}
         </Text>
       )}
-      {draft.warnings.length > 0 && (
+      {listedWarnings.length > 0 && (
         <Alert color="yellow" icon={<IconAlertCircle size={16} />} title={t("warnings")}>
           <Stack gap={4}>
-            {draft.warnings.map((w) => (
+            {listedWarnings.map((w) => (
               <Text key={w} size="sm">
                 {warningMessage(w, t)}
               </Text>
@@ -688,6 +695,11 @@ const DraftEditor = ({
               />
             )}
           </SimpleGrid>
+          {referenceWarning && (
+            <Alert color="yellow" icon={<IconAlertCircle size={16} />} data-testid="ehf-reference-warning">
+              {warningMessage("ehf_buyer_reference_missing", t)}
+            </Alert>
+          )}
         </Stack>
       </Card>
       <Card withBorder>
@@ -962,15 +974,25 @@ const Totals = ({ currency, rates, net, vat, gross, paid, open, refundDue }: Tot
  * is paid and open — its credit notes and payments, every e-mail that sent
  * it, Download PDF, Send, and Credit, which opens the new credit-note draft. A
  * document whose PDF could not be stored at issue says the first download
- * stores it.
+ * stores it. Beside the e-mails, the E-invoice card; Send as EHF is the
+ * primary action by channel precedence, else offered on the card (EHF and
+ * KID design D10).
  */
 const IssuedDocument = ({ document: doc, meta }: { document: InvoiceDocument; meta: InvoicesMeta }) => {
   const { t, money, unitPrice, date, number } = useInvoiceFormat();
-  const { canIssue, canRegisterPayments, canSend } = meta.capabilities;
+  const { canIssue, canRegisterPayments, canSend, canSendEhf } = meta.capabilities;
   const queryClient = useQueryClient();
   const navigate = useNavigate() as (options: unknown) => void;
   const heading = useHeading(doc);
   const [sending, setSending] = useState(false);
+  const [sendingEhf, setSendingEhf] = useState(false);
+  // Channel precedence (EHF and KID design D10): EHF is the primary action
+  // when the caller can send it and the customer prefers it — or has a Peppol
+  // id and no preference. E-mail is then secondary; neither refuses the other.
+  const ehf = doc.ehf;
+  const ehfPreferred =
+    canSendEhf && ehf !== undefined && (ehf.preference === "ehf" || (!ehf.preference && Boolean(ehf.buyerPeppolId)));
+  const ehfPrimary = ehfPreferred && ehf?.canSend === true;
   const credit = useMutation({
     mutationFn: () => creditInvoice(doc.id),
     onSuccess: async (draft) => {
@@ -995,6 +1017,11 @@ const IssuedDocument = ({ document: doc, meta }: { document: InvoiceDocument; me
             <PdfButton url={pdfUrl(doc.id)} mode="download" leftSection={<IconDownload size={16} />}>
               {t("downloadPdf")}
             </PdfButton>
+            {ehfPrimary && (
+              <Button variant="filled" leftSection={<IconSend size={16} />} onClick={() => setSendingEhf(true)}>
+                {t("sendAsEhf")}
+              </Button>
+            )}
             {canSend && (
               <Button variant="default" leftSection={<IconMail size={16} />} onClick={() => setSending(true)}>
                 {t("send")}
@@ -1110,8 +1137,19 @@ const IssuedDocument = ({ document: doc, meta }: { document: InvoiceDocument; me
         </Card>
       )}
       {doc.kind === "invoice" && <PaymentsCard invoice={doc} canRegister={canRegisterPayments} today={meta.today} />}
-      <DeliveriesCard deliveries={doc.deliveries ?? []} />
+      <SimpleGrid cols={{ base: 1, lg: ehf ? 2 : 1 }}>
+        <DeliveriesCard deliveries={doc.deliveries ?? []} />
+        {ehf && (
+          <EhfCard
+            document={doc}
+            canIssue={canIssue}
+            offerSend={canSendEhf && !ehfPrimary}
+            onSend={() => setSendingEhf(true)}
+          />
+        )}
+      </SimpleGrid>
       {sending && <SendDialog document={doc} defaults={doc.sendDefaults} onClose={() => setSending(false)} />}
+      {sendingEhf && <SendEhfDialog document={doc} onClose={() => setSendingEhf(false)} />}
     </Stack>
   );
 };
