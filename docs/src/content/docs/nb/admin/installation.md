@@ -266,8 +266,9 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 ## Bakgrunnsjobber og skalering
 
 Standardoppsettet med én container kjører bakgrunnsjobbene til hver aktivert modul
-(utboks-levering, oppbevaring, opprydding av vedlegg, kundemodulens registerjobber)
-inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
+(utboks-levering, oppbevaring, opprydding av vedlegg, kundemodulens registerjobber,
+og fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
+`INVOICES_EHF_ENABLED` er på) inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
 hver ekstra HTTP-replika ikke mangedobler pollerne:
 
@@ -278,8 +279,10 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
 
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
-Uansett topologi tar oppbevaringsoppryddingen og registerjobbene en PostgreSQL
-advisory lock, så hver av dem kjører på nøyaktig én instans per syklus.
+Uansett topologi tar oppbevaringsoppryddingen, registerjobbene og EHF-hendelsesjobben
+en PostgreSQL advisory lock, så hver av dem kjører på nøyaktig én instans per syklus;
+utboksen og `invoices-ehf`-jobben leaser i stedet én rad om gangen, så et hvilket som
+helst antall instanser deler arbeidet uten å sende noe to ganger.
 
 Ved avslutning tømmer prosessen pågående arbeid i opptil `SHUTDOWN_TIMEOUT` (30
 sekunder som standard), nok til at den lengste enkeltoperasjonen i en bakgrunnsjobb

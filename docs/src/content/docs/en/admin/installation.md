@@ -261,7 +261,9 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 ## Background workers and scaling
 
 The single-container default hosts every enabled module's background workers (outbox
-delivery, retention, attachment cleanup, the customers registry workers) inside the
+delivery, retention, attachment cleanup, the customers registry workers, and the
+invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
+`INVOICES_EHF_ENABLED` is on) inside the
 API process: `WORKERS_IN_PROCESS=1`, the default. Deployments that scale the API
 horizontally should move them to one dedicated worker container, so that every extra
 HTTP replica does not multiply the pollers:
@@ -273,8 +275,10 @@ HTTP replica does not multiply the pollers:
 
 Replicas that should neither migrate nor run workers can run the `server` command
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever
-topology you use, retention cleanup and the registry workers take a PostgreSQL
-advisory lock, so each runs on exactly one instance per cycle.
+topology you use, retention cleanup, the registry workers and the EHF events worker
+take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the
+outbox and the `invoices-ehf` worker lease one row at a time instead, so any number of
+instances share the work without sending anything twice.
 
 On shutdown the process drains for up to `SHUTDOWN_TIMEOUT` (30 seconds by default),
 enough for the longest single worker operation to finish and commit. `compose.yaml`

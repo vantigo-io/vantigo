@@ -3,6 +3,7 @@ package invoices
 import (
 	"context"
 	"math/big"
+	"time"
 )
 
 // InLockedTx exposes inLockedTx to the external tests, whose contract-call
@@ -114,4 +115,23 @@ func SetBeforeTransmissionInsert(hook func(ctx context.Context, invoiceID int64)
 func SetSendEhfWithoutLock() func() {
 	sendEhfWithoutLock = true
 	return func() { sendEhfWithoutLock = false }
+}
+
+// SetEhfCallTimeout bounds every provider call the EHF workers make by d, so
+// a test reaches a transport timeout without waiting thirty seconds, and
+// answers the function that restores it. A test using it does not run in
+// parallel: the bound is the package's.
+func SetEhfCallTimeout(d time.Duration) func() {
+	ehfCallTimeout = d
+	return func() { ehfCallTimeout = ehfDefaultCallTimeout }
+}
+
+// SetEhfAfterCall installs a hook the invoices-ehf worker calls after every
+// provider call and before it records the outcome, with the transmission's
+// id, and answers the function that removes it. A test moves the row there to
+// show the completion is a no-op once the lease changed. A test using it does
+// not run in parallel: the hook is the package's.
+func SetEhfAfterCall(hook func(ctx context.Context, transmissionID int64)) func() {
+	ehfAfterCall = hook
+	return func() { ehfAfterCall = nil }
 }
