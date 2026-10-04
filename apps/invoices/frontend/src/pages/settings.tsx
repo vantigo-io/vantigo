@@ -539,7 +539,9 @@ const verifyColours: Record<string, string> = { ok: "green", unauthorized: "red"
 const AccessPointSection = ({ meta }: { meta: InvoicesMeta }) => {
   const { t, date } = useInvoiceFormat();
   const stored = useQuery(accessPointQueryOptions());
-  if (stored.isError) {
+  // A failed background refetch — after a save, say — keeps the form and the
+  // key being typed in it; only a first read that failed says so instead.
+  if (stored.isError && !stored.data) {
     return (
       <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadAccessPoint")}>
         {refusalMessage(stored.error, t, date)}
