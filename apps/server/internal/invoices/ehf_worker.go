@@ -608,6 +608,13 @@ func (c *ehfClaim) storeEvidence(ctx context.Context) error {
 		return retry("The document store could not store the evidence.")
 	}
 	if len(ev.Delivered) > 0 {
+		// The evidence fetch and the receipt took their share of the lease: a
+		// claim with less left than another call may take stops here, due
+		// again at once with nothing counted; the next claim finds the
+		// receipt stored and reads it back for its hash.
+		if c.leaseLeft() < ehfCallTimeout {
+			return c.reschedule(ctx, c.w.now(), 0, 0, reasonOutOfTime, false)
+		}
 		mime := ev.DeliveredMIME
 		if mime == "" {
 			mime = "application/xml"

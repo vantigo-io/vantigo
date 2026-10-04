@@ -321,7 +321,7 @@ export const invoicesCatalog = {
     documentNotFound: "The document no longer exists.",
     couldNotSend: "Could not send",
     "sendWarning.delivery_preference_ehf":
-      "This customer expects EHF. An e-mailed PDF does not meet the e-invoicing duty; phase 2 adds EHF.",
+      "This customer prefers EHF, but this document cannot be sent as EHF from here: you or this installation cannot send EHF. An e-mailed PDF does not meet the e-invoicing duty.",
     "sendWarning.buyer_norwegian_business_required":
       "Norwegian businesses must receive an e-invoice: an e-mailed PDF no longer meets the duty.",
     "sendWarning.buyer_norwegian_business":
@@ -382,7 +382,7 @@ export const invoicesCatalog = {
     "refusal.storage_unavailable":
       "The document store is unavailable, so nothing can be issued, downloaded or sent now.",
     "refusal.ehf_unavailable":
-      "E-invoicing is unavailable: it is switched off, or the access point's credentials are missing or can no longer be read. Enter the access point's key again.",
+      "E-invoicing is not available here: the operator has switched it off, the Peppol lookup is off, the access point's credentials are missing or can no longer be read, or the seller's Peppol id is missing.",
     "refusal.transmissions_active":
       "A document is still on its way through this access point. Wait until it is delivered or failed before removing or switching the credentials.",
     "refusal.invoice_draft": "A draft has no document yet; preview it instead.",
@@ -877,7 +877,7 @@ export const invoicesCatalog = {
     documentNotFound: "Dokumentet finnes ikke lenger.",
     couldNotSend: "Kunne ikke sende",
     "sendWarning.delivery_preference_ehf":
-      "Denne kunden forventer EHF. En PDF på e-post oppfyller ikke plikten til elektronisk faktura; fase 2 legger til EHF.",
+      "Denne kunden foretrekker EHF, men dokumentet kan ikke sendes som EHF herfra: du eller denne installasjonen kan ikke sende EHF. En PDF på e-post oppfyller ikke plikten til e-faktura.",
     "sendWarning.buyer_norwegian_business_required":
       "Norske virksomheter skal motta elektronisk faktura: en PDF på e-post oppfyller ikke lenger plikten.",
     "sendWarning.buyer_norwegian_business":
@@ -937,9 +937,9 @@ export const invoicesCatalog = {
     "refusal.storage_unavailable":
       "Dokumentlageret er utilgjengelig, så ingenting kan utstedes, lastes ned eller sendes nå.",
     "refusal.ehf_unavailable":
-      "E-faktura er utilgjengelig: den er slått av, eller legitimasjonen til aksesspunktet mangler eller kan ikke lenger leses. Skriv inn nøkkelen til aksesspunktet på nytt.",
+      "E-faktura er ikke tilgjengelig her: driftsansvarlig har slått den av, Peppol-oppslaget er slått av, påloggingsdataene til aksesspunktet mangler eller kan ikke lenger leses, eller selgerens Peppol-ID mangler.",
     "refusal.transmissions_active":
-      "Et dokument er fortsatt underveis gjennom dette aksesspunktet. Vent til det er levert eller feilet før du fjerner eller bytter legitimasjonen.",
+      "Et dokument er fortsatt underveis gjennom dette aksesspunktet. Vent til det er levert eller feilet før du fjerner eller bytter påloggingsdataene.",
     "refusal.invoice_draft": "Et utkast har ikke noe dokument ennå; forhåndsvis det i stedet.",
     "refusal.credit_note_not_creditable": "En kreditnota kan ikke selv krediteres.",
     "refusal.series_locked": "Det er utstedt dokumenter i denne serien, så startnummeret kan ikke lenger endres.",

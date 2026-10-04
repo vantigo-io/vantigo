@@ -153,7 +153,7 @@ describe("the Send as EHF dialog", () => {
       503,
       "ehf_unavailable",
       {},
-      "E-invoicing is unavailable: it is switched off, or the access point's credentials are missing or can no longer be read. Enter the access point's key again.",
+      "E-invoicing is not available here: the operator has switched it off, the Peppol lookup is off, the access point's credentials are missing or can no longer be read, or the seller's Peppol id is missing.",
     ],
     [
       503,
