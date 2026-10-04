@@ -1,0 +1,3 @@
+# "<golden file> <rule id>": a fatal rule tolerated on that golden only, with the reason above it; validate fails once it stops firing.
+# BR-S-08: the squaring row (S 15 %, taxable 0.00, VAT -0.03) has no credit-note line at 15 %; the writer's fix is pending.
+credit-note-squaring.xml BR-S-08

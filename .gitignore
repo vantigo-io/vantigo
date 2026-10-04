@@ -497,3 +497,6 @@ $RECYCLE.BIN/
 
 # Go server build outputs (scripts/build-artifacts.sh, GoReleaser)
 /dist/
+
+# The EHF oracle's downloaded artefacts and compiled Schematron (tools/ehf/validate.sh)
+/tools/ehf/.cache/

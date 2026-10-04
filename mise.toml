@@ -8,6 +8,10 @@ bun = "1.3.14"
 go = "1.27.0"
 # Used by CI to scan container images.
 trivy = "0.74.0"
+# Only the EHF oracle (tools/ehf, `mise run ehf:validate`) needs a JDK: Saxon
+# runs the official XSD and Schematron artefacts over the goldens. 21.0.12+101
+# is Adoptium's semver for the 21.0.12.1+1 respin.
+java = "temurin-21.0.12+101.0.LTS"
 
 # Go server: lint, release and supply-chain tools. CI installs only the subset
 # each job needs (mise-action install_args).
@@ -61,6 +65,10 @@ dir = "apps/server"
 # task. Development needs no SMTP configuration.
 env = { APP_ENV = "development", APP_URL = "http://localhost:8080", LOG_LEVEL = "debug", DATABASE_URL = "postgres://vantigo:vantigo@127.0.0.1:55433/vantigo?sslmode=disable", APP_SECRET = "dev-only-app-secret-not-for-production-use" }
 run = "go run ./cmd/vantigo api"
+
+[tasks."ehf:validate"]
+description = "The EHF oracle: the official UBL XSD and the EN 16931 and Peppol Schematron over the goldens and the invalid fixtures"
+run = "bash tools/ehf/validate.sh"
 
 [tasks.artifacts]
 description = "SPA + native server binaries → dist/server/linux/<arch>/vantigo"

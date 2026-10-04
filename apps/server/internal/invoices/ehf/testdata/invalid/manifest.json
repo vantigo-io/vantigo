@@ -1,5 +1,5 @@
 {
-  "about": "Hand-tampered EHF documents and the rule ids each must trip (EHF and KID design D11). Each is a golden under testdata/golden with one change, written once and committed; go test -update never rewrites them. `rules` are the fatal ids the oracle (tools/ehf, the official XSD and Schematron) must report, exactly; `module` are the module's own ids for a check no official rule names. TestPrecheck_AgreesWithTheManifest holds the Go pre-check and invariants to every id here they know. Ids from the artefacts as read at peppol-bis-invoice-3 v3.0.20 and eInvoicing-EN16931 validation-1.3.16; the oracle's first run corrects any guess.",
+  "about": "Hand-tampered EHF documents and the rule ids each must trip (EHF and KID design D11). Each is a golden under testdata/golden with one change, written once and committed; go test -update never rewrites them. `rules` are the fatal ids the oracle (tools/ehf, the official XSD and Schematron) must report, exactly; `module` are the module's own ids for a check no official rule names. TestPrecheck_AgreesWithTheManifest holds the Go pre-check and invariants to every id here they know. Ids as the oracle reports them over peppol-bis-invoice-3 v3.0.20 and eInvoicing-EN16931 validation-1.3.16 (tools/ehf/artefacts.lock); an artefact bump re-checks them.",
   "fixtures": [
     {
       "file": "no-buyer-reference.xml",
@@ -12,7 +12,7 @@
       "file": "malformed-endpoint-scheme.xml",
       "from": "golden/invoice-person.xml",
       "change": "the buyer's cbc:EndpointID schemeID 0088 replaced by 9999, which is not on the EAS list",
-      "rules": ["PEPPOL-EN16931-CL008"],
+      "rules": ["BR-CL-25", "PEPPOL-EN16931-CL008"],
       "module": []
     },
     {

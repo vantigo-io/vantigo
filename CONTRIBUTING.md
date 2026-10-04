@@ -5,17 +5,19 @@ to get productive in the codebase.
 
 ## Getting the stack running
 
-The toolchain is pinned in [`mise.toml`](mise.toml) — Go, Bun and the lint and release
-tools — and developers and CI install it the same way. From the repository root:
+The toolchain is pinned in [`mise.toml`](mise.toml) — Go, Bun, the lint and release
+tools, and a JDK for the EHF oracle — and developers and CI install it the same way.
+From the repository root:
 
 ```bash
-mise install              # Go, Bun, lint and release tools
+mise install              # Go, Bun, lint and release tools, and Java (only for ehf:validate)
 bun install --frozen-lockfile
 
 mise run server:db        # PostgreSQL for tests (55432) and development (55433)
 mise run server:test      # go test against a real PostgreSQL
 mise run server:check     # golangci-lint, govulncheck, shellcheck, actionlint, goreleaser check
 mise run frontend:check   # format, lint, typecheck and tests for every frontend workspace
+mise run ehf:validate     # the official EHF XSD and Schematron over the invoice goldens
 mise run server:dev       # the api command on http://localhost:8080
 mise run smoke            # build the image and smoke-test it end to end
 ```
@@ -23,6 +25,10 @@ mise run smoke            # build the image and smoke-test it end to end
 `mise run server:dev` runs the `api` command, which applies migrations under the
 advisory lock and then serves. It sets a development-only `APP_SECRET`; development
 needs no SMTP configuration.
+
+Java (Temurin 21) is there for the EHF oracle alone — see
+[E-invoice validation](https://docs.vantigo.io/en/contributing/e-invoice-validation/).
+Nothing else needs it, and CI installs it only in the job that runs the oracle.
 
 If `bun` or `go` is not on your `PATH`, prefix the command with `mise exec --`. The
 workspace pins Bun 1.3.14, and a bare `bun` may resolve to a different installation.
