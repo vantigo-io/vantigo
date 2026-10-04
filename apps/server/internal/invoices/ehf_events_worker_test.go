@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint/storecovetest"
 )
@@ -302,5 +303,55 @@ func TestEhfEventsWorker_LeavesAnEventOnATransientFailure(t *testing.T) {
 	}
 	if row := txRow(t, h, held); row.Status != "delivered" {
 		t.Errorf("held = %s, want delivered", row.Status)
+	}
+}
+
+// A cycle needs exactly one pooled connection, the one its advisory lease
+// holds (the branch's smoke failure, PR #124's shape): on the api's pool of
+// four, four lease workers each held one and waited for a second, and
+// /health/ready timed out. On a pool of one, a cycle that reached for a second
+// connection would wait for itself; the deadline turns that hang into this
+// test's failure. Every path runs: nothing awaiting; an awaiting row whose
+// event is read, applied and acknowledged; and a key that cannot be opened,
+// flagged — the credentials read, the flags and the apply all on the lease's
+// connection.
+func TestEhfEventsWorker_RunsTheCycleOnTheOneConnectionItHolds(t *testing.T) {
+	t.Parallel()
+	h, _ := eventsReady(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	one, err := db.Open(ctx, h.Pool().Config().ConnString(), db.WithMaxConns(1))
+	if err != nil {
+		t.Fatalf("open a pool of one: %v", err)
+	}
+	defer one.Close()
+	d := h.Deps()
+	d.Pool = one
+	w := invoices.NewEhfEventsWorker(d)
+
+	if ran, err := w.RunCycle(ctx); err != nil || !ran {
+		t.Fatalf("RunCycle with nothing awaiting on a pool of one = %v, %v; want true, nil", ran, err)
+	}
+
+	tid := plantWithRef(t, h, "submitted", "guid-one")
+	guid := h.storecove.Enqueue(storecovetest.Event{Event: "succeeded", SubmissionGUID: "guid-one"})
+	if ran, err := w.RunCycle(ctx); err != nil || !ran {
+		t.Fatalf("RunCycle with an event on a pool of one = %v, %v; want true, nil", ran, err)
+	}
+	if row := txRow(t, h, tid); row.Status != "delivered" {
+		t.Errorf("row = %s, want delivered", row.Status)
+	}
+	if acked := h.storecove.Acked(); !slices.Equal(acked, []string{guid}) {
+		t.Errorf("acknowledged = %v, want %v", acked, []string{guid})
+	}
+
+	// A key the box cannot open is flagged on the same connection.
+	plantWithRef(t, h, "submitted", "guid-two")
+	plantAccessPointCredentials(t, h)
+	if ran, err := w.RunCycle(ctx); err != nil || !ran {
+		t.Fatalf("RunCycle with an unreadable key on a pool of one = %v, %v; want true, nil", ran, err)
+	}
+	if rejectedAt(t, h) == nil {
+		t.Errorf("rejected_at is not set for the unreadable key")
 	}
 }
