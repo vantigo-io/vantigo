@@ -246,7 +246,7 @@ Every completion is `… WHERE id = @id AND lease_id = @lease AND status = @clai
 
 **Files:** modify `customer_slots.go`, `customer_slots_test.go`, `queries/customers.sql` (only what `transmissions.sql` does not already hold); `srv/integration/{harness_test.go,ehf_test.go}`; the reference's retention and anonymisation paragraphs and `reference/customers.md`'s anonymisation list.
 
-- [ ] **Step 1:** export carries transmissions; erase cancels never-attempted queued rows (count) and keeps the rest; run twice zero. Red; implement.
+- [ ] **Step 1:** export carries transmissions; erase cancels never-attempted queued rows (count) and keeps the rest; run twice zero. Red; implement. *Amended at the review (spec D12, reading 11): a never-attempted queued one is cancelled, leased or not; the worker's status-guarded marker stops its POST (`TestEhfWorker_ACancelledClaimMakesNoPost`).*
 - [ ] **Step 2:** `TestEhf_ARealCustomerIsInvoicedAsEhfEndToEnd` composing customers + invoices with the fake lookup and `storecovetest`: a profile with `peppolId` and `invoiceDelivery: ehf` → issue (a KID) → send-ehf → the submit worker once → `submitted`; an event enqueued → the events worker once → `delivered`; the probe worker once → evidence stored; the `ehf` block and the UBL download.
 - [ ] **Step 3:** `docs:check`; **commit** `feat(invoices): transmissions in the export and the erase, and the customers + invoices EHF integration test`; the per-commit check.
 

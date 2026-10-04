@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -221,6 +222,47 @@ func TestEhfWorker_RefreshesAnAgedLookup(t *testing.T) {
 	wantNext(t, row, now.Add(2*time.Second))
 	if subs := h.storecove.Submissions(); len(subs) != 1 {
 		t.Errorf("submissions = %d, want only fresh's", len(subs))
+	}
+}
+
+// An erase cancels a never-attempted queued row even while a worker holds
+// it (D12): the claim has read the row and is reading its stored UBL when the
+// anonymisation commits, and its marker — stamped only on a row still queued
+// — matches nothing, so the claim stops there. No POST is made, the row stays
+// cancelled without a marker, and nothing is due again.
+func TestEhfWorker_ACancelledClaimMakesNoPost(t *testing.T) {
+	t.Parallel()
+	h, _ := ehfWorking(t)
+	_, tid := queuedEhf(t, h)
+	data := invoices.Module().CustomerPersonalData(disabledDeps(h))
+	var erased []contracts.ErasedData
+	var eraseErr error
+	h.objects.beforeGets(func(key string) {
+		if !strings.HasSuffix(key, ".xml") || erased != nil {
+			return
+		}
+		inTx(t, h, true, func(tx pgx.Tx) {
+			erased, eraseErr = data.EraseCustomerData(context.Background(), tx, customerAcme)
+		})
+	})
+	w := invoices.NewEhfWorker(h.Deps())
+
+	if !processOne(t, w) {
+		t.Fatal("the queued row was not claimed")
+	}
+	if eraseErr != nil || !slices.Contains(erased, contracts.ErasedData{Kind: "invoices.transmissions", Count: 1}) {
+		t.Fatalf("the erase under the claim = %+v, %v; want the leased row cancelled", erased, eraseErr)
+	}
+	if subs := h.storecove.Submissions(); len(subs) != 0 {
+		t.Errorf("submissions = %d, want none: the row was cancelled before its marker", len(subs))
+	}
+	row := txRow(t, h, tid)
+	if row.Status != "cancelled" || row.SubmitAttemptedAt != nil || row.SubmitAttempts != 0 {
+		t.Errorf("the row = %s marker %v attempts %d, want cancelled, no marker, nothing counted", row.Status, row.SubmitAttemptedAt, row.SubmitAttempts)
+	}
+	h.objects.beforeGets(nil)
+	if processOne(t, w) {
+		t.Error("a cancelled row is due again")
 	}
 }
 

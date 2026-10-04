@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -160,9 +161,9 @@ func TestCustomerReferences_ARepointRacingACreditNoteIssueNeverDeadlocks(t *test
 
 // The export (D10): nil when nothing is held; every issued document and draft
 // otherwise, the internal notes included, each issued one with its whole buyer
-// snapshot, a place of delivery when one is set, and empty payments and
-// deliveries when it has none; and a credit note naming the invoice it
-// credits.
+// snapshot, a place of delivery when one is set, and empty payments,
+// deliveries and transmissions when it has none; and a credit note naming
+// the invoice it credits.
 func TestCustomerPersonalData_Export(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
@@ -195,7 +196,7 @@ func TestCustomerPersonalData_Export(t *testing.T) {
 			`"address":{"line1":"Hjemveien 5","postalCode":"5003","city":"Bergen","region":"Vestland","country":"NO"},"language":"en"}`,
 		`"deliveryAddress":{"line1":"Hytta","postalCode":"3580","city":"Geilo","country":"NO"}`, `"internalNote":"Ringte to ganger"`,
 		`"vatRatePercent":"25.00"`, `"drafts":[{"kind":"invoice"`, `"internalNote":"Utkast til neste måned"`, `"quantity":"1.500"`,
-		`"payments":[],"deliveries":[]}`,
+		`"payments":[],"deliveries":[],"transmissions":[]}`,
 	} {
 		if !strings.Contains(raw, want) {
 			t.Errorf("export %s has no %s", raw, want)
@@ -253,6 +254,7 @@ func TestCustomerPersonalData_EraseDeletesDraftsAndKeepsDocuments(t *testing.T) 
 	if got, want := erase(true), []contracts.ErasedData{
 		{Kind: "invoices.drafts", Count: 3}, {Kind: "invoices.documents", Count: 0},
 		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
+		{Kind: "invoices.transmissions", Count: 0},
 	}; !slices.Equal(got, want) {
 		t.Errorf("erased = %+v, want %+v", got, want)
 	}
@@ -268,6 +270,7 @@ func TestCustomerPersonalData_EraseDeletesDraftsAndKeepsDocuments(t *testing.T) 
 	if got, want := erase(true), []contracts.ErasedData{
 		{Kind: "invoices.drafts", Count: 0}, {Kind: "invoices.documents", Count: 0},
 		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
+		{Kind: "invoices.transmissions", Count: 0},
 	}; !slices.Equal(got, want) {
 		t.Errorf("a second erase = %+v, want zeros", got)
 	}
@@ -323,7 +326,7 @@ func TestCustomerPersonalData_ExportCarriesPaymentsAndDeliveries(t *testing.T) {
 // customer's deliveries keep their address and its payments their note. Run
 // twice it finds nothing, and the marker keeps its first time. With the
 // module disabled: the pool and the clock are all it needs.
-func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFourKinds(t *testing.T) {
+func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFiveKinds(t *testing.T) {
 	t.Parallel()
 	h, _ := sendReady(t)
 	doc := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Konsultasjon", 1, 1000, vat25))).ID)
@@ -357,6 +360,7 @@ func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFourKinds(t *testin
 	if got, want := erase(), []contracts.ErasedData{
 		{Kind: "invoices.drafts", Count: 1}, {Kind: "invoices.documents", Count: 0},
 		{Kind: "invoices.payments", Count: 2}, {Kind: "invoices.deliveries", Count: 2},
+		{Kind: "invoices.transmissions", Count: 0},
 	}; !slices.Equal(got, want) {
 		t.Errorf("erased = %+v, want %+v", got, want)
 	}
@@ -389,6 +393,7 @@ func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFourKinds(t *testin
 	if got, want := erase(), []contracts.ErasedData{
 		{Kind: "invoices.drafts", Count: 0}, {Kind: "invoices.documents", Count: 0},
 		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
+		{Kind: "invoices.transmissions", Count: 0},
 	}; !slices.Equal(got, want) {
 		t.Errorf("a second erase = %+v, want zeros", got)
 	}
@@ -535,4 +540,173 @@ func awaitDeliveryInsertWaiting(h *harness) error {
 		time.Sleep(20 * time.Millisecond)
 	}
 	return errors.New("no delivery insert ever waited on a lock")
+}
+
+// exportedTransmissionJSON is one transmission as the export writes it.
+type exportedTransmissionJSON struct {
+	ID                  int64   `json:"id"`
+	DocumentType        string  `json:"documentType"`
+	Status              string  `json:"status"`
+	Provider            string  `json:"provider"`
+	IdempotencyKey      string  `json:"idempotencyKey"`
+	ReceiverParticipant string  `json:"receiverParticipant"`
+	UblSha256           string  `json:"ublSha256"`
+	QueuedAt            string  `json:"queuedAt"`
+	SubmittedAt         *string `json:"submittedAt"`
+	DeliveredAt         *string `json:"deliveredAt"`
+	FailedAt            *string `json:"failedAt"`
+	CancelledAt         *string `json:"cancelledAt"`
+	ResolutionNote      *string `json:"resolutionNote"`
+	Reason              *string `json:"reason"`
+}
+
+// The export (EHF and KID design D12) carries every transmission of each
+// issued document, the oldest first — the provider, the state and its
+// times, the receiver, the idempotency key and the UBL's hash, a person's
+// resolution — and the reason only as the wire answers it, redacted: no
+// e-mail address or participant id from the provider's words, and no bytes.
+// An issued document never sent has none; a draft has no key.
+func TestCustomerSlots_ExportCarriesTransmissions(t *testing.T) {
+	t.Parallel()
+	h, _ := ehfReady(t)
+	doc := issuedAcme(t, h)
+	first := sentAsEhf(t, h, doc.ID).Ehf.Transmissions[0]
+	h.Advance(time.Hour)
+	failedAt := h.Now()
+	h.Exec(t, `UPDATE invoices.transmissions SET status = 'failed', failed_at = $2,
+		last_error = 'Refused by 0192:923609016, ask ola@acme.example', resolution_note = 'Avvist av mottaker', resolved_by_user_id = $3
+		WHERE id = $1`, first.ID, failedAt, uuid.New())
+	h.Advance(time.Hour)
+	second := sentAsEhf(t, h, doc.ID).Ehf.Transmissions[0]
+	never := issuedAcme(t, h)
+	createDraft(t, h, draftBody(customerAcme, line("Utkast", 1, 100, vat25)))
+
+	section, err := invoices.Module().CustomerPersonalData(disabledDeps(h)).ExportCustomerData(context.Background(), customerAcme)
+	if err != nil {
+		t.Fatalf("ExportCustomerData: %v", err)
+	}
+	raw, _ := json.Marshal(section)
+	var file struct {
+		Documents []struct {
+			Number        int64                       `json:"number"`
+			Transmissions *[]exportedTransmissionJSON `json:"transmissions"`
+		} `json:"documents"`
+		Drafts []map[string]json.RawMessage `json:"drafts"`
+	}
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatalf("export %s: %v", raw, err)
+	}
+	if len(file.Documents) != 2 || len(file.Drafts) != 1 {
+		t.Fatalf("export %s: want two documents and a draft", raw)
+	}
+	byNumber := map[int64]*[]exportedTransmissionJSON{}
+	for _, d := range file.Documents {
+		byNumber[d.Number] = d.Transmissions
+	}
+	if got := byNumber[*never.Number]; got == nil || len(*got) != 0 {
+		t.Errorf("the document never sent = %v, want transmissions: []", got)
+	}
+	got := byNumber[*doc.Number]
+	if got == nil || len(*got) != 2 {
+		t.Fatalf("export %s: want the sent document's two transmissions", raw)
+	}
+	failed, queued := (*got)[0], (*got)[1]
+	queuedAt, err := time.Parse(time.RFC3339Nano, first.QueuedAt)
+	if err != nil {
+		t.Fatalf("the wire's queuedAt %q: %v", first.QueuedAt, err)
+	}
+	if failed.ID != first.ID || failed.Status != "failed" || failed.DocumentType != txRow(t, h, first.ID).DocumentType || failed.Provider != "storecove" ||
+		failed.IdempotencyKey != first.IdempotencyKey || failed.ReceiverParticipant != "0192:923609016" ||
+		failed.UblSha256 != first.UblSha256 || !sameInstant(t, failed.QueuedAt, queuedAt) ||
+		failed.FailedAt == nil || !sameInstant(t, *failed.FailedAt, failedAt) ||
+		failed.ResolutionNote == nil || *failed.ResolutionNote != "Avvist av mottaker" {
+		t.Errorf("the first transmission = %+v, want transmission %d failed at %s with its resolution, as the wire answered it %+v",
+			failed, first.ID, failedAt, first)
+	}
+	if failed.Reason == nil || *failed.Reason != "Refused by <participant>, ask <e-mail>" {
+		t.Errorf("the reason = %v, want the provider's words redacted", failed.Reason)
+	}
+	if queued.ID != second.ID || queued.Status != "queued" || queued.SubmittedAt != nil || queued.FailedAt != nil ||
+		queued.CancelledAt != nil || queued.DeliveredAt != nil || queued.ResolutionNote != nil || queued.Reason != nil {
+		t.Errorf("the second transmission = %+v, want transmission %d queued and nothing more", queued, second.ID)
+	}
+	for _, leak := range []string{"ola@acme.example", "Refused by 0192", "ubl_object_key", "documents/", "providerRef", "lease"} {
+		if strings.Contains(string(raw), leak) {
+			t.Errorf("export %s carries %q", raw, leak)
+		}
+	}
+	if _, ok := file.Drafts[0]["transmissions"]; ok {
+		t.Errorf("the draft = %v, want no transmissions key", file.Drafts[0])
+	}
+}
+
+// The erase (D12) cancels every queued transmission that was never
+// attempted — one a worker holds a lease on too, since the worker stamps its
+// marker only on a row still queued (TestEhfWorker_ACancelledClaimMakesNoPost)
+// — and reports them as invoices.transmissions; every other row is the sales
+// record and is kept untouched: a queued one whose crash marker is set (its
+// bytes may have reached the provider), and every submitted, delivered,
+// failed and unconfirmed one; another customer's queued row too. Run twice it
+// reports zero.
+func TestCustomerSlots_EraseCancelsOnlyNeverAttempted(t *testing.T) {
+	t.Parallel()
+	h, _ := ehfReady(t)
+	doc := func() int64 { return issuedAcme(t, h).ID }
+	never := insertTransmission(t, h, doc())
+	attempted := insertTransmission(t, h, doc())
+	h.Exec(t, `UPDATE invoices.transmissions SET submit_attempted_at = $2 WHERE id = $1`, attempted, h.Now())
+	leased := insertTransmission(t, h, doc())
+	// The lease outlives both erases below: it does not save the row.
+	h.Exec(t, `UPDATE invoices.transmissions SET lease_id = 'worker', lease_until = $2 WHERE id = $1`, leased, h.Now().Add(3*time.Hour))
+	kept := map[int64]string{attempted: "queued"}
+	shared := doc()
+	kept[plantTransmissionOn(t, h, shared, "failed")] = "failed"
+	kept[plantTransmissionOn(t, h, shared, "unconfirmed")] = "unconfirmed"
+	for _, status := range []string{"submitted", "delivered"} {
+		kept[plantTransmissionOn(t, h, doc(), status)] = status
+	}
+	other := insertTransmission(t, h, issued(t, h, createDraft(t, h, draftBody(customerPerson, line("A", 1, 100, vat25))).ID).ID)
+	kept[other] = "queued"
+	snapshot := `SELECT to_jsonb(t)::text FROM invoices.transmissions t WHERE id = $1`
+	before := map[int64]string{}
+	for id := range kept {
+		before[id] = modtest.One[string](t, h.Harness, snapshot, id)
+	}
+	data := invoices.Module().CustomerPersonalData(disabledDeps(h))
+	h.Advance(time.Hour)
+	erasedAt := h.Now()
+	erase := func() []contracts.ErasedData {
+		var erased []contracts.ErasedData
+		inTx(t, h, true, func(tx pgx.Tx) {
+			var err error
+			if erased, err = data.EraseCustomerData(context.Background(), tx, customerAcme); err != nil {
+				t.Fatalf("EraseCustomerData: %v", err)
+			}
+		})
+		return erased
+	}
+	transmissions := func(erased []contracts.ErasedData) []contracts.ErasedData {
+		return slices.DeleteFunc(slices.Clone(erased), func(e contracts.ErasedData) bool { return e.Kind != "invoices.transmissions" })
+	}
+
+	if got, want := transmissions(erase()), []contracts.ErasedData{{Kind: "invoices.transmissions", Count: 2}}; !slices.Equal(got, want) {
+		t.Errorf("erased = %+v, want %+v", got, want)
+	}
+	for what, id := range map[string]int64{"never-attempted": never, "leased never-attempted": leased} {
+		if row := txRow(t, h, id); row.Status != "cancelled" || row.CancelledAt == nil || !row.CancelledAt.Equal(erasedAt) {
+			t.Errorf("the %s row = %s cancelled at %v, want cancelled at the clock's %s", what, row.Status, row.CancelledAt, erasedAt)
+		}
+	}
+	for id, status := range kept {
+		if after := modtest.One[string](t, h.Harness, snapshot, id); after != before[id] {
+			t.Errorf("the %s transmission %d changed: %s, want untouched %s", status, id, after, before[id])
+		}
+	}
+	h.Advance(time.Hour)
+	if got, want := transmissions(erase()), []contracts.ErasedData{{Kind: "invoices.transmissions", Count: 0}}; !slices.Equal(got, want) {
+		t.Errorf("a second erase = %+v, want %+v", got, want)
+	}
+	if row := txRow(t, h, never); row.CancelledAt == nil || !row.CancelledAt.Equal(erasedAt) {
+		t.Errorf("after a second erase the cancelled row's time = %v, want its first %s", row.CancelledAt, erasedAt)
+	}
 }

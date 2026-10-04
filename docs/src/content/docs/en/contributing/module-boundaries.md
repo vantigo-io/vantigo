@@ -292,12 +292,14 @@ never under a lock, and provides no single-provider contract. It fills both
 many-provider slots: as a `CustomerReferenceHolder` it re-points every document of a
 merged-away customer, drafts and issued alike (`invoices.invoices`), the immutability
 trigger allowing exactly `customer_id` to change on an issued one; as
-`CustomerPersonalData` it exports a person's documents and drafts with their payments
-and deliveries and, on anonymisation, locks the person's documents, writes a
-module-private marker that refuses every later send, blanks every delivery's
+`CustomerPersonalData` it exports a person's documents and drafts with their payments,
+deliveries and EHF transmissions and, on anonymisation, locks the person's documents,
+writes a module-private marker that refuses every later send, blanks every delivery's
 recipient (`invoices.deliveries`), blanks every payment's note (`invoices.payments`,
-the notes blanked), deletes the drafts (`invoices.drafts`) and keeps the issued
-documents and their payments under bokføringsloven § 13 (`invoices.documents`, at 0).
+the notes blanked), cancels every queued transmission never attempted
+(`invoices.transmissions`), deletes the drafts (`invoices.drafts`) and keeps the issued
+documents, their payments and every other transmission under bokføringsloven § 13
+(`invoices.documents`, at 0).
 For those gates `contracts.CustomerBillingProfile` carries the customer's `Status`
 (`active`, `disabled`, `archived`) and `MergedInto`, the one change to the
 customers contract Invoices made: `disabled` is "blocked for invoicing", and an

@@ -1127,19 +1127,23 @@ read — **unconfirmed**. **The operator's backup of the object store is part of
 retention**: the only storage driver is `fs`, with no WORM, so the PDFs are only as safe
 as the volume and its backups ([storage](/en/admin/object-storage/)).
 
-**Payments and deliveries are kept with the document** they hang off. A payment
-registration is bookkeeping material read under the same § 13 — **unconfirmed**, see
-[Payments](#payments-and-the-state-of-an-invoice) — and a delivery is the record of when
-the claim was handed to the mail server, not of its receipt; neither is ever deleted,
-and their foreign keys refuse a document's deletion.
+**Payments, deliveries and transmissions are kept with the document** they hang off. A
+payment registration is bookkeeping material read under the same § 13 — **unconfirmed**,
+see [Payments](#payments-and-the-state-of-an-invoice) — and a delivery is the record of
+when the claim was handed to the mail server, not of its receipt; none is ever deleted,
+and their foreign keys refuse a document's deletion. An EHF transmission's UBL is the
+sales document as it was sent, as the PDF is, and the receipt and delivered copy its
+evidence stores are the record of the transmission: like the PDF, they are kept five
+years after the end of the financial year, and the module never deletes an object
+([Sending as EHF](#sending-as-ehf)).
 
 The module fills both customer slots ([module boundaries](/en/contributing/module-boundaries/)):
 
 - **Merging customers** (`contracts.CustomerReferenceHolder`) re-points every document of
   the absorbed customer, drafts and issued, reported as `invoices.invoices`. An issued
   document keeps its buyer snapshot — the id is not printed, the snapshot is — and its
-  revision. Payments and deliveries hang off the document by id and carry no customer
-  id, so they follow it and are not reported.
+  revision. Payments, deliveries and transmissions hang off the document by id and
+  carry no customer id, so they follow it and are not reported.
 - **A person's export** (`contracts.CustomerPersonalData`) hands over every issued
   document and every draft, each with its lines, a structured `buyer` — the full
   snapshot: name, type, organisation number, foreign id, GLN, Peppol id, language and
@@ -1150,14 +1154,23 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   An issued document also carries its `payments` — every registration, with its paid
   date, amount, currency, reference, note and registration time, and a removed one's
   removal time and reason: a bank reference often names the payer, and a note is staff
-  free text about them — and its `deliveries`, each with its recipient, sent time and
-  subject. A draft has neither.
+  free text about them — its `deliveries`, each with its recipient, sent time and
+  subject, and its `transmissions`, every EHF transmission of it, the oldest first,
+  each with its id, document type, status, provider, the receiver's Peppol id, the
+  idempotency key, the UBL's SHA-256, the time it was queued, submitted, delivered,
+  failed or cancelled, a resolution's note, and the reason as the API answers it —
+  e-mail addresses and participant ids redacted, never `last_error` as stored. No
+  bytes are exported: not the UBL, not the evidence, not their object keys, not the
+  provider's reference. A draft has none of the three.
 - **Anonymisation**, inside the customers module's transaction, in this order: it locks
   the person's documents `FOR UPDATE`, newest first — the merge holder's statement, the
   module's lock order — so a delivery insert, whose trigger takes the document `FOR
   SHARE`, waits for it; writes the marker in `invoices.erased_customers`; blanks the
   recipient of every delivery of those documents; blanks the note of every payment of
-  them, live and removed; and deletes the drafts. It reports four kinds, in this order:
+  them, live and removed; cancels every `queued` transmission of them that was never
+  attempted (`submit_attempted_at` NULL), leased or not — a worker holding one stamps
+  its marker only on a row still `queued`, so it finds the row cancelled and makes no
+  call; and deletes the drafts. It reports five kinds, in this order:
   - `invoices.drafts` — the drafts deleted, invoice and credit-note drafts alike: a
     draft is not a sales document and has no retention basis, so GDPR art. 17 applies;
   - `invoices.documents`, at 0 — every issued document, its buyer snapshot and its
@@ -1171,7 +1184,16 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
     `removal_reason` stays too: it is the audit trail kept with the registration — it
     says why a registration was withdrawn, not who the person is;
   - `invoices.deliveries` — the deliveries whose recipient was blanked: the rows stay as
-    the record of when the claim was handed to the mail server, the address gone.
+    the record of when the claim was handed to the mail server, the address gone;
+  - `invoices.transmissions` — the transmissions cancelled, `cancelled_at` the
+    anonymisation's time: one never attempted has sent nothing, so it is not sent after
+    the person is gone. Every other row is kept untouched — a `queued` one whose crash
+    marker is set (its bytes may already be with the provider, so the worker settles
+    it), and every `submitted`, `delivered`, `failed`, `unconfirmed` and `cancelled`
+    one: the UBL is the sales document under § 13 and carries the buyer snapshot, and
+    the receiver's Peppol id is an organisation's or the snapshot's own. Its resolution
+    note stays, the audit trail of a person's verdict, as a payment's removal reason
+    does. The insert trigger refuses any later transmission for the customer.
 
   Run twice, it finds nothing and reports zeros, and the marker keeps its first time.
   The marker refuses every later send (`customer_anonymised`), blanks any delivery

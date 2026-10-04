@@ -131,7 +131,6 @@ const cancelCustomerUnattemptedTransmissions = `-- name: CancelCustomerUnattempt
 UPDATE invoices.transmissions SET status = 'cancelled', cancelled_at = $1::timestamptz
 WHERE invoice_id IN (SELECT i.id FROM invoices.invoices i WHERE i.customer_id = $2)
   AND status = 'queued' AND submit_attempted_at IS NULL
-  AND (lease_until IS NULL OR lease_until < $1::timestamptz)
 `
 
 type CancelCustomerUnattemptedTransmissionsParams struct {
@@ -140,8 +139,10 @@ type CancelCustomerUnattemptedTransmissionsParams struct {
 }
 
 // CancelCustomerUnattemptedTransmissions cancels, at an erase, every queued
-// transmission of the customer's documents that was never attempted and is
-// not leased (D12).
+// transmission of the customer's documents that was never attempted, leased
+// or not (D12): a worker holding one stamps its marker only on a row still
+// queued (MarkSubmitAttempted), so it finds the row cancelled and never
+// posts it.
 func (q *Queries) CancelCustomerUnattemptedTransmissions(ctx context.Context, arg CancelCustomerUnattemptedTransmissionsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, cancelCustomerUnattemptedTransmissions, arg.Now, arg.CustomerID)
 	if err != nil {
@@ -247,6 +248,68 @@ func (q *Queries) ClaimTransmission(ctx context.Context, arg ClaimTransmissionPa
 		&i.CreatedByUserID,
 	)
 	return i, err
+}
+
+const everyTransmissionOfDocuments = `-- name: EveryTransmissionOfDocuments :many
+SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id FROM invoices.transmissions
+WHERE invoice_id = ANY($1::bigint[])
+ORDER BY invoice_id, id
+`
+
+// EveryTransmissionOfDocuments is every transmission of a set of documents,
+// each document's oldest first: a person's export (D12).
+func (q *Queries) EveryTransmissionOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesTransmission, error) {
+	rows, err := q.db.Query(ctx, everyTransmissionOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesTransmission
+	for rows.Next() {
+		var i InvoicesTransmission
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.Provider,
+			&i.IdempotencyKey,
+			&i.SenderParticipant,
+			&i.ReceiverParticipant,
+			&i.DocumentType,
+			&i.ProcessID,
+			&i.UblObjectKey,
+			&i.UblSha256,
+			&i.PdfSha256,
+			&i.Status,
+			&i.ProviderRef,
+			&i.EvidenceObjectKey,
+			&i.EvidenceSha256,
+			&i.SubmitAttempts,
+			&i.PollAttempts,
+			&i.NextAttemptAt,
+			&i.SubmitAttemptedAt,
+			&i.LeaseID,
+			&i.LeaseUntil,
+			&i.LastError,
+			&i.LookupRegistered,
+			&i.LookupCanReceive,
+			&i.LookupAt,
+			&i.QueuedAt,
+			&i.SubmittedAt,
+			&i.DeliveredAt,
+			&i.FailedAt,
+			&i.CancelledAt,
+			&i.ResolvedByUserID,
+			&i.ResolutionNote,
+			&i.CreatedByUserID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getTransmission = `-- name: GetTransmission :one

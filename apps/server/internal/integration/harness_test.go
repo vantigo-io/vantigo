@@ -12,6 +12,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/customers"
 	"github.com/vantigo-io/vantigo/server/internal/expenses"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint/storecovetest"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
@@ -116,6 +117,23 @@ func newInstallationWith(t *testing.T, opts []modtest.Option, names ...string) *
 		all = append(all, modtest.WithModule(moduleNamed(t, name)))
 	}
 	return modtest.New(t, all...)
+}
+
+// withStorecove starts a test Storecove for t and answers it with the
+// options that point an installation's access point at it, as the invoices
+// suite's own harness does: INVOICES_STORECOVE_BASE_URL set to its URL and
+// Deps.HTTPTransport trusting its TLS listener, so the invoices module's own
+// Storecove adapter — built by the EHF workers from the stored credentials —
+// reaches it and never the real provider. The transport is the
+// installation's only one: customers' Brreg client would reach the test
+// server too, which the tests that take these options never ask it to.
+func withStorecove(t *testing.T) (*storecovetest.Server, []modtest.Option) {
+	t.Helper()
+	storecove := storecovetest.New(t)
+	return storecove, []modtest.Option{
+		modtest.WithEnv("INVOICES_STORECOVE_BASE_URL", storecove.URL()),
+		modtest.WithTransport(storecove.Transport()),
+	}
 }
 
 // recorder validates every exchange of every test here against every

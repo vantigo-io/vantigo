@@ -3,6 +3,7 @@ package invoices
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -22,11 +23,12 @@ import (
 
 // The kinds this module reports, "<module>.<what>" in the API's camelCase.
 const (
-	kindInvoicesInvoices   = "invoices.invoices"
-	kindInvoicesDrafts     = "invoices.drafts"
-	kindInvoicesDocuments  = "invoices.documents"
-	kindInvoicesPayments   = "invoices.payments"
-	kindInvoicesDeliveries = "invoices.deliveries"
+	kindInvoicesInvoices      = "invoices.invoices"
+	kindInvoicesDrafts        = "invoices.drafts"
+	kindInvoicesDocuments     = "invoices.documents"
+	kindInvoicesPayments      = "invoices.payments"
+	kindInvoicesDeliveries    = "invoices.deliveries"
+	kindInvoicesTransmissions = "invoices.transmissions"
 )
 
 // customerReferenceHolder is this module's contracts.CustomerReferenceHolder:
@@ -111,11 +113,12 @@ type exportedDocument struct {
 	Note            string           `json:"note,omitempty"`
 	InternalNote    string           `json:"internalNote,omitempty"`
 	Lines           []exportedLine   `json:"lines"`
-	// Payments and Deliveries are an issued document's, empty when it has
-	// none; a draft has neither, and nil leaves the key out (payments and
-	// delivery design D6).
-	Payments   []exportedPayment  `json:"payments,omitzero"`
-	Deliveries []exportedDelivery `json:"deliveries,omitzero"`
+	// Payments, Deliveries and Transmissions are an issued document's,
+	// empty when it has none; a draft has none of them, and nil leaves the
+	// key out (payments and delivery design D6, EHF and KID design D12).
+	Payments      []exportedPayment      `json:"payments,omitzero"`
+	Deliveries    []exportedDelivery     `json:"deliveries,omitzero"`
+	Transmissions []exportedTransmission `json:"transmissions,omitzero"`
 }
 
 // exportedPayment is one registration of money received, as it was
@@ -139,6 +142,51 @@ type exportedDelivery struct {
 	Recipient string    `json:"recipient"`
 	SentAt    time.Time `json:"sentAt"`
 	Subject   string    `json:"subject"`
+}
+
+// exportedTransmission is one EHF transmission of an issued document (EHF
+// and KID design D12): the provider, the document type, the state and the
+// time of each, the receiver's Peppol id, the idempotency key and the
+// submitted UBL's hash, and a resolution's note — no bytes, no object key,
+// no provider reference. The reason is the wire's: the provider's or the
+// receiver's words redacted, never last_error as stored.
+type exportedTransmission struct {
+	ID                  int64      `json:"id"`
+	DocumentType        string     `json:"documentType"`
+	Status              string     `json:"status"`
+	Provider            string     `json:"provider"`
+	IdempotencyKey      string     `json:"idempotencyKey"`
+	ReceiverParticipant string     `json:"receiverParticipant"`
+	UblSha256           string     `json:"ublSha256"`
+	QueuedAt            time.Time  `json:"queuedAt"`
+	SubmittedAt         *time.Time `json:"submittedAt,omitempty"`
+	DeliveredAt         *time.Time `json:"deliveredAt,omitempty"`
+	FailedAt            *time.Time `json:"failedAt,omitempty"`
+	CancelledAt         *time.Time `json:"cancelledAt,omitempty"`
+	ResolutionNote      string     `json:"resolutionNote,omitempty"`
+	Reason              string     `json:"reason,omitempty"`
+}
+
+// utcOf is a nullable time in UTC, nil when unset.
+func utcOf(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	return ptr(t.UTC())
+}
+
+// transmissionExported is one transmission row as the export writes it.
+func transmissionExported(t store.InvoicesTransmission) exportedTransmission {
+	e := exportedTransmission{
+		ID: t.ID, DocumentType: t.DocumentType, Status: t.Status, Provider: t.Provider,
+		IdempotencyKey: t.IdempotencyKey.String(), ReceiverParticipant: t.ReceiverParticipant, UblSha256: t.UblSha256,
+		QueuedAt: t.QueuedAt.UTC(), SubmittedAt: utcOf(t.SubmittedAt), DeliveredAt: utcOf(t.DeliveredAt),
+		FailedAt: utcOf(t.FailedAt), CancelledAt: utcOf(t.CancelledAt), ResolutionNote: orEmpty(t.ResolutionNote),
+	}
+	if t.LastError != nil && strings.TrimSpace(*t.LastError) != "" {
+		e.Reason = redactReason(*t.LastError)
+	}
+	return e
 }
 
 // exportedCredits is the issued invoice a credit note credits, as it was
@@ -245,11 +293,11 @@ func decimalOf(n pgtype.Numeric, places int) (string, error) {
 // every issued document and every draft, with the buyer snapshot, the place
 // of delivery and the internal note: the customers export treats
 // staff-written notes as data held about the person. An issued document
-// carries its payments, removed ones with their removal, and its deliveries
-// (payments and delivery design D6). Every read is in one REPEATABLE READ,
-// READ ONLY transaction, as the customers module reads its own part of the
-// export: a payment or a send landing midway cannot make the file disagree
-// with itself.
+// carries its payments, removed ones with their removal, its deliveries
+// (payments and delivery design D6) and its EHF transmissions (EHF and KID
+// design D12). Every read is in one REPEATABLE READ, READ ONLY transaction,
+// as the customers module reads its own part of the export: a payment or a
+// send landing midway cannot make the file disagree with itself.
 func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
 	var section any
 	err := db.WithTx(ctx, p.pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
@@ -314,6 +362,14 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 		deliveriesOf[d.InvoiceID] = append(deliveriesOf[d.InvoiceID],
 			exportedDelivery{Recipient: d.Recipient, SentAt: d.SentAt.UTC(), Subject: d.Subject})
 	}
+	transmissions, err := q.EveryTransmissionOfDocuments(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read customer %d's transmissions: %w", customerID, err)
+	}
+	transmissionsOf := map[int64][]exportedTransmission{}
+	for _, t := range transmissions {
+		transmissionsOf[t.InvoiceID] = append(transmissionsOf[t.InvoiceID], transmissionExported(t))
+	}
 	// A credit note's customer is its original's (credits.go), so the
 	// original is almost always among docs; one that is not is read.
 	byID := make(map[int64]store.InvoicesInvoice, len(docs))
@@ -370,6 +426,7 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 		if d.Status == statusIssued {
 			e.Payments = append([]exportedPayment{}, paymentsOf[d.ID]...)
 			e.Deliveries = append([]exportedDelivery{}, deliveriesOf[d.ID]...)
+			e.Transmissions = append([]exportedTransmission{}, transmissionsOf[d.ID]...)
 			section.Documents = append(section.Documents, e)
 		} else {
 			section.Drafts = append(section.Drafts, e)
@@ -384,18 +441,29 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 // insert — whose trigger takes the document FOR SHARE — waits for this
 // transaction; writes the erased-customer marker, which that trigger reads
 // after its wait and which refuses any later send; blanks every delivery's
-// recipient; blanks every payment's note, live and removed; and deletes the
-// drafts. A draft is not a salgsdokument, so it has no retention basis and
-// GDPR art. 17 applies; an issued document, its buyer snapshot and its
-// payments are bookkeeping material kept under bokføringsloven § 13 — five
-// years after the end of the financial year — which is why
-// invoices.documents reports 0 and a payment keeps its date, its amount and
-// the bank's reference. A payment's note is staff free text about the
-// person, which no retention rule needs: invoices.payments reports the notes
-// blanked. A delivery is kept as the record of when the claim was handed to
-// the mail server, its address gone. contracts.ErasedData carries no reason;
-// docs/src/content/docs/en/reference/invoices.md and the anonymisation table in docs/src/content/docs/en/reference/customers.md say it.
-// Run twice, it reports zeros and the marker keeps its first time.
+// recipient; blanks every payment's note, live and removed; cancels every
+// queued EHF transmission of theirs that was never attempted, leased or not
+// (EHF and KID design D12); and deletes the drafts. A draft is
+// not a salgsdokument, so it has no retention basis and GDPR art. 17
+// applies; an issued document, its buyer snapshot and its payments are
+// bookkeeping material kept under bokføringsloven § 13 — five years after
+// the end of the financial year — which is why invoices.documents reports 0
+// and a payment keeps its date, its amount and the bank's reference. A
+// payment's note is staff free text about the person, which no retention
+// rule needs: invoices.payments reports the notes blanked. A delivery is
+// kept as the record of when the claim was handed to the mail server, its
+// address gone. A transmission is kept whole — its UBL is the sales
+// document as the PDF is, and its receiver is an organisation's id or the
+// snapshot's own — except a queued one never attempted: it has sent
+// nothing, so it is cancelled rather than sent after the person is gone,
+// and invoices.transmissions reports those. A worker holding one stamps its
+// marker only on a row still queued, so it finds the row cancelled and makes
+// no call. One whose crash marker is set may already be with the provider
+// and is left to the worker.
+// contracts.ErasedData carries no reason;
+// docs/src/content/docs/en/reference/invoices.md and the anonymisation table
+// in docs/src/content/docs/en/reference/customers.md say it. Run twice, it
+// reports zeros and the marker keeps its first time.
 func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, customerID int32) ([]contracts.ErasedData, error) {
 	q := store.New(tx)
 	if err := q.LockCustomerDocuments(ctx, store.LockCustomerDocumentsParams{FromCustomerID: customerID, IntoCustomerID: customerID}); err != nil {
@@ -412,6 +480,12 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	if err != nil {
 		return nil, fmt.Errorf("invoices: blank customer %d's payment notes: %w", customerID, err)
 	}
+	cancelled, err := q.CancelCustomerUnattemptedTransmissions(ctx, store.CancelCustomerUnattemptedTransmissionsParams{
+		CustomerID: customerID, Now: p.clock(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("invoices: cancel customer %d's unattempted transmissions: %w", customerID, err)
+	}
 	drafts, err := q.DeleteCustomerDrafts(ctx, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: erase customer %d's drafts: %w", customerID, err)
@@ -421,5 +495,6 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 		{Kind: kindInvoicesDocuments, Count: 0},
 		{Kind: kindInvoicesPayments, Count: notes},
 		{Kind: kindInvoicesDeliveries, Count: blanked},
+		{Kind: kindInvoicesTransmissions, Count: cancelled},
 	}, nil
 }
