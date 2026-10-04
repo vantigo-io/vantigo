@@ -910,10 +910,12 @@ Two background workers carry a queued transmission to its outcome
 ([design D9](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-03-invoices-ehf-peppol-kid-design.md)).
 Both run only when `INVOICES_EHF_ENABLED` is on — off, neither is handed to the
 runner — and both run with `PEPPOL_LOOKUP_ENABLED` off too: what is already submitted
-still completes, and a `queued` row is left alone, unleased, with one log line per
-cycle. Each builds the access-point adapter from the credentials row on every claim or
-drain; a row it cannot open — no credentials, or a key the secrets box cannot open — is
-logged at error and sets `rejected_at`, which meta reports as
+still completes, the 48-hour age cap still reaches a `queued` row (it makes no call),
+and short of it a `queued` row is left alone, unleased, said in one log line when the
+number left changes or an hour after it last was. Each builds the access-point adapter
+from the credentials row on every claim or drain. Without a credentials row the claim
+or drain waits, logged at error; a key that cannot be opened, or settings that do not
+decode, also sets `rejected_at`, which meta reports as
 `accessPointCredentialsRejected`. Every time they judge is the module clock's; no
 document is locked and no call is made inside a transaction.
 
@@ -932,8 +934,10 @@ always redacted as `reason` is. What a claim does depends on the row:
   lookup, not a provider call) and the `lookup_*` columns refreshed; a receiver no longer
   registered or no longer taking the document type ends the row `failed` with
   `receiver_not_receivable`, the marker untouched. A lookup that fails waits on the
-  backoff. Then the adapter, the stored UBL read and checked against `ubl_sha256` (gone
-  or altered: an error log and an hour's wait — never a new render), and **the crash
+  backoff. Then the adapter, the stored UBL read — bounded as a provider call is — and
+  checked against `ubl_sha256` (gone or altered: an error log and an hour's wait — never
+  a new render). A claim with less of its lease left than the call may take (30 seconds)
+  stops there: the row is due again at once, unmarked and uncounted. Then **the crash
   marker** `submit_attempted_at`, stamped and committed immediately before `Submit`:
   - accepted → `submitted` with the provider's reference and `submitted_at`, the first
     probe five minutes out;
@@ -955,14 +959,19 @@ always redacted as `reason` is. What a claim does depends on the row:
   hourly. The evidence is the status: not yet available means not yet delivered, an
   answer means **`delivered`** (`delivered_at` the probe's time) even if the provider's
   event was lost. **Seven days after `submitted_at`** without an outcome the row becomes
-  `unconfirmed`. `submitted` **without** a reference is never probed: it is looked at
-  hourly and becomes `unconfirmed` at seven days, never probed again.
+  `unconfirmed`. A probe answered 429 or 401/403 is treated as the submit's is — the
+  `Retry-After`, or an hour with `rejected_at` set — and counts no probe. `submitted`
+  **without** a reference is never probed: it is looked at hourly and becomes
+  `unconfirmed` at seven days, never probed again.
 - **`delivered`** without its evidence stays claimable: the next claim fetches the
   evidence again and stores it once — `Exists` before `Put` — beside the document's PDF:
   the provider's receipt as `documents/<id>/<number>-<transmission>-receipt.json` and the
   document the provider actually transmitted (Storecove regenerates the UBL it was
   given) as `…-delivered.xml`; `evidence_object_key` is the receipt's key and
-  `evidence_sha256` its hash. A failed fetch or store is retried on the probe cadence.
+  `evidence_sha256` the hash of the receipt **as stored** — an object an earlier claim
+  stored is kept and read back for it, since every fetch of the evidence differs (its
+  document URLs are presigned and expire). A failed fetch or store is retried on the
+  probe cadence.
 - **`unconfirmed`** is a person's to resolve ([Resolve](#sending-as-ehf)). With a
   reference the worker still probes it **once a day for thirty days** — the thirty days
   after the seven — and when the evidence answers it resolves the row itself:
@@ -975,7 +984,7 @@ always redacted as `reason` is. What a claim does depends on the row:
 under a PostgreSQL advisory lock (key `0x494E5645484631`, "INVEHF1"), so one replica
 drains at a time. It asks the provider nothing unless a row awaits an event — one
 `submitted` or `unconfirmed`, or `queued` with the marker set — and then reads until the
-queue is empty. Each event is applied **idempotently and without a row lease**: matched
+queue is empty, at most 500 events a cycle; the next cycle reads on. Each event is applied **idempotently and without a row lease**: matched
 by its provider reference, or by its idempotency key when the row never learned the
 reference (which it then takes), and only while the row is `queued`, `submitted` or
 `unconfirmed`. `succeeded` makes it `delivered` at the worker's clock (Storecove's
@@ -985,8 +994,14 @@ resolved carries the note "Resolved by the provider's event." and no user. An ev
 matches no row in flight — a duplicate, a row the probe already delivered, a failed row,
 a submission not of this installation — is logged by its guid. **Every event read is
 acknowledged**, so **an installation must have its provider account to itself**: another
-system on the same account would lose its events. A read or an acknowledgement that
-fails ends the cycle, and the next one reads the same event again.
+system on the same account would lose its events. An event the database refuses — a
+value the column cannot hold (SQLSTATE class 22), a constraint (class 23) or a trigger's
+refusal (`P0001`) — would be refused every cycle and, the queue being first in, first
+out, hold every event behind it: it is **dead-lettered**, logged at error with its guid,
+reference, state and SQLSTATE (never the provider's wording), and acknowledged. Any
+other failure to apply it — a lost connection, a lock timeout — and a read or an
+acknowledgement that fails end the cycle unacknowledged, and the next one reads the same
+event again.
 
 ## The journal
 

@@ -588,14 +588,80 @@ func TestEhfWorker_StoresTheEvidenceOnce(t *testing.T) {
 		t.Fatalf("the first claim stored %d objects, want the receipt and the delivered copy", afterFirst-puts)
 	}
 
+	// The provider's evidence differs on every fetch — its document URLs are
+	// presigned and expire — so the next claim's receipt is not the stored
+	// one, and the hash recorded must be the stored receipt's.
+	signed := storecovetest.Document{URL: strings.TrimSuffix(h.storecove.URL(), "/api/v2") + "/documents/" + guid + "/0?sig=2"}
+	refetched := h.storecove.Evidence(guid, signed)
 	h.Advance(61 * time.Second)
 	processOne(t, w)
 	_, afterSecond, _ := h.objects.stored()
 	if afterSecond != afterFirst {
 		t.Errorf("the second claim wrote %d objects again, want none: they exist", afterSecond-afterFirst)
 	}
-	if row := txRow(t, h, tid); row.EvidenceObjectKey == nil || row.LastError != nil {
-		t.Errorf("after the second claim: evidence %v error %v, want recorded and cleared", row.EvidenceObjectKey, row.LastError)
+	row = txRow(t, h, tid)
+	if row.EvidenceObjectKey == nil || row.LastError != nil {
+		t.Fatalf("after the second claim: evidence %v error %v, want recorded and cleared", row.EvidenceObjectKey, row.LastError)
+	}
+	stored := h.objects.object(*row.EvidenceObjectKey)
+	if string(stored) == string(refetched) {
+		t.Fatalf("the re-planted evidence is the stored one; the test cannot tell them apart")
+	}
+	if row.EvidenceSha256 == nil || *row.EvidenceSha256 != sha(stored) {
+		t.Errorf("evidence_sha256 = %v, want the stored receipt's %s (not this fetch's %s)", deref(row.EvidenceSha256), sha(stored), sha(refetched))
+	}
+}
+
+// A probe's completion names the status its claim saw: an event that failed
+// the row while the probe's call ran leaves the probe's delivery a 0-row
+// no-op, never the trigger's refusal of a change to a final row.
+func TestEhfWorker_AProbeAfterAnEventIsANoOp(t *testing.T) {
+	h, _ := ehfWorking(t)
+	_, tid := queuedEhf(t, h)
+	w := invoices.NewEhfWorker(h.Deps())
+	processOne(t, w)
+	key := txRow(t, h, tid).IdempotencyKey
+	h.storecove.Evidence(h.storecove.Submissions()[0].GUID, storecovetest.Document{Body: []byte("<Invoice/>")})
+	h.Advance(5 * time.Minute)
+	defer invoices.SetEhfAfterCall(func(ctx context.Context, id int64) {
+		if id != tid {
+			return
+		}
+		if n, err := store.New(h.Pool()).ApplyEventFailed(ctx, store.ApplyEventFailedParams{
+			Now: h.Now(), LastError: ptr("refused by the receiver"), IdempotencyKey: key,
+		}); err != nil || n != 1 {
+			t.Errorf("the event under the probe = %d rows, %v; want 1", n, err)
+		}
+	})()
+	if _, err := w.ProcessOne(context.Background()); err != nil {
+		t.Fatalf("the probe after the event = %v, want a 0-row no-op", err)
+	}
+	if row := txRow(t, h, tid); row.Status != "failed" || row.DeliveredAt != nil {
+		t.Errorf("row = %s delivered_at %v, want failed as the event left it", row.Status, row.DeliveredAt)
+	}
+}
+
+// A claim whose lookup and store read left less of its lease than the call
+// may take does not submit: the row is due again at once, its marker
+// untouched and nothing counted.
+func TestEhfWorker_DoesNotSubmitOnAnExpiringLease(t *testing.T) {
+	t.Parallel()
+	h, fake := ehfWorking(t)
+	_, tid := queuedEhf(t, h)
+	w := invoices.NewEhfWorker(h.Deps())
+	h.Advance(25 * time.Hour)
+	fake.whenCalled(func(string) { h.Advance(31 * time.Second) })
+	processOne(t, w)
+	row := txRow(t, h, tid)
+	if row.Status != "queued" || row.SubmitAttemptedAt != nil || row.SubmitAttempts != 0 || row.LeaseID != nil || len(h.storecove.Submissions()) != 0 {
+		t.Fatalf("after a slow lookup: %s marker %v attempts %d lease %v, %d submissions; want queued, unmarked, uncounted, released, none",
+			row.Status, row.SubmitAttemptedAt, row.SubmitAttempts, row.LeaseID, len(h.storecove.Submissions()))
+	}
+	wantNext(t, row, h.Now())
+	fake.whenCalled(nil)
+	processOne(t, w)
+	if row := txRow(t, h, tid); row.Status != "submitted" {
+		t.Errorf("the next claim = %s, want submitted", row.Status)
 	}
 }
 
@@ -767,7 +833,8 @@ func TestEhfWorker_RegisteredOnlyWhenEnabled(t *testing.T) {
 
 // An installation whose Peppol lookup is disabled still probes, resolves and
 // stores evidence, but leaves a queued row alone — unleased, untouched — and
-// says so once per cycle.
+// says so when the number it leaves changes, or an hour on; the 48-hour age
+// cap, which makes no call, still reaches the row.
 func TestEhfWorker_LookupDisabledLeavesQueuedRowsAlone(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, modtest.WithEnv("PEPPOL_LOOKUP_ENABLED", "0"))
@@ -792,6 +859,45 @@ func TestEhfWorker_LookupDisabledLeavesQueuedRowsAlone(t *testing.T) {
 	}
 	if n := strings.Count(h.Logs(), "left alone: the Peppol lookup is disabled"); n != 1 {
 		t.Errorf("the queued rows were mentioned %d times, want once", n)
+	}
+	if len(h.storecove.Submissions()) != 0 {
+		t.Errorf("a submission was made")
+	}
+
+	// Said again when the number changes or an hour on, not every cycle.
+	w := invoices.NewEhfWorker(h.Deps())
+	said := func() int { return strings.Count(h.Logs(), "left alone: the Peppol lookup is disabled") }
+	runCycle := func() {
+		t.Helper()
+		if err := w.RunCycle(context.Background()); err != nil {
+			t.Fatalf("RunCycle: %v", err)
+		}
+	}
+	runCycle()
+	h.Advance(5 * time.Second)
+	runCycle()
+	if n := said(); n != 2 {
+		t.Errorf("after two cycles of a second worker: said %d times, want 2 (once by each worker)", n)
+	}
+	insertTransmission(t, h, issuedAcme(t, h).ID)
+	runCycle()
+	if n := said(); n != 3 {
+		t.Errorf("after the number changed: said %d times, want 3", n)
+	}
+	h.Advance(time.Hour)
+	runCycle()
+	if n := said(); n != 4 {
+		t.Errorf("an hour on: said %d times, want 4", n)
+	}
+
+	// The age cap still reaches a queued row: it makes no call. Its marker set,
+	// it waits for a person rather than blocking the document until the
+	// lookup returns.
+	h.Exec(t, `UPDATE invoices.transmissions SET submit_attempted_at = queued_at WHERE id = $1`, queued)
+	h.Advance(48 * time.Hour)
+	runCycle()
+	if row := txRow(t, h, queued); row.Status != "unconfirmed" {
+		t.Errorf("a queued row 48 hours old with the lookup disabled = %s, want unconfirmed", row.Status)
 	}
 	if len(h.storecove.Submissions()) != 0 {
 		t.Errorf("a submission was made")
