@@ -554,3 +554,91 @@ export const journal = (overrides: Partial<InvoiceJournal> = {}): InvoiceJournal
   checkedTo: 1002,
   ...overrides,
 });
+
+type EhfState = components["schemas"]["InvoicesEhfState"];
+type Transmission = components["schemas"]["InvoicesTransmission"];
+
+/** Meta for an installation that can send EHF, to a caller who may: `ehfAvailable` and `canSendEhf`. */
+export const ehfMeta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta =>
+  meta({ ehfAvailable: true, capabilities: { ...meta().capabilities, canSendEhf: true }, ...overrides });
+
+/** One EHF transmission of document 1001 as the server sends it — a wire literal, queued at 11:00 on 12 September. */
+export const transmission = (overrides: Partial<Transmission> = {}): Transmission => ({
+  id: 1101,
+  status: "queued",
+  provider: "storecove",
+  idempotencyKey: "5b0c7e2a-1d3f-4a6b-8c9d-0e1f2a3b4c5d",
+  receiverParticipant: "0192:923609016",
+  ublSha256: "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+  queuedAt: "2026-09-12T11:00:00Z",
+  ublUrl: "/api/v1/invoices/1001/transmissions/1101/ubl",
+  ...overrides,
+});
+
+/** The EHF states an issued document's `ehf` block can be in (EHF and KID design D10). */
+export type EhfStatus = "not_sent" | "queued" | "submitted" | "delivered" | "failed" | "unconfirmed" | "cancelled";
+
+/**
+ * Document 1001's `ehf` block in `status`, as the server sends it to a caller
+ * with `invoices:issue`: the customer prefers EHF and has a Peppol id; the
+ * latest transmission's timestamps, reference and reason; `canSend` and
+ * `blockedBy` as D8 would judge them; the transmissions newest first.
+ */
+export const ehfState = (status: EhfStatus, overrides: Partial<EhfState> = {}): EhfState => {
+  const profile = { preference: "ehf", buyerPeppolId: "0192:923609016" };
+  const blocked = { canSend: false, blockedBy: "ehf_already_sent" };
+  const submitted = {
+    submittedAt: "2026-09-12T11:00:05Z",
+    providerRef: "8d4e2f1a-3b5c-4d6e-9f0a-1b2c3d4e5f6a",
+  };
+  const states: Record<EhfStatus, EhfState> = {
+    not_sent: { status, canSend: true, ...profile, transmissions: [] },
+    queued: { status, queuedAt: "2026-09-12T11:00:00Z", ...blocked, ...profile, transmissions: [transmission()] },
+    submitted: {
+      status,
+      queuedAt: "2026-09-12T11:00:00Z",
+      ...submitted,
+      ...blocked,
+      ...profile,
+      transmissions: [transmission({ status, ...submitted })],
+    },
+    delivered: {
+      status,
+      queuedAt: "2026-09-12T11:00:00Z",
+      ...submitted,
+      deliveredAt: "2026-09-12T11:02:00Z",
+      ...blocked,
+      ...profile,
+      transmissions: [transmission({ status, ...submitted, deliveredAt: "2026-09-12T11:02:00Z" })],
+    },
+    failed: {
+      status,
+      queuedAt: "2026-09-12T11:00:00Z",
+      failedAt: "2026-09-12T11:00:06Z",
+      reason: "receiver_not_receivable",
+      canSend: true,
+      ...profile,
+      transmissions: [transmission({ status, failedAt: "2026-09-12T11:00:06Z", reason: "receiver_not_receivable" })],
+    },
+    unconfirmed: {
+      status,
+      queuedAt: "2026-09-12T11:00:00Z",
+      ...submitted,
+      ...blocked,
+      ...profile,
+      transmissions: [transmission({ status, ...submitted })],
+    },
+    cancelled: {
+      status,
+      queuedAt: "2026-09-12T11:00:00Z",
+      canSend: true,
+      ...profile,
+      transmissions: [transmission({ status, cancelledAt: "2026-09-12T11:00:30Z" })],
+    },
+  };
+  return { ...states[status], ...overrides };
+};
+
+/** Invoice 1000, issued, with its `ehf` block in `status`. */
+export const ehfDocument = (status: EhfStatus, ehf: Partial<EhfState> = {}, overrides: Partial<InvoiceDocument> = {}) =>
+  issued({ ehf: ehfState(status, ehf), ...overrides });

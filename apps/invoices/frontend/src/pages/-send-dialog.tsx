@@ -22,11 +22,16 @@ export interface SendDialogProps {
 }
 
 /**
- * The warnings that cannot be missed (D4): the customer expects EHF, or the
- * buyer is a Norwegian business on or after 2027-01-01, the day the server
- * judges, never the browser. The rest are plain notes. None refuses the send.
+ * The warnings that cannot be missed (D4): the customer expects EHF — and,
+ * where this caller can send it, it should go as EHF (`ehf_preferred`, EHF and
+ * KID design D10) — or the buyer is a Norwegian business on or after
+ * 2027-01-01, the day the server judges, never the browser. The rest are plain
+ * notes. None refuses the send.
  */
-const loud = new Set(["delivery_preference_ehf", "buyer_norwegian_business_required"]);
+const loud = new Set(["delivery_preference_ehf", "ehf_preferred", "buyer_norwegian_business_required"]);
+
+/** The EHF states in which the document is on its way as EHF, or there (D10's cross-channel note). */
+const ehfCarried = new Set(["queued", "submitted", "delivered", "unconfirmed"]);
 
 /**
  * Sends an issued document by e-mail (D4, D10): the recipient prefilled with
@@ -121,6 +126,11 @@ export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps
   return (
     <Modal opened onClose={onClose} title={t("sendDocument")}>
       <Stack>
+        {doc.ehf && ehfCarried.has(doc.ehf.status) && (
+          <Alert color="gray" icon={<IconInfoCircle size={16} />} role="note" data-testid="cross-channel-note">
+            {t("alreadySentAsEhf")}
+          </Alert>
+        )}
         {!defaults && (
           <Alert color="gray" icon={<IconInfoCircle size={16} />} role="note" data-testid="send-defaults-unavailable">
             {t("sendDefaultsUnavailable")}

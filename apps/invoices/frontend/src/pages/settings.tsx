@@ -9,6 +9,7 @@ import {
   List,
   Modal,
   NumberInput,
+  PasswordInput,
   Select,
   SimpleGrid,
   Stack,
@@ -33,7 +34,9 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { type ChangeEvent, useState } from "react";
-import { invoicesMetaQueryOptions } from "../api/meta";
+import { type AccessPoint, deleteAccessPoint, putAccessPoint, verifyAccessPoint } from "../api/access-point";
+import { journalQueryOptions } from "../api/journal";
+import { type InvoicesMeta, invoicesMetaQueryOptions } from "../api/meta";
 import { ApiConflictError, ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import { type InvoiceSettings, invoiceSettingsQueryOptions, updateInvoiceSettings } from "../api/settings";
 import {
@@ -45,9 +48,10 @@ import {
   vatCodesQueryOptions,
 } from "../api/vat-codes";
 import { StaleAlert } from "../components/stale-alert";
-import "../i18n";
+import { invoicesCatalog } from "../i18n";
 import { fieldRefusals, refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
+import { computeKid, kidFits } from "../lib/kid";
 import { rateOn } from "../lib/vat";
 
 /** The seller fields issuing needs, in the form's order (D2). */
@@ -61,6 +65,10 @@ const requiredSellerFields = [
 ] as const;
 
 const categories = ["S", "Z", "E", "AE", "G", "O", "K"];
+
+/** The Peppol id the server derives from an organisation number when none is set (EHF and KID design D2). */
+const derivedPeppolId = (organisationNumber: string): string | null =>
+  organisationNumber ? `0192:${organisationNumber}` : null;
 
 /** The rate a new code or period starts at: 25 % for S, the standard rate; 0 % for every other category. */
 const defaultRate = (category: string): number => (category === "S" ? 25 : 0);
@@ -106,6 +114,10 @@ const Settings = () => {
   // settings changed — the draft editor's rule.
   const [editedFrom, setEditedFrom] = useState<InvoiceSettings | null>(null);
   const shown = editedFrom ?? settings.data;
+  // There is no read of the access point (D7): what the last save or removal
+  // answered here, or nothing known yet — held above the form, which remounts
+  // on every saved revision.
+  const [accessPoint, setAccessPoint] = useState<AccessPoint | null | undefined>(undefined);
   return (
     <>
       {settings.isError && (
@@ -121,6 +133,8 @@ const Settings = () => {
           latestRevision={settings.data.revision}
           dirty={shown === editedFrom}
           onDirtyChange={(dirty) => setEditedFrom((current) => (dirty ? (current ?? shown) : null))}
+          accessPoint={accessPoint}
+          onAccessPointChange={setAccessPoint}
         />
       )}
       <VatCodesSection />
@@ -144,6 +158,9 @@ const sellerInputs = new Set([
   "defaultPaymentTermsDays",
   "footerText",
   "seriesStart",
+  "peppolId",
+  "kidLength",
+  "kidAlgorithm",
 ]);
 
 interface SellerFormProps {
@@ -153,21 +170,39 @@ interface SellerFormProps {
   /** Whether there are unsaved edits; the page holds it, so a refetch does not remount the form under them. */
   dirty: boolean;
   onDirtyChange: (dirty: boolean) => void;
+  /** The access point as its last save answered here; undefined while nothing is known. */
+  accessPoint: AccessPoint | null | undefined;
+  onAccessPointChange: (accessPoint: AccessPoint | null) => void;
 }
 
 /**
- * The seller record and the series start. A 400 puts each field's refusal on
- * its own input, worded by the catalog — every seller field has one rule, so
- * its words say what the server checked — and only a refusal no input shows
- * is a notification. A save refused as stale, or a newer revision seen while
- * editing, says the settings changed and offers Reload.
+ * The settings form: the seller record and the series start, the seller's
+ * Peppol id on the E-invoicing card, and the KID agreement on its own card —
+ * one revision, one Save (EHF and KID design D2, D3, D15). A 400 puts each
+ * field's refusal on its own input, worded by the catalog — every seller
+ * field has one rule, so its words say what the server checked — and only a
+ * refusal no input shows is a notification. A save refused as stale, or a
+ * newer revision seen while editing, says the settings changed and offers
+ * Reload. The access point beside the Peppol id is saved on its own.
  */
-const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }: SellerFormProps) => {
+const SellerForm = ({
+  settings,
+  latestRevision,
+  dirty,
+  onDirtyChange: setDirty,
+  accessPoint,
+  onAccessPointChange,
+}: SellerFormProps) => {
   const { t, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
   // The page has read meta before it drew this form; the mail line comes from it.
   const meta = useQuery(invoicesMetaQueryOptions());
-  const [values, setValues] = useState(settings);
+  // A Peppol id that is only the one derived from the organisation number is
+  // shown as the placeholder, not as a value: the input holds an id typed in.
+  const [values, setValues] = useState<InvoiceSettings>(() => ({
+    ...settings,
+    peppolId: settings.peppolId === derivedPeppolId(settings.organisationNumber) ? null : settings.peppolId,
+  }));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [conflict, setConflict] = useState(false);
   const [reloadFailed, setReloadFailed] = useState(false);
@@ -201,13 +236,11 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         defaultCurrency: values.defaultCurrency,
         footerText: values.footerText,
         seriesStart: values.seriesStart,
-        // The Peppol id and the KID agreement have no inputs yet: the form
-        // sends back what it read, so a save never clears them (the server
-        // requires all three, null included). A Peppol id that is only the
-        // one derived from the organisation number goes as null, so the
-        // server derives it again from the number saved with it — echoed, it
+        // The server requires all three, null included. An empty Peppol id
+        // — the derived one is only the placeholder — goes as null, so the
+        // server derives it again from the number saved with it: echoed, it
         // would be refused once the number changed.
-        peppolId: values.peppolId === `0192:${settings.organisationNumber}` ? null : values.peppolId,
+        peppolId: values.peppolId?.trim() || null,
         kidLength: values.kidLength,
         kidAlgorithm: values.kidAlgorithm,
         revision: settings.revision,
@@ -262,97 +295,425 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
     onChange: (e: ChangeEvent<HTMLInputElement>) => set(key, e.currentTarget.value),
   });
   return (
-    <Card withBorder>
-      <Stack>
-        <Title order={4}>{t("seller")}</Title>
-        {stale && (
-          <StaleAlert
-            title={t("settingsChangedTitle")}
-            message={t("settingsChangedMessage")}
-            reloadFailedMessage={reloadFailed ? t("couldNotReloadSettings") : undefined}
-            reloading={reload.isPending}
-            onReload={() => reload.mutate()}
-          />
-        )}
-        <List spacing={4} size="sm" aria-label={t("completeness")}>
-          {requiredSellerFields.map((field) => {
-            const missing = settings.missingSellerFields.includes(field);
-            return (
+    <Stack gap="lg">
+      {stale && (
+        <StaleAlert
+          title={t("settingsChangedTitle")}
+          message={t("settingsChangedMessage")}
+          reloadFailedMessage={reloadFailed ? t("couldNotReloadSettings") : undefined}
+          reloading={reload.isPending}
+          onReload={() => reload.mutate()}
+        />
+      )}
+      <Card withBorder>
+        <Stack>
+          <Title order={4}>{t("seller")}</Title>
+          <List spacing={4} size="sm" aria-label={t("completeness")}>
+            {requiredSellerFields.map((field) => {
+              const missing = settings.missingSellerFields.includes(field);
+              return (
+                <List.Item
+                  key={field}
+                  icon={missing ? <IconX size={14} color="red" /> : <IconCheck size={14} color="green" />}
+                >
+                  {missing ? t("missingField", { field: t(`field.${field}`) }) : t(`field.${field}`)}
+                </List.Item>
+              );
+            })}
+            {/* Informative only: sending needs SMTP, issuing never does (payments and delivery design D10). */}
+            {meta.data && (
               <List.Item
-                key={field}
-                icon={missing ? <IconX size={14} color="red" /> : <IconCheck size={14} color="green" />}
+                data-informative="true"
+                icon={
+                  meta.data.mailAvailable ? (
+                    <IconCheck size={14} color="green" />
+                  ) : (
+                    <IconInfoCircle size={14} color="gray" />
+                  )
+                }
               >
-                {missing ? t("missingField", { field: t(`field.${field}`) }) : t(`field.${field}`)}
+                {meta.data.mailAvailable ? t("mailConfigured") : t("mailNotConfigured")}
               </List.Item>
-            );
-          })}
-          {/* Informative only: sending needs SMTP, issuing never does (payments and delivery design D10). */}
-          {meta.data && (
-            <List.Item
-              data-informative="true"
-              icon={
-                meta.data.mailAvailable ? (
-                  <IconCheck size={14} color="green" />
-                ) : (
-                  <IconInfoCircle size={14} color="gray" />
-                )
-              }
-            >
-              {meta.data.mailAvailable ? t("mailConfigured") : t("mailNotConfigured")}
-            </List.Item>
-          )}
-        </List>
-        <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          <TextInput {...text("legalName")} />
-          <TextInput {...text("organisationNumber")} />
-          <TextInput {...text("addressLine1")} />
-          <TextInput {...text("addressLine2")} />
-          <TextInput {...text("postalCode")} />
-          <TextInput {...text("city")} />
-          <TextInput {...text("country")} />
-          <TextInput {...text("email")} />
-          <TextInput {...text("bankAccount")} />
-          <TextInput {...text("iban")} />
-          <TextInput {...text("bic")} />
+            )}
+          </List>
+          <SimpleGrid cols={{ base: 1, sm: 2 }}>
+            <TextInput {...text("legalName")} />
+            <TextInput {...text("organisationNumber")} />
+            <TextInput {...text("addressLine1")} />
+            <TextInput {...text("addressLine2")} />
+            <TextInput {...text("postalCode")} />
+            <TextInput {...text("city")} />
+            <TextInput {...text("country")} />
+            <TextInput {...text("email")} />
+            <TextInput {...text("bankAccount")} />
+            <TextInput {...text("iban")} />
+            <TextInput {...text("bic")} />
+            <NumberInput
+              label={t("field.defaultPaymentTermsDays")}
+              min={0}
+              max={365}
+              error={errors.defaultPaymentTermsDays}
+              value={values.defaultPaymentTermsDays}
+              onChange={(v) => set("defaultPaymentTermsDays", typeof v === "number" ? v : Number(v) || 0)}
+            />
+          </SimpleGrid>
+          <Group>
+            <Checkbox
+              label={t("field.vatRegistered")}
+              checked={values.vatRegistered}
+              onChange={(e) => set("vatRegistered", e.currentTarget.checked)}
+            />
+            <Checkbox
+              label={t("field.inForetaksregisteret")}
+              checked={values.inForetaksregisteret}
+              onChange={(e) => set("inForetaksregisteret", e.currentTarget.checked)}
+            />
+          </Group>
+          <Textarea
+            label={t("field.footerText")}
+            error={errors.footerText}
+            value={values.footerText}
+            onChange={(e) => set("footerText", e.currentTarget.value)}
+          />
           <NumberInput
-            label={t("field.defaultPaymentTermsDays")}
-            min={0}
-            max={365}
-            error={errors.defaultPaymentTermsDays}
-            value={values.defaultPaymentTermsDays}
-            onChange={(v) => set("defaultPaymentTermsDays", typeof v === "number" ? v : Number(v) || 0)}
+            label={t("field.seriesStart")}
+            description={settings.seriesLocked ? t("seriesLocked") : t("seriesStartHint")}
+            disabled={settings.seriesLocked}
+            min={1}
+            error={errors.seriesStart}
+            value={values.seriesStart}
+            onChange={(v) => set("seriesStart", typeof v === "number" ? v : Number(v) || 1)}
+          />
+        </Stack>
+      </Card>
+      <Card withBorder data-testid="e-invoicing-card">
+        <Stack>
+          <Title order={4}>{t("eInvoicing")}</Title>
+          <Text size="sm" c="dimmed">
+            {t("eInvoicingDescription")}
+          </Text>
+          {meta.data?.accessPointCredentialsRejected && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("accessPointRejectedTitle")}>
+              {t("accessPointRejected")}
+            </Alert>
+          )}
+          {/* The seller's Peppol id is e-invoicing's, never issuing's: its own line (D2, D15). */}
+          <List spacing={4} size="sm" aria-label={t("eInvoicingReadiness")}>
+            <List.Item
+              icon={settings.peppolId ? <IconCheck size={14} color="green" /> : <IconX size={14} color="red" />}
+            >
+              {settings.peppolId ? t("peppolIdReady", { peppolId: settings.peppolId }) : t("peppolIdMissing")}
+            </List.Item>
+            {meta.data && (
+              <List.Item
+                data-informative="true"
+                icon={
+                  meta.data.ehfAvailable ? (
+                    <IconCheck size={14} color="green" />
+                  ) : (
+                    <IconInfoCircle size={14} color="gray" />
+                  )
+                }
+              >
+                {meta.data.ehfAvailable ? t("ehfIsAvailable") : t("ehfIsNotAvailable")}
+              </List.Item>
+            )}
+          </List>
+          <TextInput
+            label={t("field.peppolId")}
+            description={t("peppolIdHint")}
+            placeholder={derivedPeppolId(values.organisationNumber) ?? undefined}
+            maxLength={60}
+            value={values.peppolId ?? ""}
+            error={errors.peppolId}
+            onChange={(e) => set("peppolId", e.currentTarget.value)}
+          />
+          {meta.data && <AccessPointSection meta={meta.data} stored={accessPoint} onStored={onAccessPointChange} />}
+        </Stack>
+      </Card>
+      <KidCard settings={settings} values={values} errors={errors} today={meta.data?.today ?? ""} set={set} />
+      <Group justify="flex-end">
+        <Button loading={save.isPending} disabled={!dirty} onClick={() => save.mutate()}>
+          {t("save")}
+        </Button>
+      </Group>
+    </Stack>
+  );
+};
+
+interface KidCardProps {
+  /** The settings as saved: the agreement issued invoices were computed under, and the save's warnings. */
+  settings: InvoiceSettings;
+  /** The form's values, the agreement being edited among them. */
+  values: InvoiceSettings;
+  errors: Record<string, string>;
+  /** Today in Oslo, meta's: the journal read for the counter is today's. */
+  today: string;
+  set: <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K]) => void;
+}
+
+/**
+ * The KID agreement (EHF and KID design D3, D15): the length and the check
+ * digit the bank agreed, with their help; the next KID previewed — computed
+ * here by the server's own MOD10 and MOD11, from the series start before the
+ * first issue and from the counter after it — or, when the next number does
+ * not fit, why; the save's `kid_headroom_low`; and, once invoices are issued
+ * under an agreement, that changing it leaves their KIDs as they were.
+ */
+const KidCard = ({ settings, values, errors, today, set }: KidCardProps) => {
+  const { t } = useInvoiceFormat();
+  const { kidLength: length, kidAlgorithm: algorithm } = values;
+  const agreed = length !== null && algorithm !== null;
+  // The counter is read only when there is an agreement to preview and the
+  // series has started: before that, the next number is the series start.
+  const counter = useQuery({
+    ...journalQueryOptions(today, today, 1),
+    enabled: agreed && settings.seriesLocked && today !== "",
+  });
+  const next = settings.seriesLocked
+    ? counter.data && (counter.data.counterLast ?? settings.seriesStart - 1) + 1
+    : values.seriesStart;
+  const changed =
+    settings.seriesLocked &&
+    settings.kidLength !== null &&
+    (length !== settings.kidLength || algorithm !== settings.kidAlgorithm);
+  const preview = (() => {
+    if (length === null && algorithm === null) return { tone: "dimmed", words: t("kidNone") };
+    if (!agreed) return { tone: "yellow", words: t("kidPairIncomplete") };
+    if (next === undefined || next === 0) {
+      return counter.isError ? { tone: "dimmed", words: t("kidPreviewUnavailable") } : undefined;
+    }
+    if (!kidFits(next, length).fits) return { tone: "red", words: t("kidDoesNotFit", { number: next, length }) };
+    const kid = computeKid(next, length, algorithm);
+    return kid ? { tone: "default", words: t("kidPreview", { kid, number: next }) } : undefined;
+  })();
+  return (
+    <Card withBorder data-testid="kid-card">
+      <Stack>
+        <Title order={4}>{t("kid")}</Title>
+        <Text size="sm" c="dimmed">
+          {t("kidDescription")}
+        </Text>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
+          <NumberInput
+            label={t("kidLength")}
+            description={t("kidLengthHint")}
+            min={4}
+            max={25}
+            allowDecimal={false}
+            allowNegative={false}
+            error={errors.kidLength}
+            value={length ?? ""}
+            onChange={(v) => set("kidLength", v === "" ? null : Number(v))}
+          />
+          <Select
+            label={t("kidAlgorithm")}
+            description={t("kidAlgorithmHint")}
+            clearable
+            data={["mod10", "mod11"].map((value) => ({ value, label: t(`kidAlgorithm.${value}`) }))}
+            error={errors.kidAlgorithm}
+            value={algorithm}
+            onChange={(v) => set("kidAlgorithm", v)}
           />
         </SimpleGrid>
-        <Group>
-          <Checkbox
-            label={t("field.vatRegistered")}
-            checked={values.vatRegistered}
-            onChange={(e) => set("vatRegistered", e.currentTarget.checked)}
-          />
-          <Checkbox
-            label={t("field.inForetaksregisteret")}
-            checked={values.inForetaksregisteret}
-            onChange={(e) => set("inForetaksregisteret", e.currentTarget.checked)}
-          />
+        {preview &&
+          (preview.tone === "red" || preview.tone === "yellow" ? (
+            <Alert color={preview.tone} icon={<IconAlertCircle size={16} />} data-testid="kid-preview">
+              {preview.words}
+            </Alert>
+          ) : (
+            <Text size="sm" c={preview.tone === "dimmed" ? "dimmed" : undefined} data-testid="kid-preview">
+              {preview.words}
+            </Text>
+          ))}
+        {settings.warnings.map((warning) => (
+          <Alert key={warning} color="yellow" icon={<IconAlertCircle size={16} />} data-settings-warning={warning}>
+            {`settingsWarning.${warning}` in invoicesCatalog.en
+              ? t(`settingsWarning.${warning}`)
+              : t("warningUnknown", { code: warning })}
+          </Alert>
+        ))}
+        {changed && (
+          <Alert color="yellow" icon={<IconInfoCircle size={16} />} role="note">
+            {t("kidChangeWarning")}
+          </Alert>
+        )}
+      </Stack>
+    </Card>
+  );
+};
+
+/** What Verify's answer looks like: the provider took the key, refused it, or could not be asked. */
+const verifyColours: Record<string, string> = { ok: "green", unauthorized: "red", unreachable: "yellow" };
+
+interface AccessPointSectionProps {
+  meta: InvoicesMeta;
+  /** The access point as its last save answered here: null once removed, undefined while nothing is known. */
+  stored: AccessPoint | null | undefined;
+  onStored: (accessPoint: AccessPoint | null) => void;
+}
+
+/**
+ * The access point (EHF and KID design D7, D15): the provider — Storecove,
+ * the one there is — the legal entity documents are sent as, and the API key,
+ * write-only: typed, saved, and never shown again; a stored one is only said
+ * to be stored, and an empty field keeps it. Verify asks the provider with the
+ * stored key and says how it went; Remove is refused while a transmission is
+ * in flight, in the 409's words. There is no read of the stored credentials:
+ * whether a key is stored is what the last answer here said, or meta's
+ * `ehfAvailable` or `accessPointCredentialsRejected` — each implies one.
+ */
+const AccessPointSection = ({ meta, stored, onStored }: AccessPointSectionProps) => {
+  const { t, date } = useInvoiceFormat();
+  const queryClient = useQueryClient();
+  const [legalEntityId, setLegalEntityId] = useState<number | string>(stored?.legalEntityId ?? "");
+  const [apiKey, setApiKey] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [verified, setVerified] = useState<string | null>(null);
+  const [refused, setRefused] = useState<string | null>(null);
+  const hasKey =
+    stored === undefined ? meta.ehfAvailable || meta.accessPointCredentialsRejected : (stored?.hasCredentials ?? false);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
+  const save = useMutation({
+    mutationFn: () =>
+      putAccessPoint({
+        provider: "storecove",
+        legalEntityId: Number(legalEntityId) || 0,
+        // An empty field keeps the stored key: it is left out, never sent blank.
+        ...(apiKey.trim() ? { apiKey } : {}),
+      }),
+    onMutate: () => {
+      setVerified(null);
+      setRefused(null);
+    },
+    onSuccess: async (saved) => {
+      onStored(saved);
+      setApiKey("");
+      setErrors({});
+      await refresh();
+      notifications.show({ color: "green", message: t("accessPointSaved") });
+    },
+    onError: (error) => {
+      if (error instanceof ApiValidationError) {
+        const { onInputs, elsewhere } = fieldRefusals(
+          error,
+          t,
+          (field) => field === "legalEntityId" || field === "apiKey",
+          "accessPoint",
+        );
+        setErrors(onInputs);
+        if (elsewhere.length > 0) {
+          notifications.show({ color: "red", title: t("couldNotSaveAccessPoint"), message: elsewhere.join(" ") });
+        }
+        return;
+      }
+      setRefused(refusalMessage(error, t, date));
+    },
+  });
+  const verify = useMutation({
+    mutationFn: verifyAccessPoint,
+    onMutate: () => {
+      setVerified(null);
+      setRefused(null);
+    },
+    onSuccess: async ({ result }) => {
+      setVerified(result);
+      await refresh();
+    },
+    onError: (error) => setRefused(refusalMessage(error, t, date)),
+  });
+  const remove = useMutation({
+    mutationFn: deleteAccessPoint,
+    onMutate: () => {
+      setVerified(null);
+      setRefused(null);
+    },
+    onSuccess: async () => {
+      onStored(null);
+      setApiKey("");
+      await refresh();
+      notifications.show({ color: "green", message: t("accessPointRemoved") });
+    },
+    onError: (error) => setRefused(refusalMessage(error, t, date)),
+  });
+  const busy = save.isPending || verify.isPending || remove.isPending;
+  return (
+    <Card withBorder data-testid="access-point">
+      <Stack>
+        <Group justify="space-between">
+          <Title order={5}>{t("accessPoint")}</Title>
+          {hasKey && (
+            <Badge color="green" variant="light">
+              {t("apiKeyStoredBadge")}
+            </Badge>
+          )}
         </Group>
-        <Textarea
-          label={t("field.footerText")}
-          error={errors.footerText}
-          value={values.footerText}
-          onChange={(e) => set("footerText", e.currentTarget.value)}
-        />
-        <NumberInput
-          label={t("field.seriesStart")}
-          description={settings.seriesLocked ? t("seriesLocked") : t("seriesStartHint")}
-          disabled={settings.seriesLocked}
-          min={1}
-          error={errors.seriesStart}
-          value={values.seriesStart}
-          onChange={(v) => set("seriesStart", typeof v === "number" ? v : Number(v) || 1)}
-        />
+        <Text size="sm" c="dimmed">
+          {t("accessPointHint")}
+        </Text>
+        <SimpleGrid cols={{ base: 1, sm: 3 }}>
+          <TextInput label={t("accessPointProvider")} readOnly value={t("provider.storecove")} />
+          <NumberInput
+            label={t("legalEntityId")}
+            description={t("legalEntityIdHint")}
+            min={1}
+            allowDecimal={false}
+            allowNegative={false}
+            error={errors.legalEntityId}
+            value={legalEntityId}
+            onChange={(v) => {
+              setLegalEntityId(v);
+              setErrors((current) => {
+                const next = { ...current };
+                delete next.legalEntityId;
+                return next;
+              });
+            }}
+          />
+          <PasswordInput
+            label={t("apiKey")}
+            description={hasKey ? t("apiKeyStoredHint") : t("apiKeyNewHint")}
+            autoComplete="new-password"
+            error={errors.apiKey}
+            value={apiKey}
+            onChange={(e) => {
+              setApiKey(e.currentTarget.value);
+              setErrors((current) => {
+                const next = { ...current };
+                delete next.apiKey;
+                return next;
+              });
+            }}
+          />
+        </SimpleGrid>
+        {verified && (
+          <Alert color={verifyColours[verified] ?? "gray"} data-verify-result={verified}>
+            {`verify.${verified}` in invoicesCatalog.en
+              ? t(`verify.${verified}`)
+              : t("warningUnknown", { code: verified })}
+          </Alert>
+        )}
+        {refused && (
+          <Alert color="red" icon={<IconAlertCircle size={16} />}>
+            {refused}
+          </Alert>
+        )}
         <Group justify="flex-end">
-          <Button loading={save.isPending} disabled={!dirty} onClick={() => save.mutate()}>
-            {t("save")}
+          <Button
+            variant="default"
+            color="red"
+            leftSection={<IconTrash size={16} />}
+            disabled={busy}
+            loading={remove.isPending}
+            onClick={() => remove.mutate()}
+          >
+            {t("removeAccessPoint")}
+          </Button>
+          <Button variant="default" disabled={busy} loading={verify.isPending} onClick={() => verify.mutate()}>
+            {t("verifyAccessPoint")}
+          </Button>
+          <Button disabled={busy} loading={save.isPending} onClick={() => save.mutate()}>
+            {t("saveAccessPoint")}
           </Button>
         </Group>
       </Stack>
