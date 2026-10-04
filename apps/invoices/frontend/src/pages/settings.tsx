@@ -203,8 +203,11 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         seriesStart: values.seriesStart,
         // The Peppol id and the KID agreement have no inputs yet: the form
         // sends back what it read, so a save never clears them (the server
-        // requires all three, null included).
-        peppolId: values.peppolId,
+        // requires all three, null included). A Peppol id that is only the
+        // one derived from the organisation number goes as null, so the
+        // server derives it again from the number saved with it — echoed, it
+        // would be refused once the number changed.
+        peppolId: values.peppolId === `0192:${settings.organisationNumber}` ? null : values.peppolId,
         kidLength: values.kidLength,
         kidAlgorithm: values.kidAlgorithm,
         revision: settings.revision,

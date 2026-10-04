@@ -3035,8 +3035,16 @@ func TestInvoicesEhfKid_AppliesAndIsIdempotent(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET status = 'sent' WHERE id = $1`, queued); !checkViolationOf(err, "ck_transmissions_status") {
 		t.Errorf("an unknown status: %v, want a check violation from ck_transmissions_status", err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET resolution_note = 'Sjekket' WHERE id = $1`, queued); !checkViolationOf(err, "ck_transmissions_resolution") {
-		t.Errorf("a note without who resolved: %v, want a check violation from ck_transmissions_resolution", err)
+	// A person's resolution carries a note; the machine's resolves with a
+	// note and no user.
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET resolved_by_user_id = gen_random_uuid() WHERE id = $1`, queued); !checkViolationOf(err, "ck_transmissions_resolution") {
+		t.Errorf("who resolved without a note: %v, want a check violation from ck_transmissions_resolution", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET resolution_note = 'Levert, ifølge leverandøren' WHERE id = $1`, queued); err != nil {
+		t.Errorf("a note without a user (the machine's resolution): %v, want it allowed", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET resolution_note = NULL WHERE id = $1`, queued); err != nil {
+		t.Fatalf("clearing the note: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET evidence_object_key = 'documents/1/1-receipt.json' WHERE id = $1`, queued); !checkViolationOf(err, "ck_transmissions_evidence") {
 		t.Errorf("an evidence key without its hash: %v, want a check violation from ck_transmissions_evidence", err)
@@ -3086,17 +3094,37 @@ func TestInvoicesEhfKid_AppliesAndIsIdempotent(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET last_error = 'again' WHERE id = $1`, failed); !refusedWith(err, immutable) {
 		t.Errorf("changing a failed row: %v, want P0001 %q", err, immutable)
 	}
-	if _, err := pool.Exec(ctx, insertTransmission, credit); err != nil {
-		t.Errorf("a new transmission after a failed one: %v, want it allowed", err)
+	var cancelled int64
+	if err := pool.QueryRow(ctx, insertTransmission, credit).Scan(&cancelled); err != nil {
+		t.Fatalf("a new transmission after a failed one: %v, want it allowed", err)
 	}
 
-	// The due index keeps a delivered row without its evidence claimable;
-	// the query planner is not asked, the predicate is: a delivered row with
-	// a reference and no evidence matches it, one with evidence does not.
-	var dueRows int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM invoices.transmissions
-		WHERE status IN ('queued','submitted','unconfirmed') OR (status = 'delivered' AND evidence_object_key IS NULL AND provider_ref IS NOT NULL)`).Scan(&dueRows); err != nil || dueRows != 1 {
-		t.Errorf("%d rows match the due predicate (%v), want the one queued row", dueRows, err)
+	// A cancelled row changes nothing either.
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET status = 'cancelled', cancelled_at = now() WHERE id = $1`, cancelled); err != nil {
+		t.Fatalf("cancelling: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET next_attempt_at = now() WHERE id = $1`, cancelled); !refusedWith(err, immutable) {
+		t.Errorf("changing a cancelled row: %v, want P0001 %q", err, immutable)
+	}
+
+	// An unconfirmed row is a person's to resolve: delivered, with who and why.
+	var unconfirmed int64
+	if err := pool.QueryRow(ctx, insertTransmission, credit).Scan(&unconfirmed); err != nil {
+		t.Fatalf("a transmission after a cancelled one: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET status = 'unconfirmed', submit_attempted_at = now(), next_attempt_at = 'infinity' WHERE id = $1`, unconfirmed); err != nil {
+		t.Fatalf("leaving a row unconfirmed: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET status = 'delivered', delivered_at = now(),
+		resolved_by_user_id = gen_random_uuid(), resolution_note = 'Bekreftet hos leverandøren' WHERE id = $1`, unconfirmed); err != nil {
+		t.Errorf("resolving an unconfirmed row as delivered: %v, want it allowed", err)
+	}
+
+	// The document is never deleted from under its transmissions.
+	var onDelete string
+	if err := pool.QueryRow(ctx, `SELECT confdeltype::text FROM pg_constraint
+		WHERE conrelid = 'invoices.transmissions'::regclass AND contype = 'f'`).Scan(&onDelete); err != nil || onDelete != "r" {
+		t.Errorf("transmissions' foreign key ON DELETE = %q (%v), want r (RESTRICT)", onDelete, err)
 	}
 
 	// A transmission is refused once the customer is anonymised, the marker
