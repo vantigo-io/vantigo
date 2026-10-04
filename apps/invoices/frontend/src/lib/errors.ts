@@ -15,8 +15,8 @@ export const refusalCode = (error: unknown): string | undefined => {
   return typeof code === "string" ? code : undefined;
 };
 
-/** A 409's own fields — the dates, the line — from its parsed body. */
-const refusalProblem = (error: unknown): Record<string, unknown> =>
+/** A refusal's own fields — the dates, the line, the network's answer, the rules — from its parsed body. */
+export const refusalProblem = (error: unknown): Record<string, unknown> =>
   ((error as { problem?: Record<string, unknown> } | null)?.problem ?? {}) as Record<string, unknown>;
 
 /**
@@ -57,6 +57,14 @@ export const refusalMessage = (
   }
   return error instanceof Error ? error.message : String(error);
 };
+
+/**
+ * A refusal code in words, without an error to carry it — a `blockedBy` the
+ * server judged ahead of the request: the catalog's `refusal.<code>`, or the
+ * code itself when this version has no words for it.
+ */
+export const refusalWords = (code: string, t: Translate): string =>
+  `refusal.${code}` in invoicesCatalog.en ? t(`refusal.${code}`) : code;
 
 /**
  * A 400's refusals split by where they are shown: each field an input on

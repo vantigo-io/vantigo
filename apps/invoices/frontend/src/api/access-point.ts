@@ -1,14 +1,25 @@
+import { queryOptions } from "@tanstack/react-query";
 import type { components } from "../api-schema";
-import { json, request } from "./request";
+import { INVOICES_QUERY_KEY, json, request } from "./request";
 
 type Schemas = components["schemas"];
 
 /** PUT /settings/access-point's body: the provider, its legal entity, and the key — omitted to keep the stored one. */
 export type AccessPointInput = Schemas["InvoicesAccessPointRequest"];
-/** The stored credentials as a client may see them: never the key (EHF and KID design D7). */
+/**
+ * The stored credentials as a client may see them: never the key (EHF and KID
+ * design D7). With none stored, only `hasCredentials: false`.
+ */
 export type AccessPoint = Schemas["InvoicesAccessPointResponse"];
 /** What the provider answered: `ok`, `unauthorized` or `unreachable`. */
 export type AccessPointVerification = Schemas["InvoicesAccessPointVerifyResponse"];
+
+/** The stored credentials, read for the settings page; `{hasCredentials: false}` when there are none. */
+export const accessPointQueryOptions = () =>
+  queryOptions({
+    queryKey: [INVOICES_QUERY_KEY, "access-point"],
+    queryFn: ({ signal }) => request<AccessPoint>("/api/v1/invoices/settings/access-point", { signal }),
+  });
 
 /**
  * Stores the access point's credentials. The key is sealed by the server and

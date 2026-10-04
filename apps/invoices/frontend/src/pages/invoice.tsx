@@ -1014,7 +1014,12 @@ const IssuedDocument = ({ document: doc, meta }: { document: InvoiceDocument; me
         }
         actions={
           <Group>
-            <PdfButton url={pdfUrl(doc.id)} mode="download" leftSection={<IconDownload size={16} />}>
+            <PdfButton
+              url={pdfUrl(doc.id)}
+              mode="download"
+              variant={ehfPrimary ? "default" : undefined}
+              leftSection={<IconDownload size={16} />}
+            >
               {t("downloadPdf")}
             </PdfButton>
             {ehfPrimary && (

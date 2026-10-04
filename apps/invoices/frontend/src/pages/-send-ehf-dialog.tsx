@@ -8,7 +8,7 @@ import { isSessionExpired } from "../api/export";
 import type { InvoiceDocument } from "../api/invoices";
 import { INVOICES_QUERY_KEY, NotFoundError } from "../api/request";
 import { invoicesCatalog } from "../i18n";
-import { refusalCode, refusalMessage } from "../lib/errors";
+import { refusalCode, refusalMessage, refusalProblem } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 
 export interface SendEhfDialogProps {
@@ -55,7 +55,7 @@ export const SendEhfDialog = ({ document: doc, onClose }: SendEhfDialogProps) =>
         setRefused({ message: t("documentNotFound"), details: [], rules: [] });
         return;
       }
-      const problem = ((error as { problem?: Record<string, unknown> }).problem ?? {}) as {
+      const problem = refusalProblem(error) as {
         peppolRegistered?: boolean;
         peppolCanReceive?: boolean;
         rules?: { id: string }[];
