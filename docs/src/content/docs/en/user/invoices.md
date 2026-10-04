@@ -101,7 +101,8 @@ Vantigo asks Storecove with the stored key and answers one of three ways —
   Check the legal entity id, or try again later.*
 
 If Vantigo cannot read the stored key at all — the installation's secret was changed —
-Verify says e-invoicing is unavailable instead: enter the key again and save it.
+Verify says *No key is stored, or the stored key can no longer be read here. Enter the
+key again.*: enter the key again and save it.
 
 **Remove the credentials** asks first — **Remove the access point's credentials?** —
 because the stored key is deleted and cannot be shown again, and nothing can be sent as

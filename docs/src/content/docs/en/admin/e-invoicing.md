@@ -120,7 +120,7 @@ Vantigo reads the legal entity from Storecove with the stored key and answers:
 | *The access point accepted the key.* (`ok`) | The key works for that legal entity; a rejected-key flag is cleared. |
 | *The access point refused the key.* (`unauthorized`) | Storecove answered 401 or 403: a wrong, revoked or expired key. The flag is set. |
 | *The access point could not be reached, or the key does not reach this legal entity.* (`unreachable`) | The network, a timeout, a server error at Storecove, or a legal entity id the key does not cover. |
-| E-invoicing is unavailable (503 `ehf_unavailable`) | Vantigo cannot read the stored key — `APP_SECRET` changed, or the row was altered. The flag is set and an error logged; enter the key again. Without any stored credentials, Verify answers 409 `ehf_unavailable`. |
+| *No key is stored, or the stored key can no longer be read here.* (503 `ehf_unavailable`) | Vantigo cannot read the stored key — `APP_SECRET` changed, or the row was altered. The flag is set and an error logged; enter the key again. Without any stored credentials, Verify answers 409 `ehf_unavailable`. |
 
 Then check that the card's **What e-invoicing needs** says *Sending as EHF is
 available*. The first real send is the final proof: send one invoice to a customer who
