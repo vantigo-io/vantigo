@@ -20,3 +20,6 @@ The pages here cover the rules a change is held to:
 - [Documentation](/en/contributing/documentation/) — how this site is organised, how to
   run it, and the rule that a change to behaviour lands together with the change to
   its documentation.
+- [E-invoice validation](/en/contributing/e-invoice-validation/) — the EHF oracle: the
+  official XSD and Schematron artefacts over the invoice module's goldens, how to run
+  it, and how to bump the artefacts.

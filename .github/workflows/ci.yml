@@ -101,6 +101,10 @@ jobs:
 
       - name: 💾 Set up toolchain
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          # Only bun: the rest of mise.toml (Go, the JDK, the release tools)
+          # is other jobs' business.
+          install_args: "bun"
 
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -169,6 +173,10 @@ jobs:
 
       - name: 💾 Set up toolchain
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          # Only bun: the rest of mise.toml (Go, the JDK, the release tools)
+          # is other jobs' business.
+          install_args: "bun"
 
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -221,6 +229,10 @@ jobs:
 
       - name: 💾 Set up toolchain
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          # Only bun: the rest of mise.toml (Go, the JDK, the release tools)
+          # is other jobs' business.
+          install_args: "bun"
 
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -360,6 +372,38 @@ jobs:
 
       - name: 🔍 GoReleaser configuration
         run: goreleaser check
+
+  validate_ehf:
+    # The EHF oracle (tools/ehf): the official UBL 2.1 XSD and the EN 16931
+    # and Peppol BIS Billing 3.0 Schematron over the invoice module's goldens
+    # and invalid fixtures. The artefacts are pinned by SHA-256 in
+    # artefacts.lock; the cache holds them and the compiled Schematron.
+    needs: metadata
+    name: 🧾 Validate EHF goldens
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🛎️ Checkout codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 💾 Set up toolchain
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: "java"
+
+      - name: 💾 Cache the EHF artefacts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tools/ehf/.cache
+          key: ehf-artefacts-${{ hashFiles('tools/ehf/artefacts.lock') }}
+
+      - name: 🧾 Run the EHF oracle
+        # The script, not `mise run ehf:validate`: mise run would install
+        # every tool in mise.toml first, and this job needs only the JDK.
+        run: bash tools/ehf/validate.sh
 
   validate_compose:
     needs: metadata
