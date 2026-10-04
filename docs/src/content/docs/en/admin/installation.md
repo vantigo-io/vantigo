@@ -274,11 +274,11 @@ HTTP replica does not multiply the pollers:
    and `/health/ready` for probes.
 
 Replicas that should neither migrate nor run workers can run the `server` command
-instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever
-topology you use, retention cleanup, the registry workers and the EHF events worker
-take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the
-outbox and the `invoices-ehf` worker lease one row at a time instead, so any number of
-instances share the work without sending anything twice.
+instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology
+you use, retention cleanup, the registry workers and the EHF events worker take a
+PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox and
+the `invoices-ehf` worker instead take one row at a time under a time-limited lease, so
+any number of instances share the work without sending anything twice.
 
 On shutdown the process drains for up to `SHUTDOWN_TIMEOUT` (30 seconds by default),
 enough for the longest single worker operation to finish and commit. `compose.yaml`

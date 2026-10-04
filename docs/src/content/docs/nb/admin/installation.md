@@ -279,10 +279,11 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
 
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
-Uansett topologi tar oppbevaringsoppryddingen, registerjobbene og EHF-hendelsesjobben
-en PostgreSQL advisory lock, så hver av dem kjører på nøyaktig én instans per syklus;
-utboksen og `invoices-ehf`-jobben leaser i stedet én rad om gangen, så et hvilket som
-helst antall instanser deler arbeidet uten å sende noe to ganger.
+Uansett topologi tar oppbevaringsoppryddingen, registerjobbene og EHF-hendelsesjobben en
+rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
+instans per syklus; utboksen og `invoices-ehf`-jobben tar i stedet én rad om gangen
+under en tidsbegrenset lås, så et hvilket som helst antall instanser deler arbeidet uten
+å sende noe to ganger.
 
 Ved avslutning tømmer prosessen pågående arbeid i opptil `SHUTDOWN_TIMEOUT` (30
 sekunder som standard), nok til at den lengste enkeltoperasjonen i en bakgrunnsjobb

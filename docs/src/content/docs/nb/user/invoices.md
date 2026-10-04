@@ -112,14 +112,14 @@ mens et dokument fortsatt er underveis — *Et dokument er fortsatt underveis gj
 dette aksesspunktet. Vent til det er levert eller feilet før du fjerner eller bytter
 legitimasjonen.* Å bytte til en ny nøkkel avvises aldri.
 
-Avviser Storecove den lagrede nøkkelen mens dokumenter sendes, viser **Aksesspunkt**-delen
-av kortet et rødt **Aksesspunktet avviste nøkkelen**, med datoen det skjedde når den er
-kjent: *Leverandøren avviste den lagrede API-nøkkelen. Dokumentene venter i køen til en
-gyldig nøkkel er lagret.* Lagre riktig nøkkel snart — varselet forsvinner straks du gjør
-det, og hvert dokument som venter, går ut neste gang det står for tur, innen en time — for
-et
-dokument som fortsatt står i kø 48 timer etter at det ble sendt, tas ut av køen som
-**Feilet** (eller **Ubekreftet**, når Storecove kan ha det) og må følges opp av en person
+Avviser Storecove den lagrede nøkkelen mens dokumenter sendes, viser
+**Aksesspunkt**-delen av kortet et rødt **Aksesspunktet avviste nøkkelen**, med datoen
+det skjedde når den er kjent: *Leverandøren avviste den lagrede API-nøkkelen.
+Dokumentene venter i køen til en gyldig nøkkel er lagret.* Lagre riktig nøkkel snart —
+varselet forsvinner straks du gjør det, og hvert dokument som venter, går ut neste gang
+det står for tur, innen en time — for et dokument som fortsatt står i kø 48 timer etter
+at det ble sendt, tas ut av køen som **Feilet** (eller **Ubekreftet**, når Storecove kan
+ha det) og må følges opp av en person
 ([tilstandene](#følg-sendingen-på-kortet-e-faktura-ehf)).
 
 ### Avtal KID med banken
@@ -146,8 +146,9 @@ advarsler kan dukke opp:
 
 - I rødt: *Faktura 1042, den neste som utstedes, får ikke plass i 4 tegn med
   kontrollsifferet. Velg en lengre KID.* — lagringen avvises til den får plass.
-- Etter en lagring, i gult: *Neste fakturanummer gir mindre enn to sifre å gå på i
-  KID-lengden. Be banken om en lengre KID før numrene vokser forbi den.*
+- I gult, så lenge den lagrede avtalen gir for lite rom: *Neste fakturanummer gir mindre
+  enn to sifre å gå på i KID-lengden. Be banken om en lengre KID før numrene vokser
+  forbi den.*
 
 Hva som endres: hver faktura som utstedes fra da av, får en KID. Den skrives som **KID**
 i PDF-ens betalingsfelt, e-posten ber kjøperen merke betalingen med den i stedet for
@@ -486,12 +487,14 @@ eller spør den i bedriften som har Storecove-kontoen — og se om den ble lever
 mottakerens aksesspunkt eller feilet. Kan ikke leverandøren svare, spør kunden om de
 fikk fakturaen. Velg så **Utfall**, **Levert** eller **Feilet**, i **Avklar den
 ubekreftede sendingen**, skriv **Hva leverandøren sa** (1 til 500 tegn) og klikk
-**Avklar**: *Sendingen er avklart*, og raden viser merknaden som *Avklart: …*. **Levert**
-lukker den. **Feilet** lar deg sende dokumentet på nytt, og den sendingen har nøyaktig
-den samme EHF-en, slik at kunden, om den første likevel kom fram, har to kopier av ett
-dokument, aldri to forskjellige. Vantigo spør også selv leverandøren om en ubekreftet
-sending én gang i døgnet i tretti dager, og avklarer den på egen hånd om leverandøren
-til slutt svarer.
+**Avklar**: *Sendingen er avklart*, og raden viser merknaden som *Avklart: …*.
+**Levert** lukker den. **Feilet** lar deg sende dokumentet på nytt, og den sendingen har
+nøyaktig den samme EHF-en, slik at kunden, om den første likevel kom fram, har to kopier
+av ett dokument, aldri to forskjellige. Vantigo spør også selv leverandøren om en
+ubekreftet sending én gang i døgnet i tretti dager, og avklarer den på egen hånd — som
+levert, eller som feilet om Storecoves hendelse sier det — om leverandøren til slutt
+svarer; merknaden sier da at leverandøren avklarte den, og en sending etter en slik feil
+har en ny EHF.
 
 **Last ned EHF (XML)** på hver rad laster ned EHF-en nøyaktig slik Vantigo lagret den da
 den ble lagt i kø, navngitt som PDF-en med sendingens nummer lagt til — `faktura-1001-1001.xml`
@@ -567,16 +570,16 @@ sperret, sammenslått eller anonymisert.
 
 Ingenting utstedt slettes noensinne: et utstedt dokument, betalingene, sendingsloggen og
 EHF-sendingene er bokføringsmateriale som oppbevares fem år etter regnskapsårets slutt,
-og PDF-ene og EHF-filene ligger i installasjonens dokumentlager, der sikkerhetskopiene er
-en del av oppbevaringen
+og PDF-ene og EHF-filene ligger i installasjonens dokumentlager, der sikkerhetskopiene
+er en del av oppbevaringen
 ([oppbevaring](/en/reference/invoices/#retention-and-personal-data)). Slås to kunder
 sammen, følger dokumentene den gjenværende kunden, men beholder kjøperen som står på
-dem. Anonymiseres en person i Kunder, slettes utkastene deres, mottakeren på hver sending
-blankes — kolonnen **Til** viser da *(anonymisert)* — merknadene på betalingene deres
-tømmes, og en EHF som fortsatt venter i køen, og som Vantigo aldri har prøvd å
-overlevere til aksesspunktet, avbrytes; de utstedte dokumentene, med kjøperen de navngir, blir stående. Ingen dokumenter
-sendes til en anonymisert kunde igjen, men en kreditnota kan fortsatt utstedes, med
-kjøperen originalen navnga.
+dem. Anonymiseres en person i Kunder, slettes utkastene deres, mottakeren på hver
+sending blankes — kolonnen **Til** viser da *(anonymisert)* — merknadene på betalingene
+deres tømmes, og en EHF som fortsatt venter i køen, og som Vantigo aldri har prøvd å
+overlevere til aksesspunktet, avbrytes; de utstedte dokumentene, med kjøperen de
+navngir, blir stående. Ingen dokumenter sendes til en anonymisert kunde igjen, men en
+kreditnota kan fortsatt utstedes, med kjøperen originalen navnga.
 
 ## Rettigheter
 

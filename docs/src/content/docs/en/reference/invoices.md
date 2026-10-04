@@ -877,36 +877,38 @@ its delivery time; `failed` lets the document be sent again, with the same bytes
 reuse rule).
 
 **The UBL.** `GET /{id}/transmissions/{transmissionId}/ubl` (`invoices:access`) answers
-the stored UBL as `application/xml`, named `faktura-<number>-<transmission>.xml` (the
-PDF's name in the document's language), never cached — read whole and verified against
-the transmission's `ubl_sha256`. A stored object gone or altered is a 500 and an error
-log, never a render; a store that cannot be read is 503 `storage_unavailable`.
+the stored UBL as `application/xml`, named as the PDF is, with the transmission's id
+added — `faktura-1001-1001.xml`, `invoice-…`, `kreditnota-…` or `credit-note-…` by the
+document's kind and the buyer's language — never cached — read whole and verified
+against the transmission's `ubl_sha256`. A stored object gone or altered is a 500 and an
+error log, never a render; a store that cannot be read is 503 `storage_unavailable`.
 
-**The `ehf` block.** Every issued document answers `ehf` (a draft has none):
-`{status, queuedAt?, submittedAt?, deliveredAt?, failedAt?, providerRef?, reason?,
-canSend, blockedBy?, preference?, buyerPeppolId?, transmissions}`. `status` and the four
+**The `ehf` block.** Every issued document answers `ehf` (a draft has none): `{status,
+queuedAt?, submittedAt?, deliveredAt?, failedAt?, providerRef?, reason?, canSend,
+blockedBy?, preference?, buyerPeppolId?, transmissions}`. `status` and the four
 timestamps are the latest transmission's, or `not_sent`. `transmissions` is every one,
 the newest first — `{id, status, provider, idempotencyKey, receiverParticipant,
 ublSha256, queuedAt, submitAttemptedAt?, submittedAt?, deliveredAt?, failedAt?,
 cancelledAt?, providerRef?, reason?, resolvedByUserId?, resolutionNote?, ublUrl}`,
-`resolvedByUserId` absent when the provider's evidence resolved it, and
-`submitAttemptedAt` the crash marker — when the worker last stamped it, right before
-calling the provider; absent while the transmission was never attempted, which is when
-a queued one can still be cancelled. **`providerRef`, `reason` and `submitAttemptedAt`
-are answered only to a caller with `invoices:issue`**; `reason` is `last_error` with every e-mail address
-replaced by `<e-mail>` and every `NNNN:` participant identifier by `<participant>`, cut
-to 500 characters on a character boundary — never the provider's words to a reader.
-**`canSend`** is what the send would answer without the network and without a render,
-and **`blockedBy`** names the first refusal: `ehf_unavailable`, `customer_anonymised`,
-`no_peppol_id`, `buyer_reference_missing`, `ehf_already_sent`, or `ehf_invalid` for a
-line in VAT category K — the one pre-check rule the lines alone decide; every other
-`ehf_invalid` is found at the send. **`preference`** (the billing profile's invoice
-delivery) and **`buyerPeppolId`** (the customer's current Peppol id) are answered by
-`GET /{id}` only, to a caller with `invoices:issue`, from the same best-effort directory
-read as `sendDefaults` — on an installation that can send as EHF as well as on one that
-can mail, since an EHF-only installation has no SMTP — and are absent when the directory
-could not be read. The list answers `ehfStatus` on each issued document: its latest
-transmission's status, or `not_sent`, the page's in one query.
+`resolvedByUserId` absent when the machine resolved it — the provider's evidence or its
+event — and `submitAttemptedAt` the crash marker — when the worker last stamped it,
+right before calling the provider; absent while the transmission was never attempted,
+which is when a queued one can still be cancelled. **`providerRef`, `reason` and
+`submitAttemptedAt` are answered only to a caller with `invoices:issue`**; `reason` is
+`last_error` with every e-mail address replaced by `<e-mail>` and every `NNNN:`
+participant identifier by `<participant>`, cut to 500 characters on a character boundary
+— never the provider's words to a reader. **`canSend`** is what the send would answer
+without the network and without a render, and **`blockedBy`** names the first refusal:
+`ehf_unavailable`, `customer_anonymised`, `no_peppol_id`, `buyer_reference_missing`,
+`ehf_already_sent`, or `ehf_invalid` for a line in VAT category K — the one pre-check
+rule the lines alone decide; every other `ehf_invalid` is found at the send.
+**`preference`** (the billing profile's invoice delivery) and **`buyerPeppolId`** (the
+customer's current Peppol id) are answered by `GET /{id}` only, to a caller with
+`invoices:issue`, from the same best-effort directory read as `sendDefaults` — on an
+installation that can send as EHF as well as on one that can mail, since an EHF-only
+installation has no SMTP — and are absent when the directory could not be read. The list
+answers `ehfStatus` on each issued document: its latest transmission's status, or
+`not_sent`, the page's in one query.
 
 **Channel precedence** is the app's: the receiver's acceptance is known only at the
 send's re-check. The e-mail dialog's `ehf_preferred` (in place of

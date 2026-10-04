@@ -115,10 +115,9 @@ part of the card shows a red **The access point refused the key**, with the date
 happened when that is known: *The provider refused the stored API key. Documents wait in
 the queue until a valid key is saved.* Save the right key soon — the alert goes as soon
 as you do, and each waiting document goes out when it is next due, within the hour —
-because a document still
-queued 48 hours after it was sent is taken out of the queue as **Failed** (or
-**Unconfirmed**, when Storecove may have it) and needs a person
-([the states](#following-it-on-the-e-invoice-card)).
+because a document still queued 48 hours after it was sent is taken out of the queue as
+**Failed** (or **Unconfirmed**, when Storecove may have it) and needs a person ([the
+states](#following-it-on-the-e-invoice-card)).
 
 ### Agree a KID with the bank
 
@@ -144,8 +143,9 @@ warnings can appear:
 
 - In red, *Invoice 1042, the next to be issued, does not fit in 4 characters with its
   check digit. Choose a longer KID.* — the save is refused until it fits.
-- After a save, in yellow, *The next invoice number leaves fewer than two digits of room
-  in the KID's length. Ask the bank for a longer KID before the numbers outgrow it.*
+- In yellow, whenever the saved agreement leaves too little room, *The next invoice
+  number leaves fewer than two digits of room in the KID's length. Ask the bank for a
+  longer KID before the numbers outgrow it.*
 
 What changes: every invoice issued from then on gets a KID. It is printed as **KID** in
 the PDF's payment block, the e-mail asks the buyer to pay quoting it instead of the
@@ -482,17 +482,18 @@ cancelled* — wait for its outcome instead.
 
 **Resolve** is offered on an unconfirmed row. First check with the provider: look the
 submission up in Storecove by the provider reference on the card, or by when it was
-queued — or ask whoever in your company holds the Storecove account — and see whether
-it was delivered to the receiver's access point or failed. If the provider cannot tell,
-ask the customer whether they received the invoice. Then, in **Resolve the unconfirmed
+queued — or ask whoever in your company holds the Storecove account — and see whether it
+was delivered to the receiver's access point or failed. If the provider cannot tell, ask
+the customer whether they received the invoice. Then, in **Resolve the unconfirmed
 transmission**, choose the **Outcome**, **Delivered** or **Failed**, write **What the
 provider said** (1 to 500 characters) and click **Resolve**: *The transmission is
 resolved*, and the row shows the note as *Resolved: …*. **Delivered** closes it.
 **Failed** lets you send the document again, and that send carries the very same EHF, so
 that if the first one did arrive after all, the customer has two copies of one document,
 never two different ones. Vantigo also keeps asking the provider about an unconfirmed
-transmission once a day for thirty days, and resolves it on its own if the provider
-finally answers.
+transmission once a day for thirty days, and resolves it on its own — delivered, or
+failed if Storecove's event says so — if the provider finally answers; the row's note
+then says the provider resolved it, and a send after such a failure carries a fresh EHF.
 
 **Download EHF (XML)** on each row downloads the EHF exactly as Vantigo stored it when
 it was queued, named like the PDF with the transmission's number added —
