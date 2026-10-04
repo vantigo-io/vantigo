@@ -517,53 +517,6 @@ func (q *Queries) LatestPersonResolvedFailedTransmission(ctx context.Context, in
 	return i, err
 }
 
-const latestTransmission = `-- name: LatestTransmission :one
-SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id FROM invoices.transmissions WHERE invoice_id = $1 ORDER BY id DESC LIMIT 1
-`
-
-// LatestTransmission is one document's newest transmission: the document's
-// EHF state, and the UBL reuse rule's question (D4). No row is pgx.ErrNoRows.
-func (q *Queries) LatestTransmission(ctx context.Context, invoiceID int64) (InvoicesTransmission, error) {
-	row := q.db.QueryRow(ctx, latestTransmission, invoiceID)
-	var i InvoicesTransmission
-	err := row.Scan(
-		&i.ID,
-		&i.InvoiceID,
-		&i.Provider,
-		&i.IdempotencyKey,
-		&i.SenderParticipant,
-		&i.ReceiverParticipant,
-		&i.DocumentType,
-		&i.ProcessID,
-		&i.UblObjectKey,
-		&i.UblSha256,
-		&i.PdfSha256,
-		&i.Status,
-		&i.ProviderRef,
-		&i.EvidenceObjectKey,
-		&i.EvidenceSha256,
-		&i.SubmitAttempts,
-		&i.PollAttempts,
-		&i.NextAttemptAt,
-		&i.SubmitAttemptedAt,
-		&i.LeaseID,
-		&i.LeaseUntil,
-		&i.LastError,
-		&i.LookupRegistered,
-		&i.LookupCanReceive,
-		&i.LookupAt,
-		&i.QueuedAt,
-		&i.SubmittedAt,
-		&i.DeliveredAt,
-		&i.FailedAt,
-		&i.CancelledAt,
-		&i.ResolvedByUserID,
-		&i.ResolutionNote,
-		&i.CreatedByUserID,
-	)
-	return i, err
-}
-
 const markDeliveredLeased = `-- name: MarkDeliveredLeased :execrows
 UPDATE invoices.transmissions SET
     status = 'delivered', delivered_at = $1::timestamptz, next_attempt_at = $1::timestamptz,

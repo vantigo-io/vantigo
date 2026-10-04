@@ -32,11 +32,6 @@ RETURNING *;
 -- TransmissionsOf is every transmission of one document, the newest first.
 SELECT * FROM invoices.transmissions WHERE invoice_id = @invoice_id ORDER BY id DESC;
 
--- name: LatestTransmission :one
--- LatestTransmission is one document's newest transmission: the document's
--- EHF state, and the UBL reuse rule's question (D4). No row is pgx.ErrNoRows.
-SELECT * FROM invoices.transmissions WHERE invoice_id = @invoice_id ORDER BY id DESC LIMIT 1;
-
 -- name: LatestPersonResolvedFailedTransmission :one
 -- LatestPersonResolvedFailedTransmission is the newest of one document's
 -- transmissions that was unconfirmed and that a person resolved as failed,
