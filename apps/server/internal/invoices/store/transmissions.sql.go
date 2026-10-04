@@ -61,14 +61,17 @@ func (q *Queries) AnyAwaitingEvents(ctx context.Context) (bool, error) {
 const applyEventDelivered = `-- name: ApplyEventDelivered :execrows
 UPDATE invoices.transmissions SET
     status = 'delivered', delivered_at = $1::timestamptz, next_attempt_at = $1::timestamptz,
-    provider_ref = COALESCE(provider_ref, $2), poll_attempts = 0, last_error = NULL
-WHERE (provider_ref = $2 OR idempotency_key = $3)
+    provider_ref = COALESCE(provider_ref, NULLIF($2::text, '')),
+    resolution_note = CASE WHEN status = 'unconfirmed' THEN $3 ELSE resolution_note END,
+    poll_attempts = 0, last_error = NULL
+WHERE (idempotency_key = $4 OR (provider_ref = $2::text AND provider_ref IS NOT NULL))
   AND status IN ('queued', 'submitted', 'unconfirmed')
 `
 
 type ApplyEventDeliveredParams struct {
 	Now            time.Time
 	ProviderRef    *string
+	MachineNote    *string
 	IdempotencyKey uuid.UUID
 }
 
@@ -76,9 +79,14 @@ type ApplyEventDeliveredParams struct {
 // (D9), idempotently and without a lease: the row is matched by its provider
 // reference, or by its idempotency key when it never learned the reference,
 // which it then takes. 0 rows is an event for a row already final, or not
-// ours.
+// ours. An empty reference never matches and is never stored.
 func (q *Queries) ApplyEventDelivered(ctx context.Context, arg ApplyEventDeliveredParams) (int64, error) {
-	result, err := q.db.Exec(ctx, applyEventDelivered, arg.Now, arg.ProviderRef, arg.IdempotencyKey)
+	result, err := q.db.Exec(ctx, applyEventDelivered,
+		arg.Now,
+		arg.ProviderRef,
+		arg.MachineNote,
+		arg.IdempotencyKey,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -88,8 +96,9 @@ func (q *Queries) ApplyEventDelivered(ctx context.Context, arg ApplyEventDeliver
 const applyEventFailed = `-- name: ApplyEventFailed :execrows
 UPDATE invoices.transmissions SET
     status = 'failed', failed_at = $1::timestamptz, last_error = $2,
-    provider_ref = COALESCE(provider_ref, $3)
-WHERE (provider_ref = $3 OR idempotency_key = $4)
+    provider_ref = COALESCE(provider_ref, NULLIF($3::text, '')),
+    resolution_note = CASE WHEN status = 'unconfirmed' THEN $4 ELSE resolution_note END
+WHERE (idempotency_key = $5 OR (provider_ref = $3::text AND provider_ref IS NOT NULL))
   AND status IN ('queued', 'submitted', 'unconfirmed')
 `
 
@@ -97,6 +106,7 @@ type ApplyEventFailedParams struct {
 	Now            time.Time
 	LastError      *string
 	ProviderRef    *string
+	MachineNote    *string
 	IdempotencyKey uuid.UUID
 }
 
@@ -106,6 +116,7 @@ func (q *Queries) ApplyEventFailed(ctx context.Context, arg ApplyEventFailedPara
 		arg.Now,
 		arg.LastError,
 		arg.ProviderRef,
+		arg.MachineNote,
 		arg.IdempotencyKey,
 	)
 	if err != nil {
@@ -311,6 +322,13 @@ type InsertTransmissionParams struct {
 // Deps.Clock(), never SQL now(): the harness clock sits weeks from the
 // database's, and a lease judged by now() would always look expired. The
 // trigger tr_transmissions_immutable lets only the state columns change.
+//
+// Every completion of a claim is WHERE id = @id AND lease_id = @lease_id AND
+// status = @status, @status the status the claim saw: a row the events worker
+// moved meanwhile (it takes no lease) answers 0 rows, a no-op, never the
+// trigger's refusal of a change to a final row. A completion that can move an
+// unconfirmed row writes @machine_note as its resolution_note — the machine's
+// resolution, with no user — and leaves the note alone on any other row.
 // InsertTransmission queues one transmission (D8), due at once. The trigger
 // refuses a draft's and an anonymised customer's; ux_transmissions_active
 // refuses a second live one for the same document (23505).
@@ -421,21 +439,30 @@ func (q *Queries) LatestTransmission(ctx context.Context, invoiceID int64) (Invo
 const markDeliveredLeased = `-- name: MarkDeliveredLeased :execrows
 UPDATE invoices.transmissions SET
     status = 'delivered', delivered_at = $1::timestamptz, next_attempt_at = $1::timestamptz,
+    resolution_note = CASE WHEN status = 'unconfirmed' THEN $2 ELSE resolution_note END,
     poll_attempts = 0, last_error = NULL, lease_id = NULL, lease_until = NULL
-WHERE id = $2 AND lease_id = $3 AND status IN ('submitted', 'unconfirmed')
+WHERE id = $3 AND lease_id = $4 AND status = $5::text
 `
 
 type MarkDeliveredLeasedParams struct {
-	Now     time.Time
-	ID      int64
-	LeaseID *string
+	Now         time.Time
+	MachineNote *string
+	ID          int64
+	LeaseID     *string
+	Status      string
 }
 
-// MarkDeliveredLeased records delivery a probe found (the evidence answered),
-// with the evidence due at once in the next claim. resolved_by_user_id stays
-// NULL: the machine resolved it.
+// MarkDeliveredLeased records delivery a probe found (the evidence answered)
+// on a submitted or unconfirmed row, with the evidence due at once in the
+// next claim. resolved_by_user_id stays NULL: the machine resolved it.
 func (q *Queries) MarkDeliveredLeased(ctx context.Context, arg MarkDeliveredLeasedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markDeliveredLeased, arg.Now, arg.ID, arg.LeaseID)
+	result, err := q.db.Exec(ctx, markDeliveredLeased,
+		arg.Now,
+		arg.MachineNote,
+		arg.ID,
+		arg.LeaseID,
+		arg.Status,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -445,24 +472,30 @@ func (q *Queries) MarkDeliveredLeased(ctx context.Context, arg MarkDeliveredLeas
 const markFailedLeased = `-- name: MarkFailedLeased :execrows
 UPDATE invoices.transmissions SET
     status = 'failed', failed_at = $1::timestamptz, last_error = $2,
+    resolution_note = CASE WHEN status = 'unconfirmed' THEN $3 ELSE resolution_note END,
     lease_id = NULL, lease_until = NULL
-WHERE id = $3 AND lease_id = $4 AND status IN ('queued', 'submitted', 'unconfirmed')
+WHERE id = $4 AND lease_id = $5 AND status = $6::text
 `
 
 type MarkFailedLeasedParams struct {
-	Now       time.Time
-	LastError *string
-	ID        int64
-	LeaseID   *string
+	Now         time.Time
+	LastError   *string
+	MachineNote *string
+	ID          int64
+	LeaseID     *string
+	Status      string
 }
 
-// MarkFailedLeased ends a claimed row as failed with its (redacted) reason.
+// MarkFailedLeased ends a claimed row (queued, submitted or unconfirmed) as
+// failed with its (redacted) reason.
 func (q *Queries) MarkFailedLeased(ctx context.Context, arg MarkFailedLeasedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markFailedLeased,
 		arg.Now,
 		arg.LastError,
+		arg.MachineNote,
 		arg.ID,
 		arg.LeaseID,
+		arg.Status,
 	)
 	if err != nil {
 		return 0, err
@@ -559,7 +592,7 @@ const markUnconfirmedLeased = `-- name: MarkUnconfirmedLeased :execrows
 UPDATE invoices.transmissions SET
     status = 'unconfirmed', next_attempt_at = $1::timestamptz, last_error = $2,
     lease_id = NULL, lease_until = NULL
-WHERE id = $3 AND lease_id = $4 AND status IN ('queued', 'submitted')
+WHERE id = $3 AND lease_id = $4 AND status = $5::text
 `
 
 type MarkUnconfirmedLeasedParams struct {
@@ -567,6 +600,7 @@ type MarkUnconfirmedLeasedParams struct {
 	LastError     *string
 	ID            int64
 	LeaseID       *string
+	Status        string
 }
 
 // MarkUnconfirmedLeased hands a claimed row to a person (D9): the cap by age
@@ -578,6 +612,7 @@ func (q *Queries) MarkUnconfirmedLeased(ctx context.Context, arg MarkUnconfirmed
 		arg.LastError,
 		arg.ID,
 		arg.LeaseID,
+		arg.Status,
 	)
 	if err != nil {
 		return 0, err
@@ -622,7 +657,7 @@ UPDATE invoices.transmissions SET
     poll_attempts = poll_attempts + $3::integer,
     last_error = $4,
     lease_id = NULL, lease_until = NULL
-WHERE id = $5 AND lease_id = $6
+WHERE id = $5 AND lease_id = $6 AND status = $7::text
 `
 
 type RescheduleLeasedParams struct {
@@ -632,6 +667,7 @@ type RescheduleLeasedParams struct {
 	LastError           *string
 	ID                  int64
 	LeaseID             *string
+	Status              string
 }
 
 // RescheduleLeased puts a claimed row back for later: the backoff after a
@@ -645,6 +681,7 @@ func (q *Queries) RescheduleLeased(ctx context.Context, arg RescheduleLeasedPara
 		arg.LastError,
 		arg.ID,
 		arg.LeaseID,
+		arg.Status,
 	)
 	if err != nil {
 		return 0, err
@@ -661,6 +698,7 @@ UPDATE invoices.transmissions SET
     resolved_by_user_id = $3, resolution_note = $4,
     lease_id = NULL, lease_until = NULL
 WHERE id = $5 AND invoice_id = $6 AND status = 'unconfirmed'
+  AND $1::text IN ('delivered', 'failed')
 `
 
 type ResolveTransmissionParams struct {

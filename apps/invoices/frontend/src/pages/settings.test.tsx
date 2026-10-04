@@ -142,9 +142,9 @@ describe("the invoice settings", () => {
     });
   });
 
-  it("sends the Peppol id and the KID agreement back as it read them, null included", async () => {
+  it("sends the KID agreement back as it read it", async () => {
     const state = world();
-    state.settings = settings({ peppolId: "0192:974760673", kidLength: 7, kidAlgorithm: "mod10" });
+    state.settings = settings({ peppolId: "9908:974760673", kidLength: 7, kidAlgorithm: "mod10" });
     const fetchMock = server({}, state);
     renderWithProviders(<SettingsPage />);
 
@@ -152,10 +152,36 @@ describe("the invoice settings", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
     expect(sent(fetchMock, "PUT").body).toMatchObject({
-      peppolId: "0192:974760673",
+      peppolId: "9908:974760673",
       kidLength: 7,
       kidAlgorithm: "mod10",
     });
+  });
+
+  it("sends a Peppol id derived from the organisation number as null, so a changed number derives it again", async () => {
+    const state = world();
+    state.settings = settings({ peppolId: "0192:974760673" });
+    const fetchMock = server({}, state);
+    renderWithProviders(<SettingsPage />);
+
+    const number = await screen.findByRole("textbox", { name: "Organisation number" });
+    await userEvent.clear(number);
+    await userEvent.type(number, "923609016");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
+    expect(sent(fetchMock, "PUT").body).toMatchObject({ organisationNumber: "923609016", peppolId: null });
+  });
+
+  it("sends a Peppol id that is not the derived one back as it read it", async () => {
+    const state = world();
+    state.settings = settings({ peppolId: "9908:974760673" });
+    const fetchMock = server({}, state);
+    renderWithProviders(<SettingsPage />);
+
+    await userEvent.type(await screen.findByRole("textbox", { name: "Postal code" }), "0155");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
+    expect(sent(fetchMock, "PUT").body).toMatchObject({ peppolId: "9908:974760673" });
   });
 
   it("sends the three nullable fields as null when the settings have none", async () => {

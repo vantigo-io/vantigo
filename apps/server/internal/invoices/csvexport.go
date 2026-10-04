@@ -160,9 +160,9 @@ func exportCells(r store.ExportRowsRow) ([]csvValue, error) {
 		text(r.SafTCode),
 		plain(rate), plain(base), plain(vat), plain(baseNOK), plain(vatNOK),
 		text(csvInt(r.CreditsNumber)),
-		// The module's own digits and at most a MOD11 '-' at the end, which
-		// no formula guard is for.
-		plain(csvText(r.Kid)),
+		// The module's own digits and at most a MOD11 '-' at the end: the
+		// guard never fires on one, and stays as defence in depth.
+		text(csvText(r.Kid)),
 	}, nil
 }
 

@@ -99,7 +99,9 @@ CREATE TABLE invoices.transmissions (
         (status <> 'delivered' OR delivered_at IS NOT NULL) AND
         (status <> 'failed' OR failed_at IS NOT NULL) AND
         (status <> 'cancelled' OR cancelled_at IS NOT NULL)),
-    CONSTRAINT ck_transmissions_resolution CHECK ((resolved_by_user_id IS NULL) = (resolution_note IS NULL)),
+    -- A person's resolution of an unconfirmed row says who and why; the
+    -- worker's own (the provider answered at last) has a note and no user.
+    CONSTRAINT ck_transmissions_resolution CHECK (resolved_by_user_id IS NULL OR resolution_note IS NOT NULL),
     CONSTRAINT ck_transmissions_evidence CHECK ((evidence_object_key IS NULL) = (evidence_sha256 IS NULL))
 );
 -- One live transmission per document (D8): queued, submitted, delivered or

@@ -85,7 +85,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient (`''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
 | `invoices.erased_customers` | The customers this module has anonymised, by id, with when: the marker a send and the delivery, payment and transmission triggers read. Never removed. |
 | `invoices.access_point_credentials` | One row (`id = 1`): the access point provider (`storecove`), its settings that are not secret (`settings_json`), the API key sealed by the secrets box, `rejected_at` once the provider refused the key, and `updated_at`. Kept off the settings row every issue reads `FOR SHARE`. |
-| `invoices.transmissions` | One EHF transmission of an issued document: the provider, the idempotency key, the sender's and receiver's Peppol ids, the document type and process, the submitted UBL's object key and SHA-256 and the PDF's SHA-256, the status (`queued`, `submitted`, `delivered`, `failed`, `unconfirmed`, `cancelled`), the provider's reference, the evidence's key and SHA-256, the attempt counters and the next attempt, the crash marker `submit_attempted_at`, the worker's lease, the last error, the receiver lookup it was queued under, the timestamps of each state, and a person's resolution. Never deleted; only its state columns change, a failed or cancelled row not at all, and a delivered row only its lease, cadence and — once — its evidence. A trigger refuses one under a draft (`invoices: a transmission needs an issued document`) or for an anonymised customer (`invoices: the customer is anonymised`); `ux_transmissions_active` allows one queued, submitted, delivered or unconfirmed transmission per document. |
+| `invoices.transmissions` | One EHF transmission of an issued document: the provider, the idempotency key, the sender's and receiver's Peppol ids, the document type and process, the submitted UBL's object key and SHA-256 and the PDF's SHA-256, the status (`queued`, `submitted`, `delivered`, `failed`, `unconfirmed`, `cancelled`), the provider's reference, the evidence's key and SHA-256, the attempt counters and the next attempt, the crash marker `submit_attempted_at`, the worker's lease, the last error, the receiver lookup it was queued under, the timestamps of each state, and the resolution of an `unconfirmed` row — a person's, with who and a required note, or the worker's own when the provider answers at last, with a note and no user (`ck_transmissions_resolution`). Every completion of a worker's claim names the status the claim saw, so a row the events worker moved meanwhile is left alone, never refused. Never deleted; only its state columns change, a failed or cancelled row not at all, and a delivered row only its lease, cadence and — once — its evidence. A trigger refuses one under a draft (`invoices: a transmission needs an issued document`) or for an anonymised customer (`invoices: the customer is anonymised`); `ux_transmissions_active` allows one queued, submitted, delivered or unconfirmed transmission per document. |
 
 A document's state is not a column: `invoices.document_state(...)` derives it, see
 [Payments and the state of an invoice](#payments-and-the-state-of-an-invoice).
@@ -666,7 +666,7 @@ Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;
 | `Base NOK` | `Base` × the document's exchange rate (1 in this phase), rounded to øre — the one computed column |
 | `VAT NOK` | the VAT row's stored NOK VAT |
 | `Credits number` | on a credit note, the number of the invoice it credits; empty on an invoice |
-| `KID` | an invoice's KID, appended last in phase 2 so the earlier columns keep their places; empty without one and on a credit note. A spreadsheet that reads it as a number strips its leading zeros — import the column as text |
+| `KID` | an invoice's KID, appended last in phase 2 so the earlier columns keep their places; empty without one and on a credit note. Guarded as text, though a KID never begins with a character the guard is for. A spreadsheet that reads it as a number strips its leading zeros — import the column as text |
 
 **The byte format** is the expenses payroll file's ([the payroll CSV](/en/reference/expenses/#the-payroll-csv)),
 duplicated into this module as customers duplicated it — depguard keeps modules from
@@ -677,7 +677,7 @@ amount is the stored `numeric` as exact text, never a float, and a credit note's
 stays `0,00`.
 
 **The formula guard is on the text columns only.** `Kind`, `Delivery`, `Customer number`,
-`Buyer`, `Buyer org no`, `Currency`, `SAF-T code` and `Credits number` get an apostrophe in
+`Buyer`, `Buyer org no`, `Currency`, `SAF-T code`, `Credits number` and `KID` get an apostrophe in
 front when they begin with `=`, `+`, `-`, `@`, a tab or a CR, so a buyer named `=cmd`
 opens as text. `Number`, `Issue date`, `Due`, `Rate` and the four amounts are never
 guarded: the payroll file guards every cell because none of its amounts is ever

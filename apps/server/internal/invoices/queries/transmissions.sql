@@ -5,6 +5,13 @@
 -- Deps.Clock(), never SQL now(): the harness clock sits weeks from the
 -- database's, and a lease judged by now() would always look expired. The
 -- trigger tr_transmissions_immutable lets only the state columns change.
+--
+-- Every completion of a claim is WHERE id = @id AND lease_id = @lease_id AND
+-- status = @status, @status the status the claim saw: a row the events worker
+-- moved meanwhile (it takes no lease) answers 0 rows, a no-op, never the
+-- trigger's refusal of a change to a final row. A completion that can move an
+-- unconfirmed row writes @machine_note as its resolution_note — the machine's
+-- resolution, with no user — and leaves the note alone on any other row.
 
 -- name: InsertTransmission :one
 -- InsertTransmission queues one transmission (D8), due at once. The trigger
@@ -93,11 +100,13 @@ UPDATE invoices.transmissions SET
 WHERE id = @id AND status = 'queued' AND lease_id = @lease_id;
 
 -- name: MarkFailedLeased :execrows
--- MarkFailedLeased ends a claimed row as failed with its (redacted) reason.
+-- MarkFailedLeased ends a claimed row (queued, submitted or unconfirmed) as
+-- failed with its (redacted) reason.
 UPDATE invoices.transmissions SET
     status = 'failed', failed_at = @now::timestamptz, last_error = @last_error,
+    resolution_note = CASE WHEN status = 'unconfirmed' THEN sqlc.narg(machine_note) ELSE resolution_note END,
     lease_id = NULL, lease_until = NULL
-WHERE id = @id AND lease_id = @lease_id AND status IN ('queued', 'submitted', 'unconfirmed');
+WHERE id = @id AND lease_id = @lease_id AND status = @status::text;
 
 -- name: MarkUnconfirmedLeased :execrows
 -- MarkUnconfirmedLeased hands a claimed row to a person (D9): the cap by age
@@ -106,7 +115,7 @@ WHERE id = @id AND lease_id = @lease_id AND status IN ('queued', 'submitted', 'u
 UPDATE invoices.transmissions SET
     status = 'unconfirmed', next_attempt_at = @next_attempt_at::timestamptz, last_error = sqlc.narg(last_error),
     lease_id = NULL, lease_until = NULL
-WHERE id = @id AND lease_id = @lease_id AND status IN ('queued', 'submitted');
+WHERE id = @id AND lease_id = @lease_id AND status = @status::text;
 
 -- name: RescheduleLeased :execrows
 -- RescheduleLeased puts a claimed row back for later: the backoff after a
@@ -118,7 +127,7 @@ UPDATE invoices.transmissions SET
     poll_attempts = poll_attempts + @poll_attempts_delta::integer,
     last_error = sqlc.narg(last_error),
     lease_id = NULL, lease_until = NULL
-WHERE id = @id AND lease_id = @lease_id;
+WHERE id = @id AND lease_id = @lease_id AND status = @status::text;
 
 -- name: RefreshTransmissionLookup :execrows
 -- RefreshTransmissionLookup records a queued row's fresh receiver lookup,
@@ -128,13 +137,14 @@ UPDATE invoices.transmissions SET
 WHERE id = @id AND lease_id = @lease_id AND status = 'queued';
 
 -- name: MarkDeliveredLeased :execrows
--- MarkDeliveredLeased records delivery a probe found (the evidence answered),
--- with the evidence due at once in the next claim. resolved_by_user_id stays
--- NULL: the machine resolved it.
+-- MarkDeliveredLeased records delivery a probe found (the evidence answered)
+-- on a submitted or unconfirmed row, with the evidence due at once in the
+-- next claim. resolved_by_user_id stays NULL: the machine resolved it.
 UPDATE invoices.transmissions SET
     status = 'delivered', delivered_at = @now::timestamptz, next_attempt_at = @now::timestamptz,
+    resolution_note = CASE WHEN status = 'unconfirmed' THEN sqlc.narg(machine_note) ELSE resolution_note END,
     poll_attempts = 0, last_error = NULL, lease_id = NULL, lease_until = NULL
-WHERE id = @id AND lease_id = @lease_id AND status IN ('submitted', 'unconfirmed');
+WHERE id = @id AND lease_id = @lease_id AND status = @status::text;
 
 -- name: SetEvidenceLeased :execrows
 -- SetEvidenceLeased stores where a delivered row's evidence is, once; from
@@ -149,19 +159,22 @@ WHERE id = @id AND lease_id = @lease_id AND status = 'delivered' AND evidence_ob
 -- (D9), idempotently and without a lease: the row is matched by its provider
 -- reference, or by its idempotency key when it never learned the reference,
 -- which it then takes. 0 rows is an event for a row already final, or not
--- ours.
+-- ours. An empty reference never matches and is never stored.
 UPDATE invoices.transmissions SET
     status = 'delivered', delivered_at = @now::timestamptz, next_attempt_at = @now::timestamptz,
-    provider_ref = COALESCE(provider_ref, @provider_ref), poll_attempts = 0, last_error = NULL
-WHERE (provider_ref = @provider_ref OR idempotency_key = @idempotency_key)
+    provider_ref = COALESCE(provider_ref, NULLIF(sqlc.narg(provider_ref)::text, '')),
+    resolution_note = CASE WHEN status = 'unconfirmed' THEN sqlc.narg(machine_note) ELSE resolution_note END,
+    poll_attempts = 0, last_error = NULL
+WHERE (idempotency_key = @idempotency_key OR (provider_ref = sqlc.narg(provider_ref)::text AND provider_ref IS NOT NULL))
   AND status IN ('queued', 'submitted', 'unconfirmed');
 
 -- name: ApplyEventFailed :execrows
 -- ApplyEventFailed applies a "failed" or "no_action_taken" event the same way.
 UPDATE invoices.transmissions SET
     status = 'failed', failed_at = @now::timestamptz, last_error = @last_error,
-    provider_ref = COALESCE(provider_ref, @provider_ref)
-WHERE (provider_ref = @provider_ref OR idempotency_key = @idempotency_key)
+    provider_ref = COALESCE(provider_ref, NULLIF(sqlc.narg(provider_ref)::text, '')),
+    resolution_note = CASE WHEN status = 'unconfirmed' THEN sqlc.narg(machine_note) ELSE resolution_note END
+WHERE (idempotency_key = @idempotency_key OR (provider_ref = sqlc.narg(provider_ref)::text AND provider_ref IS NOT NULL))
   AND status IN ('queued', 'submitted', 'unconfirmed');
 
 -- name: AnyAwaitingEvents :one
@@ -190,7 +203,8 @@ UPDATE invoices.transmissions SET
     next_attempt_at = @now::timestamptz,
     resolved_by_user_id = @resolved_by_user_id, resolution_note = @resolution_note,
     lease_id = NULL, lease_until = NULL
-WHERE id = @id AND invoice_id = @invoice_id AND status = 'unconfirmed';
+WHERE id = @id AND invoice_id = @invoice_id AND status = 'unconfirmed'
+  AND @outcome::text IN ('delivered', 'failed');
 
 -- name: ActiveTransmissionsCount :one
 -- ActiveTransmissionsCount is how many transmissions the credentials still

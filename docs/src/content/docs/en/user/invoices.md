@@ -50,7 +50,7 @@ Fill in the fields and click **Save**:
 
 Saving keeps two things the page has no fields for yet: the seller's **Peppol id** —
 the address EHF invoices are sent from, filled in as `0192:` and the organisation number
-when you have one — and the **KID agreement** with your bank, its length and its check
+when you have one, and following the number when you change it — and the **KID agreement** with your bank, its length and its check
 digit (MOD10 or MOD11). Until they get their own fields, they are set through the API
 ([the Peppol id and the KID agreement](/en/reference/invoices/#the-peppol-id-and-the-kid-agreement)).
 With a KID agreement every invoice issued from then on gets a KID, the payment

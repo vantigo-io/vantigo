@@ -50,7 +50,7 @@ Fyll ut feltene og klikk **Lagre**:
 
 Lagring beholder to ting siden ennå ikke har felter for: selgerens **Peppol-ID** —
 adressen EHF-fakturaer sendes fra, fylt ut som `0192:` og organisasjonsnummeret når du
-har et — og **KID-avtalen** med banken, lengden og kontrollsifferet (MOD10 eller MOD11).
+har et, og som følger nummeret når du endrer det — og **KID-avtalen** med banken, lengden og kontrollsifferet (MOD10 eller MOD11).
 Til de får egne felter, settes de gjennom API-et
 ([Peppol-ID og KID-avtalen](/en/reference/invoices/#the-peppol-id-and-the-kid-agreement)).
 Med en KID-avtale får hver faktura som utstedes fra da av en KID, betalingsreferansen
