@@ -58,7 +58,10 @@ banken kobler betalingen til; en kreditnota får aldri det.
 Sending som EHF finnes ikke i appen ennå; serveren svarer allerede på om denne
 installasjonen kunne sendt — driftsansvarliges EHF-bryter og Peppol-oppslaget på,
 legitimasjonen til aksesspunktet lagret og Peppol-ID-en satt
-([bryterne](/en/reference/invoices/#permissions)).
+([bryterne](/en/reference/invoices/#permissions)). Aksesspunktet — leverandøren som
+bringer en EHF-faktura ut på nettverket — settes foreløpig opp av en administrator
+gjennom API-et; skjermbildet for det kommer senere
+([legitimasjonen til aksesspunktet](/en/reference/invoices/#the-access-points-credentials)).
 
 Lagret en kollega innstillingene mens du redigerte, sier skjemaet **Innstillingene er
 endret** og tilbyr **Last inn på nytt**; de ulagrede endringene dine forkastes, de

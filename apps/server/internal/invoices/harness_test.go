@@ -14,6 +14,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint/storecovetest"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
@@ -21,7 +22,8 @@ import (
 // harness is one invoices installation for one test: internal/modtest's shared
 // harness composing this module beside identity, every exchange validated
 // against invoices.yaml through the package recorder, plus the fake customer
-// directory and the fake object store it was composed with.
+// directory, the fake object store and the test Storecove it was composed
+// with.
 //
 // The directory is a fake built directly against internal/contracts —
 // depguard forbids internal/invoices/** from importing internal/customers,
@@ -32,6 +34,10 @@ type harness struct {
 	customers *fakeCustomers
 	// objects is nil for an installation without an object store.
 	objects *fakeObjectStore
+	// storecove is the access point every harness points
+	// INVOICES_STORECOVE_BASE_URL at, reached over its own TLS listener
+	// through Deps.HTTPTransport, so no test ever calls the real provider.
+	storecove *storecovetest.Server
 }
 
 // newHarness is an invoices installation with an object store.
@@ -51,16 +57,19 @@ func newHarnessWithoutStore(t *testing.T, opts ...modtest.Option) *harness {
 func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.Option) *harness {
 	t.Helper()
 	customers := newFakeCustomers()
+	storecove := storecovetest.New(t)
 	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(invoices.Module()),
 		modtest.WithDirectory(customers),
+		modtest.WithEnv("INVOICES_STORECOVE_BASE_URL", storecove.URL()),
+		modtest.WithTransport(storecove.Transport()),
 	}
 	if objects != nil {
 		base = append(base, modtest.WithObjectStore(objects))
 	}
 	before := lockedContractCalls.count()
-	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects}
+	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove}
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
 			t.Errorf("a call outside this module's own database was made from inside one of its locked transactions:\n%s",

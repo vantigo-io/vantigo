@@ -377,6 +377,10 @@ export const invoicesCatalog = {
     "refusal.invoice_fully_credited": "The invoice is already credited in full.",
     "refusal.storage_unavailable":
       "The document store is unavailable, so nothing can be issued, downloaded or sent now.",
+    "refusal.ehf_unavailable":
+      "E-invoicing is unavailable: it is switched off, or the access point's credentials are missing or can no longer be read. Enter the access point's key again.",
+    "refusal.transmissions_active":
+      "A document is still on its way through this access point. Wait until it is delivered or failed before removing or switching the credentials.",
     "refusal.invoice_draft": "A draft has no document yet; preview it instead.",
     "refusal.credit_note_not_creditable": "A credit note cannot itself be credited.",
     "refusal.series_locked": "Documents are issued from this series, so its start can no longer change.",
@@ -775,6 +779,10 @@ export const invoicesCatalog = {
     "refusal.invoice_fully_credited": "Fakturaen er allerede kreditert i sin helhet.",
     "refusal.storage_unavailable":
       "Dokumentlageret er utilgjengelig, så ingenting kan utstedes, lastes ned eller sendes nå.",
+    "refusal.ehf_unavailable":
+      "E-faktura er utilgjengelig: den er slått av, eller legitimasjonen til aksesspunktet mangler eller kan ikke lenger leses. Skriv inn nøkkelen til aksesspunktet på nytt.",
+    "refusal.transmissions_active":
+      "Et dokument er fortsatt underveis gjennom dette aksesspunktet. Vent til det er levert eller feilet før du fjerner eller bytter legitimasjonen.",
     "refusal.invoice_draft": "Et utkast har ikke noe dokument ennå; forhåndsvis det i stedet.",
     "refusal.credit_note_not_creditable": "En kreditnota kan ikke selv krediteres.",
     "refusal.series_locked": "Det er utstedt dokumenter i denne serien, så startnummeret kan ikke lenger endres.",

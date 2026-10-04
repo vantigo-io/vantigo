@@ -7,6 +7,13 @@
 -- is configured, which the caller reads from pgx.ErrNoRows.
 SELECT * FROM invoices.access_point_credentials WHERE id = 1;
 
+-- name: LockAccessPointCredentials :one
+-- LockAccessPointCredentials reads the one credentials row FOR UPDATE: a PUT
+-- that keeps the stored key opens and seals it again from this read, inside
+-- its transaction, so a concurrent PUT's new key is never overwritten with
+-- the old one; a DELETE judges the transmissions in flight under it.
+SELECT * FROM invoices.access_point_credentials WHERE id = 1 FOR UPDATE;
+
 -- name: UpsertAccessPointCredentials :one
 -- UpsertAccessPointCredentials writes the provider, its non-secret settings
 -- and the sealed key, and clears rejected_at: a new PUT is a new key, or the

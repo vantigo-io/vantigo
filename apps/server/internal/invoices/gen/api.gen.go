@@ -20,6 +20,26 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// InvoicesAccessPointRequest PUT /settings/access-point's body (EHF and KID design D7). provider is storecove, the one provider so far; legalEntityId is the Storecove legal entity documents are sent as, a positive integer; apiKey is the provider's API key — omitted or null keeps the stored one, which is required the first time, and an empty or blank one is a 400. The key is sealed by the secrets box and never answered.
+type InvoicesAccessPointRequest struct {
+	ApiKey        *string `json:"apiKey,omitempty"`
+	LegalEntityId int64   `json:"legalEntityId"`
+	Provider      string  `json:"provider"`
+}
+
+// InvoicesAccessPointResponse The stored access-point credentials as a client may see them — never the key. hasCredentials is whether a key is stored; rejectedAt is when the provider first refused it (a 401 or 403, or a stored key the server could not open), absent while it has not, cleared by a new PUT and by the next call the provider accepts.
+type InvoicesAccessPointResponse struct {
+	HasCredentials bool       `json:"hasCredentials"`
+	LegalEntityId  int64      `json:"legalEntityId"`
+	Provider       string     `json:"provider"`
+	RejectedAt     *time.Time `json:"rejectedAt,omitempty"`
+}
+
+// InvoicesAccessPointVerifyResponse What the provider answered the cheapest authenticated read (Storecove: the legal entity). result is ok (the key reaches the legal entity), unauthorized (the provider refused the key — 401 or 403 — which also flags it as rejected) or unreachable (anything else: the network, a timeout, a 5xx, a legal entity the key does not reach).
+type InvoicesAccessPointVerifyResponse struct {
+	Result string `json:"result"`
+}
+
 // InvoicesBuyer The buyer snapshot (D4), written at issue from the customer's billing profile and printed from, never re-read. A credit note carries its original's.
 type InvoicesBuyer struct {
 	AddressLine1   *string `json:"addressLine1,omitempty"`
@@ -46,7 +66,7 @@ type InvoicesBuyer struct {
 	Type string `json:"type"`
 }
 
-// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
+// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 type InvoicesConflictProblem struct {
 	// AllowedIssueDates On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise.
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
@@ -675,6 +695,9 @@ type PostInvoicesJSONRequestBody = InvoicesInvoiceRequest
 // PutInvoicesSettingsJSONRequestBody defines body for PutInvoicesSettings for application/json ContentType.
 type PutInvoicesSettingsJSONRequestBody = InvoicesSettingsRequest
 
+// PutInvoicesSettingsAccessPointJSONRequestBody defines body for PutInvoicesSettingsAccessPoint for application/json ContentType.
+type PutInvoicesSettingsAccessPointJSONRequestBody = InvoicesAccessPointRequest
+
 // PostInvoicesVatCodesJSONRequestBody defines body for PostInvoicesVatCodes for application/json ContentType.
 type PostInvoicesVatCodesJSONRequestBody = InvoicesVatCodeCreateRequest
 
@@ -722,6 +745,15 @@ type ServerInterface interface {
 	// PutInvoicesSettings Change the invoice settings
 	// (PUT /api/v1/invoices/settings)
 	PutInvoicesSettings(w http.ResponseWriter, r *http.Request)
+	// DeleteInvoicesSettingsAccessPoint Remove the access-point credentials
+	// (DELETE /api/v1/invoices/settings/access-point)
+	DeleteInvoicesSettingsAccessPoint(w http.ResponseWriter, r *http.Request)
+	// PutInvoicesSettingsAccessPoint Store the access-point credentials
+	// (PUT /api/v1/invoices/settings/access-point)
+	PutInvoicesSettingsAccessPoint(w http.ResponseWriter, r *http.Request)
+	// PostInvoicesSettingsAccessPointVerify Verify the access-point credentials
+	// (POST /api/v1/invoices/settings/access-point/verify)
+	PostInvoicesSettingsAccessPointVerify(w http.ResponseWriter, r *http.Request)
 	// GetInvoicesStatsSummary Get the invoices dashboard summary
 	// (GET /api/v1/invoices/stats/summary)
 	GetInvoicesStatsSummary(w http.ResponseWriter, r *http.Request, params GetInvoicesStatsSummaryParams)
@@ -1083,6 +1115,48 @@ func (siw *ServerInterfaceWrapper) PutInvoicesSettings(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutInvoicesSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInvoicesSettingsAccessPoint operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInvoicesSettingsAccessPoint(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInvoicesSettingsAccessPoint(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInvoicesSettingsAccessPoint operation middleware
+func (siw *ServerInterfaceWrapper) PutInvoicesSettingsAccessPoint(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInvoicesSettingsAccessPoint(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesSettingsAccessPointVerify operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesSettingsAccessPointVerify(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesSettingsAccessPointVerify(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1645,6 +1719,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/meta", wrapper.GetInvoicesMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings", wrapper.GetInvoicesSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings", wrapper.PutInvoicesSettings)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.DeleteInvoicesSettingsAccessPoint)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.PutInvoicesSettingsAccessPoint)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/settings/access-point/verify", wrapper.PostInvoicesSettingsAccessPointVerify)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/vat-codes", wrapper.GetInvoicesVatCodes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/vat-codes", wrapper.PostInvoicesVatCodes)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/vat-codes/{id}", wrapper.PutInvoicesVatCodesById)
@@ -2117,6 +2194,232 @@ func (response PutInvoicesSettings409ApplicationProblemPlusJSONResponse) VisitPu
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesSettingsAccessPointRequestObject struct {
+}
+
+type DeleteInvoicesSettingsAccessPointResponseObject interface {
+	VisitDeleteInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error
+}
+
+type DeleteInvoicesSettingsAccessPoint204Response struct {
+}
+
+func (response DeleteInvoicesSettingsAccessPoint204Response) VisitDeleteInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInvoicesSettingsAccessPoint401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInvoicesSettingsAccessPoint401JSONResponse) VisitDeleteInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesSettingsAccessPoint403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInvoicesSettingsAccessPoint403JSONResponse) VisitDeleteInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesSettingsAccessPoint409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response DeleteInvoicesSettingsAccessPoint409ApplicationProblemPlusJSONResponse) VisitDeleteInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsAccessPointRequestObject struct {
+	Body *PutInvoicesSettingsAccessPointJSONRequestBody
+}
+
+type PutInvoicesSettingsAccessPointResponseObject interface {
+	VisitPutInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error
+}
+
+type PutInvoicesSettingsAccessPoint200JSONResponse InvoicesAccessPointResponse
+
+func (response PutInvoicesSettingsAccessPoint200JSONResponse) VisitPutInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsAccessPoint400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutInvoicesSettingsAccessPoint400ApplicationProblemPlusJSONResponse) VisitPutInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsAccessPoint401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesSettingsAccessPoint401JSONResponse) VisitPutInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsAccessPoint403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesSettingsAccessPoint403JSONResponse) VisitPutInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsAccessPoint409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PutInvoicesSettingsAccessPoint409ApplicationProblemPlusJSONResponse) VisitPutInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsAccessPoint503ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PutInvoicesSettingsAccessPoint503ApplicationProblemPlusJSONResponse) VisitPutInvoicesSettingsAccessPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesSettingsAccessPointVerifyRequestObject struct {
+}
+
+type PostInvoicesSettingsAccessPointVerifyResponseObject interface {
+	VisitPostInvoicesSettingsAccessPointVerifyResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesSettingsAccessPointVerify200JSONResponse InvoicesAccessPointVerifyResponse
+
+func (response PostInvoicesSettingsAccessPointVerify200JSONResponse) VisitPostInvoicesSettingsAccessPointVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesSettingsAccessPointVerify401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesSettingsAccessPointVerify401JSONResponse) VisitPostInvoicesSettingsAccessPointVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesSettingsAccessPointVerify403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesSettingsAccessPointVerify403JSONResponse) VisitPostInvoicesSettingsAccessPointVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesSettingsAccessPointVerify409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesSettingsAccessPointVerify409ApplicationProblemPlusJSONResponse) VisitPostInvoicesSettingsAccessPointVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesSettingsAccessPointVerify503ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesSettingsAccessPointVerify503ApplicationProblemPlusJSONResponse) VisitPostInvoicesSettingsAccessPointVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3464,6 +3767,15 @@ type StrictServerInterface interface {
 	// PutInvoicesSettings Change the invoice settings
 	// (PUT /api/v1/invoices/settings)
 	PutInvoicesSettings(ctx context.Context, request PutInvoicesSettingsRequestObject) (PutInvoicesSettingsResponseObject, error)
+	// DeleteInvoicesSettingsAccessPoint Remove the access-point credentials
+	// (DELETE /api/v1/invoices/settings/access-point)
+	DeleteInvoicesSettingsAccessPoint(ctx context.Context, request DeleteInvoicesSettingsAccessPointRequestObject) (DeleteInvoicesSettingsAccessPointResponseObject, error)
+	// PutInvoicesSettingsAccessPoint Store the access-point credentials
+	// (PUT /api/v1/invoices/settings/access-point)
+	PutInvoicesSettingsAccessPoint(ctx context.Context, request PutInvoicesSettingsAccessPointRequestObject) (PutInvoicesSettingsAccessPointResponseObject, error)
+	// PostInvoicesSettingsAccessPointVerify Verify the access-point credentials
+	// (POST /api/v1/invoices/settings/access-point/verify)
+	PostInvoicesSettingsAccessPointVerify(ctx context.Context, request PostInvoicesSettingsAccessPointVerifyRequestObject) (PostInvoicesSettingsAccessPointVerifyResponseObject, error)
 	// GetInvoicesStatsSummary Get the invoices dashboard summary
 	// (GET /api/v1/invoices/stats/summary)
 	GetInvoicesStatsSummary(ctx context.Context, request GetInvoicesStatsSummaryRequestObject) (GetInvoicesStatsSummaryResponseObject, error)
@@ -3734,6 +4046,85 @@ func (sh *strictHandler) PutInvoicesSettings(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutInvoicesSettingsResponseObject); ok {
 		if err := validResponse.VisitPutInvoicesSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInvoicesSettingsAccessPoint operation middleware
+func (sh *strictHandler) DeleteInvoicesSettingsAccessPoint(w http.ResponseWriter, r *http.Request) {
+	var request DeleteInvoicesSettingsAccessPointRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInvoicesSettingsAccessPoint(ctx, request.(DeleteInvoicesSettingsAccessPointRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInvoicesSettingsAccessPoint")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInvoicesSettingsAccessPointResponseObject); ok {
+		if err := validResponse.VisitDeleteInvoicesSettingsAccessPointResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInvoicesSettingsAccessPoint operation middleware
+func (sh *strictHandler) PutInvoicesSettingsAccessPoint(w http.ResponseWriter, r *http.Request) {
+	var request PutInvoicesSettingsAccessPointRequestObject
+
+	var body PutInvoicesSettingsAccessPointJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInvoicesSettingsAccessPoint(ctx, request.(PutInvoicesSettingsAccessPointRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInvoicesSettingsAccessPoint")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInvoicesSettingsAccessPointResponseObject); ok {
+		if err := validResponse.VisitPutInvoicesSettingsAccessPointResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesSettingsAccessPointVerify operation middleware
+func (sh *strictHandler) PostInvoicesSettingsAccessPointVerify(w http.ResponseWriter, r *http.Request) {
+	var request PostInvoicesSettingsAccessPointVerifyRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesSettingsAccessPointVerify(ctx, request.(PostInvoicesSettingsAccessPointVerifyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesSettingsAccessPointVerify")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesSettingsAccessPointVerifyResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesSettingsAccessPointVerifyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
