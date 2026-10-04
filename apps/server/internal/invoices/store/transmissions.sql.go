@@ -174,10 +174,11 @@ const claimTransmission = `-- name: ClaimTransmission :one
 UPDATE invoices.transmissions SET lease_id = $1, lease_until = $2::timestamptz
 WHERE id = (
     SELECT t.id FROM invoices.transmissions t
-    WHERE (t.status IN ('queued', 'submitted', 'unconfirmed')
+    WHERE ((t.status = 'queued' AND NOT $3::boolean)
+           OR t.status IN ('submitted', 'unconfirmed')
            OR (t.status = 'delivered' AND t.evidence_object_key IS NULL AND t.provider_ref IS NOT NULL))
-      AND t.next_attempt_at <= $3::timestamptz
-      AND (t.lease_until IS NULL OR t.lease_until < $3::timestamptz)
+      AND t.next_attempt_at <= $4::timestamptz
+      AND (t.lease_until IS NULL OR t.lease_until < $4::timestamptz)
     ORDER BY t.next_attempt_at, t.id
     LIMIT 1
     FOR UPDATE SKIP LOCKED
@@ -188,6 +189,7 @@ RETURNING id, invoice_id, provider, idempotency_key, sender_participant, receive
 type ClaimTransmissionParams struct {
 	LeaseID    *string
 	LeaseUntil time.Time
+	SkipQueued bool
 	Now        time.Time
 }
 
@@ -195,9 +197,16 @@ type ClaimTransmissionParams struct {
 // a reference and no evidence yet — ix_transmissions_due's predicate — due by
 // @now, and not leased by a worker whose lease still runs. One conditional
 // UPDATE over a SKIP LOCKED pick, so two workers never take one row. No row
-// is pgx.ErrNoRows: nothing is due.
+// is pgx.ErrNoRows: nothing is due. @skip_queued leaves every queued row
+// alone, unleased: an installation whose Peppol lookup is disabled still
+// probes and stores evidence but never submits (D9).
 func (q *Queries) ClaimTransmission(ctx context.Context, arg ClaimTransmissionParams) (InvoicesTransmission, error) {
-	row := q.db.QueryRow(ctx, claimTransmission, arg.LeaseID, arg.LeaseUntil, arg.Now)
+	row := q.db.QueryRow(ctx, claimTransmission,
+		arg.LeaseID,
+		arg.LeaseUntil,
+		arg.SkipQueued,
+		arg.Now,
+	)
 	var i InvoicesTransmission
 	err := row.Scan(
 		&i.ID,
@@ -643,12 +652,15 @@ func (q *Queries) MarkSubmittedWithoutRef(ctx context.Context, arg MarkSubmitted
 
 const markUnconfirmedLeased = `-- name: MarkUnconfirmedLeased :execrows
 UPDATE invoices.transmissions SET
-    status = 'unconfirmed', next_attempt_at = $1::timestamptz, last_error = $2,
+    status = 'unconfirmed',
+    next_attempt_at = CASE WHEN $1::boolean THEN 'infinity'::timestamptz ELSE $2::timestamptz END,
+    last_error = $3,
     lease_id = NULL, lease_until = NULL
-WHERE id = $3 AND lease_id = $4 AND status = $5::text
+WHERE id = $4 AND lease_id = $5 AND status = $6::text
 `
 
 type MarkUnconfirmedLeasedParams struct {
+	Park          bool
 	NextAttemptAt time.Time
 	LastError     *string
 	ID            int64
@@ -658,9 +670,11 @@ type MarkUnconfirmedLeasedParams struct {
 
 // MarkUnconfirmedLeased hands a claimed row to a person (D9): the cap by age
 // on a queued row whose marker is set, or seven days submitted. The worker
-// keeps probing it at @next_attempt_at ('infinity' when it never will).
+// keeps probing it at @next_attempt_at, or never when @park ('infinity':
+// the row waits for a person).
 func (q *Queries) MarkUnconfirmedLeased(ctx context.Context, arg MarkUnconfirmedLeasedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markUnconfirmedLeased,
+		arg.Park,
 		arg.NextAttemptAt,
 		arg.LastError,
 		arg.ID,
@@ -671,6 +685,20 @@ func (q *Queries) MarkUnconfirmedLeased(ctx context.Context, arg MarkUnconfirmed
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const queuedTransmissionsDue = `-- name: QueuedTransmissionsDue :one
+SELECT count(*) FROM invoices.transmissions WHERE status = 'queued' AND next_attempt_at <= $1::timestamptz
+`
+
+// QueuedTransmissionsDue is how many queued rows are due by @now: what an
+// installation whose Peppol lookup is disabled leaves alone, said once per
+// cycle.
+func (q *Queries) QueuedTransmissionsDue(ctx context.Context, now time.Time) (int64, error) {
+	row := q.db.QueryRow(ctx, queuedTransmissionsDue, now)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const refreshTransmissionLookup = `-- name: RefreshTransmissionLookup :execrows
@@ -705,15 +733,16 @@ func (q *Queries) RefreshTransmissionLookup(ctx context.Context, arg RefreshTran
 
 const rescheduleLeased = `-- name: RescheduleLeased :execrows
 UPDATE invoices.transmissions SET
-    next_attempt_at = $1::timestamptz,
-    submit_attempts = submit_attempts + $2::integer,
-    poll_attempts = poll_attempts + $3::integer,
-    last_error = $4,
+    next_attempt_at = CASE WHEN $1::boolean THEN 'infinity'::timestamptz ELSE $2::timestamptz END,
+    submit_attempts = submit_attempts + $3::integer,
+    poll_attempts = poll_attempts + $4::integer,
+    last_error = $5,
     lease_id = NULL, lease_until = NULL
-WHERE id = $5 AND lease_id = $6 AND status = $7::text
+WHERE id = $6 AND lease_id = $7 AND status = $8::text
 `
 
 type RescheduleLeasedParams struct {
+	Park                bool
 	NextAttemptAt       time.Time
 	SubmitAttemptsDelta int32
 	PollAttemptsDelta   int32
@@ -725,9 +754,11 @@ type RescheduleLeasedParams struct {
 
 // RescheduleLeased puts a claimed row back for later: the backoff after a
 // transport failure (submit_attempts + 1), the probe cadence (poll_attempts
-// + 1), or an hour out after a refused key (neither counted).
+// + 1), or an hour out after a refused key (neither counted). @park puts it
+// at 'infinity' instead: an unconfirmed row the machine stops probing.
 func (q *Queries) RescheduleLeased(ctx context.Context, arg RescheduleLeasedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, rescheduleLeased,
+		arg.Park,
 		arg.NextAttemptAt,
 		arg.SubmitAttemptsDelta,
 		arg.PollAttemptsDelta,

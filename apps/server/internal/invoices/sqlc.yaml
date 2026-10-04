@@ -33,3 +33,10 @@ sql:
             go_type:
               type: time.Time
               pointer: true
+          # 'infinity' is a value next_attempt_at takes (EHF and KID design
+          # D9: an unconfirmed row the worker stops probing), and pgx cannot
+          # scan it into a time.Time, so every read of the row would fail.
+          - column: invoices.transmissions.next_attempt_at
+            go_type:
+              import: github.com/jackc/pgx/v5/pgtype
+              type: Timestamptz

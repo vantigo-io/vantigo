@@ -93,7 +93,8 @@ A document's state is not a column: `invoices.document_state(...)` derives it, s
 Phase 2's schema (`00036_invoices_ehf_kid.sql`, the
 [design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-03-invoices-ehf-peppol-kid-design.md))
 adds the Peppol id, the KID agreement, the document's KID and the two tables in one
-migration; sending EHF itself is not yet wired to any endpoint.
+migration; [Sending as EHF](#sending-as-ehf) queues a transmission and its
+[workers](#workers) carry it to an outcome.
 
 The seeded codes, each from 2026-01-01: `3` 25 %, `31` 15 %, `32` 11.11 %, `33` 12 %
 (all S), `5` Z, `51` AE, `52` G, `6` **E** (unntatt, mval. kap. 3) and `7` **O** (a seller
@@ -902,6 +903,90 @@ transmission's status, or `not_sent`, the page's in one query.
 send's re-check. The e-mail dialog's `ehf_preferred` (in place of
 `delivery_preference_ehf` when the caller can send as EHF and nothing blocks the
 document) says so; neither channel is refused for the other.
+
+### Workers
+
+Two background workers carry a queued transmission to its outcome
+([design D9](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-03-invoices-ehf-peppol-kid-design.md)).
+Both run only when `INVOICES_EHF_ENABLED` is on — off, neither is handed to the
+runner — and both run with `PEPPOL_LOOKUP_ENABLED` off too: what is already submitted
+still completes, and a `queued` row is left alone, unleased, with one log line per
+cycle. Each builds the access-point adapter from the credentials row on every claim or
+drain; a row it cannot open — no credentials, or a key the secrets box cannot open — is
+logged at error and sets `rejected_at`, which meta reports as
+`accessPointCredentialsRejected`. Every time they judge is the module clock's; no
+document is locked and no call is made inside a transaction.
+
+**`invoices-ehf`** polls every 5 seconds. It claims one due row at a time by a
+conditional `UPDATE` with a **60-second lease** (`FOR UPDATE SKIP LOCKED`, the
+communications outbox's shape) and makes **exactly one provider call per claim**,
+bounded to 30 seconds. Every completion names the lease and the status the claim saw;
+when either changed — the events worker moved the row, or the lease ran out and another
+worker took it — the completion changes nothing and is logged at debug. `last_error` is
+always redacted as `reason` is. What a claim does depends on the row:
+
+- **`queued`.** First **the age cap**: a row queued more than **48 hours** ago becomes
+  `unconfirmed` when `submit_attempted_at` is set — the provider may have the document —
+  and `failed` when it never was. Attempts are never capped. Then, when the lookup the
+  row was queued under is more than 24 hours old, the receiver is looked up again (a
+  lookup, not a provider call) and the `lookup_*` columns refreshed; a receiver no longer
+  registered or no longer taking the document type ends the row `failed` with
+  `receiver_not_receivable`, the marker untouched. A lookup that fails waits on the
+  backoff. Then the adapter, the stored UBL read and checked against `ubl_sha256` (gone
+  or altered: an error log and an hour's wait — never a new render), and **the crash
+  marker** `submit_attempted_at`, stamped and committed immediately before `Submit`:
+  - accepted → `submitted` with the provider's reference and `submitted_at`, the first
+    probe five minutes out;
+  - **the 422 rule** — the provider answers a validation refusal and a duplicate
+    idempotency key alike: when the marker was NULL before this claim it is a
+    validation refusal, `failed` with the provider's messages; when it was already set it
+    may be the duplicate of a submission that went through, so the row becomes
+    `submitted` **without a reference**, for the event drain to match by its key;
+  - a transport failure, a timeout or a 5xx → still `queued`, `submit_attempts` + 1, and
+    the next attempt after `min(3600, 2^n)` seconds; the marker stays set — the outcome
+    is unknown, and the retry goes under the same idempotency key;
+  - 429 → the provider's `Retry-After` (seconds or an HTTP date), a minute when it names
+    none; 401 or 403 → an hour, `rejected_at` set and an error log; a receiver scheme
+    the adapter cannot map → `failed`. These three prove the provider did not take the
+    document: none counts an attempt, and each puts the marker back to what it was
+    before the claim.
+- **`submitted` with a reference** is probed with `Evidence` on a cadence by
+  `poll_attempts` — 5 minutes after the submission, 15 after the first probe, then
+  hourly. The evidence is the status: not yet available means not yet delivered, an
+  answer means **`delivered`** (`delivered_at` the probe's time) even if the provider's
+  event was lost. **Seven days after `submitted_at`** without an outcome the row becomes
+  `unconfirmed`. `submitted` **without** a reference is never probed: it is looked at
+  hourly and becomes `unconfirmed` at seven days, never probed again.
+- **`delivered`** without its evidence stays claimable: the next claim fetches the
+  evidence again and stores it once — `Exists` before `Put` — beside the document's PDF:
+  the provider's receipt as `documents/<id>/<number>-<transmission>-receipt.json` and the
+  document the provider actually transmitted (Storecove regenerates the UBL it was
+  given) as `…-delivered.xml`; `evidence_object_key` is the receipt's key and
+  `evidence_sha256` its hash. A failed fetch or store is retried on the probe cadence.
+- **`unconfirmed`** is a person's to resolve ([Resolve](#sending-as-ehf)). With a
+  reference the worker still probes it **once a day for thirty days** — the thirty days
+  after the seven — and when the evidence answers it resolves the row itself:
+  `delivered`, `resolved_by_user_id` NULL and the note "Resolved by the provider's
+  evidence." After the thirty days, or at once without a reference, `next_attempt_at` is
+  `'infinity'` and the row waits for a person.
+
+**`invoices-ehf-events`** polls every 30 seconds and drains the provider's event queue
+(Storecove's pull queue: `GET webhook_instances/`, `DELETE webhook_instances/{guid}`)
+under a PostgreSQL advisory lock (key `0x494E5645484631`, "INVEHF1"), so one replica
+drains at a time. It asks the provider nothing unless a row awaits an event — one
+`submitted` or `unconfirmed`, or `queued` with the marker set — and then reads until the
+queue is empty. Each event is applied **idempotently and without a row lease**: matched
+by its provider reference, or by its idempotency key when the row never learned the
+reference (which it then takes), and only while the row is `queued`, `submitted` or
+`unconfirmed`. `succeeded` makes it `delivered` at the worker's clock (Storecove's
+events carry no time); `failed` and `no_action_taken` make it `failed` with the
+provider's reason, redacted; any other state changes nothing. An `unconfirmed` row so
+resolved carries the note "Resolved by the provider's event." and no user. An event that
+matches no row in flight — a duplicate, a row the probe already delivered, a failed row,
+a submission not of this installation — is logged by its guid. **Every event read is
+acknowledged**, so **an installation must have its provider account to itself**: another
+system on the same account would lose its events. A read or an acknowledgement that
+fails ends the cycle, and the next one reads the same event again.
 
 ## The journal
 

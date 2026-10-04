@@ -22,6 +22,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
 // permissions is the module's catalog (D1). Every operation requires
@@ -74,17 +75,32 @@ var limits = map[string]ratelimit.Policy{
 }
 
 // Module is invoices as a platform module: its contract mounted under
-// /api/v1/invoices/, its five permissions in the composed catalog, and the two
+// /api/v1/invoices/, its five permissions in the composed catalog, the two
 // slots every module holding customer ids fills (customer_slots.go): the merge
-// holder and the personal-data provider.
+// holder and the personal-data provider, and the two EHF workers.
 func Module() module.Module {
 	return module.Module{
 		Name:                 "invoices",
 		Permissions:          permissions,
 		Mount:                mount,
+		Workers:              workers,
 		CustomerReferences:   newCustomerReferenceHolder,
 		CustomerPersonalData: newCustomerPersonalData,
 	}
+}
+
+// workers is this module's background work (EHF and KID design D9): the
+// invoices-ehf worker, which submits and probes, and the invoices-ehf-events
+// worker, which drains the provider's event queue. Both are handed to the
+// runner only when INVOICES_EHF_ENABLED is on — off must mean this process
+// never calls the access point on a schedule. PEPPOL_LOOKUP_ENABLED off does
+// not take them away: what is already submitted still completes, and the
+// submit worker leaves a queued row alone (ehf_worker.go).
+func workers(d module.Deps) []worker.Worker {
+	if d.Config == nil || !d.Config.InvoicesEhfEnabled {
+		return nil
+	}
+	return []worker.Worker{NewEhfWorker(d), NewEhfEventsWorker(d)}
 }
 
 // mount registers every contract operation on the platform router, which wraps

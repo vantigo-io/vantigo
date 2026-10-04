@@ -190,7 +190,7 @@ type InvoicesTransmission struct {
 	EvidenceSha256      *string
 	SubmitAttempts      int32
 	PollAttempts        int32
-	NextAttemptAt       time.Time
+	NextAttemptAt       pgtype.Timestamptz
 	SubmitAttemptedAt   *time.Time
 	LeaseID             *string
 	LeaseUntil          *time.Time
