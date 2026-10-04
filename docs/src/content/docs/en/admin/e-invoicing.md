@@ -120,6 +120,7 @@ Vantigo reads the legal entity from Storecove with the stored key and answers:
 | *The access point accepted the key.* (`ok`) | The key works for that legal entity; a rejected-key flag is cleared. |
 | *The access point refused the key.* (`unauthorized`) | Storecove answered 401 or 403: a wrong, revoked or expired key. The flag is set. |
 | *The access point could not be reached, or the key does not reach this legal entity.* (`unreachable`) | The network, a timeout, a server error at Storecove, or a legal entity id the key does not cover. |
+| E-invoicing is unavailable (503 `ehf_unavailable`) | Vantigo cannot read the stored key — `APP_SECRET` changed, or the row was altered. The flag is set and an error logged; enter the key again. Without any stored credentials, Verify answers 409 `ehf_unavailable`. |
 
 Then check that the card's **What e-invoicing needs** says *Sending as EHF is
 available*. The first real send is the final proof: send one invoice to a customer who
@@ -150,12 +151,15 @@ still follow what was already handed over, but hand over nothing new.
     stored (below).
   - An **unconfirmed** document with a Storecove reference: asked about once a day for
     thirty days, and marked delivered if Storecove finally has a receipt; after that it
-    waits for a person.
-- **`invoices-ehf-events`**, every 30 seconds, under a PostgreSQL advisory lock so one
-  replica drains at a time: while any transmission awaits an outcome, it reads
-  Storecove's event queue until it is empty, marks each document delivered (Storecove's
-  `succeeded`: the receiving access point's receipt) or failed (`failed`,
-  `no_action_taken`), and acknowledges every event.
+    waits for a person. Without a reference it waits for a person at once.
+- **`invoices-ehf-events`**, every 30 seconds, under a PostgreSQL advisory lock
+  (`pg_try_advisory_lock`) so one replica drains at a time: while a transmission is
+  submitted or unconfirmed, or queued after a hand-over was tried, it reads Storecove's
+  event queue until it is empty — at most 500 events a cycle — marks each document
+  delivered (Storecove's `succeeded`: the receiving access point's receipt) or failed
+  (`failed`, `no_action_taken`), an unconfirmed one included, and acknowledges every
+  event. An event the database refuses outright is logged at error and acknowledged
+  anyway, so it cannot hold up the queue behind it.
 
 **Delivered** means the receiving access point acknowledged the message — nothing
 stronger: not that the customer's system accepted the invoice or that anyone read it.
@@ -170,7 +174,8 @@ with `invoices:issue` resolves it on the document's card **E-invoice (EHF)** wit
 reference**, Storecove's id of the submission, to look it up by. As the holder of the
 Storecove account, expect to be asked. Resolved as failed, the next send carries the very
 same EHF, so a document that did arrive is at worst received twice, never as two
-different documents.
+different documents. If Storecove's receipt or event arrives first, Vantigo resolves the
+transmission itself, noting that the provider did.
 
 **Failed** means the document was not delivered: Storecove refused it (the reason, in
 Storecove's words, is shown to issuers), the receiver left the network, or it never
@@ -181,7 +186,8 @@ reached Storecove within 48 hours. The document can be sent again, or e-mailed.
 - **The rejected-key flag.** The settings card shows *The access point refused the key*,
   `GET /api/v1/invoices/meta` answers `accessPointCredentialsRejected: true`, and the log
   has an error. The key was revoked or mistyped, or `APP_SECRET` changed. Save a valid
-  key and click **Verify**; queued documents go out on the next turn.
+  key and click **Verify**. Saving does not hurry the queue: each document the refused
+  key held back goes out when it is next due, within the hour.
 - **The lookup.** A send refused with 502 `peppol_lookup_failed` means the Peppol
   registry could not be asked: check outbound DNS and HTTPS, and `PEPPOL_DNS_SERVER`.
   `peppol_not_receivable` is not a fault: the receiver is not registered for that
@@ -233,8 +239,10 @@ Enter the pair on the card **KID** in **Invoice settings**
 from then on carries a KID on its PDF, in its e-mail and in its EHF; earlier ones carry
 none. **Changing the agreement** later applies to new invoices only: open invoices keep
 the KIDs they were issued with, so ask the bank to keep the old length valid until they
-are paid — that is what its extra lengths are for. Shortening it until the next number
-no longer fits stops issuing (409 `kid_length_exceeded`) until it is lengthened again.
+are paid — that is what its extra lengths are for. A length the next number does not fit
+is refused when it is saved (400 on `kidLength`); issuing stops (409
+`kid_length_exceeded`) only when the numbers outgrow a length that fitted when it was
+saved, until the agreement is lengthened.
 
 ## Testing against the Storecove sandbox
 

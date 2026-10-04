@@ -166,8 +166,8 @@ each permission unlocks in an app is listed in that app's reference page, for ex
 [Customers](/en/reference/customers/), [Projects](/en/reference/projects/),
 [Time](/en/reference/time/), [Expenses](/en/reference/expenses/) and
 [Invoices](/en/reference/invoices/). The descriptions in the catalog say what a title
-does not: Invoices' **Issue invoices** also sends a document by e-mail or as EHF and
-cancels or resolves its EHF transmissions, and **Manage invoicing** also holds the
+does not: in Invoices, **Issue invoices** also sends a document by e-mail or as EHF
+and cancels or resolves its EHF transmissions, and **Manage invoicing** also holds the
 Peppol id, the KID agreement and the e-invoicing access point. **Manage identity**
 (`identity:manage`) is the one permission of the identity module itself.
 

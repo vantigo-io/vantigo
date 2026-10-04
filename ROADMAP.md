@@ -802,9 +802,14 @@ workers — one submitting once per claim under an idempotency key and probing t
 provider's evidence, one draining Storecove's event queue — with the receipt and the
 delivered copy stored as the record, and an outcome the machine cannot know left
 `unconfirmed` for a person to resolve; cancel, resolve and the EHF download; channel
-precedence in the app (EHF first when the customer prefers it or has a Peppol id, e-mail
-second, neither refused for the other); and the transmissions in the customer slots'
-export and erase.
+precedence in the app (EHF first when the customer prefers it, or has a Peppol id and no
+preference; e-mail second, neither refused for the other); and the transmissions in the
+customer slots' export and erase.
+
+**Still open in this phase:** a run of the tagged Storecove sandbox test
+(`go test -tags storecove`, which needs a sandbox key) proving that the PDF embedded in
+the submitted UBL survives Storecove's regeneration of it; and adopting Peppol BIS
+Billing 3.0.21 — the artefacts are pinned at `v3.0.20` — the day OpenPEPPOL tags it.
 
 *Unblocks:* B2G invoicing (mandatory since 2019) and the B2B duty from 2027-01-01; the KID
 on every invoice is what phase 4's payment imports match on.
