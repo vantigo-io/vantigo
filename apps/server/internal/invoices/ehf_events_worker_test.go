@@ -2,10 +2,13 @@ package invoices_test
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint/storecovetest"
@@ -221,5 +224,83 @@ func TestEhfEventsWorker_AsksNothingWhenNothingAwaits(t *testing.T) {
 	runEvents(t, w)
 	if h.storecove.Queued() != 0 {
 		t.Errorf("a queued row with its marker set did not start a drain")
+	}
+}
+
+// An event the database refuses — here a reference longer than the column,
+// SQLSTATE 22001, on a row it matches by key — would be refused every cycle
+// and, the queue being first in, first out, hold every event behind it. It
+// is dead-lettered: logged at error and acknowledged, and the event behind
+// it is applied.
+func TestEhfEventsWorker_DeadLettersAPoisonEvent(t *testing.T) {
+	t.Parallel()
+	h, w := eventsReady(t)
+	poisoned := plantWithRef(t, h, "submitted", "")
+	next := plantWithRef(t, h, "submitted", "guid-next")
+	poison := h.storecove.Enqueue(storecovetest.Event{Event: "succeeded", SubmissionGUID: strings.Repeat("g", 201),
+		IdempotencyGUID: txRow(t, h, poisoned).IdempotencyKey.String()})
+	behind := h.storecove.Enqueue(storecovetest.Event{Event: "succeeded", SubmissionGUID: "guid-next"})
+	runEvents(t, w)
+
+	if acked := h.storecove.Acked(); !slices.Equal(acked, []string{poison, behind}) {
+		t.Errorf("acknowledged = %v, want the poison event and the one behind it", acked)
+	}
+	if row := txRow(t, h, poisoned); row.Status != "submitted" || row.ProviderRef != nil {
+		t.Errorf("poisoned = %s ref %v, want untouched", row.Status, row.ProviderRef)
+	}
+	if row := txRow(t, h, next); row.Status != "delivered" {
+		t.Errorf("the event behind = %s, want delivered", row.Status)
+	}
+	logs := h.Logs()
+	if !strings.Contains(logs, `"level":"ERROR","msg":"invoices: an access point event the database refuses is dead-lettered and acknowledged"`) ||
+		!strings.Contains(logs, `"event":"`+poison+`"`) || !strings.Contains(logs, `"sqlstate":"22001"`) {
+		t.Errorf("no dead-letter line naming the event and its SQLSTATE")
+	}
+}
+
+// A transient database failure — here a lock timeout while another
+// transaction holds the row — is not the event's fault: the event is not
+// acknowledged, the cycle ends with the error, and the next cycle applies it.
+// Acknowledging before applying would lose it here.
+func TestEhfEventsWorker_LeavesAnEventOnATransientFailure(t *testing.T) {
+	t.Parallel()
+	h, _ := eventsReady(t)
+	ctx := context.Background()
+	cfg := h.Pool().Config().Copy()
+	cfg.ConnConfig.RuntimeParams["lock_timeout"] = "200ms"
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	d := h.Deps()
+	d.Pool = pool
+	w := invoices.NewEhfEventsWorker(d)
+
+	held := plantWithRef(t, h, "submitted", "guid-held")
+	guid := h.storecove.Enqueue(storecovetest.Event{Event: "succeeded", SubmissionGUID: "guid-held"})
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM invoices.transmissions WHERE id = $1 FOR UPDATE`, held); err != nil {
+		t.Fatal(err)
+	}
+	ran, err := w.RunCycle(ctx)
+	if !ran || err == nil {
+		t.Errorf("RunCycle under a held row lock = %v, %v; want it run and failed", ran, err)
+	}
+	if len(h.storecove.Acked()) != 0 || h.storecove.Queued() != 1 {
+		t.Errorf("acknowledged %v with %d queued, want none and the event kept", h.storecove.Acked(), h.storecove.Queued())
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	runEvents(t, w)
+	if acked := h.storecove.Acked(); !slices.Equal(acked, []string{guid}) {
+		t.Errorf("acknowledged = %v, want the event once applied", acked)
+	}
+	if row := txRow(t, h, held); row.Status != "delivered" {
+		t.Errorf("held = %s, want delivered", row.Status)
 	}
 }

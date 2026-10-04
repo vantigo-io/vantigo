@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -65,6 +67,15 @@ const (
 	// ehfRefusedKeyDelay is how long a row waits after the provider refused
 	// the key, or the key could not be opened at all.
 	ehfRefusedKeyDelay = time.Hour
+	// ehfLeftAloneRepeat is how often the lookup-disabled line is repeated
+	// while the number of queued rows it leaves stays the same.
+	ehfLeftAloneRepeat = time.Hour
+	// ehfStoredEvidenceLimit bounds the read of an evidence object already
+	// stored: the adapter never answers a document larger than 20 MiB.
+	ehfStoredEvidenceLimit = 20 << 20
+	// reasonOutOfTime is last_error when a claim's lease has too little left
+	// for the call: the row is due again at once, nothing counted.
+	reasonOutOfTime = "The claim ran out of time before the call; it is retried."
 	// ehfDefaultThrottle is the wait after a 429 that named no Retry-After.
 	ehfDefaultThrottle = time.Minute
 	// ehfUnreferencedDelay is how often a submitted row without a reference
@@ -142,6 +153,13 @@ type EhfWorker struct {
 	// why it does nothing, as the outbox's store error is kept.
 	srvErr error
 	deps   module.Deps
+
+	// leftAlone and leftAloneAt are what the lookup-disabled line last said
+	// and when: it is said again when the count changes or an hour on, not
+	// every cycle.
+	mu          sync.Mutex
+	leftAlone   int64
+	leftAloneAt time.Time
 }
 
 var _ worker.Worker = (*EhfWorker)(nil)
@@ -178,7 +196,8 @@ func (w *EhfWorker) Run(ctx context.Context) error {
 }
 
 // RunCycle processes rows until none is due. An installation whose Peppol
-// lookup is disabled claims no queued row and says once that it left them.
+// lookup is disabled claims no queued row short of the age cap, and says so
+// when the number it leaves changes, or an hour after it last did.
 func (w *EhfWorker) RunCycle(ctx context.Context) error {
 	if w.srvErr != nil {
 		return w.srvErr
@@ -188,10 +207,7 @@ func (w *EhfWorker) RunCycle(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("invoices: count the queued transmissions: %w", err)
 		}
-		if n > 0 {
-			w.logger().InfoContext(ctx, "invoices: queued EHF transmissions are left alone: the Peppol lookup is disabled",
-				"worker", ehfWorkerName, "queued", n)
-		}
+		w.sayLeftAlone(ctx, n)
 	}
 	for ctx.Err() == nil {
 		processed, err := w.ProcessOne(ctx)
@@ -200,6 +216,25 @@ func (w *EhfWorker) RunCycle(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// sayLeftAlone logs the queued rows a lookup-disabled installation leaves,
+// when their number changed or an hour has passed since it last said so.
+func (w *EhfWorker) sayLeftAlone(ctx context.Context, n int64) {
+	now := w.now()
+	w.mu.Lock()
+	say := n > 0 && (n != w.leftAlone || now.Sub(w.leftAloneAt) >= ehfLeftAloneRepeat)
+	if say || n == 0 {
+		w.leftAlone = n
+	}
+	if say {
+		w.leftAloneAt = now
+	}
+	w.mu.Unlock()
+	if say {
+		w.logger().InfoContext(ctx, "invoices: queued EHF transmissions are left alone: the Peppol lookup is disabled",
+			"worker", ehfWorkerName, "queued", n)
+	}
 }
 
 // ProcessOne claims at most one due row and carries it one step, answering
@@ -242,6 +277,11 @@ type ehfClaim struct {
 	row   store.InvoicesTransmission
 	lease string
 	now   time.Time
+}
+
+// leaseLeft is how much of the claim's lease the module clock says remains.
+func (c *ehfClaim) leaseLeft() time.Duration {
+	return c.now.Add(ehfLease).Sub(c.w.now())
 }
 
 func (c *ehfClaim) q() *store.Queries { return store.New(c.w.deps.Pool) }
@@ -355,7 +395,9 @@ func (c *ehfClaim) submit(ctx context.Context) error {
 		return err
 	}
 
-	ubl, err := c.w.srv.loadStoredUBL(ctx, c.row)
+	readCtx, cancelRead := callContext(ctx)
+	ubl, err := c.w.srv.loadStoredUBL(readCtx, c.row)
+	cancelRead()
 	switch {
 	case errors.Is(err, errUBLBroken):
 		// Logged at error by loadStoredUBL. Never rendered again here: the
@@ -364,6 +406,13 @@ func (c *ehfClaim) submit(ctx context.Context) error {
 	case err != nil:
 		attempts := c.row.SubmitAttempts + 1
 		return c.reschedule(ctx, c.now.Add(ehfBackoff(attempts)), 1, 0, "The document store could not be read.", false)
+	}
+
+	// The lookup and the store read came first: a claim with less of its
+	// lease left than the call may take does not make it, and the row is due
+	// again at once, its marker untouched and nothing counted.
+	if c.leaseLeft() < ehfCallTimeout {
+		return c.reschedule(ctx, c.w.now(), 0, 0, reasonOutOfTime, false)
 	}
 
 	// The crash marker, committed on its own immediately before the call.
@@ -552,7 +601,8 @@ func (c *ehfClaim) storeEvidence(ctx context.Context) error {
 	}
 	base := fmt.Sprintf("documents/%d/%d-%d", inv.ID, number, c.row.ID)
 	receiptKey := base + "-receipt.json"
-	if err := c.w.storeOnce(ctx, receiptKey, ev.ReceiptJSON, "application/json"); err != nil {
+	receiptHash, err := c.w.storeOnce(ctx, receiptKey, ev.ReceiptJSON, "application/json")
+	if err != nil {
 		c.w.logger().WarnContext(ctx, "invoices: a transmission's evidence could not be stored", "worker", ehfWorkerName,
 			"transmission_id", c.row.ID, "error", err.Error())
 		return retry("The document store could not store the evidence.")
@@ -562,29 +612,51 @@ func (c *ehfClaim) storeEvidence(ctx context.Context) error {
 		if mime == "" {
 			mime = "application/xml"
 		}
-		if err := c.w.storeOnce(ctx, base+"-delivered.xml", ev.Delivered, mime); err != nil {
+		if _, err := c.w.storeOnce(ctx, base+"-delivered.xml", ev.Delivered, mime); err != nil {
 			c.w.logger().WarnContext(ctx, "invoices: a transmission's delivered copy could not be stored", "worker", ehfWorkerName,
 				"transmission_id", c.row.ID, "error", err.Error())
 			return retry("The document store could not store the evidence.")
 		}
 	}
-	sum := sha256.Sum256(ev.ReceiptJSON)
 	n, err := c.q().SetEvidenceLeased(ctx, store.SetEvidenceLeasedParams{
-		EvidenceObjectKey: &receiptKey, EvidenceSha256: ptr(hex.EncodeToString(sum[:])), ID: c.row.ID, LeaseID: &c.lease,
+		EvidenceObjectKey: &receiptKey, EvidenceSha256: &receiptHash, ID: c.row.ID, LeaseID: &c.lease,
 	})
 	return c.done(ctx, "store the evidence of", n, err)
 }
 
-// storeOnce puts body under key unless something is there already.
-func (w *EhfWorker) storeOnce(ctx context.Context, key string, body []byte, contentType string) error {
+// storeOnce puts body under key unless something is there already, and
+// answers the SHA-256 of what the key holds afterwards. An object an earlier
+// claim stored is kept and read back for its hash: the provider's evidence
+// carries expiring URLs, so this fetch's bytes are not the stored ones.
+// Every store call is bounded as a provider call is.
+func (w *EhfWorker) storeOnce(ctx context.Context, key string, body []byte, contentType string) (string, error) {
+	ctx, cancel := callContext(ctx)
+	defer cancel()
 	exists, err := w.srv.objectExists(ctx, key)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if exists {
-		return nil
+	if !exists {
+		if err := w.srv.objectPut(ctx, key, bytes.NewReader(body), contentType); err != nil {
+			return "", err
+		}
+		sum := sha256.Sum256(body)
+		return hex.EncodeToString(sum[:]), nil
 	}
-	return w.srv.objectPut(ctx, key, bytes.NewReader(body), contentType)
+	rc, err := w.srv.objectGet(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = rc.Close() }()
+	stored, err := io.ReadAll(io.LimitReader(rc, ehfStoredEvidenceLimit+1))
+	if err != nil {
+		return "", err
+	}
+	if len(stored) > ehfStoredEvidenceLimit {
+		return "", fmt.Errorf("invoices: the stored object %s is larger than %d bytes", key, ehfStoredEvidenceLimit)
+	}
+	sum := sha256.Sum256(stored)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // flagRejected sets rejected_at, which meta reports: the operator must look at

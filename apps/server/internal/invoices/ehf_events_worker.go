@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -128,8 +131,18 @@ func (w *EhfEventsWorker) RunCycle(ctx context.Context) (bool, error) {
 				return nil
 			}
 			if err := w.apply(ctx, q, event); err != nil {
-				// Not acknowledged: the event is read again next cycle.
-				return err
+				if !isPoisonEvent(err) {
+					// A connection or a context failure: not acknowledged,
+					// and the event is read again next cycle.
+					return err
+				}
+				// The database refuses the event itself — it would refuse it
+				// every cycle, and the queue is first in, first out, so it
+				// would hold every event behind it. Dead-lettered: logged
+				// and acknowledged.
+				w.logger().ErrorContext(ctx, "invoices: an access point event the database refuses is dead-lettered and acknowledged",
+					"worker", ehfEventsWorkerName, "event", event.ID, "provider_ref", string(event.SubmissionRef),
+					"state", string(event.State), "sqlstate", sqlState(err))
 			}
 			callCtx, cancel = callContext(ctx)
 			err = ap.AckEvent(callCtx, event.ID)
@@ -175,6 +188,24 @@ func (w *EhfEventsWorker) apply(ctx context.Context, q *store.Queries, e accessp
 	w.logger().InfoContext(ctx, "invoices: a transmission moved by an access point event",
 		"worker", ehfEventsWorkerName, "event", e.ID, "provider_ref", ref, "state", string(e.State))
 	return nil
+}
+
+// isPoisonEvent is whether applying an event failed on the event itself: a
+// value the column refuses (SQLSTATE class 22), a constraint (class 23) or
+// a trigger's refusal (P0001). Anything else — a lost connection, a
+// cancelled context, a lock timeout — is transient.
+func isPoisonEvent(err error) bool {
+	code := sqlState(err)
+	return strings.HasPrefix(code, "22") || strings.HasPrefix(code, "23") || code == "P0001"
+}
+
+// sqlState is err's SQLSTATE, "" when it is not a PostgreSQL error.
+func sqlState(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code
+	}
+	return ""
 }
 
 // underLease runs action holding the advisory lock on its own connection,

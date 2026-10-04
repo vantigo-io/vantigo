@@ -16,8 +16,8 @@ import (
 // them: every completion names the status its claim saw, so a row the events
 // worker moved meanwhile — it takes no lease — answers 0 rows, never the
 // trigger's refusal; the machine's resolution of an unconfirmed row writes
-// its note without a user; and an event with an empty reference never stores
-// it.
+// its note without a user; and an event with an empty reference neither
+// matches a row by it nor stores it.
 func TestTransmissions_CompletionsAreStatusGuarded(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
@@ -83,6 +83,19 @@ func TestTransmissions_CompletionsAreStatusGuarded(t *testing.T) {
 	}
 	if row.Status != "delivered" || row.ResolvedByUserID != nil || row.ResolutionNote == nil {
 		t.Errorf("resolved = %s, user %v, note %v; want delivered with the machine's note and no user", row.Status, row.ResolvedByUserID, row.ResolutionNote)
+	}
+
+	// An event with an empty reference matches no row by it — not even one
+	// whose reference is empty — and stores none.
+	blank := insert(issuedAcme(t, h).ID)
+	if _, err := h.Pool().Exec(ctx, `UPDATE invoices.transmissions SET provider_ref = '' WHERE id = $1`, blank.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := q.ApplyEventFailed(ctx, store.ApplyEventFailedParams{Now: now, LastError: ptr("refused"), ProviderRef: ptr(""), IdempotencyKey: uuid.New()}); err != nil || n != 0 {
+		t.Errorf("an event with an empty reference and an unknown key = %d rows, %v; want 0", n, err)
+	}
+	if n, err := q.ApplyEventDelivered(ctx, store.ApplyEventDeliveredParams{Now: now, ProviderRef: ptr(""), IdempotencyKey: uuid.New()}); err != nil || n != 0 {
+		t.Errorf("a delivery with an empty reference and an unknown key = %d rows, %v; want 0", n, err)
 	}
 
 	// An event matched by its key with an empty reference stores no

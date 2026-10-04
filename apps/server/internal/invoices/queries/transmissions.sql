@@ -62,12 +62,13 @@ SELECT EXISTS (
 -- @now, and not leased by a worker whose lease still runs. One conditional
 -- UPDATE over a SKIP LOCKED pick, so two workers never take one row. No row
 -- is pgx.ErrNoRows: nothing is due. @skip_queued leaves every queued row
--- alone, unleased: an installation whose Peppol lookup is disabled still
--- probes and stores evidence but never submits (D9).
+-- alone, unleased, short of the 48-hour age cap: an installation whose
+-- Peppol lookup is disabled still probes and stores evidence and still caps
+-- a queued row by its age (a cap makes no call), but never submits (D9).
 UPDATE invoices.transmissions SET lease_id = @lease_id, lease_until = @lease_until::timestamptz
 WHERE id = (
     SELECT t.id FROM invoices.transmissions t
-    WHERE ((t.status = 'queued' AND NOT @skip_queued::boolean)
+    WHERE ((t.status = 'queued' AND (NOT @skip_queued::boolean OR t.queued_at + interval '48 hours' < @now::timestamptz))
            OR t.status IN ('submitted', 'unconfirmed')
            OR (t.status = 'delivered' AND t.evidence_object_key IS NULL AND t.provider_ref IS NOT NULL))
       AND t.next_attempt_at <= @now::timestamptz
@@ -183,7 +184,8 @@ UPDATE invoices.transmissions SET
     provider_ref = COALESCE(provider_ref, NULLIF(sqlc.narg(provider_ref)::text, '')),
     resolution_note = CASE WHEN status = 'unconfirmed' THEN sqlc.narg(machine_note) ELSE resolution_note END,
     poll_attempts = 0, last_error = NULL
-WHERE (idempotency_key = @idempotency_key OR (provider_ref = sqlc.narg(provider_ref)::text AND provider_ref IS NOT NULL))
+WHERE (idempotency_key = @idempotency_key
+       OR (provider_ref = sqlc.narg(provider_ref)::text AND provider_ref IS NOT NULL AND sqlc.narg(provider_ref)::text <> ''))
   AND status IN ('queued', 'submitted', 'unconfirmed');
 
 -- name: ApplyEventFailed :execrows
@@ -192,7 +194,8 @@ UPDATE invoices.transmissions SET
     status = 'failed', failed_at = @now::timestamptz, last_error = @last_error,
     provider_ref = COALESCE(provider_ref, NULLIF(sqlc.narg(provider_ref)::text, '')),
     resolution_note = CASE WHEN status = 'unconfirmed' THEN sqlc.narg(machine_note) ELSE resolution_note END
-WHERE (idempotency_key = @idempotency_key OR (provider_ref = sqlc.narg(provider_ref)::text AND provider_ref IS NOT NULL))
+WHERE (idempotency_key = @idempotency_key
+       OR (provider_ref = sqlc.narg(provider_ref)::text AND provider_ref IS NOT NULL AND sqlc.narg(provider_ref)::text <> ''))
   AND status IN ('queued', 'submitted', 'unconfirmed');
 
 -- name: AnyAwaitingEvents :one

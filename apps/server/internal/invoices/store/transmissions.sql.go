@@ -64,7 +64,8 @@ UPDATE invoices.transmissions SET
     provider_ref = COALESCE(provider_ref, NULLIF($2::text, '')),
     resolution_note = CASE WHEN status = 'unconfirmed' THEN $3 ELSE resolution_note END,
     poll_attempts = 0, last_error = NULL
-WHERE (idempotency_key = $4 OR (provider_ref = $2::text AND provider_ref IS NOT NULL))
+WHERE (idempotency_key = $4
+       OR (provider_ref = $2::text AND provider_ref IS NOT NULL AND $2::text <> ''))
   AND status IN ('queued', 'submitted', 'unconfirmed')
 `
 
@@ -98,7 +99,8 @@ UPDATE invoices.transmissions SET
     status = 'failed', failed_at = $1::timestamptz, last_error = $2,
     provider_ref = COALESCE(provider_ref, NULLIF($3::text, '')),
     resolution_note = CASE WHEN status = 'unconfirmed' THEN $4 ELSE resolution_note END
-WHERE (idempotency_key = $5 OR (provider_ref = $3::text AND provider_ref IS NOT NULL))
+WHERE (idempotency_key = $5
+       OR (provider_ref = $3::text AND provider_ref IS NOT NULL AND $3::text <> ''))
   AND status IN ('queued', 'submitted', 'unconfirmed')
 `
 
@@ -174,7 +176,7 @@ const claimTransmission = `-- name: ClaimTransmission :one
 UPDATE invoices.transmissions SET lease_id = $1, lease_until = $2::timestamptz
 WHERE id = (
     SELECT t.id FROM invoices.transmissions t
-    WHERE ((t.status = 'queued' AND NOT $3::boolean)
+    WHERE ((t.status = 'queued' AND (NOT $3::boolean OR t.queued_at + interval '48 hours' < $4::timestamptz))
            OR t.status IN ('submitted', 'unconfirmed')
            OR (t.status = 'delivered' AND t.evidence_object_key IS NULL AND t.provider_ref IS NOT NULL))
       AND t.next_attempt_at <= $4::timestamptz
@@ -198,8 +200,9 @@ type ClaimTransmissionParams struct {
 // @now, and not leased by a worker whose lease still runs. One conditional
 // UPDATE over a SKIP LOCKED pick, so two workers never take one row. No row
 // is pgx.ErrNoRows: nothing is due. @skip_queued leaves every queued row
-// alone, unleased: an installation whose Peppol lookup is disabled still
-// probes and stores evidence but never submits (D9).
+// alone, unleased, short of the 48-hour age cap: an installation whose
+// Peppol lookup is disabled still probes and stores evidence and still caps
+// a queued row by its age (a cap makes no call), but never submits (D9).
 func (q *Queries) ClaimTransmission(ctx context.Context, arg ClaimTransmissionParams) (InvoicesTransmission, error) {
 	row := q.db.QueryRow(ctx, claimTransmission,
 		arg.LeaseID,
