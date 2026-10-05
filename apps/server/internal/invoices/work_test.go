@@ -565,6 +565,17 @@ func TestFromWork_RefusalsInOrder(t *testing.T) {
 		len(problemOf(t, res).Errors["sources[5]"]) == 0 {
 		t.Fatalf("a source named twice = %d %s, want 400 on sources[5]", res.Status, res.Body)
 	}
+	// A note past 1 000 characters — counted as characters, not bytes.
+	long := fromWorkBody(customerAcme, sources...)
+	long["note"] = strings.Repeat("ø", 1001)
+	if res, _ := postFromWork(t, creator(t, f.h), long); res.Status != http.StatusBadRequest || len(problemOf(t, res).Errors["note"]) == 0 {
+		t.Fatalf("a 1 001-character note = %d %s, want 400 on note", res.Status, res.Body)
+	}
+	// 1 000 pass the body, here to the customer gate below, before any read.
+	long["customerId"], long["note"] = customerDisabled, strings.Repeat("ø", 1000)
+	if p := refusedFromWork(t, f.h, long, "customer_blocked"); len(p.Errors) != 0 {
+		t.Fatalf("a 1 000-character note refused on %v", p.Errors)
+	}
 	// Then the customer's gates, before any billable read.
 	refusedFromWork(t, f.h, fromWorkBody(customerDisabled, sources...), "customer_blocked")
 	if got := f.billable.reads(); len(got) != 0 {

@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 
@@ -178,7 +179,8 @@ func (s *server) releaseCreditWork(ctx context.Context, tx pgx.Tx, txq *store.Qu
 // released work again (D8) — "Erstatter faktura <n>, kreditert med
 // kreditnota <c>" in nb, "Replaces invoice <n>, credited by credit note <c>"
 // in en — for each (invoice, credit note) pair that last released one of
-// sources, newest first, each once; "" when none of them was ever released.
+// sources, newest first, each once; "" when none of them was ever released;
+// cut to fit a note (joinNote).
 // The note is a suggestion only: no new invoice is required to name the
 // credit note.
 //
@@ -218,5 +220,35 @@ func rePullNote(ctx context.Context, q *store.Queries, language string, sources 
 		seen[pair] = true
 		notes = append(notes, fmt.Sprintf(format, pair[0], pair[1]))
 	}
-	return strings.Join(notes, ". "), nil
+	return joinNote(notes, maxNote), nil
+}
+
+// maxNote is a document note's bound: note varchar(1000), in characters.
+const maxNote = 1000
+
+// joinNote joins sentences with ". " for a note of at most limit characters
+// (runes, as Postgres counts them): it stops before the sentence that would
+// not fit and ends with "…" when it left any out, keeping room for that mark
+// as it goes, so a re-pull of many released pairs still makes a note the
+// draft can hold.
+func joinNote(sentences []string, limit int) string {
+	var b strings.Builder
+	n := 0
+	for i, s := range sentences {
+		add := s
+		if i > 0 {
+			add = ". " + s
+		}
+		reserve := 0
+		if i < len(sentences)-1 {
+			reserve = utf8.RuneCountInString("…")
+		}
+		if n+utf8.RuneCountInString(add)+reserve > limit {
+			b.WriteString("…")
+			return b.String()
+		}
+		b.WriteString(add)
+		n += utf8.RuneCountInString(add)
+	}
+	return b.String()
 }

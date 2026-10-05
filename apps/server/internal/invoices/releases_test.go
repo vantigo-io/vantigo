@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
@@ -619,5 +620,65 @@ func TestRelease_NoDirectoryCallUnderTheLock(t *testing.T) {
 	}
 	if got := calls(plainCredit.ID); len(got) != 0 {
 		t.Errorf("a credit without work called %v, want nothing", got)
+	}
+}
+
+// On an append the wizard writes a note only on a target whose note is
+// empty: the suggestion for released work there, and a target's own note
+// kept — with or without a note in the request.
+func TestFromWork_AnAppendsNote(t *testing.T) {
+	t.Parallel()
+	holders := newFakeHolders()
+	h := releaseReady(t, holders)
+	original := issuedWork(t, h)
+	issued(t, h, creditOf(t, h, original.ID, nil).ID)
+	target := func(note string) invoiceJSON {
+		body := draftBody(customerAcme, line("Arbeid", 1, 100, vat25))
+		if note != "" {
+			body["note"] = note
+		}
+		return createDraft(t, h, body)
+	}
+
+	empty := appended(t, h, appendBody(target(""), workSrc("expenses.entry", mileage, 3)))
+	if empty.Note != "Erstatter faktura 1, kreditert med kreditnota 2" {
+		t.Errorf("an empty note on an append of released work = %q, want the suggestion", empty.Note)
+	}
+	if kept := appended(t, h, appendBody(target("X"), workSrc("projects.milestone", milestone, 1))); kept.Note != "X" {
+		t.Errorf("a target's note with none in the request = %q, want X kept", kept.Note)
+	}
+	given := appendBody(target("X"), workSrc("time.entry", hourTwo, 1))
+	given["note"] = "Y"
+	if kept := appended(t, h, given); kept.Note != "X" {
+		t.Errorf("a target's note with Y in the request = %q, want X kept", kept.Note)
+	}
+}
+
+// Many released pairs in one pull make a suggestion cut to the note's 1 000
+// characters, marked "…", which the wizard can store: 201, never the
+// column's 22001 as a 500.
+func TestFromWork_ALongRePullNoteFits(t *testing.T) {
+	t.Parallel()
+	holders := newFakeHolders()
+	billable := newFakeBillable()
+	opts := append(holders.options(), modtest.WithProjects(newFakeProjects()))
+	h := newHarness(t, append(opts, billable.options()...)...)
+	saveSeller(t, h, completeSeller(1))
+	var sources []map[string]any
+	for i := range 20 {
+		id := int64(30000 + i)
+		d := createDraft(t, h, draftBody(customerAcme, line("Konsulenttimer", 1, 1000, vat25)))
+		plantSource(t, h, d.ID, planted{position: 1, kind: "time.entry", id: id, revision: 1, quantity: "1", amount: "1000", date: "2026-09-01"})
+		original := issued(t, h, d.ID)
+		issued(t, h, creditOf(t, h, original.ID, nil).ID)
+		billable.putHour(contracts.BillableHour{ID: id, Revision: 1, ProjectID: project41, Date: wDay("2026-09-01"),
+			HoursHundredths: 100, BillRate: "1000", Currency: "NOK", Amount: "1000"})
+		sources = append(sources, workSrc("time.entry", id, 1))
+	}
+	doc := fromWork(t, h, fromWorkBody(customerAcme, sources...))
+	note := getInvoice(t, h, doc.ID).Note
+	if n := utf8.RuneCountInString(note); n > 1000 || !strings.HasSuffix(note, "…") ||
+		!strings.HasPrefix(note, "Erstatter faktura 39, kreditert med kreditnota 40. ") {
+		t.Errorf("the note of twenty released pairs = %d characters: %q; want at most 1 000, newest first, ending in …", n, note)
 	}
 }
