@@ -2,7 +2,9 @@ package projects_test
 
 import (
 	"context"
+	"log/slog"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,5 +151,43 @@ func TestBillableMilestones_ByIDs(t *testing.T) {
 
 	if _, err := read.BillableMilestones(context.Background(), contracts.BillableRequest{}); err == nil {
 		t.Error("a request naming nothing was answered, want it refused")
+	}
+}
+
+// A ready percent milestone whose project has since lost its fixed price — a
+// row only data written past the project's guard can leave behind — cannot be
+// priced, so it is not billable: left out of a read by project and of a read
+// by its own id, never an error and never a guessed amount, and said once at
+// warning.
+func TestBillableMilestones_AnUnpricedPercentIsLeftOutWithAWarning(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := fixedPriceProject(t, c, "BM0004", 400000)
+	share := readyMilestone(t, c, project.Id, map[string]any{"name": "Andel", "amount": nil, "percent": 25})
+	flat := readyMilestone(t, c, project.Id, map[string]any{"name": "Fast"})
+	h.Exec(t, `UPDATE projects.projects SET fixed_price_amount = NULL WHERE id = $1`, project.Id)
+	logs := &syncLog{}
+	deps := h.Deps()
+	deps.Logger = slog.New(slog.NewJSONHandler(logs, nil))
+	read := projects.Module().BillableMilestones(deps)
+
+	page, err := read.BillableMilestones(context.Background(), contracts.BillableRequest{ProjectIDs: []int32{project.Id}})
+	if err != nil {
+		t.Fatalf("BillableMilestones by project: %v", err)
+	}
+	if page.More || len(page.Milestones) != 1 || page.Milestones[0].ID != int64(flat.Id) {
+		t.Errorf("by project = %+v, want only the flat milestone", page)
+	}
+	if n := strings.Count(logs.String(), "cannot be priced"); n != 1 || !strings.Contains(logs.String(), `"level":"WARN"`) {
+		t.Errorf("logs = %s, want one warning that the milestone cannot be priced", logs.String())
+	}
+
+	page, err = read.BillableMilestones(context.Background(), contracts.BillableRequest{IDs: []int64{int64(share.Id)}})
+	if err != nil {
+		t.Fatalf("BillableMilestones by id: %v", err)
+	}
+	if page.More || len(page.Milestones) != 0 {
+		t.Errorf("by id = %+v, want an empty page", page)
 	}
 }

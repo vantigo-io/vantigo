@@ -195,6 +195,8 @@ func judgeMilestone(s contracts.WorkSource, locked lockedMilestones) (*big.Rat, 
 	if !ok {
 		// The source named another project than the milestone's own, so the
 		// milestone's project was not locked: the draft's read is not this row.
+		// It is judged before the unpriced refusal below, which would read a
+		// fixed price from a project this transaction does not hold.
 		return refuse(contracts.SourceChanged,
 			fmt.Sprintf("Billing milestone '%s' belongs to project %d, not %d", m.Name, m.ProjectID, s.ProjectID))
 	}
@@ -262,7 +264,7 @@ func (h *invoicedWorkHolder) ReleaseInvoiced(ctx context.Context, tx pgx.Tx, ref
 			continue
 		}
 		project, ok := locked.projects[m.ProjectID]
-		if !ok {
+		if !ok || m.ProjectID != s.ProjectID {
 			h.logger.WarnContext(ctx, "projects: a billing milestone released by a credit note belongs to another project than its source names; left as it is",
 				"milestone_id", s.ID, "project_id", m.ProjectID, "source_project_id", s.ProjectID, "invoice_id", ref.ID)
 			continue
