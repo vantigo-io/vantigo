@@ -377,6 +377,7 @@ Ingenting lages, og dialogen sier *Kunne ikke fakturere arbeidet* og hvorfor:
 - *Noe av det valgte arbeidet hører til et prosjekt som ikke fakturerer denne kunden.*
 - *Det valgte arbeidet er i mer enn én valuta, og én faktura er i én valuta*, eller *Det
   valgte arbeidet er ikke i NOK, den eneste valutaen denne modulen fakturerer i.*
+- *Arbeid faktureres per prosjekt, og Prosjekter-modulen er slått av.*
 - *Ett dokument kan holde høyst 5 000 arbeidsposter. Velg færre, eller lag et nytt
   utkast.*
 - *Gruppert slik blir arbeidet mer enn 500 linjer. Velg en grovere gruppering* — og
@@ -518,7 +519,7 @@ er tillatt den dagen. Hver avvisning sies i dialogen
 ([alle avvisningene](/en/reference/invoices/#issuing)).
 
 **Å utstede et utkast laget av arbeid** merker også arbeidet som fakturert — timene,
-utgiftene og milepælene linjene fakturerer — i samme steg, så de forlater det
+utleggene og milepælene linjene fakturerer — i samme steg, så de forlater det
 ufakturerte arbeidet for godt. Utstedelsen avvises, med linjen nevnt, når et arbeid på
 den ikke lenger kan faktureres (*Arbeid på linje 2 kan ikke lenger faktureres*), er endret
 siden det ble lagt til, allerede er merket som fakturert, hører til et prosjekt som ikke
@@ -564,7 +565,7 @@ utstedelsen avviser, en kreditnota som er større enn det fakturaen eller en lin
 igjen; en kreditnota kan ikke selv krediteres
 ([kreditnotaer](/en/reference/invoices/#credit-notes)).
 
-**Å kreditere en faktura laget av arbeid** gir arbeidet tilbake — timene, utgiftene og
+**Å kreditere en faktura laget av arbeid** gir arbeidet tilbake — timene, utleggene og
 milepælene en linje fakturerte, blir ufakturert igjen og klare for en ny faktura — bare
 når kreditnotaen returnerer den linjen **i sin helhet**: hele antallet, til fakturaens
 egen enhetspris og rabatt, medregnet kreditnotaene som er utstedt før den. En linje som
@@ -574,8 +575,8 @@ Kreditnotautkastets kort **Arbeid denne kreditnotaen gir tilbake** viser, slik u
 står, arbeidet utstedelsen ville gi tilbake — *Når den utstedes, blir dette arbeidet
 ufakturert igjen og kan faktureres på nytt* — eller sier *Slik den står, gir utstedelsen
 ikke noe arbeid tilbake: bare en linje kreditert i sin helhet, til sin egen pris, frigir
-arbeidet sitt.* Når den er utstedt, viser fakturaens linjer arbeidet som *Frigitt*, og det
-står igjen på kortet **Ufakturert arbeid**. En ny faktura kan fakturere det frigjorte
+arbeidet sitt.* Når den er utstedt, viser fakturaens linjer arbeidet som *Frigitt*, og det er
+tilbake på kortet **Ufakturert arbeid**. En ny faktura kan fakturere det frigjorte
 arbeidet på nytt; den trenger ikke å nevne kreditnotaen, og veiviseren foreslår en
 merknad om hva den erstatter
 ([frigjøring ved kreditering](/en/reference/invoices/#release-on-credit)).

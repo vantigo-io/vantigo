@@ -1368,8 +1368,10 @@ to invoice through `contracts.BillableExpenses` and stamps them in its issue —
 [invoiced by an invoice](#invoiced-by-an-invoice) — while the manual mark stays for
 an installation that invoices elsewhere, exactly as
 [the Time module](/en/reference/time/#what-time-gives-invoicing) says of the same
-column on an hour. Showing which invoice a line went out on
-in the Expenses app comes with the invoicing screens.
+column on an hour. A line the Invoices module invoiced says so in the Expenses app —
+"Invoiced by invoice n" in the project's expense list and in the line's drawer, a link
+to the invoice for a caller holding `invoices:access` with the invoices module mounted,
+plain words otherwise — and offers no undo.
 **Supplier invoices** are done: a supplier's invoice is recorded as what it is —
 [the supplier invoice](#the-supplier-invoice) — attested, re-billed and counted
 apart in the project's economy. What is deliberately still not here is accounts

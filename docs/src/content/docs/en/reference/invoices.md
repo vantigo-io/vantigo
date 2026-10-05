@@ -491,7 +491,7 @@ judged. A line's code is then editable like any.
 The app's card "Work to invoice" on the settings page offers the active codes and the
 one stored, marked "(no longer offered)" when it has since been deactivated. The
 wizard shows, for each kind it is given, the code the server would take — the
-settings', or `7` while the seller is not VAT-registered — and always sends the code
+settings', or id 9 (code `7`) while the seller is not VAT-registered — and always sends the code
 shown for every kind chosen, so a deactivated default is the 400 above, said under the
 field.
 
@@ -736,7 +736,7 @@ not even one a writer retried away:
 | A batch reimbursement of the held expense (Expenses' `POST /reimbursed`) | the expense line | both commit: a reimbursement moves the line's revision and nothing the bill reads, and the holder judges an expense by its billing facts, never its revision | both commit; the line ends reimbursed and stamped by the invoice |
 | A milestone's manual move from ready to invoiced | the project row (`LockProject`) | the issue finds the milestone invoiced by hand: 409 `source_already_invoiced` | the move finds the milestone stamped, at a revision the stamp moved on: the stale-revision 409; a move at the current revision is the 400 on `status` — invoiced cannot move to invoiced |
 | A fixed-price project's price edit (`PUT /projects/{id}`) against the issue of a percent milestone | the project row | the milestone's effective amount moved with the price: 409 `source_changed` | the edit commits after the issue; the invoiced milestone keeps the amount it was invoiced at |
-| A time unapprove of the held entry | the entry, by id | the issue finds the entry a draft again: 409 `source_not_invoiceable` | the unapprove finds the entry invoiced and refuses it, "Entry n is invoiced" |
+| A time unapprove of the held entry | the entry, by id | the issue finds the entry a draft again: 409 `source_not_invoiceable` | the unapprove finds the entry invoiced and refuses it: a 400 on `ids`, "Entry n is invoiced" |
 | A customers merge of the draft's customer, the draft holding a milestone of the absorbed customer's project | the number counter, which the issue waits on holding its document | — | the issue holds its document and the merge, which calls the invoices holder before projects' ([module boundaries rule 5](/en/contributing/module-boundaries/#the-rules)), waits on it while holding no project row; the issue's holder takes the project and both commit, the invoice and the project naming the survivor |
 
 **The window the issue accepts.** The projects' billing types are read before the

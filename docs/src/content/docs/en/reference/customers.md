@@ -797,7 +797,7 @@ leaves it unset.** Choosing a customer's group and editing a group's default are
 both `customers:update` writes, so a holder of that key alone can create a group
 with a 90-day default and move a customer into it, and one edit to a group's
 default moves the effective term of every such member at once —
-`contracts.CustomerDirectory.BillingProfile`, which Invoices will read, answers
+`contracts.CustomerDirectory.BillingProfile`, which Invoices reads, answers
 the new value. `customers:billing-manage` guards only the override. That is a
 deliberate trade-off, not an oversight. If it is ever unwanted, the change is to
 require `customers:billing-manage` as well on a group create or update that sets

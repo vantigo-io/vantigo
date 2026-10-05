@@ -848,7 +848,7 @@ of two connections.
 
 *Unblocks:* project invoicing end to end; Time's and Expenses' "next: invoicing".
 
-### Phase 4 — Payments and reminders
+### Phase 4 — Payments and reminders (next)
 
 OCR giro and camt.054 imports matched on KID with an exception queue; an overdue list
 and reminder runs (purring, inkassovarsel) that enforce the 14-day rules and the fee cap
