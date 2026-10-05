@@ -42,6 +42,20 @@ func TestExpensesInvoicedBy_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("invoiced-by columns = %q, want %q", columns, want)
 	}
 
+	// The index behind the billable read's supplier_invoice_rebilled (D15):
+	// partial on the invoiced supplier invoices, keyed by their number.
+	var index string
+	if err := pool.QueryRow(ctx, `
+		SELECT coalesce(string_agg(indexdef, ' | '), 'MISSING') FROM pg_indexes
+		WHERE schemaname = 'expenses' AND tablename = 'entries'
+		  AND indexname = 'ix_entries_supplier_invoice_invoiced'`).Scan(&index); err != nil {
+		t.Fatalf("read the re-billed index: %v", err)
+	}
+	if want := "CREATE INDEX ix_entries_supplier_invoice_invoiced ON expenses.entries USING btree (supplier_invoice_number) " +
+		"WHERE (((kind)::text = 'supplier_invoice'::text) AND (invoiced_at IS NOT NULL))"; index != want {
+		t.Errorf("re-billed index = %q, want %q", index, want)
+	}
+
 	insert := func(invoicedAt, reference, invoiceID, number string) error {
 		_, err := pool.Exec(ctx, `
 			INSERT INTO expenses.entries (user_id, created_by_user_id, kind, entry_date, description,
@@ -116,16 +130,20 @@ func TestExpensesInvoicedBy_AppliesAndIsIdempotent(t *testing.T) {
 	}
 
 	migrateTo(t, url, 37)
-	var functions, left int
+	var functions, left, indexes int
 	if err := pool.QueryRow(ctx, `
 		SELECT (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 		        WHERE n.nspname = 'expenses' AND p.proname = 'ready_to_invoice'),
 		       (SELECT count(*) FROM information_schema.columns
 		        WHERE table_schema = 'expenses' AND table_name = 'entries'
-		          AND column_name IN ('invoiced_invoice_id', 'invoiced_number'))`).Scan(&functions, &left); err != nil {
+		          AND column_name IN ('invoiced_invoice_id', 'invoiced_number')),
+		       (SELECT count(*) FROM pg_indexes
+		        WHERE schemaname = 'expenses' AND indexname = 'ix_entries_supplier_invoice_invoiced')`).Scan(
+		&functions, &left, &indexes); err != nil {
 		t.Fatalf("read what the rollback left: %v", err)
 	}
-	if functions != 0 || left != 0 {
-		t.Errorf("after the rollback %d ready_to_invoice functions and %d invoiced-by columns remain, want none", functions, left)
+	if functions != 0 || left != 0 || indexes != 0 {
+		t.Errorf("after the rollback %d ready_to_invoice functions, %d invoiced-by columns and %d re-billed indexes remain, want none",
+			functions, left, indexes)
 	}
 }

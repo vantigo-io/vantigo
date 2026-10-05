@@ -863,7 +863,8 @@ first refusal answering and nothing written:
 claim](#the-lock-order-inside-a-claim)): the lines' travel claims are read without a
 lock, then the claims are locked by id, then exactly the named lines by id — Expenses'
 place in the cross-module order, after Projects and before Time. A line found under
-another claim than the one read (no door moves one) is `source_changed`. The holder
+another claim than the one read (no door moves one) is `source_changed`; on a release
+the line is still released and the move logged as a warning. The holder
 marks its context as this module's locked transaction, so the module's own
 contract-call check covers it; it reads no directory and no clock.
 
