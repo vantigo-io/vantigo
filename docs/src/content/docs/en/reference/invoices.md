@@ -353,8 +353,10 @@ is ignored):
   the draft holds after the save share, and to NULL when they span two projects or
   there are none. Work from another project arriving on a draft that had one clears it
   at the next save; a save that drops the second project's work sets the first.
-- **The code** is the stored `project_reference` while the project is unchanged — a
-  later rename in Projects does not move it. Otherwise it is read through
+- **The code** is taken when the document's derived project last became this one, and
+  is the stored `project_reference` while the project is unchanged — a later rename in
+  Projects does not move it; a refresh whose work its module now answers under another
+  project moves the document to that one, with its code. Otherwise it is read through
   `ProjectDirectory.Projects` **before the save's transaction**, a contract call never
   made under the lock, and only when the work the request keeps — the held work its
   lines name, at a refresh's current project — belongs to one project the draft does not
