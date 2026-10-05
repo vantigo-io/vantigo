@@ -179,6 +179,19 @@ components:
                 - canCancel
                 - canReopen
             type: object
+        BillingMilestoneInvoice:
+            description: The invoice an invoiced milestone was billed on, as the Invoices module stamped it (invoices work design D1) — its id and its number.
+            properties:
+                invoiceId:
+                    format: int64
+                    type: integer
+                number:
+                    format: int64
+                    type: integer
+            required:
+                - invoiceId
+                - number
+            type: object
         BillingMilestonePerson:
             description: Who marked a milestone ready or invoiced, named as the user directory knows them now. An account disabled since keeps the stamp and renders inactive.
             properties:
@@ -332,6 +345,10 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/BillingMilestonePerson'
                     description: Absent until the milestone is invoiced, and cleared again when the invoicing is undone.
+                invoicedByInvoice:
+                    allOf:
+                        - $ref: '#/components/schemas/BillingMilestoneInvoice'
+                    description: The invoice that invoiced this milestone, when the Invoices module issued it — present only while the milestone is invoiced that way. Such a milestone carries no invoiceReference, and only a credit note that returns its line takes it back to ready; the manual undo refuses it (409 invoiced_by_invoices). Absent on a milestone marked invoiced by hand.
                 name:
                     type: string
                 overdue:
@@ -1747,6 +1764,37 @@ components:
                 - billingType
                 - revision
             type: object
+        ProjectsConflictProblem:
+            description: ProblemDetails plus this module's refusal code. code is invoiced_by_invoices on a billing milestone the Invoices module invoiced (invoices work design D1) — only a credit note that returns its line takes it back — with invoiceId and invoiceNumber naming that invoice. A revision conflict carries no code; its detail names both revisions.
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                instance:
+                    nullable: true
+                    type: string
+                invoiceId:
+                    description: On invoiced_by_invoices, the invoice that invoiced the milestone. Absent otherwise.
+                    format: int64
+                    type: integer
+                invoiceNumber:
+                    description: On invoiced_by_invoices, that invoice's number. Absent otherwise.
+                    format: int64
+                    type: integer
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
         TaskAssignee:
             description: The one person a task is assigned to (D6). active is the user directory's answer, not the assignment's — an account disabled afterwards keeps the task and is reported inactive.
             properties:
@@ -2482,8 +2530,8 @@ paths:
                     content:
                         application/problem+json:
                             schema:
-                                $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Conflict — the supplied revision is not the milestone's current one.
+                                $ref: '#/components/schemas/ProjectsConflictProblem'
+                    description: Conflict — the supplied revision is not the milestone's current one (no code), or invoiced_by_invoices on undoing the invoicing of a milestone the Invoices module invoiced, which only a credit note returning its line takes back (with invoiceId and invoiceNumber).
             summary: Move a billing milestone through its status flow
             tags:
                 - Projects

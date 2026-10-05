@@ -659,6 +659,13 @@ export interface components {
             /** @description Whether the invoicing may be undone, which puts the milestone back to ready and clears the reference, the date and the frozen amount. */
             canUndoInvoiced: boolean;
         };
+        /** @description The invoice an invoiced milestone was billed on, as the Invoices module stamped it (invoices work design D1) — its id and its number. */
+        BillingMilestoneInvoice: {
+            /** Format: int64 */
+            invoiceId: number;
+            /** Format: int64 */
+            number: number;
+        };
         /** @description Who marked a milestone ready or invoiced, named as the user directory knows them now. An account disabled since keeps the stamp and renders inactive. */
         BillingMilestonePerson: {
             active: boolean;
@@ -766,6 +773,8 @@ export interface components {
             invoicedAt?: string | null;
             /** @description Absent until the milestone is invoiced, and cleared again when the invoicing is undone. */
             invoicedBy?: components["schemas"]["BillingMilestonePerson"];
+            /** @description The invoice that invoiced this milestone, when the Invoices module issued it — present only while the milestone is invoiced that way. Such a milestone carries no invoiceReference, and only a credit note that returns its line takes it back to ready; the manual undo refuses it (409 invoiced_by_invoices). Absent on a milestone marked invoiced by hand. */
+            invoicedByInvoice?: components["schemas"]["BillingMilestoneInvoice"];
             name: string;
             /** @description Whether the milestone is still planned or ready and its planned date has passed, compared as plain UTC dates against the server's clock. */
             overdue: boolean;
@@ -1688,6 +1697,26 @@ export interface components {
             /** Format: date */
             startDate?: string | null;
         };
+        /** @description ProblemDetails plus this module's refusal code. code is invoiced_by_invoices on a billing milestone the Invoices module invoiced (invoices work design D1) — only a credit note that returns its line takes it back — with invoiceId and invoiceNumber naming that invoice. A revision conflict carries no code; its detail names both revisions. */
+        ProjectsConflictProblem: {
+            code?: string | null;
+            detail?: string | null;
+            instance?: string | null;
+            /**
+             * Format: int64
+             * @description On invoiced_by_invoices, the invoice that invoiced the milestone. Absent otherwise.
+             */
+            invoiceId?: number;
+            /**
+             * Format: int64
+             * @description On invoiced_by_invoices, that invoice's number. Absent otherwise.
+             */
+            invoiceNumber?: number;
+            /** Format: int32 */
+            status?: number | null;
+            title?: string | null;
+            type?: string | null;
+        };
         /** @description The one person a task is assigned to (D6). active is the user directory's answer, not the assignment's — an account disabled afterwards keeps the task and is reported inactive. */
         TaskAssignee: {
             active: boolean;
@@ -2431,13 +2460,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — the supplied revision is not the milestone's current one. */
+            /** @description Conflict — the supplied revision is not the milestone's current one (no code), or invoiced_by_invoices on undoing the invoicing of a milestone the Invoices module invoiced, which only a credit note returning its line takes back (with invoiceId and invoiceNumber). */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["ProjectsConflictProblem"];
                 };
             };
         };

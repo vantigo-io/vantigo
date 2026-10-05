@@ -5,13 +5,16 @@ import (
 	"net/http"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
 )
 
 // This module's refusals are bare RFC 7807 problems and field-level
 // validation text (apicommon.Problem, apicommon.ProblemStatus,
 // apicommon.ValidationProblem), never identity's {code, message} bodies:
 // callers key off the status and the problem's title and detail. Nothing
-// here may grow a machine-readable error code of its own.
+// here may grow a machine-readable error code of its own — with the one
+// exception module-boundaries rule 10 asks for: invoiced_by_invoices, on the
+// milestone status move's ProjectsConflictProblem (invoicedByInvoices).
 //
 // Two refusals carry no body at all, deliberately. Reading a project the
 // caller holds no role in answers a bare 404, byte for byte the answer an
@@ -101,4 +104,40 @@ func workTypeExists(name string) apicommon.ProblemDetails {
 	return apicommon.ProblemStatus(workTypeExistsTitle,
 		fmt.Sprintf("This project already has a work type named '%s'; names are compared without regard to case.", name),
 		http.StatusConflict)
+}
+
+// invoicedByInvoicesCode is the code of the one coded refusal this module
+// answers (invoices work design D1, D17): undoing by hand the invoicing of a
+// billing milestone the Invoices module invoiced. Only the credit note that
+// returns the milestone's line takes that stamp back.
+const invoicedByInvoicesCode = "invoiced_by_invoices"
+
+// invoicedByInvoicesTitle is that refusal's title.
+const invoicedByInvoicesTitle = "Milestone invoiced by an invoice"
+
+// invoicedByInvoicesRefusal carries the refusal out of the status move's
+// transaction, which decides it against the locked row.
+type invoicedByInvoicesRefusal struct {
+	invoiceID, number int64
+}
+
+func (r invoicedByInvoicesRefusal) Error() string {
+	return fmt.Sprintf("projects: the milestone was invoiced by invoice %d", r.number)
+}
+
+// invoicedByInvoices is that 409's body: the code, and the invoice named by
+// its id and number so a client can link to it.
+func invoicedByInvoices(r invoicedByInvoicesRefusal) gen.ProjectsConflictProblem {
+	code, title, status := invoicedByInvoicesCode, invoicedByInvoicesTitle, int32(http.StatusConflict)
+	detail := fmt.Sprintf("This milestone was invoiced on invoice %d; only a credit note that returns its line takes it back to ready.", r.number)
+	return gen.ProjectsConflictProblem{
+		Code: &code, Title: &title, Detail: &detail, Status: &status,
+		InvoiceId: &r.invoiceID, InvoiceNumber: &r.number,
+	}
+}
+
+// conflictProblem is a code-less problem in the ProjectsConflictProblem shape,
+// for the revision conflict the status move answers beside the coded one.
+func conflictProblem(p apicommon.ProblemDetails) gen.ProjectsConflictProblem {
+	return gen.ProjectsConflictProblem{Title: p.Title, Detail: p.Detail, Status: p.Status, Type: p.Type, Instance: p.Instance}
 }

@@ -131,6 +131,12 @@ type BillingMilestoneCapabilities struct {
 	CanUndoInvoiced bool `json:"canUndoInvoiced"`
 }
 
+// BillingMilestoneInvoice The invoice an invoiced milestone was billed on, as the Invoices module stamped it (invoices work design D1) — its id and its number.
+type BillingMilestoneInvoice struct {
+	InvoiceId int64 `json:"invoiceId"`
+	Number    int64 `json:"number"`
+}
+
 // BillingMilestonePerson Who marked a milestone ready or invoiced, named as the user directory knows them now. An account disabled since keeps the stamp and renders inactive.
 type BillingMilestonePerson struct {
 	Active      bool               `json:"active"`
@@ -219,7 +225,10 @@ type BillingMilestoneResponse struct {
 
 	// InvoicedBy Absent until the milestone is invoiced, and cleared again when the invoicing is undone.
 	InvoicedBy *BillingMilestonePerson `json:"invoicedBy,omitempty"`
-	Name       string                  `json:"name"`
+
+	// InvoicedByInvoice The invoice that invoiced this milestone, when the Invoices module issued it — present only while the milestone is invoiced that way. Such a milestone carries no invoiceReference, and only a credit note that returns its line takes it back to ready; the manual undo refuses it (409 invoiced_by_invoices). Absent on a milestone marked invoiced by hand.
+	InvoicedByInvoice *BillingMilestoneInvoice `json:"invoicedByInvoice,omitempty"`
+	Name              string                   `json:"name"`
 
 	// Overdue Whether the milestone is still planned or ready and its planned date has passed, compared as plain UTC dates against the server's clock.
 	Overdue bool `json:"overdue"`
@@ -1012,6 +1021,22 @@ type ProjectUpdateRequest struct {
 	// Revision The revision the caller read the project at.
 	Revision  int32               `json:"revision"`
 	StartDate *openapi_types.Date `json:"startDate,omitempty"`
+}
+
+// ProjectsConflictProblem ProblemDetails plus this module's refusal code. code is invoiced_by_invoices on a billing milestone the Invoices module invoiced (invoices work design D1) — only a credit note that returns its line takes it back — with invoiceId and invoiceNumber naming that invoice. A revision conflict carries no code; its detail names both revisions.
+type ProjectsConflictProblem struct {
+	Code     *string `json:"code,omitempty"`
+	Detail   *string `json:"detail,omitempty"`
+	Instance *string `json:"instance,omitempty"`
+
+	// InvoiceId On invoiced_by_invoices, the invoice that invoiced the milestone. Absent otherwise.
+	InvoiceId *int64 `json:"invoiceId,omitempty"`
+
+	// InvoiceNumber On invoiced_by_invoices, that invoice's number. Absent otherwise.
+	InvoiceNumber *int64  `json:"invoiceNumber,omitempty"`
+	Status        *int32  `json:"status,omitempty"`
+	Title         *string `json:"title,omitempty"`
+	Type          *string `json:"type,omitempty"`
 }
 
 // TaskAssignee The one person a task is assigned to (D6). active is the user directory's answer, not the assignment's — an account disabled afterwards keeps the task and is reported inactive.
@@ -3791,7 +3816,7 @@ func (response PostProjectsMilestonesByMilestoneIdStatus404Response) VisitPostPr
 	return nil
 }
 
-type PostProjectsMilestonesByMilestoneIdStatus409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+type PostProjectsMilestonesByMilestoneIdStatus409ApplicationProblemPlusJSONResponse ProjectsConflictProblem
 
 func (response PostProjectsMilestonesByMilestoneIdStatus409ApplicationProblemPlusJSONResponse) VisitPostProjectsMilestonesByMilestoneIdStatusResponse(w http.ResponseWriter) error {
 

@@ -15,3 +15,11 @@ var InLockedTx = inLockedTx
 func SetContractCallHook(hook func(ctx context.Context, method string)) {
 	contractCallHook = hook
 }
+
+// SetInvoicedWorkAfterLock installs the seam the invoiced-work holder calls in
+// both directions right after its locks (invoiced_work.go), with the context
+// it runs under. A test that sets it does not run in parallel and puts nil
+// back when it ends.
+func SetInvoicedWorkAfterLock(hook func(ctx context.Context)) {
+	invoicedWorkAfterLock = hook
+}

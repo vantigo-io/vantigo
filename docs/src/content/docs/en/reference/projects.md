@@ -430,6 +430,56 @@ freezes the effective amount into `invoicedAmount`; `invoiced → ready` clears 
 of those columns (who, when, reference, date, frozen amount). A reference or a date
 sent on any other move is refused, naming the field, rather than silently ignored.
 
+**Invoiced by an invoice.** The manual `→ invoiced` above is for installations that
+invoice elsewhere. When the [Invoices](/en/reference/invoices/) module issues an invoice
+built from a ready milestone, it stamps the milestone itself, inside the issue's own
+transaction, through `contracts.InvoicedWorkHolder`
+([module boundaries rule 10](/en/contributing/module-boundaries/#the-rules)): the
+milestone becomes `invoiced` by the issuer at the issue's own instant, `invoiceDate` is
+the invoice's issue date, `invoicedAmount` freezes the effective amount, there is no
+`invoiceReference`, and two more columns — `invoiced_invoice_id` and `invoiced_number`,
+opaque, since the invoices schema is another module's — name the invoice (both or
+neither, and only on an `invoiced` milestone, each a CHECK). The milestone answers them
+as `invoicedByInvoice: {invoiceId, number}`, absent on one marked invoiced by hand. The
+stamp writes a `milestone-invoiced` timeline entry by the issuer at the issue's time,
+its payload carrying `invoiceNumber` beside the id and name.
+
+Under the issue's lock the holder takes each distinct project's row lock by id
+ascending, then the milestones by id ascending — this module's own order — and judges
+each milestone as it now stands, in one order: already `invoiced` is
+`source_already_invoiced` (so one marked by hand is named for what it is); not `ready`,
+gone, or a percent of a fixed price the project no longer has is
+`source_not_invoiceable`; a different revision (a reorder moves none), project,
+currency or effective amount — compared exactly, by value — is `source_changed`. One
+refusal and nothing is written: the invoice is not issued.
+
+Such a milestone is undone only by the **credit note** that returns its invoice line in
+full. The release always moves it `invoiced → ready`, under the same locks in the same
+order, clearing the five invoice columns and the two new ones (the ready stamps stay),
+and writes `milestone-invoice-undone` by the credit note's issuer at its issue time,
+with `invoiceNumber` the original's. It converts a percent milestone whose fixed price
+is gone to an amount milestone exactly as the manual undo does (`convertedToAmount:
+true`), and it is **never refused**: where the manual undo would refuse — a project
+since left without a currency — it releases anyway and logs a warning, because a credit
+note must never be blocked. A milestone that no longer carries the invoice's stamp is
+left as it is, with a warning. The manual undo of a milestone the module stamped is
+refused: `POST .../status` to `ready` answers **409** `ProjectsConflictProblem` with
+`code: invoiced_by_invoices`, `invoiceId` and `invoiceNumber` — decided against the
+locked row after the revision, whose own 409 carries no code — and its
+`canUndoInvoiced` is `false`. Marking a ready milestone invoiced by hand is not
+refused, even when an invoice draft holds it; that invoice's issue then answers
+`source_already_invoiced`.
+
+**Billable milestones.** `contracts.BillableMilestones` is the read the invoice
+builder starts from: every `ready` milestone of the projects asked for (or exactly the
+ids asked for, still ready), at most 5 000 with `More` past that, read on the pool from
+this module's own tables. Each carries its id, revision, project, name, description,
+planned date, when it became ready, its currency (its own for a flat amount, the
+project's for a percent) and `Amount` — the effective amount to the cent, the same exact
+figure the stamp compares and freezes (`milestoneEffectiveAmountRat`: 33.33 % of
+3 750.30 is 1 249.97). `Until` bounds the milestones by the Oslo day they became ready.
+A ready percent milestone nothing can price is left out with a warning.
+
 **Editing and deleting.** A milestone's content (name, dates, amount or percent) can
 be edited by the project's manager only while it is `planned` or `ready`; an
 `invoiced` or a `cancelled` milestone is read-only until moved back — a 400 on
@@ -499,7 +549,8 @@ The timeline gained nine event types: `milestone-added`, `milestone-changed`,
 `milestone-invoice-undone`, `milestone-cancelled`, `milestone-reopened`. As with a
 billing line's own entries, the payload never carries an amount — only the
 milestone's id and name (and, for `milestone-changed`, the field names that moved; for
-`milestone-invoice-undone`, the `convertedToAmount` flag) — because the timeline is
+`milestone-invoice-undone`, the `convertedToAmount` flag; for the two the Invoices
+module writes, the invoice's `invoiceNumber`) — because the timeline is
 read by everyone who can see the project, financial rights or not.
 
 The seven milestone operations are in the [API](#api) table below, alongside the
@@ -1239,6 +1290,16 @@ and `customerName` reads the survivor's from then on. Time and expenses hold no
 customer id of their own, so the move keeps them right too. See
 [Merging duplicates](/en/reference/customers/#merging-duplicates).
 
+For invoicing it provides two more: the single-provider read
+`contracts.BillableMilestones` and the many-provider `contracts.InvoicedWorkHolder`
+for the kind `projects.milestone` ([module boundaries rule 10](/en/contributing/module-boundaries/#the-rules)),
+both described under [Billing milestones](#billing-milestones-and-the-invoice-plan).
+The holder is built from `Deps.Logger` alone, so a Projects switched off in `MODULES`
+still has its milestones stamped and released. Because Projects provides invoiced
+work, Compose calls its customer reference holder and its personal-data holder after
+every module that provides none — Invoices' included — so a customer merge takes the
+invoices documents before any project row, the order an invoice's issue takes them in.
+
 It hands a private person's projects over too — `contracts.CustomerPersonalData`
 ([module boundaries rule 9](/en/contributing/module-boundaries/#the-rules)): code, name, status and
 dates of every project billed to them, in their export's `modules.projects`. Their
@@ -1315,7 +1376,7 @@ create additionally requires `projects:create`.
 | `PUT /api/v1/projects/milestones/{milestoneId}` | Full replace, carrying `revision`; a stale one answers 409. Manager only |
 | `DELETE /api/v1/projects/milestones/{milestoneId}` | Only `planned` and never moved; otherwise 400. Manager only |
 | `PUT /api/v1/projects/milestones/{milestoneId}/position` | Renumber the plan 1..n; carries `revision` (checked, not bumped). Manager only |
-| `POST /api/v1/projects/milestones/{milestoneId}/status` | One move through the status flow — see [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan) |
+| `POST /api/v1/projects/milestones/{milestoneId}/status` | One move through the status flow — see [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan); 409 `invoiced_by_invoices` on undoing a milestone the Invoices module invoiced |
 | `GET /api/v1/projects/{id}/economy` | Budget vs. logged, per line, per work type and in total, plus what the expenses cost and will bill; hours for anyone who sees the project, amounts and the `expenses` block need financial rights, cost and margin need `projects:view-costs` too — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/economy` | The portfolio: one row per project the caller has financial rights on. `projects:access`; paged, filtered and sorted — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/{id}/tasks` | The project's task tree, with checklist counts and comment counts. Anyone who sees the project |

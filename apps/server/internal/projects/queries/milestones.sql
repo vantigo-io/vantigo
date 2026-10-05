@@ -52,6 +52,17 @@ SELECT * FROM projects.billing_milestones WHERE id = @id;
 -- queue and never deadlock.
 SELECT * FROM projects.billing_milestones WHERE id = @id FOR UPDATE;
 
+-- name: LockMilestonesByIDs :many
+-- LockMilestonesByIDs is LockMilestone for the invoices issue's holder
+-- (invoiced_work.go): every named milestone held for the rest of the caller's
+-- transaction, by id ascending — one fixed order, so two transactions that
+-- lock overlapping sets queue rather than deadlock. Like LockMilestone it is
+-- taken after the projects' own row locks, never before.
+SELECT * FROM projects.billing_milestones
+WHERE id = ANY(@ids::integer[])
+ORDER BY id
+FOR UPDATE;
+
 -- name: ListProjectMilestones :many
 -- ListProjectMilestones is a whole project's plan in the order it is read:
 -- the manual position, with cancelled milestones after everything else

@@ -10,6 +10,7 @@ sql:
       - ../db/migrations/00009_projects_tasks.sql
       - ../db/migrations/00011_projects_milestones.sql
       - ../db/migrations/00031_projects_work_types.sql
+      - ../db/migrations/00039_projects_invoiced_by.sql
     queries: queries
     gen:
       go:
