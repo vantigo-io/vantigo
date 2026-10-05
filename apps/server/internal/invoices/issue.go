@@ -32,7 +32,9 @@ import (
 // — the original; nothing else takes these in another order. An invoice that
 // bills work then has it stamped invoiced by its modules' holders, on this
 // transaction, after every check and before the first write (writeback.go):
-// their rows are locked last, Projects', then Expenses', then Time's.
+// their rows are locked last, Projects', then Expenses', then Time's. A
+// credit note that returns a line in full has the same holders take that
+// line's stamps back, at the same place (releases.go).
 
 // The codes and titles of the issue's refusals.
 const (
@@ -92,6 +94,10 @@ type issuePlan struct {
 	// summary, when the checks computed it, is the VAT the issue writes: a
 	// credit note's (creditBook.total). nil means summarize over the lines.
 	summary *planSummary
+	// original is a credit note's original as locked, and releases the work
+	// of it the credit note releases (invoices work design D8).
+	original *store.InvoicesInvoice
+	releases []release
 }
 
 // planSummary is a document's VAT rows and totals as its issue writes them.
@@ -248,7 +254,8 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 	var profile *contracts.CustomerBillingProfile
 	var work issueWork
 	var refusal *gen.InvoicesConflictProblem
-	if draft.Kind == kindInvoice {
+	switch draft.Kind {
+	case kindInvoice:
 		if profile, err = s.customerProfile(ctx, draft.CustomerID); err != nil {
 			return nil, err
 		}
@@ -259,6 +266,12 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		}
 		if refusal != nil {
 			return gen.PostInvoicesByIdIssue409ApplicationProblemPlusJSONResponse(*refusal), nil
+		}
+	case kindCreditNote:
+		// The work the credit note may release: the holders and the
+		// issuer's name, read now when its original bills any (D8).
+		if work, err = s.readReleaseWork(ctx, q, draft); err != nil {
+			return nil, err
 		}
 	}
 	if issueBeforeLock != nil {
@@ -396,9 +409,11 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		}
 
 		// The work, last of the checks and first of the writes: the holders
-		// stamp it invoiced on this transaction (D1, rule 10), before
+		// stamp an invoice's invoiced on this transaction (D1, rule 10), and
+		// take back the stamps of what a credit note releases (D8) — before
 		// anything of the document is written.
-		if locked.Kind == kindInvoice {
+		switch locked.Kind {
+		case kindInvoice:
 			ref := contracts.InvoiceRef{
 				ID: locked.ID, Number: number, IssueDate: issueDate, IssuedAt: now,
 				IssuedBy: callerID(ctx), IssuedByDisplay: work.display,
@@ -408,6 +423,22 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			}
 			if refusal != nil {
 				return errRefused
+			}
+		case kindCreditNote:
+			// The stamp taken back is the original's: its id, number and
+			// date; who took it back, and when, is this issue's.
+			if len(plan.releases) > 0 {
+				o := plan.original
+				if o.Number == nil {
+					return fmt.Errorf("invoices: credit note %d's original %d has no number", locked.ID, o.ID)
+				}
+				ref := contracts.InvoiceRef{
+					ID: o.ID, Number: *o.Number, IssueDate: o.IssueDate.Time, IssuedAt: now,
+					IssuedBy: callerID(ctx), IssuedByDisplay: work.display,
+				}
+				if err := s.releaseCreditWork(ctx, tx, txq, locked.ID, work, plan.releases, ref); err != nil {
+					return err
+				}
 			}
 		}
 

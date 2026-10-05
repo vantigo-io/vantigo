@@ -357,6 +357,16 @@ the invoice then shows **Refund due**, what is owed back. The draft warns, and t
 refuses, a credit note larger than what the invoice or a line has left; a credit note
 cannot itself be credited ([credit notes](/en/reference/invoices/#credit-notes)).
 
+**Crediting an invoice made from work** gives the work back — the hours, expenses and
+milestones a line billed become uninvoiced again, ready for a new invoice — only when the
+credit note returns that line **in full**: its whole quantity, at the invoice's own unit
+price and discount, counting the credit notes issued before it. A line credited in part,
+or at a lower price, keeps its work invoiced until the rest of the line is returned; a
+milestone comes back whole or not at all. The credit-note draft shows which work its issue
+would give back, and the invoice then shows that work as released. A new invoice may bill
+the released work again; it does not have to name the credit note
+([release on credit](/en/reference/invoices/#release-on-credit)).
+
 ## Registering payments
 
 Vantigo does not read bank files: money received is registered by hand, on the issued

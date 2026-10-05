@@ -133,8 +133,6 @@ func (s *server) markWork(ctx context.Context, tx pgx.Tx, h holders, ref contrac
 // claims is logged at error and skipped — a credit note is never blocked —
 // and any error a holder answers is a failure that rolls the credit note
 // back.
-//
-//nolint:unused // the credit note's issue calls it (invoices work plan Task 10)
 func (s *server) releaseWork(ctx context.Context, tx pgx.Tx, h holders, ref contracts.InvoiceRef, rows []heldSource) error {
 	byKind := workSources(rows)
 	for _, kind := range contracts.InvoicedWorkOrder {
@@ -155,9 +153,11 @@ func (s *server) releaseWork(ctx context.Context, tx pgx.Tx, h holders, ref cont
 	return nil
 }
 
-// issueWork is what an invoice's issue reads about its work before its
-// transaction (D1): the held rows, the holders that stamp them, their
-// projects and the issuer's name.
+// issueWork is what an issue reads about its work before its transaction:
+// for an invoice (D1) the held rows, the holders that stamp them, their
+// projects and the issuer's name; for a credit note (D8, readReleaseWork)
+// its original's rows, and the holders and the issuer's name when any of
+// them is invoiced.
 type issueWork struct {
 	rows     []heldSource
 	holders  holders
@@ -213,15 +213,25 @@ func (s *server) readIssueWork(ctx context.Context, q *store.Queries, draft stor
 				"Line %d bills work of project %d, which no longer bills this customer.", r.linePosition, r.projectID), r), nil
 		}
 	}
-	user, err := s.userEntry(ctx, callerID(ctx))
+	display, err := s.issuerName(ctx)
 	if err != nil {
-		return issueWork{}, nil, fmt.Errorf("invoices: read the issuer: %w", err)
-	}
-	display := ""
-	if user != nil {
-		display = user.DisplayName
+		return issueWork{}, nil, err
 	}
 	return issueWork{rows: rows, holders: h, projects: projects, display: display}, nil, nil
+}
+
+// issuerName is the caller's name as the user directory knows it, "" for a
+// user it does not know: the IssuedByDisplay of a stamp or a release, read
+// before the issue's transaction (plan reading 20).
+func (s *server) issuerName(ctx context.Context) (string, error) {
+	user, err := s.userEntry(ctx, callerID(ctx))
+	if err != nil {
+		return "", fmt.Errorf("invoices: read the issuer: %w", err)
+	}
+	if user == nil {
+		return "", nil
+	}
+	return user.DisplayName, nil
 }
 
 // sameIssueWork reports whether the draft's work under the issue's lock is

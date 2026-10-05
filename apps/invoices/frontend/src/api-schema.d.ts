@@ -1136,7 +1136,7 @@ export interface components {
             id: number;
             kind: string;
         };
-        /** @description The work a document bills, counted by state from its own rows (invoices work design D2): count in all, held (on a draft), invoiced (by the issue) and released (by a credit note). Answered on a document that bills work, absent otherwise. */
+        /** @description The work a document bills, counted by state from its own rows (invoices work design D2): count in all, held (on a draft), invoiced (by the issue) and released (by a credit note that returned its line in full, D8). Answered on a document that bills work, absent otherwise. A credit-note draft of an invoice that bills invoiced work answers it too, its counts zero — a credit note holds no work of its own — with wouldRelease. */
         InvoicesSourcesBlock: {
             /** Format: int32 */
             count: number;
@@ -1146,6 +1146,8 @@ export interface components {
             invoiced: number;
             /** Format: int32 */
             released: number;
+            /** @description Only on a credit-note draft (D8): the work its issue would release — the invoiced sources of every original line the draft returns in full, its last return at the line's own price and discount; [] when it returns no line in full. A line credited in part or at a lower price releases nothing. */
+            wouldRelease?: components["schemas"]["InvoicesSourceRef"][];
         };
         /** @description One payment registered against an issued invoice (D2). A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing. */
         InvoicesPayment: {

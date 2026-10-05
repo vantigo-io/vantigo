@@ -362,6 +362,17 @@ utstedelsen avviser, en kreditnota som er større enn det fakturaen eller en lin
 igjen; en kreditnota kan ikke selv krediteres
 ([kreditnotaer](/en/reference/invoices/#credit-notes)).
 
+**Å kreditere en faktura laget av arbeid** gir arbeidet tilbake — timene, utgiftene og
+milepælene en linje fakturerte, blir ufakturert igjen og klare for en ny faktura — bare
+når kreditnotaen returnerer den linjen **i sin helhet**: hele antallet, til fakturaens
+egen enhetspris og rabatt, medregnet kreditnotaene som er utstedt før den. En linje som
+krediteres delvis, eller til lavere pris, beholder arbeidet sitt fakturert til resten av
+linjen er returnert; en milepæl kommer tilbake hel eller ikke i det hele tatt.
+Kreditnotautkastet viser hvilket arbeid utstedelsen ville gi tilbake, og fakturaen viser
+deretter det arbeidet som frigjort. En ny faktura kan fakturere det frigjorte arbeidet på
+nytt; den trenger ikke å nevne kreditnotaen
+([frigjøring ved kreditering](/en/reference/invoices/#release-on-credit)).
+
 ## Registrere betalinger
 
 Vantigo leser ikke bankfiler: mottatte penger registreres for hånd, på den utstedte

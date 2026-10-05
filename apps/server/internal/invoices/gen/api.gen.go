@@ -308,7 +308,7 @@ type InvoicesInvoiceResponse struct {
 	// SendDefaults What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the Oslo business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read.
 	SendDefaults *InvoicesSendDefaults `json:"sendDefaults,omitempty"`
 
-	// Sources The work a document bills, counted by state from its own rows (invoices work design D2): count in all, held (on a draft), invoiced (by the issue) and released (by a credit note). Answered on a document that bills work, absent otherwise.
+	// Sources The work a document bills, counted by state from its own rows (invoices work design D2): count in all, held (on a draft), invoiced (by the issue) and released (by a credit note that returned its line in full, D8). Answered on a document that bills work, absent otherwise. A credit-note draft of an invoice that bills invoiced work answers it too, its counts zero — a credit note holds no work of its own — with wouldRelease.
 	Sources *InvoicesSourcesBlock `json:"sources,omitempty"`
 
 	// State The derived state, judged against today in Oslo (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise).
@@ -641,12 +641,15 @@ type InvoicesSourceRef struct {
 	Kind string `json:"kind"`
 }
 
-// InvoicesSourcesBlock The work a document bills, counted by state from its own rows (invoices work design D2): count in all, held (on a draft), invoiced (by the issue) and released (by a credit note). Answered on a document that bills work, absent otherwise.
+// InvoicesSourcesBlock The work a document bills, counted by state from its own rows (invoices work design D2): count in all, held (on a draft), invoiced (by the issue) and released (by a credit note that returned its line in full, D8). Answered on a document that bills work, absent otherwise. A credit-note draft of an invoice that bills invoiced work answers it too, its counts zero — a credit note holds no work of its own — with wouldRelease.
 type InvoicesSourcesBlock struct {
 	Count    int32 `json:"count"`
 	Held     int32 `json:"held"`
 	Invoiced int32 `json:"invoiced"`
 	Released int32 `json:"released"`
+
+	// WouldRelease Only on a credit-note draft (D8): the work its issue would release — the invoiced sources of every original line the draft returns in full, its last return at the line's own price and discount; [] when it returns no line in full. A line credited in part or at a lower price releases nothing.
+	WouldRelease *[]InvoicesSourceRef `json:"wouldRelease,omitempty"`
 }
 
 // InvoicesStatsSummaryResponse The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's Oslo date. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on an Oslo day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK.

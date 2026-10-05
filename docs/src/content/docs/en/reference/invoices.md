@@ -311,7 +311,9 @@ merge that re-points the draft to the surviving customer drops nothing.
 **The sources on a document.** Every document that bills work answers, from its own
 rows and never a live read, `sources: {count, held, invoiced, released}` and on each line
 `sources[]` — `{kind, id, projectId, date, quantity, amount, state}` — and `warnings`, the
-line's own codes; a document that bills no work carries neither.
+line's own codes; a document that bills no work carries neither. A credit-note draft of an
+invoice that bills invoiced work answers the block too, its counts zero, with
+`wouldRelease` ([Release on credit](#release-on-credit)).
 
 **The warnings.** None refuses a save.
 
@@ -385,13 +387,64 @@ number, and everything any holder wrote. A holder that fails in any other way is
 rolled back the same way. A source refused is still held by the draft: refresh the work
 ([Refresh](#the-link-and-its-states)) or edit the line, and issue again.
 
+### Release on credit
+
+A credit note gives work back — `invoiced` to `released`, uninvoiced again — only for an
+original line it **returns in full**: with the credit notes issued before it, the line's
+whole quantity credited, and every credit of the line, theirs and this one, a return at
+the line's own unit price and discount — the same last return that squares the line's
+øre ([Credit notes](#credit-notes)). A price reduction or a higher discount is never a
+return, so a line credited that way never releases; a line credited in part releases
+nothing until the rest of it is returned, and then all of its work at once, a grouped
+line's every source; a milestone is released whole.
+
+1. **Before the transaction**, the original's `line_sources` are read on the pool; when
+   any is `invoiced`, the composed holders are taken and the issuer's name is read
+   (`UserDirectory.User`, `""` for a user the directory does not know). An original that
+   bills no invoiced work reads nothing more.
+2. **Under the lock**, after the original's (the last of this module's own locks), its
+   credit book and both caps: the releases are decided — the `invoiced` rows of every
+   original line this credit note returns in full.
+3. **At the same place as the write-back**, after every check and the number and before
+   the credit note is written: `invoices.line_releases` records each release on the
+   credit side — the credit note's id, its line returning the source's line, the source's
+   row — so the child trigger freezes it with the credit note; the original's rows move
+   from `invoiced` to `released`, the one change an issued document's row allows; and each
+   kind's holder's `ReleaseInvoiced` runs once, in the lock order, on the issue's
+   `pgx.Tx`, with the ref `{ID, Number, IssueDate}` of the **original** — the stamp being
+   taken back — and `IssuedAt`, `IssuedBy`, `IssuedByDisplay` of the credit note's issue:
+   who took it back, and when.
+
+A credit note is never blocked by its work: a holder tolerates a source that no longer
+carries the stamp, and a released source whose kind no composed holder claims is logged at
+error and skipped — its stamp stays in its module — while the release is still recorded
+here. A holder that fails in any other way is a 500 and rolls the credit note back, its
+number with it.
+
+**What a draft would release.** A credit-note draft of an invoice that bills invoiced
+work answers `sources: {count: 0, held: 0, invoiced: 0, released: 0, wouldRelease}` — a
+credit note holds no work of its own — where `wouldRelease` (`[{kind, id}]`) is what its
+issue would release as the draft stands, `[]` for nothing; the issue decides it again
+under the original's lock. The original answers its released rows with the state
+`released`.
+
+**Pulling released work again.** Released work is uninvoiced: no live row holds it, so a
+new draft may hold it and a new invoice bill it, with **no mandatory reference** to the
+credit note. When work pulled into a new invoice was released before, the note suggested
+for it names what it replaces — "Erstatter faktura <n>, kreditert med kreditnota <c>" in
+Norwegian, "Replaces invoice <n>, credited by credit note <c>" in English — each
+(invoice, credit note) pair that last released the work, newest first; it is a
+suggestion only.
+
 ## Issuing
 
 `POST /invoices/{id}/issue` runs one READ COMMITTED transaction in a fixed order:
 lock the document, share the settings row, allocate the number, and only then check
 every rule — the counter row is what serialises two issues, so every check that
 depends on other documents runs after it; then, for an invoice that bills work, the
-holders mark it invoiced ([The write-back](#the-write-back)); then the lines' snapshots,
+holders mark it invoiced ([The write-back](#the-write-back)), and for a credit note that
+returns a line of work in full they take its stamps back ([Release on
+credit](#release-on-credit)); then the lines' snapshots,
 the VAT rows and the document are written. The directories — the customer's billing
 profile, and for work the projects and the issuer's name — are read before the
 transaction and the object store is used after it; none is ever called under a lock. The
@@ -448,7 +501,8 @@ rules — it reverses the original's treatment at the original's rates — and k
 issue-date rule, `seller_incomplete`, `no_lines`, `delivery_date_missing` and both
 caps. It has no due date and no payment block. Refusals: `invoice_draft`,
 `credit_note_not_creditable`, `invoice_fully_credited`. The cap is common practice, not
-law.
+law. A credit note adds no work, and one that returns a line of work in full releases
+that line's work in its issue ([Release on credit](#release-on-credit)).
 
 **Squaring the øre, per line.** A credit note rounds as any document does: each line on
 its own quantity and price, the VAT per (category, rate) row on the sum of its lines'
