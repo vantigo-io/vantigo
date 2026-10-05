@@ -14,16 +14,18 @@ import "../../i18n";
  * in the customers app but calls the invoices API, so it gates on the invoices
  * module itself: a pasted link must not hit an API 404. The panel is the
  * package's; whether this caller may make a draft from it is the host's
- * answer: with `invoices:create` and `customers:view` (a draft names its buyer
- * from the customers module), and only on a customer the server would take a
- * draft for — active, neither merged away nor anonymised. An archived or
- * disabled customer, or one still loading, gets no "New invoice".
+ * answer: with `invoices:access`, `invoices:create` and `customers:view` (a
+ * draft names its buyer from the customers module), and only on a customer the
+ * server would take a draft for — active, neither merged away nor anonymised.
+ * An archived or disabled customer, or one still loading, gets no "New
+ * invoice".
  *
  * Above the list sits the customer's work not yet invoiced (invoices work
- * design D18), for a caller who may draft an invoice of it — `invoices:create`
- * alone, since the view lists the hours, the people and the rates the invoice
- * will state and the wizard names the customer by id. The panel says nothing
- * on an installation that invoices no work.
+ * design D18), for a caller who may draft an invoice of it — `invoices:access`
+ * and `invoices:create`, as the API asks them, without `customers:view`, since
+ * the view lists the hours, the people and the rates the invoice will state and
+ * the wizard names the customer by id. The panel says nothing on an
+ * installation that invoices no work.
  *
  * It sits beside the route file rather than inside it because the route file
  * may export nothing but its `Route` without costing the bundle a code split.
