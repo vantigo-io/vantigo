@@ -5,6 +5,8 @@ sidebar:
   order: 20
 sources:
   - apps/projects/frontend
+  - apps/host/frontend/src/routes/projects
+  - apps/host/frontend/src/catalogs/project.ts
 ---
 
 The **Projects** app is where work is organised: a project is a coded piece of work

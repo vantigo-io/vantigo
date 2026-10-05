@@ -5,6 +5,7 @@ sidebar:
   order: 30
 sources:
   - apps/time/frontend
+  - apps/host/frontend/src/routes/time
 ---
 
 Timer-appen er der du fører timene dine på prosjekter, sender en uke til godkjenning og
