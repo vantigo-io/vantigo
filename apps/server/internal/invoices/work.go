@@ -987,7 +987,7 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 		for id, p := range projects {
 			names[id] = p.Name
 		}
-		if sheet, err = s.readTimesheet(ctx, settings.TimesheetPersonLabel, append(hours, carried...), names); err != nil {
+		if sheet, err = s.readTimesheet(ctx, settings.TimesheetPersonLabel, append(hours, carried...), targetHeld, names); err != nil {
 			return nil, err
 		}
 	}

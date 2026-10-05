@@ -329,7 +329,7 @@ they are there for an integration
 
 **The timesheet.** An invoice can carry a timesheet inside its PDF: after the invoice
 itself, on pages of its own, every hour entry it bills — the date, the person, the work
-type, the task (or else the project's name) and the hours — with a total per person and
+type, the task (or else the project's name, or else the work type) and the hours — with a total per person and
 one in all. It never shows the note a person wrote on an entry. A draft made from work
 has one when you ask for it, or when the settings make it the default; turning it on for
 a draft writes it from the hours the draft holds, turning it off removes it, every save

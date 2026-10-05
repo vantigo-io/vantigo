@@ -210,10 +210,28 @@ func TestTimesheet_RowsOnlyWithTheFlag(t *testing.T) {
 	}
 }
 
+// dropping is a replace of d keeping every line but naming none of the
+// hour entries ids.
+func dropping(d tsDocJSON, ids ...int64) map[string]any {
+	body := keepBody(d)
+	for _, l := range body["lines"].([]map[string]any) {
+		kept := []refJSON{}
+		for _, r := range l["sources"].([]refJSON) {
+			if !slices.Contains(ids, r.ID) {
+				kept = append(kept, r)
+			}
+		}
+		l["sources"] = kept
+	}
+	return body
+}
+
 // Every save prunes the rows to the hours the draft still holds: an hour
-// dropped from its line loses its row, the others keep theirs — labels and
-// positions as written — and a customer change, which drops every hold,
-// empties the timesheet.
+// dropped from its line loses its row and the rest are written again densely
+// — positions from 1 — keeping their initials or names as written; a
+// timesheet labelled by number is renumbered by first appearance among the
+// rows left, with no directory read. A customer change, which drops every
+// hold, empties the timesheet.
 func TestTimesheet_PrunedOnSave(t *testing.T) {
 	t.Parallel()
 	f := newWorkFixture(t)
@@ -224,19 +242,32 @@ func TestTimesheet_PrunedOnSave(t *testing.T) {
 	if got := rowTexts(same.TimesheetRows); !slices.Equal(got, rowTexts(d.TimesheetRows)) {
 		t.Errorf("a save keeping the work = %v, want %v", got, rowTexts(d.TimesheetRows))
 	}
-	body := keepBody(same)
-	for _, l := range body["lines"].([]map[string]any) {
-		var kept []refJSON
-		for _, r := range l["sources"].([]refJSON) {
-			if r.ID != workHourKari {
-				kept = append(kept, r)
-			}
-		}
-		l["sources"] = append([]refJSON{}, kept...)
-	}
-	pruned := tsPut(t, h, same, body)
-	if got, want := rowTexts(pruned.TimesheetRows), []string{"2 OH 2026-09-02 3.5 - | Project 41"}; !pruned.Timesheet || !slices.Equal(got, want) {
+	pruned := tsPut(t, h, same, dropping(same, workHourKari))
+	if got, want := rowTexts(pruned.TimesheetRows), []string{"1 OH 2026-09-02 3.5 - | Project 41"}; !pruned.Timesheet || !slices.Equal(got, want) {
 		t.Errorf("Kari's hour dropped: rows %v, want %v", got, want)
+	}
+	if got := storedRows(t, h, d.ID); !slices.Equal(got, []string{"1 OH 2026-09-02 3.5 - | Project 41"}) {
+		t.Errorf("stored = %v, want Ola's row at position 1", got)
+	}
+
+	timesheetSettings(t, h, false, "number")
+	f.billable.putHour(contracts.BillableHour{ID: 806, Revision: 1, ProjectID: project41, UserID: f.ola, Date: wDay("2026-09-04"),
+		HoursHundredths: 100, BillRate: "1200.00", Currency: "NOK", Amount: "1200.00000000"})
+	numbered := tsFromWork(t, h, withSheet, workSrc("time.entry", workHourKari, 2), workSrc("time.entry", 806, 1))
+	if got := rowTexts(numbered.TimesheetRows); !slices.Equal(got, []string{
+		"1 Person 1 2026-09-01 4 - | Project 41", "2 Person 2 2026-09-04 1 - | Project 41",
+	}) {
+		t.Fatalf("numbered = %v", got)
+	}
+	c, caller := h.SignInUser(t, "invoices:access", "invoices:create")
+	renumbered := tsDoc(t, c.Do(http.MethodPut, invoicePath(numbered.ID), dropping(numbered, workHourKari)), http.StatusOK)
+	if got, want := rowTexts(renumbered.TimesheetRows), []string{"1 Person 1 2026-09-04 1 - | Project 41"}; !slices.Equal(got, want) {
+		t.Errorf("after the prune = %v, want %v", got, want)
+	}
+	for _, call := range contractCalls.by(caller) {
+		if call.method == "Users.Users" || strings.HasPrefix(call.method, "Billable") {
+			t.Errorf("a prune made %s", call.method)
+		}
 	}
 
 	moved := keepBody(pruned)
@@ -338,6 +369,39 @@ func TestTimesheet_RegeneratedByRefreshSources(t *testing.T) {
 	}
 	if got := storedRows(t, h, d.ID); strings.Contains(strings.Join(got, " "), "Person") {
 		t.Errorf("stored = %v: a row kept the old numbering", got)
+	}
+
+	// A refresh that drops an entry no longer billable drops its row.
+	f.billable.mu.Lock()
+	delete(f.billable.hours, workHourKari)
+	f.billable.mu.Unlock()
+	body = keepBody(refreshed)
+	body["refreshSources"] = true
+	dropped := tsPut(t, h, refreshed, body)
+	if got, want := rowTexts(dropped.TimesheetRows), []string{"1 OH 2026-09-02 3.5 - | Project 41"}; !slices.Equal(got, want) {
+		t.Errorf("after a refresh dropping Kari's hour = %v, want %v", got, want)
+	}
+}
+
+// With Projects switched off nothing names a project: an hour with no task
+// title is described by its work type, and only without one by nothing.
+func TestTimesheet_ProjectsOffFallsBackToTheWorkType(t *testing.T) {
+	t.Parallel()
+	f := newFakeBillable()
+	h := newHarness(t, f.options()...)
+	d := sourcedDraft(t, h)
+	freshBillable(f)
+	hour := f.hours[hourOne]
+	hour.WorkTypeName = "Rådgivning"
+	f.putHour(hour)
+	body := sourcedBody(d, customerAcme, theSameLines()...)
+	body["timesheet"] = true
+	res := creator(t, h).Do(http.MethodPut, invoicePath(d.ID), body)
+	saved := tsDoc(t, res, http.StatusOK)
+	if got, want := rowTexts(saved.TimesheetRows), []string{
+		"1 ? 2026-09-01 4 Rådgivning | Rådgivning", "2 ? 2026-09-02 3.5 - | ",
+	}; !slices.Equal(got, want) {
+		t.Errorf("rows = %v, want %v", got, want)
 	}
 }
 

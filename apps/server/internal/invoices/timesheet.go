@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"math/big"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -77,10 +79,12 @@ func initials(name string) string {
 // what any other mode falls back to) — "KN", a second KN becoming "KN2";
 // number — "Person 1", "Person 2"; or name — the display name, a second
 // person of the same name followed by " 2". names is the user directory's
-// answer; a person it does not know is "?".
+// answer; a person it does not know is "?". No two people ever share a
+// label — the PDF totals per label — so a suffixed label that is already
+// someone's ("K N 2" is KN2 too) takes the next free number.
 func personLabels(mode string, names map[uuid.UUID]string, order []uuid.UUID) map[uuid.UUID]string {
 	out := make(map[uuid.UUID]string, len(order))
-	taken := map[string]int{}
+	taken := map[string]bool{}
 	for _, id := range order {
 		if _, done := out[id]; done {
 			continue
@@ -89,20 +93,20 @@ func personLabels(mode string, names map[uuid.UUID]string, order []uuid.UUID) ma
 		if !known || strings.TrimSpace(name) == "" {
 			name = unknownPerson
 		}
-		var label, separator string
+		var base, separator string
 		switch mode {
 		case labelNumber:
-			out[id] = fmt.Sprintf("Person %d", len(out)+1)
-			continue
+			base = fmt.Sprintf("Person %d", len(out)+1)
 		case labelName:
-			label, separator = cut(name, maxPersonLabel-4), " "
+			base, separator = cut(name, maxPersonLabel-8), " "
 		default:
-			label = initials(name)
+			base = initials(name)
 		}
-		taken[label]++
-		if n := taken[label]; n > 1 {
-			label += separator + strconv.Itoa(n)
+		label := base
+		for n := 2; taken[label]; n++ {
+			label = base + separator + strconv.Itoa(n)
 		}
+		taken[label] = true
 		out[id] = label
 	}
 	return out
@@ -127,13 +131,23 @@ func timesheetOrder(hours []contracts.BillableHour) ([]contracts.BillableHour, [
 // timesheetRows is hours as the rows InsertTimesheetRows writes, in the
 // order given, positions from 1: each person by labels, the work type, and
 // as the description the task title, else the project's name (projectNames)
-// — never the note, which the billable read does not carry.
-func timesheetRows(hours []contracts.BillableHour, labels map[uuid.UUID]string, projectNames map[int32]string) (store.InsertTimesheetRowsParams, error) {
+// — the hour's project, else the one its held row took (heldProjects, by
+// entry) — else the work type, and only then nothing; never the note, which
+// the billable read does not carry.
+func timesheetRows(hours []contracts.BillableHour, labels map[uuid.UUID]string, projectNames map[int32]string,
+	heldProjects map[int64]int32,
+) (store.InsertTimesheetRowsParams, error) {
 	var p store.InsertTimesheetRowsParams
 	for i, h := range hours {
 		description := cut(h.TaskTitle, maxTimesheetText)
 		if description == "" {
 			description = cut(projectNames[h.ProjectID], maxTimesheetText)
+		}
+		if held, ok := heldProjects[h.ID]; ok && description == "" {
+			description = cut(projectNames[held], maxTimesheetText)
+		}
+		if description == "" {
+			description = cut(h.WorkTypeName, maxTimesheetText)
 		}
 		label, ok := labels[h.UserID]
 		if !ok {
@@ -165,20 +179,33 @@ type timesheetRead struct {
 	projects map[int32]string
 }
 
-// readTimesheet names the people of hours through the user directory and,
-// when projectNames is nil, the projects through the project directory —
-// both on the pool, before the writer's transaction (the lock rule).
-func (s *server) readTimesheet(ctx context.Context, mode string, hours []contracts.BillableHour, projectNames map[int32]string) (*timesheetRead, error) {
-	read := &timesheetRead{mode: mode, hours: make(map[int64]contracts.BillableHour, len(hours)), names: map[uuid.UUID]string{}, projects: projectNames}
+// readTimesheet names the people of hours through the user directory and
+// the projects through the project directory — each hour's and each held
+// hour row's (held) that projectNames, what the caller read already, does
+// not name — both on the pool, before the writer's transaction (the lock
+// rule). With Projects switched off the projects stay unnamed.
+func (s *server) readTimesheet(ctx context.Context, mode string, hours []contracts.BillableHour, held []heldSource,
+	projectNames map[int32]string,
+) (*timesheetRead, error) {
+	read := &timesheetRead{mode: mode, hours: make(map[int64]contracts.BillableHour, len(hours)), names: map[uuid.UUID]string{}, projects: map[int32]string{}}
+	maps.Copy(read.projects, projectNames)
 	var people []uuid.UUID
 	var projects []int32
+	unnamed := func(id int32) {
+		if _, named := read.projects[id]; !named && !slices.Contains(projects, id) {
+			projects = append(projects, id)
+		}
+	}
 	for _, h := range hours {
 		read.hours[h.ID] = h
 		if !slices.Contains(people, h.UserID) {
 			people = append(people, h.UserID)
 		}
-		if !slices.Contains(projects, h.ProjectID) {
-			projects = append(projects, h.ProjectID)
+		unnamed(h.ProjectID)
+	}
+	for _, h := range held {
+		if h.kind == contracts.WorkSourceHours {
+			unnamed(h.projectID)
 		}
 	}
 	users, err := s.userEntries(ctx, people)
@@ -188,17 +215,14 @@ func (s *server) readTimesheet(ctx context.Context, mode string, hours []contrac
 	for _, u := range users {
 		read.names[u.ID] = u.DisplayName
 	}
-	if read.projects == nil {
-		read.projects = map[int32]string{}
-		if s.deps.Projects != nil {
-			slices.Sort(projects)
-			entries, err := s.projectEntries(ctx, projects)
-			if err != nil {
-				return nil, fmt.Errorf("invoices: name the projects of the timesheet: %w", err)
-			}
-			for _, e := range entries {
-				read.projects[e.ID] = e.Name
-			}
+	if s.deps.Projects != nil && len(projects) > 0 {
+		slices.Sort(projects)
+		entries, err := s.projectEntries(ctx, projects)
+		if err != nil {
+			return nil, fmt.Errorf("invoices: name the projects of the timesheet: %w", err)
+		}
+		for _, e := range entries {
+			read.projects[e.ID] = e.Name
 		}
 	}
 	return read, nil
@@ -233,16 +257,18 @@ func writeTimesheet(ctx context.Context, txq *store.Queries, invoiceID int64, re
 		return fmt.Errorf("invoices: clear draft %d's timesheet: %w", invoiceID, err)
 	}
 	var hours []contracts.BillableHour
+	heldProjects := map[int64]int32{}
 	for _, r := range rows {
 		if h, ok := read.hours[r.id]; ok && r.kind == contracts.WorkSourceHours {
 			hours = append(hours, h)
+			heldProjects[r.id] = r.projectID
 		}
 	}
 	if len(hours) == 0 {
 		return nil
 	}
 	sorted, people := timesheetOrder(hours)
-	p, err := timesheetRows(sorted, personLabels(read.mode, read.names, people), read.projects)
+	p, err := timesheetRows(sorted, personLabels(read.mode, read.names, people), read.projects, heldProjects)
 	if err != nil {
 		return err
 	}
@@ -253,7 +279,15 @@ func writeTimesheet(ctx context.Context, txq *store.Queries, invoiceID int64, re
 	return nil
 }
 
-// pruneTimesheet drops a draft's rows of hours rows no longer hold (D5).
+// numberedLabel is a label of the number mode.
+var numberedLabel = regexp.MustCompile(`^Person [0-9]+$`)
+
+// pruneTimesheet drops a draft's rows of hours rows no longer hold (D5) and,
+// when it dropped any, writes the rest again densely: positions from 1 in
+// their order and, on a timesheet labelled by number, "Person n" renumbered
+// by first appearance among them — no directory read, the snapshot's own
+// rows. An initials or name label is kept as written: the snapshot names
+// that person so, and a KN2 may stay without a KN.
 func pruneTimesheet(ctx context.Context, txq *store.Queries, invoiceID int64, rows []heldSource) error {
 	var kept []int64
 	for _, r := range rows {
@@ -261,8 +295,42 @@ func pruneTimesheet(ctx context.Context, txq *store.Queries, invoiceID int64, ro
 			kept = append(kept, r.id)
 		}
 	}
-	if _, err := txq.PruneTimesheetRows(ctx, store.PruneTimesheetRowsParams{InvoiceID: invoiceID, Kept: kept}); err != nil {
+	dropped, err := txq.PruneTimesheetRows(ctx, store.PruneTimesheetRowsParams{InvoiceID: invoiceID, Kept: kept})
+	if err != nil {
 		return fmt.Errorf("invoices: prune draft %d's timesheet: %w", invoiceID, err)
+	}
+	if dropped == 0 {
+		return nil
+	}
+	left, err := txq.TimesheetRowsOf(ctx, invoiceID)
+	if err != nil || len(left) == 0 {
+		return err
+	}
+	numbered := !slices.ContainsFunc(left, func(r store.InvoicesTimesheetRow) bool { return !numberedLabel.MatchString(r.PersonLabel) })
+	relabel := map[string]string{}
+	p := store.InsertTimesheetRowsParams{InvoiceID: invoiceID}
+	for i, r := range left {
+		label := r.PersonLabel
+		if numbered {
+			if _, ok := relabel[label]; !ok {
+				relabel[label] = fmt.Sprintf("Person %d", len(relabel)+1)
+			}
+			label = relabel[label]
+		}
+		work := ""
+		if r.WorkType != nil {
+			work = *r.WorkType
+		}
+		p.Positions, p.SourceIds = append(p.Positions, int32(i+1)), append(p.SourceIds, r.SourceID)
+		p.PersonLabels, p.EntryDates = append(p.PersonLabels, label), append(p.EntryDates, r.EntryDate)
+		p.Hours, p.WorkTypes = append(p.Hours, r.Hours), append(p.WorkTypes, work)
+		p.Descriptions = append(p.Descriptions, r.Description)
+	}
+	if err := txq.DeleteTimesheetRows(ctx, invoiceID); err != nil {
+		return fmt.Errorf("invoices: clear draft %d's timesheet: %w", invoiceID, err)
+	}
+	if err := txq.InsertTimesheetRows(ctx, p); err != nil {
+		return fmt.Errorf("invoices: renumber draft %d's timesheet: %w", invoiceID, err)
 	}
 	return nil
 }

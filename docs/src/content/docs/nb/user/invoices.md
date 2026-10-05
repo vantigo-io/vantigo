@@ -334,7 +334,7 @@ da er de der for en integrasjon
 
 **Timelisten.** En faktura kan ha en timeliste i PDF-en: etter selve fakturaen, på egne
 sider, hver timeoppføring den fakturerer — datoen, personen, arbeidstypen, oppgaven (eller
-ellers prosjektets navn) og timene — med en sum per person og en sum for alt. Den viser
+ellers prosjektets navn, eller arbeidstypen) og timene — med en sum per person og en sum for alt. Den viser
 aldri merknaden en person skrev på en oppføring. Et utkast laget av arbeid får en når du
 ber om det, eller når innstillingene gjør det til standard; slår du den på for et utkast,
 skrives den fra timene utkastet holder, slår du den av, fjernes den, hver lagring holder

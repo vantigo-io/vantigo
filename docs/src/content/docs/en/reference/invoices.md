@@ -801,7 +801,8 @@ CHECK (`ck_settings_timesheet_person_label`) refuses it. `GET /settings` answers
 **What a row holds.** The rows are `invoices.timesheet_rows`, a snapshot taken when they
 are written: the hours as Time's billable read answers them (`contracts.BillableHour`),
 the work type's name, and as the **description the task title, else the project's
-name** — **never the time entry's note**. The note is the person's own text and may hold
+name** — the hour's project, else the one its held row took — else the work type, and
+only then nothing — **never the time entry's note**. The note is the person's own text and may hold
 health data ("legetime", a sick child), and the billable read does not carry it, so it
 never reaches this module. The rows are ordered by date, then by the entry; a total per
 person and the whole close the block.
@@ -815,7 +816,10 @@ are written:
 | `number` | "Person 1", "Person 2", … in order of first appearance on the timesheet — Vantigo stores no employee number |
 | `name` | the display name; a second person of the same name gets " 2" |
 
-A person the user directory no longer knows is "?". The names are read through
+No two people on one timesheet ever share a label — the totals are per label — so a
+suffixed label that is already someone's own takes the next free number ("K N 2" is
+"KN2" too; after Kari Nordmann and Knut Nilsen it is "KN22"). A person the user
+directory no longer knows is "?". The names are read through
 `UserDirectory.Users`, on the pool, before the writer's transaction — never under its
 lock.
 
@@ -833,8 +837,11 @@ a timesheet never carries two numbering schemes:
   label with them.
 
 Otherwise **every save prunes** them to the hours the draft still holds — an hour dropped
-from its line loses its row, the others keep theirs as written, and a customer change,
-which drops every hold, empties the timesheet; **a save turning the flag off** deletes
+from its line loses its row and the rest are written again densely, positions from 1, in
+the same transaction; on a timesheet labelled by `number` the "Person n" labels are
+renumbered by first appearance among the rows left, with no directory read, while an
+`initials` or `name` label stays as written (a snapshot), so a "KN2" may remain without
+a "KN". A customer change, which drops every hold, empties the timesheet; **a save turning the flag off** deletes
 them; one leaving `timesheet` out keeps the flag. An hour the billable read no longer
 answers gets no row — the issue refuses it anyway (`source_not_invoiceable`). With Time
 switched off there is nothing to write rows from: a save prunes them and turning the flag
@@ -1126,7 +1133,8 @@ of its own: "Timeliste" / "Timesheet", the columns "Dato", "Person", "Arbeidstyp
 per stored row with the hours to two decimals, then "Sum <person>" / "Total <person>" for
 each person in order of first appearance and "Sum timer" / "Total hours" for the whole.
 It is laid out with maroto's `AddRows`, which breaks to a new page wherever one ends, so a
-timesheet of any length paginates. It is part of the one PDF: the store-once key and the
+timesheet of any length paginates, with the column header repeated at the top of every
+one of its pages; the document's own pages are the same with the timesheet or without. It is part of the one PDF: the store-once key and the
 stored hash cover it like every other word, the EHF attaches it with the rest, and the
 draft's preview renders it as it stands ([The timesheet](#the-timesheet)).
 

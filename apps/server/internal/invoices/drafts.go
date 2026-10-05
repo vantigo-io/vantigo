@@ -637,7 +637,7 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 				return nil, err
 			}
 		}
-		if in.timesheetRead, err = s.readTimesheet(ctx, settings.TimesheetPersonLabel, hours, nil); err != nil {
+		if in.timesheetRead, err = s.readTimesheet(ctx, settings.TimesheetPersonLabel, hours, held, nil); err != nil {
 			return nil, err
 		}
 	}

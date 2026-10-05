@@ -470,6 +470,19 @@ func timesheetBlock(rows []pdfTimesheetRow, l pdfLabels, lang string) *pdfTimesh
 
 // renderPDF lays a model out on A4 and answers the bytes.
 func renderPDF(m pdfModel) ([]byte, error) {
+	doc, err := layoutPDF(m)
+	if err != nil {
+		return nil, err
+	}
+	out, err := doc.Generate()
+	if err != nil {
+		return nil, fmt.Errorf("invoices: render the PDF: %w", err)
+	}
+	return out.GetBytes(), nil
+}
+
+// layoutPDF lays a model out on A4, its pages ready to generate.
+func layoutPDF(m pdfModel) (core.Maroto, error) {
 	fonts, err := fontrepository.New().
 		AddUTF8FontFromBytes(fontFamily, fontstyle.Normal, notoSansRegular).
 		AddUTF8FontFromBytes(fontFamily, fontstyle.Bold, notoSansBold).
@@ -574,21 +587,21 @@ func renderPDF(m pdfModel) ([]byte, error) {
 		doc.AddAutoRow(text.NewCol(12, m.footer, props.Text{Top: 3, Size: 8}))
 	}
 	if m.timesheet != nil {
-		renderTimesheet(doc, m.timesheet)
+		if err := renderTimesheet(doc, m.timesheet); err != nil {
+			return nil, err
+		}
 	}
-
-	out, err := doc.Generate()
-	if err != nil {
-		return nil, fmt.Errorf("invoices: render the PDF: %w", err)
-	}
-	return out.GetBytes(), nil
+	return doc, nil
 }
 
 // renderTimesheet lays the timesheet out on pages of its own after the
-// document (D5): a new page with the title and the column header, then the
-// rows through AddRows, which breaks to a new page wherever one ends, then
-// the totals.
-func renderTimesheet(doc core.Maroto, t *pdfTimesheet) {
+// document (D5): a new page with the title, then the column header —
+// registered as the document's header from there on, so maroto repeats it at
+// the top of every page the rows break onto (it adds a header only at a
+// break, so the document's own pages, laid out already, carry none) — then
+// the rows through AddRows, which breaks to a new page wherever one ends,
+// then the totals.
+func renderTimesheet(doc core.Maroto, t *pdfTimesheet) error {
 	sizes := []int{2, 2, 2, 4, 2}
 	sheetRow := func(cells []string, header bool) core.Row {
 		cols := make([]core.Col, 0, len(cells))
@@ -604,7 +617,10 @@ func renderTimesheet(doc core.Maroto, t *pdfTimesheet) {
 		}
 		return row.New().Add(cols...)
 	}
-	doc.AddPages(page.New().Add(text.NewRow(12, t.title, props.Text{Style: fontstyle.Bold, Size: 18}), sheetRow(t.header, true)))
+	doc.AddPages(page.New().Add(text.NewRow(12, t.title, props.Text{Style: fontstyle.Bold, Size: 18})))
+	if err := doc.RegisterHeader(sheetRow(t.header, true)); err != nil {
+		return fmt.Errorf("invoices: lay out the timesheet's header: %w", err)
+	}
 	rows := make([]core.Row, 0, len(t.rows))
 	for _, r := range t.rows {
 		rows = append(rows, sheetRow(r, false))
@@ -618,4 +634,5 @@ func renderTimesheet(doc core.Maroto, t *pdfTimesheet) {
 		}
 		doc.AddRow(5, col.New(4), text.NewCol(6, kv[0], style), text.NewCol(2, kv[1], style))
 	}
+	return nil
 }
