@@ -91,7 +91,8 @@ the customer slots are (`srv/module/compose.go:234-264`), and by `module.Workers
 `*server` from worker-mode `Deps` (phase 2 D9), and a worker-mode server must never see an
 empty slot as "nothing to stamp". Invoices fails closed: a draft source whose kind no
 holder claims is a 500 and an error log (a composition bug), never a skipped stamp. A
-holder's constructor needs only `Deps.Clock`, so a disabled module still stamps and
+holder's constructor needs only `Deps.Logger` (its release's warning; every timestamp it
+writes is `IssuedAt`), so a disabled module still stamps and
 releases its rows (rules 8 and 9's reason, `MB:176-183`).
 
 **Where the call sits.** In `PostInvoicesByIdIssue` (`inv/issue.go:218-456`), inside
@@ -132,17 +133,18 @@ slipped between) is `invoice_changed`, as a merge's is — and re-checks each pr
 
 | Holder | Locks, in order | Judges (refusal) | Stamps | Release |
 | --- | --- | --- | --- | --- |
-| Projects (`projects.milestone`) | each distinct project `LockProject` (`FOR NO KEY UPDATE`, `srv/projects/queries/projects.sql:64-80`) by id ascending, then the milestones by id ascending — its own order (`srv/projects/milestones.go:38-48`) | already `invoiced` → `source_already_invoiced`; not `ready` → `source_not_invoiceable`; revision, currency or effective amount (fixed price × percent, judged under the project's lock) differs → `source_changed` — a reorder moves no revision (`srv/projects/queries/milestones.sql:88-97`) | `status = invoiced`, `invoiced_invoice_id`, `invoiced_number`, `invoiced_at`, `invoiced_by_user_id`, `invoice_date` = issue date, `invoiced_amount` frozen, `invoice_reference` NULL, `ever_moved`, revision + 1, and the milestone's `invoiced` timeline event (`recordMilestoneEvent`, `:705-708`) by `IssuedBy`/`IssuedByDisplay` at `IssuedAt` | `invoiced → ready`, the five stamp columns and the two new ones cleared, the percent→amount conversion when the fixed price is gone (`R/projects.md:409-429`), the timeline event |
+| Projects (`projects.milestone`) | each distinct project `LockProject` (`FOR NO KEY UPDATE`, `srv/projects/queries/projects.sql:64-80`) by id ascending, then the milestones by id ascending — its own order (`srv/projects/milestones.go:38-48`) | already `invoiced` → `source_already_invoiced`; not `ready` → `source_not_invoiceable`; revision, currency or effective amount (fixed price × percent, judged under the project's lock) differs → `source_changed` — a reorder moves no revision (`srv/projects/queries/milestones.sql:88-97`) | `status = invoiced`, `invoiced_invoice_id`, `invoiced_number`, `invoiced_at`, `invoiced_by_user_id`, `invoice_date` = issue date, `invoiced_amount` frozen, `invoice_reference` NULL, `ever_moved`, revision + 1, and the milestone's `invoiced` timeline event (`recordMilestoneEvent`, `:705-708`) by `IssuedBy`/`IssuedByDisplay` at `IssuedAt` | always `invoiced → ready` — never refused: a project since left without a currency still releases, with a warning logged — the five stamp columns and the two new ones cleared, the percent→amount conversion only when the fixed price is gone (`R/projects.md:409-429`), the timeline event |
 | Expenses (`expenses.entry`) | the claims of claim lines by id, then every line by id — the module's order (`srv/expenses/claims.go:28-33`) | `invoiced_at` set → `source_already_invoiced`; `expenses.ready_to_invoice(...)` false → `source_not_invoiceable` (per diem, unit not approved, not billable, unpriced — `srv/expenses/invoiced.go:36-61`'s reasons); the **billing facts** — `billable`, `bill_amount`, `project_id`, `currency`, `kind` — differ → `source_changed`. Not the revision: a payroll reimbursement bumps it (`srv/expenses/queries/reimbursements.sql:185`, `:209`) and changes nothing billed | `invoiced_at`, `invoiced_by_user_id` the issuer, `invoiced_invoice_id`, `invoiced_number`, `invoice_reference` NULL, revision + 1 | the four cleared — what `UnmarkEntryInvoiced` clears, plus the two new |
 | Time (`time.entry`) | the entries by id (`LockEntries`, the order `srv/time/approval.go:21-27` keeps) | `invoiced` → `source_already_invoiced`; not `approved`, not billable or no bill rate → `source_not_invoiceable`; revision, project, currency or `hours × bill_rate × COALESCE(multiplier, 100)/100` differs → `source_changed` | Time's **first writer** of the state: `status = invoiced`, `invoiced_at`, `invoiced_invoice_id`, `invoiced_number`, revision + 1 | the new move `invoiced → approved`, the three cleared; the approval stamps stay |
 
 Every holder judges in that order — already invoiced first, so a row stamped by hand is
 named for what it is rather than as "not invoiceable" — and compares amounts exactly,
-decimal text against its own exact figure (Time's has up to six decimals,
-`R/time.md:374-379`). The stamps' timestamps are `IssuedAt`, never the holder's clock.
+decimal text against its own exact figure, by value (Time's has up to eight decimals:
+`hours × bill_rate × (multiplier × 0.01)`, `srv/time/queries/actuals.sql:57`). The stamps' timestamps are `IssuedAt`, never the holder's clock.
 The period lock does not apply to either direction: a stamp is not a time edit
 (`R/time.md:390` — the lock is how a month is closed *before* it is invoiced), as
 Expenses' stamp already ignores it (`srv/expenses/invoiced.go:18-21`). `ReleaseInvoiced`
+takes the same locks in the same order as `MarkInvoiced` before it writes, and
 **tolerates** a source that no longer carries `ref`'s stamp — it writes nothing for it and
 logs a warning — because a credit note must never be blocked (Projects' reason,
 `R/projects.md:409-424`); a stamp never moves without Invoices, so the case is a repair,
@@ -254,8 +256,10 @@ reached it while it waits on D), and Time's and Expenses' rows are no holder's. 
 the source locks before the document instead would hold project rows across the
 counter's queue. The module order stays (it also orders the combined OpenAPI document,
 `srv/module/compose.go:314`); today's anonymisation would need nothing, Projects' erase
-writing nothing (`srv/projects/customer_personal_data.go:71-77`). The race test reads `pg_locks`
-to show a merge waiting on D holds no project row.
+writing nothing (`srv/projects/customer_personal_data.go:71-77`). The race test parks the
+merge behind D, asserts `pg_blocking_pids(merge) = {issue}`, and probes P with `SELECT …
+FOR NO KEY UPDATE NOWAIT` from a connection of its own: the probe succeeds, so the merge
+waiting on D holds no project row (an uncontended row lock never shows in `pg_locks`).
 
 **Codes.** On `InvoicesConflictProblem` (`cannotIssue`): `source_not_invoiceable`,
 `source_changed`, `source_already_invoiced`, `source_customer_changed`,
@@ -269,8 +273,8 @@ problems: `invoiced_by_invoices` with `invoiceId` and `invoiceNumber`.
 CASCADE`), `invoice_id` (denormalised for the per-document reads and the triggers),
 `source_kind varchar(30)`, `source_id bigint`, `source_revision int`, `source_subkind
 varchar(20)` (an expense's kind; NULL for the other kinds), `project_id
-integer` (opaque), `quantity numeric(12,3)` (hours, km, 1), `amount numeric(20,6)` (the
-source's exact amount — Time's carries up to six decimals, `R/time.md:374-379`),
+integer` (opaque), `quantity numeric(12,3)` (hours, km, 1), `amount numeric(22,8)` (the
+source's exact amount — Time's carries up to eight decimals, `srv/time/queries/actuals.sql:57`),
 `currency char(3)`, `state varchar(10)` (`held` | `invoiced` | `released`), `source_date
 date` (the work's date, for the period and D12). **The floor** is a partial unique index
 `ux_line_sources_live (source_kind, source_id) WHERE state IN ('held','invoiced')`: a
@@ -300,14 +304,16 @@ source twice is a 400 too. A client never states a revision or an amount, and a 
 takes no new hold. Every save inserts the document's `line_sources` in **one statement
 ordered by `(source_kind, source_id)`**, so two transactions inserting overlapping holds
 wait on the index in the same order and one fails with the unique violation instead of
-both deadlocking (`40P01`, a 500). A document holds at most **5 000 sources**
-(`too_many_sources`, 409 at the wizard, 400 at a save) — the providers' page size.
+both deadlocking (`40P01`, a 500). A document holds at most **5 000 sources** — the
+providers' page size: `from-work` refuses 409 `too_many_sources` counting an append
+target's held rows and the new ones, before any read; a save, which can add none, only
+bounds its body (a 400 on `lines` past 5 000 identities).
 
 **Held, and released.** A held row goes when its line is removed (or the source is
 dropped from every line), when the draft is deleted (the cascade), or when a `PUT` changes
 the draft's customer — then every held row of the draft is deleted. Every save that drops
-a hold, by any of these routes, warns `sources_released` naming the dropped identities
-(`{kind, id}`), so a client that lost work by mistake can see what. A merge re-pointing the draft (`inv/customer_slots.go:50-69`) moves
+a hold, by any of these routes, warns `sources_released` and names the dropped identities
+(`{kind, id}`) in the save's answer as `releasedSources` — the warnings stay codes — so a client that lost work by mistake can see what. A merge re-pointing the draft (`inv/customer_slots.go:50-69`) moves
 the projects with it and releases nothing.
 
 **One source, one live document**, enforced under lock: where a hold is added — the
@@ -320,13 +326,16 @@ holds exclusive; the holders judge the source module's side (D1).
 
 **A hand-edited line keeps its sources.** The invoice may bill less or more than the work
 (a write-down, a rounding): the line's net differing from `round2(Σ amount)` of its
-sources is the warning **`line_differs_from_sources`** (with the line's position), never a
-refusal. Deduction lines (D7) carry no sources.
+sources is the warning **`line_differs_from_sources`** — on that line's own `warnings`
+(`InvoicesLine.warnings`) and once in the document's — never a refusal. Deduction lines (D7) carry no sources.
 
 **Staying fresh.** The `sources` block is answered from these rows (the `ehf` block's
 rule, `inv/transmissions.go:51-129`). `GET` of a draft with sources — the read that
 already calls the directory (`inv/drafts.go:616-654`) — also reads them by id through
-D3's contracts and warns `source_changed` / `source_not_invoiceable` per line, which the
+D3's contracts and warns `source_changed` / `source_not_invoiceable` per line (on
+`InvoicesLine.warnings`), judging the holders' own facts — Time and Projects the revision,
+the project, the currency and the amount by value; Expenses the bill amount, the project,
+the currency and the kind, never the revision — which the
 issue refuses (the `vat_code_not_valid` pair, `inv/responses.go:31-34`,
 `inv/issue.go:186-190`). A `PUT` with `refreshSources: true` re-reads them before its
 transaction and takes the new revisions and amounts, dropping (`sources_released`) what
@@ -373,10 +382,11 @@ type BillableMilestones interface { BillableMilestones(ctx, BillableRequest) (Bi
 **`GET /invoices/work?customerId=|projectId=&until=`** (`invoices:access+invoices:create`;
 exactly one of the two ids, else 400). For a customer: `ProjectsForCustomer`
 (`srv/contracts/projects.go:100`), then the three reads over those projects; for a
-project: `Project`, its customer, the three reads. Then, from its own schema, **less what
-live documents hold** (`line_sources` in `held` or `invoiced`). The answer: per project
-(code, name, billing type, currency), per kind, the rows with their selectability and
-`heldOnDrafts: [{invoiceId, count}]`; per currency the totals; the users named through
+project: `Project`, its customer, the three reads. Then, from its own schema, what live
+documents hold (`line_sources` in `held` or `invoiced`): such work is **listed, not
+selectable**, each row carrying `heldBy: {invoiceId, number?, status}`, and is left out
+of the totals. The answer: per project (code, name, billing type, currency), per kind,
+the rows with their selectability and `heldOnDrafts: [{invoiceId, count}]`; per currency the totals; the users named through
 `UserDirectory.Users` (`srv/contracts/users.go:12-16`); warnings
 `work_overdue_to_invoice` (D12, per project), `currency_not_nok` (D11, per row),
 `supplier_invoice_rebilled` (D15, per row), `work_truncated` (a `More`), and 409
@@ -389,15 +399,19 @@ gains `workAvailable` (any provider present) and `work: {hours, expenses, milest
 settings, D6), optional `deliveryFrom`/`deliveryTo`, optional `invoiceId` + `revision`
 to **append** to an existing invoice draft. In order, before any transaction:
 
-1. 400 on the body; the settings; the profile and `customerGate` (`inv/drafts.go:56-79`).
-2. The sources' projects (`ProjectDirectory.Projects`): one billing another customer →
-   409 `source_not_for_customer`; fixed-price hours or non-billable work → 409
-   `source_not_selectable` (D14).
-3. The sources by id: missing → 409 `source_not_invoiceable`; another revision than the
-   body's → `source_changed` for hours and milestones (an expense's revision is
-   display-only, D1: its billing facts are taken as read now); then `mixed_currency` or
-   `currency_not_nok` (D11).
-4. The lines (D4) — over 500 with the target's → 409 `too_many_lines` with
+1. 400 on the body (a source named twice included); 409 `too_many_sources` over 5 000,
+   counting an append target's held rows and the new ones — before any read.
+2. The settings; the profile and `customerGate` (`inv/drafts.go:56-79`).
+3. The sources by id through the three `Billable*` reads, on the pool.
+4. The found sources' projects (`ProjectDirectory.Projects`).
+5. The judgments, in order: a project billing another customer → 409
+   `source_not_for_customer`; fixed-price hours or non-billable work → 409
+   `source_not_selectable` (D14); missing from the read, or of a kind whose provider is
+   nil → 409 `source_not_invoiceable`; another revision than the body's →
+   `source_changed` for hours and milestones (an expense's revision is display-only, D1:
+   its billing facts are taken as read now); then `mixed_currency` or `currency_not_nok`
+   (D11).
+6. The lines (D4) — over 500 with the target's → 409 `too_many_lines` with
    `suggestedGrouping` — and the timesheet rows (D5), named through `UserDirectory`.
 
 Then one `withLockedTx`: insert the draft (or lock the target `FOR UPDATE`, still a draft
@@ -443,7 +457,7 @@ Optional per invoice: the flag (default `timesheet_default`, off) is
 `invoices.invoices.timesheet boolean`, frozen at issue like every added column
 (`mig/00034_invoices_baseline.sql:256-281`). When it is on, the draft
 carries **`invoices.timesheet_rows`**: `invoice_id` (FK, cascade), `position`,
-`source_id` (the time entry), `person_label varchar(100)`, `entry_date`, `hours
+`source_id` (the time entry), `person_label varchar(200)`, `entry_date`, `hours
 numeric(5,2)`, `work_type varchar(100)`, `description varchar(200)` (the task title,
 else the project's name) — **never the note**, which may hold health data
 (`mig/00010_time_baseline.sql:17`; R3 §6.3) — under `refuse_issued_child_change`. Written
@@ -652,11 +666,17 @@ default; adding work to a credit note.
 
 ### D17 — The contracts
 
-**`openapi/invoices.yaml`**: `getInvoicesWork`, `postInvoicesFromWork`; schemas
+**`openapi/invoices.yaml`**: `getInvoicesWork`, `postInvoicesFromWork`, and
+`getInvoicesByIdDeductible` (`GET /invoices/{id}/deductible`,
+`invoices:access+invoices:create`: for an invoice draft, the customer's issued invoices
+with something left to deduct, per VAT code — invoice id, number, issue date, VAT code,
+category, rate and what is left — the editor's "Deduct earlier invoices" step (D18); 404
+for an unknown id; 409 `invoice_issued` on an issued document and on a credit-note draft
+a 409 too, since a credit note deducts nothing); schemas
 `InvoicesWorkResponse`, `InvoicesWorkHour`, `…Expense`, `…Milestone`,
 `InvoicesFromWorkRequest`, `InvoicesLineSource` (`kind`, `id`, `projectId`, `quantity`,
 `amount`, `state`), `InvoicesTimesheetRow`; the line request and response gain
-`sources[]` and `deductsInvoiceId`; the request `timesheet`, `refreshSources`; the
+`sources[]` and `deductsInvoiceId`, the line response `warnings` (per-line codes); the request `timesheet`, `refreshSources`; the
 document `sources` (per line, `held`/`invoiced`/`released`, `wouldRelease` on a
 credit-note draft), `timesheet`, `timesheetRows`, `projectId`, `projectReference`; the
 list item the last two and `GET /invoices` a `projectId` parameter; the settings five
@@ -665,9 +685,10 @@ fields; meta `workAvailable`, `work`. Conflicts: `source_not_invoiceable`,
 `source_held_elsewhere` (+ `heldBy`), `source_not_for_customer`, `source_not_selectable`,
 `mixed_currency`, `currency_not_nok`, `too_many_lines` (+ `suggestedGrouping`),
 `work_unavailable`, `too_many_sources`, `projects_unavailable`,
-`deduction_exceeds_invoice`, `invoice_total_not_positive`,
+`deduction_exceeds_invoice`, `deduction_duplicated` (a second deduction line for one
+(a-konto, VAT code)), `invoice_total_not_positive`,
 `credit_total_negative`, `invoice_deducted`. Warnings: `line_differs_from_sources`,
-`sources_released` (+ the dropped identities), `invoice_total_not_positive`,
+`sources_released` (the identities in the document's `releasedSources: [{kind, id}]`), `invoice_total_not_positive`,
 `source_changed`, `source_not_invoiceable`,
 `deduction_exceeds_invoice`, `work_overdue_to_invoice`, `currency_not_nok`,
 `supplier_invoice_rebilled`, `work_truncated`.
@@ -808,8 +829,8 @@ endpoint).
 29. The 2028 buyer org-number rule is the backlog's.
 30. Every holder judges "already invoiced" first, then "not invoiceable", then
     "changed"; `expenses.ready_to_invoice` leaves the `invoiced_at` term to its callers.
-31. Amounts cross the contract as exact decimal text and are kept as `numeric(20,6)` in
-    `line_sources`, compared exactly — Time's carry up to six decimals.
+31. Amounts cross the contract as exact decimal text and are kept as `numeric(22,8)` in
+    `line_sources`, compared exactly by value — Time's carry up to eight decimals.
 32. Expenses judges `source_changed` by the billing facts (`billable`, `bill_amount`,
     `project_id`, `currency`, `kind`), never the revision, which a reimbursement moves;
     Time and Projects judge the revision too (a milestone reorder moves none).
@@ -842,9 +863,9 @@ recording each call and the `pg_current_xact_id()` of the `pgx.Tx` it was handed
   invoiceable → changed (a hand-stamped row named `source_already_invoiced`; a percent
   milestone after a fixed-price edit; Expenses unchanged by a reimbursement's revision
   bump and changed by each billing fact; a milestone reorder not a change); exact amount
-  comparison at six decimals; the columns, `IssuedAt`, Projects' timeline event with
-  `IssuedByDisplay` and no directory call (the module's own locked flag set, its hook
-  silent); the release's prior state, the percent→amount conversion, the tolerance; the
+  comparison at eight decimals; the columns, `IssuedAt`, Projects' timeline event with
+  `IssuedByDisplay` and no directory call (the module's own locked flag set — a per-module `SetInvoicedWorkAfterLock` seam asserts it —
+  its hook silent); the release's prior state, the percent→amount conversion, a release on a project without a currency, the tolerance; the
   period lock ignored; a holder built from a disabled module's `Deps`. **Invoices**: one
   call per holder in Projects → Expenses → Time order, after the number and before any
   snapshot, each on the issue's transaction (equal `pg_current_xact_id()`); a refusal →
@@ -863,8 +884,11 @@ recording each call and the `pg_current_xact_id()` of the `pgx.Tx` it was handed
   batch reimbursement (`srv/expenses/flow.go:218-226`), a milestone `ready → invoiced`
   and a project's fixed-price edit (`LockProject`), a time unapprove; and **against a
   customer merge** of the draft's customer whose project
-  holds a held milestone — the merge seen in `pg_locks` waiting on the document while
-  holding no project row, both committing, no `40P01`.
+  holds a held milestone — `pg_blocking_pids(merge) = {issue}` while the merge waits on the
+  document, and a `FOR NO KEY UPDATE NOWAIT` probe of the project from a connection of its
+  own succeeding, so it holds no project row; both committing, no `40P01`. Every probe and
+  `pg_locks`/`pg_blocking_pids` read runs on its own `pgx.Connect`, every racing request
+  under a context deadline.
 - **D2**: held rows carried across new line ids, moved, dropped; `sources` absent on a
   line of a sourced draft → 400, `[]` drops; an unheld or duplicate source refused;
   delete and customer change release, `sources_released` naming each; the 5 000 cap;
@@ -874,7 +898,8 @@ recording each call and the `pg_current_xact_id()` of the `pgx.Tx` it was handed
   difference and freshness warnings; `refreshSources`.
 - **D3**: each provider's set, `More`, `IDs`; the expenses predicate against
   `invoicedRefusal` over every combination and in each former place; the view per
-  customer and project, less held work, `heldOnDrafts`, its warnings, 400 on both or
+  customer and project, held work listed not selectable with `heldBy` and out of the
+  totals, `heldOnDrafts`, its warnings, 400 on both or
   neither id, `work_unavailable`; from-work's refusals in order, each by removing its
   guard; the prefills; append at a revision; `invoices:create`.
 - **D4**: each grouping's lines and texts in both languages; the split by rate and the
