@@ -78,9 +78,12 @@ func (s *server) PostExpensesEntriesByIdInvoiced(ctx context.Context, req gen.Po
 		return gen.PostExpensesEntriesByIdInvoiced403JSONResponse(forbidden()), nil
 	case resp.errs != nil:
 		return gen.PostExpensesEntriesByIdInvoiced400ApplicationProblemPlusJSONResponse(invalidEntry(resp.errs)), nil
+	case resp.byInvoice != nil:
+		return gen.PostExpensesEntriesByIdInvoiced409ApplicationProblemPlusJSONResponse(
+			invoicedByInvoices(resp.byInvoice.InvoiceId, resp.byInvoice.Number)), nil
 	case resp.conflict != nil:
 		return gen.PostExpensesEntriesByIdInvoiced409ApplicationProblemPlusJSONResponse(
-			revisionConflict(*resp.conflict, body.Revision)), nil
+			invoicedRevisionConflict(*resp.conflict, body.Revision)), nil
 	}
 	return gen.PostExpensesEntriesByIdInvoiced200JSONResponse(resp.entry), nil
 }
@@ -103,21 +106,36 @@ func (s *server) PostExpensesEntriesByIdInvoicedUndo(ctx context.Context, req ge
 		return gen.PostExpensesEntriesByIdInvoicedUndo403JSONResponse(forbidden()), nil
 	case resp.errs != nil:
 		return gen.PostExpensesEntriesByIdInvoicedUndo400ApplicationProblemPlusJSONResponse(invalidEntry(resp.errs)), nil
+	case resp.byInvoice != nil:
+		return gen.PostExpensesEntriesByIdInvoicedUndo409ApplicationProblemPlusJSONResponse(
+			invoicedByInvoices(resp.byInvoice.InvoiceId, resp.byInvoice.Number)), nil
 	case resp.conflict != nil:
 		return gen.PostExpensesEntriesByIdInvoicedUndo409ApplicationProblemPlusJSONResponse(
-			revisionConflict(*resp.conflict, body.Revision)), nil
+			invoicedRevisionConflict(*resp.conflict, body.Revision)), nil
 	}
 	return gen.PostExpensesEntriesByIdInvoicedUndo200JSONResponse(resp.entry), nil
 }
 
-// invoicedOutcome is what one of the two operations answers: the four
+// invoicedOutcome is what one of the two operations answers: the five
 // refusals they share, or the expense as it now stands.
 type invoicedOutcome struct {
 	notFound  bool
 	forbidden bool
 	errs      map[string][]string
+	// byInvoice is the invoice the Invoices module invoiced the line on: a
+	// 409, because that mark is not this door's to make or take back.
+	byInvoice *gen.ExpensesInvoicedBy
 	conflict  *int32
 	entry     gen.ExpensesEntryResponse
+}
+
+// invoicedByInvoice is the invoice the Invoices module stamped row with, or
+// nil for a line that is not invoiced or was marked by hand.
+func invoicedByInvoice(row store.ExpensesEntry) *gen.ExpensesInvoicedBy {
+	if row.InvoicedInvoiceID == nil || row.InvoicedNumber == nil {
+		return nil
+	}
+	return &gen.ExpensesInvoicedBy{InvoiceId: *row.InvoicedInvoiceID, Number: *row.InvoicedNumber}
 }
 
 // markInvoiced is both operations, because they differ only in their state
@@ -150,6 +168,12 @@ func (s *server) markInvoiced(ctx context.Context, id int64, revision int32, ref
 	case !a.CanSeeBilling:
 		return invoicedOutcome{forbidden: true}, nil
 	}
+	// A line the Invoices module invoiced is that invoice's: neither a second
+	// mark nor an undo is this door's, whatever else is true of the line, so it
+	// is answered before the line's state — and again under the lock.
+	if by := invoicedByInvoice(row); by != nil {
+		return invoicedOutcome{byInvoice: by}, nil
+	}
 	if field, msg := invoicedRefusal(row, unit, m); msg != "" {
 		return invoicedOutcome{errs: fieldError(field, msg)}, nil
 	}
@@ -175,9 +199,13 @@ func (s *server) markInvoiced(ctx context.Context, id int64, revision int32, ref
 			out = invoicedOutcome{notFound: true}
 			return nil
 		}
-		// Judged again on the row as it stands under the lock: an unapproval
-		// or another invoicing that committed since is the state refusal
-		// above, arrived a moment later.
+		// Judged again on the row as it stands under the lock: an invoice
+		// issued, an unapproval or another invoicing that committed since is
+		// the refusal above, arrived a moment later.
+		if by := invoicedByInvoice(locked); by != nil {
+			out = invoicedOutcome{byInvoice: by}
+			return nil
+		}
 		if field, msg := invoicedRefusal(locked, lockedUnit, m); msg != "" {
 			out = invoicedOutcome{errs: fieldError(field, msg)}
 			return nil
@@ -204,7 +232,7 @@ func (s *server) markInvoiced(ctx context.Context, id int64, revision int32, ref
 	switch {
 	case err != nil:
 		return invoicedOutcome{}, err
-	case out.notFound || out.errs != nil || out.conflict != nil:
+	case out.notFound || out.errs != nil || out.byInvoice != nil || out.conflict != nil:
 		return out, nil
 	}
 

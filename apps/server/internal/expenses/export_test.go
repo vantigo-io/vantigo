@@ -52,3 +52,25 @@ func SetExportMaxRows(n int) func() {
 // and Postgres name the same day from one instant is asserted against the very
 // function the handlers derive every claim-shaped date with.
 var BusinessDay = businessDay
+
+// ReadyToInvoice is invoicedRefusal asked about a line not yet invoiced, of
+// this unit status, billable or not, of this kind, priced or not: true when it
+// refuses nothing. The test holding expenses.ready_to_invoice to it compares
+// the rule over every combination, and nothing else.
+func ReadyToInvoice(unitStatus string, billable bool, kind string, priced bool) bool {
+	row := store.ExpensesEntry{Kind: kind, Billable: billable}
+	if priced {
+		row.BillAmount = pgtype.Numeric{Int: big.NewInt(100), Valid: true}
+	}
+	_, msg := invoicedRefusal(row, entryUnit{Status: unitStatus}, invoicedMark{})
+	return msg == ""
+}
+
+// SetInvoicedWorkAfterLock installs hook as the invoiced-work holder's seam,
+// called right after its locks in both directions with the context it runs
+// under, and answers the function that removes it. A test that sets it must
+// not run in parallel: the seam is the package's.
+func SetInvoicedWorkAfterLock(hook func(ctx context.Context)) func() {
+	invoicedWorkAfterLock.Store(&hook)
+	return func() { invoicedWorkAfterLock.Store(nil) }
+}

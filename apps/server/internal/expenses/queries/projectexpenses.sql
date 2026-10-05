@@ -31,7 +31,9 @@
 -- with no bill amount is counted as unpriced rather than summed as zero: a
 -- missing price is not a price of nothing.
 --
--- Ready and unpriced exclude per diem days outright. A per diem day bills
+-- Ready is expenses.ready_to_invoice (00038) and not yet invoiced, the very
+-- rule GET /entries?toInvoice=true lists by, so the figure and the list stay
+-- one sentence. Ready and unpriced exclude per diem days outright. A per diem day bills
 -- nobody anything (design §4) and no door in this module can make one
 -- billable, so today the clause changes no figure — but the two doors that
 -- decide the same thing on the write side, POST /entries/{id}/invoiced and
@@ -64,15 +66,9 @@ SELECT e.project_id::integer AS project_id,
        COALESCE(SUM(e.gross_amount - COALESCE(e.vat_amount, 0)), 0)::text AS cost_amount,
        COALESCE(SUM(e.bill_amount) FILTER (WHERE e.billable), 0)::text AS bill_amount,
        count(*) FILTER (WHERE e.billable AND e.kind <> 'per_diem' AND e.bill_amount IS NULL) AS unpriced_count,
-       count(*) FILTER (WHERE COALESCE(c.status, e.status) = 'approved'
-                          AND e.billable
-                          AND e.kind <> 'per_diem'
-                          AND e.bill_amount IS NOT NULL
+       count(*) FILTER (WHERE expenses.ready_to_invoice(COALESCE(c.status, e.status), e.billable, e.kind, e.bill_amount)
                           AND e.invoiced_at IS NULL) AS ready_count,
-       COALESCE(SUM(e.bill_amount) FILTER (WHERE COALESCE(c.status, e.status) = 'approved'
-                                             AND e.billable
-                                             AND e.kind <> 'per_diem'
-                                             AND e.bill_amount IS NOT NULL
+       COALESCE(SUM(e.bill_amount) FILTER (WHERE expenses.ready_to_invoice(COALESCE(c.status, e.status), e.billable, e.kind, e.bill_amount)
                                              AND e.invoiced_at IS NULL), 0)::text AS ready_amount,
        count(*) FILTER (WHERE e.invoiced_at IS NOT NULL) AS invoiced_count,
        COALESCE(SUM(e.bill_amount) FILTER (WHERE e.invoiced_at IS NOT NULL), 0)::text AS invoiced_amount,

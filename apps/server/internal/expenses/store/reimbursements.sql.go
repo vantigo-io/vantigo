@@ -162,7 +162,7 @@ func (q *Queries) ListReimbursementGroupClaims(ctx context.Context, arg ListReim
 }
 
 const listReimbursementGroupEntries = `-- name: ListReimbursementGroupEntries :many
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date FROM expenses.entries
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date, invoiced_invoice_id, invoiced_number FROM expenses.entries
 WHERE status = 'approved'
   AND claim_id IS NULL
   AND gross_amount > 0
@@ -250,6 +250,8 @@ func (q *Queries) ListReimbursementGroupEntries(ctx context.Context, arg ListRei
 			&i.MealDinnerPercent,
 			&i.SupplierInvoiceNumber,
 			&i.SupplierDueDate,
+			&i.InvoicedInvoiceID,
+			&i.InvoicedNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -347,7 +349,7 @@ func (q *Queries) ListReimbursementGroups(ctx context.Context, arg ListReimburse
 }
 
 const listReimbursementRows = `-- name: ListReimbursementRows :many
-SELECT e.id, e.user_id, e.created_by_user_id, e.claim_id, e.kind, e.entry_date, e.description, e.category_id, e.supplier, e.paid_by, e.currency, e.gross_amount, e.vat_amount, e.distance_km, e.from_place, e.to_place, e.passengers, e.rate, e.passenger_rate, e.rate_overridden_by_user_id, e.rate_table_value, e.passenger_rate_table_value, e.project_id, e.billing_line_id, e.billable, e.markup_percent, e.bill_rate_per_km, e.bill_amount, e.status, e.submitted_at, e.decided_at, e.decided_by_user_id, e.rejection_reason, e.reimbursed_at, e.reimbursed_by_user_id, e.reimbursement_reference, e.reimbursement_date, e.invoiced_at, e.invoiced_by_user_id, e.invoice_reference, e.revision, e.created_at, e.updated_at, e.per_diem_type, e.breakfast_covered, e.lunch_covered, e.dinner_covered, e.meal_breakfast_percent, e.meal_lunch_percent, e.meal_dinner_percent, e.supplier_invoice_number, e.supplier_due_date, c.purpose AS claim_purpose,
+SELECT e.id, e.user_id, e.created_by_user_id, e.claim_id, e.kind, e.entry_date, e.description, e.category_id, e.supplier, e.paid_by, e.currency, e.gross_amount, e.vat_amount, e.distance_km, e.from_place, e.to_place, e.passengers, e.rate, e.passenger_rate, e.rate_overridden_by_user_id, e.rate_table_value, e.passenger_rate_table_value, e.project_id, e.billing_line_id, e.billable, e.markup_percent, e.bill_rate_per_km, e.bill_amount, e.status, e.submitted_at, e.decided_at, e.decided_by_user_id, e.rejection_reason, e.reimbursed_at, e.reimbursed_by_user_id, e.reimbursement_reference, e.reimbursement_date, e.invoiced_at, e.invoiced_by_user_id, e.invoice_reference, e.revision, e.created_at, e.updated_at, e.per_diem_type, e.breakfast_covered, e.lunch_covered, e.dinner_covered, e.meal_breakfast_percent, e.meal_lunch_percent, e.meal_dinner_percent, e.supplier_invoice_number, e.supplier_due_date, e.invoiced_invoice_id, e.invoiced_number, c.purpose AS claim_purpose,
        (c.departure_at AT TIME ZONE $1::text)::date AS claim_departure_day
 FROM expenses.entries e
 LEFT JOIN expenses.claims c ON c.id = e.claim_id
@@ -485,6 +487,8 @@ func (q *Queries) ListReimbursementRows(ctx context.Context, arg ListReimburseme
 			&i.ExpensesEntry.MealDinnerPercent,
 			&i.ExpensesEntry.SupplierInvoiceNumber,
 			&i.ExpensesEntry.SupplierDueDate,
+			&i.ExpensesEntry.InvoicedInvoiceID,
+			&i.ExpensesEntry.InvoicedNumber,
 			&i.ClaimPurpose,
 			&i.ClaimDepartureDay,
 		); err != nil {
@@ -600,7 +604,7 @@ WHERE id = ANY($5::bigint[])
   -- the guard is unreachable today — which is exactly why it is here: a
   -- regression up there should fail loudly rather than quietly pay one line of
   -- somebody's trip on its own.
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date, invoiced_invoice_id, invoiced_number
 `
 
 type MarkEntriesReimbursedParams struct {
@@ -684,6 +688,8 @@ func (q *Queries) MarkEntriesReimbursed(ctx context.Context, arg MarkEntriesReim
 			&i.MealDinnerPercent,
 			&i.SupplierInvoiceNumber,
 			&i.SupplierDueDate,
+			&i.InvoicedInvoiceID,
+			&i.InvoicedNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -704,17 +710,13 @@ UPDATE expenses.entries SET
     updated_at = $1::timestamptz
 WHERE expenses.entries.id = $4
   AND expenses.entries.revision = $5
-  AND COALESCE(
-        (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
-        expenses.entries.status) = 'approved'
-  -- A per diem day is never billed on to a customer and so is never invoiced.
-  -- The capability and the handler both exclude it, so this is unreachable
-  -- today; it is here for the reason every other SQL twin in this module is.
-  AND expenses.entries.kind <> 'per_diem'
-  AND expenses.entries.billable
-  AND expenses.entries.bill_amount IS NOT NULL
+  AND expenses.ready_to_invoice(
+        COALESCE(
+          (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
+          expenses.entries.status),
+        expenses.entries.billable, expenses.entries.kind, expenses.entries.bill_amount)
   AND expenses.entries.invoiced_at IS NULL
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date, invoiced_invoice_id, invoiced_number
 `
 
 type MarkEntryInvoicedParams struct {
@@ -734,6 +736,14 @@ type MarkEntryInvoicedParams struct {
 // a travel claim is approved exactly when its claim is, and its own column
 // stays at its default. The handler holds the claim's row lock before this
 // runs, so the subquery reads the very row it judged.
+//
+// The rest is expenses.ready_to_invoice (00038), the one rule the list's
+// toInvoice filter, the project page's ready figure and the invoices module's
+// billable read also call: approved, billable, priced and never a per diem day,
+// which is never billed on to a customer and so is never invoiced. The
+// capability and the handler both judge it first, so a refusal here is
+// unreachable today; it is here for the reason every other SQL twin in this
+// module is.
 func (q *Queries) MarkEntryInvoiced(ctx context.Context, arg MarkEntryInvoicedParams) (ExpensesEntry, error) {
 	row := q.db.QueryRow(ctx, markEntryInvoiced,
 		arg.Now,
@@ -796,6 +806,8 @@ func (q *Queries) MarkEntryInvoiced(ctx context.Context, arg MarkEntryInvoicedPa
 		&i.MealDinnerPercent,
 		&i.SupplierInvoiceNumber,
 		&i.SupplierDueDate,
+		&i.InvoicedInvoiceID,
+		&i.InvoicedNumber,
 	)
 	return i, err
 }
@@ -879,7 +891,7 @@ WHERE id = ANY($2::bigint[]) AND reimbursed_at IS NOT NULL AND claim_id IS NULL
   -- the guard is unreachable today — which is exactly why it is here: a
   -- regression up there should fail loudly rather than quietly pay one line of
   -- somebody's trip on its own.
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date, invoiced_invoice_id, invoiced_number
 `
 
 type UnmarkEntriesReimbursedParams struct {
@@ -951,6 +963,8 @@ func (q *Queries) UnmarkEntriesReimbursed(ctx context.Context, arg UnmarkEntries
 			&i.MealDinnerPercent,
 			&i.SupplierInvoiceNumber,
 			&i.SupplierDueDate,
+			&i.InvoicedInvoiceID,
+			&i.InvoicedNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -969,8 +983,8 @@ UPDATE expenses.entries SET
     invoice_reference = NULL,
     revision = revision + 1,
     updated_at = $1::timestamptz
-WHERE id = $2 AND revision = $3 AND invoiced_at IS NOT NULL
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date
+WHERE id = $2 AND revision = $3 AND invoiced_at IS NOT NULL AND invoiced_invoice_id IS NULL
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date, invoiced_invoice_id, invoiced_number
 `
 
 type UnmarkEntryInvoicedParams struct {
@@ -980,7 +994,9 @@ type UnmarkEntryInvoicedParams struct {
 }
 
 // UnmarkEntryInvoiced takes the invoicing back off one line, under the same
-// revision guard.
+// revision guard. A line the invoices module stamped is not this door's to
+// clear — only the credit note that returns it is (invoiced_work.go) — and the
+// handler refuses it first; invoiced_invoice_id IS NULL is the last line.
 func (q *Queries) UnmarkEntryInvoiced(ctx context.Context, arg UnmarkEntryInvoicedParams) (ExpensesEntry, error) {
 	row := q.db.QueryRow(ctx, unmarkEntryInvoiced, arg.Now, arg.ID, arg.Revision)
 	var i ExpensesEntry
@@ -1037,6 +1053,8 @@ func (q *Queries) UnmarkEntryInvoiced(ctx context.Context, arg UnmarkEntryInvoic
 		&i.MealDinnerPercent,
 		&i.SupplierInvoiceNumber,
 		&i.SupplierDueDate,
+		&i.InvoicedInvoiceID,
+		&i.InvoicedNumber,
 	)
 	return i, err
 }

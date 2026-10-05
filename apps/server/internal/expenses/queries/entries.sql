@@ -144,12 +144,12 @@ WHERE expenses.entries.id = @id
 -- absent standalone leaves both in, so the list a client that knows nothing of
 -- claims asks for is exactly the list it always got.
 --
--- to_invoice is the "ready to invoice" predicate, word for word the one
--- ProjectExpenseGroups counts its ready_count by: the unit is approved, the
--- line is billable, it is not a per diem day, it carries a bill amount and
--- nobody has invoiced it yet.
--- The two must stay the same sentence — the project page shows the figure as
--- the header of this very list — so a change to one is a change to both.
+-- to_invoice is the "ready to invoice" predicate, the one ProjectExpenseGroups
+-- counts its ready_count by: expenses.ready_to_invoice (00038) — the unit is
+-- approved, the line is billable, it is not a per diem day, it carries a bill
+-- amount — and, beside it, nobody has invoiced it yet. The rule is one SQL
+-- function so the list, the project page's figure over it, the manual stamp
+-- and the invoices module's billable read can never say different things.
 -- Note it reads the *unit's* status, which is why the claim join matters here
 -- too: ix_entries_to_invoice's predicate before 00014 was on the entry's own
 -- column, so a trip's line (whose column stays at 'draft') could never be
@@ -177,10 +177,7 @@ WHERE (@see_all::boolean
   AND (sqlc.narg(reimbursed)::boolean IS NULL
        OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = sqlc.narg(reimbursed)::boolean)
   AND (sqlc.narg(to_invoice)::boolean IS NOT TRUE
-       OR (COALESCE(c.status, e.status) = 'approved'
-           AND e.billable
-           AND e.kind <> 'per_diem'
-           AND e.bill_amount IS NOT NULL
+       OR (expenses.ready_to_invoice(COALESCE(c.status, e.status), e.billable, e.kind, e.bill_amount)
            AND e.invoiced_at IS NULL));
 
 -- name: ListEntries :many
@@ -204,10 +201,7 @@ WHERE (@see_all::boolean
   AND (sqlc.narg(reimbursed)::boolean IS NULL
        OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = sqlc.narg(reimbursed)::boolean)
   AND (sqlc.narg(to_invoice)::boolean IS NOT TRUE
-       OR (COALESCE(c.status, e.status) = 'approved'
-           AND e.billable
-           AND e.kind <> 'per_diem'
-           AND e.bill_amount IS NOT NULL
+       OR (expenses.ready_to_invoice(COALESCE(c.status, e.status), e.billable, e.kind, e.bill_amount)
            AND e.invoiced_at IS NULL))
 ORDER BY e.entry_date DESC, e.id DESC
 LIMIT @page_size OFFSET @page_offset;

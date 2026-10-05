@@ -961,6 +961,12 @@ type (
 		At        string         `json:"at"`
 		By        entryOwnerJSON `json:"by"`
 		Reference *string        `json:"reference"`
+		// InvoicedBy is the invoice the Invoices module issued the line
+		// on, absent on a line marked by hand.
+		InvoicedBy *struct {
+			InvoiceId int64 `json:"invoiceId"`
+			Number    int64 `json:"number"`
+		} `json:"invoicedBy"`
 	}
 	// entryReimbursementJSON decodes ExpensesEntryReimbursement — what the
 	// employee has been paid back, which whoever sees the expense sees.

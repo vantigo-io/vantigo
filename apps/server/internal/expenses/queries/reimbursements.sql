@@ -270,28 +270,34 @@ UPDATE expenses.entries SET
 -- a travel claim is approved exactly when its claim is, and its own column
 -- stays at its default. The handler holds the claim's row lock before this
 -- runs, so the subquery reads the very row it judged.
+--
+-- The rest is expenses.ready_to_invoice (00038), the one rule the list's
+-- toInvoice filter, the project page's ready figure and the invoices module's
+-- billable read also call: approved, billable, priced and never a per diem day,
+-- which is never billed on to a customer and so is never invoiced. The
+-- capability and the handler both judge it first, so a refusal here is
+-- unreachable today; it is here for the reason every other SQL twin in this
+-- module is.
 WHERE expenses.entries.id = @id
   AND expenses.entries.revision = @revision
-  AND COALESCE(
-        (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
-        expenses.entries.status) = 'approved'
-  -- A per diem day is never billed on to a customer and so is never invoiced.
-  -- The capability and the handler both exclude it, so this is unreachable
-  -- today; it is here for the reason every other SQL twin in this module is.
-  AND expenses.entries.kind <> 'per_diem'
-  AND expenses.entries.billable
-  AND expenses.entries.bill_amount IS NOT NULL
+  AND expenses.ready_to_invoice(
+        COALESCE(
+          (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
+          expenses.entries.status),
+        expenses.entries.billable, expenses.entries.kind, expenses.entries.bill_amount)
   AND expenses.entries.invoiced_at IS NULL
 RETURNING *;
 
 -- name: UnmarkEntryInvoiced :one
 -- UnmarkEntryInvoiced takes the invoicing back off one line, under the same
--- revision guard.
+-- revision guard. A line the invoices module stamped is not this door's to
+-- clear — only the credit note that returns it is (invoiced_work.go) — and the
+-- handler refuses it first; invoiced_invoice_id IS NULL is the last line.
 UPDATE expenses.entries SET
     invoiced_at = NULL,
     invoiced_by_user_id = NULL,
     invoice_reference = NULL,
     revision = revision + 1,
     updated_at = @now::timestamptz
-WHERE id = @id AND revision = @revision AND invoiced_at IS NOT NULL
+WHERE id = @id AND revision = @revision AND invoiced_at IS NOT NULL AND invoiced_invoice_id IS NULL
 RETURNING *;

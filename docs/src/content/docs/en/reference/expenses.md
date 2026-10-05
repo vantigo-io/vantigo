@@ -31,6 +31,7 @@ installation, and so is `MODULES=expenses` alone.
   [the receipt rule](#the-receipt-rule) · [approval](#approval) ·
   [pricing by the project side](#pricing-by-the-project-side) ·
   [the two tracks after approval](#the-two-tracks-after-approval) ·
+  [invoiced by an invoice](#invoiced-by-an-invoice) ·
   [the period lock](#the-period-lock)
 - Who sees what: [permissions](#permissions) ·
   [visibility and shaping](#visibility-and-shaping) · [receipts](#receipts)
@@ -812,13 +813,106 @@ in any order — reimbursed, invoiced, both, or neither:
   been billed to the customer. `POST /entries/{id}/invoiced {reference?, revision}`
   marks one **billable, priced** approved line invoiced; `.../invoiced/undo` takes
   it back. A billable line that carries no `billAmount` yet — a mileage line saved
-  while no customer rate was in force — cannot be marked until it is priced.
+  while no customer rate was in force — cannot be marked until it is priced. That is
+  the manual door, kept for an installation that invoices elsewhere; a line can also
+  be invoiced by the Invoices module's issue — [invoiced by an
+  invoice](#invoiced-by-an-invoice) — and then the door is closed to it.
 
 **Neither track consults the period lock.** Both are bookkeeping done *after* a
 period closes, and the people who do each — `expenses:manage` for payroll,
 financial rights for invoicing — are exactly the two the lock has never held back.
 A December expense is reimbursed and invoiced in January without anyone needing to
 touch the lock date.
+
+## Invoiced by an invoice
+
+When an invoice is issued in the [Invoices module](/en/reference/invoices/) from
+expense lines, its issue stamps them **inside its own transaction**, through
+`contracts.InvoicedWorkHolder` — the third sanctioned cross-module write
+([module boundaries](/en/contributing/module-boundaries/), rule 10). The holder is
+`internal/expenses/invoiced_work.go`; `Module.InvoicedWork` builds it from nothing
+but the logger, so the issue stamps lines of an installation whose Expenses module
+is switched off too.
+
+**The stamp** is the manual one plus the invoice: `invoiced_at` the issue's own time,
+`invoiced_by_user_id` the issuer, `invoice_reference` NULL, and two columns of 00038,
+`invoiced_invoice_id` and `invoiced_number` — the invoice's id and number, opaque
+here (the invoices schema is another module's), both set or neither, and only beside
+`invoiced_at` with no hand-typed reference (`ck_entries_invoiced_by`,
+`ck_entries_invoiced_by_stamp`). The revision goes up by one. A line marked by hand
+never carries the two columns, which is what tells the two apart. On the wire the
+invoice is `billing.invoice.invoicedBy {invoiceId, number}` — inside `billing`,
+like the reference, because which invoice a line went out on is the project's
+business and not the employee's.
+
+**What the holder judges**, under its locks and in this order, for every line, the
+first refusal answering and nothing written:
+
+1. **Already invoiced** — `invoiced_at` set, by hand or by an invoice —
+   `source_already_invoiced`, the detail naming the invoice's number or the typed
+   reference. First, so a line marked by hand is named for what it is.
+2. **Not ready to invoice** — `expenses.ready_to_invoice` false (below), for the
+   reasons and in the words the manual door refuses with — `source_not_invoiceable`.
+   A line that is gone is the same.
+3. **Changed since the draft read it** — the billing facts: the bill amount
+   (compared by value, so `1100` and `1100.00` are one amount), the project, the
+   currency and the kind — `source_changed`. **Never the revision**: a payroll
+   reimbursement bumps it and changes nothing billed.
+
+**The locks** are the module's own order ([the lock order inside a
+claim](#the-lock-order-inside-a-claim)): the lines' travel claims are read without a
+lock, then the claims are locked by id, then exactly the named lines by id — Expenses'
+place in the cross-module order, after Projects and before Time. A line found under
+another claim than the one read (no door moves one) is `source_changed`. The holder
+marks its context as this module's locked transaction, so the module's own
+contract-call check covers it; it reads no directory and no clock.
+
+**The release.** A credit note that returns a line in full takes the stamp back with
+the same locks in the same order before it writes: `invoiced_at`,
+`invoiced_by_user_id`, `invoice_reference` and the two invoice columns cleared, the
+revision up by one, `updated_at` the credit note's issue time — the line is ready to
+invoice again. It never refuses: a line that no longer carries that invoice's stamp
+is left as it is and logged as a warning, because a credit note must never be
+blocked.
+
+**The manual door refuses a module stamp.** `POST /entries/{id}/invoiced` and
+`.../invoiced/undo` on a line carrying `invoiced_invoice_id` answer **409
+`invoiced_by_invoices`** in `ExpensesConflictProblem`, with `invoiceId` and
+`invoiceNumber` — judged after the visibility and the financial rights, before the
+line's state and the revision, and again under the lock. `canUndoInvoiced` is false
+on such a line. A line marked by hand keeps the door exactly as it was. The two
+operations' revision conflict answers the same schema with no code.
+
+**The period lock** applies to neither direction, as it does not to the manual mark.
+
+### One ready-to-invoice rule
+
+`expenses.ready_to_invoice(unit_status, billable, kind, bill_amount)` (00038) is
+the one rule for "ready to invoice": the unit approved, the line billable, not a per
+diem day, priced. It leaves out "not invoiced yet" on purpose — every caller states
+`invoiced_at IS NULL` beside it — so the holder can name an invoiced line first.
+IMMUTABLE and PARALLEL SAFE, as `expenses.owes_employee` is. Its places: the list's
+`toInvoice` filter and its count (`CountEntries`, `ListEntries`), the project
+groups' `readyCount` and `readyAmount` (`ProjectExpenseGroups`), the manual stamp's
+guard (`MarkEntryInvoiced`), and the billable read below. Go's `invoicedRefusal`
+is its mirror, held to it by a test over every unit status, billable or not, kind,
+and priced or not.
+
+### The billable expenses read
+
+`contracts.BillableExpenses` (`internal/expenses/billable.go`) is what the Invoices
+module builds invoice lines from: the lines ready to invoice and not invoiced yet,
+row by row — by project (oldest first, project by project, at most 5 000 with `More`
+past that) or by exact ids (only those still billable; one since invoiced or no
+longer ready is absent, never an error), optionally only work dated on or before
+`Until`. Each row carries the id, revision, project, claim, kind, date, description,
+supplier and supplier invoice number, the net (gross less VAT), the markup, the
+distance and customer rate per kilometre, the bill amount and the currency — every
+amount the exact decimal text the column holds — and `SupplierInvoiceRebilled`: true
+on a supplier invoice when another supplier invoice from the same supplier (trimmed,
+case-folded) with the same number has already been invoiced, a warning for the
+invoice view and never a refusal, since this module allows the number twice. It is
+read on the pool, never under a lock, and calls no directory back.
 
 ## What a project's expenses come to
 
@@ -1206,6 +1300,11 @@ about the expense the caller can act on, where a bare 403 would leave them
 guessing. Every single-row write that is guarded by a revision answers a 409 naming
 both the current and the supplied revision when they disagree.
 
+The module carries one machine-readable code: **409 `invoiced_by_invoices`**
+(`ExpensesConflictProblem`, with `invoiceId` and `invoiceNumber`), which the manual
+invoiced door and its undo answer on a line the Invoices module invoiced — see
+[invoiced by an invoice](#invoiced-by-an-invoice).
+
 ## The locking rule
 
 **No call into another module, and no object-store call, is ever made inside a
@@ -1246,7 +1345,7 @@ says.
 | `PUT /entries/{id}/rate` | An approver or `expenses:manage`, on a submitted mileage line or per diem day |
 | `PUT /entries/{id}/billing` | Financial rights on the entry's project; never a per diem day |
 | `GET /entries/{id}/billing-lines` | Financial rights on the entry's project — the pricing dialog's own picker, not the caller's bookable-projects list |
-| `POST /entries/{id}/invoiced`, `.../invoiced/undo` | Financial rights on the entry's project; never a per diem day |
+| `POST /entries/{id}/invoiced`, `.../invoiced/undo` | Financial rights on the entry's project; never a per diem day; 409 `invoiced_by_invoices` on a line the Invoices module invoiced |
 | `GET /reimbursements`, `/reimbursements/export.csv`, `POST /reimbursed`, `/reimbursed/undo` | `expenses:manage`; the unit is an expense or a whole trip |
 | `GET /projects` (`userId`, `kind`) | The caller's own bookable projects (or, `userId`, a colleague's, with `expenses:manage`); `kind=outlay` or `mileage` is that same picker, and `kind=supplier_invoice` is the caller's own projects they hold financial rights on that are not cancelled (never with another person's `userId`) |
 | `GET /projects/{projectId}/summary` | Financial rights on the project — what its expenses cost and bill, per currency; one bare 404 for everybody else, for an unknown project and for an installation with no projects module |
@@ -1263,12 +1362,13 @@ coverage gate (below) with no allow-list.
 
 ## What comes next
 
-**Invoicing.** `invoiced_at` is set by hand today, one billable line at a time, by
-whoever holds financial rights on its project — [the two tracks after
-approval](#the-two-tracks-after-approval) — and "ready to invoice" is the list an
-invoice would be built from. The module that turns that list into an invoice does
-not exist yet; when it does, it owns the stamp, exactly as
-[the Time module](/en/reference/time/#what-time-gives-invoicing) says of the same column on an hour.
+**Invoicing.** The server half is here: the Invoices module reads the lines ready
+to invoice through `contracts.BillableExpenses` and stamps them in its issue —
+[invoiced by an invoice](#invoiced-by-an-invoice) — while the manual mark stays for
+an installation that invoices elsewhere, exactly as
+[the Time module](/en/reference/time/#what-time-gives-invoicing) says of the same
+column on an hour. Showing which invoice a line went out on
+in the Expenses app comes with the invoicing screens.
 **Supplier invoices** are done: a supplier's invoice is recorded as what it is —
 [the supplier invoice](#the-supplier-invoice) — attested, re-billed and counted
 apart in the project's economy. What is deliberately still not here is accounts

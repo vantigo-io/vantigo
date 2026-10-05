@@ -6,12 +6,17 @@ import (
 	"strings"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/expenses/gen"
 )
 
 // This module's refusals are bare RFC 7807 problems and field-level validation
 // text (apicommon.ValidationProblem), never identity's {code, message} bodies:
-// callers key off the status, the problem's title and the field errors. Nothing
-// here may grow a machine-readable error code of its own.
+// callers key off the status, the problem's title and the field errors. One
+// code exists, and nothing else here may grow one: invoiced_by_invoices, the
+// 409 the manual invoiced door answers on a line the Invoices module invoiced
+// (invoices work design D1), because the client has to tell "someone else's
+// invoice holds this" from a revision conflict on the same status, and is
+// handed the invoice to link to (ExpensesConflictProblem).
 //
 // Two refusals carry no body at all, deliberately. Reading or changing
 // something the caller may not see answers a bare 404, byte for byte the answer
@@ -167,6 +172,32 @@ func revisionConflict(current, supplied int32) apicommon.ProblemDetails {
 	return apicommon.ProblemStatus(revisionConflictTitle,
 		fmt.Sprintf("The expense has revision %d; the supplied revision was %d.", current, supplied),
 		http.StatusConflict)
+}
+
+// invoicedByInvoicesTitle and codeInvoicedByInvoices are the manual invoiced
+// door's refusal of a line the Invoices module invoiced.
+const (
+	invoicedByInvoicesTitle = "Invoiced through Invoices"
+	codeInvoicedByInvoices  = "invoiced_by_invoices"
+)
+
+// invoicedByInvoices is the 409 body for a manual mark or undo of a line the
+// Invoices module invoiced: the mark is that invoice's, and only a credit note
+// that returns the line takes it back.
+func invoicedByInvoices(invoiceID, number int64) gen.ExpensesConflictProblem {
+	title, code, status := invoicedByInvoicesTitle, codeInvoicedByInvoices, int32(http.StatusConflict)
+	detail := fmt.Sprintf("This expense was invoiced on invoice %d. Only a credit note that returns it takes that back.", number)
+	return gen.ExpensesConflictProblem{
+		Title: &title, Detail: &detail, Status: &status, Code: &code,
+		InvoiceId: &invoiceID, InvoiceNumber: &number,
+	}
+}
+
+// invoicedRevisionConflict is revisionConflict in the invoiced door's coded
+// problem shape, with no code.
+func invoicedRevisionConflict(current, supplied int32) gen.ExpensesConflictProblem {
+	p := revisionConflict(current, supplied)
+	return gen.ExpensesConflictProblem{Title: p.Title, Detail: p.Detail, Status: p.Status, Type: p.Type, Instance: p.Instance}
 }
 
 // projectsNotInstalled is the 404 body of an operation that only exists when
