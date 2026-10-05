@@ -181,6 +181,16 @@ func (s *server) releaseCreditWork(ctx context.Context, tx pgx.Tx, txq *store.Qu
 // sources, newest first, each once; "" when none of them was ever released.
 // The note is a suggestion only: no new invoice is required to name the
 // credit note.
+//
+// Task 8: nothing calls this yet; from-work does once its wizard is merged.
+// In postInvoicesFromWork, only when the request carries no note — on a new
+// draft, and on an append only when the target draft's note is empty — call
+// rePullNote(ctx, q, <the buyer's line language, "en" or "nb">, <the
+// request's sources as []sourceRef>) on the pool, before the transaction; a
+// non-empty result becomes the draft's Note. Then extend
+// TestRelease_TheWorkIsSelectableAgain with the view and from-work half (the
+// released rows listed selectable, with no heldBy, and from-work over them a
+// 201) and drive TestRelease_TheNoteSuggestionOnRePull through from-work.
 func rePullNote(ctx context.Context, q *store.Queries, language string, sources []sourceRef) (string, error) {
 	if len(sources) == 0 {
 		return "", nil
