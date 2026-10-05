@@ -448,7 +448,7 @@ func (s *server) PostInvoicesByIdSendEhf(ctx context.Context, req gen.PostInvoic
 	// 9. The transmission, queued under the document's lock.
 	var refusal *gen.InvoicesConflictProblem
 	var noCredentials bool
-	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		read := txq.LockInvoice
 		if sendEhfWithoutLock {
 			read = txq.GetInvoice

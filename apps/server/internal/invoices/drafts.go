@@ -470,7 +470,7 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 	}
 	line1, line2, postal, city, country := addressColumns(in.address)
 	var created store.InvoicesInvoice
-	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		created, err = txq.InsertInvoiceDraft(ctx, store.InsertInvoiceDraftParams{
 			CustomerID: in.customerID, DeliveryDate: in.deliveryDate, DeliveryFrom: in.deliveryFrom, DeliveryTo: in.deliveryTo,
 			DeliveryAddressLine1: line1, DeliveryAddressLine2: line2, DeliveryPostalCode: postal, DeliveryCity: city, DeliveryCountry: country,
@@ -619,7 +619,7 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 	line1, line2, postal, city, country := addressColumns(in.address)
 	var out draftSaved
 	var carried []heldSource
-	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		locked, err := txq.LockInvoice(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errDocumentGone
@@ -707,7 +707,7 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 // (DELETE /api/v1/invoices/{id})
 func (s *server) DeleteInvoicesById(ctx context.Context, req gen.DeleteInvoicesByIdRequestObject) (gen.DeleteInvoicesByIdResponseObject, error) {
 	var notFound, issued bool
-	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		locked, err := txq.LockInvoice(ctx, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			notFound = true

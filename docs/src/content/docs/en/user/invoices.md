@@ -311,6 +311,16 @@ date, the lines do not match the seller's VAT registration, a reverse-charge lin
 the buyer's organisation number, or the chosen date is not allowed that day. Each
 refusal is said in the dialog ([every refusal](/en/reference/invoices/#issuing)).
 
+**Issuing a draft made from work** also marks that work invoiced — the hours, expenses
+and milestones its lines bill — in the same step, so they leave the uninvoiced work for
+good. The issue is refused, naming the line, when a piece of work on it can no longer be
+invoiced (*Work on line 2 can no longer be invoiced*), has changed since it was added,
+has already been marked invoiced, belongs to a project that no longer bills this customer
+or that is now fixed-price or non-billable — and also when the Projects module is switched
+off, since the work then cannot be checked, or when the draft was saved by someone else
+while you issued. Nothing is issued and no number is used: refresh the work or edit the
+line, and issue again ([the write-back](/en/reference/invoices/#the-write-back)).
+
 ## Downloading the PDF
 
 An issued document's page offers **Download PDF**. The file is named after the document

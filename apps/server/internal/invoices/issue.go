@@ -29,7 +29,10 @@ import (
 // whole transaction back, the number with it — kid_length_exceeded too,
 // judged once the number is known. The lock order is always the
 // document, then the settings row, then the counter, then — for a credit note
-// — the original; nothing else takes these in another order.
+// — the original; nothing else takes these in another order. An invoice that
+// bills work then has it stamped invoiced by its modules' holders, on this
+// transaction, after every check and before the first write (writeback.go):
+// their rows are locked last, Projects', then Expenses', then Time's.
 
 // The codes and titles of the issue's refusals.
 const (
@@ -52,9 +55,16 @@ const (
 )
 
 // issueAfterAllocation is called inside the issue's transaction right after
-// the number is allocated, so a test can make the transaction fail there and
-// prove the number rolls back with it. nil in production.
-var issueAfterAllocation func(ctx context.Context, invoiceID int64) error
+// the number is allocated, with the transaction itself, so a test can make
+// the transaction fail there and prove the number rolls back with it, or read
+// pg_current_xact_id() through tx and prove a holder ran on the same one. nil
+// in production.
+var issueAfterAllocation func(ctx context.Context, tx pgx.Tx, invoiceID int64) error
+
+// issueBeforeLock is called after every read the issue makes before its
+// transaction and before the transaction begins, so a test can slip a save in
+// between (invoice_changed). nil in production.
+var issueBeforeLock func(ctx context.Context, invoiceID int64)
 
 // cannotIssue is one of the issue's 409s.
 func cannotIssue(code, detail string) *gen.InvoicesConflictProblem {
@@ -236,15 +246,27 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		}), nil
 	}
 	var profile *contracts.CustomerBillingProfile
+	var work issueWork
+	var refusal *gen.InvoicesConflictProblem
 	if draft.Kind == kindInvoice {
 		if profile, err = s.customerProfile(ctx, draft.CustomerID); err != nil {
 			return nil, err
 		}
+		// The work the invoice bills: its projects and the issuer's name are
+		// read now, never under the lock (invoices work design D1).
+		if work, refusal, err = s.readIssueWork(ctx, q, draft); err != nil {
+			return nil, err
+		}
+		if refusal != nil {
+			return gen.PostInvoicesByIdIssue409ApplicationProblemPlusJSONResponse(*refusal), nil
+		}
+	}
+	if issueBeforeLock != nil {
+		issueBeforeLock(ctx, draft.ID)
 	}
 
-	var refusal *gen.InvoicesConflictProblem
 	var issued store.InvoicesInvoice
-	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		// 1. The document, FOR UPDATE: two issues of one draft queue here.
 		locked, err := txq.LockInvoice(ctx, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -273,7 +295,7 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			return fmt.Errorf("invoices: allocate a number: %w", err)
 		}
 		if issueAfterAllocation != nil {
-			if err := issueAfterAllocation(ctx, locked.ID); err != nil {
+			if err := issueAfterAllocation(ctx, tx, locked.ID); err != nil {
 				return err
 			}
 		}
@@ -370,6 +392,25 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			documentKid, kidAlgorithm = &k, settings.KidAlgorithm
 		}
 
+		// The issue's own clock, read once: every stamp's time and the
+		// document's issued_at.
+		now := s.deps.Clock()
+		// The work, last of the checks and first of the writes: the holders
+		// stamp it invoiced on this transaction (D1, rule 10), before
+		// anything of the document is written.
+		if locked.Kind == kindInvoice {
+			ref := contracts.InvoiceRef{
+				ID: locked.ID, Number: number, IssueDate: issueDate, IssuedAt: now,
+				IssuedBy: callerID(ctx), IssuedByDisplay: work.display,
+			}
+			if refusal, err = s.markIssueWork(ctx, tx, txq, work, ref); err != nil {
+				return err
+			}
+			if refusal != nil {
+				return errRefused
+			}
+		}
+
 		// 6. The writes: the lines' snapshots, the summaries, and last the
 		// row itself — the trigger refuses line writes under an issued one.
 		for _, l := range plan.lines {
@@ -425,7 +466,7 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		if params.NetTotal, params.VatTotal, params.GrossTotal, params.VatTotalNok, err = numerics(totals); err != nil {
 			return err
 		}
-		params.Now, params.IssuedByUserID = s.deps.Clock(), ptr(callerID(ctx))
+		params.Now, params.IssuedByUserID = now, ptr(callerID(ctx))
 		if plan.buyer == nil {
 			// A credit note keeps the buyer snapshot its draft copied.
 			keepBuyer(&params, locked)

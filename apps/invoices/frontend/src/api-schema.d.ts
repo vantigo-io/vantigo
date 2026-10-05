@@ -241,7 +241,7 @@ export interface paths {
         put?: never;
         /**
          * Issue a draft
-         * @description Issues a draft — an invoice or a credit note — into the next number of the one series (D6). An invoice's billing profile is read first (a credit note reads no directory); then one transaction locks the document, shares the settings row, allocates the number, and only then checks every rule, so any refusal rolls the number back with it. Under a KID agreement an invoice gets its kid from the allocated number; a number the agreement no longer fits is 409 kid_length_exceeded, rolled back like every refusal. The response is the issued document with its warnings (issued_late). The PDF is stored after the commit; pdfStored false means storing it failed and the next download stores it.
+         * @description Issues a draft — an invoice or a credit note — into the next number of the one series (D6). An invoice's billing profile is read first (a credit note reads no directory) and, when the invoice bills work, its projects and the issuer's name (invoices work design D1); then one transaction locks the document, shares the settings row, allocates the number, and only then checks every rule, so any refusal rolls the number back with it. Under a KID agreement an invoice gets its kid from the allocated number; a number the agreement no longer fits is 409 kid_length_exceeded, rolled back like every refusal. The work an invoice bills is then marked invoiced by its modules (time, expenses, projects) inside the same transaction, before the document is written: a source a module will not stamp refuses the issue, rolled back with the number and every module's stamp. The response is the issued document with its warnings (issued_late). The PDF is stored after the commit; pdfStored false means storing it failed and the next download stores it.
          */
         post: operations["postInvoicesByIdIssue"];
         delete?: never;
@@ -580,7 +580,7 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save would hold is held by another live draft or invoiced by an unreleased issued line; the detail names that document), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save would hold is held by another live draft or invoiced by an unreleased issued line; the detail names that document), the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off), and invoice_changed also when the draft's work changed between the issue's reads and its lock, storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -589,7 +589,7 @@ export interface components {
             instance?: string | null;
             /**
              * Format: int32
-             * @description On a refusal about one line (vat_code_inactive, vat_code_not_valid, credit_exceeds_line), the line's position, 1-based. Absent otherwise.
+             * @description On a refusal about one line (vat_code_inactive, vat_code_not_valid, credit_exceeds_line, and the issue's refusals about a source — the first line holding it), the line's position, 1-based. Absent otherwise.
              */
             linePosition?: number;
             /**
@@ -608,6 +608,13 @@ export interface components {
             peppolRegistered?: boolean;
             /** @description On ehf_invalid, every pre-check rule the document's EHF failed. Absent otherwise. */
             rules?: components["schemas"]["InvoicesEhfRule"][];
+            /**
+             * Format: int64
+             * @description On the issue's refusals about a source (source_not_invoiceable, source_changed, source_already_invoiced, source_customer_changed, source_not_selectable), the source's id in its own module. Absent otherwise.
+             */
+            sourceId?: number;
+            /** @description On the issue's refusals about a source, its kind — time.entry, expenses.entry or projects.milestone. Absent otherwise. */
+            sourceKind?: string;
             /** Format: int32 */
             status?: number | null;
             title?: string | null;
@@ -2362,7 +2369,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — invoice_issued, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed (with allowedIssueDates), customer_merged, customer_archived, customer_blocked, customer_missing, buyer_incomplete, vat_code_inactive and vat_code_not_valid (with linePosition), vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line (with linePosition) or credit_exceeds_invoice. */
+            /** @description Conflict — invoice_issued, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed (with allowedIssueDates), customer_merged, customer_archived, customer_blocked, customer_missing, buyer_incomplete, vat_code_inactive and vat_code_not_valid (with linePosition), vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line (with linePosition) or credit_exceeds_invoice; for an invoice that bills work, projects_unavailable, source_customer_changed (before a number), source_not_selectable, and a holder's source_not_invoiceable, source_changed or source_already_invoiced (each with linePosition, sourceKind and sourceId). */
             409: {
                 headers: {
                     [name: string]: unknown;

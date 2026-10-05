@@ -383,7 +383,7 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 	var saved store.InvoicesSetting
 	var locked bool
 	var next int64
-	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := txq.LockSettings(ctx)
 		if err != nil {
 			return fmt.Errorf("invoices: lock the settings: %w", err)

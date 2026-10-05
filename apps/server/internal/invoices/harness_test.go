@@ -3,7 +3,9 @@ package invoices_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
+	"maps"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
@@ -69,38 +72,52 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 	if objects != nil {
 		base = append(base, modtest.WithObjectStore(objects))
 	}
-	before := lockedContractCalls.count()
+	before, beforeTx := lockedContractCalls.count(), lockedContractCalls.txCount()
 	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove}
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
 			t.Errorf("a call outside this module's own database was made from inside one of its locked transactions:\n%s",
 				strings.Join(calls, "\n"))
 		}
+		if calls := lockedContractCalls.txSince(beforeTx); len(calls) > 0 {
+			t.Errorf("a holder's command was made outside a locked transaction, so on no transaction of the issue's:\n%s",
+				strings.Join(calls, "\n"))
+		}
 	})
 	return h
 }
 
-// lockedContractCalls is every call out of the module — to the customer
-// directory, the object store or the SMTP seam — made from inside a transaction that
-// holds locks (invoices.InLockedTx). The rule is that none ever is (D6, D7),
-// and every harness checks it when its test ends. It is one recorder for the
-// package because the hook is a package-level one (TestMain); each harness
-// checks only what was recorded while it existed, and the stack beside each
-// call names the path that made it.
+// lockedContractCalls is the two kinds of call the lock rule forbids
+// (module-boundaries rule 10): a call out of the module — to a directory, a
+// billable read, the object store, the SMTP seam or a provider — made from
+// inside a transaction that holds locks (invoices.InLockedTx), and a holder's
+// transaction-bound command (noteTxCommand) made from outside one. Every
+// harness checks both when its test ends. It is one recorder for the package
+// because the hook is a package-level one (TestMain); each harness checks only
+// what was recorded while it existed, and the stack beside each call names the
+// path that made it.
 var lockedContractCalls = &lockedCalls{}
 
 type lockedCalls struct {
 	mu    sync.Mutex
 	calls []string
+	// txOutside is every transaction-bound command made outside a lock.
+	txOutside []string
 }
 
-func (l *lockedCalls) note(ctx context.Context, method string) {
-	if !invoices.InLockedTx(ctx) {
+func (l *lockedCalls) note(ctx context.Context, method string, txBound bool) {
+	locked := invoices.InLockedTx(ctx)
+	if locked == txBound {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.calls = append(l.calls, method+"\n"+string(debug.Stack()))
+	entry := method + "\n" + string(debug.Stack())
+	if locked {
+		l.calls = append(l.calls, entry)
+		return
+	}
+	l.txOutside = append(l.txOutside, entry)
 }
 
 func (l *lockedCalls) count() int {
@@ -118,19 +135,45 @@ func (l *lockedCalls) since(n int) []string {
 	return slices.Clone(l.calls[n:])
 }
 
+// forget drops what was recorded after the first n calls and the first nTx
+// commands: the recorder's own test, which records both kinds on purpose,
+// leaves nothing for a later test to read.
+func (l *lockedCalls) forget(n, nTx int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.calls, l.txOutside = l.calls[:min(n, len(l.calls))], l.txOutside[:min(nTx, len(l.txOutside))]
+}
+
+func (l *lockedCalls) txCount() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.txOutside)
+}
+
+func (l *lockedCalls) txSince(n int) []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if n >= len(l.txOutside) {
+		return nil
+	}
+	return slices.Clone(l.txOutside[n:])
+}
+
 // contractCalls is every call out of the module, each with the caller whose
-// request made it and whether it was made inside a locked transaction — the
-// whole record lockedContractCalls keeps only the forbidden part of. A test
-// asserts that a call happened, and how, through the user it signed in:
-// tests run in parallel against one package-level hook, and a caller's id is
-// what tells one test's calls from another's.
+// request made it, whether it was made inside a locked transaction and
+// whether it is a holder's transaction-bound command — the whole record
+// lockedContractCalls keeps only the forbidden part of. A test asserts that a
+// call happened, and how, through the user it signed in: tests run in
+// parallel against one package-level hook, and a caller's id is what tells
+// one test's calls from another's.
 var contractCalls = &allCalls{}
 
 // contractCall is one call out of the module.
 type contractCall struct {
-	method string
-	userID uuid.UUID
-	locked bool
+	method  string
+	userID  uuid.UUID
+	locked  bool
+	txBound bool
 }
 
 type allCalls struct {
@@ -138,11 +181,11 @@ type allCalls struct {
 	calls []contractCall
 }
 
-func (a *allCalls) note(ctx context.Context, method string) {
+func (a *allCalls) note(ctx context.Context, method string, txBound bool) {
 	p, _ := contracts.PrincipalFrom(ctx)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.calls = append(a.calls, contractCall{method: method, userID: p.UserID, locked: invoices.InLockedTx(ctx)})
+	a.calls = append(a.calls, contractCall{method: method, userID: p.UserID, locked: invoices.InLockedTx(ctx), txBound: txBound})
 }
 
 // by is every call a request of userID's made, in order.
@@ -159,10 +202,10 @@ func (a *allCalls) by(userID uuid.UUID) []contractCall {
 }
 
 // noteContractCall is the hook TestMain installs: every call is recorded, and
-// one made under a lock is also recorded as a failure.
-func noteContractCall(ctx context.Context, method string) {
-	lockedContractCalls.note(ctx, method)
-	contractCalls.note(ctx, method)
+// one the lock rule forbids is also recorded as a failure.
+func noteContractCall(ctx context.Context, method string, txBound bool) {
+	lockedContractCalls.note(ctx, method, txBound)
+	contractCalls.note(ctx, method, txBound)
 }
 
 // fakeCustomers is contracts.CustomerDirectory over billing profiles a test
@@ -619,4 +662,209 @@ func (f *fakeBillable) BillableMilestones(ctx context.Context, req contracts.Bil
 	}
 	slices.SortFunc(page.Milestones, func(a, b contracts.BillableMilestone) int { return int(a.ID - b.ID) })
 	return page, nil
+}
+
+// fakeHolders is one contracts.InvoicedWorkHolder per kind of work, for the
+// issue's write-back (rule 10) without composing time, expenses or projects
+// (depguard keeps them out of this package's tests). Every command is
+// recorded with what it was handed and with what it saw through the pgx.Tx it
+// was handed — pg_current_xact_id(), and the document's status and written
+// VAT snapshots — so a test can prove it rode the issue's own transaction
+// after the number and before any write; and the order the kinds were called
+// in. A holder refuses a source by id, or fails, on demand. Safe for
+// concurrent use.
+type fakeHolders struct {
+	mu    sync.Mutex
+	kinds map[contracts.WorkSourceKind]*fakeHolder
+	order []contracts.WorkSourceKind
+	// onCall, when set, runs inside every command, after the record.
+	onCall func()
+}
+
+// fakeHolder is one kind's holder.
+type fakeHolder struct {
+	all    *fakeHolders
+	kind   contracts.WorkSourceKind
+	calls  []holderCall
+	refuse map[int64]string
+	fail   error
+}
+
+// holderCall is one command: mark or release, its ref and sources, and what
+// the holder saw on the transaction it was handed.
+type holderCall struct {
+	op          string
+	ref         contracts.InvoiceRef
+	sources     []contracts.WorkSource
+	xact        string
+	status      string
+	snapshotted int
+	locked      bool
+}
+
+var _ contracts.InvoicedWorkHolder = (*fakeHolder)(nil)
+
+func newFakeHolders() *fakeHolders {
+	f := &fakeHolders{kinds: map[contracts.WorkSourceKind]*fakeHolder{}}
+	for _, k := range contracts.InvoicedWorkOrder {
+		f.kinds[k] = &fakeHolder{all: f, kind: k, refuse: map[int64]string{}}
+	}
+	return f
+}
+
+// options composes the holders of kinds — every kind when none is named — in
+// the reverse of the lock order, so an issue that called them as composed, or
+// in a map's order, would not happen to call them in the right one.
+func (f *fakeHolders) options(kinds ...contracts.WorkSourceKind) []modtest.Option {
+	if len(kinds) == 0 {
+		kinds = contracts.InvoicedWorkOrder
+	}
+	var holders []contracts.InvoicedWorkHolder
+	for i := len(kinds) - 1; i >= 0; i-- {
+		holders = append(holders, f.kinds[kinds[i]])
+	}
+	return []modtest.Option{modtest.WithInvoicedWork(holders...)}
+}
+
+// refuseSource makes kind's holder refuse source id with code, "" to stop.
+func (f *fakeHolders) refuseSource(kind contracts.WorkSourceKind, id int64, code string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if code == "" {
+		delete(f.kinds[kind].refuse, id)
+		return
+	}
+	f.kinds[kind].refuse[id] = code
+}
+
+// failWith makes kind's holder fail every command with err, nil to stop.
+func (f *fakeHolders) failWith(kind contracts.WorkSourceKind, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.kinds[kind].fail = err
+}
+
+// duringCall sets onCall.
+func (f *fakeHolders) duringCall(fn func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onCall = fn
+}
+
+// calledOrder is the kinds in the order their commands were made.
+func (f *fakeHolders) calledOrder() []contracts.WorkSourceKind {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.order)
+}
+
+// callsOf is every command kind's holder was handed.
+func (f *fakeHolders) callsOf(kind contracts.WorkSourceKind) []holderCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.kinds[kind].calls)
+}
+
+func (h *fakeHolder) Kinds() []contracts.WorkSourceKind { return []contracts.WorkSourceKind{h.kind} }
+
+func (h *fakeHolder) MarkInvoiced(ctx context.Context, tx pgx.Tx, ref contracts.InvoiceRef, sources []contracts.WorkSource) error {
+	return h.command(ctx, tx, "mark", ref, sources)
+}
+
+func (h *fakeHolder) ReleaseInvoiced(ctx context.Context, tx pgx.Tx, ref contracts.InvoiceRef, sources []contracts.WorkSource) error {
+	return h.command(ctx, tx, "release", ref, sources)
+}
+
+func (h *fakeHolder) command(ctx context.Context, tx pgx.Tx, op string, ref contracts.InvoiceRef, sources []contracts.WorkSource) error {
+	call := holderCall{op: op, ref: ref, sources: slices.Clone(sources), locked: invoices.InLockedTx(ctx)}
+	if err := tx.QueryRow(ctx, `SELECT pg_current_xact_id()::text`).Scan(&call.xact); err != nil {
+		return err
+	}
+	if err := tx.QueryRow(ctx, `
+		SELECT d.status, (SELECT count(*) FROM invoices.lines l WHERE l.invoice_id = d.id AND l.vat_category IS NOT NULL)
+		FROM invoices.invoices d WHERE d.id = $1`, ref.ID).Scan(&call.status, &call.snapshotted); err != nil {
+		return err
+	}
+	f := h.all
+	f.mu.Lock()
+	h.calls = append(h.calls, call)
+	f.order = append(f.order, h.kind)
+	during, refuse, fail := f.onCall, maps.Clone(h.refuse), h.fail
+	f.mu.Unlock()
+	if during != nil {
+		during()
+	}
+	for _, s := range sources {
+		if code, ok := refuse[s.ID]; ok {
+			return &contracts.WorkSourceRefusal{Source: s, Code: code, Detail: "the fake holder refuses it"}
+		}
+	}
+	return fail
+}
+
+// fakeProjects is contracts.ProjectDirectory over projects a test puts in —
+// the issue reads whom a held source's project bills and how (D1) — composed
+// with WithProjects, since depguard keeps projects out of this package's
+// tests. Only what this module reads is answered; anything else panics on the
+// embedded nil directory. Safe for concurrent use.
+type fakeProjects struct {
+	contracts.ProjectDirectory
+	mu       sync.Mutex
+	projects map[int32]contracts.ProjectEntry
+}
+
+// newFakeProjects knows project 41 and project 42, both billing Acme by time
+// and materials in NOK.
+func newFakeProjects() *fakeProjects {
+	f := &fakeProjects{projects: map[int32]contracts.ProjectEntry{}}
+	for _, id := range []int32{project41, project42} {
+		f.put(contracts.ProjectEntry{
+			ID: id, Code: fmt.Sprintf("P-%d", id), Name: fmt.Sprintf("Project %d", id), CustomerID: ptrTo(int32(customerAcme)),
+			Status: "active", OpenForWork: true, BillingType: "time-and-materials", Currency: ptrTo("NOK"),
+		})
+	}
+	return f
+}
+
+// put makes p known as given; edit changes one; drop forgets one.
+func (f *fakeProjects) put(p contracts.ProjectEntry) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.projects[p.ID] = p
+}
+
+func (f *fakeProjects) edit(id int32, change func(*contracts.ProjectEntry)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p := f.projects[id]
+	change(&p)
+	f.projects[id] = p
+}
+
+func (f *fakeProjects) drop(id int32) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.projects, id)
+}
+
+func (f *fakeProjects) Project(_ context.Context, id int32) (*contracts.ProjectEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.projects[id]
+	if !ok {
+		return nil, nil
+	}
+	return &p, nil
+}
+
+func (f *fakeProjects) Projects(_ context.Context, ids []int32) ([]contracts.ProjectEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []contracts.ProjectEntry{}
+	for _, id := range ids {
+		if p, ok := f.projects[id]; ok {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }

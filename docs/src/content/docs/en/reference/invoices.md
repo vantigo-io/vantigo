@@ -338,15 +338,64 @@ refresh never takes work into a document in a currency it was not taken in. A ki
 lock the save requires the held work it read — the same sources at the same revisions
 and amounts — or answers 409 `invoice_changed`: a save slipped in between.
 
+### The write-back
+
+The issue of an invoice that bills work marks that work invoiced in the modules that own
+it, **inside the issue's own transaction**: each module's holder
+(`contracts.InvoicedWorkHolder`, [rule 10](/en/contributing/module-boundaries/)) runs on
+the issue's `pgx.Tx`, so an issued invoice and its stamps commit together or not at all.
+In order:
+
+1. **Before the transaction**, beside the billing profile: the draft's `line_sources`,
+   on the pool. When it holds any, every kind must be claimed by a composed holder — a
+   kind none claims is a composition bug, logged at error and answered 500, never a
+   skipped stamp; with Projects switched off the issue fails closed, 409
+   `projects_unavailable`; the projects of the held work are read
+   (`ProjectDirectory.Projects`), and one gone or no longer billing the draft's customer
+   is 409 `source_customer_changed`; and the issuer's name is read
+   (`UserDirectory.User`, `""` for a user the directory does not know) for the holders'
+   timeline events. All of it before a number exists. A draft holding no work reads
+   nothing more than it did.
+2. **Under the lock**, after the number and every check of [Issuing](#issuing), the KID
+   included: the draft's `line_sources` again — any difference from what was read before
+   the transaction (a source, its revision, its amount or its line) is a save slipped in
+   between, 409 `invoice_changed`; then the projects' billing types as read: hours of a
+   project now `fixed-price` or `non-billable`, and any work of a project now
+   `non-billable`, are 409 `source_not_selectable`.
+3. **The holders**, each kind's once, in the cross-module lock order
+   (`contracts.InvoicedWorkOrder`): Projects' milestones, then Expenses' lines, then
+   Time's entries — after this module's own locks (the document, the settings row, the
+   counter), so no transaction waits on another in the opposite order. Each is handed
+   its sources by id with the snapshot the draft took — revision, project, currency,
+   the exact amount and an expense's kind — and the ref `{ID, Number, IssueDate,
+   IssuedAt, IssuedBy, IssuedByDisplay}`: the invoice's id, number and issue date, and
+   `IssuedAt`, the issue's own clock read once, which is also the document's
+   `issued_at`. Each holder locks its rows in its own order and judges them as they
+   stand: already invoiced is `source_already_invoiced`; no longer approved, ready or
+   billable is `source_not_invoiceable`; changed since the draft took it is
+   `source_changed` — for an hour entry or a milestone its revision, project, currency
+   or amount, for an expense its billing facts and never its revision.
+4. **Then** the document's `line_sources` move from `held` to `invoiced`, and only then
+   the lines' VAT snapshots, the VAT summary and the document itself are written.
+
+**The refusals.** Every refusal about a source is a 409 naming it — `linePosition` (the
+first line holding it), `sourceKind` and `sourceId` — and rolls the whole issue back: the
+number, and everything any holder wrote. A holder that fails in any other way is a 500,
+rolled back the same way. A source refused is still held by the draft: refresh the work
+([Refresh](#the-link-and-its-states)) or edit the line, and issue again.
+
 ## Issuing
 
 `POST /invoices/{id}/issue` runs one READ COMMITTED transaction in a fixed order:
 lock the document, share the settings row, allocate the number, and only then check
 every rule — the counter row is what serialises two issues, so every check that
-depends on other documents runs after it. The directory is read before the transaction
-and the object store is used after it; neither is ever called under a lock. The lock
-order is always document → settings → counter → original, and nothing takes them in
-another order: `PUT /settings` takes only the settings row, the rate operations the
+depends on other documents runs after it; then, for an invoice that bills work, the
+holders mark it invoiced ([The write-back](#the-write-back)); then the lines' snapshots,
+the VAT rows and the document are written. The directories — the customer's billing
+profile, and for work the projects and the issuer's name — are read before the
+transaction and the object store is used after it; none is ever called under a lock. The
+lock order is always document → settings → counter → original → the source modules'
+rows (Projects, Expenses, Time), and nothing takes them in another order: `PUT /settings` takes only the settings row, the rate operations the
 settings row and then the VAT code, `PUT /vat-codes/{id}` only the code, a payment's
 registration or removal only its invoice, a send's delivery row only its document,
 `FOR SHARE`, and the send as EHF its document `FOR UPDATE` and then the access-point
@@ -367,9 +416,13 @@ invoice the customer gates, `buyer_incomplete`, `vat_code_inactive` and
 register issues only O lines), `category_o_not_allowed` (a registered seller issues no O
 line), `reverse_charge_needs_org_number`, `vat_codes_ambiguous` and, under a KID agreement,
 `kid_length_exceeded` (the allocated number no longer fits a shortened agreement); for a credit note
-`credit_exceeds_line` (with `linePosition`) and `credit_exceeds_invoice`. Before the
-transaction: `invoice_issued`, and 503 `storage_unavailable` when no object store is
-configured — an issued number whose PDF could never be stored is not allowed to exist.
+`credit_exceeds_line` (with `linePosition`) and `credit_exceeds_invoice`; last, for an
+invoice that bills work, `invoice_changed` (its work changed since the reads before the
+transaction), `source_not_selectable` and a holder's `source_already_invoiced`,
+`source_not_invoiceable` or `source_changed` (each with `linePosition`, `sourceKind` and
+`sourceId`). Before the transaction: `invoice_issued`, for work `projects_unavailable` and
+`source_customer_changed` (with the source), and 503 `storage_unavailable` when no object
+store is configured — an issued number whose PDF could never be stored is not allowed to exist.
 A Norwegian business's organisation number reaches the buyer snapshot only from this
 release on: before it, the snapshot compared the directory's lowercase country
 case-sensitively, so a document issued to one then carries `buyer_foreign_id` `no…`

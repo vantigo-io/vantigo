@@ -195,7 +195,7 @@ func (s *server) PutInvoicesSettingsAccessPoint(ctx context.Context, req gen.Put
 	var refusal *gen.InvoicesConflictProblem
 	var missingKey, unreadable bool
 	var saved store.InvoicesAccessPointCredential
-	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := txq.LockAccessPointCredentials(ctx)
 		stored := err == nil
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -256,7 +256,7 @@ func (s *server) PutInvoicesSettingsAccessPoint(ctx context.Context, req gen.Put
 // (DELETE /api/v1/invoices/settings/access-point)
 func (s *server) DeleteInvoicesSettingsAccessPoint(ctx context.Context, _ gen.DeleteInvoicesSettingsAccessPointRequestObject) (gen.DeleteInvoicesSettingsAccessPointResponseObject, error) {
 	var refused bool
-	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		if _, err := txq.LockAccessPointCredentials(ctx); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil

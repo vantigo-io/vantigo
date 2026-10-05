@@ -135,10 +135,11 @@ Communications' outbox is the working example.
     check and the number, before the document is written. `MarkInvoiced` judges each
     source as it stands under the holder's own lock — already invoiced first
     (`source_already_invoiced`), then still approved, ready or billable
-    (`source_not_invoiceable`), then at the revision and amount the draft took it at
+    (`source_not_invoiceable`), then unchanged since the draft took it — the revision
+    and amount for Time and Projects, the billing facts for Expenses
     (`source_changed`), amounts compared exactly, by value — and stamps it with the
-    invoice's id, number and date; `ReleaseInvoiced` takes the stamp back in the issue
-    of the credit note that returns the source's line in full. A source a holder will
+    invoice's id and number at the issue's time; `ReleaseInvoiced` takes the stamp back
+    in the issue of the credit note that returns the source's line in full. A source a holder will
     not stamp is answered as a `*contracts.WorkSourceRefusal`, and the issue refuses
     with its code and the line's position — the number, and every holder's write, roll
     back with it; any other error is a failure. A holder keeps rule 8's rules: it runs
@@ -165,6 +166,21 @@ Communications' outbox is the working example.
     leaves the process, so neither is ever made under a lock; a holder's command runs
     on the caller's transaction and does neither, which is what rules 8, 9 and 10 have
     in common.
+    Invoices' half: before the issue's transaction it reads the draft's work, the
+    projects it belongs to (`ProjectDirectory.Projects` — a project that no longer bills
+    the draft's customer is `source_customer_changed`, and with Projects switched off a
+    draft that bills work fails closed with `projects_unavailable`, both before a number
+    exists) and the issuer's name (`UserDirectory.User`); a kind no holder claims is a
+    composition bug, an error log and a 500, never a skipped stamp. Under the lock, after
+    every check and the number, it reads the draft's work again — any difference, a save
+    slipped in between, is `invoice_changed` — applies the projects' billing types
+    (`source_not_selectable`), calls each kind's holder **once, in
+    `contracts.InvoicedWorkOrder`**, with `InvoiceRef{ID, Number, IssueDate, IssuedAt,
+    IssuedBy, IssuedByDisplay}` — `IssuedAt` the issue's own clock, read once and also
+    the document's `issued_at` — and only then moves its `line_sources` from held to
+    invoiced and writes the document. A refusal names the first line holding the source
+    and the source (`linePosition`, `sourceKind`, `sourceId`). Today's holders are time,
+    expenses and projects ([Invoicing work](/en/reference/invoices/#invoicing-work)).
 
 ## How they are enforced
 
@@ -221,7 +237,22 @@ Communications' outbox is the working example.
   collect the slot from every module given, and both put the invoiced-work
   providers' `CustomerReferences` and `CustomerPersonalData` after every other
   module's — `internal/module`'s tests walk the composed slots as a merge and an
-  anonymisation do and pin that order.
+  anonymisation do and pin that order. On Invoices' side the holder's command goes
+  through one accessor reporting `InvoicedWork.<kind>.Mark|Release` by
+  `noteTxCommand`, beside `noteContractCall`; the tests' contract-call hook records
+  both with a `txBound` flag, and every invoices harness fails its test on a call
+  out of the module made under a lock **and** on a transaction-bound command made
+  outside one. The tests run with `modtest.WithInvoicedWork` fakes that read
+  `pg_current_xact_id()` through the `pgx.Tx` they are handed; the issue's
+  `issueAfterAllocation(ctx, tx, invoiceID)` hook reads it through the issue's own,
+  and the two must be equal — the holder rode the issue's transaction. The races are
+  the integration package's to prove against the real modules: on a pool of
+  `MaxConns = 2` serving only the two racing writers, each raw lock-holding
+  transaction on its own `pgx.Connect` connection outside the pool — so any call that
+  takes a second pool connection under a lock starves and fails the test — an issue
+  races each writer of the same rows (an expense's manual stamp and a batch
+  reimbursement, a milestone move and a project's fixed-price edit, a time unapprove,
+  a customer merge), and both must finish.
 
 ## Turning a module off
 
@@ -332,9 +363,10 @@ that aggregate it provides `contracts.BillableHours` — the approved, billable,
 priced entries not yet invoiced, row by row, read on the pool and never under a
 lock — and it fills `InvoicedWork` with the holder that stamps an entry invoiced
 inside an invoice's issue and releases it in a credit note's (rule 10). It also
-keeps a rule worth copying: **no contract call inside a transaction that holds a
-lock**, enforced by fakes that record any call made under one — the economy reads on
-both sides take no lock at all.
+keeps the rule every module keeps (rule 10's restatement): **no call that takes its
+own connection or leaves the process while a transaction holds locks**, enforced by
+fakes that record any call made under one — the economy reads on both sides take no
+lock at all.
 
 **Expenses depends on nobody but identity.** Unlike every other business module,
 it needs no config-checked dependency at all: `MODULES=expenses` alone is a valid
@@ -363,10 +395,18 @@ without Projects.
 (`internal/config`): the buyer, its billing profile and its invoice address come
 from `contracts.CustomerDirectory.BillingProfile`, read before any issue or save
 takes a lock and never under one — as is a send's recipient, the customer's current
-invoice e-mail. It reads nothing else — products, projects, time, expenses and energy
-are not read in phases 1A and 1B — sends mail only through the platform's SMTP seam,
-never under a lock, and provides no single-provider contract. It fills both
-many-provider slots: as a `CustomerReferenceHolder` it re-points every document of a
+invoice e-mail. Beside it, and each optionally, it reads the project directory
+(`contracts.ProjectDirectory`: the projects a draft's work belongs to, before an
+issue's transaction; with `projects` disabled a draft that bills work cannot be
+issued, `projects_unavailable`), the user directory (the issuer's name a holder's
+timeline event carries) and the three billable reads (`BillableHours`,
+`BillableExpenses`, `BillableMilestones`: whether a draft's work is still billable as
+it was taken, on `GET` and before a refresh — a kind whose module is off is not
+judged), all on the pool and never under a lock; products and energy it does not
+read. Inside an issue's transaction it calls the invoiced-work holders of time,
+expenses and projects (rule 10) — the one call it makes under a lock. It sends mail
+only through the platform's SMTP seam, never under a lock, and provides no
+single-provider contract. It fills both many-provider slots: as a `CustomerReferenceHolder` it re-points every document of a
 merged-away customer, drafts and issued alike (`invoices.invoices`), the immutability
 trigger allowing exactly `customer_id` to change on an issued one; as
 `CustomerPersonalData` it exports a person's documents and drafts with their payments,

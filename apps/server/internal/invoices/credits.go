@@ -85,7 +85,7 @@ func (s *server) PostInvoicesByIdCredit(ctx context.Context, req gen.PostInvoice
 			"This invoice is already credited in full.")), nil
 	}
 	var created store.InvoicesInvoice
-	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		created, err = txq.InsertCreditDraft(ctx, store.InsertCreditDraftParams{
 			OriginalID: original.ID, CreatedByUserID: callerID(ctx), Now: s.deps.Clock(),
 		})

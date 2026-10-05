@@ -4,6 +4,8 @@ import (
 	"context"
 	"math/big"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // InLockedTx exposes inLockedTx to the external tests, whose contract-call
@@ -12,20 +14,43 @@ import (
 var InLockedTx = inLockedTx
 
 // SetContractCallHook installs the hook every call out of this module is
-// reported to (contractscalls.go). The harness installs it once, from
-// TestMain, before any test runs: a package-level hook written while other
-// tests are making requests would be a data race of the tests' own making.
-func SetContractCallHook(hook func(ctx context.Context, method string)) {
+// reported to (contractscalls.go), with whether it is a transaction-bound
+// command. The harness installs it once, from TestMain, before any test runs:
+// a package-level hook written while other tests are making requests would be
+// a data race of the tests' own making.
+func SetContractCallHook(hook func(ctx context.Context, method string, txBound bool)) {
 	contractCallHook = hook
 }
 
+// NoteContractCall and NoteTxCommand are the two reports every call out of
+// the module makes, for the test that drives the harness's recorder through
+// them.
+var (
+	NoteContractCall = noteContractCall
+	NoteTxCommand    = noteTxCommand
+)
+
+// LockedContext marks ctx as withLockedTx does, for that same test.
+func LockedContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, lockedTxKey{}, true)
+}
+
 // SetIssueAfterAllocation installs a hook the issue calls inside its
-// transaction right after the number is allocated, and answers the function
-// that removes it. A test using it does not run in parallel: the hook is the
-// package's.
-func SetIssueAfterAllocation(hook func(ctx context.Context, invoiceID int64) error) func() {
+// transaction right after the number is allocated, with that transaction, and
+// answers the function that removes it. A test using it does not run in
+// parallel: the hook is the package's.
+func SetIssueAfterAllocation(hook func(ctx context.Context, tx pgx.Tx, invoiceID int64) error) func() {
 	issueAfterAllocation = hook
 	return func() { issueAfterAllocation = nil }
+}
+
+// SetIssueBeforeLock installs a hook the issue calls after its reads before
+// the transaction and before the transaction begins, and answers the function
+// that removes it. A test using it does not run in parallel: the hook is the
+// package's.
+func SetIssueBeforeLock(hook func(ctx context.Context, invoiceID int64)) func() {
+	issueBeforeLock = hook
+	return func() { issueBeforeLock = nil }
 }
 
 // SetPaymentAfterLock installs a hook both payment writes — a registration

@@ -114,7 +114,7 @@ func TestCustomerReferences_ARepointRacingACreditNoteIssueNeverDeadlocks(t *test
 	holder := invoices.Module().CustomerReferences(disabledDeps(h))
 
 	mergeErr := make(chan error, 1)
-	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, id int64) error {
+	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, _ pgx.Tx, id int64) error {
 		if id != credit.ID {
 			return nil
 		}

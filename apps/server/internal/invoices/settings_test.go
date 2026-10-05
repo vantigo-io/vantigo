@@ -48,6 +48,8 @@ type problemJSON struct {
 	Errors            map[string][]string `json:"errors"`
 	MergedInto        *int32              `json:"mergedInto"`
 	LinePosition      *int32              `json:"linePosition"`
+	SourceKind        *string             `json:"sourceKind"`
+	SourceID          *int64              `json:"sourceId"`
 	AllowedIssueDates []string            `json:"allowedIssueDates"`
 	PeppolRegistered  *bool               `json:"peppolRegistered"`
 	PeppolCanReceive  *bool               `json:"peppolCanReceive"`

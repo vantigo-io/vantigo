@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -526,7 +528,7 @@ func TestIssue_RacingDatesStayMonotone(t *testing.T) {
 	var bRes *modtest.Response
 	bDone := make(chan struct{})
 	bIssuer := issuer(t, h) // signed in here, on the test's goroutine
-	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, id int64) error {
+	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, _ pgx.Tx, id int64) error {
 		// The handler's goroutine: t.Errorf, never a t.Fatal.
 		if id != a {
 			return nil
@@ -565,7 +567,7 @@ func TestIssue_RacingDatesStayMonotone(t *testing.T) {
 func TestIssue_TodayIsReadAfterTheCounter(t *testing.T) {
 	h := readyToIssue(t)
 	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25))).ID
-	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, id int64) error {
+	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, _ pgx.Tx, id int64) error {
 		if id == draft {
 			h.Advance(24 * time.Hour)
 		}
@@ -590,7 +592,7 @@ func TestIssue_TwoIssuesOfOneDraft(t *testing.T) {
 	done := make(chan struct{})
 	secondIssuer := issuer(t, h) // signed in here, on the test's goroutine
 	var fired atomic.Bool
-	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, id int64) error {
+	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, _ pgx.Tx, id int64) error {
 		// The handler's goroutine: t.Errorf, never a t.Fatal.
 		// Only the first issue should reach its allocation — the second
 		// stops at the document's lock and finds it issued — but should it
@@ -628,7 +630,7 @@ func TestIssue_TwoIssuesOfOneDraft(t *testing.T) {
 func TestIssue_AFailureAfterAllocationLeavesNoGap(t *testing.T) {
 	h := readyToIssue(t)
 	doomed := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
-	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, id int64) error {
+	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, _ pgx.Tx, id int64) error {
 		if id == doomed.ID {
 			return errors.New("injected")
 		}
@@ -684,7 +686,7 @@ func TestIssue_ASettingsReplaceRacingTheFirstIssueWaitsAndIsRefused(t *testing.T
 	var put *modtest.Response
 	done := make(chan struct{})
 	settingsManager := h.SignIn(t, "invoices:access", "invoices:manage") // on the test's goroutine
-	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, id int64) error {
+	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, _ pgx.Tx, id int64) error {
 		// The handler's goroutine: t.Errorf, never a t.Fatal.
 		if id != draft.ID {
 			return nil
