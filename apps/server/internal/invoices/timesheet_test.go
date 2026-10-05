@@ -383,6 +383,27 @@ func TestTimesheet_RegeneratedByRefreshSources(t *testing.T) {
 	}
 }
 
+// An hour Time now places on a project the directory cannot name is still
+// described by the project its held row took when the timesheet is written:
+// the description falls back from the hour's project to the held row's
+// before the work type.
+func TestTimesheet_TheHeldRowsProjectNamesAnHourWhoseProjectIsUnnamed(t *testing.T) {
+	t.Parallel()
+	f := newWorkFixture(t)
+	h := f.h
+	d := tsFromWork(t, h, nil, project41Work()...)
+	hour := f.billable.hours[workHourKari]
+	hour.ProjectID, hour.WorkTypeName = 99, "Rådgivning"
+	f.billable.putHour(hour)
+	body := keepBody(d)
+	body["timesheet"] = true
+	saved := tsPut(t, h, d, body)
+	want := []string{"1 KN 2026-09-01 4 Rådgivning | Project 41", "2 OH 2026-09-02 3.5 - | Project 41"}
+	if got := rowTexts(saved.TimesheetRows); !slices.Equal(got, want) {
+		t.Errorf("rows = %v, want %v", got, want)
+	}
+}
+
 // With Projects switched off nothing names a project: an hour with no task
 // title is described by its work type, and only without one by nothing.
 func TestTimesheet_ProjectsOffFallsBackToTheWorkType(t *testing.T) {
