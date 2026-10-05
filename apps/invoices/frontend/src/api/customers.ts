@@ -53,6 +53,9 @@ interface BillingProfileLanguage {
 export const customerLanguageQueryOptions = (customerId: number) =>
   queryOptions({
     queryKey: [INVOICES_QUERY_KEY, "customer-language", customerId],
+    // A refusal — no customers:view after all — falls back at once to the
+    // reader's language rather than retrying for seconds.
+    retry: false,
     queryFn: async ({ signal }): Promise<"en" | "nb"> => {
       const profile = await request<BillingProfileLanguage>(`/api/v1/customers/${customerId}/billing-profile`, {
         signal,

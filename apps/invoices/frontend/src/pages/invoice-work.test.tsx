@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
 import type { InvoiceDocument, InvoiceInput } from "../api/invoices";
 import { customerSearch, jsonResponse, path, refusal } from "../test/api";
@@ -315,6 +316,55 @@ describe("deducting earlier invoices", () => {
     expect(await screen.findByRole("textbox", { name: "Line 4 description" })).toHaveValue(
       "Tidligere fakturert a konto, faktura 985",
     );
+  });
+
+  /** Opens the step, deducts invoice 985 at code 3 in full, and answers the line it proposed. */
+  const deductAtCode3 = async () => {
+    await userEvent.click(await screen.findByRole("button", { name: "Deduct earlier invoices" }));
+    const dialog = await screen.findByRole("dialog", { name: "Deduct earlier invoices" });
+    await userEvent.click(
+      await within(dialog).findByRole("checkbox", { name: "Deduct invoice 985 at 3 — Utgående mva 25 %" }),
+    );
+    const add = within(dialog).getByRole("button", { name: "Add the deduction lines" });
+    await waitFor(() => expect(add).toBeEnabled());
+    await userEvent.click(add);
+    return screen.findByRole("textbox", { name: "Line 4 description" });
+  };
+  const profileReads = (fetchMock: ReturnType<typeof server>) =>
+    fetchMock.actualCalls.filter(([url]) => path(url) === "/api/v1/customers/2001/billing-profile").length;
+
+  it("reads no billing profile without customers:view, and proposes the text in the reader's language", async () => {
+    const fetchMock = server(draft(), {
+      answers: { "GET /api/v1/customers/2001/billing-profile": () => jsonResponse(200, { language: "nb" }) },
+    });
+    renderRoute("/invoices/1001", { canViewCustomers: false });
+    expect(await deductAtCode3()).toHaveValue("Previously invoiced on account, invoice 985");
+    expect(profileReads(fetchMock)).toBe(0);
+  });
+
+  it("takes the buyer snapshot's language over the billing profile's, and reads no profile", async () => {
+    const fetchMock = server(
+      draft({
+        buyer: { customerNumber: 10001, type: "business", name: "Acme AS", language: "en" },
+      }),
+      { answers: { "GET /api/v1/customers/2001/billing-profile": () => jsonResponse(200, { language: "nb" }) } },
+    );
+    setLanguagePreference("nb");
+    try {
+      renderRoute("/invoices/1001");
+      await userEvent.click(await screen.findByRole("button", { name: "Trekk fra tidligere fakturaer" }));
+      const dialog = await screen.findByRole("dialog", { name: "Trekk fra tidligere fakturaer" });
+      await userEvent.click(
+        await within(dialog).findByRole("checkbox", { name: "Trekk fra faktura 985 på 3 — Utgående mva 25 %" }),
+      );
+      await userEvent.click(within(dialog).getByRole("button", { name: "Legg til fradragslinjene" }));
+      expect(await screen.findByRole("textbox", { name: "Beskrivelse på linje 4" })).toHaveValue(
+        "Previously invoiced on account, invoice 985",
+      );
+      expect(profileReads(fetchMock)).toBe(0);
+    } finally {
+      setLanguagePreference("auto");
+    }
   });
 
   it("says a refused deduction save by the line it names", async () => {

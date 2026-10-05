@@ -1,12 +1,12 @@
 import { Alert, Button, Checkbox, Group, Modal, NumberInput, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton } from "@vantigo/frontend-shell";
+import { ContentSkeleton, i18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { customerLanguageQueryOptions } from "../api/customers";
 import { type Deductible, deductibleQueryOptions } from "../api/deductible";
 import { vatCodesQueryOptions } from "../api/vat-codes";
-import { invoicesCatalog } from "../i18n";
+import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 
@@ -67,8 +67,10 @@ export const DeductModal = ({
   const language = buyerLanguage ? (buyerLanguage === "en" ? "en" : "nb") : profile.data;
   const lineText = (number: number) =>
     language
-      ? invoicesCatalog[language].deductionLineText.replace("{{number}}", String(number))
+      ? i18n.getFixedT(language, "invoices")("deductionLineText", { number })
       : t("deductionLineText", { number });
+  // A profile still being read would propose the line in the wrong language.
+  const languagePending = profile.isPending && profile.fetchStatus !== "idle";
   const deductible = useQuery(deductibleQueryOptions(invoiceId));
   const codes = useQuery(vatCodesQueryOptions());
   const [chosen, setChosen] = useState<Record<string, number | string>>({});
@@ -175,7 +177,7 @@ export const DeductModal = ({
             {t("cancel")}
           </Button>
           <Button
-            disabled={picked.length === 0 || !picked.every(valid)}
+            disabled={picked.length === 0 || !picked.every(valid) || languagePending}
             onClick={() =>
               onAdd(
                 picked.map((row) => ({
