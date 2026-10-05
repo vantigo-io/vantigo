@@ -34,6 +34,10 @@ type Document struct {
 	BuyerReference, OrderReference string
 	// Original is the invoice a credit note credits (BT-25/26).
 	Original *DocumentReference
+	// Deducted is every invoice — an a-konto — a final settlement's deduction
+	// lines deduct, once each (invoices work design D7): BG-3 on an invoice,
+	// 0..n. Never on a credit note, whose one preceding invoice is Original.
+	Deducted []DocumentReference
 	// ProjectReference is the project the document's work belongs to, as the
 	// document took it (invoices work design D9): BT-11 on an invoice, an
 	// additional document reference of type 50 on a credit note. Empty for

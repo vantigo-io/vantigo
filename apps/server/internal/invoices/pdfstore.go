@@ -39,7 +39,7 @@ const codeInvoiceDraft = "invoice_draft"
 // re-verified against the algorithm stored beside it — never the agreement
 // in force (EHF and KID design D3) — and one that does not verify is an
 // error, a 500, never a silent reprint.
-func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums []store.InvoicesVatSummary, original *store.InvoicesInvoice) (pdfDocument, error) {
+func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums []store.InvoicesVatSummary, original *store.InvoicesInvoice, deducted []deductedRef) (pdfDocument, error) {
 	str := func(s *string) string {
 		if s == nil {
 			return ""
@@ -119,6 +119,9 @@ func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 			issueDate time.Time
 		}{*original.Number, original.IssueDate.Time}
 	}
+	if inv.Kind == kindInvoice {
+		d.deducted = deducted
+	}
 	return d, nil
 }
 
@@ -181,7 +184,11 @@ func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoi
 		}
 		original = &o
 	}
-	doc, err := pdfDocumentOf(inv, lines, sums, original)
+	deducted, err := deductedRefsOf(ctx, q, inv, lines)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := pdfDocumentOf(inv, lines, sums, original, deducted)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: render document %d: %w", inv.ID, err)
 	}
@@ -523,6 +530,15 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 	if err != nil {
 		return nil, err
 	}
+	// A settlement's deductions at their a-kontos' snapshots, the a-kontos
+	// under the references (invoices work design D7).
+	if err := withDeductionSnapshots(ctx, q, lines); err != nil {
+		return nil, err
+	}
+	deducted, err := deductedRefsOf(ctx, q, inv, stored)
+	if err != nil {
+		return nil, err
+	}
 	exchangeRate, err := ratFromNumeric(inv.ExchangeRate)
 	if err != nil {
 		return nil, err
@@ -542,7 +558,7 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 		taxed, summaries, totals, squared = cd.totals.taxed, cd.totals.rows, cd.totals.totals, cd.totals.amounts
 		original = &cd.book.original
 	}
-	doc, err := pdfDocumentOf(draft, stored, nil, original)
+	doc, err := pdfDocumentOf(draft, stored, nil, original, deducted)
 	if err != nil {
 		return nil, err
 	}

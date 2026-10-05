@@ -158,6 +158,10 @@ export const invoicesCatalog = {
     "workReason.non_billable": "The project is not billable",
     "workReason.currency": "Not in NOK",
     "workReason.no_customer": "The project bills no customer",
+    "warning.deduction_exceeds_invoice":
+      "A deduction takes more than the earlier invoice has left at its VAT code; it cannot be issued as it stands.",
+    "warning.invoice_total_not_positive":
+      "This final settlement deducts as much as it bills or more; a settlement's total must be above zero to be issued.",
     preview: "Preview",
     issue: "Issue",
     saveBeforePreview: "Save the changes before previewing.",
@@ -464,6 +468,17 @@ export const invoicesCatalog = {
     "workRefusal.source_not_selectable":
       "Some of the chosen work is on a fixed-price or non-billable project, so it cannot be invoiced.",
     "workRefusal.projects_unavailable": "Work is invoiced per project, and the Projects module is switched off.",
+    "refusal.deduction_exceeds_invoice":
+      "Line {{line}} deducts more than the earlier invoice has left at its VAT code, or an invoice that can no longer be deducted.",
+    "refusal.deduction_duplicated":
+      "Line {{line}} deducts the same invoice at the same VAT code as another line. Keep one line per invoice and VAT code.",
+    "refusal.invoice_total_not_positive":
+      "A final settlement's total must be above zero. A fixed price billed in full on account ends with its last on-account invoice.",
+    "refusal.credit_total_negative":
+      "The credit note's total is below zero. Credit a settlement's deductions together with the work it billed.",
+    "refusal.invoice_deducted":
+      "A final settlement deducted this invoice, so it cannot be credited that far at this VAT code. Credit the settlement first.",
+    "refusal.credit_note_deducts_nothing": "A credit note deducts no earlier invoice.",
 
     eInvoicing: "E-invoicing",
     eInvoicingDescription: "Send documents as EHF over the Peppol network, through an access point.",
@@ -762,6 +777,10 @@ export const invoicesCatalog = {
     "workReason.non_billable": "Prosjektet er ikke fakturerbart",
     "workReason.currency": "Ikke i NOK",
     "workReason.no_customer": "Prosjektet fakturerer ingen kunde",
+    "warning.deduction_exceeds_invoice":
+      "Et fradrag tar mer enn den tidligere fakturaen har igjen på sin mva-kode; slik det står, kan det ikke utstedes.",
+    "warning.invoice_total_not_positive":
+      "Dette sluttoppgjøret trekker fra like mye som det fakturerer, eller mer; et sluttoppgjør må være over null for å kunne utstedes.",
     preview: "Forhåndsvis",
     issue: "Utsted",
     saveBeforePreview: "Lagre endringene før du forhåndsviser.",
@@ -1069,6 +1088,17 @@ export const invoicesCatalog = {
     "workRefusal.source_not_selectable":
       "Noe av det valgte arbeidet ligger på et fastpris- eller ikke-fakturerbart prosjekt, så det kan ikke faktureres.",
     "workRefusal.projects_unavailable": "Arbeid faktureres per prosjekt, og Prosjekter-modulen er slått av.",
+    "refusal.deduction_exceeds_invoice":
+      "Linje {{line}} trekker fra mer enn den tidligere fakturaen har igjen på sin mva-kode, eller en faktura som ikke lenger kan trekkes fra.",
+    "refusal.deduction_duplicated":
+      "Linje {{line}} trekker fra samme faktura på samme mva-kode som en annen linje. Behold én linje per faktura og mva-kode.",
+    "refusal.invoice_total_not_positive":
+      "Et sluttoppgjør må være over null. En fastpris fakturert i sin helhet a konto avsluttes med den siste a konto-fakturaen.",
+    "refusal.credit_total_negative":
+      "Kreditnotaen er under null. Krediter et sluttoppgjørs fradrag sammen med arbeidet det fakturerte.",
+    "refusal.invoice_deducted":
+      "Et sluttoppgjør har trukket fra denne fakturaen, så den kan ikke krediteres så langt på denne mva-koden. Krediter sluttoppgjøret først.",
+    "refusal.credit_note_deducts_nothing": "En kreditnota trekker ikke fra noen tidligere faktura.",
 
     eInvoicing: "E-faktura",
     eInvoicingDescription: "Send dokumenter som EHF i Peppol-nettverket, gjennom et aksesspunkt.",

@@ -318,6 +318,52 @@ export const fromWorkDraft = (overrides: Partial<InvoiceDocument> = {}): Invoice
   };
 };
 
+/**
+ * A final settlement draft (invoices work design D7), as a save answers it:
+ * the work, and a deduction of a-konto invoice 985 (id 990) at 25 % — quantity
+ * -1, the amount deducted as a positive unit price, its line amounts negative.
+ */
+export const settlementDraft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
+  const base = draft();
+  return {
+    ...base,
+    netTotal: 50000,
+    vatTotal: 12500,
+    grossTotal: 62500,
+    vatTotalNok: 12500,
+    lines: [
+      { ...base.lines[0], description: "Sluttoppgjør", unitPrice: 150000, lineGross: 150000, lineNet: 150000 },
+      {
+        id: 5002,
+        position: 2,
+        description: "Tidligere fakturert a konto, faktura 985",
+        quantity: -1,
+        unit: "",
+        unitPrice: 100000,
+        discountPercent: 0,
+        vatCodeId: 1,
+        deductsInvoiceId: 990,
+        lineGross: -100000,
+        lineAllowance: 0,
+        lineNet: -100000,
+      },
+    ],
+    vatSummaries: [
+      { vatCategory: "S", ratePercent: 25, safTCode: "3", taxableAmount: 50000, vatAmount: 12500, vatAmountNok: 12500 },
+    ],
+    ...overrides,
+  };
+};
+
+/**
+ * GET /invoices/1001/deductible as the server answers it (D7): what a-konto
+ * 985 has left to deduct, per VAT code, with its lines' snapshot.
+ */
+export const deductible = (): components["schemas"]["InvoicesDeductible"][] => [
+  { invoiceId: 990, number: 985, issueDate: "2026-08-01", vatCodeId: 1, category: "S", ratePercent: 25, left: 100000 },
+  { invoiceId: 990, number: 985, issueDate: "2026-08-01", vatCodeId: 2, category: "S", ratePercent: 15, left: 40000 },
+];
+
 /** The same invoice, issued as number 1000, nothing credited or paid yet: open. */
 export const issued = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
   const base = draft();

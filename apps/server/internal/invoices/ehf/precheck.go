@@ -42,6 +42,7 @@ const (
 	RulePaymentIDWithoutKID = "payment_id_without_kid" // D3: never a PaymentID without a KID
 	RuleAttachment          = "pdf_attachment_missing"
 	RuleUnitCode            = "unit_code_unknown"
+	RulePriceNegative       = "BR-27" // an item's net price is never negative: a deduction is a negative quantity at a positive price
 )
 
 // root parses a document and checks it is a UBL Invoice or CreditNote.
@@ -117,8 +118,9 @@ func organisationNumberValid(n string) bool {
 
 // Invariants is what only the module can break, judged on the rendered
 // bytes against the Document they came from: the totals re-summed (BR-CO-10,
-// BR-CO-13, BR-CO-15) and the VAT rows re-summed against them (BR-CO-14,
-// and the taxable amounts against the net); the KID re-verified against its stored algorithm and
+// BR-CO-13, BR-CO-15) over every line, a settlement's negative deduction
+// lines included, and the VAT rows re-summed against them (BR-CO-14, and the
+// taxable amounts against the net); every price positive or zero (BR-27); the KID re-verified against its stored algorithm and
 // the PaymentID it and nothing else (D3); the PDF attached, with the
 // Document's bytes when it has them; every unit code one of the table's.
 func Invariants(doc []byte, d Document) ([]Rule, error) {
@@ -223,6 +225,13 @@ func Invariants(doc []byte, d Document) ([]Rule, error) {
 	}
 
 	for _, l := range lines {
+		price, err := amount(l, "cac:Price", "cbc:PriceAmount")
+		if err != nil {
+			return nil, err
+		}
+		if price.Sign() < 0 {
+			bad(RulePriceNegative, "line %s: the price %s is negative", l.Value("cbc:ID"), price.FloatString(4))
+		}
 		for _, q := range append(l.All("cbc:InvoicedQuantity"), l.All("cbc:CreditedQuantity")...) {
 			if code := q.Attr("unitCode"); !knownUnitCode(code) {
 				bad(RuleUnitCode, "line %s: unit code %q is not in the table", l.Value("cbc:ID"), code)

@@ -226,10 +226,23 @@ func storedCreditedLines(lines []store.InvoicesLine) ([]creditedLine, error) {
 	return out, nil
 }
 
+// magnitudeCmp compares a credit's figure with its original line's by
+// magnitude: a settlement's deduction line and every credit of it are
+// negative (invoices work design D7), an ordinary line and its credits
+// positive. sameSign is false when the two are of opposite signs — never a
+// credit of the line — and then cmp says nothing.
+func magnitudeCmp(a, b *big.Rat) (cmp int, sameSign bool) {
+	if a.Sign()*b.Sign() < 0 {
+		return 0, false
+	}
+	return new(big.Rat).Abs(a).Cmp(new(big.Rat).Abs(b)), true
+}
+
 // isReturn reports whether a credit line returns its original line's units at
-// the line's own price and discount. A price reduction ("prisavslag") or a
-// higher discount is not a return: its credit was a choice, not a rounding,
-// and squaring after it would credit the reduction again.
+// the line's own price and discount, of the line's own sign. A price
+// reduction ("prisavslag") or a higher discount is not a return: its credit
+// was a choice, not a rounding, and squaring after it would credit the
+// reduction again.
 func isReturn(l creditedLine, o store.InvoicesLine) (bool, error) {
 	if l.quantity == nil || l.unitPrice == nil || l.discount == nil {
 		return false, nil
@@ -238,15 +251,23 @@ func isReturn(l creditedLine, o store.InvoicesLine) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	quantity, err := ratFromNumeric(o.Quantity)
+	if err != nil {
+		return false, err
+	}
+	if _, same := magnitudeCmp(l.quantity, quantity); !same {
+		return false, nil
+	}
 	return l.unitPrice.Cmp(price) == 0 && l.discount.Cmp(discount) == 0, nil
 }
 
 // lastReturn reports whether l is the credit that returns its original
 // line's last unit: with the issued credit notes before it, the line's whole
-// quantity is credited — exactly, never past it, which the line cap refuses —
-// and every credit of the line, theirs and l, is a return (isReturn). Only
-// then is what the parts miss of the line the øre their roundings lost, and
-// l takes it (creditBook.remaining).
+// quantity is credited — exactly, by magnitude and of its sign (a deduction's
+// is -1), never past it, which the line cap refuses — and every credit of the
+// line, theirs and l, is a return (isReturn). Only then is what the parts
+// miss of the line the øre their roundings lost, and l takes it
+// (creditBook.remaining).
 func (b creditBook) lastReturn(l creditedLine, o store.InvoicesLine) (bool, error) {
 	ok, err := isReturn(l, o)
 	if err != nil || !ok {
@@ -263,7 +284,8 @@ func (b creditBook) lastReturn(l creditedLine, o store.InvoicesLine) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	return total.Cmp(want) == 0, nil
+	c, same := magnitudeCmp(total, want)
+	return same && c == 0, nil
 }
 
 // finalReversal reports whether a credit note is the invoice's last: every
@@ -527,10 +549,11 @@ func readCreditDraft(ctx context.Context, q *store.Queries, inv store.InvoicesIn
 
 // caps is D8's two caps over a credit note's lines, as total amounts them:
 // per original line, the quantity and the net credited by the issued credit
-// notes and this one may not pass the original's; and the headline, this
-// one's gross may not pass what the original has left. It answers the first
-// line over its cap and the headline, so a draft warns of both and the issue
-// refuses with the first; none when both hold.
+// notes and this one may not pass the original's — by magnitude and of its
+// sign, a deduction line's being negative (invoices work design D7); and the
+// headline, this one's gross may not pass what the original has left. It
+// answers the first line over its cap and the headline, so a draft warns of
+// both and the issue refuses with the first; none when both hold.
 func (b creditBook) caps(ctx context.Context, q *store.Queries, lines []creditedLine, t creditTotals) ([]capBreach, error) {
 	var breaches []capBreach
 	for i, l := range lines {
@@ -550,7 +573,9 @@ func (b creditBook) caps(ctx context.Context, q *store.Queries, lines []credited
 			qty.Add(qty, a.quantity)
 			net.Add(net, a.net)
 		}
-		if qty.Cmp(maxQty) > 0 || net.Cmp(maxNet) > 0 {
+		qtyCmp, qtySign := magnitudeCmp(qty, maxQty)
+		netCmp, netSign := magnitudeCmp(net, maxNet)
+		if !qtySign || !netSign || qtyCmp > 0 || netCmp > 0 {
 			position := l.position
 			breaches = append(breaches, capBreach{codeCreditExceedsLine, &position, fmt.Sprintf(
 				"Line %d credits more of the original's line %d than it had, counting the credit notes already issued.", l.position, o.Position)})
@@ -650,6 +675,19 @@ func creditIssueChecks(ctx context.Context, txq *store.Queries, locked store.Inv
 		r.LinePosition = breaches[0].position
 		return issuePlan{}, r, nil
 	}
+	// A credit of a settlement's deductions without its work would leave
+	// the customer owing; zero — a "Frakt 0,-" line — stays allowed
+	// (invoices work design D7).
+	if t.totals.gross.Sign() < 0 {
+		return issuePlan{}, cannotIssue(codeCreditTotalNegative, fmt.Sprintf(
+			"This credit note's total is %s. A credit note gives money back; credit a settlement's deductions together with its work.",
+			t.totals.gross.FloatString(2))), nil
+	}
+	// An a-konto a settlement deducted is credited, per VAT code, only as
+	// far as the settlement left it; read here, after the counter.
+	if r, err := book.deductedOf(ctx, txq, credited, t); err != nil || r != nil {
+		return issuePlan{}, r, err
+	}
 	invoiced, err := invoicedOn(ctx, txq, book)
 	if err != nil {
 		return issuePlan{}, nil, err
@@ -722,10 +760,15 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 		}
 	}
 	// A correction credits what was billed; it adds no work (invoices work
-	// design D2, D16).
+	// design D2, D16), and deducts nothing of its own: a line crediting a
+	// deduction deducts what that line deducted (D7, plan reading 15).
 	for i, l := range in.lines {
 		if len(l.sources) > 0 {
 			errs = withSourceError(errs, i, msgSourcesOnCredit)
+		}
+		if l.deductsInvoiceID != nil {
+			add(fmt.Sprintf("lines[%d].deductsInvoiceId", i),
+				"A credit note's line deducts what the line it credits deducted; it names nothing of its own")
 		}
 	}
 	if body.RefreshSources != nil && *body.RefreshSources {
@@ -753,6 +796,7 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 			continue
 		}
 		seen[o.ID] = true
+		in.lines[i].deductsInvoiceID = o.DeductsInvoiceID
 		if l.vatCodeID != o.VatCodeID {
 			add(field("vatCodeId"), "A credit note keeps the original line's VAT code")
 		}
@@ -770,8 +814,18 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 		if err != nil {
 			return nil, err
 		}
-		if l.quantity.Cmp(oQty) > 0 {
+		// A credit line is negative exactly when the line it credits is a
+		// deduction, and is compared with it by magnitude (D7).
+		switch c, same := magnitudeCmp(l.quantity, oQty); {
+		case !same && o.DeductsInvoiceID == nil:
+			add(field("quantity"), "A credit of an ordinary line has a quantity greater than 0")
+		case !same:
+			add(field("quantity"), "A credit of a deduction line has a negative quantity, as the line it credits")
+		case c > 0:
 			add(field("quantity"), "A credit note may lower a quantity, never raise it")
+		}
+		if o.DeductsInvoiceID != nil && l.discount.Sign() != 0 {
+			add(field("discountPercent"), "A deduction line's credit carries no discount")
 		}
 		if l.unitPrice.Cmp(oPrice) > 0 {
 			add(field("unitPrice"), "A credit note may lower a price, never raise it")

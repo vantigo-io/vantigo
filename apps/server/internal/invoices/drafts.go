@@ -91,6 +91,12 @@ type draftLine struct {
 	// out.
 	sources      []sourceRef
 	sourcesGiven bool
+	// deductsInvoiceID makes the line a settlement's deduction of an earlier
+	// invoice (invoices work design D7), and snapshot is that invoice's line's
+	// VAT treatment at the line's code, which taxedLines taxes it at. On a
+	// credit note's line both are the original line's.
+	deductsInvoiceID *int64
+	snapshot         *taxedLine
 }
 
 // draftInput is one validated draft body.
@@ -153,7 +159,10 @@ func optionalText(v *string) string {
 // parseDraft runs D4's and D5's field rules over a draft body, every failure
 // collected. currency is the one this installation invoices in (NOK in phase
 // 1). The VAT codes and the bounds on computed amounts are checked afterwards,
-// against the codes (checkLines).
+// against the codes (checkLines). A negative quantity is accepted here
+// provisionally: whether a line may carry one — a deduction line, or a credit
+// note's line crediting one (invoices work design D7) — is decided once the
+// line's kind is known (deductionRules, putCreditDraft).
 func parseDraft(body gen.InvoicesInvoiceRequest, currency string) (draftInput, map[string][]string) {
 	var errs map[string][]string
 	add := func(field, msg string) {
@@ -252,6 +261,7 @@ func parseDraft(body gen.InvoicesInvoiceRequest, currency string) (draftInput, m
 		line := draftLine{
 			description: strings.TrimSpace(l.Description), unit: optionalText(l.Unit),
 			vatCodeID: l.VatCodeId, creditsLineID: l.CreditsLineId, sourcesGiven: l.Sources != nil,
+			deductsInvoiceID: l.DeductsInvoiceId,
 		}
 		var sourceErrs map[string][]string
 		line.sources, sourceErrs = parseLineSources(i, l)
@@ -266,7 +276,14 @@ func parseDraft(body gen.InvoicesInvoiceRequest, currency string) (draftInput, m
 		add(field("description"), maxLength("A description", line.description, 500))
 		add(field("unit"), maxLength("A unit", line.unit, 20))
 		var msg string
-		line.quantity, msg = amount("A quantity", l.Quantity, 3, zero, true, maxQuantity)
+		if l.Quantity < 0 {
+			line.quantity, msg = amount("A quantity", -l.Quantity, 3, zero, true, maxQuantity)
+			if line.quantity != nil {
+				line.quantity.Neg(line.quantity)
+			}
+		} else {
+			line.quantity, msg = amount("A quantity", l.Quantity, 3, zero, true, maxQuantity)
+		}
 		add(field("quantity"), msg)
 		line.unitPrice, msg = amount("A unit price", l.UnitPrice, 4, zero, false, maxUnitPrice)
 		add(field("unitPrice"), msg)
@@ -278,7 +295,7 @@ func parseDraft(body gen.InvoicesInvoiceRequest, currency string) (draftInput, m
 		add(field("discountPercent"), msg)
 		if line.quantity != nil && line.unitPrice != nil && line.discount != nil {
 			line.amounts = computeLine(line.quantity, line.unitPrice, line.discount)
-			if line.amounts.gross.Cmp(maxLineGross) > 0 {
+			if new(big.Rat).Abs(line.amounts.gross).Cmp(maxLineGross) > 0 {
 				add(field("unitPrice"), "The line amount is too large")
 			}
 		}
@@ -317,10 +334,16 @@ func vatCodesOn(ctx context.Context, q *store.Queries, day pgtype.Date) (map[int
 
 // taxedLines are the lines as today's rates would tax them: a draft's preview
 // (D4). A code with no period covering today counts at 0; the issue refuses it
-// (vat_code_not_valid).
+// (vat_code_not_valid). A deduction line is taxed at its a-konto line's
+// snapshot instead, never at today's rate of its code (invoices work design
+// D7).
 func taxedLines(lines []draftLine, codes map[int32]vatCodeOnDay) []taxedLine {
 	out := make([]taxedLine, 0, len(lines))
 	for _, l := range lines {
+		if s := l.snapshot; s != nil {
+			out = append(out, taxedLine{net: l.amounts.net, category: s.category, rate: s.rate, safT: s.safT, reason: s.reason})
+			continue
+		}
 		c := codes[l.vatCodeID]
 		rate := c.rate
 		if rate == nil {
@@ -332,13 +355,14 @@ func taxedLines(lines []draftLine, codes map[int32]vatCodeOnDay) []taxedLine {
 }
 
 // checkInvoiceLines is an invoice draft's VAT codes (known and active, D3) and
-// its total bound (D5), added to errs.
+// its total bound (D5), added to errs. A deduction line's code need not be
+// active: it is taxed at its a-konto line's snapshot (invoices work design D7).
 func checkInvoiceLines(lines []draftLine, codes map[int32]vatCodeOnDay, errs map[string][]string) map[string][]string {
 	for i, l := range lines {
 		switch c, ok := codes[l.vatCodeID]; {
 		case !ok:
 			errs = withFieldError(errs, fmt.Sprintf("lines[%d].vatCodeId", i), "No VAT code has this id")
-		case !c.active:
+		case !c.active && l.deductsInvoiceID == nil:
 			errs = withFieldError(errs, fmt.Sprintf("lines[%d].vatCodeId", i), "This VAT code is no longer offered for new lines")
 		}
 		if l.creditsLineID != nil {
@@ -390,7 +414,7 @@ func writeLines(ctx context.Context, txq *store.Queries, invoiceID int64, lines 
 	for i, l := range lines {
 		p := store.InsertLineParams{
 			InvoiceID: invoiceID, Position: int32(i + 1), Description: l.description, Unit: l.unit,
-			VatCodeID: l.vatCodeID, CreditsLineID: l.creditsLineID,
+			VatCodeID: l.vatCodeID, CreditsLineID: l.creditsLineID, DeductsInvoiceID: l.deductsInvoiceID,
 		}
 		var err error
 		for _, c := range []struct {
@@ -463,10 +487,17 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 		return nil, err
 	}
 	errs = checkInvoiceLines(in.lines, codes, errs)
+	errs, duplicated, err := deductionRules(ctx, q, in.customerID, 0, in.lines, errs)
+	if err != nil {
+		return nil, err
+	}
 	_, totals, _ := summarize(taxedLines(in.lines, codes), big.NewRat(1, 1))
 	errs = checkTotal(totals, errs)
 	if len(errs) > 0 {
 		return gen.PostInvoices400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, errs)), nil
+	}
+	if duplicated != nil {
+		return gen.PostInvoices409ApplicationProblemPlusJSONResponse(*duplicated), nil
 	}
 	net, vat, gross, vatNOK, err := numerics(totals)
 	if err != nil {
@@ -548,6 +579,10 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 		return nil, err
 	}
 	errs = checkInvoiceLines(in.lines, codes, errs)
+	errs, duplicated, err := deductionRules(ctx, q, in.customerID, current.ID, in.lines, errs)
+	if err != nil {
+		return nil, err
+	}
 	exchangeRate, err := ratFromNumeric(current.ExchangeRate)
 	if err != nil {
 		return nil, err
@@ -556,6 +591,9 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	errs = checkTotal(totals, errs)
 	if len(errs) > 0 {
 		return gen.PutInvoicesById400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, errs)), nil
+	}
+	if duplicated != nil {
+		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(*duplicated), nil
 	}
 	// The held work, read on the pool before the save's transaction: what
 	// refreshSources asks its modules about now, and what the derived

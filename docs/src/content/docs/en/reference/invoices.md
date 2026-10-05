@@ -249,7 +249,9 @@ only a credit note would mend it ([Sending as EHF](#sending-as-ehf)).
 
 A draft that bills work carries its sources on its lines, and every save carries them
 by rule; its warnings `line_differs_from_sources`, `sources_released`, `source_changed`
-and `source_not_invoiceable` are under [Invoicing work](#invoicing-work).
+and `source_not_invoiceable` are under [Invoicing work](#invoicing-work). A final
+settlement's draft warns `deduction_exceeds_invoice` and `invoice_total_not_positive`
+([A-konto and the final settlement](#a-konto-and-the-final-settlement)).
 
 In the app's editor, the totals shown while a draft is being worked on are computed in
 the browser by this same rule and are an estimate; the figures the server actually
@@ -674,6 +676,90 @@ newest first, joined by ". " and cut to fit the note's 1 000 characters, ending 
 when a pair was left out; work never released adds nothing. It is a suggestion: the
 note can be edited like any.
 
+### A-konto and the final settlement
+
+An **a-konto invoice** is an ordinary invoice — any lines, typically a ready milestone —
+in the same series (§ 5-1-3), its VAT due in its term (mval. § 15-9 (1)); nothing marks
+it as one. A **final settlement** is an invoice that also carries **deduction lines**,
+each deducting one earlier invoice of the same customer at one of its VAT codes:
+
+- `deductsInvoiceId` on the line request names the invoice deducted; it is frozen on the
+  line (`invoices.lines.deducts_invoice_id`) and answered on the line as
+  `deductsInvoiceId`.
+- The quantity is exactly **-1**, the unit price the amount deducted, **above 0** — so
+  EN 16931's BR-27 (no negative price) holds — and the discount 0; the line's gross and
+  net are then negative. The quantity may be negative only on such a line: anywhere else
+  it is a 400 on `lines[i].quantity`, as is a deduction of any other quantity; a price
+  of 0 is a 400 on `unitPrice`, a discount a 400 on `discountPercent`. The schema
+  agrees: `ck_lines_quantity` allows `quantity < 0` only with `deducts_invoice_id`, and
+  `ck_lines_deduction_no_discount` keeps its discount at 0.
+- The VAT code is one the deducted invoice has a line at (a 400 on
+  `lines[i].vatCodeId` otherwise), and the line is **taxed at that invoice's line's
+  snapshot** — its category and rate — on the draft, in its preview and at the issue,
+  never at today's rate of the code. It is therefore exempt from the checks that judge a
+  code as it stands today: a code no longer offered for new lines (`vat_code_inactive`)
+  or with no rate on the issue date (`vat_code_not_valid`) refuses neither its save nor
+  its issue.
+- The deducted document is an **issued invoice of the same customer** — never a draft,
+  a credit note, another customer's invoice or the settlement itself: a 400 on
+  `lines[i].deductsInvoiceId`. A deduction line bills no work: naming `sources` on one is
+  a 400 on `lines[i].sources`.
+- **One deduction line per (deducted invoice, VAT code)** per draft: a second is 409
+  `deduction_duplicated`, with the second line's `linePosition`, on a create or a save.
+  An a-konto with lines at two codes is deducted by two lines.
+
+The text the editor proposes is "Tidligere fakturert a konto, faktura <n>" /
+"Previously invoiced on account, invoice <n>"; the server keeps whatever description
+the line is given.
+
+**The cap.** Per (a-konto, VAT code), a deduction may take at most what the a-konto has
+left there: its lines' net at the code, less what its issued credit notes credited on
+those lines, less what issued settlements' deduction lines took and their issued credit
+notes did not give back. Drafts count for nothing. A draft past the cap warns
+`deduction_exceeds_invoice`; its issue is refused with the same code and the line's
+`linePosition`. The issue reads the cap **after the number is allocated, and never
+row-locks the invoices it deducts**: every write that changes what an a-konto has left
+is itself an issue — a credit note of it, another settlement, a credit note of a
+settlement — and the counter serialises every issue, so the cap read under it is exact;
+a row lock would cycle with the customers merge, which locks a customer's documents
+newest first, whenever an a-konto is newer than the settlement's draft. A deducted
+document that is no longer an issued invoice of this customer when the settlement is
+issued — re-pointed by a merge — has nothing left to deduct for it, and is refused
+`deduction_exceeds_invoice` with the line too.
+
+**A settlement's gross must be positive.** A draft whose deductions take as much as it
+bills, or more, warns `invoice_total_not_positive`, and its issue is refused with it.
+A zero settlement could never be corrected — a credit note is refused once nothing is
+left to credit (`invoice_fully_credited`) — so neither it nor the a-konto it deducted
+could ever be credited; a negative one is a credit in substance. A fixed price billed in
+full on account ends with its last a-konto, not a zero settlement.
+
+**What is left to deduct.** `GET /invoices/{id}/deductible` (`invoices:create`) answers,
+for an invoice draft, every issued invoice of its customer with something left to deduct,
+per VAT code: `invoiceId`, `number`, `issueDate`, `vatCodeId`, the snapshot's `category`
+and `ratePercent`, and `left`, by number and then code. The draft itself is never one,
+and a settlement is listed like any invoice — what it billed less what it deducted. An
+unknown id is a 404, an issued document 409 `invoice_issued`, and a credit-note draft
+409 `credit_note_deducts_nothing`: a credit note deducts nothing. It is the editor's
+"Deduct earlier invoices" step; the step itself arrives with the app's screens.
+
+**Credit notes and deductions.** A credit note of a settlement copies its deduction lines
+as they are — the negative quantity, the price, the deducted invoice — so its issue
+gives the deduction back and the a-konto's cap grows again ([Credit notes](#credit-notes)).
+Crediting an a-konto a settlement deducted is judged per VAT code: at a code an issued
+settlement deducted, a credit note may take no more than the a-konto has left there;
+past it the issue is refused `invoice_deducted`, its detail naming the settlements —
+credit the settlement first. At a code no settlement deducted, the line caps alone
+decide.
+
+**On the documents.** The PDF prints a deduction as it prints any negative — a leading
+minus on the quantity and the line amount, "-1" and "-125 000,00" ("-125,000.00" in
+English), the unit price positive — and lists the invoices deducted under the
+references, "Fratrukket a konto: Faktura 985 av 01.08.2026" / "Deducted on account:
+Invoice 985 of 2026-08-01" ([The PDF](#the-pdf)). The EHF carries one
+`cac:BillingReference` per invoice deducted (BG-3) and the deductions as negative lines;
+it writes no `PrepaidAmount` ([The EHF document](#the-ehf-document)).
+
 ## Issuing
 
 `POST /invoices/{id}/issue` runs one READ COMMITTED transaction in a fixed order:
@@ -687,7 +773,9 @@ the VAT rows and the document are written. The directories — the customer's bi
 profile, and for work the projects and the issuer's name — are read before the
 transaction and the object store is used after it; none is ever called under a lock. The
 lock order is always document → settings → counter → original → the source modules'
-rows (Projects, Expenses, Time), and nothing takes them in another order: `PUT /settings` takes only the settings row, the rate operations the
+rows (Projects, Expenses, Time), and nothing takes them in another order — a
+settlement's deducted invoices are read after the counter and never locked ([A-konto and
+the final settlement](#a-konto-and-the-final-settlement)): `PUT /settings` takes only the settings row, the rate operations the
 settings row and then the VAT code, `PUT /vat-codes/{id}` only the code, a payment's
 registration or removal only its invoice, a send's delivery row only its document,
 `FOR SHARE`, and the send as EHF its document `FOR UPDATE` and then the access-point
@@ -707,8 +795,13 @@ invoice the customer gates, `buyer_incomplete`, `vat_code_inactive` and
 `vat_code_not_valid` (with `linePosition`), `vat_not_registered` (a seller outside the
 register issues only O lines), `category_o_not_allowed` (a registered seller issues no O
 line), `reverse_charge_needs_org_number`, `vat_codes_ambiguous` and, under a KID agreement,
-`kid_length_exceeded` (the allocated number no longer fits a shortened agreement); for a credit note
-`credit_exceeds_line` (with `linePosition`) and `credit_exceeds_invoice`; last, for an
+`kid_length_exceeded` (the allocated number no longer fits a shortened agreement), and for
+a final settlement `deduction_exceeds_invoice` (with `linePosition`) and
+`invoice_total_not_positive` — a deduction line is exempt from the two VAT code checks,
+taxed at its a-konto's snapshot; for a credit note
+`credit_exceeds_line` (with `linePosition`), `credit_exceeds_invoice`,
+`credit_total_negative` (its gross below zero) and `invoice_deducted` (an a-konto credited
+past what a settlement left of it); last, for an
 invoice that bills work, `invoice_changed` (its work changed since the reads before the
 transaction), `source_not_selectable` and a holder's `source_already_invoiced`,
 `source_not_invoiceable` or `source_changed` (each with `linePosition`, `sourceKind` and
@@ -761,6 +854,18 @@ be able to carry a negative VAT row too. A price reduction ("prisavslag") or a h
 discount is never squared: its credit was a choice, not a rounding, and squaring after
 it would credit the reduction again. Whatever is squared, every note's line nets sum to
 its net total (EN 16931 BR-CO-10), so no credit note is one an EHF could not carry.
+
+**A settlement's credit note** copies its deduction lines with their negative quantity and
+the invoice they deduct ([A-konto and the final
+settlement](#a-konto-and-the-final-settlement)). A credit line is negative **exactly when
+the line it credits is a deduction line** — decided once the original is read, a 400 on
+`lines[i].quantity` otherwise — and `deductsInvoiceId` on a credit note's own request is a
+400: its lines deduct what the lines they credit deducted. Every comparison of a credit
+line with its line is **by magnitude and of the same sign**: lowering a quantity (a
+deduction's -1 to -0.5, never to -1.5 or +1), the per-line cap across the issued credit
+notes, and the last return that squares the line. A credit note whose gross is **below
+zero** — a settlement's deduction credited without its work — is refused at the issue,
+`credit_total_negative`; a zero one stays allowed.
 
 **A free line needs no return.** An original line with no money in it — "Frakt 0,-" —
 does not have to be credited for the last note to be the final one: leaving it out of
@@ -913,6 +1018,13 @@ your payment") when there is one, and for the invoice number otherwise.
 references, "Prosjekt" / "Project" and its reference, when the document names one
 ([The project](#the-project)).
 
+**A final settlement** lists each invoice it deducts after them, "Fratrukket a konto" /
+"Deducted on account" with "Faktura 985 av 01.08.2026" / "Invoice 985 of 2026-08-01",
+and prints a deduction line with a leading minus on its quantity and its amount ("-1",
+"-125 000,00"), the unit price positive ([A-konto and the final
+settlement](#a-konto-and-the-final-settlement)). A credit note of a settlement lists
+none: its one preceding invoice is the settlement.
+
 `GET /invoices/{id}/preview.pdf` renders a draft on demand with the watermark
 "UTKAST — ikke et salgsdokument", no number, today's date, the current settings and,
 for an invoice draft, the customer's current profile at today's rates; a credit-note
@@ -954,7 +1066,7 @@ buyer is the snapshot's, as the PDF prints it):
 | `cbc:DocumentCurrencyCode` | `currency` (NOK) |
 | `cbc:BuyerReference` (BT-10) | `your_reference`, when set |
 | `cac:OrderReference/cbc:ID` | `order_reference`, when set. Peppol needs one of the two references (PEPPOL-EN16931-R003) |
-| `cac:BillingReference/cac:InvoiceDocumentReference` (credit note) | the original's `number` and `issue_date` |
+| `cac:BillingReference/cac:InvoiceDocumentReference` (BG-3) | on a credit note, the original's `number` and `issue_date`; on a final settlement, one per invoice its deduction lines deduct, by number, each its `number` and `issue_date` ([A-konto and the final settlement](#a-konto-and-the-final-settlement)); none on any other invoice. A settlement's deductions are negative lines, never a `PrepaidAmount`, which lowers the amount due but not the VAT base — the a-kontos were VAT invoices |
 | `cac:InvoicePeriod` (`cbc:StartDate`, `cbc:EndDate`) | `delivery_from`, `delivery_to` |
 | `cac:Delivery/cbc:ActualDeliveryDate` | `delivery_date` |
 | `cac:Delivery/cac:DeliveryLocation/cac:Address` | the place of delivery, **only when it has a country** (BR-57); one without a country is left out of the EHF, the PDF still prints it |
@@ -967,7 +1079,7 @@ buyer is the snapshot's, as the PDF prints it):
 | `cac:PaymentTerms/cbc:Note` | "Forfall 15.10.2026" / "Due 2026-10-15" on an invoice; "Kreditnota – beløpet godskrives" / "Credit note – the amount is credited" on a credit note, which has no due date (BR-CO-25) |
 | `cac:TaxTotal` | `cbc:TaxAmount` the VAT total; one `cac:TaxSubtotal` per VAT summary row, in the document's order: `cbc:TaxableAmount`, `cbc:TaxAmount`, and `cac:TaxCategory` by the category rules below |
 | `cac:LegalMonetaryTotal` | `cbc:LineExtensionAmount` and `cbc:TaxExclusiveAmount` the net total, `cbc:TaxInclusiveAmount` and `cbc:PayableAmount` the gross total; no rounding amount |
-| `cac:InvoiceLine` / `cac:CreditNoteLine` | `cbc:ID` the position; `cbc:InvoicedQuantity` / `cbc:CreditedQuantity` with `unitCode` from the unit table; `cbc:LineExtensionAmount` the line net; when the discount is not zero, `cac:AllowanceCharge` with `cbc:ChargeIndicator` false, reason code `95` and reason "Rabatt" / "Discount" (BR-42), `cbc:MultiplierFactorNumeric` the discount percent, `cbc:Amount` the line allowance and `cbc:BaseAmount` the line gross (PEPPOL-EN16931-R040–R042); `cac:Item/cbc:Name` the description; `cac:Item/cac:ClassifiedTaxCategory` the line's snapshot category, with `cbc:Percent` except for O; `cac:Price/cbc:PriceAmount` the unit price |
+| `cac:InvoiceLine` / `cac:CreditNoteLine` | `cbc:ID` the position; `cbc:InvoicedQuantity` / `cbc:CreditedQuantity` with `unitCode` from the unit table — `-1.000` on a deduction line and on a credit note's copy of one; `cbc:LineExtensionAmount` the line net, negative on such a line, so the totals and the VAT rows sum it as they are (BR-CO-10, BR-CO-13); when the discount is not zero, `cac:AllowanceCharge` with `cbc:ChargeIndicator` false, reason code `95` and reason "Rabatt" / "Discount" (BR-42), `cbc:MultiplierFactorNumeric` the discount percent, `cbc:Amount` the line allowance and `cbc:BaseAmount` the line gross (PEPPOL-EN16931-R040–R042); `cac:Item/cbc:Name` the description; `cac:Item/cac:ClassifiedTaxCategory` the line's snapshot category, with `cbc:Percent` except for O; `cac:Price/cbc:PriceAmount` the unit price |
 
 **The category rules.** `cbc:Percent` is written for S, Z, E, AE, G and K, **never for
 O** (BR-O-05). In a VAT summary row, AE, G and O carry `cbc:TaxExemptionReasonCode`
@@ -1736,14 +1848,15 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `GET /work` | `invoices:create` | 400 neither or both of `customerId` and `projectId`; 409 `work_unavailable`, `projects_unavailable`; 404 an unknown project |
 | `POST /from-work` | `invoices:create` | 400 on the field (`customerId`, `sources`, `sources[i]`, `grouping`, `revision`, `deliveryTo`, `invoiceId`, `vatCodes.<kind>`, `note`, `lines` — the document total too large); 404 the target; 409 `invoice_issued`, `too_many_sources`, the customer gates, `projects_unavailable`, `source_not_for_customer`, `source_not_selectable`, `source_not_invoiceable`, `source_changed`, `mixed_currency`, `currency_not_nok`, `too_many_lines` (with `suggestedGrouping`), a stale revision, `source_held_elsewhere` (with `heldBy`) |
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
-| `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included); 409 the customer gates |
+| `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included; a deduction line's `quantity`, `unitPrice`, `discountPercent`, `deductsInvoiceId`, `vatCodeId`, `sources`); 409 the customer gates, `deduction_duplicated` (with `linePosition`) |
 | `GET /{id}` | | 404 |
-| `PUT /{id}` | `invoices:create` | 404; 400 (a line's `sources` against the work the draft holds, at most 5 000); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`) |
+| `PUT /{id}` | `invoices:create` | 404; 400 (a line's `sources` against the work the draft holds, at most 5 000; a deduction line's fields as on `POST /`; on a credit note a line's `deductsInvoiceId`, or a quantity of the other sign than the line it credits); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `deduction_duplicated` (with `linePosition`) |
 | `DELETE /{id}` | `invoices:create` | 404; 409 `invoice_issued` |
 | `POST /{id}/issue` | `invoices:issue` | 400 a body that does not decode (none, or an `issueDate` that is no calendar day); 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |
 | `GET /{id}/pdf` | | 404; 409 `invoice_draft`; 500 a missing or altered stored object, or a render that fails; 503 `storage_unavailable` |
 | `GET /{id}/preview.pdf` | `invoices:create` | 404; 409 `invoice_issued` |
+| `GET /{id}/deductible` | `invoices:create` | 404; 409 `invoice_issued`, `credit_note_deducts_nothing` |
 | `POST /{id}/payments` | `invoices:payments` | 400 a body that does not decode; 404; 409 `credit_note_no_payments`, `invoice_draft`; 400 on the field; 409 `invoice_settled`, `payment_exceeds_open` (with `openAmount`) |
 | `POST /{id}/payments/{paymentId}/remove` | `invoices:payments` | 400 on `reason`; 404 the document, or a payment not its own; 409 `payment_removed` |
 | `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable`; 500 a directory that fails, a missing or altered stored object, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |

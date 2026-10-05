@@ -214,6 +214,22 @@ func TestInvariants_EachCheck(t *testing.T) {
 			d.PDF = []byte("%PDF-1.4 another")
 			return invariants(t, doc, d)
 		}, []string{ehf.RuleAttachment}},
+		"a negative price (BR-27)": {func(t *testing.T) []string {
+			d := fixture(t, "invoice-final-settlement")
+			doc := tamper(t, mustRender(t, d), `>125000.0000<`, `>-125000.0000<`)
+			return invariants(t, doc, d)
+		}, []string{ehf.RulePriceNegative}},
+		"a settlement's net is not its lines', negative ones counted (BR-CO-10)": {func(t *testing.T) []string {
+			d := fixture(t, "invoice-final-settlement")
+			d.NetTotal = rat("400000.00")
+			d.GrossTotal = rat("443750.00")
+			return invariants(t, mustRender(t, d), d)
+		}, []string{ehf.RuleLineTotal, ehf.RuleTaxableSum}},
+		"a settlement's tax-exclusive amount is not its lines' (BR-CO-13)": {func(t *testing.T) []string {
+			d := fixture(t, "invoice-final-settlement")
+			doc := tamper(t, mustRender(t, d), `<cbc:TaxExclusiveAmount currencyID="NOK">175000.00`, `<cbc:TaxExclusiveAmount currencyID="NOK">400000.00`)
+			return invariants(t, doc, d)
+		}, []string{ehf.RuleTaxExclusive, ehf.RuleTaxInclusive, ehf.RuleTaxableSum}},
 		"a unit code outside the table": {func(t *testing.T) []string {
 			d := fixture(t, "invoice-person")
 			doc := tamper(t, mustRender(t, d), `unitCode="HUR"`, `unitCode="TNE"`)
@@ -243,7 +259,7 @@ var knownRules = []string{
 	ehf.RuleBuyerReference, ehf.RuleBuyerEndpoint, ehf.RuleEndpointScheme, ehf.RuleSellerVATID, ehf.RuleCategoryK,
 	ehf.RuleLineTotal, ehf.RuleTaxExclusive, ehf.RuleTaxInclusive, ehf.RuleTaxTotal, ehf.RuleTaxableSum,
 	ehf.RuleKID, ehf.RulePaymentIDWithoutKID,
-	ehf.RuleAttachment, ehf.RuleUnitCode,
+	ehf.RuleAttachment, ehf.RuleUnitCode, ehf.RulePriceNegative,
 }
 
 // The pre-check agrees with the oracle's manifest where it has the rule:

@@ -84,7 +84,7 @@ type InvoicesBuyer struct {
 	Type string `json:"type"`
 }
 
-// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off), and invoice_changed also when the draft's work changed between the issue's reads and its lock, storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
+// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock, storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 type InvoicesConflictProblem struct {
 	// AllowedIssueDates On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise.
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
@@ -95,7 +95,7 @@ type InvoicesConflictProblem struct {
 	HeldBy   *InvoicesWorkHeldBy `json:"heldBy,omitempty"`
 	Instance *string             `json:"instance,omitempty"`
 
-	// LinePosition On a refusal about one line (vat_code_inactive, vat_code_not_valid, credit_exceeds_line, and the issue's refusals about a source — the first line holding it), the line's position, 1-based. Absent otherwise.
+	// LinePosition On a refusal about one line (vat_code_inactive, vat_code_not_valid, credit_exceeds_line, deduction_exceeds_invoice, deduction_duplicated, and the issue's refusals about a source — the first line holding it), the line's position, 1-based. Absent otherwise.
 	LinePosition *int32 `json:"linePosition,omitempty"`
 
 	// MergedInto On customer_merged, the customer the draft's customer was merged into. Absent otherwise.
@@ -140,6 +140,17 @@ type InvoicesCreditsRef struct {
 	Id        int64              `json:"id"`
 	IssueDate openapi_types.Date `json:"issueDate"`
 	Number    int64              `json:"number"`
+}
+
+// InvoicesDeductible What one issued invoice of a draft's customer — an a-konto — has left to deduct at one VAT code (invoices work design D7): its lines' net at the code, less what its issued credit notes credited on those lines, less what issued settlements' deduction lines took and their issued credit notes did not give back. category and ratePercent are the a-konto line's VAT snapshot, which a deduction at the code is taxed at; left is the most a deduction line at the code may take as its unitPrice.
+type InvoicesDeductible struct {
+	Category    string             `json:"category"`
+	InvoiceId   int64              `json:"invoiceId"`
+	IssueDate   openapi_types.Date `json:"issueDate"`
+	Left        float64            `json:"left"`
+	Number      int64              `json:"number"`
+	RatePercent float64            `json:"ratePercent"`
+	VatCodeId   int32              `json:"vatCodeId"`
 }
 
 // InvoicesDelivery One e-mail that handed an issued document over (payments and delivery design D4), logged once the mail server took it. recipient is the address it went to — empty once the customer has been anonymised (D6) — and is present only for a caller with invoices:issue; a reader sees when each send happened, by whom and its subject, not the address. subject is as sent.
@@ -270,7 +281,7 @@ type InvoicesInvoiceRequest struct {
 	YourReference *string `json:"yourReference,omitempty"`
 }
 
-// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised.
+// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised.
 type InvoicesInvoiceResponse struct {
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
 
@@ -442,35 +453,41 @@ type InvoicesJournalTotals struct {
 	VatTotal   float64               `json:"vatTotal"`
 }
 
-// InvoicesLine One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft. On a document that bills work (invoices work design D2) every line carries sources — [] for a line that bills none — and warnings, its own codes (line_differs_from_sources, source_changed, source_not_invoiceable); both absent on a document that bills no work.
+// InvoicesLine One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft. A deduction line (invoices work design D7) carries deductsInvoiceId, a quantity of -1 and a positive unitPrice, so its lineGross and lineNet are negative; a credit note's line crediting one carries it too, with a negative quantity. On a document that bills work (invoices work design D2) every line carries sources — [] for a line that bills none — and warnings, its own codes (line_differs_from_sources, source_changed, source_not_invoiceable); both absent on a document that bills no work.
 type InvoicesLine struct {
 	// CreditsLineId On a credit note's line, the original line it credits.
-	CreditsLineId   *int64                `json:"creditsLineId,omitempty"`
-	Description     string                `json:"description"`
-	DiscountPercent float64               `json:"discountPercent"`
-	ExemptionReason *string               `json:"exemptionReason,omitempty"`
-	Id              int64                 `json:"id"`
-	LineAllowance   float64               `json:"lineAllowance"`
-	LineGross       float64               `json:"lineGross"`
-	LineNet         float64               `json:"lineNet"`
-	Position        int32                 `json:"position"`
-	Quantity        float64               `json:"quantity"`
-	SafTCode        *string               `json:"safTCode,omitempty"`
-	Sources         *[]InvoicesLineSource `json:"sources,omitempty"`
-	Unit            string                `json:"unit"`
-	UnitPrice       float64               `json:"unitPrice"`
-	VatCategory     *string               `json:"vatCategory,omitempty"`
-	VatCodeId       int32                 `json:"vatCodeId"`
-	VatRatePercent  *float64              `json:"vatRatePercent,omitempty"`
-	Warnings        *[]string             `json:"warnings,omitempty"`
+	CreditsLineId *int64 `json:"creditsLineId,omitempty"`
+
+	// DeductsInvoiceId On a deduction line of a final settlement (invoices work design D7), the issued invoice — the a-konto — it deducts, frozen on the line; on a credit note's line, copied from the line it credits. Absent otherwise.
+	DeductsInvoiceId *int64                `json:"deductsInvoiceId,omitempty"`
+	Description      string                `json:"description"`
+	DiscountPercent  float64               `json:"discountPercent"`
+	ExemptionReason  *string               `json:"exemptionReason,omitempty"`
+	Id               int64                 `json:"id"`
+	LineAllowance    float64               `json:"lineAllowance"`
+	LineGross        float64               `json:"lineGross"`
+	LineNet          float64               `json:"lineNet"`
+	Position         int32                 `json:"position"`
+	Quantity         float64               `json:"quantity"`
+	SafTCode         *string               `json:"safTCode,omitempty"`
+	Sources          *[]InvoicesLineSource `json:"sources,omitempty"`
+	Unit             string                `json:"unit"`
+	UnitPrice        float64               `json:"unitPrice"`
+	VatCategory      *string               `json:"vatCategory,omitempty"`
+	VatCodeId        int32                 `json:"vatCodeId"`
+	VatRatePercent   *float64              `json:"vatRatePercent,omitempty"`
+	Warnings         *[]string             `json:"warnings,omitempty"`
 }
 
-// InvoicesLineRequest One line of a draft. description is 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20. vatCodeId is an active code. creditsLineId is a credit-note draft's own and names the original line the line credits.
+// InvoicesLineRequest One line of a draft. description is 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20. vatCodeId is an active code. creditsLineId is a credit-note draft's own and names the original line the line credits. A deduction line (invoices work design D7) names deductsInvoiceId and has a quantity of exactly -1, a unitPrice greater than 0 — the amount deducted — and no discount; its vatCodeId is one the deducted invoice has a line at, and need not be active. On a credit-note draft a line's quantity is negative exactly when the original line it credits is a deduction line, and never larger in magnitude.
 type InvoicesLineRequest struct {
-	CreditsLineId   *int64   `json:"creditsLineId,omitempty"`
-	Description     string   `json:"description"`
-	DiscountPercent *float64 `json:"discountPercent,omitempty"`
-	Quantity        float64  `json:"quantity"`
+	CreditsLineId *int64 `json:"creditsLineId,omitempty"`
+
+	// DeductsInvoiceId Makes the line a deduction of an earlier invoice — an a-konto — in a final settlement (invoices work design D7): an issued invoice of the same customer, never a draft, a credit note or the document itself (a 400 on lines[i].deductsInvoiceId). One deduction line per (deducted invoice, VAT code) — a second is 409 deduction_duplicated — and none naming sources (a 400 on lines[i].sources). Refused on a credit-note draft's own request: there it is derived from the original line.
+	DeductsInvoiceId *int64   `json:"deductsInvoiceId,omitempty"`
+	Description      string   `json:"description"`
+	DiscountPercent  *float64 `json:"discountPercent,omitempty"`
+	Quantity         float64  `json:"quantity"`
 
 	// Sources The work the line bills, by identity (invoices work design D2). Required on every line of a draft that holds work — [] for none — and refused on a create and on a credit note.
 	Sources   *[]InvoicesSourceRef `json:"sources,omitempty"`
@@ -1145,6 +1162,9 @@ type ServerInterface interface {
 	// PostInvoicesByIdCredit Create a credit-note draft
 	// (POST /api/v1/invoices/{id}/credit)
 	PostInvoicesByIdCredit(w http.ResponseWriter, r *http.Request, id int64)
+	// GetInvoicesByIdDeductible List what earlier invoices have left to deduct
+	// (GET /api/v1/invoices/{id}/deductible)
+	GetInvoicesByIdDeductible(w http.ResponseWriter, r *http.Request, id int64)
 	// PostInvoicesByIdIssue Issue a draft
 	// (POST /api/v1/invoices/{id}/issue)
 	PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Request, id int64)
@@ -1904,6 +1924,32 @@ func (siw *ServerInterfaceWrapper) PostInvoicesByIdCredit(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// GetInvoicesByIdDeductible operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesByIdDeductible(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesByIdDeductible(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostInvoicesByIdIssue operation middleware
 func (siw *ServerInterfaceWrapper) PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Request) {
 
@@ -2343,6 +2389,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}/pdf", wrapper.GetInvoicesByIdPdf)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}/preview.pdf", wrapper.GetInvoicesByIdPreviewPdf)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/credit", wrapper.PostInvoicesByIdCredit)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}/deductible", wrapper.GetInvoicesByIdDeductible)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/payments", wrapper.PostInvoicesByIdPayments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/payments/{paymentId}/remove", wrapper.PostInvoicesByIdPaymentsByPaymentIdRemove)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/send", wrapper.PostInvoicesByIdSend)
@@ -3977,6 +4024,78 @@ func (response PostInvoicesByIdCredit409ApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type GetInvoicesByIdDeductibleRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetInvoicesByIdDeductibleResponseObject interface {
+	VisitGetInvoicesByIdDeductibleResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesByIdDeductible200JSONResponse []InvoicesDeductible
+
+func (response GetInvoicesByIdDeductible200JSONResponse) VisitGetInvoicesByIdDeductibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesByIdDeductible401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesByIdDeductible401JSONResponse) VisitGetInvoicesByIdDeductibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesByIdDeductible403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesByIdDeductible403JSONResponse) VisitGetInvoicesByIdDeductibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesByIdDeductible404Response struct {
+}
+
+func (response GetInvoicesByIdDeductible404Response) VisitGetInvoicesByIdDeductibleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInvoicesByIdDeductible409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response GetInvoicesByIdDeductible409ApplicationProblemPlusJSONResponse) VisitGetInvoicesByIdDeductibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostInvoicesByIdIssueRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *PostInvoicesByIdIssueJSONRequestBody
@@ -5053,6 +5172,9 @@ type StrictServerInterface interface {
 	// PostInvoicesByIdCredit Create a credit-note draft
 	// (POST /api/v1/invoices/{id}/credit)
 	PostInvoicesByIdCredit(ctx context.Context, request PostInvoicesByIdCreditRequestObject) (PostInvoicesByIdCreditResponseObject, error)
+	// GetInvoicesByIdDeductible List what earlier invoices have left to deduct
+	// (GET /api/v1/invoices/{id}/deductible)
+	GetInvoicesByIdDeductible(ctx context.Context, request GetInvoicesByIdDeductibleRequestObject) (GetInvoicesByIdDeductibleResponseObject, error)
 	// PostInvoicesByIdIssue Issue a draft
 	// (POST /api/v1/invoices/{id}/issue)
 	PostInvoicesByIdIssue(ctx context.Context, request PostInvoicesByIdIssueRequestObject) (PostInvoicesByIdIssueResponseObject, error)
@@ -5750,6 +5872,32 @@ func (sh *strictHandler) PostInvoicesByIdCredit(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostInvoicesByIdCreditResponseObject); ok {
 		if err := validResponse.VisitPostInvoicesByIdCreditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesByIdDeductible operation middleware
+func (sh *strictHandler) GetInvoicesByIdDeductible(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetInvoicesByIdDeductibleRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesByIdDeductible(ctx, request.(GetInvoicesByIdDeductibleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesByIdDeductible")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesByIdDeductibleResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesByIdDeductibleResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

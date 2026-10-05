@@ -253,7 +253,7 @@ func TestPDFDocumentOf_CarriesTheCurrency(t *testing.T) {
 	d, err := pdfDocumentOf(store.InvoicesInvoice{
 		Kind: kindInvoice, Currency: "SEK", Number: &number, IssueDate: pgDate(time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)),
 		NetTotal: zero, VatTotal: zero, GrossTotal: zero,
-	}, nil, nil, nil)
+	}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("pdfDocumentOf: %v", err)
 	}
@@ -299,11 +299,11 @@ func TestPDFModel_TheKIDLine(t *testing.T) {
 		}
 		return inv
 	}
-	if d, err := pdfDocumentOf(row("0010009", "mod10"), nil, nil, nil); err != nil || d.kid != "0010009" {
+	if d, err := pdfDocumentOf(row("0010009", "mod10"), nil, nil, nil, nil); err != nil || d.kid != "0010009" {
 		t.Errorf("a KID that verifies = %q, %v; want it carried", d.kid, err)
 	}
 	for _, c := range [][2]string{{"0010009", "mod11"}, {"0010005", "mod10"}, {"0010009", ""}, {"", "mod10"}} {
-		if _, err := pdfDocumentOf(row(c[0], c[1]), nil, nil, nil); err == nil {
+		if _, err := pdfDocumentOf(row(c[0], c[1]), nil, nil, nil, nil); err == nil {
 			t.Errorf("kid %q algorithm %q: no error, want one", c[0], c[1])
 		}
 	}
@@ -324,7 +324,7 @@ func TestPDF_TheProjectLine(t *testing.T) {
 		Kind: kindInvoice, Currency: "NOK", Number: &number, IssueDate: pgDate(time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)),
 		OrderReference: "PO-9", ProjectID: &project, ProjectReference: &reference,
 		NetTotal: zero, VatTotal: zero, GrossTotal: zero,
-	}, nil, nil, nil)
+	}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("pdfDocumentOf: %v", err)
 	}
