@@ -1047,7 +1047,7 @@ export interface components {
              * @description The project all of the document's work belongs to (invoices work design D9): set by every save of an invoice draft to the one project all its line sources share, absent when they span two projects or there are none, or when the project directory no longer knows it; never written by a request; frozen at issue; a credit note copies its original's.
              */
             projectId?: number;
-            /** @description The project's code, a snapshot taken when the draft's work first came to span that one project — what the PDF prints and the EHF carries (BT-11 on an invoice, an AdditionalDocumentReference with DocumentTypeCode 50 on a credit note). Present exactly when projectId is. */
+            /** @description The project's code, a snapshot taken when the document's derived project last became this one — what the PDF prints and the EHF carries (BT-11 on an invoice, an AdditionalDocumentReference with DocumentTypeCode 50 on a credit note). Present exactly when projectId is. */
             projectReference?: string;
             /**
              * Format: double

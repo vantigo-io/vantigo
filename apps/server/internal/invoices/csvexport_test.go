@@ -308,3 +308,20 @@ func TestExportCSV_TheProjectColumnLast(t *testing.T) {
 		}
 	}
 }
+
+// The Project cell is the projects module's text, so the formula guard is
+// on it: a project coded like a formula opens as text.
+func TestExportCSV_TheProjectCellIsGuarded(t *testing.T) {
+	t.Parallel()
+	projects := newFakeProjects()
+	projects.edit(project41, func(p *contracts.ProjectEntry) { p.Code = "=P1" })
+	h := workReady(t, newFakeHolders(), projects)
+	d := sourcedDraft(t, h)
+	putDoc(t, creator(t, h), d.ID, sourcedBody(d, customerAcme, theSameLines()...))
+	issued(t, h, d.ID)
+
+	_, rows := exportTable(t, exportCSV(t, h, "from=2026-09-01&to=2026-09-30").Body)
+	if len(rows) != 1 || len(rows[0]) != 18 || rows[0][17] != "'=P1" {
+		t.Errorf("rows = %v, want the Project cell '=P1", rows)
+	}
+}

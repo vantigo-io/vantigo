@@ -304,7 +304,7 @@ type InvoicesInvoiceResponse struct {
 	// ProjectId The project all of the document's work belongs to (invoices work design D9): set by every save of an invoice draft to the one project all its line sources share, absent when they span two projects or there are none, or when the project directory no longer knows it; never written by a request; frozen at issue; a credit note copies its original's.
 	ProjectId *int32 `json:"projectId,omitempty"`
 
-	// ProjectReference The project's code, a snapshot taken when the draft's work first came to span that one project — what the PDF prints and the EHF carries (BT-11 on an invoice, an AdditionalDocumentReference with DocumentTypeCode 50 on a credit note). Present exactly when projectId is.
+	// ProjectReference The project's code, a snapshot taken when the document's derived project last became this one — what the PDF prints and the EHF carries (BT-11 on an invoice, an AdditionalDocumentReference with DocumentTypeCode 50 on a credit note). Present exactly when projectId is.
 	ProjectReference *string `json:"projectReference,omitempty"`
 
 	// RefundDue On an issued invoice whose openAmount is below zero, the amount owed back (−openAmount); absent otherwise. The figure only — refunds are not a flow in this phase.

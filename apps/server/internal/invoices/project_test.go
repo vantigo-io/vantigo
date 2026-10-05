@@ -186,6 +186,32 @@ func TestProject_TheReferenceIsReadBeforeTheLockAndOnlyWhenNeeded(t *testing.T) 
 	}
 }
 
+// A refresh takes each source's current project: work its module now
+// answers under another project moves the document to that one, with the
+// new project's code read before the save's transaction.
+func TestProject_ARefreshMovingTheProjectMovesTheDocument(t *testing.T) {
+	t.Parallel()
+	f := newFakeBillable()
+	h := newHarness(t, append(f.options(), modtest.WithProjects(newFakeProjects()))...)
+	c := creator(t, h)
+	hour := theFour()[0]
+	d := plantedDraft(t, h, hour)
+	saved := putDoc(t, c, d.ID, sourcedBody(d, customerAcme, linesNaming([]planted{hour}, 1)...))
+	if got := projectOf(saved); got != "41 P-41" {
+		t.Fatalf("before the refresh: %s, want 41 P-41", got)
+	}
+
+	freshBillable(f)
+	moved := f.hours[hourOne]
+	moved.ProjectID, moved.Revision = project42, hour.revision+1
+	f.putHour(moved)
+	body := sourcedBody(saved, customerAcme, linesNaming([]planted{hour}, 1)...)
+	body["refreshSources"] = true
+	if got := projectOf(putDoc(t, c, d.ID, body)); got != "42 P-42" {
+		t.Errorf("after a refresh moving the hour to project 42: %s, want 42 P-42", got)
+	}
+}
+
 // With Projects switched off, or the project gone from the directory, there
 // is no code to snapshot and the document names no project (ck_invoices_project
 // keeps the two together).
