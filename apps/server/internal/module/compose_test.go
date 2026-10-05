@@ -1590,3 +1590,308 @@ func TestCompose_PresetCustomerPersonalDataComesFirstAndIsNotWrittenThrough(t *t
 		t.Errorf("Compose wrote %v into the caller's own backing array", spare[1])
 	}
 }
+
+// fakeInvoicedWork is a contracts.InvoicedWorkHolder with a name and the kinds
+// it claims, so a test can tell whose holder landed where. It is never called:
+// Compose collects holders, and only the invoices issue calls them.
+type fakeInvoicedWork struct {
+	name  string
+	kinds []contracts.WorkSourceKind
+}
+
+func (f *fakeInvoicedWork) Kinds() []contracts.WorkSourceKind { return f.kinds }
+
+func (*fakeInvoicedWork) MarkInvoiced(context.Context, pgx.Tx, contracts.InvoiceRef, []contracts.WorkSource) error {
+	return nil
+}
+
+func (*fakeInvoicedWork) ReleaseInvoiced(context.Context, pgx.Tx, contracts.InvoiceRef, []contracts.WorkSource) error {
+	return nil
+}
+
+type fakeBillableHours struct{ projects contracts.ProjectDirectory }
+
+func (*fakeBillableHours) BillableHours(context.Context, contracts.BillableRequest) (contracts.BillableHoursPage, error) {
+	return contracts.BillableHoursPage{}, nil
+}
+
+type fakeBillableExpenses struct{}
+
+func (*fakeBillableExpenses) BillableExpenses(context.Context, contracts.BillableRequest) (contracts.BillableExpensesPage, error) {
+	return contracts.BillableExpensesPage{}, nil
+}
+
+type fakeBillableMilestones struct{ projects contracts.ProjectDirectory }
+
+func (*fakeBillableMilestones) BillableMilestones(context.Context, contracts.BillableRequest) (contracts.BillableMilestonesPage, error) {
+	return contracts.BillableMilestonesPage{}, nil
+}
+
+// The invoiced-work holders are a many-provider slot (rule 10): every module
+// given contributes its holder, a disabled one included — its schema is
+// migrated whatever MODULES says, so an issue must still stamp its rows and a
+// credit note still release them. They follow whatever a caller preset, in the
+// order the modules were given, and every module's Mount sees the one list.
+func TestCompose_InvoicedWorkIsCollectedFromEveryModuleGiven(t *testing.T) {
+	preset := &fakeInvoicedWork{name: "preset"}
+	alpha := &fakeInvoicedWork{name: "alpha", kinds: []contracts.WorkSourceKind{contracts.WorkSourceHours}}
+	beta := &fakeInvoicedWork{name: "beta", kinds: []contracts.WorkSourceKind{contracts.WorkSourceExpense}}
+	presetList := make([]contracts.InvoicedWorkHolder, 1, 4)
+	presetList[0] = preset
+	var got []contracts.InvoicedWorkHolder
+
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}, InvoicedWork: presetList},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{
+			Name:         "alpha",
+			InvoicedWork: func(Deps) contracts.InvoicedWorkHolder { return alpha },
+			Mount: func(d Deps) (http.Handler, error) {
+				got = d.InvoicedWork
+				return staticHandler("alpha")(d)
+			},
+		},
+		Module{
+			Name:         "beta",
+			InvoicedWork: func(Deps) contracts.InvoicedWorkHolder { return beta },
+			Mount:        staticHandler("beta"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if want := []contracts.InvoicedWorkHolder{preset, alpha, beta}; !slices.Equal(got, want) {
+		t.Errorf("Deps.InvoicedWork = %v, want the preset, alpha's, then beta's (disabled)", got)
+	}
+	if spare := presetList[:2]; spare[1] != nil {
+		t.Errorf("Compose wrote %v into the caller's own backing array", spare[1])
+	}
+}
+
+// One kind has one holder: two claiming it would leave the issue no way to
+// know whose rows a source names. Compose refuses, naming the kind and both
+// modules — a disabled module's claim counts, since its holder is collected.
+func TestCompose_RefusesAKindClaimedTwice(t *testing.T) {
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: staticHandler("alpha"), InvoicedWork: func(Deps) contracts.InvoicedWorkHolder {
+			return &fakeInvoicedWork{name: "alpha", kinds: []contracts.WorkSourceKind{contracts.WorkSourceHours}}
+		}},
+		Module{Name: "beta", Mount: staticHandler("beta"), InvoicedWork: func(Deps) contracts.InvoicedWorkHolder {
+			return &fakeInvoicedWork{name: "beta", kinds: []contracts.WorkSourceKind{contracts.WorkSourceExpense, contracts.WorkSourceHours}}
+		}},
+	)
+	if err == nil {
+		t.Fatal("compose: want an error when two modules both stamp time.entry")
+	}
+	if want := `module: two modules both stamp "time.entry": alpha, beta`; err.Error() != want {
+		t.Errorf("error = %q, want %q", err, want)
+	}
+}
+
+// Each billable read is a single-provider slot, like ProjectActuals: two
+// enabled modules declaring one is a compose error naming both.
+func TestCompose_RefusesTwoProvidersOfEachBillableRead(t *testing.T) {
+	cases := []struct {
+		what    string
+		declare func(*Module)
+	}{
+		{"billable hours", func(m *Module) {
+			m.BillableHours = func(Deps) contracts.BillableHours { return &fakeBillableHours{} }
+		}},
+		{"billable expenses", func(m *Module) {
+			m.BillableExpenses = func(Deps) contracts.BillableExpenses { return &fakeBillableExpenses{} }
+		}},
+		{"billable milestones", func(m *Module) {
+			m.BillableMilestones = func(Deps) contracts.BillableMilestones { return &fakeBillableMilestones{} }
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.what, func(t *testing.T) {
+			alpha := Module{Name: "alpha", Mount: staticHandler("alpha")}
+			beta := Module{Name: "beta", Mount: staticHandler("beta")}
+			tc.declare(&alpha)
+			tc.declare(&beta)
+			_, err := compose(Deps{Access: &fakeAccess{}},
+				fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}), alpha, beta)
+			if err == nil {
+				t.Fatalf("compose: want an error when two modules declare %s", tc.what)
+			}
+			if !strings.Contains(err.Error(), tc.what) {
+				t.Errorf("error %q does not say %q", err, tc.what)
+			}
+			if !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+				t.Errorf("error %q does not name both modules", err)
+			}
+		})
+	}
+}
+
+// The billable reads are ordinary optional slots: an enabled provider fills
+// them on every module's Deps — built after Projects, so its constructor may
+// read the project directory — and a disabled one leaves them nil, which
+// Invoices reads as "that kind of work is off".
+func TestCompose_BillableReadsComeOnlyFromEnabledModules(t *testing.T) {
+	projects := &fakeProjectDirectory{}
+	hours, expenses, milestones := &fakeBillableHours{}, &fakeBillableExpenses{}, &fakeBillableMilestones{}
+	var got Deps
+
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha", "beta", "gamma"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract, "gamma": gammaContract, "delta": deltaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", Mount: staticHandler("beta"),
+			BillableHours: func(d Deps) contracts.BillableHours {
+				hours.projects = d.Projects
+				return hours
+			},
+			BillableMilestones: func(d Deps) contracts.BillableMilestones {
+				milestones.projects = d.Projects
+				return milestones
+			},
+		},
+		Module{Name: "gamma", Mount: staticHandler("gamma"), Projects: func(Deps) contracts.ProjectDirectory { return projects }},
+		// delta is not enabled: its provider must never reach anyone's Deps.
+		Module{Name: "delta", Mount: staticHandler("delta"),
+			BillableExpenses: func(Deps) contracts.BillableExpenses { return expenses },
+		},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.BillableHours != hours || got.BillableMilestones != milestones {
+		t.Errorf("Deps.BillableHours, BillableMilestones = %v, %v; want beta's providers", got.BillableHours, got.BillableMilestones)
+	}
+	if got.BillableExpenses != nil {
+		t.Errorf("Deps.BillableExpenses = %v, want nil: delta, its provider, is disabled", got.BillableExpenses)
+	}
+	if hours.projects != projects || milestones.projects != projects {
+		t.Error("a billable provider was built before the project directory was resolved")
+	}
+}
+
+// recordingReferenceHolder and recordingPersonalData record, into one shared
+// log, the order a merge-shaped walk over the composed slot calls them in.
+type recordingReferenceHolder struct {
+	name string
+	log  *[]string
+}
+
+func (h *recordingReferenceHolder) RepointCustomer(context.Context, pgx.Tx, int32, int32) ([]contracts.RepointedReferences, error) {
+	*h.log = append(*h.log, h.name)
+	return nil, nil
+}
+
+type recordingPersonalData struct {
+	name string
+	log  *[]string
+}
+
+func (*recordingPersonalData) ExportCustomerData(context.Context, int32) (any, error) {
+	return nil, nil
+}
+
+func (p *recordingPersonalData) EraseCustomerData(context.Context, pgx.Tx, int32) ([]contracts.ErasedData, error) {
+	*p.log = append(*p.log, p.name)
+	return nil, nil
+}
+
+// partitionModules are four modules given as [holderA, plain1, holderB,
+// plain2]: alpha and gamma provide invoiced work, beta and delta do not, and
+// all four hold customer references and personal data that record when
+// they are called.
+func partitionModules(log *[]string, mount func(string) func(Deps) (http.Handler, error)) []Module {
+	mods := make([]Module, 0, 4)
+	for _, m := range []struct {
+		name   string
+		holder bool
+	}{{"alpha", true}, {"beta", false}, {"gamma", true}, {"delta", false}} {
+		mod := Module{
+			Name:  m.name,
+			Mount: mount(m.name),
+			CustomerReferences: func(Deps) contracts.CustomerReferenceHolder {
+				return &recordingReferenceHolder{name: m.name, log: log}
+			},
+			CustomerPersonalData: func(Deps) contracts.CustomerPersonalData {
+				return &recordingPersonalData{name: m.name, log: log}
+			},
+		}
+		if m.holder {
+			kind := contracts.WorkSourceHours
+			if m.name == "gamma" {
+				kind = contracts.WorkSourceMilestone
+			}
+			mod.InvoicedWork = func(Deps) contracts.InvoicedWorkHolder {
+				return &fakeInvoicedWork{name: m.name, kinds: []contracts.WorkSourceKind{kind}}
+			}
+		}
+		mods = append(mods, mod)
+	}
+	return mods
+}
+
+var partitionContracts = map[string]string{
+	"alpha": alphaContract, "beta": betaContract, "gamma": gammaContract, "delta": deltaContract,
+}
+
+// The merge locks the invoices documents before any project row only because
+// Compose hands it the invoiced-work providers' reference holders after every
+// other module's (rule 10's lock order): a stable partition, each side in the
+// order given.
+func TestCompose_InvoicedWorkProvidersReferencesComeLast(t *testing.T) {
+	var log []string
+	var got []contracts.CustomerReferenceHolder
+	mount := func(name string) func(Deps) (http.Handler, error) {
+		return func(d Deps) (http.Handler, error) {
+			got = d.CustomerReferenceHolders
+			return staticHandler(name)(d)
+		}
+	}
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(partitionContracts), partitionModules(&log, mount)...)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	for _, holder := range got { // the merge's own loop
+		if _, err := holder.RepointCustomer(context.Background(), nil, 1, 2); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if want := []string{"beta", "delta", "alpha", "gamma"}; !slices.Equal(log, want) {
+		t.Errorf("the merge walked the holders as %v, want %v", log, want)
+	}
+}
+
+// Personal data is partitioned the same way, so no later erase that writes a
+// source row can invert the order either.
+func TestCompose_PersonalDataIsPartitionedTheSameWay(t *testing.T) {
+	var log []string
+	var got []contracts.CustomerPersonalDataHolder
+	mount := func(name string) func(Deps) (http.Handler, error) {
+		return func(d Deps) (http.Handler, error) {
+			got = d.CustomerPersonalData
+			return staticHandler(name)(d)
+		}
+	}
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(partitionContracts), partitionModules(&log, mount)...)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	var names []string
+	for _, holder := range got {
+		names = append(names, holder.Module)
+		if _, err := holder.Data.EraseCustomerData(context.Background(), nil, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []string{"beta", "delta", "alpha", "gamma"}
+	if !slices.Equal(names, want) {
+		t.Errorf("Deps.CustomerPersonalData modules = %v, want %v", names, want)
+	}
+	if !slices.Equal(log, want) {
+		t.Errorf("the anonymisation walked the data as %v, want %v", log, want)
+	}
+}

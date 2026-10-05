@@ -24,10 +24,12 @@ import (
 // duplicate name, an invalid or duplicate permission, a Mount error, a path
 // two modules both declare, a component two modules declare differently
 // under the same name, two modules both declaring a customer directory, a
-// user directory, a product catalog, a project directory, project actuals or
-// project expenses (naming both) — customer reference holders and customer
-// personal-data providers, the two many-provider contract slots, are collected
-// from every module given instead, enabled or not — or a nil Deps.Config:
+// user directory, a product catalog, a project directory, project actuals,
+// project expenses, billable hours, billable expenses or billable milestones
+// (naming both) — customer reference holders, customer personal-data providers
+// and invoiced-work holders, the three many-provider contract slots, are
+// collected from every module given instead, enabled or not — a source kind
+// two invoiced-work holders claim, or a nil Deps.Config:
 // enablement (which modules MODULES turns on) is meaningless without one, and
 // every real caller already loads one before composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
@@ -231,6 +233,32 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.Expenses = expensesProvider.Expenses(deps)
 	}
 
+	// The three billable reads (contracts.BillableHours, BillableExpenses,
+	// BillableMilestones, rule 10) resolve beside actuals and expenses, after
+	// the project directory and for the same reason: a provider may read
+	// deps.Projects while it is built, never while it serves.
+	hoursProvider, err := soleProvider(mods, "billable hours", func(m Module) bool { return m.BillableHours != nil })
+	if err != nil {
+		return nil, err
+	}
+	if hoursProvider != nil {
+		deps.BillableHours = hoursProvider.BillableHours(deps)
+	}
+	billableExpensesProvider, err := soleProvider(mods, "billable expenses", func(m Module) bool { return m.BillableExpenses != nil })
+	if err != nil {
+		return nil, err
+	}
+	if billableExpensesProvider != nil {
+		deps.BillableExpenses = billableExpensesProvider.BillableExpenses(deps)
+	}
+	milestonesProvider, err := soleProvider(mods, "billable milestones", func(m Module) bool { return m.BillableMilestones != nil })
+	if err != nil {
+		return nil, err
+	}
+	if milestonesProvider != nil {
+		deps.BillableMilestones = milestonesProvider.BillableMilestones(deps)
+	}
+
 	// Customer reference holders are the one many-provider contract slot
 	// (contracts.CustomerReferenceHolder, customers merge design D1): every
 	// module given that declares one contributes it, in the order given, so
@@ -243,9 +271,10 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// transaction and its own schema, both there regardless. They are
 	// resolved last, on deps as the single slots left it, and appended to
 	// whatever the caller preset — onto a copy, so a harness's own slice is
-	// never written through.
+	// never written through. The modules that provide invoiced work come last
+	// (invoicedWorkLast): rule 10's lock order.
 	var holders []contracts.CustomerReferenceHolder
-	for _, mod := range given {
+	for _, mod := range invoicedWorkLast(given) {
 		if mod.CustomerReferences == nil {
 			continue
 		}
@@ -262,6 +291,14 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// above, by the helper Workers uses too: the export reads it through a
 	// Mount, the anonymisation worker through Workers.
 	deps = withCustomerPersonalData(deps, given)
+
+	// Invoiced work is the third many-provider slot (rule 10), collected from
+	// every module given, for the holders' reason above, by the helper Workers
+	// uses too: the issue reads it through a Mount, and a worker-mode invoices
+	// server through Workers.
+	if deps, err = withInvoicedWork(deps, given); err != nil {
+		return nil, err
+	}
 
 	outer := http.NewServeMux()
 	mounts := make([]moduleMount, 0, len(mods))
@@ -546,12 +583,13 @@ func ResponseError() func(http.ResponseWriter, *http.Request, error) {
 
 // withCustomerPersonalData is deps with every module's
 // contracts.CustomerPersonalData appended to Deps.CustomerPersonalData, each
-// under its module's name, in mods order (customers GDPR design D2) — onto a
-// copy of whatever the caller preset, so a harness's own slice is never
-// written through. mods is every module given, enabled or not.
+// under its module's name, in mods order with the invoiced-work providers
+// last (invoicedWorkLast; customers GDPR design D2) — onto a copy of whatever
+// the caller preset, so a harness's own slice is never written through. mods
+// is every module given, enabled or not.
 func withCustomerPersonalData(deps Deps, mods []Module) Deps {
 	var holders []contracts.CustomerPersonalDataHolder
-	for _, mod := range mods {
+	for _, mod := range invoicedWorkLast(mods) {
 		if mod.CustomerPersonalData == nil {
 			continue
 		}
@@ -563,4 +601,56 @@ func withCustomerPersonalData(deps Deps, mods []Module) Deps {
 		deps.CustomerPersonalData = append(slices.Clone(deps.CustomerPersonalData), holders...)
 	}
 	return deps
+}
+
+// invoicedWorkLast is mods with every module that declares InvoicedWork moved
+// after every module that does not, each side in the order given: a stable
+// partition. It orders the customer slots (rule 10's lock order): an issue
+// locks its invoices document before any source row, so a customers merge or
+// anonymisation, calling the holders in this order, takes the invoices
+// documents before a project's row too, and the two can never wait on each
+// other.
+func invoicedWorkLast(mods []Module) []Module {
+	out := make([]Module, 0, len(mods))
+	for _, mod := range mods {
+		if mod.InvoicedWork == nil {
+			out = append(out, mod)
+		}
+	}
+	for _, mod := range mods {
+		if mod.InvoicedWork != nil {
+			out = append(out, mod)
+		}
+	}
+	return out
+}
+
+// withInvoicedWork is deps with every module's contracts.InvoicedWorkHolder
+// appended to Deps.InvoicedWork, in mods order, onto a copy of whatever the
+// caller preset, so a harness's own slice is never written through. mods is
+// every module given, enabled or not. It refuses a kind two modules claim,
+// naming the kind and both: the issue hands each kind's sources to one holder.
+func withInvoicedWork(deps Deps, mods []Module) (Deps, error) {
+	var holders []contracts.InvoicedWorkHolder
+	claimedBy := make(map[contracts.WorkSourceKind]string)
+	for _, mod := range mods {
+		if mod.InvoicedWork == nil {
+			continue
+		}
+		holder := mod.InvoicedWork(deps)
+		if holder == nil {
+			continue
+		}
+		for _, kind := range holder.Kinds() {
+			if other, ok := claimedBy[kind]; ok {
+				return deps, fmt.Errorf("module: two modules both stamp %q: %s, %s", kind, other, mod.Name)
+			}
+			claimedBy[kind] = mod.Name
+		}
+		holders = append(holders, holder)
+	}
+	if len(holders) > 0 {
+		deps.InvoicedWork = append(slices.Clone(deps.InvoicedWork), holders...)
+	}
+	return deps, nil
 }

@@ -103,6 +103,26 @@ type Deps struct {
 	// caller preset here (the seam modtest.WithCustomerPersonalData fills). nil
 	// when no module given holds anything about a person.
 	CustomerPersonalData []contracts.CustomerPersonalDataHolder
+	// BillableHours, BillableExpenses and BillableMilestones are the
+	// line-level reads an invoice is built from (contracts.BillableHours and
+	// its two siblings, rule 10). Compose sets each, on every module's Deps
+	// copy, from whichever enabled module declares it, after Projects — so a
+	// provider may read deps.Projects while it is built, never while it
+	// serves; each is nil when its module is disabled.
+	BillableHours      contracts.BillableHours
+	BillableExpenses   contracts.BillableExpenses
+	BillableMilestones contracts.BillableMilestones
+	// InvoicedWork is every given module's contracts.InvoicedWorkHolder
+	// (rule 10), enabled or not, in the order the modules were given — the
+	// third many-provider contract slot, collected the customer slots' way
+	// and for their reason: a disabled module's rows are still stamped and
+	// released. Compose collects it before any Mount runs; Workers collects it
+	// too, because worker mode never composes and the EHF workers build an
+	// invoices server from worker-mode Deps. Both append to whatever the caller
+	// preset here (the seam modtest.WithInvoicedWork fills) and refuse a kind
+	// two modules claim. Only the invoices issue calls them, inside its
+	// transaction. nil when no module given provides invoiced work.
+	InvoicedWork []contracts.InvoicedWorkHolder
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -232,4 +252,22 @@ type Module struct {
 	// nothing about a person leaves it nil — time and expenses reach a customer
 	// only through a project, and products not at all.
 	CustomerPersonalData func(Deps) contracts.CustomerPersonalData
+	// BillableHours, BillableExpenses and BillableMilestones build this
+	// module's line-level billable reads (contracts.BillableHours and its
+	// siblings), if it provides one: time, expenses and projects respectively.
+	// At most one enabled module may set each; Compose calls them before any
+	// Mount runs — after it has resolved Projects — and puts the results on
+	// every module's Deps, the same way it resolves Actuals.
+	BillableHours      func(Deps) contracts.BillableHours
+	BillableExpenses   func(Deps) contracts.BillableExpenses
+	BillableMilestones func(Deps) contracts.BillableMilestones
+	// InvoicedWork builds this module's contracts.InvoicedWorkHolder, if an
+	// invoice is built from its rows (rule 10). Like CustomerReferences, any
+	// number of modules may set it, and it is called for a module MODULES
+	// leaves out too, so it must need nothing of Deps but the logger. Compose
+	// and Workers both call it, before anything they build runs, and put the
+	// list on Deps as InvoicedWork; no two holders may claim one kind. A module
+	// that declares it has its CustomerReferences and CustomerPersonalData
+	// placed after every other module's (see invoicedWorkLast in compose.go).
+	InvoicedWork func(Deps) contracts.InvoicedWorkHolder
 }
