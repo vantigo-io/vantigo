@@ -72,6 +72,7 @@ type WorkSource struct {
     ProjectID int32
     Currency  string
     Amount    string // the billable amount as read for the draft: exact decimal text
+    ExpenseKind string // expenses only: the entry's kind, a billing fact the line text depends on
 }
 // WorkSourceRefusal is the one error a holder answers for a source it will
 // not stamp; anything else is a failure, a 500.
@@ -109,7 +110,9 @@ VAT rows and `IssueDocument` last, as today. A `*WorkSourceRefusal` becomes
 number with it, and nothing any holder wrote survives. For a **credit note**, the
 releases (D8) are decided inside `creditIssueChecks` after the original's lock and the
 caps (`inv/credits.go:598-659`), and `ReleaseInvoiced` runs at the same place in step 6,
-with `InvoiceRef` the **original's** id, number and date (the stamp being taken back).
+with `InvoiceRef` the **original's** id, number and date (the stamp being taken back);
+`IssuedAt`, `IssuedBy` and `IssuedByDisplay` are the credit note's issue's — who took the
+stamp back, and when.
 
 **Before the transaction**, beside the profile read (`inv/issue.go:238-243`), the issue
 reads the draft's `line_sources` on the pool and, when any, the projects they name
@@ -122,7 +125,7 @@ Projects disabled and the draft holding sources, the issue **fails closed**: 409
 `projects_unavailable`, before a number. **Under the lock**, the issue compares the
 draft's sources with the set it read before the transaction — any difference (a save
 slipped between) is `invoice_changed`, as a merge's is — and re-checks each project's
-`BillingType` from that read: hours of a project now fixed-price are
+`BillingType` from that read: hours of a project now fixed-price or non-billable are
 `source_not_selectable` (D14).
 
 **What each holder does.** Under Invoices' lock, on `tx`, in its own `queries/`:
@@ -211,11 +214,16 @@ the "How they are enforced" bullets after rule 9's, `MB:150-155`):
 >   back first; each holder marks `ctx` with its own module's locked-transaction flag,
 >   so that module's own contract-call hook catches a directory read inside it.
 >   Invoices' tests run with `modtest.WithInvoicedWork` fakes that run
->   `SELECT pg_current_xact_id()` on the `pgx.Tx` they are handed, which an issue-side
->   hook records too, so the test proves the holder rode the issue's own transaction;
+>   `SELECT pg_current_xact_id()` on the `pgx.Tx` they are handed; `issueAfterAllocation`
+>   becomes `func(ctx context.Context, tx pgx.Tx, invoiceID int64) error` and the test
+>   hook records `pg_current_xact_id()` through that `tx`, so the two values must be
+>   equal and the test proves the holder rode the issue's own transaction;
 >   the harness fails a test when anything but a transaction-bound command
 >   (`noteTxCommand`) is called under a lock. The integration package, on a pool of
->   `MaxConns = 2`, races an issue against each writer of the same rows — the expense's
+>   `MaxConns = 2` serving only the two racing writers — each raw lock-holding transaction
+>   sits on its own `pgx.Connect` connection outside the pool, so any call that takes a
+>   second pool connection under a lock starves and fails the test — races an issue
+>   against each writer of the same rows — the expense's
 >   manual stamp and a batch reimbursement, a milestone move and a project's fixed-price
 >   edit, a time unapprove, and a customer merge — and requires both to finish.
 
@@ -259,7 +267,8 @@ problems: `invoiced_by_invoices` with `invoiceId` and `invoiceNumber`.
 
 `invoices.line_sources`: `id bigint`, `line_id` (FK `invoices.lines`, `ON DELETE
 CASCADE`), `invoice_id` (denormalised for the per-document reads and the triggers),
-`source_kind varchar(30)`, `source_id bigint`, `source_revision int`, `project_id
+`source_kind varchar(30)`, `source_id bigint`, `source_revision int`, `source_subkind
+varchar(20)` (an expense's kind; NULL for the other kinds), `project_id
 integer` (opaque), `quantity numeric(12,3)` (hours, km, 1), `amount numeric(20,6)` (the
 source's exact amount — Time's carries up to six decimals, `R/time.md:374-379`),
 `currency char(3)`, `state varchar(10)` (`held` | `invoiced` | `released`), `source_date
@@ -822,8 +831,8 @@ endpoint).
 ## Testing
 
 Through the invoices harness, plus `modtest.WithInvoicedWork` (a fake holder per kind
-recording each call and the `pg_current_xact_id()` of the `pgx.Tx` it was handed, which an
-issue-side hook records too; able to refuse or fail),
+recording each call and the `pg_current_xact_id()` of the `pgx.Tx` it was handed, which the
+`issueAfterAllocation(ctx, tx, invoiceID)` hook records too; able to refuse or fail),
 `WithBillableHours`, `WithBillableExpenses`, `WithBillableMilestones`, the existing
 `WithProjects` (`srv/modtest/modtest.go:206`) and the fixed clock.
 
@@ -847,8 +856,9 @@ issue-side hook records too; able to refuse or fail),
   unlocked `noteTxCommand`. **The
   doors**: `invoiced_by_invoices` on stamped rows, unchanged on hand-stamped ones.
   **Compose**: the partition; `Workers` carries the slot.
-- **D1, the races** (`srv/integration`, real modules, a pool of `MaxConns = 2`, each
-  pair held at a lock by a raw transaction, both finishing, one outcome winning, the
+- **D1, the races** (`srv/integration`, real modules, a pool of `MaxConns = 2` for the
+  two racing writers only — each raw lock-holding transaction on its own `pgx.Connect`
+  connection outside the pool — each pair held at a lock, both finishing, one outcome winning, the
   loser's refusal the documented one): an issue against the expense's manual mark and a
   batch reimbursement (`srv/expenses/flow.go:218-226`), a milestone `ready → invoiced`
   and a project's fixed-price edit (`LockProject`), a time unapprove; and **against a
