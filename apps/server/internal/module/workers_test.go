@@ -2,7 +2,10 @@ package module
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -138,4 +141,49 @@ func TestWorkers_HandTheWorkersEveryModulesCustomerPersonalData(t *testing.T) {
 	if want := []contracts.CustomerPersonalDataHolder{{Module: "beta", Data: beta}}; !slices.Equal(seen, want) {
 		t.Errorf("alpha's workers saw Deps.CustomerPersonalData = %v, want beta's (disabled)", seen)
 	}
+}
+
+// Worker mode never composes, yet the EHF workers build an invoices server
+// from worker-mode Deps (rule 10): Workers collects the invoiced-work slot
+// from every module given, a disabled one included, and partitions the
+// customer personal data as Compose does, before any module builds its
+// workers.
+func TestWorkers_CarriesInvoicedWorkAndThePartition(t *testing.T) {
+	var log []string
+	var seen Deps
+	mods := partitionModules(&log, func(string) func(Deps) (http.Handler, error) { return nil })
+	mods[1].Workers = func(d Deps) []worker.Worker { // beta, enabled
+		seen = d
+		return nil
+	}
+	Workers(Deps{Config: &config.Config{Modules: []string{"beta"}}}, mods...)
+
+	if len(seen.InvoicedWork) != 2 {
+		t.Fatalf("beta's workers saw Deps.InvoicedWork = %v, want alpha's and gamma's (both disabled)", seen.InvoicedWork)
+	}
+	if a, g := seen.InvoicedWork[0].(*fakeInvoicedWork), seen.InvoicedWork[1].(*fakeInvoicedWork); a.name != "alpha" || g.name != "gamma" {
+		t.Errorf("Deps.InvoicedWork = [%s %s], want [alpha gamma]", a.name, g.name)
+	}
+	var names []string
+	for _, holder := range seen.CustomerPersonalData {
+		names = append(names, holder.Module)
+	}
+	if want := []string{"beta", "delta", "alpha", "gamma"}; !slices.Equal(names, want) {
+		t.Errorf("beta's workers saw Deps.CustomerPersonalData modules = %v, want %v", names, want)
+	}
+}
+
+// Workers has no error to return, so a kind two modules claim — a bug in the
+// binary's own module list, which Compose refuses at startup — panics rather
+// than hand a worker an ambiguous slot.
+func TestWorkers_PanicsOnAKindClaimedTwice(t *testing.T) {
+	holder := func(Deps) contracts.InvoicedWorkHolder {
+		return &fakeInvoicedWork{kinds: []contracts.WorkSourceKind{contracts.WorkSourceHours}}
+	}
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), `"time.entry"`) {
+			t.Errorf("recover() = %v, want a panic naming time.entry", r)
+		}
+	}()
+	Workers(Deps{}, Module{Name: "alpha", InvoicedWork: holder}, Module{Name: "beta", InvoicedWork: holder})
 }

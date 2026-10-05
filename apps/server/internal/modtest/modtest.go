@@ -127,6 +127,10 @@ type setup struct {
 	expenses     contracts.ProjectExpenses
 	holders      []contracts.CustomerReferenceHolder
 	personalData []contracts.CustomerPersonalDataHolder
+	invoicedWork []contracts.InvoicedWorkHolder
+	hours        contracts.BillableHours
+	billExpenses contracts.BillableExpenses
+	milestones   contracts.BillableMilestones
 	smtpVerify   func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend     func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore  storage.ObjectStore
@@ -262,6 +266,39 @@ func WithCustomerReferenceHolders(holders ...contracts.CustomerReferenceHolder) 
 // once, the holders accumulate in order.
 func WithCustomerPersonalData(holders ...contracts.CustomerPersonalDataHolder) Option {
 	return func(s *setup) { s.personalData = append(s.personalData, holders...) }
+}
+
+// WithInvoicedWork adds holders to Deps.InvoicedWork, for the module that
+// issues invoices (rule 10) to be tested against fakes that record what they
+// were asked to stamp or release, and on which transaction — or refuse, to
+// prove an issue rolls back — without composing time, expenses or projects
+// beside it: depguard keeps those out of invoices' tests. module.Compose and
+// module.Workers append the given modules' own after these, so a value set
+// here survives both; given more than once, the holders accumulate in order.
+func WithInvoicedWork(holders ...contracts.InvoicedWorkHolder) Option {
+	return func(s *setup) { s.invoicedWork = append(s.invoicedWork, holders...) }
+}
+
+// WithBillableHours sets Deps.BillableHours directly to p, for a module under
+// test that reads time's billable entries (contracts.BillableHours) without
+// composing time beside it, for WithActuals' reason. module.Compose only ever
+// overwrites Deps.BillableHours when one of the composed modules declares
+// Module.BillableHours, so a value set here survives Compose unchanged.
+// Leaving it out is the installation without time: the slot stays nil.
+func WithBillableHours(p contracts.BillableHours) Option {
+	return func(s *setup) { s.hours = p }
+}
+
+// WithBillableExpenses is WithBillableHours for expenses' billable lines
+// (contracts.BillableExpenses).
+func WithBillableExpenses(p contracts.BillableExpenses) Option {
+	return func(s *setup) { s.billExpenses = p }
+}
+
+// WithBillableMilestones is WithBillableHours for projects' billing
+// milestones (contracts.BillableMilestones).
+func WithBillableMilestones(p contracts.BillableMilestones) Option {
+	return func(s *setup) { s.milestones = p }
 }
 
 // WithSMTPVerify sets the function Deps.SMTPVerify carries, for a module
@@ -433,6 +470,10 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Expenses:                 s.expenses,
 		CustomerReferenceHolders: s.holders,
 		CustomerPersonalData:     s.personalData,
+		InvoicedWork:             s.invoicedWork,
+		BillableHours:            s.hours,
+		BillableExpenses:         s.billExpenses,
+		BillableMilestones:       s.milestones,
 		SMTPVerify:               s.smtpVerify,
 		SMTPSend:                 s.smtpSend,
 		ObjectStore:              s.objectStore,

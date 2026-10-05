@@ -7,9 +7,9 @@ sources:
 ---
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
-its own deployable without a rewrite. Customers, Products, Energy, Communications and
-Projects are vertical-slice modules composed only by `cmd/vantigo`, on the Identity
-platform.
+its own deployable without a rewrite. Customers, Products, Energy, Communications,
+Projects, Time, Expenses and Invoices are vertical-slice modules composed only by
+`cmd/vantigo`, on the Identity platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
 through the in-process contracts in `internal/contracts`; asynchronous ones use the
@@ -21,7 +21,7 @@ Communications' outbox is the working example.
 1. **No module→module dependencies.** A package under `internal/<module>/…` may
    import platform packages (`internal/config`, `internal/db`, `internal/httpx`,
    `internal/module`, `internal/contracts`, `internal/peppol` — the Peppol
-   SML/SMP lookup, shared with the future Invoices module — `internal/netguard`
+   SML/SMP lookup, shared by Customers and Invoices — `internal/netguard`
    — the shared table of addresses the guarded outbound clients refuse to
    dial (today `internal/mail`'s SMTP guard and `internal/peppol`'s SMP
    client; Brreg, OIDC and the AI client use `http.DefaultTransport`) — …)
@@ -41,36 +41,51 @@ Communications' outbox is the working example.
 3. **Contracts stay pure.** `internal/contracts` holds cross-module interfaces,
    permissions and access rules as DTOs only, never store types, so any module or a
    future extracted service can implement or consume them.
-   The one non-DTO type is `pgx.Tx`, in `contracts.CustomerReferenceHolder` and
-   `contracts.CustomerPersonalData` — a platform type, never a store type, and the
-   reason is rules 8 and 9's.
+   The one non-DTO type is `pgx.Tx`, in `contracts.CustomerReferenceHolder`,
+   `contracts.CustomerPersonalData` and `contracts.InvoicedWorkHolder` — a platform
+   type, never a store type, and the reason is rules 8, 9 and 10's.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
-   `projects`, `time`, `expenses`), and no module's migrations or queries reference
+   `projects`, `time`, `expenses`, `invoices`), and no module's migrations or queries reference
    another's. **No cross-schema foreign keys or joins** — reference other modules'
    data by opaque ID only. That is what keeps a future "move this schema to its own
    server" a connection-string change instead of a data migration.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are six provider slots, each filled by at most one enabled module:
+   There are nine single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Products` (`contracts.ProductCatalog`,
    products), `Projects` (`contracts.ProjectDirectory`, projects), `Actuals`
-   (`contracts.ProjectActuals`, time) and `Expenses`
-   (`contracts.ProjectExpenses`, expenses). `module.Compose` mounts each module at
-   `/api/v1/<name>/` and builds every provider before any `Mount` runs, so a
-   module's `Deps` already carries what it consumes; `Actuals` and `Expenses` are
-   resolved last, after `Projects`, so those providers' *constructors* are allowed
-   to read the project directory (neither does, but a future provider could).
-   Three slots are *many-provider* instead — any number of modules may fill them,
+   (`contracts.ProjectActuals`, time), `Expenses`
+   (`contracts.ProjectExpenses`, expenses), and the three line-level reads an
+   invoice is built from — `BillableHours` (`contracts.BillableHours`, time),
+   `BillableExpenses` (`contracts.BillableExpenses`, expenses) and
+   `BillableMilestones` (`contracts.BillableMilestones`, projects). `module.Compose`
+   mounts each module at `/api/v1/<name>/` and builds every provider before any
+   `Mount` runs, so a module's `Deps` already carries what it consumes; `Actuals`,
+   `Expenses` and the three `Billable*` are resolved last, after `Projects`, so
+   those providers' *constructors* are allowed to read the project directory (none
+   does, but a future provider could).
+   Four slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CustomerReferences`
-   (`contracts.CustomerReferenceHolder`, rule 8) and `CustomerPersonalData`
-   (`contracts.CustomerPersonalData`, rule 9), both from every module Compose is
-   given, enabled or not — see [Turning a module off](#turning-a-module-off).
-   `module.Workers` collects `CustomerPersonalData` as well, because worker mode
-   never composes and the anonymisation worker is where rule 9's erase runs.
+   (`contracts.CustomerReferenceHolder`, rule 8), `CustomerPersonalData`
+   (`contracts.CustomerPersonalData`, rule 9) and `InvoicedWork`
+   (`contracts.InvoicedWorkHolder`, rule 10), the last three from every module
+   Compose is given, enabled or not — see [Turning a module off](#turning-a-module-off).
+   No two invoiced-work holders may claim one source kind. `module.Workers`
+   collects `CustomerPersonalData` and `InvoicedWork` as well, because worker mode
+   never composes: the anonymisation worker is where rule 9's erase runs, and the
+   EHF workers build an Invoices server from worker-mode `Deps`, which must never
+   read an empty slot as "nothing to stamp".
+   One order is not the module order: both Compose and Workers put the
+   `CustomerReferences` and `CustomerPersonalData` of the modules that declare
+   `InvoicedWork` **after every other module's**, each side in module order (a
+   stable partition). A merge or an anonymisation then locks the invoices
+   documents before any row of a module invoices are built from — the order an
+   invoice's issue takes them in (rule 10) — so the two can never wait on each
+   other.
 6. **Never reach around the boundary.** Do not call another module's HTTP endpoints
    from inside the process, and do not reach into another module's schema.
 7. **Frontend packages are isolated too.** A module frontend package (for instance
@@ -90,7 +105,7 @@ Communications' outbox is the working example.
    that already points at the surviving customer. Today's holders are projects,
    energy, communications and invoices ([Merging duplicates](/en/reference/customers/#merging-duplicates)).
    Another write direction needs a design of its own, not a second holder-shaped
-   interface — rule 9 is that design for the second.
+   interface — rule 9 is that design for the second, and rule 10 for the third.
 9. **A person's data, handed over and taken out.** The second sanctioned
    cross-module direction, made for the GDPR of private-person customers:
    `contracts.CustomerPersonalData`. A module that holds anything about a
@@ -111,6 +126,45 @@ Communications' outbox is the working example.
    as bookkeeping material with the payments' notes blanked, the deliveries kept
    with the recipient blanked)
    ([Personal data and anonymisation](/en/reference/customers/#personal-data-and-anonymisation)).
+10. **Work marked invoiced, inside the issue.** The third sanctioned cross-module
+    direction, made for invoicing work: `contracts.InvoicedWorkHolder`. A module whose
+    rows an invoice is built from — Time's entries, Expenses' lines, Projects' billing
+    milestones — declares `Module.InvoicedWork`, and Invoices calls the holders
+    **inside its issue's transaction**, which already holds the document, the settings
+    row, the number counter and, for a credit note, its original locked: after every
+    check and the number, before the document is written. `MarkInvoiced` judges each
+    source as it stands under the holder's own lock — already invoiced first
+    (`source_already_invoiced`), then still approved, ready or billable
+    (`source_not_invoiceable`), then at the revision and amount the draft took it at
+    (`source_changed`), amounts compared exactly, by value — and stamps it with the
+    invoice's id, number and date; `ReleaseInvoiced` takes the stamp back in the issue
+    of the credit note that returns the source's line in full. A source a holder will
+    not stamp is answered as a `*contracts.WorkSourceRefusal`, and the issue refuses
+    with its code and the line's position — the number, and every holder's write, roll
+    back with it; any other error is a failure. A holder keeps rule 8's rules: it runs
+    its own SQL on its own schema from its own package, on the caller's `pgx.Tx`; it
+    never begins or ends a transaction and never reads a directory, any other contract
+    or a clock — every timestamp it writes is the issue's own (`InvoiceRef.IssuedAt`),
+    and the issuer's name arrives in `InvoiceRef.IssuedByDisplay`; the period lock
+    applies to neither direction, a stamp not being an edit of the work; its release
+    takes the same locks as its mark and tolerates a source that no longer carries the
+    stamp, writing nothing for it and logging a warning, because a credit note must
+    never be blocked; and it runs whether or not its module is enabled, its constructor
+    needing nothing but `Deps.Logger`. **The cross-module lock order**
+    (`contracts.InvoicedWorkOrder`) is Invoices' own first — the document, the settings
+    row, the counter, then a credit note's original — and then the source modules in one
+    fixed order: Projects (the project rows, then their milestones), Expenses (the
+    claims, then the lines, by id), Time (the entries, by id). No source module ever
+    locks a row of `invoices`, and a transaction that locks both an invoices document
+    and a source module's row takes the document first — which is why the customers
+    merge and anonymisation call the holders of the modules that provide invoiced work
+    after every other module's, Invoices' included (rule 5's partition).
+    The rule every locked transaction keeps is restated for it: **no call that takes
+    its own connection or leaves the process while a transaction holds locks**. A
+    directory read takes a second connection from the pool and an object-store call
+    leaves the process, so neither is ever made under a lock; a holder's command runs
+    on the caller's transaction and does neither, which is what rules 8, 9 and 10 have
+    in common.
 
 ## How they are enforced
 
@@ -137,8 +191,11 @@ Communications' outbox is the working example.
   invalid or duplicate permission key, a `Mount` error, a path two modules both
   declare, a component two modules declare differently under the same name, or two
   modules both declaring the same provider — a customer directory, a user directory,
-  a product catalog, a project directory, project actuals or project expenses —
-  naming both.
+  a product catalog, a project directory, project actuals, project expenses,
+  billable hours, billable expenses or billable milestones — naming both, or a
+  source kind two invoiced-work holders both claim (`module: two modules both stamp
+  "time.entry": a, b`), naming the kind and both. `module.Workers`, which has no
+  error to return, panics on the same kind claimed twice.
 - **Rule 7**: `no-restricted-imports` in each module frontend's `eslint.config.js`,
   run by `bun run frontend:lint` locally and in CI.
 - **Rule 8**: by shape and by test. `RepointCustomer` is handed the caller's
@@ -153,6 +210,18 @@ Communications' outbox is the working example.
   4's scan covers it; each module's package test erases real rows through a real
   transaction it rolls back first, and the customers module's anonymisation tests
   prove a module's error rolls that customer's whole anonymisation back.
+- **Rule 10**: by shape and by test, as rules 8 and 9. `MarkInvoiced` and
+  `ReleaseInvoiced` are handed the caller's `pgx.Tx`; their SQL is in each module's
+  `queries/`, so rule 4's scan covers it; depguard keeps Invoices and the three
+  source modules apart, tests included. Each holder's package test builds it from
+  `Deps` with `Pool` nil — so it can only write through the transaction — and stamps
+  and releases real rows through one it rolls back first; each holder marks `ctx`
+  with its own module's locked-transaction flag, so that module's own contract-call
+  hook catches a directory read inside it. `module.Compose` and `module.Workers`
+  collect the slot from every module given, and both put the invoiced-work
+  providers' `CustomerReferences` and `CustomerPersonalData` after every other
+  module's — `internal/module`'s tests walk the composed slots as a merge and an
+  anonymisation do and pin that order.
 
 ## Turning a module off
 
@@ -164,7 +233,7 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications,projects,time,expenses`). Identity is always mounted and
+(`customers,products,energy,communications,projects,time,expenses,invoices`). Identity is always mounted and
 is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
 name the binary does not know fails startup naming both the value and the known set.
 
@@ -242,7 +311,7 @@ which a provider contract cannot see or grant on its behalf. See
 [`docs/projects.md`](/en/reference/projects/#project-economy) for what each shaping level
 returns.
 
-Time consumes four contracts and provides one:
+Time consumes four contracts and provides two, and fills one many-provider slot:
 `contracts.ProjectDirectory` (required — hence the config check — including
 `WorkType`, the project's work type an entry picked, whose multipliers the rate
 chain's last step applies and which is read before a save's transaction opens like
@@ -258,19 +327,27 @@ defensive floor rather than a mode) — and it provides
 `contracts.ProjectActuals` (optional for its
 consumer, above), reading its own `time` tables and never calling back into
 `contracts.ProjectDirectory` to serve it: the currency an amount is measured in
-arrives in the request, because Projects is the module that owns that fact. It also
+arrives in the request, because Projects is the module that owns that fact. Beside
+that aggregate it provides `contracts.BillableHours` — the approved, billable,
+priced entries not yet invoiced, row by row, read on the pool and never under a
+lock — and it fills `InvoicedWork` with the holder that stamps an entry invoiced
+inside an invoice's issue and releases it in a credit note's (rule 10). It also
 keeps a rule worth copying: **no contract call inside a transaction that holds a
 lock**, enforced by fakes that record any call made under one — the economy reads on
 both sides take no lock at all.
 
 **Expenses depends on nobody but identity.** Unlike every other business module,
 it needs no config-checked dependency at all: `MODULES=expenses` alone is a valid
-installation, and so is `MODULES=customers,expenses`. It fills one provider slot —
+installation, and so is `MODULES=customers,expenses`. It fills two provider slots —
 `Expenses` (`contracts.ProjectExpenses`, above), served from its own tables by
 `internal/expenses/projectexpenses.go`, which takes the pool and nothing else and
-asks the project directory nothing while it serves — and that is not a dependency
-either way: an installation with no `projects` provides it to nobody, and one
-without `expenses` leaves the consumer's slot nil. `contracts.ProjectDirectory` is
+asks the project directory nothing while it serves, and beside it
+`BillableExpenses` (`contracts.BillableExpenses`, the lines ready to invoice and not
+yet invoiced, row by row, read on the pool and never under a lock) — and it fills
+`InvoicedWork` with the holder that stamps a line invoiced inside an invoice's issue
+and releases it in a credit note's (rule 10). None of that is a dependency either
+way: an installation with no `projects` or no `invoices` provides them to nobody, and
+one without `expenses` leaves the consumers' slots nil. `contracts.ProjectDirectory` is
 read, but purely *optionally* — `Deps.Projects` is nil when `projects` is not
 enabled, `GET /meta` answers `projectsAvailable: false`, and every project-shaped
 request field (a project id, a billing line, `billable`, a markup, a customer rate
