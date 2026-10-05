@@ -173,8 +173,8 @@ Communications' outbox is the working example.
     exists) and the issuer's name (`UserDirectory.User`); a kind no holder claims is a
     composition bug, an error log and a 500, never a skipped stamp. Under the lock, after
     every check and the number, it reads the draft's work again — any difference, a save
-    slipped in between, is `invoice_changed` — applies the projects' billing types
-    (`source_not_selectable`), calls each kind's holder **once, in
+    slipped in between, is `invoice_changed` — applies the projects' billing types as
+    read before the transaction (`source_not_selectable`), calls each kind's holder **once, in
     `contracts.InvoicedWorkOrder`**, with `InvoiceRef{ID, Number, IssueDate, IssuedAt,
     IssuedBy, IssuedByDisplay}` — `IssuedAt` the issue's own clock, read once and also
     the document's `issued_at` — and only then moves its `line_sources` from held to
