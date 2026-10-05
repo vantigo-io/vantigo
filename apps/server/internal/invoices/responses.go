@@ -276,6 +276,15 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		}
 		resp.Lines = append(resp.Lines, line)
 	}
+	// The work the lines bill, from the document's own rows (invoices work
+	// design D2): never a live read, which GET adds for a draft.
+	held, err := sourcesOf(ctx, q, inv.ID)
+	if err != nil {
+		return gen.InvoicesInvoiceResponse{}, err
+	}
+	if err := withSources(held, inv.Status == statusDraft, stored, &resp); err != nil {
+		return gen.InvoicesInvoiceResponse{}, err
+	}
 	switch {
 	case inv.BuyerName != nil:
 		resp.CustomerName = inv.BuyerName

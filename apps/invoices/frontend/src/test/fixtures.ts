@@ -91,6 +91,39 @@ export const draft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument
   ...overrides,
 });
 
+/**
+ * An invoice draft made from work (invoices work design D2), as a save answers
+ * it: line 1 bills two hour entries and is written down below their sum, line 2
+ * a mileage expense and line 3 nothing; the save released a milestone.
+ */
+export const workDraft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
+  const base = draft();
+  const held = { projectId: 41, state: "held" };
+  return {
+    ...base,
+    lines: [
+      {
+        ...base.lines[0],
+        sources: [
+          { ...held, kind: "time.entry", id: 501, date: "2026-09-01", quantity: 4, amount: 4800 },
+          { ...held, kind: "time.entry", id: 502, date: "2026-09-02", quantity: 3.5, amount: 4200 },
+        ],
+        warnings: ["line_differs_from_sources"],
+      },
+      {
+        ...base.lines[1],
+        sources: [{ ...held, kind: "expenses.entry", id: 601, date: "2026-09-03", quantity: 90, amount: 450 }],
+        warnings: [],
+      },
+      { ...base.lines[2], sources: [], warnings: [] },
+    ],
+    sources: { count: 3, held: 3, invoiced: 0, released: 0 },
+    releasedSources: [{ kind: "projects.milestone", id: 701 }],
+    warnings: ["line_differs_from_sources", "sources_released"],
+    ...overrides,
+  };
+};
+
 /** The same invoice, issued as number 1000, nothing credited or paid yet: open. */
 export const issued = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
   const base = draft();

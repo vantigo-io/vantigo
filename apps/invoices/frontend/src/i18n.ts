@@ -138,6 +138,14 @@ export const invoicesCatalog = {
       "A line's VAT code has no rate today, so it counts at 0 %; it cannot be issued as it stands.",
     "warning.ehf_buyer_reference_missing":
       "This customer is invoiced by EHF, which needs your customer's reference or an order reference. Add one before issuing: neither can change afterwards.",
+    "warning.line_differs_from_sources":
+      "A line's amount differs from the work it bills. That is allowed — a write-down, a rounding — but check it is meant.",
+    "warning.sources_released":
+      "The save released work from this draft; it is uninvoiced again and can be invoiced elsewhere.",
+    "warning.source_changed":
+      "Work on this draft has changed since it was added; refresh the work, or the issue will refuse it.",
+    "warning.source_not_invoiceable":
+      "Work on this draft can no longer be invoiced; refresh the work to drop it, or the issue will refuse it.",
     preview: "Preview",
     issue: "Issue",
     saveBeforePreview: "Save the changes before previewing.",
@@ -418,6 +426,7 @@ export const invoicesCatalog = {
     "refusal.transmission_not_cancellable":
       "The transmission may already have reached the access point, so it can no longer be cancelled.",
     "refusal.transmission_not_resolvable": "Only a transmission awaiting confirmation can be resolved.",
+    "refusal.source_held_elsewhere": "Some of this work is already on another draft or an issued invoice.",
 
     eInvoicing: "E-invoicing",
     eInvoicingDescription: "Send documents as EHF over the Peppol network, through an access point.",
@@ -696,6 +705,14 @@ export const invoicesCatalog = {
       "En linjes mva-kode har ingen sats i dag, så den teller som 0 %; den kan ikke utstedes slik den er.",
     "warning.ehf_buyer_reference_missing":
       "Denne kunden faktureres med EHF, som krever kundens referanse eller en ordrereferanse. Legg inn en før du utsteder: ingen av dem kan endres etterpå.",
+    "warning.line_differs_from_sources":
+      "Beløpet på en linje avviker fra arbeidet den fakturerer. Det er lov — en nedskrivning, en avrunding — men sjekk at det er meningen.",
+    "warning.sources_released":
+      "Lagringen frigjorde arbeid fra dette utkastet; det er ufakturert igjen og kan faktureres et annet sted.",
+    "warning.source_changed":
+      "Arbeid på dette utkastet er endret siden det ble lagt til; oppdater arbeidet, ellers avviser utstedelsen det.",
+    "warning.source_not_invoiceable":
+      "Arbeid på dette utkastet kan ikke lenger faktureres; oppdater arbeidet for å fjerne det, ellers avviser utstedelsen det.",
     preview: "Forhåndsvis",
     issue: "Utsted",
     saveBeforePreview: "Lagre endringene før du forhåndsviser.",
@@ -973,6 +990,8 @@ export const invoicesCatalog = {
     "refusal.transmission_not_cancellable":
       "Sendingen kan allerede ha nådd aksesspunktet, så den kan ikke lenger avbrytes.",
     "refusal.transmission_not_resolvable": "Bare en sending som venter på bekreftelse kan avklares.",
+    "refusal.source_held_elsewhere":
+      "Noe av dette arbeidet ligger allerede på et annet utkast eller en utstedt faktura.",
 
     eInvoicing: "E-faktura",
     eInvoicingDescription: "Send dokumenter som EHF i Peppol-nettverket, gjennom et aksesspunkt.",

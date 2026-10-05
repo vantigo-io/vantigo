@@ -17,9 +17,10 @@ import (
 )
 
 // This file is the whole of this module's reach outside its own schema: the
-// customer directory (deps.Directory), the object store (server.objects), the
-// SMTP seam (deps.SMTPSend), the Peppol network (server.peppolLookup) and the
-// access point (accessPoint).
+// customer directory (deps.Directory), the source modules' billable reads
+// (deps.BillableHours, BillableExpenses, BillableMilestones), the object store
+// (server.objects), the SMTP seam (deps.SMTPSend), the Peppol network
+// (server.peppolLookup) and the access point (accessPoint).
 // Every call is made through one of the thin accessors below and through
 // nowhere else, so "what does Invoices ask of its neighbours, and when" has one
 // place to read the answer and one place to check it from.
@@ -58,6 +59,26 @@ func (s *server) customerEntries(ctx context.Context, ids []int32) ([]contracts.
 	}
 	noteContractCall(ctx, "Directory.Customers")
 	return s.deps.Directory.Customers(ctx, ids)
+}
+
+// billableHours, billableExpenses and billableMilestones are the source
+// modules' line-level reads (invoices work design D3), made on the pool and
+// never inside withLockedTx: a held source's freshness on GET and the reads
+// refreshSources makes before its save's transaction. A caller checks the
+// slot is composed first — nil is the module switched off.
+func (s *server) billableHours(ctx context.Context, req contracts.BillableRequest) (contracts.BillableHoursPage, error) {
+	noteContractCall(ctx, "BillableHours.BillableHours")
+	return s.deps.BillableHours.BillableHours(ctx, req)
+}
+
+func (s *server) billableExpenses(ctx context.Context, req contracts.BillableRequest) (contracts.BillableExpensesPage, error) {
+	noteContractCall(ctx, "BillableExpenses.BillableExpenses")
+	return s.deps.BillableExpenses.BillableExpenses(ctx, req)
+}
+
+func (s *server) billableMilestones(ctx context.Context, req contracts.BillableRequest) (contracts.BillableMilestonesPage, error) {
+	noteContractCall(ctx, "BillableMilestones.BillableMilestones")
+	return s.deps.BillableMilestones.BillableMilestones(ctx, req)
 }
 
 // objectPut, objectGet and objectExists are the object store.

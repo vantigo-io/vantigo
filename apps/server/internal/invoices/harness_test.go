@@ -449,3 +449,172 @@ func (s *fakeObjectStore) Delete(_ context.Context, key string) error {
 	delete(s.objects, key)
 	return nil
 }
+
+// fakeBillable is the three billable reads (contracts.BillableHours,
+// BillableExpenses, BillableMilestones) over rows a test puts in, for the
+// held sources' freshness and refresh without composing time, expenses or
+// projects (depguard keeps them out of this package's tests). Every read is
+// recorded with what it asked for and whether it was made inside one of this
+// module's locked transactions — which it never may be — and the harness's
+// contract-call hook checks the same through the accessors. Safe for
+// concurrent use.
+type fakeBillable struct {
+	mu         sync.Mutex
+	hours      map[int64]contracts.BillableHour
+	expenses   map[int64]contracts.BillableExpense
+	milestones map[int64]contracts.BillableMilestone
+	calls      []billableCall
+	// onRead, when set, runs once, after the next read and outside the
+	// fake's lock: what happens between a refresh's read and its save's
+	// lock.
+	onRead func()
+	// failure, when set, is what every read fails with.
+	failure error
+}
+
+// billableCall is one read: which, by which ids, and whether under a lock.
+type billableCall struct {
+	method string
+	ids    []int64
+	locked bool
+}
+
+var (
+	_ contracts.BillableHours      = (*fakeBillable)(nil)
+	_ contracts.BillableExpenses   = (*fakeBillable)(nil)
+	_ contracts.BillableMilestones = (*fakeBillable)(nil)
+)
+
+func newFakeBillable() *fakeBillable {
+	return &fakeBillable{
+		hours: map[int64]contracts.BillableHour{}, expenses: map[int64]contracts.BillableExpense{},
+		milestones: map[int64]contracts.BillableMilestone{},
+	}
+}
+
+// options composes the fake as all three reads.
+func (f *fakeBillable) options() []modtest.Option {
+	return []modtest.Option{modtest.WithBillableHours(f), modtest.WithBillableExpenses(f), modtest.WithBillableMilestones(f)}
+}
+
+// putHour, putExpense and putMilestone make a row billable as given;
+// drop makes it no longer billable.
+func (f *fakeBillable) putHour(h contracts.BillableHour) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hours[h.ID] = h
+}
+
+func (f *fakeBillable) putExpense(e contracts.BillableExpense) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.expenses[e.ID] = e
+}
+
+func (f *fakeBillable) putMilestone(m contracts.BillableMilestone) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.milestones[m.ID] = m
+}
+
+// afterNextRead sets onRead.
+func (f *fakeBillable) afterNextRead(fn func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onRead = fn
+}
+
+// fail makes every read fail with err, nil to stop.
+func (f *fakeBillable) fail(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failure = err
+}
+
+// reads is every read made so far.
+func (f *fakeBillable) reads() []billableCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.calls)
+}
+
+// record notes one read and answers the hook to run after it and the failure.
+func (f *fakeBillable) record(ctx context.Context, method string, req contracts.BillableRequest) (func(), error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, billableCall{method: method, ids: slices.Clone(req.IDs), locked: invoices.InLockedTx(ctx)})
+	after := f.onRead
+	f.onRead = nil
+	return after, f.failure
+}
+
+// wanted reports whether a row of project with id is what req asks for.
+func wanted(req contracts.BillableRequest, id int64, project int32) bool {
+	if len(req.IDs) > 0 {
+		return slices.Contains(req.IDs, id)
+	}
+	return slices.Contains(req.ProjectIDs, project)
+}
+
+func (f *fakeBillable) BillableHours(ctx context.Context, req contracts.BillableRequest) (contracts.BillableHoursPage, error) {
+	after, err := f.record(ctx, "BillableHours", req)
+	if after != nil {
+		defer after()
+	}
+	if err != nil {
+		return contracts.BillableHoursPage{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	page := contracts.BillableHoursPage{Hours: []contracts.BillableHour{}}
+	for _, h := range f.hours {
+		if wanted(req, h.ID, h.ProjectID) {
+			page.Hours = append(page.Hours, h)
+		}
+	}
+	slices.SortFunc(page.Hours, func(a, b contracts.BillableHour) int { return int(a.ID - b.ID) })
+	return page, nil
+}
+
+func (f *fakeBillable) BillableExpenses(ctx context.Context, req contracts.BillableRequest) (contracts.BillableExpensesPage, error) {
+	after, err := f.record(ctx, "BillableExpenses", req)
+	if after != nil {
+		defer after()
+	}
+	if err != nil {
+		return contracts.BillableExpensesPage{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	page := contracts.BillableExpensesPage{Expenses: []contracts.BillableExpense{}}
+	for _, e := range f.expenses {
+		if wanted(req, e.ID, e.ProjectID) {
+			page.Expenses = append(page.Expenses, e)
+		}
+	}
+	slices.SortFunc(page.Expenses, func(a, b contracts.BillableExpense) int { return int(a.ID - b.ID) })
+	return page, nil
+}
+
+func (f *fakeBillable) BillableMilestones(ctx context.Context, req contracts.BillableRequest) (contracts.BillableMilestonesPage, error) {
+	after, err := f.record(ctx, "BillableMilestones", req)
+	if after != nil {
+		defer after()
+	}
+	if err != nil {
+		return contracts.BillableMilestonesPage{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	page := contracts.BillableMilestonesPage{Milestones: []contracts.BillableMilestone{}}
+	for _, m := range f.milestones {
+		if wanted(req, m.ID, m.ProjectID) {
+			page.Milestones = append(page.Milestones, m)
+		}
+	}
+	slices.SortFunc(page.Milestones, func(a, b contracts.BillableMilestone) int { return int(a.ID - b.ID) })
+	return page, nil
+}

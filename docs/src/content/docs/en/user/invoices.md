@@ -272,6 +272,20 @@ number is lost. Both need `invoices:create`; without it the editor is read-only.
 If someone else saved the draft meanwhile, the editor says **The draft changed** and
 offers **Reload**, which drops your unsaved edits for the latest version.
 
+**A draft made from work.** A draft can bill uninvoiced work — hours, expenses and
+billing milestones from the projects — and then keeps that work on its lines: each line
+knows which entries it bills, and while the draft holds them no other draft can take
+them. Saving keeps the work with its line, even when you edit the line's text or amount;
+a line whose amount no longer matches its work says so under **Worth a look** (*A line's
+amount differs from the work it bills*), which is allowed — a write-down, a rounding.
+Removing the line, or changing the draft's customer, releases its work, which is then
+uninvoiced again; the save says *The save released work from this draft*. When work has
+changed since it was added, or can no longer be invoiced — an entry unapproved, a
+milestone moved back — the draft warns about it, and refreshing the work takes its
+current figures and drops what can no longer be invoiced; the issue would refuse either.
+Work arrives on a draft only through the uninvoiced view of a customer or a project,
+which comes with the screens for it; until then no draft holds any.
+
 ## Issuing
 
 Click **Issue** in the draft's header — offered with `invoices:issue`, after a save, and

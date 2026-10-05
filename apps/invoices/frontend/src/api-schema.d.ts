@@ -193,7 +193,7 @@ export interface paths {
         put?: never;
         /**
          * Create an invoice draft
-         * @description Creates an invoice draft (D4). The buyer's billing profile is read before anything is written, for the prefills and the customer gates.
+         * @description Creates an invoice draft (D4). The buyer's billing profile is read before anything is written, for the prefills and the customer gates. A line naming sources, or refreshSources, is a 400 — work is added to a draft through the uninvoiced view (invoices work design D2).
          */
         post: operations["postInvoices"];
         delete?: never;
@@ -211,12 +211,12 @@ export interface paths {
         };
         /**
          * Get an invoice or a credit note
-         * @description One document with its lines, VAT summaries, warnings and credit links.
+         * @description One document with its lines, VAT summaries, warnings and credit links. On an invoice draft that bills work, a caller holding invoices:create is also told which of its sources changed or are no longer invoiceable (source_changed, source_not_invoiceable), read by id through the source modules' billable reads; a module that is off is not judged, and a read that fails leaves the warnings out (invoices work design D2).
          */
         get: operations["getInvoicesById"];
         /**
          * Replace a draft
-         * @description Replaces a draft whole, with revision (D4). Only a draft is edited (409 invoice_issued otherwise). A credit-note draft changes only what D8 allows — lines removed, a quantity or a unit price lowered, a description, the note and the internal note — and anything else — another customer, currency, delivery, place of delivery or reference, payment terms, a line's VAT code or unit changed, a quantity or unit price raised, a discount lowered, a line added or one credited twice — is a 400 on the field; its revision is checked first, so a stale copy is the revision 409.
+         * @description Replaces a draft whole, with revision (D4). Only a draft is edited (409 invoice_issued otherwise). A credit-note draft changes only what D8 allows — lines removed, a quantity or a unit price lowered, a description, the note and the internal note — and anything else — another customer, currency, delivery, place of delivery or reference, payment terms, a line's VAT code or unit changed, a quantity or unit price raised, a discount lowered, a line added or one credited twice — is a 400 on the field, and so is a line naming sources or refreshSources; its revision is checked first, so a stale copy is the revision 409. On an invoice draft that holds work (invoices work design D2) every line names its sources — absent is a 400 on lines[i].sources, [] drops — each one the draft holds, once — a save never adds work. A source left out of every line, on a removed line or under a changed customer is dropped and named in releasedSources. refreshSources re-reads the held work first.
          */
         put: operations["putInvoicesById"];
         post?: never;
@@ -580,7 +580,7 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save would hold is held by another live draft or invoiced by an unreleased issued line; the detail names that document), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -927,7 +927,7 @@ export interface components {
             state: string;
             status: string;
         };
-        /** @description A draft, created (POST) or replaced whole (PUT, with revision) (D4). customerId is the buyer. currency, when given, is NOK — "Only NOK in this phase". Delivery is deliveryDate alone, deliveryFrom with deliveryTo (from on or before to), or none — none only on a draft; the issue refuses it. references are at most 100 characters each, note and internalNote 1000. lines are at most 500. On create, an omitted yourReference is the billing profile's buyerReference and an omitted paymentTermsDays the profile's terms, else the settings' default; on PUT an invoice's paymentTermsDays is required and an omitted reference is cleared. On a credit-note draft only what D8 allows may change: lines may be removed, a quantity or a unit price lowered, and a description, the note and the internal note edited. */
+        /** @description A draft, created (POST) or replaced whole (PUT, with revision) (D4). customerId is the buyer. currency, when given, is NOK — "Only NOK in this phase". Delivery is deliveryDate alone, deliveryFrom with deliveryTo (from on or before to), or none — none only on a draft; the issue refuses it. references are at most 100 characters each, note and internalNote 1000. lines are at most 500. On create, an omitted yourReference is the billing profile's buyerReference and an omitted paymentTermsDays the profile's terms, else the settings' default; on PUT an invoice's paymentTermsDays is required and an omitted reference is cleared. On a credit-note draft only what D8 allows may change: lines may be removed, a quantity or a unit price lowered, and a description, the note and the internal note edited. A line's sources name the work it bills (invoices work design D2): never on a create or a credit note; on a PUT of a draft that holds work, required on every line ([] for none), each source one the draft already holds, named once — a save moves work between lines or drops it, and never adds any. At most 5000 sources on one document. */
         InvoicesInvoiceRequest: {
             currency?: string;
             /** Format: int32 */
@@ -946,6 +946,8 @@ export interface components {
             ourReference?: string;
             /** Format: int32 */
             paymentTermsDays?: number;
+            /** @description PUT of an invoice draft only (invoices work design D2): re-read the work the draft holds through the source modules' billable reads, before the save's transaction, and take each source's current revision, project, currency, quantity, amount, date and kind; work no longer invoiceable is dropped and named in releasedSources. A save that slipped in between the read and the save's lock and changed the held work is 409 invoice_changed. true on a create or on a credit-note draft is a 400. */
+            refreshSources?: boolean;
             /**
              * Format: int32
              * @description Required on PUT; the revision the caller read. A stale one is a 409 naming both.
@@ -953,7 +955,7 @@ export interface components {
             revision?: number;
             yourReference?: string;
         };
-        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue). An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
+        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
         InvoicesInvoiceResponse: {
             allowedIssueDates?: string[];
             buyer?: components["schemas"]["InvoicesBuyer"];
@@ -1031,10 +1033,13 @@ export interface components {
              * @description On an issued invoice whose openAmount is below zero, the amount owed back (−openAmount); absent otherwise. The figure only — refunds are not a flow in this phase.
              */
             refundDue?: number;
+            /** @description On a save's answer only, the work the save dropped (invoices work design D2) — removed from every line, its line removed, the customer changed, or no longer invoiceable on a refresh — with the warning sources_released. Absent when nothing was dropped. */
+            releasedSources?: components["schemas"]["InvoicesSourceRef"][];
             /** Format: int32 */
             revision: number;
             seller?: components["schemas"]["InvoicesSeller"];
             sendDefaults?: components["schemas"]["InvoicesSendDefaults"];
+            sources?: components["schemas"]["InvoicesSourcesBlock"];
             /** @description The derived state, judged against today in Oslo (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise). */
             state: string;
             /** @description draft or issued. */
@@ -1051,7 +1056,7 @@ export interface components {
             warnings: string[];
             yourReference: string;
         };
-        /** @description One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft. */
+        /** @description One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft. On a document that bills work (invoices work design D2) every line carries sources — [] for a line that bills none — and warnings, its own codes (line_differs_from_sources, source_changed, source_not_invoiceable); both absent on a document that bills no work. */
         InvoicesLine: {
             /**
              * Format: int64
@@ -1075,6 +1080,7 @@ export interface components {
             /** Format: double */
             quantity: number;
             safTCode?: string;
+            sources?: components["schemas"]["InvoicesLineSource"][];
             unit: string;
             /** Format: double */
             unitPrice: number;
@@ -1083,6 +1089,7 @@ export interface components {
             vatCodeId: number;
             /** Format: double */
             vatRatePercent?: number;
+            warnings?: string[];
         };
         /** @description One line of a draft. description is 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20. vatCodeId is an active code. creditsLineId is a credit-note draft's own and names the original line the line credits. */
         InvoicesLineRequest: {
@@ -1093,11 +1100,45 @@ export interface components {
             discountPercent?: number;
             /** Format: double */
             quantity: number;
+            /** @description The work the line bills, by identity (invoices work design D2). Required on every line of a draft that holds work — [] for none — and refused on a create and on a credit note. */
+            sources?: components["schemas"]["InvoicesSourceRef"][];
             unit?: string;
             /** Format: double */
             unitPrice: number;
             /** Format: int32 */
             vatCodeId: number;
+        };
+        /** @description One piece of work a line bills (invoices work design D2), answered from the document's own rows and never a live read: its kind and id, its project, the work's date, the quantity (hours, kilometres or 1) and the exact amount the draft took from the source — at most eight decimals — and state: held (on a draft), invoiced (by the issue) or released (by the credit note that returned its line in full). */
+        InvoicesLineSource: {
+            /** Format: double */
+            amount: number;
+            /** Format: date */
+            date: string;
+            /** Format: int64 */
+            id: number;
+            kind: string;
+            /** Format: int32 */
+            projectId: number;
+            /** Format: double */
+            quantity: number;
+            state: string;
+        };
+        /** @description A piece of work by identity (invoices work design D2): kind is time.entry (an hour entry), expenses.entry (an expense line) or projects.milestone (a billing milestone), and id is its row in the module that owns it. */
+        InvoicesSourceRef: {
+            /** Format: int64 */
+            id: number;
+            kind: string;
+        };
+        /** @description The work a document bills, counted by state from its own rows (invoices work design D2): count in all, held (on a draft), invoiced (by the issue) and released (by a credit note). Answered on a document that bills work, absent otherwise. */
+        InvoicesSourcesBlock: {
+            /** Format: int32 */
+            count: number;
+            /** Format: int32 */
+            held: number;
+            /** Format: int32 */
+            invoiced: number;
+            /** Format: int32 */
+            released: number;
         };
         /** @description One payment registered against an issued invoice (D2). A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing. */
         InvoicesPayment: {
@@ -2198,7 +2239,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — invoice_issued, a customer gate, or a stale revision. */
+            /** @description Conflict — invoice_issued, a customer gate, a stale revision, invoice_changed (refreshSources, when the held work changed between its read and the save's lock) or source_held_elsewhere. */
             409: {
                 headers: {
                     [name: string]: unknown;
