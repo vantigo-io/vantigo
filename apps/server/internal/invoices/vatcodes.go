@@ -200,7 +200,7 @@ func (s *server) PostInvoicesVatCodes(ctx context.Context, req gen.PostInvoicesV
 	}
 	now := s.deps.Clock()
 	var created gen.InvoicesVatCode
-	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		code, err := txq.InsertVatCode(ctx, store.InsertVatCodeParams{
 			Code: fields.code, Name: fields.name, SafTCode: fields.safT, EhfCategory: fields.category,
 			ExemptionReason: fields.reason, Now: now,
@@ -243,7 +243,7 @@ func (s *server) PutInvoicesVatCodesById(ctx context.Context, req gen.PutInvoice
 	var rateRefusal string
 	notFound := false
 	var saved gen.InvoicesVatCode
-	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := txq.LockVatCode(ctx, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			notFound = true
@@ -328,7 +328,7 @@ func (s *server) PostInvoicesVatCodesByIdRates(ctx context.Context, req gen.Post
 	var errs map[string][]string
 	notFound := false
 	var saved gen.InvoicesVatCode
-	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		if _, err := txq.LockSettings(ctx); err != nil {
 			return fmt.Errorf("invoices: lock the settings: %w", err)
 		}
@@ -411,7 +411,7 @@ func (s *server) DeleteInvoicesVatCodesByIdRatesByRateId(ctx context.Context, re
 	var refusal *gen.InvoicesConflictProblem
 	notFound := false
 	var saved gen.InvoicesVatCode
-	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		if _, err := txq.LockSettings(ctx); err != nil {
 			return fmt.Errorf("invoices: lock the settings: %w", err)
 		}

@@ -315,6 +315,17 @@ omvendt avgiftsplikt mangler kjøperens organisasjonsnummer, eller den valgte da
 er tillatt den dagen. Hver avvisning sies i dialogen
 ([alle avvisningene](/en/reference/invoices/#issuing)).
 
+**Å utstede et utkast laget av arbeid** merker også arbeidet som fakturert — timene,
+utgiftene og milepælene linjene fakturerer — i samme steg, så de forlater det
+ufakturerte arbeidet for godt. Utstedelsen avvises, med linjen nevnt, når et arbeid på
+den ikke lenger kan faktureres (*Arbeid på linje 2 kan ikke lenger faktureres*), er endret
+siden det ble lagt til, allerede er merket som fakturert, hører til et prosjekt som ikke
+lenger faktureres denne kunden eller som nå er fastpris eller ikke fakturerbart — og også
+når Prosjekter-modulen er slått av, siden arbeidet da ikke kan kontrolleres, eller når
+utkastet ble lagret av noen andre mens du utstedte. Ingenting utstedes og ingen nummer
+brukes: oppdater arbeidet eller endre linjen, og utsted på nytt
+([tilbakeskrivingen](/en/reference/invoices/#the-write-back)).
+
 ## Laste ned PDF-en
 
 Et utstedt dokuments side tilbyr **Last ned PDF**. Filen er navngitt etter dokumentet og

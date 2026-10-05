@@ -427,6 +427,18 @@ export const invoicesCatalog = {
       "The transmission may already have reached the access point, so it can no longer be cancelled.",
     "refusal.transmission_not_resolvable": "Only a transmission awaiting confirmation can be resolved.",
     "refusal.source_held_elsewhere": "Some of this work is already on another draft or an issued invoice.",
+    "refusal.source_not_invoiceable":
+      "Work on line {{line}} can no longer be invoiced. Refresh the work to drop it, then issue again.",
+    "refusal.source_changed":
+      "Work on line {{line}} has changed since it was added. Refresh the work to take its new figures, then issue again.",
+    "refusal.source_already_invoiced":
+      "Work on line {{line}} has already been marked invoiced. Remove it from the line.",
+    "refusal.source_customer_changed":
+      "Work on line {{line}} belongs to a project that no longer bills this customer. Remove it from the line.",
+    "refusal.source_not_selectable":
+      "Work on line {{line}} belongs to a project that is now fixed-price or non-billable, so it cannot be invoiced as it stands.",
+    "refusal.projects_unavailable":
+      "This invoice bills work, and the Projects module is switched off, so its work cannot be checked. Nothing was issued.",
 
     eInvoicing: "E-invoicing",
     eInvoicingDescription: "Send documents as EHF over the Peppol network, through an access point.",
@@ -992,6 +1004,18 @@ export const invoicesCatalog = {
     "refusal.transmission_not_resolvable": "Bare en sending som venter på bekreftelse kan avklares.",
     "refusal.source_held_elsewhere":
       "Noe av dette arbeidet ligger allerede på et annet utkast eller en utstedt faktura.",
+    "refusal.source_not_invoiceable":
+      "Arbeid på linje {{line}} kan ikke lenger faktureres. Oppdater arbeidet for å fjerne det, og utsted på nytt.",
+    "refusal.source_changed":
+      "Arbeid på linje {{line}} er endret siden det ble lagt til. Oppdater arbeidet for å ta de nye tallene, og utsted på nytt.",
+    "refusal.source_already_invoiced":
+      "Arbeid på linje {{line}} er allerede merket som fakturert. Fjern det fra linjen.",
+    "refusal.source_customer_changed":
+      "Arbeid på linje {{line}} hører til et prosjekt som ikke lenger faktureres denne kunden. Fjern det fra linjen.",
+    "refusal.source_not_selectable":
+      "Arbeid på linje {{line}} hører til et prosjekt som nå er fastpris eller ikke fakturerbart, så det kan ikke faktureres slik det er.",
+    "refusal.projects_unavailable":
+      "Denne fakturaen fakturerer arbeid, og Prosjekter-modulen er slått av, så arbeidet kan ikke kontrolleres. Ingenting ble utstedt.",
 
     eInvoicing: "E-faktura",
     eInvoicingDescription: "Send dokumenter som EHF i Peppol-nettverket, gjennom et aksesspunkt.",

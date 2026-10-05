@@ -101,16 +101,21 @@ type lockedTxKey struct{}
 
 // withLockedTx runs fn in one READ COMMITTED transaction on the module's pool —
 // every write here that takes a row lock goes through it. fn gets a context
-// marked as locked and its queries bound to the transaction.
+// marked as locked, the transaction itself and its queries bound to it.
 //
-// The rule the mark carries: nothing inside fn calls another module or the
-// object store (docs/src/content/docs/en/contributing/module-boundaries.md, docs/src/content/docs/en/reference/expenses.md). Whatever a
-// decision inside fn needs from the customer directory is read before the
-// transaction, and a PDF is stored after it has committed.
-func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, txq *store.Queries) error) error {
+// The rule the mark carries (docs/src/content/docs/en/contributing/module-boundaries.md,
+// rule 10): no call that takes its own connection or leaves the process while
+// a transaction holds locks. A directory read takes a second connection from
+// the pool and an object-store, SMTP, lookup or provider call leaves the
+// process, so none is ever made inside fn: whatever a decision inside fn needs
+// from a directory is read before the transaction and re-checked under it, and
+// a PDF is stored after it has committed. The one call out of the module fn
+// may make is a holder's command (contracts.InvoicedWorkHolder), which runs on
+// tx and does neither — reported through noteTxCommand, and only under a lock.
+func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) error {
 	locked := context.WithValue(ctx, lockedTxKey{}, true)
 	return db.WithTx(locked, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
-		return fn(locked, store.New(tx))
+		return fn(locked, tx, store.New(tx))
 	})
 }
 

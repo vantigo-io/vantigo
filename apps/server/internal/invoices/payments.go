@@ -140,7 +140,7 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 	}
 
 	var refusal *gen.InvoicesConflictProblem
-	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		// The invoice FOR UPDATE — the only row this takes — and every
 		// figure after it, so a credit note's issue or another registration
 		// that holds it has committed by the time they are read.
@@ -208,7 +208,7 @@ func (s *server) PostInvoicesByIdPaymentsByPaymentIdRemove(ctx context.Context, 
 
 	var refusal *gen.InvoicesConflictProblem
 	var inv store.InvoicesInvoice
-	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		// The invoice first, the payment after the lock: two removals of one
 		// payment queue here, and the second reads the first's removal.
 		var err error

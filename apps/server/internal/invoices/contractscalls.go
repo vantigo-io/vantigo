@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
@@ -17,30 +18,46 @@ import (
 )
 
 // This file is the whole of this module's reach outside its own schema: the
-// customer directory (deps.Directory), the source modules' billable reads
-// (deps.BillableHours, BillableExpenses, BillableMilestones), the object store
-// (server.objects), the SMTP seam (deps.SMTPSend), the Peppol network
-// (server.peppolLookup) and the access point (accessPoint).
-// Every call is made through one of the thin accessors below and through
-// nowhere else, so "what does Invoices ask of its neighbours, and when" has one
-// place to read the answer and one place to check it from.
+// customer, project and user directories (deps.Directory, deps.Projects,
+// deps.Users), the source modules' billable reads (deps.BillableHours,
+// BillableExpenses, BillableMilestones) and their invoiced-work holders
+// (deps.InvoicedWork), the object store (server.objects), the SMTP seam
+// (deps.SMTPSend), the Peppol network (server.peppolLookup) and the access
+// point (accessPoint). Every call is made through one of the thin accessors
+// below and through nowhere else, so "what does Invoices ask of its
+// neighbours, and when" has one place to read the answer and one place to
+// check it from.
 //
-// What is checked is the rule of D6 and D7: no directory call, no
-// object-store call, no lookup and no send is ever made inside a transaction holding locks
-// (withLockedTx). The directory reads through the same connection pool, and a
-// slow store under a row lock is the same hazard by another route.
-// noteContractCall pins the rule on every path, at a production cost of one nil
-// comparison per call.
+// What is checked is the lock rule (module-boundaries rule 10, restated): no
+// call that takes its own connection or leaves the process while a
+// transaction holds locks (withLockedTx). A directory reads through the same
+// connection pool, and a slow store, mail server or provider under a row lock
+// is the same hazard by another route. noteContractCall pins it on every path,
+// at a production cost of one nil comparison per call. A holder's command is
+// the one call made under a lock — it runs on the caller's transaction and
+// does neither — and noteTxCommand reports it as bound to that transaction,
+// so a test can tell it is made under one, and only under one.
 
 // contractCallHook is handed the context and the name of every call out of the
-// module. It is nil in production and installed once, before any test runs, by
-// this package's own tests (SetContractCallHook in export_test.go).
-var contractCallHook func(ctx context.Context, method string)
+// module, and whether it is a transaction-bound command (noteTxCommand). It is
+// nil in production and installed once, before any test runs, by this
+// package's own tests (SetContractCallHook in export_test.go).
+var contractCallHook func(ctx context.Context, method string, txBound bool)
 
-// noteContractCall reports one call out of the module.
+// noteContractCall reports one call out of the module that takes its own
+// connection or leaves the process: never under a lock.
 func noteContractCall(ctx context.Context, method string) {
 	if contractCallHook != nil {
-		contractCallHook(ctx, method)
+		contractCallHook(ctx, method, false)
+	}
+}
+
+// noteTxCommand reports one command run on this module's own transaction by
+// another module's holder, named "InvoicedWork.<kind>.Mark|Release": only
+// ever under a lock.
+func noteTxCommand(ctx context.Context, name string) {
+	if contractCallHook != nil {
+		contractCallHook(ctx, name, true)
 	}
 }
 
@@ -49,6 +66,43 @@ func noteContractCall(ctx context.Context, method string) {
 func (s *server) customerProfile(ctx context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
 	noteContractCall(ctx, "Directory.BillingProfile")
 	return s.deps.Directory.BillingProfile(ctx, id)
+}
+
+// projectEntries is the projects a draft's held work belongs to, read before
+// the issue's transaction (invoices work design D1): whom each still bills
+// and how. An empty batch asks nobody; a caller checks deps.Projects first —
+// nil is the module switched off.
+func (s *server) projectEntries(ctx context.Context, ids []int32) ([]contracts.ProjectEntry, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	noteContractCall(ctx, "Projects.Projects")
+	return s.deps.Projects.Projects(ctx, ids)
+}
+
+// userEntry is one user, the issuer whose name a holder's timeline event
+// carries, read before the issue's transaction (plan reading 20). nil for a
+// user the directory does not know.
+func (s *server) userEntry(ctx context.Context, id uuid.UUID) (*contracts.UserEntry, error) {
+	noteContractCall(ctx, "Users.User")
+	return s.deps.Users.User(ctx, id)
+}
+
+// markInvoiced and releaseInvoiced are a holder's two commands, run on the
+// issue's own transaction (rule 10) and reported as bound to it.
+func markInvoiced(ctx context.Context, tx pgx.Tx, kind contracts.WorkSourceKind, h contracts.InvoicedWorkHolder,
+	ref contracts.InvoiceRef, sources []contracts.WorkSource,
+) error {
+	noteTxCommand(ctx, "InvoicedWork."+string(kind)+".Mark")
+	return h.MarkInvoiced(ctx, tx, ref, sources)
+}
+
+//nolint:unused // releaseWork's, which the credit note's issue calls (invoices work plan Task 10)
+func releaseInvoiced(ctx context.Context, tx pgx.Tx, kind contracts.WorkSourceKind, h contracts.InvoicedWorkHolder,
+	ref contracts.InvoiceRef, sources []contracts.WorkSource,
+) error {
+	noteTxCommand(ctx, "InvoicedWork."+string(kind)+".Release")
+	return h.ReleaseInvoiced(ctx, tx, ref, sources)
 }
 
 // customerEntries names a page of drafts' customers in one round trip. An
