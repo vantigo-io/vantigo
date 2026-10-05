@@ -89,7 +89,7 @@ func invoicesWorkObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) 
 			WHERE c.connamespace = 'invoices'::regnamespace AND c.contype IN ('c', 'f', 'u')
 			  AND (c.conrelid::regclass::text IN ('invoices.line_sources', 'invoices.line_releases', 'invoices.timesheet_rows')
 			    OR c.conname IN ('uq_lines_id_invoice', 'ck_lines_quantity', 'ck_lines_deduction_no_discount',
-			        'lines_deducts_invoice_id_fkey', 'ck_invoices_project', 'ck_settings_timesheet_person_label',
+			        'ck_invoices_project', 'ck_settings_timesheet_person_label',
 			        'settings_work_vat_code_hours_fkey', 'settings_work_vat_code_expenses_fkey',
 			        'settings_work_vat_code_milestones_fkey'))
 			ORDER BY 1`),
@@ -183,7 +183,6 @@ func TestInvoicesWork_AppliesAndIsIdempotent(t *testing.T) {
 			"invoices.line_sources:fk_line_sources_line:FOREIGN KEY (line_id, invoice_id) REFERENCES invoices.lines(id, invoice_id) ON DELETE CASCADE",
 			"invoices.lines:ck_lines_deduction_no_discount:CHECK (((deducts_invoice_id IS NULL) OR (discount_percent = (0)::numeric)))",
 			"invoices.lines:ck_lines_quantity:CHECK (((quantity > (0)::numeric) OR ((quantity < (0)::numeric) AND (deducts_invoice_id IS NOT NULL))))",
-			"invoices.lines:lines_deducts_invoice_id_fkey:FOREIGN KEY (deducts_invoice_id) REFERENCES invoices.invoices(id) ON DELETE RESTRICT",
 			"invoices.lines:uq_lines_id_invoice:UNIQUE (id, invoice_id)",
 			"invoices.settings:ck_settings_timesheet_person_label:CHECK (((timesheet_person_label)::text = ANY ((ARRAY['initials'::character varying, 'number'::character varying, 'name'::character varying])::text[])))",
 			"invoices.settings:settings_work_vat_code_expenses_fkey:FOREIGN KEY (work_vat_code_expenses) REFERENCES invoices.vat_codes(id) ON DELETE RESTRICT",
@@ -914,9 +913,11 @@ func TestInvoicesWork_TheQuantityCheck(t *testing.T) {
 			t.Errorf("%s: %v, want a check violation from %s", c.name, err, c.constraint)
 		}
 	}
-	missing := int64(999999)
-	if err := f.exec(insertLine, settlement, 1, "-1", "0", &missing); !invoicesWorkViolation(err, "23503", "lines_deducts_invoice_id_fkey") {
-		t.Errorf("a deduction of no invoice: %v, want a foreign-key violation on lines_deducts_invoice_id_fkey", err)
+	// No foreign key (D7): its row lock would cycle with the merge's
+	// newest-first lock, so the module's own checks keep the reference.
+	if got := f.count(`SELECT count(*) FROM pg_constraint WHERE conrelid = 'invoices.lines'::regclass AND contype = 'f'
+		AND conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = 'invoices.lines'::regclass AND attname = 'deducts_invoice_id')]`); got != 0 {
+		t.Errorf("foreign keys on lines.deducts_invoice_id = %d, want none", got)
 	}
 	if err := f.exec(insertLine, settlement, 1, "-1", "0", &akonto); err != nil {
 		t.Errorf("a deduction of quantity -1: %v, want it allowed", err)

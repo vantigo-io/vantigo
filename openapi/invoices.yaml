@@ -1229,13 +1229,13 @@ components:
                 - lineNet
             type: object
         InvoicesLineRequest:
-            description: One line of a draft. description is 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20. vatCodeId is an active code. creditsLineId is a credit-note draft's own and names the original line the line credits. A deduction line (invoices work design D7) names deductsInvoiceId and has a quantity of exactly -1, a unitPrice greater than 0 — the amount deducted — and no discount; its vatCodeId is one the deducted invoice has a line at, and need not be active. On a credit-note draft a line's quantity is negative exactly when the original line it credits is a deduction line, and never larger in magnitude.
+            description: One line of a draft. description is 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20. vatCodeId is an active code. creditsLineId is a credit-note draft's own and names the original line the line credits. A deduction line (invoices work design D7) names deductsInvoiceId and has a quantity of exactly -1, a unitPrice greater than 0 — the amount deducted — and no discount; its vatCodeId is one the deducted invoice has a line at and deducts nothing at itself, and need not be active. On a credit-note draft a line's quantity is negative exactly when the original line it credits is a deduction line, and never larger in magnitude.
             properties:
                 creditsLineId:
                     format: int64
                     type: integer
                 deductsInvoiceId:
-                    description: 'Makes the line a deduction of an earlier invoice — an a-konto — in a final settlement (invoices work design D7): an issued invoice of the same customer, never a draft, a credit note or the document itself (a 400 on lines[i].deductsInvoiceId). One deduction line per (deducted invoice, VAT code) — a second is 409 deduction_duplicated — and none naming sources (a 400 on lines[i].sources). Refused on a credit-note draft''s own request: there it is derived from the original line.'
+                    description: 'Makes the line a deduction of an earlier invoice — an a-konto — in a final settlement (invoices work design D7): an issued invoice of the same customer in the same currency, never a draft, a credit note or the document itself (a 400 on lines[i].deductsInvoiceId). One deduction line per (deducted invoice, VAT code) — a second is 409 deduction_duplicated — and none naming sources (a 400 on lines[i].sources). Refused on a credit-note draft''s own request: there it is derived from the original line.'
                     format: int64
                     type: integer
                 description:
@@ -3141,7 +3141,7 @@ paths:
             x-vantigo-access: permission:invoices:access+invoices:issue
     /api/v1/invoices/{id}/deductible:
         get:
-            description: 'For an invoice draft, what each of its customer''s issued invoices — the a-kontos — has left to deduct, per VAT code (invoices work design D7): the editor''s "Deduct earlier invoices" step. Only a (invoice, VAT code) with something left is listed, by number and then VAT code; the draft itself never is. It reads the documents'' own rows and no directory. A credit note deducts nothing: on a credit-note draft the answer is 409 credit_note_deducts_nothing.'
+            description: 'For an invoice draft, what each of its customer''s issued invoices — the a-kontos — has left to deduct, per VAT code (invoices work design D7): the editor''s "Deduct earlier invoices" step. Only a (invoice, VAT code) with something left is listed, by number and then VAT code; the draft itself never is, nor an invoice in another currency, nor a settlement at a code where it deducts others itself. It reads the documents'' own rows and no directory. A credit note deducts nothing: on a credit-note draft the answer is 409 credit_note_deducts_nothing.'
             operationId: getInvoicesByIdDeductible
             parameters:
                 - in: path

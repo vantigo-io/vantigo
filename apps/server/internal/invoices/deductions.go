@@ -54,6 +54,7 @@ type deductionKey struct {
 type deductible struct {
 	invoiceID, number int64
 	issueDate         time.Time
+	currency          string
 	vatCodeID         int32
 	taxed             taxedLine
 	left              *big.Rat
@@ -68,10 +69,19 @@ type deductedRef struct {
 	issueDate time.Time
 }
 
+// deductionSnapshot is an issued invoice's VAT snapshot at one code, and
+// whether it carries deduction lines of its own there — which makes it not
+// deductible at the code: its lines there would mix today's rate with an
+// older snapshot.
+type deductionSnapshot struct {
+	taxed       taxedLine
+	deductsHere bool
+}
+
 // deductionSnapshots is, per (issued invoice, VAT code) of ids, the VAT
 // snapshot its lines at the code were issued with.
-func deductionSnapshots(ctx context.Context, q *store.Queries, ids []int64) (map[deductionKey]taxedLine, error) {
-	out := map[deductionKey]taxedLine{}
+func deductionSnapshots(ctx context.Context, q *store.Queries, ids []int64) (map[deductionKey]deductionSnapshot, error) {
+	out := map[deductionKey]deductionSnapshot{}
 	if len(ids) == 0 {
 		return out, nil
 	}
@@ -86,7 +96,7 @@ func deductionSnapshots(ctx context.Context, q *store.Queries, ids []int64) (map
 		if err != nil {
 			return nil, err
 		}
-		out[deductionKey{r.InvoiceID, r.VatCodeID}] = snap
+		out[deductionKey{r.InvoiceID, r.VatCodeID}] = deductionSnapshot{taxed: snap, deductsHere: r.DeductsHere}
 	}
 	return out, nil
 }
@@ -96,13 +106,22 @@ func deductionSnapshots(ctx context.Context, q *store.Queries, ids []int64) (map
 // out: the lines' net at the code, less its issued credit notes' credit of
 // them, less what issued settlements took net of their issued credit notes.
 // Every (invoice, code) is answered, nothing left included, the invoice
-// number first. It locks nothing (reading 4).
+// number first — but a code where the invoice deducts others itself, which
+// is never deductible. It locks nothing (reading 4).
 func deductibleLeft(ctx context.Context, q *store.Queries, customerID int32, excludeID int64) ([]deductible, error) {
-	nets, err := q.DeductibleNet(ctx, store.DeductibleNetParams{CustomerID: customerID, ExcludeID: excludeID})
+	return deductibleOf(ctx, q, customerID, excludeID, nil)
+}
+
+// deductibleOf is deductibleLeft narrowed to the invoices ids, so a
+// settlement's draft and its issue, and a credit note's issue, read only the
+// invoices they deduct or credit, never the customer's whole ledger; nil ids
+// is every invoice.
+func deductibleOf(ctx context.Context, q *store.Queries, customerID int32, excludeID int64, ids []int64) ([]deductible, error) {
+	nets, err := q.DeductibleNet(ctx, store.DeductibleNetParams{CustomerID: customerID, ExcludeID: excludeID, OnlyIds: ids})
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read what customer %d's invoices have to deduct: %w", customerID, err)
 	}
-	takenRows, err := q.DeductedNet(ctx, customerID)
+	takenRows, err := q.DeductedNet(ctx, store.DeductedNetParams{CustomerID: customerID, OnlyIds: ids})
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read what customer %d's invoices had deducted: %w", customerID, err)
 	}
@@ -118,13 +137,13 @@ func deductibleLeft(ctx context.Context, q *store.Queries, customerID int32, exc
 		}
 		taken[deductionKey{r.InvoiceID, r.VatCodeID}] = took{amount, r.Settlements}
 	}
-	ids := make([]int64, 0, len(nets))
+	found := make([]int64, 0, len(nets))
 	for _, n := range nets {
-		if !slices.Contains(ids, n.InvoiceID) {
-			ids = append(ids, n.InvoiceID)
+		if !slices.Contains(found, n.InvoiceID) {
+			found = append(found, n.InvoiceID)
 		}
 	}
-	snaps, err := deductionSnapshots(ctx, q, ids)
+	snaps, err := deductionSnapshots(ctx, q, found)
 	if err != nil {
 		return nil, err
 	}
@@ -140,8 +159,8 @@ func deductibleLeft(ctx context.Context, q *store.Queries, customerID int32, exc
 			return nil, err
 		}
 		d := deductible{
-			invoiceID: n.InvoiceID, number: n.Number, issueDate: n.IssueDate.Time, vatCodeID: n.VatCodeID,
-			taxed: snap, left: net, taken: new(big.Rat),
+			invoiceID: n.InvoiceID, number: n.Number, issueDate: n.IssueDate.Time, currency: n.Currency, vatCodeID: n.VatCodeID,
+			taxed: snap.taxed, left: net, taken: new(big.Rat),
 		}
 		if t, ok := taken[key]; ok {
 			d.taken, d.settlements = t.amount, t.settlements
@@ -208,24 +227,41 @@ func withDeductionSnapshots(ctx context.Context, q *store.Queries, lines []draft
 			continue
 		}
 		if snap, ok := snaps[deductionKey{*l.deductsInvoiceID, l.vatCodeID}]; ok {
-			lines[i].snapshot = &snap
+			lines[i].snapshot = &snap.taxed
 		}
 	}
 	return nil
 }
 
-// msgNotDeductible is the 400 on a deducted document that is not an issued
-// invoice of the draft's customer.
-const msgNotDeductible = "Only an issued invoice of the same customer, never this document, a draft or a credit note, is deducted"
+// The 400s on a deduction line's deducted invoice and its VAT code.
+const (
+	msgNotDeductible = "Only an issued invoice of the same customer, never this document, a draft or a credit note, is deducted"
+	msgOtherCurrency = "The deducted invoice is in another currency than this one"
+	msgDeductsHere   = "The deducted invoice deducts earlier invoices at this VAT code itself, so it is not deductible at it"
+)
+
+// deductibleDocument reports whether a document a deduction line names may be
+// deducted by a settlement of customerID in currency: an issued invoice of
+// that customer, in that currency. The settlement itself never passes — it is
+// a draft.
+func deductibleDocument(d store.DeductedDocumentsRow, customerID int32, currency string) (ok bool, msg string) {
+	switch {
+	case d.Kind != kindInvoice || d.Status != statusIssued || d.CustomerID != customerID:
+		return false, msgNotDeductible
+	case d.Currency != currency:
+		return false, msgOtherCurrency
+	}
+	return true, ""
+}
 
 // deductionRules are the save's rules for an invoice draft's lines (D7),
 // added to errs: a negative quantity only on a deduction line; a deduction's
 // quantity exactly -1, its price above 0, no discount and no sources; the
-// invoice it deducts an issued invoice of customerID, never selfID (0 on a
-// create); its VAT code one that invoice has a line at, whose snapshot the
-// line is then taxed at. With the fields sound, one deduction line per
+// invoice it deducts an issued invoice of customerID in currency; its VAT code
+// one that invoice has a line at and deducts nothing at itself, whose snapshot
+// the line is then taxed at. With the fields sound, one deduction line per
 // (invoice, VAT code): a second is the 409 deduction_duplicated, naming it.
-func deductionRules(ctx context.Context, q *store.Queries, customerID int32, selfID int64, lines []draftLine,
+func deductionRules(ctx context.Context, q *store.Queries, customerID int32, currency string, lines []draftLine,
 	errs map[string][]string,
 ) (map[string][]string, *gen.InvoicesConflictProblem, error) {
 	minusOne := big.NewRat(-1, 1)
@@ -258,9 +294,16 @@ func deductionRules(ctx context.Context, q *store.Queries, customerID int32, sel
 	if err != nil {
 		return nil, nil, fmt.Errorf("invoices: read the deducted documents: %w", err)
 	}
-	valid := map[int64]bool{}
+	refused := map[int64]string{}
+	for _, id := range ids {
+		refused[id] = msgNotDeductible // no document has the id
+	}
 	for _, d := range docs {
-		valid[d.ID] = d.Kind == kindInvoice && d.Status == statusIssued && d.CustomerID == customerID && d.ID != selfID
+		if ok, msg := deductibleDocument(d, customerID, currency); ok {
+			delete(refused, d.ID)
+		} else {
+			refused[d.ID] = msg
+		}
 	}
 	snaps, err := deductionSnapshots(ctx, q, ids)
 	if err != nil {
@@ -270,16 +313,20 @@ func deductionRules(ctx context.Context, q *store.Queries, customerID int32, sel
 		if l.deductsInvoiceID == nil {
 			continue
 		}
-		if !valid[*l.deductsInvoiceID] {
-			errs = withFieldError(errs, fmt.Sprintf("lines[%d].deductsInvoiceId", i), msgNotDeductible)
+		if msg, bad := refused[*l.deductsInvoiceID]; bad {
+			errs = withFieldError(errs, fmt.Sprintf("lines[%d].deductsInvoiceId", i), msg)
 			continue
 		}
 		snap, ok := snaps[deductionKey{*l.deductsInvoiceID, l.vatCodeID}]
-		if !ok {
+		switch {
+		case !ok:
 			errs = withFieldError(errs, fmt.Sprintf("lines[%d].vatCodeId", i), "The deducted invoice has no line at this VAT code")
 			continue
+		case snap.deductsHere:
+			errs = withFieldError(errs, fmt.Sprintf("lines[%d].vatCodeId", i), msgDeductsHere)
+			continue
 		}
-		lines[i].snapshot = &snap
+		lines[i].snapshot = &snap.taxed
 	}
 	if len(errs) > 0 {
 		return errs, nil, nil
@@ -310,7 +357,7 @@ func settlementWarnings(ctx context.Context, q *store.Queries, inv store.Invoice
 		return nil, nil
 	}
 	var out []string
-	left, err := deductibleLeft(ctx, q, inv.CustomerID, inv.ID)
+	left, err := deductibleOf(ctx, q, inv.CustomerID, inv.ID, deductedIDs(lines))
 	if err != nil {
 		return nil, err
 	}
@@ -325,11 +372,11 @@ func settlementWarnings(ctx context.Context, q *store.Queries, inv store.Invoice
 
 // issueDeductions are a settlement's deductions as its issue decides them,
 // read after the counter and never locked (reading 4): each deducted document
-// still an issued invoice of this customer, each deduction taxed at its
-// a-konto line's snapshot, and the cap. It answers the snapshot per deduction
-// line's id, or the refusal: deduction_exceeds_invoice with the line — past
-// its cap, or deducting a document that is no longer one of this customer's
-// issued invoices, which has nothing left to deduct for it.
+// still an issued invoice of this customer in its currency, each deduction
+// taxed at its a-konto line's snapshot, and the cap. It answers the snapshot
+// per deduction line's id, or the refusal: deduction_exceeds_invoice with the
+// line — past its cap, or deducting a document that is no longer deductible
+// for it, which has nothing left to deduct for it.
 func issueDeductions(ctx context.Context, txq *store.Queries, locked store.InvoicesInvoice, lines []store.InvoicesLine,
 ) (map[int64]taxedLine, *gen.InvoicesConflictProblem, error) {
 	drafts, err := storedDraftLines(lines)
@@ -351,7 +398,7 @@ func issueDeductions(ctx context.Context, txq *store.Queries, locked store.Invoi
 	}
 	valid := map[int64]bool{}
 	for _, d := range docs {
-		valid[d.ID] = d.Kind == kindInvoice && d.Status == statusIssued && d.CustomerID == locked.CustomerID && d.ID != locked.ID
+		valid[d.ID], _ = deductibleDocument(d, locked.CustomerID, locked.Currency)
 	}
 	snaps, err := deductionSnapshots(ctx, txq, ids)
 	if err != nil {
@@ -366,12 +413,15 @@ func issueDeductions(ctx context.Context, txq *store.Queries, locked store.Invoi
 		snap, ok := snaps[deductionKey{*d.deductsInvoiceID, d.vatCodeID}]
 		if !valid[*d.deductsInvoiceID] || !ok {
 			return nil, refuse(l.Position, fmt.Sprintf(
-				"Line %d deducts document %d, which is no longer an issued invoice of this customer with a line at its VAT code.",
+				"Line %d deducts document %d, which is not an issued invoice of this customer in this currency with a line at its VAT code.",
 				l.Position, *d.deductsInvoiceID)), nil
 		}
-		out[l.ID] = snap
+		// A code where the deducted invoice deducts others itself is not
+		// deductible: deductibleOf leaves it out, so the cap finds nothing
+		// left there and refuses the line.
+		out[l.ID] = snap.taxed
 	}
-	left, err := deductibleLeft(ctx, txq, locked.CustomerID, locked.ID)
+	left, err := deductibleOf(ctx, txq, locked.CustomerID, locked.ID, ids)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -387,7 +437,7 @@ func issueDeductions(ctx context.Context, txq *store.Queries, locked store.Invoi
 // naming the settlements — credit the settlement first. At a code no
 // settlement deducted the line caps alone decide.
 func (b creditBook) deductedOf(ctx context.Context, q *store.Queries, lines []creditedLine, t creditTotals) (*gen.InvoicesConflictProblem, error) {
-	all, err := deductibleLeft(ctx, q, b.original.CustomerID, 0)
+	all, err := deductibleOf(ctx, q, b.original.CustomerID, 0, []int64{b.original.ID})
 	if err != nil {
 		return nil, err
 	}
@@ -491,7 +541,8 @@ func (s *server) GetInvoicesByIdDeductible(ctx context.Context, req gen.GetInvoi
 	}
 	out := gen.GetInvoicesByIdDeductible200JSONResponse{}
 	for _, d := range left {
-		if d.left.Sign() <= 0 {
+		// Another currency's invoice is never deductible here.
+		if d.left.Sign() <= 0 || d.currency != inv.Currency {
 			continue
 		}
 		out = append(out, gen.InvoicesDeductible{

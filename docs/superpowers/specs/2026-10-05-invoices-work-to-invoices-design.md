@@ -510,8 +510,9 @@ Markup is Expenses' `markup_percent`, in its bill amount; Invoices adds none.
 ### D7 — A-konto and the final settlement
 
 **An a-konto invoice is an ordinary invoice** — any lines, typically a ready milestone —
-in the same series (§ 5-1-3), VAT in its term (mval. § 15-9 (1)). **A final settlement** adds **deduction lines**: `deducts_invoice_id bigint REFERENCES
-invoices.invoices` frozen on the line, `quantity` −1, `unit_price` the amount deducted
+in the same series (§ 5-1-3), VAT in its term (mval. § 15-9 (1)). **A final settlement** adds **deduction lines**: `deducts_invoice_id bigint`, an
+unconstrained reference (no FK: the FK's KEY SHARE would cycle with the merge's
+newest-first lock), frozen on the line, `quantity` −1, `unit_price` the amount deducted
 (> 0, so BR-27's positive price holds), no discount, `vat_code_id` the a-konto line's
 code, the text "Tidligere fakturert a konto, faktura <n>" / "Previously invoiced on
 account, invoice <n>", one line per (a-konto, VAT code). On the line request:
@@ -542,6 +543,9 @@ substance (`document_state` would call it paid, `mig/00035_invoices_payments_del
 **the deducted invoices are read under the counter, not row-locked** (Reading 4): every
 write that changes what an a-konto has left to deduct is itself an issue (a credit note,
 another settlement), and the counter serialises every issue (`inv/queries/counters.sql:15-19`).
+The save of a settlement and the creation of its credit note lock only the draft and the
+original — no foreign key takes a lock on the deducted invoice (amended at the Task 11
+review).
 
 **The CHECK** `ck_lines_quantity` (`mig/00034_invoices_baseline.sql:223`) becomes
 `quantity > 0 OR (quantity < 0 AND deducts_invoice_id IS NOT NULL)`; `amount()`'s
@@ -772,7 +776,10 @@ endpoint).
 4. **A settlement does not row-lock the invoices it deducts** (not "by id ascending"):
    the counter serialises every writer of what the cap reads, and a row lock would cycle
    with the merge's newest-first document lock whenever an a-konto is newer than the
-   settlement draft.
+   settlement draft. For the same reason the save of a settlement and the creation of a
+   settlement's credit note lock only the draft and the original: `deducts_invoice_id`
+   carries no foreign key, whose `FOR KEY SHARE` on the deducted invoice would take two
+   documents in ascending order (amended at the Task 11 review).
 5. The holder declares `Kinds()`: Invoices orders the calls (Projects → Expenses → Time)
    itself, and Compose's module order (projects, time, expenses) is not that order.
 6. `WorkSource` carries the amount (a percent milestone's moves with the fixed price, not
