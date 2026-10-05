@@ -1693,7 +1693,7 @@ func TestCompose_RefusesAKindClaimedTwice(t *testing.T) {
 // A holder preset on Deps claims its kinds before any module's: a module
 // claiming one of them is refused, the preset named as Deps.InvoicedWork —
 // the issue would otherwise hand one kind's sources to two holders. A nil
-// preset entry claims nothing.
+// preset entry claims nothing and is dropped from the slot.
 func TestCompose_RefusesAKindAPresetHolderClaims(t *testing.T) {
 	preset := &fakeInvoicedWork{name: "preset", kinds: []contracts.WorkSourceKind{contracts.WorkSourceHours}}
 	_, err := compose(
@@ -1708,16 +1708,23 @@ func TestCompose_RefusesAKindAPresetHolderClaims(t *testing.T) {
 		t.Errorf("error = %v, want %q", err, want)
 	}
 
+	alpha := &fakeInvoicedWork{name: "alpha", kinds: []contracts.WorkSourceKind{contracts.WorkSourceExpense}}
+	var got []contracts.InvoicedWorkHolder
 	_, err = compose(
 		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}},
 			InvoicedWork: []contracts.InvoicedWorkHolder{nil, preset}},
 		fakeLoad(map[string]string{"alpha": alphaContract}),
-		Module{Name: "alpha", Mount: staticHandler("alpha"), InvoicedWork: func(Deps) contracts.InvoicedWorkHolder {
-			return &fakeInvoicedWork{name: "alpha", kinds: []contracts.WorkSourceKind{contracts.WorkSourceExpense}}
-		}},
+		Module{Name: "alpha", InvoicedWork: func(Deps) contracts.InvoicedWorkHolder { return alpha },
+			Mount: func(d Deps) (http.Handler, error) {
+				got = d.InvoicedWork
+				return staticHandler("alpha")(d)
+			}},
 	)
 	if err != nil {
-		t.Errorf("compose with a nil preset and disjoint kinds: %v", err)
+		t.Fatalf("compose with a nil preset and disjoint kinds: %v", err)
+	}
+	if want := []contracts.InvoicedWorkHolder{preset, alpha}; !slices.Equal(got, want) {
+		t.Errorf("Deps.InvoicedWork = %v, want the preset then alpha's, the nil dropped: the issue calls Kinds on every one", got)
 	}
 }
 

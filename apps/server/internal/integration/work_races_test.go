@@ -217,6 +217,7 @@ func writer(c *modtest.Client, name, method, path string, body any) racer {
 // conflict is the code and the source a 409 names.
 type conflict struct {
 	Code          string `json:"code"`
+	Detail        string `json:"detail"`
 	SourceKind    string `json:"sourceKind"`
 	SourceID      int64  `json:"sourceId"`
 	InvoiceID     int64  `json:"invoiceId"`
@@ -417,8 +418,9 @@ func TestWorkRace_IssueAgainstAMilestoneMove(t *testing.T) {
 		issue, moved := race(t, h, holdRow(t, h, lockProject, p.Id), issuer(kari, draft.ID), move(kari, m, m.Revision), nil)
 		doc := issuedNow(t, issue)
 		got := readMilestone(t, kari, p.Id, m.Id)
-		if c := conflictOf(t, "the move", moved); c.Code != "" {
-			t.Errorf("the move = %+v, want the stale-revision 409: the stamp moved the revision", c)
+		if c := conflictOf(t, "the move", moved); c.Code != "" ||
+			!strings.HasPrefix(c.Detail, fmt.Sprintf("The project has revision %d;", got.Revision)) {
+			t.Errorf("the move = %+v, want the stale-revision 409 naming revision %d: the stamp moved the revision", c, got.Revision)
 		}
 		if got.Status != "invoiced" || got.InvoicedByInvoice == nil || got.InvoicedByInvoice.InvoiceId != doc.ID {
 			t.Fatalf("the milestone = %s by %+v, want stamped by invoice %d", got.Status, got.InvoicedByInvoice, doc.ID)

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
-	"strings"
 	"testing"
 	"unicode/utf16"
 
@@ -251,18 +250,24 @@ func pdfPageTexts(t *testing.T, res *modtest.Response) [][]string {
 	return pages
 }
 
+// stampedRow is one source module's row: its table and id.
+type stampedRow struct {
+	table string
+	id    int64
+}
+
 // sameCommit asserts each source module's row carries the xmin of the
 // document's line sources — the transaction that last wrote it — so its stamp
 // was written by the issue's own commit.
-func sameCommit(t *testing.T, h *modtest.Harness, docID int64, rows map[string]int64) {
+func sameCommit(t *testing.T, h *modtest.Harness, docID int64, rows ...stampedRow) {
 	t.Helper()
 	issue := modtest.One[[]string](t, h, `SELECT array_agg(DISTINCT xmin::text) FROM invoices.line_sources WHERE invoice_id = $1`, docID)
 	if len(issue) != 1 {
 		t.Fatalf("document %d's line sources were last written by %v, want the one issue", docID, issue)
 	}
-	for table, id := range rows {
-		if got := modtest.One[string](t, h, `SELECT xmin::text FROM `+table+` WHERE id = $1`, id); got != issue[0] {
-			t.Errorf("%s %d was last written by transaction %s, the issue's is %s: not stamped by the issue's own commit", table, id, got, issue[0])
+	for _, r := range rows {
+		if got := modtest.One[string](t, h, `SELECT xmin::text FROM `+r.table+` WHERE id = $1`, r.id); got != issue[0] {
+			t.Errorf("%s %d was last written by transaction %s, the issue's is %s: not stamped by the issue's own commit", r.table, r.id, got, issue[0])
 		}
 	}
 }
@@ -371,9 +376,8 @@ func TestWork_FromApprovedWorkToReleasedWorkEndToEnd(t *testing.T) {
 			t.Errorf("the timesheet page %q has no %q", pages[1], text)
 		}
 	}
-	sameCommit(t, h, first.ID, map[string]int64{
-		"time.entries": kariHour.Id, "expenses.entries": expense.Id, "projects.billing_milestones": fase1.Id,
-	})
+	sameCommit(t, h, first.ID, stampedRow{"time.entries", kariHour.Id}, stampedRow{"time.entries", olaHour.Id},
+		stampedRow{"expenses.entries", expense.Id}, stampedRow{"projects.billing_milestones", fase1.Id})
 	if got := unbilledHours(t, kari, customer); got != 0 {
 		t.Errorf("unbilled hours after the issue = %d hundredths, want 0: Time's invoiced bucket holds all 7.5", got)
 	}
@@ -451,6 +455,11 @@ func TestWork_FromApprovedWorkToReleasedWorkEndToEnd(t *testing.T) {
 	if got := unbilledHours(t, kari, customer); got != 750 {
 		t.Errorf("unbilled hours after the credit = %d hundredths, want 750 again", got)
 	}
+	economy = readEconomy(t, kari, project.Id)
+	if economy.Expenses == nil || economy.Expenses.InvoicedCount != 0 || !same(economy.Expenses.InvoicedAmount, 0) ||
+		economy.Expenses.ReadyCount != 1 || !same(economy.Expenses.ReadyAmount, 1100) {
+		t.Errorf("the economy's expenses after the credit = %+v, want none invoiced and the line ready at 1 100 again", economy.Expenses)
+	}
 
 	// The released work is selectable again and pulled into a new draft,
 	// which suggests the note naming the invoice and its credit note.
@@ -462,7 +471,7 @@ func TestWork_FromApprovedWorkToReleasedWorkEndToEnd(t *testing.T) {
 	if want := fmt.Sprintf("Erstatter faktura %d, kreditert med kreditnota %d", *first.Number, *credit.Number); pulled.Note != want {
 		t.Errorf("the new draft's note = %q, want %q", pulled.Note, want)
 	}
-	if got := pulled.sourceStates(); len(got) != 4 || !strings.HasSuffix(got[0], " held") || len(pulled.TimesheetRows) != 2 {
-		t.Errorf("the new draft holds %v with %d timesheet rows, want the four held and both rows", got, len(pulled.TimesheetRows))
+	if got := pulled.sourceStates(); !slices.Equal(got, statesOf("held", want...)) || len(pulled.TimesheetRows) != 2 {
+		t.Errorf("the new draft holds %v with %d timesheet rows, want the first invoice's four sources held and both rows", got, len(pulled.TimesheetRows))
 	}
 }

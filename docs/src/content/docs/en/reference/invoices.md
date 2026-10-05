@@ -615,7 +615,12 @@ In order:
    the transaction (a source, its revision, its amount or its line) is a save slipped in
    between, 409 `invoice_changed`; then the projects' billing types as read: hours of a
    project now `fixed-price` or `non-billable`, and any work of a project now
-   `non-billable`, are 409 `source_not_selectable`.
+   `non-billable`, are 409 `source_not_selectable`. The billing types are the ones read
+   before the transaction, and the projects are not locked for them: a project turned
+   fixed-price or non-billable while an issue is in flight does not stop that issue.
+   The outcome is what it would have been had the change come just after the issue —
+   a project's change of billing type never refuses invoiced work — and a credit note
+   that returns the work releases it.
 3. **The holders**, each kind's once, in the cross-module lock order
    (`contracts.InvoicedWorkOrder`): Projects' milestones, then Expenses' lines, then
    Time's entries — after this module's own locks (the document, the settings row, the

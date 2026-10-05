@@ -626,12 +626,13 @@ func invoicedWorkLast(mods []Module) []Module {
 }
 
 // withInvoicedWork is deps with every module's contracts.InvoicedWorkHolder
-// appended to Deps.InvoicedWork, in mods order, onto a copy of whatever the
-// caller preset, so a harness's own slice is never written through. mods is
-// every module given, enabled or not. It refuses a kind two holders claim,
-// naming the kind and both — a preset holder as "Deps.InvoicedWork", whose
-// kinds are claimed first: the issue hands each kind's sources to one holder.
-// A nil preset entry is skipped.
+// appended to Deps.InvoicedWork, in mods order, after whatever the caller
+// preset, in a new slice, so a harness's own slice is never written through.
+// mods is every module given, enabled or not. It refuses a kind two holders
+// claim, naming the kind and both — a preset holder as "Deps.InvoicedWork",
+// whose kinds are claimed first: the issue hands each kind's sources to one
+// holder. A nil preset entry is dropped, so no consumer of the slot ever
+// calls a nil holder.
 func withInvoicedWork(deps Deps, mods []Module) (Deps, error) {
 	var holders []contracts.InvoicedWorkHolder
 	claimedBy := make(map[contracts.WorkSourceKind]string)
@@ -639,6 +640,7 @@ func withInvoicedWork(deps Deps, mods []Module) (Deps, error) {
 		if preset == nil {
 			continue
 		}
+		holders = append(holders, preset)
 		for _, kind := range preset.Kinds() {
 			if _, ok := claimedBy[kind]; ok {
 				return deps, fmt.Errorf("module: two modules both stamp %q: Deps.InvoicedWork, Deps.InvoicedWork", kind)
@@ -662,8 +664,6 @@ func withInvoicedWork(deps Deps, mods []Module) (Deps, error) {
 		}
 		holders = append(holders, holder)
 	}
-	if len(holders) > 0 {
-		deps.InvoicedWork = append(slices.Clone(deps.InvoicedWork), holders...)
-	}
+	deps.InvoicedWork = holders
 	return deps, nil
 }
