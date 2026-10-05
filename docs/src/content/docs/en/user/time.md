@@ -5,6 +5,7 @@ sidebar:
   order: 30
 sources:
   - apps/time/frontend
+  - apps/host/frontend/src/routes/time
 ---
 
 The Time app is where you log your hours on projects, send a week off for approval, and

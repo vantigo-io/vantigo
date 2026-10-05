@@ -5,6 +5,8 @@ sidebar:
   order: 20
 sources:
   - apps/projects/frontend
+  - apps/host/frontend/src/routes/projects
+  - apps/host/frontend/src/catalogs/project.ts
 ---
 
 Appen **Prosjekter** er der arbeidet organiseres: et prosjekt er et kodet stykke

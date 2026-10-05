@@ -5,6 +5,8 @@ sidebar:
   order: 50
 sources:
   - apps/invoices/frontend
+  - apps/host/frontend/src/routes/customers/-customer-invoices-tab.tsx
+  - apps/host/frontend/src/lib/invoice-access.ts
 ---
 
 Fakturaer-appen utsteder salgsdokumentene i bokføringen din: et utkast blir en
