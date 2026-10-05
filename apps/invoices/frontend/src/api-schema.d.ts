@@ -187,7 +187,7 @@ export interface paths {
         };
         /**
          * List invoices and credit notes
-         * @description Invoices and credit notes, drafts first and then by number descending (D4). status is draft or issued, kind invoice or credit_note; state is one of open, partially_paid, overdue, paid or credited (D3), which only an issued invoice matches; from and to are issue dates, inclusive; search matches the number exactly when it is digits, or the buyer's name ignoring case — a draft has no buyer snapshot, so it is found by customerId, not search. page and pageSize are the codebase's paging: 25 by default, at most 100.
+         * @description Invoices and credit notes, drafts first and then by number descending (D4). status is draft or issued, kind invoice or credit_note; projectId the project a document's work belongs to (invoices work design D9); state is one of open, partially_paid, overdue, paid or credited (D3), which only an issued invoice matches; from and to are issue dates, inclusive; search matches the number exactly when it is digits, or the buyer's name ignoring case — a draft has no buyer snapshot, so it is found by customerId, not search. page and pageSize are the codebase's paging: 25 by default, at most 100.
          */
         get: operations["getInvoices"];
         put?: never;
@@ -479,7 +479,7 @@ export interface paths {
         };
         /**
          * Export the issued documents as CSV
-         * @description The accountant's CSV export (payments and delivery design D5): the issued documents whose issue date is from-to — the journal's own selection — one row per document and VAT row, in number order and in each document by category then rate, a credit note negative in every amount. UTF-8 with a byte order mark, semicolons, the decimal comma, YYYY-MM-DD, CRLF after every row, RFC 4180 quoting, and the formula guard on the text columns only. The header row is Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number. from and to are both required, from on or before to; a period of more than 5000 rows is refused, never cut short.
+         * @description The accountant's CSV export (payments and delivery design D5): the issued documents whose issue date is from-to — the journal's own selection — one row per document and VAT row, in number order and in each document by category then rate, a credit note negative in every amount. UTF-8 with a byte order mark, semicolons, the decimal comma, YYYY-MM-DD, CRLF after every row, RFC 4180 quoting, and the formula guard on the text columns only. The header row is Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number;KID;Project — KID an invoice's KID (EHF and KID design D3), Project the document's project reference (invoices work design D9), each empty where there is none. from and to are both required, from on or before to; a period of more than 5000 rows is refused, never cut short.
          */
         get: operations["getInvoicesExportCsv"];
         put?: never;
@@ -930,6 +930,13 @@ export interface components {
              * @description On an issued invoice, gross less what its issued credit notes credit and what its live payments paid; negative when a credit note followed a payment.
              */
             openAmount?: number;
+            /**
+             * Format: int32
+             * @description The project all of the document's work belongs to (invoices work design D9) — derived from its line sources, never written by a request; absent when its work spans two projects or it bills none.
+             */
+            projectId?: number;
+            /** @description The project's code as the document took it, beside projectId — the reference its PDF and EHF print. */
+            projectReference?: string;
             /** @description The derived state (D3): draft, issued (an issued credit note), credited, paid, overdue, partially_paid or open. */
             state: string;
             status: string;
@@ -1035,6 +1042,13 @@ export interface components {
             payments?: components["schemas"]["InvoicesPayment"][];
             /** @description On an issued document, whether its PDF is stored. False only when storing it after the issue failed; the next download stores it. */
             pdfStored?: boolean;
+            /**
+             * Format: int32
+             * @description The project all of the document's work belongs to (invoices work design D9): set by every save of an invoice draft to the one project all its line sources share, absent when they span two projects or there are none, or when the project directory no longer knows it; never written by a request; frozen at issue; a credit note copies its original's.
+             */
+            projectId?: number;
+            /** @description The project's code, a snapshot taken when the draft's work first came to span that one project — what the PDF prints and the EHF carries (BT-11 on an invoice, an AdditionalDocumentReference with DocumentTypeCode 50 on a credit note). Present exactly when projectId is. */
+            projectReference?: string;
             /**
              * Format: double
              * @description On an issued invoice whose openAmount is below zero, the amount owed back (−openAmount); absent otherwise. The figure only — refunds are not a flow in this phase.
@@ -2033,6 +2047,8 @@ export interface operations {
                 /** @description One of open, partially_paid, overdue, paid or credited, judged against today in Oslo; only an issued invoice can match it. */
                 state?: string;
                 customerId?: number;
+                /** @description The documents whose work belongs to this project (invoices work design D9) — the derived project, so a document whose work spans two projects matches neither. */
+                projectId?: number;
                 search?: string;
                 from?: string;
                 to?: string;

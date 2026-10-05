@@ -27,19 +27,21 @@ LEFT JOIN LATERAL (
 WHERE ($1::text IS NULL OR i.status = $1::text)
   AND ($2::text IS NULL OR i.kind = $2::text)
   AND ($3::int IS NULL OR i.customer_id = $3::int)
-  AND (($4::bigint IS NULL AND $5::text IS NULL)
-       OR i.number = $4::bigint
-       OR i.buyer_name ILIKE $5::text)
-  AND ($6::date IS NULL OR i.issue_date >= $6::date)
-  AND ($7::date IS NULL OR i.issue_date <= $7::date)
-  AND ($8::text IS NULL
-       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $9::date) = $8::text)
+  AND ($4::int IS NULL OR i.project_id = $4::int)
+  AND (($5::bigint IS NULL AND $6::text IS NULL)
+       OR i.number = $5::bigint
+       OR i.buyer_name ILIKE $6::text)
+  AND ($7::date IS NULL OR i.issue_date >= $7::date)
+  AND ($8::date IS NULL OR i.issue_date <= $8::date)
+  AND ($9::text IS NULL
+       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $10::date) = $9::text)
 `
 
 type CountInvoicesParams struct {
 	Status        *string
 	Kind          *string
 	CustomerID    *int32
+	ProjectID     *int32
 	SearchNumber  *int64
 	SearchPattern *string
 	IssuedFrom    pgtype.Date
@@ -55,6 +57,7 @@ func (q *Queries) CountInvoices(ctx context.Context, arg CountInvoicesParams) (i
 		arg.Status,
 		arg.Kind,
 		arg.CustomerID,
+		arg.ProjectID,
 		arg.SearchNumber,
 		arg.SearchPattern,
 		arg.IssuedFrom,
@@ -542,15 +545,16 @@ LEFT JOIN LATERAL (
 WHERE ($2::text IS NULL OR i.status = $2::text)
   AND ($3::text IS NULL OR i.kind = $3::text)
   AND ($4::int IS NULL OR i.customer_id = $4::int)
-  AND (($5::bigint IS NULL AND $6::text IS NULL)
-       OR i.number = $5::bigint
-       OR i.buyer_name ILIKE $6::text)
-  AND ($7::date IS NULL OR i.issue_date >= $7::date)
-  AND ($8::date IS NULL OR i.issue_date <= $8::date)
-  AND ($9::text IS NULL
-       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $1::date) = $9::text)
+  AND ($5::int IS NULL OR i.project_id = $5::int)
+  AND (($6::bigint IS NULL AND $7::text IS NULL)
+       OR i.number = $6::bigint
+       OR i.buyer_name ILIKE $7::text)
+  AND ($8::date IS NULL OR i.issue_date >= $8::date)
+  AND ($9::date IS NULL OR i.issue_date <= $9::date)
+  AND ($10::text IS NULL
+       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $1::date) = $10::text)
 ORDER BY i.number DESC NULLS FIRST, i.id DESC
-LIMIT $11 OFFSET $10
+LIMIT $12 OFFSET $11
 `
 
 type ListInvoicesParams struct {
@@ -558,6 +562,7 @@ type ListInvoicesParams struct {
 	Status        *string
 	Kind          *string
 	CustomerID    *int32
+	ProjectID     *int32
 	SearchNumber  *int64
 	SearchPattern *string
 	IssuedFrom    pgtype.Date
@@ -576,7 +581,8 @@ type ListInvoicesRow struct {
 // ListInvoices is one page of GET /invoices (D4): drafts first, then by number
 // descending, the id breaking ties so a page never shifts under a reader.
 // search is a number (exact) or a buyer-name pattern; a draft has no buyer
-// snapshot and is found through customer_id instead.
+// snapshot and is found through customer_id instead. project_id is the
+// document's own derived project (invoices work design D9).
 //
 // Each row carries its derived state (D3): credited (the issued credit notes'
 // gross) and paid (the live payments' sum) from one lateral join each, read
@@ -592,6 +598,7 @@ func (q *Queries) ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]L
 		arg.Status,
 		arg.Kind,
 		arg.CustomerID,
+		arg.ProjectID,
 		arg.SearchNumber,
 		arg.SearchPattern,
 		arg.IssuedFrom,

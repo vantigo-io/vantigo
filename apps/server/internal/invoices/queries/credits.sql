@@ -2,7 +2,8 @@
 -- InsertCreditDraft writes a credit-note draft for an issued invoice (D8),
 -- copying what the correction must name: the customer, the currency, the rate
 -- and the date it was taken on, the delivery and its place, the references,
--- and the buyer snapshot. It reads no directory: the original's snapshot is
+-- the buyer snapshot, and the project the original's work belonged to with
+-- its reference (invoices work design D9). It reads no directory: the original's snapshot is
 -- what the correction names, an anonymised customer's included.
 INSERT INTO invoices.invoices (
     kind, customer_id, credits_invoice_id, delivery_date, delivery_from, delivery_to,
@@ -10,7 +11,7 @@ INSERT INTO invoices.invoices (
     currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference,
     buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id,
     buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country,
-    buyer_peppol_id, buyer_gln, buyer_language,
+    buyer_peppol_id, buyer_gln, buyer_language, project_id, project_reference,
     net_total, vat_total, gross_total, vat_total_nok, created_by_user_id, created_at, updated_at
 )
 SELECT
@@ -19,7 +20,7 @@ SELECT
     o.currency, o.exchange_rate, o.exchange_rate_date, o.your_reference, o.our_reference, o.order_reference,
     o.buyer_customer_number, o.buyer_type, o.buyer_name, o.buyer_organisation_number, o.buyer_foreign_id,
     o.buyer_address_line1, o.buyer_address_line2, o.buyer_postal_code, o.buyer_city, o.buyer_region, o.buyer_country,
-    o.buyer_peppol_id, o.buyer_gln, o.buyer_language,
+    o.buyer_peppol_id, o.buyer_gln, o.buyer_language, o.project_id, o.project_reference,
     o.net_total, o.vat_total, o.gross_total, o.vat_total_nok, @created_by_user_id, @now::timestamptz, @now::timestamptz
 FROM invoices.invoices o
 WHERE o.id = @original_id AND o.kind = 'invoice' AND o.status = 'issued'

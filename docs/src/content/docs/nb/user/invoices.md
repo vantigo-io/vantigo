@@ -288,7 +288,11 @@ en milepæl som er flyttet tilbake — advarer utkastet om det, og å oppdatere 
 med de nye tallene og fjerner det som ikke lenger kan faktureres; utstedelsen ville
 avvist begge deler. Arbeid kommer bare inn på et utkast gjennom oversikten over
 ufakturert arbeid for en kunde eller et prosjekt, som kommer med skjermbildene for det;
-inntil da holder ingen utkast noe arbeid.
+inntil da holder ingen utkast noe arbeid. Når alt arbeidet et utkast fakturerer hører til
+ett prosjekt, navngir utkastet prosjektet med koden sin — skrevet ut på PDF-en som
+*Prosjekt* / *Project*, med i EHF-en, beholdt av den utstedte fakturaen og av
+kreditnotaene til den, og den siste kolonnen, *Project*, i eksporten til regnskapsføreren
+([prosjektet](/en/reference/invoices/#the-project)).
 
 ## Utstede
 
@@ -578,7 +582,7 @@ På journalen laster **Eksporter CSV** ned intervallet som vises, som
 `invoices-<fra>-<til>.csv`. Filen har én rad per dokument og mva-sats — en kreditnotas
 beløp negative — med faste engelske kolonner: Number, Kind, Issue date, Delivery, Due,
 Customer number, Buyer, Buyer org no, Currency, SAF-T code, Rate, Base, VAT, Base NOK,
-VAT NOK, Credits number og KID — importer KID-kolonnen som tekst, ellers fjerner
+VAT NOK, Credits number, KID og Project — importer KID-kolonnen som tekst, ellers fjerner
 regnearket de innledende nullene. Den åpnes i et regneark slik norske systemer venter: `;`
 mellom cellene, desimalkomma, UTF-8 ([CSV-eksporten](/en/reference/invoices/#the-csv-export)).
 

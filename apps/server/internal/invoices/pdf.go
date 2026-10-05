@@ -64,7 +64,7 @@ const reverseChargeText = "Omvendt avgiftsplikt – Merverdiavgift ikke beregnet
 // English).
 type pdfLabels struct {
 	invoice, creditNote, number, issueDate, deliveryDate, deliveryPeriod, deliveryPlace string
-	dueDate, terms, termsDays, yourRef, ourRef, orderRef, creditsFor                    string
+	dueDate, terms, termsDays, yourRef, ourRef, orderRef, project, creditsFor           string
 	description, quantity, unit, unitPrice, discount, vat, amount                       string
 	vatBasis, vatAmount, vatCategory, net, vatTotal, gross, toPay                       string
 	payment, account, iban, bic, payWithNumber, orgNumber, foreignID, watermark         string
@@ -76,7 +76,7 @@ var labels = map[string]pdfLabels{
 		invoice: "Faktura", creditNote: "Kreditnota", number: "Nummer", issueDate: "Fakturadato",
 		deliveryDate: "Leveringsdato", deliveryPeriod: "Leveringsperiode", deliveryPlace: "Leveringssted",
 		dueDate: "Forfallsdato", terms: "Betalingsbetingelser", termsDays: "%d dager",
-		yourRef: "Deres ref.", ourRef: "Vår ref.", orderRef: "Ordrereferanse", creditsFor: "Kreditnota til faktura %d av %s",
+		yourRef: "Deres ref.", ourRef: "Vår ref.", orderRef: "Ordrereferanse", project: "Prosjekt", creditsFor: "Kreditnota til faktura %d av %s",
 		description: "Beskrivelse", quantity: "Antall", unit: "Enhet", unitPrice: "Enhetspris", discount: "Rabatt %",
 		vat: "MVA %", amount: "Beløp", vatBasis: "Grunnlag", vatAmount: "MVA", vatCategory: "MVA-sats",
 		net: "Sum eks. MVA", vatTotal: "MVA", gross: "Sum", toPay: "Å betale",
@@ -89,7 +89,7 @@ var labels = map[string]pdfLabels{
 		invoice: "Invoice", creditNote: "Credit note", number: "Number", issueDate: "Invoice date",
 		deliveryDate: "Delivery date", deliveryPeriod: "Delivery period", deliveryPlace: "Place of delivery",
 		dueDate: "Due date", terms: "Payment terms", termsDays: "%d days",
-		yourRef: "Your ref.", ourRef: "Our ref.", orderRef: "Order reference", creditsFor: "Credit note for invoice %d of %s",
+		yourRef: "Your ref.", ourRef: "Our ref.", orderRef: "Order reference", project: "Project", creditsFor: "Credit note for invoice %d of %s",
 		description: "Description", quantity: "Quantity", unit: "Unit", unitPrice: "Unit price", discount: "Discount %",
 		vat: "VAT %", amount: "Amount", vatBasis: "Basis", vatAmount: "VAT", vatCategory: "VAT rate",
 		net: "Total excl. VAT", vatTotal: "VAT", gross: "Total", toPay: "Amount due",
@@ -127,9 +127,12 @@ type pdfDocument struct {
 	deliveryDate, deliveryFrom, deliveryTo *time.Time
 	deliveryPlace                          *pdfParty
 	yourReference, ourReference, orderRef  string
-	note, footer                           string
-	seller, buyer                          pdfParty
-	bankAccount, iban, bic                 string
+	// projectRef is the project the work belongs to, as the document took
+	// it (invoices work design D9); empty for none.
+	projectRef             string
+	note, footer           string
+	seller, buyer          pdfParty
+	bankAccount, iban, bic string
 	// kid is an issued invoice's KID, verified against its algorithm
 	// (pdfDocumentOf); empty without one (EHF and KID design D3).
 	kid       string
@@ -312,7 +315,7 @@ func buildPDFModel(d pdfDocument) pdfModel {
 			m.meta = append(m.meta, [2]string{l.terms, fmt.Sprintf(l.termsDays, *d.paymentTermsDays)})
 		}
 	}
-	for _, ref := range [][2]string{{l.yourRef, d.yourReference}, {l.ourRef, d.ourReference}, {l.orderRef, d.orderRef}} {
+	for _, ref := range [][2]string{{l.yourRef, d.yourReference}, {l.ourRef, d.ourReference}, {l.orderRef, d.orderRef}, {l.project, d.projectRef}} {
 		if ref[1] != "" {
 			m.meta = append(m.meta, ref)
 		}

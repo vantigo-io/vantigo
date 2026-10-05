@@ -94,7 +94,8 @@ export const draft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument
 /**
  * An invoice draft made from work (invoices work design D2), as a save answers
  * it: line 1 bills two hour entries and is written down below their sum, line 2
- * a mileage expense and line 3 nothing; the save released a milestone.
+ * a mileage expense and line 3 nothing; the save released a milestone. All of
+ * its work is project 41's, so the save derived the document's project (D9).
  */
 export const workDraft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
   const base = draft();
@@ -118,6 +119,8 @@ export const workDraft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocu
       { ...base.lines[2], sources: [], warnings: [] },
     ],
     sources: { count: 3, held: 3, invoiced: 0, released: 0 },
+    projectId: 41,
+    projectReference: "P-41",
     releasedSources: [{ kind: "projects.milestone", id: 701 }],
     warnings: ["line_differs_from_sources", "sources_released"],
     ...overrides,
@@ -444,7 +447,10 @@ export const releasedWork = (overrides: Partial<InvoiceDocument> = {}): InvoiceD
   };
 };
 
-/** A page of the list: a draft, then two issued documents. */
+/**
+ * A page of the list: a draft, then two issued documents — the invoice's work
+ * all project 41's, the project a list may be filtered on (D9).
+ */
 export const listPage = (overrides: Partial<InvoiceList["pagination"]> = {}): InvoiceList => ({
   data: [
     {
@@ -485,6 +491,8 @@ export const listPage = (overrides: Partial<InvoiceList["pagination"]> = {}): In
       grossTotal: 124.99,
       openAmount: 124.99,
       ehfStatus: "delivered",
+      projectId: 41,
+      projectReference: "P-41",
     },
   ],
   pagination: {
