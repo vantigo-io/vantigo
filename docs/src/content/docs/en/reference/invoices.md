@@ -430,11 +430,7 @@ under the original's lock. The original answers its released rows with the state
 
 **Pulling released work again.** Released work is uninvoiced: no live row holds it, so a
 new draft may hold it and a new invoice bill it, with **no mandatory reference** to the
-credit note. When work pulled into a new invoice was released before, the note suggested
-for it names what it replaces — "Erstatter faktura <n>, kreditert med kreditnota <c>" in
-Norwegian, "Replaces invoice <n>, credited by credit note <c>" in English — each
-(invoice, credit note) pair that last released the work, newest first; it is a
-suggestion only.
+credit note.
 
 ## Issuing
 

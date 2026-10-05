@@ -508,8 +508,9 @@ func TestRelease_AnUnclaimedKindIsLoggedAndSkipped(t *testing.T) {
 	holders.disclaim(kindHours)
 
 	credit := issued(t, h, c.ID)
-	if logs := h.Logs(); !strings.Contains(logs, `"level":"ERROR"`) || !strings.Contains(logs, "time.entry") {
-		t.Errorf("logs = %s, want an error naming time.entry", logs)
+	if logs := h.Logs(); !strings.Contains(logs, `"level":"ERROR"`) || !strings.Contains(logs, "time.entry") ||
+		!strings.Contains(logs, `"sourceIds":[501,502]`) {
+		t.Errorf("logs = %s, want an error naming time.entry and its sources 501 and 502", logs)
 	}
 	got := releasedIDs(holders)
 	if len(got[kindHours]) != 0 || !slices.Equal(got[kindExpense], []int64{mileage}) || !slices.Equal(got[kindMilestone], []int64{milestone}) {

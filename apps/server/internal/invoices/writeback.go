@@ -142,8 +142,12 @@ func (s *server) releaseWork(ctx context.Context, tx pgx.Tx, h holders, ref cont
 		}
 		holder, ok := h[kind]
 		if !ok {
+			ids := make([]int64, 0, len(sources))
+			for _, src := range sources {
+				ids = append(ids, src.ID)
+			}
 			s.deps.Logger.ErrorContext(ctx, "invoices: no holder claims a released source's kind; its stamp stays",
-				"kind", string(kind), "invoiceId", ref.ID, "sources", len(sources))
+				"kind", string(kind), "invoiceId", ref.ID, "sources", len(sources), "sourceIds", ids)
 			continue
 		}
 		if err := releaseInvoiced(ctx, tx, kind, holder, ref, sources); err != nil {
