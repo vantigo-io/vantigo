@@ -371,6 +371,7 @@ Nothing is made, and the dialog says *Could not invoice the work* and why:
 - *Some of the chosen work belongs to a project that does not bill this customer.*
 - *The chosen work is in more than one currency, and one invoice is in one currency*, or
   *The chosen work is not in NOK, the only currency this module invoices in.*
+- *Work is invoiced per project, and the Projects module is switched off.*
 - *One document holds at most 5 000 pieces of work. Choose fewer, or make another draft.*
 - *Grouped this way the work makes more than 500 lines. Choose a coarser grouping* — and
   the dialog switches to the finest grouping that fits, saying, for instance, *“Per day”

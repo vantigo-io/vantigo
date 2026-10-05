@@ -183,7 +183,7 @@ to **Approved**, with its approval as it was; withdrawing the approval is not a 
 round that. In the day view such an entry's status
 reads *Invoiced by invoice 1042* — a link to the invoice when the Invoices module is on
 and you hold `invoices:access`, plain words otherwise — and on **My week** the cell's
-tooltip says the same ([invoicing work](/en/user/invoices/#invoicing-work)).
+tooltip says the same for a single entry on an unlocked day ([invoicing work](/en/user/invoices/#invoicing-work)).
 
 ## See everyone's weeks
 

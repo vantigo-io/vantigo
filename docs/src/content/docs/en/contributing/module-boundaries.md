@@ -259,15 +259,23 @@ Communications' outbox is the working example.
   project row, the time entry, or the number counter; the first writer is started and
   seen waiting on it, then the second, seen waiting behind the first; the raw
   transaction commits, and Postgres hands the row on. **Who waits on whom is read with
-  `pg_blocking_pids`**, and **a row's lock is proved with a `NOWAIT` probe** (`FOR NO
-  KEY UPDATE NOWAIT` — SQLSTATE 55P03 when another transaction holds it), each on a
-  connection of its own; no `pg_locks` read stands as proof that a row is or is not
+  `pg_blocking_pids`**, and **a row's lock is proved with a `NOWAIT` probe** — `FOR NO
+  KEY UPDATE NOWAIT` on the project, `FOR UPDATE NOWAIT` on the document; SQLSTATE 55P03
+  when another transaction holds it — each on a connection of its own; no `pg_locks` read stands as proof that a row is or is not
   locked. After each race the database's **`pg_stat_database.deadlocks`** must still be
   0, so a deadlock a loser retried away — the customers merge retries 40P01 — is caught
   too. An issue races each writer of the same rows — an expense's manual mark and a
   batch reimbursement, a milestone move and a fixed-price project's price edit, a time
   unapprove, a customers merge — both must finish within their deadline, and the
   loser's refusal is the named one ([the races](/en/reference/invoices/#the-races)).
+- **The harness**, `apps/server/internal/modtest`, is what these tests mount their
+  modules through: an in-process installation on a real, migrated PostgreSQL database,
+  the real server stack over `module.Compose` with identity beside the module under
+  test, a settable clock, and a client whose every exchange is validated against the
+  module's contract. A module's collaborators are composed for real or replaced by
+  contract fakes through its `With*` options — `WithProjects`, `WithBillableHours`,
+  `WithInvoicedWork` and the rest — and `WithPoolMaxConns` sets the size of the
+  installation's database pool, which the races above hold at two.
 
 ## Turning a module off
 
