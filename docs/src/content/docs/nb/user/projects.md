@@ -75,6 +75,7 @@ fanene; en prosjektleder finner også **Rediger** og **Endre status** der.
 | **Økonomi** | budsjett mot ført arbeid, kostnader og faktureringsplanen | alle; beløp bare med økonomiske rettigheter |
 | **Timer** | timene som er ført på prosjektet, fra Timer-appen | `time:access`, når Timer er aktivert |
 | **Utlegg** | utleggene som er ført på prosjektet, fra Utlegg-appen | `expenses:access`, når Utlegg er aktivert |
+| **Fakturagrunnlag** | prosjektets arbeid som ikke er fakturert ennå — godkjente timer, utlegg og milepæler klare til fakturering — og veien til et fakturautkast av det, fra Fakturaer-appen ([fakturere arbeid](/nb/user/invoices/#fakturere-arbeid)) | `invoices:access` og `invoices:create`, når Fakturaer er aktivert |
 
 ## Rediger et prosjekt
 
@@ -238,11 +239,18 @@ meldingen oppgir grunnen (full tabell:
 
 Når en faktura utstedt i **Fakturaer** fakturerer en milepæl som er klar til
 fakturering, blir milepælen **Fakturert** av seg selv, av den som utstedte fakturaen,
-med fakturaens dato og beløpet låst. En slik milepæl tilbyr ikke **Angre
-faktureringen**: bare en kreditnota som returnerer fakturalinjen dens, setter den
-tilbake til klar til fakturering — og kreditnotaen gjør det alltid, også om prosjektet
-er endret siden. **Merk som fakturert** for hånd er der fortsatt for milepæler du
-fakturerer utenfor Vantigo.
+med fakturaens dato og beløpet låst, og statusen sier *Fakturert på faktura 1042* — en
+lenke til fakturaen når Fakturaer-modulen er på og du har `invoices:access`, ellers bare
+tekst. En slik milepæl tilbyr ikke **Angre faktureringen**: bare en kreditnota som
+returnerer fakturalinjen dens, setter den tilbake til klar til fakturering — og
+kreditnotaen gjør det alltid, også om prosjektet er endret siden. Å angre den på annet
+vis avvises: *Faktura 1042 fakturerte denne milepælen. Bare en kreditnota som krediterer
+linjen, tar den tilbake.* **Merk som fakturert** for hånd er der fortsatt for milepæler
+du fakturerer utenfor Vantigo.
+
+Der du kan åpne prosjektets fane **Fakturagrunnlag**, lenker faktureringsplanen dit —
+**Fakturer arbeidet** — for å fakturere milepælene som er klare, sammen med resten av
+prosjektets arbeid ([fakturere arbeid](/nb/user/invoices/#fakturere-arbeid)).
 
 Med Utlegg aktivert sier en linje under tabellen hvor mange *utlegg klare til
 fakturering* det er, med **Se utleggene** når du kan åpne Utlegg-fanen.
@@ -306,3 +314,4 @@ klare i en annen valuta sier **Mer klart i en annen valuta**; prosjektets egen
 | **Margin** og kostnadstallene | økonomiske rettigheter og `projects:view-costs` |
 | Fanen **Timer** | `time:access`, Timer aktivert |
 | Fanen **Utlegg** | `expenses:access`, Utlegg aktivert |
+| Fanen **Fakturagrunnlag**, og **Fakturer arbeidet** i faktureringsplanen | `invoices:access` og `invoices:create`, Fakturaer aktivert |

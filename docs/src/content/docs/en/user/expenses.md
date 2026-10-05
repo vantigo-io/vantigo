@@ -261,9 +261,15 @@ may open, and says so when that is fewer than the totals cover.
   leaves the ready-to-invoice list, and counts under **Invoiced** on the card. **Undo
   invoicing** takes the stamp back after a confirmation.
 - A line that went out on an invoice issued in the **Invoices** app is invoiced by that
-  invoice. **Undo invoicing** is not offered on it: only a credit note that returns the
-  whole line takes the stamp back and puts the line in the ready-to-invoice list again.
-  Marking such a line invoiced, or undoing it, by hand is refused.
+  invoice, and says so — *Invoiced by invoice 1042* — in the list and in the line's
+  details: a link to the invoice when the Invoices module is on and you hold
+  `invoices:access`, plain words otherwise. **Undo invoicing** is not offered on it:
+  only a credit note that returns the whole line takes the stamp back and puts the line
+  in the ready-to-invoice list again. Marking such a line invoiced, or undoing it, by
+  hand is refused — *Invoice 1042 invoiced this line. Only a credit note that returns it
+  takes the invoicing back.* Lines ready to invoice are invoiced from the project's
+  **Invoicing** tab or the customer's **Invoices** tab
+  ([invoicing work](/en/user/invoices/#invoicing-work)).
 
 Pricing and invoicing belong to whoever may see the project's money, not to
 `expenses:manage`, and the period lock does not reach them. See [pricing by the

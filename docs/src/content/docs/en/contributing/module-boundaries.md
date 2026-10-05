@@ -4,6 +4,7 @@ description: "Implementation ownership and the conventions every module follows.
 sources:
   - apps/server/internal/module
   - apps/server/internal/contracts
+  - apps/server/internal/modtest
 ---
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
@@ -249,13 +250,24 @@ Communications' outbox is the working example.
   `pg_current_xact_id()` through the `pgx.Tx` they are handed; the issue's
   `issueAfterAllocation(ctx, tx, invoiceID)` hook reads it through the issue's own,
   and the two must be equal — the holder rode the issue's transaction. The races are
-  the integration package's to prove against the real modules: on a pool of
-  `MaxConns = 2` serving only the two racing writers, each raw lock-holding
-  transaction on its own `pgx.Connect` connection outside the pool — so any call that
-  takes a second pool connection under a lock starves and fails the test — an issue
-  races each writer of the same rows (an expense's manual stamp and a batch
-  reimbursement, a milestone move and a project's fixed-price edit, a time unapprove,
-  a customer merge), and both must finish.
+  the integration package's to prove against the real modules
+  (`work_races_test.go`), on an installation whose pool is `MaxConns = 2`
+  (`modtest.WithPoolMaxConns(2)`) serving only the two racing writers, so any call
+  that takes a second pool connection under a lock starves and fails the test. Each
+  race is held at a lock: a **raw transaction on a connection of its own**, opened
+  with `pgx.Connect` outside the pool, locks the contested row — the expense line, the
+  project row, the time entry, or the number counter; the first writer is started and
+  seen waiting on it, then the second, seen waiting behind the first; the raw
+  transaction commits, and Postgres hands the row on. **Who waits on whom is read with
+  `pg_blocking_pids`**, and **a row's lock is proved with a `NOWAIT` probe** (`FOR NO
+  KEY UPDATE NOWAIT` — SQLSTATE 55P03 when another transaction holds it), each on a
+  connection of its own; no `pg_locks` read stands as proof that a row is or is not
+  locked. After each race the database's **`pg_stat_database.deadlocks`** must still be
+  0, so a deadlock a loser retried away — the customers merge retries 40P01 — is caught
+  too. An issue races each writer of the same rows — an expense's manual mark and a
+  batch reimbursement, a milestone move and a fixed-price project's price edit, a time
+  unapprove, a customers merge — both must finish within their deadline, and the
+  loser's refusal is the named one ([the races](/en/reference/invoices/#the-races)).
 
 ## Turning a module off
 

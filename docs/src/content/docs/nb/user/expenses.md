@@ -258,10 +258,15 @@ færre enn summene dekker.
   under **Fakturert** på kortet. **Angre faktureringen** tar stempelet tilbake etter en
   bekreftelse.
 - En linje som gikk ut på en faktura utstedt i Fakturaer-appen, er fakturert av den
-  fakturaen. **Angre faktureringen** tilbys ikke på den: bare en kreditnota som
+  fakturaen, og sier det — *Fakturert på faktura 1042* — i listen og i linjens detaljer:
+  en lenke til fakturaen når Fakturaer-modulen er på og du har `invoices:access`, ellers
+  bare tekst. **Angre faktureringen** tilbys ikke på den: bare en kreditnota som
   krediterer hele linjen tar stempelet tilbake og legger linjen i listen over det som er
   klart til fakturering igjen. Å merke en slik linje som fakturert, eller angre det, for
-  hånd blir avvist.
+  hånd blir avvist — *Faktura 1042 fakturerte denne linjen. Bare en kreditnota som
+  krediterer den, tar faktureringen tilbake.* Linjer som er klare til fakturering,
+  faktureres fra prosjektets fane **Fakturagrunnlag** eller kundens fane **Fakturaer**
+  ([fakturere arbeid](/nb/user/invoices/#fakturere-arbeid)).
 
 Prising og fakturering tilhører den som kan se prosjektets økonomi, ikke
 `expenses:manage`, og periodelåsen når dem ikke. Se [pricing by the project

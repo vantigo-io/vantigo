@@ -75,6 +75,7 @@ tab; a manager also finds **Edit** and **Change status** there.
 | **Economy** | budget against logged work, costs, and the invoice plan | everyone; amounts only with financial rights |
 | **Time** | the hours logged on the project, from the Time app | `time:access`, when Time is enabled |
 | **Expenses** | the expenses recorded on the project, from the Expenses app | `expenses:access`, when Expenses is enabled |
+| **Invoicing** | the project's work not yet invoiced — approved hours, expenses and milestones ready to invoice — and the way to make an invoice draft of it, from the Invoices app ([invoicing work](/en/user/invoices/#invoicing-work)) | `invoices:access` and `invoices:create`, when Invoices is enabled |
 
 ## Edit a project
 
@@ -238,10 +239,18 @@ message names the reason (full table:
 
 When an invoice issued in **Invoices** bills a milestone that is ready to invoice, the
 milestone becomes **Invoiced** by itself, by whoever issued the invoice, with the
-invoice's date and the amount frozen. Such a milestone does not offer **Undo the
-invoicing**: only a credit note that returns its invoice line puts it back to ready to
-invoice — and the credit note always does, even if the project has changed since.
-**Mark as invoiced** by hand stays for milestones you invoice outside Vantigo.
+invoice's date and the amount frozen, and its status says *Invoiced by invoice 1042* — a
+link to the invoice when the Invoices module is on and you hold `invoices:access`, plain
+words otherwise. Such a milestone does not offer **Undo the invoicing**: only a credit
+note that returns its invoice line puts it back to ready to invoice — and the credit note
+always does, even if the project has changed since. Undoing it by any other way is
+refused: *Invoice 1042 invoiced this milestone. Only a credit note that returns its line
+takes it back.* **Mark as invoiced** by hand stays for milestones you invoice outside
+Vantigo.
+
+Where you may open the project's **Invoicing** tab, the invoice plan links to it —
+**Invoice the work** — to invoice the milestones that are ready, with the rest of the
+project's work ([invoicing work](/en/user/invoices/#invoicing-work)).
 
 With Expenses enabled, a line under the table says how many *billable expenses ready
 to invoice* there are, with **View the expenses** when you may open the Expenses tab.
@@ -305,3 +314,4 @@ can see appear here* (see [The portfolio](/en/reference/projects/#the-portfolio)
 | **Margin** and the cost figures | financial rights and `projects:view-costs` |
 | **Time** tab | `time:access`, Time enabled |
 | **Expenses** tab | `expenses:access`, Expenses enabled |
+| **Invoicing** tab, and **Invoice the work** on the invoice plan | `invoices:access` and `invoices:create`, Invoices enabled |

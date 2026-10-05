@@ -1,6 +1,6 @@
 ---
 title: Fakturaer
-description: Utkast, utstedelse og sending av fakturaer, kreditnotaer, betalinger, journalen og eksporten.
+description: Fakturering av arbeid, utkast, utstedelse og sending av fakturaer, kreditnotaer, betalinger, journalen og eksporten.
 sidebar:
   order: 50
 sources:
@@ -186,29 +186,39 @@ og 7), så de fleste bedrifter trenger ikke endre noe her.
   ligger i framtiden. En sats kan ikke endres fra en dag på eller før et utstedt
   dokuments dato ([reglene](/en/reference/invoices/#endpoints)).
 
-Innstillingene holder også mva-koden hver type arbeid faktureres med — timer, utgifter og
-faktureringsmilepæler — som et utkast laget av arbeid gir linjene sine: kode 3 (25 %) for
-alle tre til du endrer dem, og kode 7 for alle typer så lenge selgeren ikke er
-mva-registrert. Innstillingssiden har ikke et kort for dem ennå; en lagring beholder dem
-som de er, og skjermbildet for dem kommer med det ufakturerte arbeidet
-([mva-koder for arbeid](/en/reference/invoices/#vat-codes-for-work)).
+### Arbeid til fakturering
 
-De holder også standardvalget for **timelisten** og hvordan den navngir folk: om et nytt
-fakturautkast får en timeliste med mindre du velger noe annet — av til du endrer det — og
-personmerket, som er initialene som standard («KN»; en ny «KN» blir «KN2»), et nummer
-(«Person 1», «Person 2» i den rekkefølgen de står på timelisten) eller hele navnet. Som
-mva-kodene for arbeid har de ikke et kort på innstillingssiden ennå, og en lagring
-beholder dem som de er ([timelisten](/en/reference/invoices/#the-timesheet)).
+Kortet **Arbeid til fakturering** på samme side — *Mva-koden hver type arbeid faktureres
+med, og om nye fakturaer får timeliste* — holder det et utkast laget av arbeid starter
+med ([Fakturere arbeid](#fakturere-arbeid)). Det lagres med sidens **Lagre**.
+
+- **Mva-kode for timer**, **Mva-kode for utlegg** og **Mva-kode for milepæler**: koden
+  linjene for hver type arbeid får. Alle tre er kode 3 (25 %) til du endrer dem. Listene
+  tilbyr kodene som tilbys for nye linjer, og den lagrede når den siden er tatt ut av
+  listen, merket *(tilbys ikke lenger)*; velg en annen før du fakturerer arbeid av den
+  typen. Så lenge selgeren ikke er registrert i Merverdiavgiftsregisteret, faktureres all
+  slags arbeid med kode 7 i stedet, uansett hva kortet sier.
+- **Legg ved timeliste på nye fakturaer**: om et nytt fakturautkast får en timeliste i
+  PDF-en med mindre du velger noe annet. Av til du slår det på.
+- **Hvordan timelisten navngir hver person**: **Initialer (KN)** — standard; en ny «KN»
+  blir «KN2» — **Person 1, Person 2**, nummerert i den rekkefølgen de står på timelisten,
+  eller **Fullt navn**. *En timeliste viser kunden de ansattes arbeid. Initialer sier
+  minst; som arbeidsgiver må du informere de ansatte.* Merket brukes når timelistens
+  rader skrives, og en utstedt fakturas timeliste endres aldri
+  ([timelisten](/en/reference/invoices/#the-timesheet)).
 
 ## Finne et dokument
 
 **Fakturaer** i sidemenyen lister hvert utkast og hvert utstedte dokument: utkast først,
 så etter nummer, nyeste først. Hver rad viser **Nummer** (eller *Utkast*), **Type**,
 **Tilstand**, **Kunde**, **Fakturadato**, **Forfallsdato**, **Sum**, det som er
-**Utestående** på en utstedt faktura, og under **EHF** hvor et utstedt dokument står som
+**Utestående** på en utstedt faktura, under **EHF** hvor et utstedt dokument står som
 e-faktura: *Ikke sendt*, *I kø*, *Overlevert*, *Levert*, *Feilet*, *Ubekreftet* eller
-*Avbrutt* ([hva hver betyr](#følg-sendingen-på-kortet-e-faktura-ehf)); for et utkast er
-den tom. Klikk nummeret i en rad for å åpne dokumentet.
+*Avbrutt* ([hva hver betyr](#følg-sendingen-på-kortet-e-faktura-ehf)) — for et utkast er
+den tom — og under **Prosjekt** koden til prosjektet dokumentets arbeid hører til, når
+alt hører til ett. Klikk nummeret i en rad for å åpne dokumentet, eller et prosjekts kode
+for å vise bare det prosjektets dokumenter: listen sier da *Prosjekt P-41*, og krysset ved
+siden av (*Fjern prosjektfilteret*) viser alle igjen.
 
 Snevre inn listen med knappene og feltene over den:
 
@@ -242,6 +252,142 @@ Utkastet kan avvises når kunden er slått sammen med en annen (*fakturer den i 
 er arkivert, er sperret for fakturering eller ikke finnes lenger — de samme kontrollene
 kjøres igjen ved hver lagring og ved utstedelse
 ([kundekontrollene](/en/reference/invoices/#drafts)).
+
+Skal du fakturere timer, utlegg eller milepæler, start heller fra arbeidet: utkastet lages
+med linjene sine ([Fakturere arbeid](#fakturere-arbeid)).
+
+## Fakturere arbeid
+
+Timene som er godkjent i Timer, utleggene som er klare til fakturering i Utlegg og
+faktureringsmilepælene som er klare til fakturering i Prosjekter, blir fakturalinjer her
+uten at noe tastes inn på nytt: du velger arbeidet, Vantigo skriver linjene, og
+utstedelsen merker arbeidet som fakturert i appen det kom fra
+([slik virker det](/en/reference/invoices/#invoicing-work)).
+
+### Hvor det ufakturerte arbeidet står
+
+- På en kundes side starter fanen **Fakturaer** med kortet **Ufakturert arbeid** —
+  *Godkjente timer, fakturerbare utlegg og milepæler klare til fakturering som ennå ikke
+  står på en faktura. Velg hva som skal faktureres.* — som viser arbeidet på alle
+  prosjektene som faktureres den kunden, over kundens dokumenter.
+- På et prosjekts side viser fanen **Fakturagrunnlag** — den siste, etter **Timer** og
+  **Utlegg** — det samme kortet for det ene prosjektet. Et prosjekt som ikke fakturerer
+  noen kunde, sier *Dette prosjektet fakturerer ingen kunde, så arbeidet kan ikke
+  faktureres herfra.* På fanen **Økonomi** lenker faktureringsplanen dit: **Fakturer
+  arbeidet**.
+
+Begge krever `invoices:access` og `invoices:create`, med Fakturaer-modulen slått på. Er
+ingen modul som registrerer arbeid — Timer, Utlegg eller Prosjekter — slått på, vises
+ikke kortet på kunden i det hele tatt, og prosjektets fane sier *Ingen modul som
+registrerer fakturerbart arbeid — Timer, Utlegg eller Prosjekter — er slått på.* Venter
+ingenting, sier kortet *Ingenting å fakturere*.
+
+### Lese kortet
+
+Arbeidet grupperes per prosjekt — en overskrift som *P-41 · Apollo*, med merket
+**Fastpris** eller **Ikke fakturerbart** når prosjektet er det — og innenfor et prosjekt i
+opptil tre tabeller:
+
+- **Timer**: **Dato**, **Person**, **Arbeidstype**, **Timer** med satsen de faktureres
+  med (*4 t à NOK 1 200,00*) og **Beløp**. En arbeidstype med påslag faktureres med sin
+  egen sats.
+- **Utlegg**: **Dato**, **Type** — **Utlegg**, **Kjøregodtgjørelse** eller
+  **Leverandørfaktura** — **Beskrivelse** (en leverandørfakturas starter med leverandøren
+  og fakturanummeret), **Avstand** for kjøregodtgjørelse, og **Beløp**, prisen for kunden
+  med eventuelt påslag.
+- **Milepæler**: **Dato**, dagen den ble klar til fakturering, **Milepæl**,
+  **Beskrivelse** og **Beløp**.
+
+En rad som ikke kan velges, er nedtonet, og **Hvorfor ikke** sier hvorfor:
+
+| Hvorfor ikke | Hva det betyr |
+| --- | --- |
+| *Fastprisprosjekt: timene vises, men faktureres ikke* | Et fastprisprosjekt fakturerer milepælene sine; timene står der for å sammenlignes med planen. |
+| *Prosjektet er ikke fakturerbart* | Prosjektet fakturerer ingen — det kan ha endret seg etter at arbeidet ble godkjent. |
+| *Ikke i NOK* | Vantigo fakturerer bare i NOK. |
+| *Prosjektet fakturerer ingen kunde* | På et prosjekts fane: prosjektet har ingen kunde å fakturere. |
+| **På utkast 12** eller **På faktura 1042** | Et utkast holder det allerede, eller en faktura har fakturert det. Lenken åpner dokumentet. |
+
+Under tabellene er *Klart til fakturering: NOK 48 500,00* det som kan velges, per valuta.
+Kortet advarer også, uten å stoppe noe:
+
+- på et prosjekt: *Noe av arbeidet på dette prosjektet ble levert for mer enn en måned
+  siden; loven krever faktura senest en måned etter levering*;
+- på en leverandørfaktura: *En leverandørfaktura med denne leverandøren og dette nummeret
+  er allerede fakturert, eller står her to ganger. Sjekk at den ikke faktureres dobbelt*;
+- øverst: *Ikke alt arbeidet vises: det er mer enn én lesing kan vise. Fakturer noe av
+  det, eller vis til en tidligere dato, for å se resten.*
+
+### Lag et utkast av det
+
+Kryss av radene som skal faktureres, eller boksen øverst i en tabell for å velge alle
+radene i den. Linjen ved siden av knappen teller det du har valgt — *3 valgt: NOK
+14 500,00*. Klikk **Fakturer det valgte arbeidet**. På en kundes fane tilbys knappen
+bare for en aktiv kunde, slik **Ny faktura** gjør: aldri for en som er arkivert, sperret
+for fakturering, slått sammen eller anonymisert.
+
+Dialogen **Fakturer arbeidet** gjentar det som er valgt, og spør om:
+
+- **Linjer** — hvordan arbeidet grupperes i linjer, hvert valg med antallet linjer det
+  ville gitt (*— 3 linjer*): **Én linje per prosjekt** (standard), **Per arbeidstype**,
+  **Per person**, **Per dag** eller **Spesifisert**, én linje per føring. *Timer med ulike
+  satser blir alltid egne linjer, og hver milepæl blir en egen linje*; utlegg blir én
+  linje per type utlegg, unntatt spesifisert. Linjene skrives på kundens språk —
+  «Konsulenttimer, Apollo, september 2026» eller «Consulting hours, Apollo, September
+  2026» — og kan redigeres etterpå som alle andre linjer
+  ([linjetekstene](/en/reference/invoices/#from-work-to-a-draft)).
+- **Legg ved timeliste i PDF-en** — vises når timer er valgt: *Én rad per timeføring:
+  dato, person, arbeidstype og timer — aldri notatet på føringen.* Den starter slik
+  innstillingene sier for et nytt utkast, og slik utkastet har den når du legger til i et
+  ([timelisten](#timelisten)).
+- **Mva-kode for timer**, **Mva-kode for utlegg**, **Mva-kode for milepæler** — én for
+  hver type som er valgt, med kodene på kortet **Arbeid til fakturering** i
+  innstillingene som utgangspunkt, eller kode 7 for alle typer så lenge selgeren ikke er
+  mva-registrert. Et viderefakturert utlegg får koden som velges her, aldri mvaen på
+  kvitteringen. Vantigo har ikke «utlegg» i merverdiavgiftslovens forstand: en kostnad
+  som sendes videre til kunden, er et salg som alle andre.
+- **Levert fra** og **Levert til** — *Står den tom, går leveransen fra første til siste
+  dag med arbeid.*
+- **Merknad** — skrives på fakturaen. Står den tom, og noe av arbeidet er gitt tilbake av
+  en kreditnota før, får utkastet en merknad om hva det erstatter — *Erstatter faktura
+  1001, kreditert med kreditnota 1002* eller *Replaces invoice 1001, credited by credit
+  note 1002*, på kundens språk — som du kan endre på utkastet.
+- **Legg arbeidet på** — **Et nytt utkast**, eller et av kundens fakturautkast, vist som
+  *Utkast 12 — NOK 9 000,00*. Har kunden mer enn 100 utkast, sier feltet *Bare 100 av
+  kundens utkast vises; de andre tilbys ikke her.*
+
+Klikk **Opprett utkast**, eller **Legg til i utkast 12**. Utkastet åpnes. Et nytt utkast
+får kundens referanse og betalingsfrist slik **Ny faktura** gir dem. Legges arbeidet til
+et utkast, kommer det etter linjene utkastet alt har; utkastet beholder sitt eget
+toppfelt og sin merknad, leveringsperioden utvides til å dekke det nye arbeidet med
+mindre du oppga en, og timelisten blir slik boksen sa.
+
+### Når veiviseren avviser
+
+Ingenting lages, og dialogen sier *Kunne ikke fakturere arbeidet* og hvorfor:
+
+- *Noe av dette arbeidet ligger allerede på et annet utkast eller en utstedt faktura*,
+  med en lenke til dokumentet — noen tok det i mellomtiden.
+- *Noe av det valgte arbeidet er endret siden det ble vist. Les arbeidet på nytt og
+  velg.*
+- *Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er
+  fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.*
+- *Noe av det valgte arbeidet ligger på et fastpris- eller ikke-fakturerbart prosjekt, så
+  det kan ikke faktureres.*
+- *Noe av det valgte arbeidet hører til et prosjekt som ikke fakturerer denne kunden.*
+- *Det valgte arbeidet er i mer enn én valuta, og én faktura er i én valuta*, eller *Det
+  valgte arbeidet er ikke i NOK, den eneste valutaen denne modulen fakturerer i.*
+- *Ett dokument kan holde høyst 5 000 arbeidsposter. Velg færre, eller lag et nytt
+  utkast.*
+- *Gruppert slik blir arbeidet mer enn 500 linjer. Velg en grovere gruppering* — og
+  dialogen bytter til den fineste grupperingen som får plass, og sier for eksempel
+  *«Per dag» får plass innenfor 500 linjer, så linjene grupperes nå slik.*
+- Kunden er slått sammen, arkivert, sperret for fakturering eller borte, som for **Ny
+  faktura**; eller utkastet du la til i, ble lagret av noen andre i mellomtiden.
+
+Gjelder avvisningen arbeidet, nevner varselet det — *Arbeidet som ble avvist: …* — og
+listen leses på nytt, så arbeid som ikke lenger kan faktureres, faller ut av det du
+valgte. Sjekk valget og klikk knappen igjen.
 
 ## Redigere og slette et utkast
 
@@ -289,63 +435,62 @@ skrivebeskyttet.
 Lagret noen andre utkastet i mellomtiden, sier redigeringen **Utkastet er endret** og
 tilbyr **Last inn på nytt**, som forkaster dine ulagrede endringer for den nyeste versjonen.
 
-**Et utkast laget av arbeid.** Et utkast kan fakturere ufakturert arbeid — timer, utgifter
-og faktureringsmilepæler fra prosjektene — og holder da arbeidet på linjene sine: hver linje vet hvilke registreringer den fakturerer, og så lenge utkastet
-holder dem, kan ikke noe annet utkast ta dem. En lagring beholder arbeidet på linjen, også
-når du endrer linjens tekst eller beløp; en linje der beløpet ikke lenger stemmer med
-arbeidet, sier fra under **Verdt å se på** (*Beløpet på en linje avviker fra arbeidet den
-fakturerer*), og det er lov — en nedskrivning, en avrunding. Fjerner du linjen, eller
-bytter utkastets kunde, frigjøres arbeidet, som da er ufakturert igjen; lagringen sier
-*Lagringen frigjorde arbeid fra dette utkastet*. Er arbeidet endret siden det ble lagt
-til, eller kan det ikke lenger faktureres — en registrering som ikke lenger er godkjent,
-en milepæl som er flyttet tilbake — advarer utkastet om det, og å oppdatere arbeidet tar
-med de nye tallene og fjerner det som ikke lenger kan faktureres; utstedelsen ville
-avvist begge deler. Arbeid kommer bare inn på et utkast gjennom oversikten over
-ufakturert arbeid for en kunde eller et prosjekt. Når alt arbeidet et utkast fakturerer
-hører til ett prosjekt, navngir utkastet prosjektet med koden sin — skrevet ut på PDF-en
-som *Prosjekt* / *Project*, med i EHF-en, beholdt av den utstedte fakturaen og av
-kreditnotaene til den, og den siste kolonnen, *Project*, i eksporten til
-regnskapsføreren ([prosjektet](/en/reference/invoices/#the-project)).
+### Arbeidet på et utkast
 
-**Fakturere arbeid.** Oversikten over ufakturert arbeid viser, for en kunde eller ett
-prosjekt, arbeidet som ikke er fakturert ennå — godkjente fakturerbare timer, utgifter
-klare til fakturering og faktureringsmilepæler som er klare — per prosjekt og type, med
-summen av det som er valgt per valuta. Arbeid som alt ligger på et utkast eller en
-utstedt faktura vises, men kan ikke velges, og navngir dokumentet som har det; det
-samme gjelder timer på et fastprisprosjekt (prosjektet fakturerer milepælene sine),
-arbeid på et prosjekt som ikke er fakturerbart og arbeid i en annen valuta enn NOK. Et
-prosjekt der det eldste arbeidet er mer enn en måned gammelt, flagges, siden loven krever
-faktura senest en måned etter levering, og en leverandørfaktura som ser ut til å
-faktureres dobbelt flagges også. Av det valgte arbeidet lager Vantigo et utkast — eller
-legger det til et av kundens utkast — gruppert i linjer per prosjekt, arbeidstype,
-person, dag eller én linje hver, skrevet på kundens språk («Konsulenttimer, Apollo,
-september 2026» eller «Consulting hours, Apollo, September 2026»), hver type med sin
-mva-kode og leveringsperioden fra første til siste dag med arbeid. Det avvises, med
-begrunnelse, når noe av arbeidet alt ligger på et annet utkast, er endret eller ikke
-lenger kan faktureres siden det ble vist, er i mer enn én valuta, eller ville gitt mer
-enn 500 linjer — da foreslås en grovere gruppering. Utkastet navngir prosjektet sitt når
-alt arbeidet hører til ett, som ethvert utkast gjør. Arbeid som en kreditnota ga tilbake,
-vises igjen, og når det tas inn i et nytt utkast uten en egen merknad, foreslår utkastets
-merknad hva det erstatter — *Erstatter faktura 1, kreditert med kreditnota 2* — som du
-kan endre. Oversikten og veiviseren krever
-`invoices:create`. Skjermbildene for dem kommer i et senere steg av denne fasen; inntil
-da er de der for en integrasjon
-([Invoicing work](/en/reference/invoices/#invoicing-work)).
+Et utkast laget av arbeid holder arbeidet på linjene sine: under hver linje viser
+redigeringen hva den fakturerer — *Timeføring 4211 · 3. sep. 2026 · 7,5 · NOK 9 000,00*,
+*Utlegg …* eller *Milepæl …* — og på en utstedt faktura om hvert er *Fakturert* eller
+*Frigitt*. Så lenge utkastet holder arbeidet, kan ikke noe annet utkast ta det. Når alt
+arbeidet hører til ett prosjekt, står det *Prosjekt: P-41* under kunden: koden skrives på
+PDF-en som *Prosjekt* / *Project*, er med i EHF-en, beholdes av den utstedte fakturaen og
+kreditnotaene til den, vises i listens kolonne **Prosjekt**, og er den siste kolonnen i
+eksporten til regnskapsføreren ([prosjektet](/en/reference/invoices/#the-project)).
 
-**Timelisten.** En faktura kan ha en timeliste i PDF-en: etter selve fakturaen, på egne
-sider, hver timeoppføring den fakturerer — datoen, personen, arbeidstypen, oppgaven (eller
-ellers prosjektets navn, eller arbeidstypen) og timene — med en sum per person og en sum for alt. Den viser
-aldri merknaden en person skrev på en oppføring. Et utkast laget av arbeid får en når du
-ber om det, eller når innstillingene gjør det til standard; slår du den på for et utkast,
-skrives den fra timene utkastet holder, slår du den av, fjernes den, hver lagring holder
-den til timene utkastet fortsatt fakturerer, og en oppfrisking av arbeidet skriver den på
-nytt. Forhåndsvisningen viser den, og når fakturaen er utstedt, er timelisten en del av
-den og endres aldri, uansett hva som senere skjer med en bruker. En timeliste forteller
-kunden hvem som har jobbet med hva: å fortelle de ansatte at timene deres vises for
-kunder, er arbeidsgiverens oppgave — informasjonen GDPR art. 13 krever — og derfor er
-initialer standard, og hele navnet er et valg du tar i innstillingene. Bryteren på
-utkastet kommer med skjermbildene for fakturering av arbeid; inntil da er den der for en
-integrasjon ([timelisten](/en/reference/invoices/#the-timesheet)).
+- **Rediger en linjes tekst, antall eller pris** som på ethvert utkast: arbeidet blir
+  værende på linjen. En linje der beløpet ikke lenger stemmer med arbeidet, sier fra i
+  oransje under linjen og under **Verdt å se på** — *Beløpet på en linje avviker fra
+  arbeidet den fakturerer* — og det er lov: en nedskrivning, en avrunding.
+- **Fjern en linje** for å gi arbeidet tilbake: etter **Lagre** er arbeidet ufakturert
+  igjen, og **Verdt å se på** sier *Lagringen frigjorde arbeid fra dette utkastet* og
+  *Frigitt:* med arbeidet nevnt. Sletter du utkastet, gis alt arbeidet tilbake.
+- **Bytt kunde** bare vel vitende om at det gir alt arbeidet tilbake: redigeringen sier
+  *Bytter du kunde, frigis arbeidet dette utkastet holder: det blir ufakturert igjen når
+  du lagrer.*
+- **Oppdater arbeidet**, over linjene, leser arbeidet på nytt fra Timer, Utlegg og
+  Prosjekter: nye tall tas inn, og arbeid som ikke lenger kan faktureres, fjernes og
+  nevnes som frigitt. Knappen er nedtonet mens du har ulagrede endringer (*Lagre
+  endringene før du oppdaterer arbeidet*); når den er ferdig, *Arbeidet er oppdatert*.
+  Lagret noen andre utkastet i mellomtiden, avvises oppdateringen (*Fakturaen er endret;
+  prøv igjen*): prøv igjen.
+- Er arbeidet endret siden det ble lagt til, eller kan det ikke lenger faktureres — en
+  føring som ikke lenger er godkjent, en milepæl som er flyttet tilbake — sier linjen og
+  **Verdt å se på** fra: *Arbeid på dette utkastet er endret siden det ble lagt til;
+  oppdater arbeidet, ellers avviser utstedelsen det*, eller *Arbeid på dette utkastet kan
+  ikke lenger faktureres; oppdater arbeidet for å fjerne det, ellers avviser utstedelsen
+  det.*
+
+Arbeid kommer bare inn på et utkast fra kortet **Ufakturert arbeid**, aldri ved å
+redigere en linje.
+
+### Timelisten
+
+Hvert fakturautkast har kortet **Timeliste**, med boksen **Legg ved timeliste i PDF-en**.
+Er den krysset av, får fakturaens PDF, etter selve fakturaen og på egne sider, hver
+timeføring utkastet fakturerer — **Dato**, **Person**, **Arbeidstype**, **Beskrivelse**
+(oppgaven, ellers prosjektets navn, ellers arbeidstypen) og **Timer** — med en sum per
+person og en sum for alt. Den viser aldri notatet en person skrev på en føring. Radene
+skrives når utkastet lagres, og kortet viser dem da; før du lagrer, sier det
+*Timelistens rader skrives når utkastet lagres*, og på et utkast uten timer *Utkastet
+holder ingen timer til timelisten*. Hver lagring holder timelisten til timene utkastet
+fortsatt fakturerer, **Oppdater arbeidet** skriver den på nytt, og fjerner du krysset,
+fjernes den. **Forhåndsvis** viser den; når fakturaen er utstedt, er timelisten en del av
+den og endres aldri, uansett hva som senere skjer med en bruker. En kreditnota har ingen
+timeliste.
+
+En timeliste forteller kunden hvem som har jobbet med hva. Å fortelle de ansatte at
+timene deres vises for kunder, er arbeidsgiverens oppgave — informasjonen GDPR art. 13
+krever — og derfor er initialer standard, og fullt navn er et valg som tas på kortet
+**Arbeid til fakturering** ([timelisten](/en/reference/invoices/#the-timesheet)).
 
 ## Utstede
 
@@ -425,9 +570,14 @@ når kreditnotaen returnerer den linjen **i sin helhet**: hele antallet, til fak
 egen enhetspris og rabatt, medregnet kreditnotaene som er utstedt før den. En linje som
 krediteres delvis, eller til lavere pris, beholder arbeidet sitt fakturert til resten av
 linjen er returnert; en milepæl kommer tilbake hel eller ikke i det hele tatt.
-Kreditnotautkastet viser hvilket arbeid utstedelsen ville gi tilbake, og fakturaen viser
-deretter det arbeidet som frigjort. En ny faktura kan fakturere det frigjorte arbeidet på
-nytt; den trenger ikke å nevne kreditnotaen
+Kreditnotautkastets kort **Arbeid denne kreditnotaen gir tilbake** viser, slik utkastet
+står, arbeidet utstedelsen ville gi tilbake — *Når den utstedes, blir dette arbeidet
+ufakturert igjen og kan faktureres på nytt* — eller sier *Slik den står, gir utstedelsen
+ikke noe arbeid tilbake: bare en linje kreditert i sin helhet, til sin egen pris, frigir
+arbeidet sitt.* Når den er utstedt, viser fakturaens linjer arbeidet som *Frigitt*, og det
+står igjen på kortet **Ufakturert arbeid**. En ny faktura kan fakturere det frigjorte
+arbeidet på nytt; den trenger ikke å nevne kreditnotaen, og veiviseren foreslår en
+merknad om hva den erstatter
 ([frigjøring ved kreditering](/en/reference/invoices/#release-on-credit)).
 
 ## Sluttoppgjør
@@ -447,9 +597,19 @@ vanlig utkast med én **fradragslinje** per tidligere faktura og mva-kode:
   konto, faktura 985* / *Previously invoiced on account, invoice 985*. Et sluttoppgjør kan
   selv trekkes fra senere, men ikke på en mva-kode der det trekker fra tidligere fakturaer.
 
-Steget i redigeringen som viser de tidligere fakturaene og foreslår linjene, kommer med
-appens skjermbilder for fakturering av arbeid; reglene under gjelder allerede, og
-serveren bruker dem ved hver lagring og utstedelse.
+For å legge dem til klikker du **Trekk fra tidligere fakturaer** over linjene på et
+fakturautkast. Dialogen viser, per mva-kode, hva hver av kundens utstedte fakturaer har
+igjen å trekke fra — **Faktura**, **Fakturadato**, **Mva-kode**, **Mva %** og **Igjen å
+trekke fra** — *Et fradrag avgiftsberegnes med den tidligere fakturaens sats.* Kryss av
+radene som skal trekkes fra, og gi hver et beløp under **Trekk fra**: mer enn 0 og høyst
+det som er igjen, som også er det beløpet starter på. Et par utkastet allerede trekker
+fra, sier *Står allerede på utkastet*. Klikk **Legg til fradragslinjene**: hver blir en
+linje *Tidligere fakturert a konto, faktura 985* eller *Previously invoiced on account,
+invoice 985* — på kundens språk fra faktureringsprofilen, ellers ditt — antall -1 til beløpet, med lenken **Trekker fra en
+tidligere faktura** under. Antallet, rabatten og mva-koden på en fradragslinje kan ikke
+endres; prisen og teksten kan. **Lagre** utkastet for å beholde dem. Har ingen tidligere
+faktura noe igjen, sier dialogen *Ingen tidligere faktura til denne kunden har noe igjen
+å trekke fra.*
 
 Et fradrag kan ikke ta mer enn den tidligere fakturaen har **igjen** på sin mva-kode: det
 den fakturerte der, minus det kreditnotaer har gitt tilbake av det og det tidligere
@@ -698,7 +858,9 @@ på og du har `invoices:access`): den samme listen, filtrert til den kunden, med
 dokuments tilstand og utestående beløp. Knappen **Ny faktura** der lager utkastet for
 den kunden — *levert i dag til du endrer det* — og åpner redigeringen; den tilbys med
 `invoices:create` og `customers:view`, og bare på en aktiv kunde, aldri en arkivert,
-sperret, sammenslått eller anonymisert.
+sperret, sammenslått eller anonymisert. Over listen viser kortet **Ufakturert arbeid**
+kundens arbeid som ikke er fakturert ennå, til den som også har `invoices:create`
+([Fakturere arbeid](#fakturere-arbeid)).
 
 ## Oppbevaring og anonymiserte kunder
 
@@ -724,6 +886,7 @@ Ingen innebygd rolle har disse; en eier har alt
 | --- | --- |
 | Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet | `invoices:access` |
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
-| Utstede et utkast, lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending | `invoices:issue` |
+| Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
+| Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending | `invoices:issue` |
 | Registrere en betaling eller fjerne en med begrunnelse | `invoices:payments` |
-| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen og mva-kodene | `invoices:manage` |
+| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene og kortet **Arbeid til fakturering** | `invoices:manage` |

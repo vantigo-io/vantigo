@@ -814,17 +814,37 @@ Billing 3.0.21 — the artefacts are pinned at `v3.0.20` — the day OpenPEPPOL 
 *Unblocks:* B2G invoicing (mandatory since 2019) and the B2B duty from 2027-01-01; the KID
 on every invoice is what phase 4's payment imports match on.
 
-### Phase 3 — Work becomes invoices (next)
+### Phase 3 — Work becomes invoices (done)
 
-An "uninvoiced work" view per customer and project (approved hours, re-billable
-expenses and supplier invoices, ready milestones) and a wizard that turns it into lines
-with a chosen grouping (per project, work type, person, date, or itemised) and an
-optional timesheet attachment; expense markup; milestone and a-konto invoices with a
-final settlement deducting earlier ones. The write-back — hours, expenses and milestones
-marked invoiced with the invoice's id and number inside the issue transaction, and
-released again when a credit note reverses them — is a third sanctioned cross-module
-write direction and gets its own contract design under
-[`docs/src/content/docs/en/contributing/module-boundaries.md`](docs/src/content/docs/en/contributing/module-boundaries.md) before any code.
+Delivered on `feat/invoices-work-to-invoices`
+([design](docs/superpowers/specs/2026-10-05-invoices-work-to-invoices-design.md),
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#invoicing-work)):
+the **uninvoiced work** — approved, billable, priced hours, expenses ready to invoice
+(outlays, mileage and re-billed supplier invoices, with their markup) and ready
+billing milestones — read through three new billable contracts and shown per project
+and kind on the customer's Invoices tab and on a new Invoicing tab on the project page,
+with the reasons a row cannot be chosen (held by a draft or invoiced, a fixed-price
+project's hours, a non-billable project, not NOK), the one-month deadline warning and
+a supplier invoice billed twice; a **wizard** that makes an invoice draft of it, or
+adds it to one, grouped per project, work type, person, day or itemised, written in the
+buyer's language, each kind at its own VAT code from the settings; each line's
+**sources** held by the draft, carried by every save, refreshed on demand and judged
+fresh on read; the **write-back** — Time, Expenses and Projects each mark their rows
+invoiced with the invoice's id and number inside the issue's own transaction, through
+the third sanctioned cross-module write (`contracts.InvoicedWorkHolder`, module
+boundaries rule 10) in one cross-module lock order, the customers merge reordered to
+match; **release on credit** — a credit note that returns a line in full gives its
+work back, uninvoiced again, and a re-pulled draft suggests the note naming what it
+replaces; the document's **project** (`project_id` and its code), printed on the PDF,
+carried as BT-11 in the EHF, a list column and filter and the export's last column;
+**a-konto and the final settlement** — deduction lines at -1 taxed at the a-konto's
+own rate, capped per invoice and VAT code, listed on the PDF and as BG-3 preceding
+invoices in the EHF; an optional **timesheet** in the PDF, never with an entry's note,
+naming people by initials unless the settings say otherwise; the "Invoiced by invoice
+n" badges and the refused manual undo in the source apps; and every race of the issue
+against the writers of its sources — a manual mark, a reimbursement, a milestone move,
+a fixed-price edit, an unapprove, a merge — proved against the real modules on a pool
+of two connections.
 
 *Unblocks:* project invoicing end to end; Time's and Expenses' "next: invoicing".
 
@@ -860,6 +880,12 @@ consumption contract.
 ### Later
 
 Recurring invoices and retainers (a subscription may be invoiced up to a year ahead) ·
+the 2028 buyer org-number rule (bokføringsforskriften § 5-1-2 from 2028-01-01: a
+bokføringspliktig buyer's organisation number always stated — the customers directory
+knows no such fact yet, and the issue still accepts a complete address instead) ·
+utlegg outside the VAT base (merverdiavgiftsloven § 4-1 (2) a; phase 3 bills every
+re-billed cost as a sale) · several EHF attachments — a separate timesheet file,
+forwarded receipts · construction's § 8-1-2a progress invoicing and retention money ·
 eFaktura and AvtaleGiro for consumers · a customer portal · a bank API for payments ·
 several legal entities per tenant, each with its own series · a posting export in
 SAF-T-friendly form to Tripletex, Fiken or PowerOffice.
