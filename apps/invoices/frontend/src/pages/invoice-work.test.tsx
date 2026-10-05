@@ -18,6 +18,7 @@ import {
   workDraft,
 } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
+import { settleSearches } from "../test/settle";
 
 /**
  * The fake for one document, 1001 (and its original, 1000's id 1001 for a
@@ -108,12 +109,19 @@ describe("an invoice draft that bills work", () => {
 
   it("InvoiceEditor_SendsEmptySourcesWhenTheCustomerChanges", async () => {
     const fetchMock = server(workDraft());
-    renderRoute("/invoices/1001");
+    const { queryClient } = renderRoute("/invoices/1001");
+    const searches = () => fetchMock.actualCalls.filter(([url]) => path(url).startsWith("/api/v1/customers?")).length;
 
     const buyer = await screen.findByRole("combobox", { name: "Customer" });
+    await settleSearches(queryClient, searches);
     await userEvent.clear(buyer);
     await userEvent.type(buyer, "Bygg");
+    // The picker's search is debounced: the option clicked is the one the
+    // settled list shows, and the choice is on screen before the warning is read.
+    await settleSearches(queryClient, searches);
     await userEvent.click(await screen.findByRole("option", { name: "Bygg AS (10003)" }));
+    await settleSearches(queryClient, searches);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Customer" })).toHaveValue("Bygg AS (10003)"));
     expect(await screen.findByTestId("customer-change-releases")).toHaveTextContent(
       "Changing the customer releases the work this draft holds",
     );
