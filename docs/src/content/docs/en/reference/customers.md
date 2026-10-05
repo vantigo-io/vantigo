@@ -3048,8 +3048,8 @@ module's first money column), quoted in the profile's own currency and written u
 the customer step of [Time's rate chain](/en/reference/time/#the-rate-chain), between the
 project default and the person card, recorded as `rateSource: "customer"`. No
 permission key was added. Still ahead in phase 5: other modules writing to the
-customer timeline (on the outbox deferred until Orders), and invoiced revenue and
-outstanding once Invoices exists.
+customer timeline (on the outbox deferred until Orders), and a customer's invoiced
+revenue and outstanding amount on its overview, read from Invoices — not built yet.
 
 **Phase 6 delivery A** — [CSV import and export](#csv-import-and-export) — has
 landed, decided in
@@ -3089,8 +3089,9 @@ entries wait on the storage module, and other modules' timeline writers on the o
 Past that, the remaining gaps are exactly
 what [ROADMAP.md's Customers section](https://github.com/vantigo-io/vantigo/blob/main/ROADMAP.md#customers) is built around —
 `ContactsByEmail` still unused in production, other modules writing to the customer
-timeline (on the outbox, deferred until Orders), invoiced revenue once Invoices exists —
-itself drawn from
+timeline (on the outbox, deferred until Orders), a customer's invoiced revenue and
+outstanding amount on its overview, read from Invoices — not built yet — itself drawn
+from
 [`docs/superpowers/research/2026-09-21-customers-module-next.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/research/2026-09-21-customers-module-next.md),
 which also compares this module against the Nordic ERP/accounting and international
 CRM/PSA fields it was benchmarked against.
