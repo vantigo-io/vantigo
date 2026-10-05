@@ -3,6 +3,7 @@ package invoices_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -78,6 +79,26 @@ func creditOf(t *testing.T, h *harness, original int64, quantities map[int32]flo
 		lines = append(lines, cl)
 	}
 	return saveCredit(t, h, c, creditBody(c, lines...))
+}
+
+// releaseReady is workReady with the billable reads composed too, answering
+// the four pieces of the sourced draft at the revisions it took them — the
+// uninvoiced view and the wizard over released work.
+func releaseReady(t *testing.T, holders *fakeHolders) *harness {
+	t.Helper()
+	billable := newFakeBillable()
+	billable.putHour(contracts.BillableHour{ID: hourOne, Revision: 2, ProjectID: project41, Date: wDay("2026-09-01"),
+		HoursHundredths: 400, BillRate: "1200", Currency: "NOK", Amount: "4800"})
+	billable.putHour(contracts.BillableHour{ID: hourTwo, Revision: 1, ProjectID: project41, Date: wDay("2026-09-02"),
+		HoursHundredths: 350, BillRate: "1200", Currency: "NOK", Amount: "4200"})
+	billable.putExpense(contracts.BillableExpense{ID: mileage, Revision: 3, ProjectID: project41, Kind: "mileage", Date: wDay("2026-09-03"),
+		NetAmount: "450", DistanceKm: ptrTo("90"), BillRatePerKm: ptrTo("5"), BillAmount: "450", Currency: "NOK"})
+	billable.putMilestone(contracts.BillableMilestone{ID: milestone, Revision: 1, ProjectID: project41, Name: "Fase 1",
+		ReadyAt: time.Date(2026, 9, 5, 10, 0, 0, 0, time.UTC), Amount: "10000", Currency: "NOK"})
+	opts := append(holders.options(), modtest.WithProjects(newFakeProjects()))
+	h := newHarness(t, append(opts, billable.options()...)...)
+	saveSeller(t, h, completeSeller(1))
+	return h
 }
 
 // releaseCalls is every release command, by kind.
@@ -393,13 +414,22 @@ func TestRelease_ACreditDraftSaysWhatItWouldRelease(t *testing.T) {
 
 // Released work is uninvoiced again: no live row holds it any more, so the
 // floor lets another draft hold it — which before the release it refused —
-// and that draft issues, the holders marking it again. (The uninvoiced view
-// and from-work read the same rows, through LiveSourcesFor and
-// LiveSourcesElsewhere.)
+// and that draft issues, the holders marking it again. The uninvoiced view
+// lists it selectable, held by nothing, and the wizard takes it.
 func TestRelease_TheWorkIsSelectableAgain(t *testing.T) {
 	t.Parallel()
 	holders := newFakeHolders()
-	h := workReady(t, holders, newFakeProjects())
+	h := releaseReady(t, holders)
+	view := func() map[int64]viewRowJSON {
+		v := getView(t, h, fmt.Sprintf("projectId=%d", project41))
+		out := map[int64]viewRowJSON{}
+		for _, rows := range [][]viewRowJSON{v.Projects[0].Hours, v.Projects[0].Expenses, v.Projects[0].Milestones} {
+			for _, r := range rows {
+				out[r.ID] = r
+			}
+		}
+		return out
+	}
 	original := issuedWork(t, h)
 	q := store.New(h.Pool())
 	ctx := context.Background()
@@ -421,7 +451,18 @@ func TestRelease_TheWorkIsSelectableAgain(t *testing.T) {
 	if err := hold(); err == nil || !strings.Contains(err.Error(), "ux_line_sources_live") {
 		t.Fatalf("holding an invoiced hour = %v, want the floor's unique violation", err)
 	}
+	for id, r := range view() {
+		if r.Selectable || r.HeldBy == nil || r.HeldBy.InvoiceID != original.ID {
+			t.Errorf("before the release, %d = selectable %v heldBy %+v; want held by invoice %d", id, r.Selectable, r.HeldBy, original.ID)
+		}
+	}
 	issued(t, h, creditOf(t, h, original.ID, nil).ID)
+	rows := view()
+	for _, id := range []int64{hourOne, hourTwo, mileage, milestone} {
+		if r, ok := rows[id]; !ok || !r.Selectable || r.HeldBy != nil || r.Reason != nil {
+			t.Errorf("after the release, %d = %+v; want listed, selectable, held by nothing", id, r)
+		}
+	}
 
 	if live, err := q.LiveSourcesElsewhere(ctx, four); err != nil || len(live) != 0 {
 		t.Errorf("after the release: %v live rows elsewhere (%v), want none", live, err)
@@ -442,16 +483,20 @@ func TestRelease_TheWorkIsSelectableAgain(t *testing.T) {
 	if marks != 1 {
 		t.Errorf("the re-pulled hour was marked %d times on invoice %d, want once", marks, reissued.ID)
 	}
+	// The wizard takes the rest of the released work into a new draft.
+	fromWork(t, h, fromWorkBody(customerAcme,
+		workSrc("time.entry", hourTwo, 1), workSrc("expenses.entry", mileage, 3), workSrc("projects.milestone", milestone, 1)))
 }
 
 // The note the wizard suggests when it pulls released work again names the
 // invoice it replaces and the credit note that credited it, in the buyer's
 // language; for work released twice, the newest release; for several, each
-// pair once, newest first; for work never released, nothing.
+// pair once, newest first; for work never released, nothing. The wizard puts
+// it on the draft it makes, unless the request gives a note of its own.
 func TestRelease_TheNoteSuggestionOnRePull(t *testing.T) {
 	t.Parallel()
 	holders := newFakeHolders()
-	h := workReady(t, holders, newFakeProjects())
+	h := releaseReady(t, holders)
 	ctx := context.Background()
 	note := func(language string, refs ...refJSON) string {
 		t.Helper()
@@ -493,6 +538,18 @@ func TestRelease_TheNoteSuggestionOnRePull(t *testing.T) {
 	}
 	if got := note("en", refHourOne, refHourTwo); got != "Replaces invoice 3, credited by credit note 4. Replaces invoice 1, credited by credit note 2" {
 		t.Errorf("two releases = %q, want each pair once, newest first", got)
+	}
+
+	// Through the wizard: the suggestion as the new draft's note, in Acme's
+	// Norwegian; a note the request gives instead of it.
+	suggested := fromWork(t, h, fromWorkBody(customerAcme, workSrc("expenses.entry", mileage, 3), workSrc("projects.milestone", milestone, 1)))
+	if got := getInvoice(t, h, suggested.ID).Note; got != "Erstatter faktura 1, kreditert med kreditnota 2" {
+		t.Errorf("the wizard's note = %q, want the suggestion", got)
+	}
+	own := fromWorkBody(customerAcme, workSrc("time.entry", hourTwo, 1))
+	own["note"] = "Timer for september"
+	if got := getInvoice(t, h, fromWork(t, h, own).ID).Note; got != "Timer for september" {
+		t.Errorf("the wizard's note with one given = %q, want the request's", got)
 	}
 }
 

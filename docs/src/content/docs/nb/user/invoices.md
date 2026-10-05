@@ -316,7 +316,11 @@ september 2026» eller «Consulting hours, Apollo, September 2026»), hver type 
 mva-kode og leveringsperioden fra første til siste dag med arbeid. Det avvises, med
 begrunnelse, når noe av arbeidet alt ligger på et annet utkast, er endret eller ikke
 lenger kan faktureres siden det ble vist, er i mer enn én valuta, eller ville gitt mer
-enn 500 linjer — da foreslås en grovere gruppering. Oversikten og veiviseren krever
+enn 500 linjer — da foreslås en grovere gruppering. Utkastet navngir prosjektet sitt når
+alt arbeidet hører til ett, som ethvert utkast gjør. Arbeid som en kreditnota ga tilbake,
+vises igjen, og når det tas inn i et nytt utkast uten en egen merknad, foreslår utkastets
+merknad hva det erstatter — *Erstatter faktura 1, kreditert med kreditnota 2* — som du
+kan endre. Oversikten og veiviseren krever
 `invoices:create`. Skjermbildene for dem kommer i et senere steg av denne fasen; inntil
 da er de der for en integrasjon
 ([Invoicing work](/en/reference/invoices/#invoicing-work)).

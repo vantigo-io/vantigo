@@ -126,6 +126,18 @@ func TestProject_DerivedOneTwoNone(t *testing.T) {
 	if got := projectOf(putDoc(t, c, plain.ID, body)); got != "-" {
 		t.Errorf("a draft without work: %s, want none", got)
 	}
+
+	// The wizard derives it the same way: work of one project names it, and
+	// an append of another project's work leaves none.
+	f := newWorkFixture(t)
+	wizard := fromWork(t, f.h, fromWorkBody(customerAcme, allSeptember()...))
+	made := getInvoice(t, f.h, wizard.ID)
+	if got := projectOf(made); got != "41 P-41" {
+		t.Errorf("from-work over project 41: %s, want 41 P-41", got)
+	}
+	if got := projectOf(appended(t, f.h, appendBody(made, workSrc("time.entry", workHour42, 1)))); got != "-" {
+		t.Errorf("an append of project 42's work: %s, want none", got)
+	}
 }
 
 // Work from another project arriving on a draft that had one — as a later

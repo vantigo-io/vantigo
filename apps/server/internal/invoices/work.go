@@ -516,6 +516,9 @@ func parseFromWork(body gen.InvoicesFromWorkRequest) ([]fromWorkRef, string, map
 	if len(body.Sources) == 0 {
 		errs = withFieldError(errs, "sources", "Choose the work to invoice")
 	}
+	if msg := maxLength("The note", optionalText(body.Note), 1000); msg != "" {
+		errs = withFieldError(errs, "note", msg)
+	}
 	refs := make([]fromWorkRef, 0, len(body.Sources))
 	seen := make(map[sourceRef]bool, len(body.Sources))
 	for i, src := range body.Sources {
@@ -790,24 +793,45 @@ func storedLines(rows []store.InvoicesLine) ([]draftLine, error) {
 	return out, nil
 }
 
-// widenDelivery is an append's delivery period (D3): the target's — its
-// period, or its day as both ends — widened to cover the added work's first
-// and last day; the work's own when the target has no delivery at all.
-func widenDelivery(target store.InvoicesInvoice, first, last pgtype.Date) (pgtype.Date, pgtype.Date) {
-	from, to := target.DeliveryFrom, target.DeliveryTo
+// workSpan is the first and last day of rows' work.
+func workSpan(rows []heldSource) (first, last pgtype.Date) {
+	for _, r := range rows {
+		if !first.Valid || r.date.Before(first.Time) {
+			first = pgDate(r.date)
+		}
+		if !last.Valid || r.date.After(last.Time) {
+			last = pgDate(r.date)
+		}
+	}
+	return first, last
+}
+
+// widenDelivery is an append's delivery (D3): the target's — its period, or
+// its day as both ends — widened to cover the added work's first and last
+// day, as a period; a target whose day the work does not leave stays that
+// day. A target with no delivery at all takes the span of all the work it
+// will hold, its own carried and the added. It answers the day, or the
+// period, the draft is written with.
+func widenDelivery(target store.InvoicesInvoice, carried, added []heldSource) (day, from, to pgtype.Date) {
+	first, last := workSpan(added)
+	from, to = target.DeliveryFrom, target.DeliveryTo
 	if target.DeliveryDate.Valid {
 		from, to = target.DeliveryDate, target.DeliveryDate
 	}
 	if !from.Valid || !to.Valid {
-		return first, last
+		from, to = workSpan(append(slices.Clone(carried), added...))
+		return pgtype.Date{}, from, to
 	}
-	if first.Time.Before(from.Time) {
+	if first.Valid && first.Time.Before(from.Time) {
 		from = first
 	}
-	if last.Time.After(to.Time) {
+	if last.Valid && last.Time.After(to.Time) {
 		to = last
 	}
-	return from, to
+	if target.DeliveryDate.Valid && from.Time.Equal(to.Time) {
+		return target.DeliveryDate, pgtype.Date{}, pgtype.Date{}
+	}
+	return pgtype.Date{}, from, to
 }
 
 // monthBefore is the same day a calendar month before day, clamped to that
@@ -896,10 +920,17 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 	if s.deps.Projects == nil {
 		return gen.PostInvoicesFromWork409ApplicationProblemPlusJSONResponse(projectsUnavailable()), nil
 	}
+	// The projects of the new work, and on an append of the target's own —
+	// every project the draft will hold, which its derived project needs.
 	var projectIDs []int32
 	for _, r := range refs {
 		if f, ok := found.facts(r.sourceRef); ok && !slices.Contains(projectIDs, f.project) {
 			projectIDs = append(projectIDs, f.project)
+		}
+	}
+	for _, h := range targetHeld {
+		if !slices.Contains(projectIDs, h.projectID) {
+			projectIDs = append(projectIDs, h.projectID)
 		}
 	}
 	slices.Sort(projectIDs)
@@ -983,18 +1014,22 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 	if periodGiven {
 		from, to = pgDate(utcDay(body.DeliveryFrom.Time)), pgDate(utcDay(body.DeliveryTo.Time))
 	} else {
-		var first, last time.Time
-		for _, rows := range held {
-			for _, r := range rows {
-				if first.IsZero() || r.date.Before(first) {
-					first = r.date
-				}
-				if r.date.After(last) {
-					last = r.date
-				}
-			}
+		from, to = workSpan(slices.Concat(held...))
+	}
+
+	// The note: the request's, else — when the work was released by a
+	// credit note before — the note naming the invoice it replaces (D8), in
+	// the buyer's language, read on the pool. An append writes one only on a
+	// target whose note is empty.
+	note := optionalText(body.Note)
+	if note == "" && (target == nil || target.Note == "") {
+		pulled := make([]sourceRef, 0, len(refs))
+		for _, r := range refs {
+			pulled = append(pulled, r.sourceRef)
 		}
-		from, to = pgDate(first), pgDate(last)
+		if note, err = rePullNote(ctx, q, language, pulled); err != nil {
+			return nil, err
+		}
 	}
 
 	var out fromWorkResult
@@ -1019,7 +1054,7 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 			}
 			doc, err = txq.InsertInvoiceDraft(ctx, store.InsertInvoiceDraftParams{
 				CustomerID: body.CustomerId, DeliveryFrom: from, DeliveryTo: to, PaymentTermsDays: terms,
-				Currency: settings.DefaultCurrency, YourReference: profile.BuyerReference,
+				Currency: settings.DefaultCurrency, YourReference: profile.BuyerReference, Note: note,
 				NetTotal: net, VatTotal: vatTotal, GrossTotal: gross, VatTotalNok: vatNOK,
 				CreatedByUserID: callerID(ctx), Now: s.deps.Clock(),
 			})
@@ -1080,16 +1115,21 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 			if err != nil {
 				return err
 			}
+			var deliveryDate pgtype.Date
 			deliveryFrom, deliveryTo := from, to
 			if !periodGiven {
-				deliveryFrom, deliveryTo = widenDelivery(locked, from, to)
+				deliveryDate, deliveryFrom, deliveryTo = widenDelivery(locked, carried, slices.Concat(held...))
+			}
+			targetNote := locked.Note
+			if targetNote == "" {
+				targetNote = note
 			}
 			doc, err = txq.UpdateDraft(ctx, store.UpdateDraftParams{
-				ID: locked.ID, CustomerID: locked.CustomerID, DeliveryFrom: deliveryFrom, DeliveryTo: deliveryTo,
+				ID: locked.ID, CustomerID: locked.CustomerID, DeliveryDate: deliveryDate, DeliveryFrom: deliveryFrom, DeliveryTo: deliveryTo,
 				DeliveryAddressLine1: locked.DeliveryAddressLine1, DeliveryAddressLine2: locked.DeliveryAddressLine2,
 				DeliveryPostalCode: locked.DeliveryPostalCode, DeliveryCity: locked.DeliveryCity, DeliveryCountry: locked.DeliveryCountry,
 				PaymentTermsDays: locked.PaymentTermsDays, YourReference: locked.YourReference, OurReference: locked.OurReference,
-				OrderReference: locked.OrderReference, Note: locked.Note, InternalNote: locked.InternalNote,
+				OrderReference: locked.OrderReference, Note: targetNote, InternalNote: locked.InternalNote,
 				NetTotal: net, VatTotal: vatTotal, GrossTotal: gross, VatTotalNok: vatNOK, Now: s.deps.Clock(),
 			})
 			if err != nil {
@@ -1120,6 +1160,11 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 		rows = append(carried, added...)
 		if err := insertSources(ctx, txq, doc.ID, lineIDs, rows); err != nil {
 			rows = added
+			return err
+		}
+		// The draft's project, derived from every row it now holds like any
+		// save's (D9), its code from the directory read before the lock.
+		if doc, err = setDocumentProject(ctx, txq, doc, rows, projectCodes(entries)); err != nil {
 			return err
 		}
 		out.doc = doc
