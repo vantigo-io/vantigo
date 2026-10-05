@@ -1,6 +1,6 @@
 ---
 title: Invoices
-description: Drafting, issuing and sending invoices, credit notes, payments, the journal and the export.
+description: Invoicing work, drafting, issuing and sending invoices, credit notes, payments, the journal and the export.
 sidebar:
   order: 50
 sources:
@@ -183,29 +183,40 @@ and 7), so most businesses need to change nothing here.
   it still lies in the future. A rate cannot be changed from a day on or before an
   issued document's date ([the rules](/en/reference/invoices/#endpoints)).
 
-The settings also hold the VAT code each kind of work is invoiced at — hours, expenses
-and billing milestones — which a draft made from work starts its lines with: code 3
-(25 %) for all three until changed, and code 7 for every kind while the seller is not
-VAT-registered. The settings page has no card for them yet; saving it keeps them as
-they are, and the screen for them comes with the uninvoiced work
-([VAT codes for work](/en/reference/invoices/#vat-codes-for-work)).
+### Work to invoice
 
-They also hold the **timesheet's** default and how it names people: whether a new invoice
-draft carries a timesheet unless you choose otherwise — off until changed — and the
-person label, which is the initials by default ("KN"; a second "KN" becomes "KN2"), or a
-number ("Person 1", "Person 2" in the order they appear on the timesheet), or the full
-name. Like the work VAT codes they have no card on the settings page yet, and saving it
-keeps them as they are ([the timesheet](/en/reference/invoices/#the-timesheet)).
+The card **Work to invoice** on the same page — *The VAT code each kind of work is
+invoiced at, and whether new invoices carry a timesheet* — holds what a draft made from
+work starts with ([Invoicing work](#invoicing-work)). It is saved with the page's
+**Save**.
+
+- **VAT code for hours**, **VAT code for expenses** and **VAT code for milestones**: the
+  code each kind of work's lines get. All three are code 3 (25 %) until you change them.
+  The lists offer the codes offered for new lines, and the one saved when it has since
+  been taken out of the list, marked *(no longer offered)*; choose another before you
+  invoice work of that kind. While the seller is not registered for VAT, every kind of
+  work is invoiced at code 7 instead, whatever the card says.
+- **Attach a timesheet to new invoices**: whether a new invoice draft carries a
+  timesheet in its PDF unless you choose otherwise. Off until you turn it on.
+- **How the timesheet names each person**: **Initials (KN)** — the default; a second
+  "KN" becomes "KN2" — **Person 1, Person 2**, numbered in the order they appear on the
+  timesheet, or **Full name**. *A timesheet shows the customer your employees' work.
+  Initials say the least; as their employer, tell them.* The label is applied when a
+  timesheet's rows are written, and an issued invoice's timesheet never changes
+  ([the timesheet](/en/reference/invoices/#the-timesheet)).
 
 ## Finding a document
 
 **Invoices** in the sidebar lists every draft and issued document: drafts first, then by
 number, newest first. Each row shows the **Number** (or *Draft*), the **Kind**, the
 **State**, the **Customer**, the **Issue date**, the **Due date**, the **Total**, what
-is still **Open** on an issued invoice, and under **EHF** where an issued document
+is still **Open** on an issued invoice, under **EHF** where an issued document
 stands as an e-invoice: *Not sent*, *Queued*, *Submitted*, *Delivered*, *Failed*,
-*Unconfirmed* or *Cancelled* ([what each means](#following-it-on-the-e-invoice-card));
-a draft's is blank. Click a row's number to open it.
+*Unconfirmed* or *Cancelled* ([what each means](#following-it-on-the-e-invoice-card)) —
+a draft's is blank — and under **Project** the code of the project the document's work
+belongs to, when all of it belongs to one. Click a row's number to open it, or a
+project's code to list only that project's documents: the list then says *Project
+P-41*, and the cross beside it (*Clear the project filter*) shows them all again.
 
 Narrow the list with the chips and fields above it:
 
@@ -240,6 +251,136 @@ is set to today until you change it.
 The draft can be refused when the customer was merged into another (*invoice that one
 instead*), is archived, is blocked for invoicing, or no longer exists — the same checks
 run again on every save and at issue ([the customer gates](/en/reference/invoices/#drafts)).
+
+To invoice hours, expenses or milestones, start from the work instead: the draft is made
+with its lines ([Invoicing work](#invoicing-work)).
+
+## Invoicing work
+
+The hours approved in Time, the expenses ready to invoice in Expenses and the billing
+milestones ready to invoice in Projects become invoice lines here, without retyping:
+you choose the work, Vantigo writes the lines, and the issue marks that work invoiced in
+the app it came from ([how it works](/en/reference/invoices/#invoicing-work)).
+
+### Where the uninvoiced work is
+
+- On a customer's page, the **Invoices** tab starts with the card **Uninvoiced work** —
+  *Approved hours, billable expenses and ready milestones not yet on an invoice. Choose
+  what to invoice.* — listing the work of every project billed to that customer, above
+  the customer's documents.
+- On a project's page, the **Invoicing** tab — the last one, after **Time** and
+  **Expenses** — shows the same card for that one project. A project that bills no
+  customer says *This project bills no customer, so its work cannot be invoiced from
+  here.* On the **Economy** tab, the invoice plan links to it: **Invoice the work**.
+
+Both need `invoices:access` and `invoices:create`, with the Invoices module on. When no
+module that records work — Time, Expenses or Projects — is switched on, the customer's
+card is not shown at all, and the project's tab says *No module that records billable
+work — Time, Expenses or Projects — is switched on.* When nothing waits, the card says
+*Nothing to invoice*.
+
+### Reading the card
+
+The work is grouped per project — a heading such as *P-41 · Apollo*, with the badge
+**Fixed price** or **Not billable** when the project is one — and within a project in up
+to three tables:
+
+- **Hours**: **Date**, **Person**, **Work type**, **Hours** with the rate they are billed
+  at (*4 h at NOK 1,200.00*) and **Amount**. A work type with a multiplier is billed at
+  its own rate.
+- **Expenses**: **Date**, **Kind** — **Outlay**, **Mileage** or **Supplier invoice** —
+  **Description** (a supplier invoice's starts with the supplier and its invoice number),
+  **Distance** for mileage, and **Amount**, the price for the customer with any markup.
+- **Milestones**: **Date**, the day it became ready to invoice, **Milestone**,
+  **Description** and **Amount**.
+
+A row that cannot be chosen is greyed, and **Why not** says why:
+
+| Why not | What it means |
+| --- | --- |
+| *Fixed-price project: the hours are shown, not invoiced* | A fixed-price project invoices its milestones; its hours are there to compare against the plan. |
+| *The project is not billable* | The project bills nobody — it may have changed since the work was approved. |
+| *Not in NOK* | Vantigo invoices in NOK only. |
+| *The project bills no customer* | On a project's tab: the project has no customer to invoice. |
+| **On draft 12** or **On invoice 1042** | A draft already holds it, or an invoice has invoiced it. The link opens that document. |
+
+Below the tables, *Ready to invoice: NOK 48,500.00* is what can be chosen, per currency.
+The card also warns, without stopping anything:
+
+- on a project, *Some of this project's work was delivered more than a month ago; the
+  law asks for the invoice within a month of delivery*;
+- on a supplier invoice, *A supplier invoice with this supplier and number is already
+  invoiced, or appears twice here. Check it is not billed twice*;
+- at the top, *Not all the work is listed: there is more than one read can show. Invoice
+  some of it, or list up to an earlier date, to see the rest.*
+
+### Make a draft of it
+
+Tick the rows to invoice, or the box at the head of a table to choose all of its rows.
+The line beside the button counts what you chose —
+*3 chosen: NOK 14,500.00*. Click **Invoice the chosen work**. On a customer's tab the
+button is offered only for an active customer, as **New invoice** is: never for one that
+is archived, blocked for invoicing, merged or anonymised.
+
+The dialog **Invoice the work** repeats what is chosen and asks:
+
+- **Lines** — how the work is grouped into lines, each choice with the number of lines it
+  would make (*— 3 lines*): **One line per project** (the default), **Per work type**,
+  **Per person**, **Per day** or **Itemised**, one line per entry. *Hours at different
+  rates are always separate lines, and every milestone is a line of its own*; expenses are
+  one line per kind of expense, except itemised. The lines are written in the customer's
+  language — "Konsulenttimer, Apollo, september 2026" or "Consulting hours, Apollo,
+  September 2026" — and can be edited afterwards like any line
+  ([the line texts](/en/reference/invoices/#from-work-to-a-draft)).
+- **Attach a timesheet to the PDF** — shown when hours are chosen: *One row per hour
+  entry: the date, the person, the work type and the hours — never the entry's note.* It
+  starts as the settings say for a new draft, and as the draft has it when you add to one
+  ([the timesheet](#the-timesheet)).
+- **VAT code for hours**, **VAT code for expenses**, **VAT code for milestones** — one for
+  each kind chosen, starting at the codes on the card **Work to invoice** in the
+  settings, or code 7 for every kind while the seller is not registered for VAT. A
+  re-billed expense takes the code chosen here, never the VAT on its receipt. Vantigo has
+  no "utlegg": a cost passed on to the customer is a sale like any other.
+- **Delivered from** and **Delivered to** — *Left empty, the delivery runs from the work's
+  first day to its last.*
+- **Note** — printed on the invoice. Left empty, when some of the work was given back by a
+  credit note before, the draft gets a note naming what it replaces — *Erstatter faktura
+  1001, kreditert med kreditnota 1002* or *Replaces invoice 1001, credited by credit note
+  1002*, in the customer's language — which you can change on the draft.
+- **Put the work on** — **A new draft**, or one of the customer's invoice drafts, listed
+  as *Draft 12 — NOK 9,000.00*. When the customer has more than 100 drafts, the field
+  says *Only 100 of the customer's drafts are listed; the others are not offered here.*
+
+Click **Create draft**, or **Add to draft 12**. The draft opens. A new draft takes the
+customer's reference and payment terms as **New invoice** does. Added to a draft, the
+work comes after the lines the draft already has; the draft keeps its own header and
+note, its delivery period stretches to cover the new work unless you gave one, and the
+timesheet is as the box said.
+
+### When the wizard refuses
+
+Nothing is made, and the dialog says *Could not invoice the work* and why:
+
+- *Some of this work is already on another draft or an issued invoice*, with a link to
+  that document — someone took it meanwhile.
+- *Some of the chosen work changed since it was listed. Read the work again and choose.*
+- *Some of the chosen work can no longer be invoiced: it was unapproved, invoiced
+  elsewhere, or its module is off. Read the work again.*
+- *Some of the chosen work is on a fixed-price or non-billable project, so it cannot be
+  invoiced.*
+- *Some of the chosen work belongs to a project that does not bill this customer.*
+- *The chosen work is in more than one currency, and one invoice is in one currency*, or
+  *The chosen work is not in NOK, the only currency this module invoices in.*
+- *One document holds at most 5 000 pieces of work. Choose fewer, or make another draft.*
+- *Grouped this way the work makes more than 500 lines. Choose a coarser grouping* — and
+  the dialog switches to the finest grouping that fits, saying, for instance, *“Per day”
+  fits in 500 lines, so the lines are now grouped that way.*
+- The customer is merged, archived, blocked for invoicing or gone, as for **New
+  invoice**; or the draft you were adding to was saved by someone else meanwhile.
+
+When the refusal is about the work, the alert names it — *The work refused: …* — and
+the list is read again, so work that is no longer there to invoice drops out of what you
+chose. Check the choice and click the button once more.
 
 ## Editing and deleting a draft
 
@@ -286,61 +427,60 @@ number is lost. Both need `invoices:create`; without it the editor is read-only.
 If someone else saved the draft meanwhile, the editor says **The draft changed** and
 offers **Reload**, which drops your unsaved edits for the latest version.
 
-**A draft made from work.** A draft can bill uninvoiced work — hours, expenses and
-billing milestones from the projects — and then keeps that work on its lines: each line
-knows which entries it bills, and while the draft holds them no other draft can take
-them. Saving keeps the work with its line, even when you edit the line's text or amount;
-a line whose amount no longer matches its work says so under **Worth a look** (*A line's
-amount differs from the work it bills*), which is allowed — a write-down, a rounding.
-Removing the line, or changing the draft's customer, releases its work, which is then
-uninvoiced again; the save says *The save released work from this draft*. When work has
-changed since it was added, or can no longer be invoiced — an entry unapproved, a
-milestone moved back — the draft warns about it, and refreshing the work takes its
-current figures and drops what can no longer be invoiced; the issue would refuse either.
-Work arrives on a draft only through the uninvoiced view of a customer or a project.
-When all the work a draft bills belongs to one project, the draft names that project by
-its code — printed on the PDF as *Prosjekt* / *Project*, carried in the EHF, kept by the
-issued invoice and by its credit notes, and the last column, *Project*, of the
+### The work on a draft
+
+A draft made from work keeps that work on its lines: under each line the editor lists
+what it bills — *Hour entry 4211 · 3 Sep 2026 · 7.5 · NOK 9,000.00*, *Expense …* or
+*Milestone …* — and, on an issued invoice, whether each is *Invoiced* or *Released*. While
+the draft holds the work, no other draft can take it. When all the work belongs to one
+project, the draft says *Project: P-41* under the customer: the code is printed on the
+PDF as *Prosjekt* / *Project*, carried in the EHF, kept by the issued invoice and its
+credit notes, shown in the list's **Project** column, and the last column of the
 accountant's export ([the project](/en/reference/invoices/#the-project)).
 
-**Invoicing work.** The uninvoiced view lists, for a customer or one project, the work
-not yet invoiced — approved billable hours, expenses ready to invoice and ready billing
-milestones — per project and kind, with what is selected adding up per currency. Work
-already on a draft or an issued invoice is shown but cannot be chosen, and names the
-document that has it; so are a fixed-price project's hours (the project invoices its
-milestones), a non-billable project's work and work in another currency than NOK. A
-project whose oldest work is more than a month old is flagged, since the law asks for
-the invoice within a month of delivery, and a supplier invoice that seems to be
-billed twice is flagged too. From the chosen work Vantigo makes a draft — or adds it to
-one of the customer's drafts — grouped into lines by project, work type, person, day or
-one line each, written in the customer's language ("Konsulenttimer, Apollo, september
-2026" or "Consulting hours, Apollo, September 2026"), each kind at its VAT code, the
-delivery period from the first to the last day of the work. It is refused, saying why,
-when some of the work is already on another draft, has changed or can no longer be
-invoiced since it was listed, is in more than one currency, or would make more than 500
-lines — then a coarser grouping is suggested. The draft names its project when all its
-work belongs to one, as any draft does. Work a credit note gave back is listed again,
-and when it is taken into a new draft without a note of your own, the draft's note
-suggests what it replaces — *Erstatter faktura 1, kreditert med kreditnota 2* — which
-you can change. The view and the wizard need
-`invoices:create`. The screens for them come in a later step of this phase; until then
-they are there for an integration
-([Invoicing work](/en/reference/invoices/#invoicing-work)).
+- **Edit a line's text, quantity or price** as on any draft: the work stays with the
+  line. A line whose amount no longer matches its work says so in orange under the line
+  and under **Worth a look** — *A line's amount differs from the work it bills* — which is
+  allowed: a write-down, a rounding.
+- **Remove a line** to give its work back: after **Save**, the work is uninvoiced again,
+  and **Worth a look** says *The save released work from this draft* and *Released:*
+  with the work named. Deleting the draft gives all its work back.
+- **Change the customer** only knowing that it gives all the work back: the editor says
+  *Changing the customer releases the work this draft holds: it becomes uninvoiced again
+  when you save.*
+- **Refresh work**, above the lines, reads the work again from Time, Expenses and
+  Projects: new figures are taken, and work that can no longer be invoiced is dropped
+  and named as released. It is greyed while you have unsaved changes (*Save the changes
+  before refreshing the work*); when it is done, *The work is refreshed*. If someone else
+  saved the draft in between, the refresh is refused (*The invoice changed; try again*):
+  try again.
+- When work has changed since it was added, or can no longer be invoiced — an entry
+  unapproved, a milestone moved back — the line and **Worth a look** say so: *Work on this
+  draft has changed since it was added; refresh the work, or the issue will refuse it*,
+  or *Work on this draft can no longer be invoiced; refresh the work to drop it, or the
+  issue will refuse it.*
 
-**The timesheet.** An invoice can carry a timesheet inside its PDF: after the invoice
-itself, on pages of its own, every hour entry it bills — the date, the person, the work
-type, the task (or else the project's name, or else the work type) and the hours — with a total per person and
-one in all. It never shows the note a person wrote on an entry. A draft made from work
-has one when you ask for it, or when the settings make it the default; turning it on for
-a draft writes it from the hours the draft holds, turning it off removes it, every save
-keeps it to the hours the draft still bills, and refreshing the work writes it again. The
-preview shows it, and once the invoice is issued the timesheet is part of it and never
-changes, whatever later happens to a user. A timesheet tells the customer who worked on
-what: telling your employees that their hours are shown to customers is the employer's
-job — the privacy notice of GDPR art. 13 — which is why initials are the default and the
-full name is a choice you make in the settings. The switch on the draft comes with the
-screens for invoicing work; until then it is there for an integration
-([the timesheet](/en/reference/invoices/#the-timesheet)).
+Work arrives on a draft only from the card **Uninvoiced work**, never by editing a line.
+
+### The timesheet
+
+Every invoice draft has the card **Timesheet**, with the box **Attach a timesheet to the
+PDF**. Ticked, the invoice's PDF carries, after the invoice itself and on pages of its
+own, every hour entry the draft bills — **Date**, **Person**, **Work type**,
+**Description** (the task, or else the project's name, or else the work type) and
+**Hours** — with a total per person and one in all. It never shows the note a person
+wrote on an entry. The rows are written when the draft is saved, and the card lists them
+then; until you save it says *The timesheet's rows are written when the draft is saved*,
+and on a draft with no hours, *The draft holds no hours for the timesheet*. Each save keeps
+the timesheet to the hours the draft still bills, **Refresh work** writes it again, and
+unticking the box removes it. **Preview** shows it; once the invoice is issued, the
+timesheet is part of it and never changes, whatever later happens to a user. A credit
+note has no timesheet.
+
+A timesheet tells the customer who worked on what. Telling your employees that their
+hours are shown to customers is the employer's job — the privacy notice of GDPR art. 13 —
+which is why initials are the default and the full name is a choice made on the card
+**Work to invoice** ([the timesheet](/en/reference/invoices/#the-timesheet)).
 
 ## Issuing
 
@@ -418,10 +558,14 @@ milestones a line billed become uninvoiced again, ready for a new invoice — on
 credit note returns that line **in full**: its whole quantity, at the invoice's own unit
 price and discount, counting the credit notes issued before it. A line credited in part,
 or at a lower price, keeps its work invoiced until the rest of the line is returned; a
-milestone comes back whole or not at all. The credit-note draft shows which work its issue
-would give back, and the invoice then shows that work as released. A new invoice may bill
-the released work again; it does not have to name the credit note
-([release on credit](/en/reference/invoices/#release-on-credit)).
+milestone comes back whole or not at all. The credit-note draft's card **Work this credit
+note gives back** lists, as the draft stands, the work its issue would give back — *When
+it is issued, this work becomes uninvoiced again and can be invoiced anew* — or says *As
+it stands, issuing it gives no work back: only a line credited in full, at its own price,
+releases its work.* Once it is issued, the invoice's lines show that work as *Released*,
+and it is back on the card **Uninvoiced work**. A new invoice may bill the released work
+again; it does not have to name the credit note, and the wizard suggests a note saying
+what it replaces ([release on credit](/en/reference/invoices/#release-on-credit)).
 
 ## Final settlement
 
@@ -440,9 +584,19 @@ is an ordinary draft with one **deduction line** per earlier invoice and VAT cod
   *Previously invoiced on account, invoice 985*. A settlement can itself be deducted
   later, but not at a VAT code where it deducts earlier invoices.
 
-The step in the editor that lists the earlier invoices and proposes the lines comes with
-the app's screens for invoicing work; the rules below hold already, and the server
-applies them to every save and issue.
+To add them, click **Deduct earlier invoices** above the lines of an invoice draft. The
+dialog lists, per VAT code, what each of the customer's issued invoices has left to
+deduct — **Invoice**, **Issue date**, **VAT code**, **VAT %** and **Left to deduct** —
+*A deduction is taxed at the earlier invoice's rate.* Tick the rows to deduct and give
+each an amount under **Deduct**: more than 0 and at most what is left, which is also what
+it starts at. A pair the draft already deducts says *Already on this draft*. Click **Add
+the deduction lines**: each becomes a line *Previously invoiced on account, invoice 985*
+or *Tidligere fakturert a konto, faktura 985* — in the customer's language from their
+billing profile, else yours —
+quantity -1 at the amount, with a link **Deducts an earlier invoice** under it. The
+quantity, the discount and the VAT code of a deduction line cannot be edited; its price
+and text can. **Save** the draft to keep them. When no earlier invoice has anything left,
+the dialog says *No earlier invoice of this customer has anything left to deduct.*
 
 A deduction may take no more than the earlier invoice has **left** at its VAT code: what
 it billed there, less what credit notes gave back of it and what earlier settlements
@@ -692,7 +846,9 @@ module is on and you hold `invoices:access`): the same list, filtered to that cu
 with each document's state and open amount. Its **New invoice** button makes the draft
 for that customer — *delivered today until you change it* — and opens the editor; it is
 offered with `invoices:create` and `customers:view`, and only on an active customer,
-never an archived, disabled, merged or anonymised one.
+never an archived, disabled, merged or anonymised one. Above the list, the card
+**Uninvoiced work** shows the customer's work not yet invoiced to whoever holds
+`invoices:create` as well ([Invoicing work](#invoicing-work)).
 
 ## Retention and anonymised customers
 
@@ -717,6 +873,7 @@ No built-in role holds these; an Owner holds everything
 | --- | --- |
 | Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card | `invoices:access` |
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
-| Issue a draft, make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission | `invoices:issue` |
+| See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
+| Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission | `invoices:issue` |
 | Register a payment or remove one with a reason | `invoices:payments` |
-| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement and the VAT codes | `invoices:manage` |
+| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes and the card **Work to invoice** | `invoices:manage` |

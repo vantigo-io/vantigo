@@ -187,7 +187,11 @@ som ikke er sendt inn. Periodelåsen holder dette tilbake for alle unntatt
 fakturerer den, utstedes i Fakturaer, og fra da av kan ingen redigere, godkjenne eller
 trekke den tilbake her. Bare en kreditnota som tar tilbake fakturalinjen den ble
 fakturert på, gjør den **Godkjent** igjen, med godkjenningen som den var; å trekke
-tilbake godkjenningen er ingen vei rundt det.
+tilbake godkjenningen er ingen vei rundt det. I dagsvisningen står det
+*Fakturert på faktura 1042* som statusen til en slik føring — en lenke til fakturaen når
+Fakturaer-modulen er på og du har `invoices:access`, ellers bare tekst — og på **Min uke**
+sier verktøytipset i cellen det samme
+([fakturere arbeid](/nb/user/invoices/#fakturere-arbeid)).
 
 ## Se ukene til alle
 

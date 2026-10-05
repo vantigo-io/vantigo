@@ -180,7 +180,10 @@ touched at all.
 it is issued in Invoices, and from then on nobody can edit, approve or withdraw it
 here. Only a credit note that takes back the invoice line it was billed on returns it
 to **Approved**, with its approval as it was; withdrawing the approval is not a way
-round that.
+round that. In the day view such an entry's status
+reads *Invoiced by invoice 1042* — a link to the invoice when the Invoices module is on
+and you hold `invoices:access`, plain words otherwise — and on **My week** the cell's
+tooltip says the same ([invoicing work](/en/user/invoices/#invoicing-work)).
 
 ## See everyone's weeks
 

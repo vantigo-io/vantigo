@@ -18,7 +18,11 @@ accountant's CSV export and the dashboard's stats; phase 2
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-03-invoices-ehf-peppol-kid-design.md))
 added the e-invoice — an issued document sent as EHF over the Peppol network through an
 access point, followed by two workers to its outcome — and the KID under the seller's
-bank agreement. Vantigo stays a sub-ledger: there is
+bank agreement; phase 3
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-05-invoices-work-to-invoices-design.md))
+turned the work other modules record — hours, expenses, billing milestones — into
+lines, marked invoiced in their own modules by the issue and released by the credit
+note that returns them ([Invoicing work](#invoicing-work)). Vantigo stays a sub-ledger: there is
 no general ledger and nothing is posted — a payment here is a registration, not a
 posting, and nothing is matched to a bank file.
 
@@ -134,7 +138,10 @@ Both live on `PUT /settings` (`invoices:manage`), beside the seller record, and 
 `kidAlgorithm` is a 400 on that field, so a client that predates them cannot clear them
 by leaving them out; null is a value. The same body carries `workVatCodes`, required
 too: the VAT code each kind of work is invoiced at ([VAT codes for
-work](#vat-codes-for-work)).
+work](#vat-codes-for-work)); and `timesheetDefault` and `timesheetPersonLabel`, required
+and never null: whether a new invoice draft carries a timesheet, and how it names each
+person ([The timesheet](#the-timesheet)). The app's settings page edits all three on its
+card "Work to invoice".
 
 **The seller's Peppol id** is the sender's address on the Peppol network, read when a
 document is sent and never part of the seller snapshot. It is a four-digit scheme, a
@@ -270,6 +277,13 @@ source rows stay the other modules'; this module keeps, per line, which of them 
 line bills, and reads them only through the three billable read contracts
 (`contracts.BillableHours`, `BillableExpenses`, `BillableMilestones`), each optional — a
 module switched off has none.
+
+In the app the view is the card "Uninvoiced work" above a customer's documents on the
+customer page's Invoices tab, and the project page's Invoicing tab for one project; the
+wizard opens from either, and a draft's editor carries its work, its timesheet and the
+"Deduct earlier invoices" step ([the user guide](/en/user/invoices/#invoicing-work)).
+All of it asks for `invoices:access` and `invoices:create` and nothing more
+([Permissions](#permissions)).
 
 ### The uninvoiced view
 
@@ -473,6 +487,13 @@ exist and be active (400 on `vatCodes.<kind>`); a default that has since become
 inactive, with no code given, is a 400 on `vatCodes.<kind>` naming it — choose another,
 or change the default in the settings. A kind the selection does not have is not
 judged. A line's code is then editable like any.
+
+The app's card "Work to invoice" on the settings page offers the active codes and the
+one stored, marked "(no longer offered)" when it has since been deactivated. The
+wizard shows, for each kind it is given, the code the server would take — the
+settings', or `7` while the seller is not VAT-registered — and always sends the code
+shown for every kind chosen, so a deactivated default is the 400 above, said under the
+field.
 
 **Every re-billed expense takes the chosen code** — the main supply's rate, never the
 receipt's (merverdiavgiftsloven § 4-2 (1)); the VAT Expenses records on a receipt never
@@ -696,6 +717,36 @@ newest first, joined by ". " and cut to fit the note's 1 000 characters, ending 
 when a pair was left out; work never released adds nothing. It is a suggestion: the
 note can be edited like any.
 
+### The races
+
+The issue races every other writer of the rows it stamps. Each race below is proved
+against the real modules by the integration package
+([`work_races_test.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/integration/work_races_test.go)),
+on a database pool of **two connections** serving only the two racing writers — so a
+call that took a second pool connection while its transaction held locks would starve
+and fail the test rather than pass on a larger pool. A raw transaction on a connection
+of its own holds the contested row; the first writer is started and seen waiting on it,
+then the second, seen waiting behind the first; the raw transaction commits. Both must
+answer within their deadline, with no deadlock — none detected by Postgres either, so
+not even one a writer retried away:
+
+| The issue against | Who waits on what | When the other writer is first | When the issue is first |
+| --- | --- | --- | --- |
+| An expense's manual mark (Expenses' `POST /entries/{id}/invoiced`) | the expense line | the issue finds the line marked by hand under its holder's lock: 409 `source_already_invoiced`, the number rolled back | the mark finds the line stamped under its lock: 409 `invoiced_by_invoices` naming the invoice |
+| A batch reimbursement of the held expense (Expenses' `POST /reimbursed`) | the expense line | both commit: a reimbursement moves the line's revision and nothing the bill reads, and the holder judges an expense by its billing facts, never its revision | both commit; the line ends reimbursed and stamped by the invoice |
+| A milestone's manual move from ready to invoiced | the project row (`LockProject`) | the issue finds the milestone invoiced by hand: 409 `source_already_invoiced` | the move finds the milestone stamped, at a revision the stamp moved on: the stale-revision 409; a move at the current revision is the 400 on `status` — invoiced cannot move to invoiced |
+| A fixed-price project's price edit (`PUT /projects/{id}`) against the issue of a percent milestone | the project row | the milestone's effective amount moved with the price: 409 `source_changed` | the edit commits after the issue; the invoiced milestone keeps the amount it was invoiced at |
+| A time unapprove of the held entry | the entry, by id | the issue finds the entry a draft again: 409 `source_not_invoiceable` | the unapprove finds the entry invoiced and refuses it, "Entry n is invoiced" |
+| A customers merge of the draft's customer, the draft holding a milestone of the absorbed customer's project | the number counter, which the issue waits on holding its document | — | the issue holds its document and the merge, which calls the invoices holder before projects' ([module boundaries rule 5](/en/contributing/module-boundaries/#the-rules)), waits on it while holding no project row; the issue's holder takes the project and both commit, the invoice and the project naming the survivor |
+
+**The window the issue accepts.** The projects' billing types are read before the
+transaction ([The write-back](#the-write-back)) and the issue locks no project for hours:
+hours of a project turned fixed-price after that read — while the issue waits at the
+entry's row — are stamped and issued, and nothing under the lock sees the change. The
+outcome is the one the change would have had a moment after the issue, which never
+refuses invoiced work; a credit note that returns the hours releases them. The
+integration package pins this window as it stands.
+
 ### A-konto and the final settlement
 
 An **a-konto invoice** is an ordinary invoice — any lines, typically a ready milestone —
@@ -750,9 +801,10 @@ newest first, whenever an a-konto is newer than the settlement's draft. **A save
 the draft only, and a deduction line takes no lock on the deducted invoice** — nor does
 the creation of a settlement's credit note, which locks its original: the column has no
 foreign key. The issue re-checks that each deducted document is still an issued invoice
-of this customer in its currency, deductible at the line's code; one that is not has
-nothing left to deduct for it, and is refused `deduction_exceeds_invoice` with the line
-too.
+of this customer in its currency with a line at the line's code, and that it does not
+deduct earlier invoices at that code itself; one that is not, or does, has nothing left
+to deduct for it, and is refused `deduction_exceeds_invoice` with the line too — the
+detail says which.
 
 **A settlement's gross must be positive.** A draft whose deductions take as much as it
 bills, or more, warns `invoice_total_not_positive`, and its issue is refused with it.
@@ -769,7 +821,12 @@ nor an invoice in another currency than the draft's; a settlement is listed like
 invoice, but never at a code where it deducts itself. An
 unknown id is a 404, an issued document 409 `invoice_issued`, and a credit-note draft
 409 `credit_note_deducts_nothing`: a credit note deducts nothing. It is the editor's
-"Deduct earlier invoices" step; the step itself arrives with the app's screens.
+"Deduct earlier invoices" step, which proposes one line per chosen row — the text below,
+in the buyer's language from the billing profile, else the reader's,
+-1 at the amount chosen (above 0, at most `left`), the row's VAT code — and shows a pair
+the draft already deducts without offering it again. On a deduction line the editor
+does not let the quantity, the discount or the VAT code be edited
+([the user guide](/en/user/invoices/#final-settlement)).
 
 **Credit notes and deductions.** A credit note of a settlement copies its deduction lines
 as they are — the negative quantity, the price, the deducted invoice — so its issue
@@ -1845,6 +1902,13 @@ exempts from erasure, and nothing identity does to a user — renaming, disablin
 deleting them — touches a row ([The timesheet](#the-timesheet)). A draft's rows go with
 the draft.
 
+**The work a document billed is kept with it** too: an issued document's
+`line_sources` and a credit note's `line_releases` are frozen with it and never deleted,
+the record of which hours, expenses and milestones the invoice stamped and which its
+credit notes gave back; a draft's held rows go with the draft, and so with an
+anonymisation's deletion of the drafts. They name other modules' rows by id and carry
+no name; a person's export does not include them.
+
 The module fills both customer slots ([module boundaries](/en/contributing/module-boundaries/)):
 
 - **Merging customers** (`contracts.CustomerReferenceHolder`) re-points every document of
@@ -1924,9 +1988,9 @@ No built-in role holds any of these; Owner has the wildcard.
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
 | `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats. |
-| `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one ([Invoicing work](#invoicing-work)). |
-| `invoices:issue` | yes | Issue a draft; create a credit-note draft; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one. |
-| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, VAT codes and their rates, and the access point's credentials. |
+| `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
+| `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one. |
+| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, and the access point's credentials. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason. |
 
 `invoices:payments` is sensitive because a registration changes what the company says it
@@ -1949,6 +2013,20 @@ send), an access-point credentials row stored and the seller's Peppol id set, al
 `accessPointCredentialsRejected`, whether the provider refused the stored key. A refused
 key is reported beside `ehfAvailable`, never folded into it. Meta asks the Peppol network
 nothing; the receiver is re-checked when a document is sent.
+
+**Invoicing work adds no permission** (design D10). The view and the wizard are
+`invoices:access` and `invoices:create`: whoever builds the invoice sees the hours, the
+people and the rates it will state, as every issued PDF shows them to `invoices:access`.
+The stamp and the release run under `invoices:issue`, through the invoiced-work
+holders, and **not** under the source modules' own rights — neither Projects' financial
+rights, nor Time's approver, nor Expenses' project rights is asked: an issue marks
+invoiced whatever its draft holds, and a credit note releases whatever it returns. The
+app shows the card "Uninvoiced work" on a customer's Invoices tab and the project's
+Invoicing tab only to a caller holding both `invoices:access` and `invoices:create`,
+with the invoices module mounted, and offers "Invoice the chosen work" on a customer's
+card only for an active customer, as it offers "New invoice". The source modules' badge
+"Invoiced by invoice n" is a link to the invoice only for a caller who may open it —
+the invoices module mounted and `invoices:access` — and plain words otherwise.
 
 **Creating a draft in the app also needs `customers:view`**: the directory has no
 search, so the buyer picker reads the customers module's own list. The API takes a
@@ -1980,8 +2058,8 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /from-work` | `invoices:create` | 400 on the field (`customerId`, `sources`, `sources[i]`, `grouping`, `revision`, `deliveryTo`, `invoiceId`, `vatCodes.<kind>`, `note`, `lines` — the document total too large); 404 the target; 409 `invoice_issued`, `too_many_sources`, the customer gates, `projects_unavailable`, `source_not_for_customer`, `source_not_selectable`, `source_not_invoiceable`, `source_changed`, `mixed_currency`, `currency_not_nok`, `too_many_lines` (with `suggestedGrouping`), a stale revision, `source_held_elsewhere` (with `heldBy`) |
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included; a deduction line's `quantity`, `unitPrice`, `discountPercent`, `deductsInvoiceId`, `vatCodeId`, `sources`); 409 the customer gates, `deduction_duplicated` (with `linePosition`) |
-| `GET /{id}` | | 404 |
-| `PUT /{id}` | `invoices:create` | 404; 400 (a line's `sources` against the work the draft holds, at most 5 000; a deduction line's fields as on `POST /`; on a credit note a line's `deductsInvoiceId`, or a quantity of the other sign than the line it credits; `timesheet: true` on a credit-note draft); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `deduction_duplicated` (with `linePosition`) |
+| `GET /{id}` | | 404 (an invoice draft's work is judged fresh — `source_changed`, `source_not_invoiceable` — only for a caller holding `invoices:create`) |
+| `PUT /{id}` | `invoices:create` | The body's phase 3 fields: each line's `sources` (`[{kind, id}]`, required on a draft that holds work) and `deductsInvoiceId`, `refreshSources` and `timesheet`. 404; 400 (a line's `sources` against the work the draft holds, at most 5 000; a deduction line's fields as on `POST /`; on a credit note a line's `deductsInvoiceId`, or a quantity of the other sign than the line it credits; `timesheet: true` on a credit-note draft); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `deduction_duplicated` (with `linePosition`) |
 | `DELETE /{id}` | `invoices:create` | 404; 409 `invoice_issued` |
 | `POST /{id}/issue` | `invoices:issue` | 400 a body that does not decode (none, or an `issueDate` that is no calendar day); 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |
@@ -2001,12 +2079,31 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 
 ## What comes next
 
-- **3** (next): hours, expenses and milestones turned into lines, with a write-back
-  contract.
-- **4**: payment files matched on KID — every invoice issued under an agreement carries
+- **4** (next): payment files matched on KID — every invoice issued under an agreement carries
   one — reminders and late interest, and overpayment, customer credit balances and
   refunds as a flow, which 1B refuses or only shows as a figure.
 - **5**: energy consumption billing.
+
+Left out of phase 3 on purpose (design D13, D16):
+
+- **The 2028 buyer org-number rule.** From 2028-01-01 bokføringsforskriften § 5-1-2,
+  as amended by FOR-2026-09-29-1933, reads "Ved salg til bokføringspliktig kjøper skal kjøpers
+  organisasjonsnummer alltid angis", where the issue's `buyer_incomplete` still accepts
+  a complete address or an organisation number. The customers directory knows no
+  "bokføringspliktig" fact to tell such a buyer apart, so the rule is in the invoices
+  backlog.
+- **Utlegg.** A cost paid on the customer's behalf and passed on outside the VAT base
+  (merverdiavgiftsloven § 4-1 (2) a) is not supported: every re-billed cost is a sale at
+  the chosen code, and no line text says "utlegg" ([VAT codes for
+  work](#vat-codes-for-work)).
+- **Several attachments.** The timesheet is part of the one PDF; a separate timesheet
+  file or forwarded receipts would be further EHF attachments, waiting on whether
+  Storecove's regeneration keeps even the one (below).
+- **Construction's § 8-1-2a** progress rules, ten-year timelists and retention money.
+- Also: `PrepaidAmount` and the VAT-free payment request; a line's own invoice period
+  and accounting cost, BT-12, BT-18 and BT-128; mixed-currency invoices; a product's or
+  billing line's own VAT default; adding work to a credit note; and a permission of its
+  own for invoicing work.
 
 Open in phase 2: whether the PDF embedded in the submitted UBL survives Storecove's
 regeneration is unproven until the tagged sandbox test (`go test -tags storecove
