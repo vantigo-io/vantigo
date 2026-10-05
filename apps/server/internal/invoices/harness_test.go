@@ -872,6 +872,13 @@ func (f *fakeProjects) edit(id int32, change func(*contracts.ProjectEntry)) {
 	f.projects[id] = p
 }
 
+// count is how many projects the fake knows.
+func (f *fakeProjects) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.projects)
+}
+
 func (f *fakeProjects) drop(id int32) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

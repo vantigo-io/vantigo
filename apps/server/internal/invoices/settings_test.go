@@ -415,7 +415,8 @@ func TestSettings_PeppolIdIsBackfilled(t *testing.T) {
 }
 
 // peppolId, kidLength and kidAlgorithm are required and nullable (reading
-// 16): a body without one of them is a 400 on it and changes nothing — a
+// 16), and workVatCodes is required (invoices work design D6): a body
+// without one of them is a 400 on it and changes nothing — a
 // client that predates them cannot clear the KID agreement by leaving them
 // out — and null is a value: it clears.
 func TestSettings_TheThreeFieldsAreRequiredNullable(t *testing.T) {
@@ -426,7 +427,7 @@ func TestSettings_TheThreeFieldsAreRequiredNullable(t *testing.T) {
 	body["kidLength"], body["kidAlgorithm"] = 10, "mod10"
 	saved := saveSeller(t, h, body)
 
-	for _, field := range []string{"peppolId", "kidLength", "kidAlgorithm"} {
+	for _, field := range []string{"peppolId", "kidLength", "kidAlgorithm", "workVatCodes"} {
 		body := completeSeller(saved.Revision)
 		body["kidLength"], body["kidAlgorithm"] = 10, "mod10"
 		delete(body, field)

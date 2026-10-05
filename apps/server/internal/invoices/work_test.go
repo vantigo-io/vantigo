@@ -494,7 +494,8 @@ func TestWork_SupplierInvoiceRebilledOnBothRowsOfAPair(t *testing.T) {
 	}
 }
 
-// A billable read with more than a page says so: work_truncated.
+// A billable read with more than a page says so: work_truncated; so does a
+// customer with as many projects as the directory answers.
 func TestWork_Truncated(t *testing.T) {
 	t.Parallel()
 	f := newWorkFixture(t)
@@ -504,6 +505,16 @@ func TestWork_Truncated(t *testing.T) {
 	f.billable.answerMore(true)
 	if v := getView(t, f.h, fmt.Sprintf("customerId=%d", customerAcme)); !slices.Equal(v.Warnings, []string{"work_truncated"}) {
 		t.Errorf("warnings = %v, want work_truncated", v.Warnings)
+	}
+	// The directory answers at most MaxActualsRequests projects: a customer
+	// with exactly that many may have more, whose work is not listed.
+	g := newWorkFixture(t)
+	for id := int32(1000); g.projects.count() < contracts.MaxActualsRequests; id++ {
+		g.projects.put(contracts.ProjectEntry{ID: id, Code: fmt.Sprintf("X-%d", id), Name: "More", CustomerID: ptrTo(int32(customerAcme)),
+			Status: "active", BillingType: "time-and-materials", Currency: ptrTo("NOK")})
+	}
+	if v := getView(t, g.h, fmt.Sprintf("customerId=%d", customerAcme)); !slices.Equal(v.Warnings, []string{"work_truncated"}) {
+		t.Errorf("with %d projects, warnings = %v, want work_truncated", contracts.MaxActualsRequests, v.Warnings)
 	}
 }
 
@@ -881,7 +892,8 @@ func TestFromWork_Prefills(t *testing.T) {
 
 // Work is added to an existing invoice draft of the customer at the revision
 // it was read at: its own lines first, their work carried, the new lines
-// after; 200 with the draft. Work it holds already is held by it; a stale
+// after; 200 with the draft, its delivery widened to cover the added work.
+// Work it holds already is held by it; a stale
 // revision is the revision 409; a credit note, another customer's draft and
 // an issued invoice are refused.
 func TestFromWork_AppendsAtARevision(t *testing.T) {
@@ -903,8 +915,11 @@ func TestFromWork_AppendsAtARevision(t *testing.T) {
 		t.Errorf("appended draft %d r%d =\n%s\nwant draft %d r%d\n%s", doc.ID, doc.Revision, strings.Join(got, "\n"),
 			first.ID, first.Revision+1, strings.Join(want, "\n"))
 	}
-	if *doc.DeliveryFrom != "2026-09-01" || *doc.DeliveryTo != "2026-09-01" || doc.NetTotal != 4800+4200+10000 {
-		t.Errorf("an append keeps the header: %v–%v, net %v", *doc.DeliveryFrom, *doc.DeliveryTo, doc.NetTotal)
+	// The target's period, 1 September, widened to the added work's last
+	// day, the milestone's 5 September: every line's period sits inside it.
+	if doc.DeliveryDate != nil || *doc.DeliveryFrom != "2026-09-01" || *doc.DeliveryTo != "2026-09-05" || doc.NetTotal != 4800+4200+10000 {
+		t.Errorf("an append's delivery = %v %v–%v, net %v; want 2026-09-01 to 2026-09-05", doc.DeliveryDate, *doc.DeliveryFrom,
+			*doc.DeliveryTo, doc.NetTotal)
 	}
 
 	// Work the draft holds already is held by the draft itself.
@@ -980,8 +995,8 @@ func TestFromWork_VatCodeDefaultsOverridesAndNotRegistered(t *testing.T) {
 }
 
 // The settings carry the code each kind of work is invoiced at: 1 for all
-// three until changed, each a known, active code, on the settings' revision
-// and under invoices:manage.
+// three until changed, each a known code — active when it changes — on the
+// settings' revision and under invoices:manage.
 func TestSettings_WorkVatCodes(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -1008,6 +1023,14 @@ func TestSettings_WorkVatCodes(t *testing.T) {
 		if res := manager.Do(http.MethodPut, settingsPath, body); res.Status != http.StatusBadRequest || len(problemOf(t, res).Errors[field]) == 0 {
 			t.Errorf("%v = %d %s, want 400 on %s", codes, res.Status, res.Body, field)
 		}
+	}
+	// A code kept as stored passes though it has since been deactivated, so
+	// the seller record can still be saved; a changed one is judged.
+	h.Exec(t, `UPDATE invoices.vat_codes SET active = false WHERE id = 3`)
+	kept := completeSeller(saved.Revision)
+	kept["workVatCodes"] = map[string]any{"hours": 2, "expenses": 3, "milestones": 9}
+	if res := manager.Do(http.MethodPut, settingsPath, kept); res.Status != http.StatusOK {
+		t.Errorf("an inactive code kept as stored = %d %s, want 200", res.Status, res.Body)
 	}
 	stale := completeSeller(read.Revision)
 	if res := manager.Do(http.MethodPut, settingsPath, stale); res.Status != http.StatusConflict {
@@ -1043,5 +1066,20 @@ func TestMeta_WorkAvailable(t *testing.T) {
 	}
 	if m := read(newHarness(t, f.options()...)); !m.WorkAvailable || !m.Work.Hours || !m.Work.Expenses || !m.Work.Milestones {
 		t.Errorf("all three = %+v", m)
+	}
+}
+
+// With the projects module off the wizard is 409 projects_unavailable, after
+// the sources were read and before any judgment needing their projects.
+func TestFromWork_ProjectsUnavailable(t *testing.T) {
+	t.Parallel()
+	billable := newFakeBillable()
+	h := newHarness(t, billable.options()...)
+	saveSeller(t, h, completeSeller(1))
+	billable.putHour(contracts.BillableHour{ID: workHourKari, Revision: 2, ProjectID: project41, Date: wDay("2026-09-01"),
+		HoursHundredths: 400, BillRate: "1200.00", Currency: "NOK", Amount: "4800"})
+	refusedFromWork(t, h, fromWorkBody(customerAcme, workSrc("time.entry", workHourKari, 2)), "projects_unavailable")
+	if n := h.Count(t, `SELECT count(*) FROM invoices.invoices`); n != 0 {
+		t.Errorf("%d documents, want none", n)
 	}
 }
