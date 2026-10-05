@@ -29,6 +29,7 @@ import { type ApiError, NotFoundError } from "../api/request";
 import { EntryDrawer } from "../pages/-entry-drawer";
 import { ExpenseFormModal, type ExpenseModalState } from "../pages/-expense-form-modal";
 import { ExpenseStatusBadge } from "./expense-status-badge";
+import { InvoicedByBadge } from "./invoiced-by-badge";
 import "../i18n";
 import { useExpenseFormat } from "../lib/format";
 import { useProjectOptions } from "../lib/project-options";
@@ -49,6 +50,12 @@ export interface ProjectExpensesPanelProps {
    * project's Economy tab reads the same expenses from the projects API).
    */
   onChanged?: () => void;
+  /**
+   * Where one invoice lives in the host's routes, for a line the Invoices
+   * module invoiced: its "Invoiced by invoice n" is then a link. The host
+   * passes it when the caller may open invoices.
+   */
+  invoiceHref?: (invoiceId: number) => string;
 }
 
 /**
@@ -70,7 +77,7 @@ export interface ProjectExpensesPanelProps {
  * its filter and its page in local state rather than in the URL, and links
  * through the shell's link component rather than this package's router.
  */
-export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPanelProps) => {
+export const ProjectExpensesPanel = ({ projectId, onChanged, invoiceHref }: ProjectExpensesPanelProps) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const Link = useShellLink();
@@ -350,7 +357,15 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
                             </Table.Td>
                             <Table.Td>{format.money(expense.grossAmount, expense.currency)}</Table.Td>
                             <Table.Td>
-                              <ExpenseStatusBadge status={expense.status} size="sm" />
+                              <Stack gap={4} align="flex-start">
+                                <ExpenseStatusBadge status={expense.status} size="sm" />
+                                {expense.billing?.invoice?.invoicedBy && (
+                                  <InvoicedByBadge
+                                    invoicedBy={expense.billing.invoice.invoicedBy}
+                                    invoiceHref={invoiceHref}
+                                  />
+                                )}
+                              </Stack>
                             </Table.Td>
                             <Table.Td>
                               {expense.kind === "mileage" ? (
@@ -440,6 +455,7 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
           if (gone) filtersRef.current?.querySelector("input")?.focus();
         }}
         onChanged={onChanged}
+        invoiceHref={invoiceHref}
       />
       <ExpenseFormModal state={recording} onClose={() => setRecording(null)} onSaved={() => onChanged?.()} />
     </Stack>

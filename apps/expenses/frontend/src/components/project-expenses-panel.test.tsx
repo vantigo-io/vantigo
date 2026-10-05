@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { jsonResponse, problemResponse, sent } from "../test/api";
 import {
+  APPROVER,
   capabilities,
   categoriesWithSubcontractor,
   claim,
@@ -874,5 +875,87 @@ describe("ProjectExpensesPanel — supplier invoices", () => {
     // The total above it is still every line.
     expect(screen.getByTestId("project-expense-currency-NOK")).toHaveTextContent("14,000.00");
     expect(screen.queryByTestId("project-expense-supplier-invoices-EUR")).not.toBeInTheDocument();
+  });
+});
+
+describe("ProjectExpensesPanel — lines the Invoices module invoiced", () => {
+  /** An approved line invoice 985 (id 990) issued, as a financial reader sees it. */
+  const stamped = () =>
+    outlay({
+      project: BOOKED,
+      status: "approved",
+      billable: true,
+      billing: {
+        billAmount: 800,
+        invoice: { at: "2026-09-20T11:00:00Z", by: APPROVER, invoicedBy: { invoiceId: 990, number: 985 } },
+      },
+      // The capability as a stale read might still carry it: the mark is the
+      // invoice's all the same, and the undo is not offered.
+      capabilities: capabilities({ canSeeBilling: true, canUndoInvoiced: true }),
+    });
+
+  const open = async () => {
+    await userEvent.click(await screen.findByRole("button", { name: "Open Taxi to the airport" }));
+    return screen.findByRole("dialog", { name: "Taxi to the airport" });
+  };
+
+  it("badges the row and the drawer 'Invoiced by invoice n', linked where the host says invoices live", async () => {
+    stubExpensesApi({ entries: [stamped()] });
+    renderWithProviders(<ProjectExpensesPanel projectId={PROJECT} invoiceHref={(id) => `/invoices/${id}`} />);
+
+    const line = await row("Taxi to the airport");
+    expect(within(line).getByRole("link", { name: "Invoiced by invoice 985" })).toHaveAttribute(
+      "href",
+      "/invoices/990",
+    );
+    const drawer = await open();
+    expect(within(drawer).getByRole("link", { name: "Invoiced by invoice 985" })).toHaveAttribute(
+      "href",
+      "/invoices/990",
+    );
+  });
+
+  it("says it in words alone without the host's link, and offers no undo", async () => {
+    stubExpensesApi({ entries: [stamped()] });
+    panel();
+
+    const line = await row("Taxi to the airport");
+    expect(within(line).getByTestId("invoiced-by-invoice")).toHaveTextContent("Invoiced by invoice 985");
+    expect(within(line).queryByRole("link", { name: /Invoiced by invoice/ })).not.toBeInTheDocument();
+    const drawer = await open();
+    expect(within(drawer).getByTestId("invoiced-by-invoice")).toHaveTextContent("Invoiced by invoice 985");
+    expect(within(drawer).queryByRole("button", { name: "Undo invoicing" })).not.toBeInTheDocument();
+  });
+
+  it("says the 409 invoiced_by_invoices in words when an undo of a manual mark finds the invoice got there first", async () => {
+    const manual = stamped();
+    manual.billing = { billAmount: 800, invoice: { at: "2026-09-20T11:00:00Z", by: APPROVER } };
+    stubExpensesApi({
+      entries: [manual],
+      write: (method, path) =>
+        method === "POST" && path.endsWith("/invoiced/undo")
+          ? jsonResponse(409, {
+              title: "Refused",
+              status: 409,
+              code: "invoiced_by_invoices",
+              detail: "The server's English.",
+              invoiceId: 990,
+              invoiceNumber: 985,
+            })
+          : undefined,
+    });
+    panel();
+
+    const drawer = await open();
+    await userEvent.click(within(drawer).getByRole("button", { name: "Undo invoicing" }));
+    const confirm = await screen.findByRole("dialog", { name: "Undo the invoicing?" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "Undo invoicing" }));
+
+    expect(
+      await screen.findByText(
+        "Invoice 985 invoiced this line. Only a credit note that returns it takes the invoicing back.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("The server's English.")).not.toBeInTheDocument();
   });
 });

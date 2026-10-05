@@ -1627,3 +1627,106 @@ describe("Hours by work type", () => {
     expect(screen.queryByText("Hours by work type")).not.toBeInTheDocument();
   });
 });
+
+describe("ProjectEconomy — work the Invoices module invoices", () => {
+  const stamped = (overrides: Partial<BillingMilestone> = {}) =>
+    milestone({
+      status: "invoiced",
+      invoicedByInvoice: { invoiceId: 990, number: 985 },
+      capabilities: capabilities({ canMarkReady: false, canUndoInvoiced: true }),
+      ...overrides,
+    });
+
+  // The projects package knows no route of the Invoices app, so the host says
+  // where the project's Invoicing tab is — only when the caller may open it.
+  it("links the invoice plan to the project's Invoicing tab where the host says it lives", async () => {
+    stubEconomy(project(), plan([milestone()]));
+    renderWithProviders(<ProjectEconomy projectId={7} invoicingHref="/projects/7/invoicing" />);
+
+    expect(await screen.findByRole("link", { name: "Invoice the work" })).toHaveAttribute(
+      "href",
+      "/projects/7/invoicing",
+    );
+  });
+
+  it("offers no invoicing link without the host's", async () => {
+    stubEconomy(project(), plan([milestone()]));
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+    await screen.findByText("Kick-off");
+    expect(screen.queryByRole("link", { name: "Invoice the work" })).not.toBeInTheDocument();
+  });
+
+  it("names the invoice that invoiced a milestone, as a link where the host says invoices live", async () => {
+    stubEconomy(project(), plan([stamped()]));
+    renderWithProviders(<ProjectEconomy projectId={7} invoiceHref={(id) => `/invoices/${id}`} />);
+
+    const row = await rowFor("Kick-off");
+    expect(within(row).getByRole("link", { name: "Invoiced by invoice 985" })).toHaveAttribute("href", "/invoices/990");
+  });
+
+  it("names it in words alone without the host's link", async () => {
+    stubEconomy(project(), plan([stamped()]));
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const row = await rowFor("Kick-off");
+    expect(within(row).getByTestId("invoiced-by-invoice")).toHaveTextContent("Invoiced by invoice 985");
+    expect(within(row).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  // Only a credit note that returns its line takes such a milestone back; the
+  // manual undo would be refused, so it is not offered — even should the
+  // capability say otherwise.
+  it("offers no manual undo on a milestone the Invoices module invoiced, and keeps it on a manual mark", async () => {
+    stubEconomy(
+      project(),
+      plan([stamped(), stamped({ id: 2, name: "Launch", position: 2, invoicedByInvoice: undefined })]),
+    );
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    await screen.findByText("Kick-off");
+    expect(screen.queryByRole("button", { name: "Actions for Kick-off" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Kick-off" }));
+    expect(await screen.findByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Undo the invoicing" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Launch" }));
+    expect(await screen.findByRole("menuitem", { name: "Undo the invoicing" })).toBeInTheDocument();
+  });
+
+  it("says the 409 invoiced_by_invoices in words when an undo reaches the server anyway", async () => {
+    stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/v1/projects/7") return Promise.resolve(jsonResponse(200, project()));
+      if (url.pathname === "/api/v1/projects/7/economy") return Promise.resolve(jsonResponse(200, economy()));
+      if (url.pathname === "/api/v1/projects/7/milestones") {
+        return Promise.resolve(jsonResponse(200, plan([stamped({ invoicedByInvoice: undefined })])));
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(
+          jsonResponse(409, {
+            title: "Refused",
+            status: 409,
+            code: "invoiced_by_invoices",
+            detail: "The server's English.",
+            invoiceId: 990,
+            invoiceNumber: 985,
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    await screen.findByText("Kick-off");
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Kick-off" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Undo the invoicing" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Undo the invoicing" }));
+
+    expect(
+      await screen.findByText(
+        "Invoice 985 invoiced this milestone. Only a credit note that returns its line takes it back.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("The server's English.")).not.toBeInTheDocument();
+  });
+});

@@ -32,7 +32,15 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 // The panel keeps its filter, its page and its open drawer in local state, so
 // the host has to say when it is a different project's panel.
 vi.mock("@vantigo/expenses-ui/components/project-expenses-panel", () => ({
-  ProjectExpensesPanel: ({ projectId, onChanged }: { projectId: number; onChanged?: () => void }) => {
+  ProjectExpensesPanel: ({
+    projectId,
+    onChanged,
+    invoiceHref,
+  }: {
+    projectId: number;
+    onChanged?: () => void;
+    invoiceHref?: (invoiceId: number) => string;
+  }) => {
     // The id this instance was *mounted* with. It only follows `projectId`
     // if the host gave the panel a new identity, which is the whole point.
     const [mountedWith] = useState(projectId);
@@ -40,6 +48,7 @@ vi.mock("@vantigo/expenses-ui/components/project-expenses-panel", () => ({
       <div>
         <span>expenses for project {projectId}</span>
         <span>panel mounted for {mountedWith}</span>
+        <span>invoice 990 at {invoiceHref?.(990) ?? "nowhere"}</span>
         <button type="button" onClick={() => onChanged?.()}>
           pretend something changed
         </button>
@@ -98,6 +107,16 @@ describe("the project page's expenses tab", () => {
     expect(screen.getByText("expenses for project 32")).toBeInTheDocument();
     expect(screen.getByText("panel mounted for 32")).toBeInTheDocument();
     projectId = 31;
+  });
+
+  // A line the Invoices module invoiced names its invoice; the host says where
+  // that invoice lives only to a caller who may open it (D18).
+  it("tells the panel where an invoice lives when the caller may read invoices, and not otherwise", () => {
+    renderTab(["projects", "expenses", "invoices"], ["expenses:access", "invoices:access"]);
+    expect(screen.getByText("invoice 990 at /invoices/990")).toBeInTheDocument();
+    cleanup();
+    renderTab(["projects", "expenses", "invoices"], ["expenses:access"]);
+    expect(screen.getByText("invoice 990 at nowhere")).toBeInTheDocument();
   });
 
   // A permission read that failed is not a permission that was refused:

@@ -5,6 +5,7 @@ import { ProjectEconomy } from "@vantigo/projects-ui/pages/project-economy";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { getAuthorizationMe } from "../../api/authorization";
 import { enabledModuleKeys } from "../../lib/enabled-modules";
+import { useInvoiceHref } from "../../lib/invoice-access";
 import { visibleProjectDetailTabs } from "./-project-detail-layout";
 
 /**
@@ -21,6 +22,12 @@ import { visibleProjectDetailTabs } from "./-project-detail-layout";
  * function the tab row is built from, so the link and the tab can never give
  * two different answers. The row it belongs to is already hidden unless the
  * server reports lines ready to invoice.
+ *
+ * `invoicingHref` is the Invoicing tab's (invoices work design D18), by the
+ * same rule: handed over exactly when that tab is open to this caller — the
+ * invoices module and `invoices:create`. `invoiceHref` is where one invoice
+ * lives, for a milestone's "Invoiced by invoice n", when the caller may read
+ * invoices at all.
  */
 export const ProjectEconomyRoute = () => {
   const { projectId } = useParams({ from: "/projects/$projectId" });
@@ -35,12 +42,20 @@ export const ProjectEconomyRoute = () => {
     staleTime: 300_000,
   });
   const project = useQuery(projectQueryOptions(projectId));
-  const expenses = visibleProjectDetailTabs(
+  const tabs = visibleProjectDetailTabs(
     enabledModuleKeys(),
     authorization.data?.permissions,
     project.data?.capabilities,
-  ).some((tab) => tab.value === "expenses");
+  );
+  const expenses = tabs.some((tab) => tab.value === "expenses");
+  const invoicing = tabs.some((tab) => tab.value === "invoicing");
+  const invoiceHref = useInvoiceHref();
   return (
-    <ProjectEconomy projectId={projectId} expensesHref={expenses ? `/projects/${projectId}/expenses` : undefined} />
+    <ProjectEconomy
+      projectId={projectId}
+      expensesHref={expenses ? `/projects/${projectId}/expenses` : undefined}
+      invoicingHref={invoicing ? `/projects/${projectId}/invoicing` : undefined}
+      invoiceHref={invoiceHref}
+    />
   );
 };

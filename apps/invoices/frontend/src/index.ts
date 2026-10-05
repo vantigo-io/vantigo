@@ -1,6 +1,7 @@
 import "./i18n";
 
 export * from "./api/customers";
+export * from "./api/deductible";
 export * from "./api/invoices";
 export * from "./api/journal";
 export { type InvoicesMeta, invoicesMetaQueryOptions, type VatCodeInForce } from "./api/meta";
@@ -8,8 +9,10 @@ export type { InvoicePayment, PaymentInput } from "./api/payments";
 export type { InvoiceDelivery, SendDefaults } from "./api/send";
 export * from "./api/settings";
 export * from "./api/vat-codes";
+export * from "./api/work";
 export { CustomerInvoicesPanel, type CustomerInvoicesPanelProps } from "./components/customer-invoices-panel";
 export { CustomerPicker, type CustomerPickerProps } from "./components/customer-picker";
+export { UninvoicedWorkPanel, type UninvoicedWorkPanelProps } from "./components/uninvoiced-work-panel";
 export { invoicesCatalog } from "./i18n";
 export * from "./lib/errors";
 export * from "./lib/format";

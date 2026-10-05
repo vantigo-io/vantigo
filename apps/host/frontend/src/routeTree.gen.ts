@@ -81,6 +81,7 @@ import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$p
 import { Route as ProjectsProjectIdBillingRouteImport } from './routes/projects/$projectId.billing'
 import { Route as ProjectsProjectIdEconomyRouteImport } from './routes/projects/$projectId.economy'
 import { Route as ProjectsProjectIdExpensesRouteImport } from './routes/projects/$projectId.expenses'
+import { Route as ProjectsProjectIdInvoicingRouteImport } from './routes/projects/$projectId.invoicing'
 import { Route as ProjectsProjectIdPeopleRouteImport } from './routes/projects/$projectId.people'
 import { Route as ProjectsProjectIdTasksRouteImport } from './routes/projects/$projectId.tasks'
 import { Route as ProjectsProjectIdTimeRouteImport } from './routes/projects/$projectId.time'
@@ -456,6 +457,12 @@ const ProjectsProjectIdExpensesRoute =
     path: '/expenses',
     getParentRoute: () => ProjectsProjectIdRoute,
   } as any)
+const ProjectsProjectIdInvoicingRoute =
+  ProjectsProjectIdInvoicingRouteImport.update({
+    id: '/invoicing',
+    path: '/invoicing',
+    getParentRoute: () => ProjectsProjectIdRoute,
+  } as any)
 const ProjectsProjectIdPeopleRoute = ProjectsProjectIdPeopleRouteImport.update({
   id: '/people',
   path: '/people',
@@ -541,6 +548,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
+  '/projects/$projectId/invoicing': typeof ProjectsProjectIdInvoicingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
@@ -605,6 +613,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
+  '/projects/$projectId/invoicing': typeof ProjectsProjectIdInvoicingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
@@ -683,6 +692,7 @@ export interface FileRoutesById {
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
+  '/projects/$projectId/invoicing': typeof ProjectsProjectIdInvoicingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
@@ -762,6 +772,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/billing'
     | '/projects/$projectId/economy'
     | '/projects/$projectId/expenses'
+    | '/projects/$projectId/invoicing'
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
@@ -826,6 +837,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/billing'
     | '/projects/$projectId/economy'
     | '/projects/$projectId/expenses'
+    | '/projects/$projectId/invoicing'
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
@@ -903,6 +915,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/billing'
     | '/projects/$projectId/economy'
     | '/projects/$projectId/expenses'
+    | '/projects/$projectId/invoicing'
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
@@ -1442,6 +1455,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdExpensesRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
+    '/projects/$projectId/invoicing': {
+      id: '/projects/$projectId/invoicing'
+      path: '/invoicing'
+      fullPath: '/projects/$projectId/invoicing'
+      preLoaderRoute: typeof ProjectsProjectIdInvoicingRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
     '/projects/$projectId/people': {
       id: '/projects/$projectId/people'
       path: '/people'
@@ -1607,6 +1627,7 @@ interface ProjectsProjectIdRouteChildren {
   ProjectsProjectIdBillingRoute: typeof ProjectsProjectIdBillingRoute
   ProjectsProjectIdEconomyRoute: typeof ProjectsProjectIdEconomyRoute
   ProjectsProjectIdExpensesRoute: typeof ProjectsProjectIdExpensesRoute
+  ProjectsProjectIdInvoicingRoute: typeof ProjectsProjectIdInvoicingRoute
   ProjectsProjectIdPeopleRoute: typeof ProjectsProjectIdPeopleRoute
   ProjectsProjectIdTasksRoute: typeof ProjectsProjectIdTasksRoute
   ProjectsProjectIdTimeRoute: typeof ProjectsProjectIdTimeRoute
@@ -1617,6 +1638,7 @@ const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
   ProjectsProjectIdBillingRoute: ProjectsProjectIdBillingRoute,
   ProjectsProjectIdEconomyRoute: ProjectsProjectIdEconomyRoute,
   ProjectsProjectIdExpensesRoute: ProjectsProjectIdExpensesRoute,
+  ProjectsProjectIdInvoicingRoute: ProjectsProjectIdInvoicingRoute,
   ProjectsProjectIdPeopleRoute: ProjectsProjectIdPeopleRoute,
   ProjectsProjectIdTasksRoute: ProjectsProjectIdTasksRoute,
   ProjectsProjectIdTimeRoute: ProjectsProjectIdTimeRoute,

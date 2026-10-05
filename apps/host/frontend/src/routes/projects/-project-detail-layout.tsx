@@ -1,6 +1,7 @@
 import {
   IconClock,
   IconCoin,
+  IconFileInvoice,
   IconLayoutDashboard,
   IconListCheck,
   IconReceipt,
@@ -28,7 +29,7 @@ interface ProjectDetailGate {
   capability?: keyof ProjectCapabilities;
 }
 
-type ProjectDetailView = "overview" | "tasks" | "people" | "billing" | "economy" | "time" | "expenses";
+type ProjectDetailView = "overview" | "tasks" | "people" | "billing" | "economy" | "time" | "expenses" | "invoicing";
 
 interface ProjectDetailTab extends ProjectDetailGate {
   value: ProjectDetailView;
@@ -39,7 +40,8 @@ interface ProjectDetailTab extends ProjectDetailGate {
     | "project.billingTab"
     | "project.economyTab"
     | "project.timeTab"
-    | "project.expensesTab";
+    | "project.expensesTab"
+    | "project.invoicingTab";
   icon: typeof IconLayoutDashboard;
   to:
     | "/projects/$projectId"
@@ -48,7 +50,8 @@ interface ProjectDetailTab extends ProjectDetailGate {
     | "/projects/$projectId/billing"
     | "/projects/$projectId/economy"
     | "/projects/$projectId/time"
-    | "/projects/$projectId/expenses";
+    | "/projects/$projectId/expenses"
+    | "/projects/$projectId/invoicing";
 }
 
 /**
@@ -127,6 +130,19 @@ export const projectDetailTabs: ProjectDetailTab[] = [
     to: "/projects/$projectId/expenses",
     module: "expenses",
     requiredPermissions: ["expenses:access"],
+  },
+  {
+    // The third tab from another module (invoices work design D18): the
+    // project's work not yet invoiced, and the wizard that drafts an invoice
+    // of it. It lists the hours, the people and the rates an invoice will
+    // state, so it is for whoever may draft one — `invoices:create` — and,
+    // like the other two, the module must be mounted.
+    value: "invoicing",
+    labelKey: "project.invoicingTab",
+    icon: IconFileInvoice,
+    to: "/projects/$projectId/invoicing",
+    module: "invoices",
+    requiredPermissions: ["invoices:create"],
   },
 ];
 

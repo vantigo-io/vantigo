@@ -36,6 +36,15 @@ export interface DaySearch {
   date?: string;
 }
 
+export interface DayPageProps {
+  /**
+   * Where one invoice lives in the host's routes, for an entry the Invoices
+   * module invoiced: its "Invoiced by invoice n" is then a link. The host
+   * passes it when the caller may open invoices.
+   */
+  invoiceHref?: (invoiceId: number) => string;
+}
+
 /** Clock-timed entries first, in the order they were worked; then the rest as they were logged. */
 const byTimeOfDay = (a: TimeEntry, b: TimeEntry): number => {
   if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime) || a.id - b.id;
@@ -51,7 +60,7 @@ const byTimeOfDay = (a: TimeEntry, b: TimeEntry): number => {
  * sum. The day is read from the caller's week, the same response the grid
  * reads, so the two never disagree.
  */
-export const DayPage = () => {
+export const DayPage = ({ invoiceHref }: DayPageProps = {}) => {
   const { t, formatters } = useI18n("time");
   const { date: requested } = useSearch({ strict: false }) as DaySearch;
   const navigate = useNavigate() as (options: unknown) => void;
@@ -148,6 +157,7 @@ export const DayPage = () => {
               entry={entry}
               editable={!locked && entry.capabilities.canEdit}
               onEdit={() => setModal({ mode: "edit", entry })}
+              invoiceHref={invoiceHref}
             />
           ))}
           <Group justify="space-between" px="md">
@@ -166,9 +176,10 @@ interface EntryCardProps {
   entry: TimeEntry;
   editable: boolean;
   onEdit: () => void;
+  invoiceHref?: (invoiceId: number) => string;
 }
 
-const EntryCard = ({ entry, editable, onEdit }: EntryCardProps) => {
+const EntryCard = ({ entry, editable, onEdit, invoiceHref }: EntryCardProps) => {
   const { t } = useI18n("time");
   const queryClient = useQueryClient();
   const hours = useHoursFormat();
@@ -236,7 +247,7 @@ const EntryCard = ({ entry, editable, onEdit }: EntryCardProps) => {
         </Stack>
         <Stack gap={6} align="flex-end">
           <Text fw={700}>{t("hoursShort", { hours: duration })}</Text>
-          <EntryStatusBadge status={entry.status} size="sm" />
+          <EntryStatusBadge status={entry.status} size="sm" invoicedBy={entry.invoicedBy} invoiceHref={invoiceHref} />
           {entry.capabilities.canUnapprove && (
             <ActionIcon
               variant="subtle"

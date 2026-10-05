@@ -7,7 +7,7 @@ import { markExpenseInvoiced } from "../api/approvals";
 import type { Expense } from "../api/entries";
 import { type ApiError, ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import "../i18n";
-import { refusalMessage } from "../lib/errors";
+import { invoicedByInvoicesNumber, refusalMessage } from "../lib/errors";
 
 /** What the contract allows in an invoice reference, once trimmed. */
 export const INVOICE_REFERENCE_MAX_LENGTH = 100;
@@ -87,12 +87,18 @@ const InvoiceForm = ({
         form.setErrors({ reference: error.fieldErrors.reference });
         return;
       }
+      const invoiced = invoicedByInvoicesNumber(error);
       const conflict = (error as ApiError).status === 409;
       if (conflict) onConflict?.();
       notifications.show({
         color: "red",
         title: t("couldNotMarkInvoiced"),
-        message: conflict ? t("expenseChangedElsewhere") : refusalMessage(error),
+        message:
+          invoiced !== undefined
+            ? t("invoicedByInvoicesRefusal", { number: invoiced })
+            : conflict
+              ? t("expenseChangedElsewhere")
+              : refusalMessage(error),
       });
     },
   });

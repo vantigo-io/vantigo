@@ -134,6 +134,9 @@ export const expensesCatalog = {
     markupPercent: "Markup",
     billRatePerKm: "Customer rate per kilometre",
     invoicedOn: "Invoiced {{date}}",
+    invoicedByInvoice: "Invoiced by invoice {{number}}",
+    invoicedByInvoicesRefusal:
+      "Invoice {{number}} invoiced this line. Only a credit note that returns it takes the invoicing back.",
     pricingIsTheProjects: "The markup and the customer rate are set from the project when the expense is priced.",
 
     descriptionRequired: "Write what the expense is",
@@ -715,6 +718,9 @@ export const expensesCatalog = {
     markupPercent: "Påslag",
     billRatePerKm: "Kundepris per kilometer",
     invoicedOn: "Fakturert {{date}}",
+    invoicedByInvoice: "Fakturert på faktura {{number}}",
+    invoicedByInvoicesRefusal:
+      "Faktura {{number}} fakturerte denne linjen. Bare en kreditnota som krediterer den, tar faktureringen tilbake.",
     pricingIsTheProjects: "Påslaget og kundeprisen settes fra prosjektet når utlegget prises.",
 
     descriptionRequired: "Skriv hva utlegget gjelder",

@@ -5,7 +5,7 @@ const client = createApiClient({ resolveUrl: appUrl, sessionNotFoundMeansExpired
 
 export const { request } = client;
 export type { ApiError, RequestOptions } from "@vantigo/frontend-api-client";
-export { ApiValidationError, NotFoundError, readJson } from "@vantigo/frontend-api-client";
+export { ApiConflictError, ApiValidationError, NotFoundError, readJson } from "@vantigo/frontend-api-client";
 
 /**
  * The host's session handling, kept here as well as handed to the client.

@@ -162,6 +162,28 @@ describe("DayPage", () => {
     expect(screen.getByTestId("day-total")).toHaveTextContent("6.5 h");
   });
 
+  it("names the invoice the Invoices module invoiced an entry by", async () => {
+    stubTimeApi({
+      week: week([
+        weekRow(pmRow, [
+          entry({
+            id: 601,
+            entryDate: DAY,
+            hours: 2,
+            note: "Status meeting",
+            status: "invoiced",
+            invoicedBy: { invoiceId: 990, number: 985 },
+            capabilities: locked,
+          }),
+        ]),
+      ]),
+    });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    const meeting = (await screen.findByText("Status meeting")).closest("[data-entry]") as HTMLElement;
+    expect(meeting).toHaveTextContent("Invoiced by invoice 985");
+  });
+
   it("works the hours out from a start and end time and logs them", async () => {
     const fetchMock = stubTimeApi({ week: dayWeek() });
     renderRoute(`/time/day?date=${DAY}`);

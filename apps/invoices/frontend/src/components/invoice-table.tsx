@@ -1,4 +1,4 @@
-import { Table } from "@mantine/core";
+import { Anchor, Table } from "@mantine/core";
 import type { InvoiceList } from "../api/invoices";
 import "../i18n";
 import { useInvoiceFormat } from "../lib/format";
@@ -10,15 +10,22 @@ export interface InvoiceTableProps {
   rows: InvoiceList["data"];
   /** Whether to name each document's customer — the customer panel's rows are all one customer's. */
   showCustomer: boolean;
+  /**
+   * Filters the list on a document's project (invoices work design D9): each
+   * project reference is then a button. Without it the reference is text.
+   */
+  onProject?: (projectId: number, reference: string) => void;
 }
 
 /**
  * The documents as the list shows them: each linked, badged with its state
  * (D3) and, on an issued invoice, with its open amount beside its total; an
  * issued document's EHF state in its own column, blank on a draft (EHF and
- * KID design D10).
+ * KID design D10). The project a document's work belongs to (invoices work
+ * design D9) has its own column, its reference a filter where the list offers
+ * one.
  */
-export const InvoiceTable = ({ rows, showCustomer }: InvoiceTableProps) => {
+export const InvoiceTable = ({ rows, showCustomer, onProject }: InvoiceTableProps) => {
   const { t, money, date } = useInvoiceFormat();
   return (
     <Table.ScrollContainer minWidth={640}>
@@ -29,6 +36,7 @@ export const InvoiceTable = ({ rows, showCustomer }: InvoiceTableProps) => {
             <Table.Th>{t("kind")}</Table.Th>
             <Table.Th>{t("state")}</Table.Th>
             {showCustomer && <Table.Th>{t("customer")}</Table.Th>}
+            <Table.Th>{t("project")}</Table.Th>
             <Table.Th>{t("issueDate")}</Table.Th>
             <Table.Th>{t("dueDate")}</Table.Th>
             <Table.Th ta="right">{t("grossTotal")}</Table.Th>
@@ -47,6 +55,25 @@ export const InvoiceTable = ({ rows, showCustomer }: InvoiceTableProps) => {
                 <StateBadge state={row.state} />
               </Table.Td>
               {showCustomer && <Table.Td>{row.customerName ?? t("unknownCustomer")}</Table.Td>}
+              <Table.Td>
+                {row.projectId !== undefined && row.projectReference ? (
+                  onProject ? (
+                    <Anchor
+                      component="button"
+                      type="button"
+                      size="sm"
+                      aria-label={t("filterOnProject", { reference: row.projectReference })}
+                      onClick={() => onProject(row.projectId as number, row.projectReference as string)}
+                    >
+                      {row.projectReference}
+                    </Anchor>
+                  ) : (
+                    row.projectReference
+                  )
+                ) : (
+                  t("notAvailable")
+                )}
+              </Table.Td>
               <Table.Td>{row.issueDate ? date(row.issueDate) : t("notAvailable")}</Table.Td>
               <Table.Td>{row.dueDate ? date(row.dueDate) : t("notAvailable")}</Table.Td>
               <Table.Td ta="right">{money(row.grossTotal, row.currency)}</Table.Td>

@@ -341,6 +341,10 @@ export const projectsCatalog = {
     expensesReadyToInvoiceRow_one: "Billable expenses ready to invoice — {{count}} line, {{amount}}",
     expensesReadyToInvoiceRow_other: "Billable expenses ready to invoice — {{count}} lines, {{amount}}",
     viewTheExpenses: "View the expenses",
+    invoiceTheWork: "Invoice the work",
+    invoicedByInvoice: "Invoiced by invoice {{number}}",
+    invoicedByInvoicesRefusal:
+      "Invoice {{number}} invoiced this milestone. Only a credit note that returns its line takes it back.",
 
     economyPortfolio: "Project economy",
     economyPortfolioDescription:
@@ -823,6 +827,10 @@ export const projectsCatalog = {
     expensesReadyToInvoiceRow_one: "Utlegg klare til fakturering — {{count}} linje, {{amount}}",
     expensesReadyToInvoiceRow_other: "Utlegg klare til fakturering — {{count}} linjer, {{amount}}",
     viewTheExpenses: "Se utleggene",
+    invoiceTheWork: "Fakturer arbeidet",
+    invoicedByInvoice: "Fakturert på faktura {{number}}",
+    invoicedByInvoicesRefusal:
+      "Faktura {{number}} fakturerte denne milepælen. Bare en kreditnota som krediterer linjen, tar den tilbake.",
 
     economyPortfolio: "Prosjektøkonomi",
     economyPortfolioDescription:

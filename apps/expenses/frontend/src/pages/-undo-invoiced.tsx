@@ -7,8 +7,17 @@ import { undoExpenseInvoiced } from "../api/approvals";
 import type { Expense } from "../api/entries";
 import { type ApiError, EXPENSES_QUERY_KEY } from "../api/request";
 import "../i18n";
-import { refusalMessage } from "../lib/errors";
+import { invoicedByInvoicesNumber, refusalMessage } from "../lib/errors";
 import { useLineName } from "../lib/line-name";
+
+/**
+ * Whether the undo is offered: the line's own capability, and never on a line
+ * the Invoices module invoiced (invoices work design D1, D18) — that mark is
+ * the invoice's, and only a credit note returning the line takes it back, so
+ * the server would refuse it with `invoiced_by_invoices`.
+ */
+export const canUndoInvoiced = (line: Expense): boolean =>
+  line.capabilities.canUndoInvoiced && line.billing?.invoice?.invoicedBy === undefined;
 
 /**
  * Taking the invoicing back off one line — the other end of
@@ -37,11 +46,19 @@ export const useUndoInvoiced = (onSaved: (line: Expense) => void) => {
       onSaved(saved);
     },
     onError: (error) => {
+      // A line the Invoices module invoiced since it was read: its mark is
+      // that invoice's, said in words rather than as a stale form.
+      const invoiced = invoicedByInvoicesNumber(error);
       const conflict = (error as ApiError).status === 409;
       notifications.show({
         color: "red",
         title: t("couldNotUndoInvoiced"),
-        message: conflict ? t("expenseChangedElsewhere") : refusalMessage(error),
+        message:
+          invoiced !== undefined
+            ? t("invoicedByInvoicesRefusal", { number: invoiced })
+            : conflict
+              ? t("expenseChangedElsewhere")
+              : refusalMessage(error),
       });
     },
   });

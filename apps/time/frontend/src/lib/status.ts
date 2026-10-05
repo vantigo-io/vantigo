@@ -16,6 +16,25 @@ const presentation: Record<TimeEntryStatus, StatusPresentation> = {
 /** The `time` catalog key naming this status. */
 export const timeEntryStatusLabelKey = (status: TimeEntryStatus): string => presentation[status].labelKey;
 
+/** The invoice the Invoices module stamped an entry with (invoices work design D1): its id and its number. */
+export interface InvoicedBy {
+  invoiceId: number;
+  number: number;
+}
+
+/**
+ * The words an entry's status badge says, as a catalog key and its values: an
+ * entry the Invoices module invoiced names the invoice — "Invoiced by invoice
+ * n" (invoices work design D18) — and every other status its own word.
+ */
+export const timeEntryStatusLabel = (
+  status: TimeEntryStatus,
+  invoicedBy?: InvoicedBy,
+): { key: string; values?: Record<string, unknown> } =>
+  status === "invoiced" && invoicedBy
+    ? { key: "statusInvoicedBy", values: { number: invoicedBy.number } }
+    : { key: timeEntryStatusLabelKey(status) };
+
 /** The Mantine colour a status badge, or a grid cell holding an entry in it, carries. */
 export const timeEntryStatusColor = (status: TimeEntryStatus): string => presentation[status].color;
 

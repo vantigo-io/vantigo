@@ -161,6 +161,11 @@ const sellerInputs = new Set([
   "peppolId",
   "kidLength",
   "kidAlgorithm",
+  "workVatCodes.hours",
+  "workVatCodes.expenses",
+  "workVatCodes.milestones",
+  "timesheetDefault",
+  "timesheetPersonLabel",
 ]);
 
 interface SellerFormProps {
@@ -197,11 +202,13 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
   const [conflict, setConflict] = useState(false);
   const [reloadFailed, setReloadFailed] = useState(false);
   const stale = conflict || latestRevision > settings.revision;
-  const set = <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K]) => {
+  // `field` is the refusal the change answers, when it is not the key itself
+  // — one work VAT code of the three, `workVatCodes.hours`.
+  const set = <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K], field: string = key) => {
     setValues((v) => ({ ...v, [key]: value }));
     setErrors((current) => {
       const next = { ...current };
-      delete next[key];
+      delete next[field];
       return next;
     });
     setDirty(true);
@@ -233,9 +240,9 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         peppolId: values.peppolId?.trim() || null,
         kidLength: values.kidLength,
         kidAlgorithm: values.kidAlgorithm,
-        // The codes each kind of work is invoiced at (invoices work design
-        // D6) and the timesheet's default and person label (D5) have no card
-        // here yet: they go back as they were read.
+        // The Work to invoice card's: the code each kind of work is invoiced
+        // at (invoices work design D6), and the timesheet's default and
+        // person label (D5) — all required by the server.
         workVatCodes: values.workVatCodes,
         timesheetDefault: values.timesheetDefault,
         timesheetPersonLabel: values.timesheetPersonLabel,
@@ -423,6 +430,7 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         </Stack>
       </Card>
       <KidCard settings={settings} values={values} errors={errors} set={set} />
+      <WorkCard values={values} errors={errors} set={set} />
       <Group justify="flex-end">
         <Button loading={save.isPending} disabled={!dirty} onClick={() => save.mutate()}>
           {t("save")}
@@ -529,6 +537,74 @@ const KidCard = ({ settings, values, errors, set }: KidCardProps) => {
             {t("kidChangeWarning")}
           </Alert>
         )}
+      </Stack>
+    </Card>
+  );
+};
+
+const personLabels = ["initials", "number", "name"] as const;
+const workKinds = ["hours", "expenses", "milestones"] as const;
+
+/**
+ * The Work to invoice card (invoices work design D5, D6, D18): the VAT code
+ * each kind of work's lines take in the wizard — every code, one no longer
+ * offered named so, since a code kept as stored passes — and whether new
+ * invoices carry a timesheet and how it names each person, with what that
+ * tells the customer about the employees. Saved with the seller record; a
+ * refused code or label is said on its own input.
+ */
+const WorkCard = ({
+  values,
+  errors,
+  set,
+}: {
+  values: InvoiceSettings;
+  errors: Record<string, string>;
+  set: <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K], field?: string) => void;
+}) => {
+  const { t } = useInvoiceFormat();
+  const codes = useQuery(vatCodesQueryOptions());
+  const options = (codes.data ?? []).map((c) => {
+    const label = t("vatCodeOption", { code: c.code, name: c.name });
+    return { value: String(c.id), label: c.active ? label : t("vatCodeNotOffered", { label }) };
+  });
+  return (
+    <Card withBorder data-testid="work-card">
+      <Stack>
+        <Title order={4}>{t("workToInvoice")}</Title>
+        <Text size="sm" c="dimmed">
+          {t("workToInvoiceDescription")}
+        </Text>
+        <SimpleGrid cols={{ base: 1, sm: 3 }}>
+          {workKinds.map((kind) => (
+            <Select
+              key={kind}
+              label={t(`vatCodeFor.${kind}`)}
+              data={options}
+              allowDeselect={false}
+              value={String(values.workVatCodes[kind])}
+              error={errors[`workVatCodes.${kind}`]}
+              onChange={(v) =>
+                v !== null && set("workVatCodes", { ...values.workVatCodes, [kind]: Number(v) }, `workVatCodes.${kind}`)
+              }
+            />
+          ))}
+        </SimpleGrid>
+        <Checkbox
+          label={t("field.timesheetDefault")}
+          checked={values.timesheetDefault}
+          error={errors.timesheetDefault}
+          onChange={(e) => set("timesheetDefault", e.currentTarget.checked)}
+        />
+        <Select
+          label={t("field.timesheetPersonLabel")}
+          description={t("timesheetPrivacyHint")}
+          data={personLabels.map((value) => ({ value, label: t(`personLabel.${value}`) }))}
+          allowDeselect={false}
+          value={values.timesheetPersonLabel}
+          error={errors.timesheetPersonLabel}
+          onChange={(v) => v && set("timesheetPersonLabel", v as InvoiceSettings["timesheetPersonLabel"])}
+        />
       </Stack>
     </Card>
   );

@@ -27,7 +27,9 @@ import {
   IconDownload,
   IconEye,
   IconMail,
+  IconMinus,
   IconPlus,
+  IconRefresh,
   IconSend,
   IconTrash,
 } from "@tabler/icons-react";
@@ -35,6 +37,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { deductibleQueryOptions } from "../api/deductible";
 import {
   creditInvoice,
   deleteInvoice,
@@ -56,12 +59,13 @@ import { PaymentsCard } from "../components/payments-card";
 import { PdfButton } from "../components/pdf-button";
 import { StaleAlert } from "../components/stale-alert";
 import { StateBadge } from "../components/state-badge";
-import "../i18n";
+import { invoicesCatalog } from "../i18n";
 import { fieldRefusals, refusalMessage, warningMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { documentTotals, lineAmounts } from "../lib/money";
 import { invoiceLinkOptions } from "../lib/routes";
 import { draftRate } from "../lib/vat";
+import { DeductModal } from "./-deduct-modal";
 import { IssueModal } from "./-issue-modal";
 import { SendDialog } from "./-send-dialog";
 import { SendEhfDialog } from "./-send-ehf-dialog";
@@ -153,7 +157,22 @@ interface EditorLine {
   discountPercent: number | string;
   vatCodeId: number | null;
   creditsLineId?: number;
+  /**
+   * The work the line bills, by identity, as the draft was read (invoices
+   * work design D2): sent back on every save, so no work is dropped by
+   * omission. Absent on a document that bills no work.
+   */
+  sources?: SourceRef[];
+  /** The line's work as the server answered it — date, quantity, amount, state — shown under the line. */
+  read?: LineSource[];
+  /** The line's own warnings as read: line_differs_from_sources, source_changed, source_not_invoiceable. */
+  warnings?: string[];
+  /** On a final settlement's deduction line (D7), the a-konto invoice it deducts. */
+  deductsInvoiceId?: number;
 }
+
+type LineSource = NonNullable<InvoiceDocument["lines"][number]["sources"]>[number];
+type SourceRef = NonNullable<NonNullable<InvoiceInput["lines"][number]["sources"]>>[number];
 
 const numberOf = (v: number | string): number => {
   if (typeof v === "number") return v;
@@ -223,6 +242,7 @@ const DraftEditor = ({
   const queryClient = useQueryClient();
   const navigate = useNavigate() as (options: unknown) => Promise<void>;
   const heading = useHeading(draft);
+  const sourceName = useSourceName();
   const credit = draft.kind === "credit_note";
   // EHF's missing reference is said beside the references it asks for (EHF
   // and KID design D8, D15); every other warning in the list above.
@@ -231,6 +251,16 @@ const DraftEditor = ({
   const original = useQuery({
     ...invoiceQueryOptions(draft.credits?.id ?? 0),
     enabled: credit && Boolean(draft.credits),
+  });
+  // An invoice draft that bills work answers `sources` on every line; then
+  // every save names each line's work, `[]` for none (D2). A credit note
+  // holds no work of its own and takes no sources.
+  const holdsWork = !credit && draft.lines.some((l) => l.sources !== undefined);
+  // What a settlement's deduction lines are taxed at: each a-konto line's
+  // snapshot, which the deductible list carries (D7).
+  const deductible = useQuery({
+    ...deductibleQueryOptions(draft.id),
+    enabled: !credit && draft.lines.some((l) => l.deductsInvoiceId !== undefined),
   });
 
   const [customerId, setCustomerId] = useState<number | null>(draft.customerId);
@@ -262,8 +292,14 @@ const DraftEditor = ({
       discountPercent: l.discountPercent,
       vatCodeId: l.vatCodeId,
       creditsLineId: l.creditsLineId,
+      sources: l.sources?.map(({ kind, id }) => ({ kind, id })),
+      read: l.sources,
+      warnings: l.warnings,
+      deductsInvoiceId: l.deductsInvoiceId,
     })),
   );
+  const [timesheet, setTimesheet] = useState(draft.timesheet);
+  const [deducting, setDeducting] = useState(false);
   const [issuing, setIssuing] = useState(false);
   // A save refused as stale (a 409 without a code), or a newer revision seen
   // while editing: nothing to fix but look at the latest version.
@@ -324,11 +360,19 @@ const DraftEditor = ({
   // lines at the rate each code has today — offered or not, 0 % without a
   // period today — and a credit note's at its original lines' own.
   const originalLine = (line: EditorLine) => original.data?.lines.find((ol) => ol.id === line.creditsLineId);
+  /** A deduction line, or a credit note's line crediting one: its quantity is below zero. */
+  const negative = (line: EditorLine): boolean =>
+    credit ? (originalLine(line)?.quantity ?? numberOf(line.quantity)) < 0 : line.deductsInvoiceId !== undefined;
   const rateOf = (line: EditorLine): { category: string; ratePercent: number } => {
     if (credit) {
       const o = originalLine(line);
       return { category: o?.vatCategory ?? "", ratePercent: o?.vatRatePercent ?? 0 };
     }
+    const snapshot =
+      line.deductsInvoiceId === undefined
+        ? undefined
+        : deductible.data?.find((d) => d.invoiceId === line.deductsInvoiceId && d.vatCodeId === line.vatCodeId);
+    if (snapshot) return { category: snapshot.category, ratePercent: snapshot.ratePercent };
     const code = allCodes.data?.find((c) => c.id === line.vatCodeId);
     if (code) return draftRate(code, today);
     const inForce = vatCodes.find((c) => c.id === line.vatCodeId);
@@ -358,6 +402,9 @@ const DraftEditor = ({
       };
   const lineNet = (i: number) => (dirty ? amounts[i].net : (draft.lines[i]?.lineNet ?? amounts[i].net));
 
+  // A changed customer releases every hold the draft has (D2): its lines'
+  // work goes as `[]`, which is what the server then holds.
+  const customerChanged = (customerId ?? draft.customerId) !== draft.customerId;
   const input = (): InvoiceInput => ({
     customerId: customerId ?? draft.customerId,
     revision: draft.revision,
@@ -380,6 +427,7 @@ const DraftEditor = ({
     ...(credit || terms === "" ? {} : { paymentTermsDays: numberOf(terms) }),
     note,
     internalNote,
+    ...(credit ? {} : { timesheet }),
     lines: lines.map((l) => ({
       description: l.description,
       quantity: numberOf(l.quantity),
@@ -388,19 +436,27 @@ const DraftEditor = ({
       discountPercent: numberOf(l.discountPercent),
       vatCodeId: l.vatCodeId ?? 0,
       ...(l.creditsLineId ? { creditsLineId: l.creditsLineId } : {}),
+      ...(!credit && l.deductsInvoiceId !== undefined ? { deductsInvoiceId: l.deductsInvoiceId } : {}),
+      ...(holdsWork ? { sources: customerChanged ? [] : (l.sources ?? []) } : {}),
     })),
   });
 
   const save = useMutation({
-    mutationFn: () => replaceInvoice(draft.id, input()),
-    onSuccess: async (saved) => {
+    // "Refresh work" is a save with `refreshSources` (D2): the work is read
+    // again before the save's transaction and its new figures taken.
+    mutationFn: (refresh: boolean) =>
+      replaceInvoice(draft.id, { ...input(), ...(refresh ? { refreshSources: true } : {}) }),
+    onSuccess: async (saved, refresh) => {
       queryClient.setQueryData(invoiceQueryOptions(draft.id).queryKey, saved);
       // The saved revision replaces the edited one: the editor remounts on it.
       setDirty(false);
+      // A save that holds or releases work moves the uninvoiced view too.
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY, "list"] });
-      notifications.show({ color: "green", message: t("saved") });
+      if (holdsWork) await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY, "work"] });
+      notifications.show({ color: "green", message: refresh ? t("workRefreshed") : t("saved") });
     },
-    onError: (error) => {
+    onError: (error, refresh) => {
+      const title = refresh ? t("couldNotRefreshWork") : t("couldNotSave");
       if (error instanceof ApiConflictError && !error.code) {
         setConflict(true);
         return;
@@ -408,11 +464,10 @@ const DraftEditor = ({
       if (error instanceof ApiValidationError) {
         const { onInputs, elsewhere } = fieldRefusals(error, t, rendered);
         setErrors(onInputs);
-        if (elsewhere.length > 0)
-          notifications.show({ color: "red", title: t("couldNotSave"), message: elsewhere.join(" ") });
+        if (elsewhere.length > 0) notifications.show({ color: "red", title, message: elsewhere.join(" ") });
         return;
       }
-      notifications.show({ color: "red", title: t("couldNotSave"), message: refusalMessage(error, t, date) });
+      notifications.show({ color: "red", title, message: refusalMessage(error, t, date) });
     },
   });
   // Reload drops the unsaved edits for the latest revision, which the editor
@@ -493,7 +548,7 @@ const DraftEditor = ({
                 variant="default"
                 loading={save.isPending}
                 disabled={!dirty || halfPeriod}
-                onClick={() => save.mutate()}
+                onClick={() => save.mutate(false)}
               >
                 {t("save")}
               </Button>
@@ -534,6 +589,11 @@ const DraftEditor = ({
                 {warningMessage(w, t)}
               </Text>
             ))}
+            {draft.releasedSources && draft.releasedSources.length > 0 && (
+              <Text size="sm" data-testid="released-sources">
+                {t("releasedSourcesList", { list: draft.releasedSources.map(sourceName).join(", ") })}
+              </Text>
+            )}
           </Stack>
         </Alert>
       )}
@@ -557,6 +617,16 @@ const DraftEditor = ({
               selected={{ id: draft.customerId, name: draft.customerName }}
               required
             />
+          )}
+          {customerChanged && holdsWork && (
+            <Text size="sm" c="orange" data-testid="customer-change-releases">
+              {t("customerChangeReleasesWork")}
+            </Text>
+          )}
+          {draft.projectReference && (
+            <Text size="sm" data-testid="document-project">
+              {t("projectIs", { reference: draft.projectReference })}
+            </Text>
           )}
           <Group align="flex-end">
             <SegmentedControl
@@ -704,7 +774,34 @@ const DraftEditor = ({
       </Card>
       <Card withBorder>
         <Stack>
-          <Title order={4}>{t("lines")}</Title>
+          <Group justify="space-between" wrap="wrap">
+            <Title order={4}>{t("lines")}</Title>
+            {editable && !credit && (
+              <Group gap="xs">
+                {holdsWork && (
+                  <Button
+                    size="xs"
+                    variant="default"
+                    leftSection={<IconRefresh size={14} />}
+                    disabled={dirty}
+                    title={dirty ? t("saveBeforeRefresh") : t("refreshWorkHint")}
+                    loading={save.isPending && save.variables === true}
+                    onClick={() => save.mutate(true)}
+                  >
+                    {t("refreshWork")}
+                  </Button>
+                )}
+                <Button
+                  size="xs"
+                  variant="default"
+                  leftSection={<IconMinus size={14} />}
+                  onClick={() => setDeducting(true)}
+                >
+                  {t("deductEarlier")}
+                </Button>
+              </Group>
+            )}
+          </Group>
           <Table>
             <Table.Thead>
               <Table.Tr>
@@ -729,14 +826,17 @@ const DraftEditor = ({
                       error={fieldError(`lines[${i}].description`)}
                       onChange={(e) => setLine(l.key, { description: e.currentTarget.value })}
                     />
+                    <LineWork line={l} n={i + 1} currency={draft.currency} />
                   </Table.Td>
                   <Table.Td>
                     <NumberInput
                       aria-label={t("lineQuantity", { n: i + 1 })}
                       decimalScale={3}
-                      min={0}
-                      max={credit ? originalLine(l)?.quantity : MAX_QUANTITY}
-                      readOnly={!editable}
+                      // A deduction's quantity is -1 (D7); a credit note's line
+                      // crediting one is negative and may only shrink towards 0.
+                      min={negative(l) ? originalLine(l)?.quantity : 0}
+                      max={credit ? (negative(l) ? 0 : originalLine(l)?.quantity) : MAX_QUANTITY}
+                      readOnly={!editable || (!credit && l.deductsInvoiceId !== undefined)}
                       value={l.quantity}
                       error={fieldError(`lines[${i}].quantity`)}
                       onChange={(v) => setLine(l.key, { quantity: v })}
@@ -863,6 +963,18 @@ const DraftEditor = ({
           />
         </Stack>
       </Card>
+      {!credit && (
+        <TimesheetCard
+          draft={draft}
+          on={timesheet}
+          editable={editable}
+          onChange={(on) => {
+            setTimesheet(on);
+            setDirty(true);
+          }}
+        />
+      )}
+      {credit && draft.sources?.wouldRelease !== undefined && <WouldRelease refs={draft.sources.wouldRelease} />}
       <Card withBorder>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <Textarea
@@ -884,7 +996,174 @@ const DraftEditor = ({
         </SimpleGrid>
       </Card>
       {issuing && <IssueModal draft={draft} onClose={() => setIssuing(false)} />}
+      {deducting && (
+        <DeductModal
+          invoiceId={draft.id}
+          currency={draft.currency}
+          taken={lines.flatMap((l) =>
+            l.deductsInvoiceId === undefined ? [] : [{ invoiceId: l.deductsInvoiceId, vatCodeId: l.vatCodeId }],
+          )}
+          onClose={() => setDeducting(false)}
+          onAdd={(proposed) => {
+            setLines((current) => [
+              ...current,
+              ...proposed.map((p) => ({
+                key: nextKey(),
+                description: p.description,
+                quantity: -1,
+                unit: "",
+                unitPrice: p.unitPrice,
+                discountPercent: 0,
+                vatCodeId: p.vatCodeId,
+                deductsInvoiceId: p.deductsInvoiceId,
+                // A deduction line bills no work (D7).
+                ...(holdsWork ? { sources: [] } : {}),
+              })),
+            ]);
+            setDirty(true);
+            setDeducting(false);
+          }}
+        />
+      )}
     </Stack>
+  );
+};
+
+/** A source by its kind and id, as a person reads it: "Hour entry 501". */
+const useSourceName = () => {
+  const { t } = useInvoiceFormat();
+  return (ref: { kind: string; id: number }) =>
+    `sourceKind.${ref.kind}` in invoicesCatalog.en
+      ? t("sourceRef", { kind: t(`sourceKind.${ref.kind}`), id: ref.id })
+      : t("sourceRef", { kind: ref.kind, id: ref.id });
+};
+
+/**
+ * Under a line's description: the deducted invoice of a settlement's
+ * deduction line, the work the line bills — each piece with its date, its
+ * quantity, its amount and, once it is no longer held, its state — and the
+ * line's own warnings (D2, D7).
+ */
+const LineWork = ({ line, n, currency }: { line: EditorLine; n: number; currency: string }) => {
+  const { t, money, number, date } = useInvoiceFormat();
+  const sourceName = useSourceName();
+  const read = line.read ?? [];
+  if (line.deductsInvoiceId === undefined && read.length === 0 && !line.warnings?.length) return null;
+  return (
+    <Stack gap={2} mt={4} aria-label={t("lineWork", { n })} data-testid={`line-work-${n}`}>
+      {line.deductsInvoiceId !== undefined && (
+        <Text size="xs">
+          <DocumentLink invoiceId={line.deductsInvoiceId}>{t("deductsInvoiceLink")}</DocumentLink>
+        </Text>
+      )}
+      {read.map((source) => (
+        <Text key={`${source.kind}:${source.id}`} size="xs" c="dimmed">
+          {t("sourceLine", {
+            source: sourceName(source),
+            date: date(source.date),
+            quantity: number(source.quantity),
+            amount: money(source.amount, currency),
+          })}
+          {source.state !== "held" &&
+            ` · ${`sourceState.${source.state}` in invoicesCatalog.en ? t(`sourceState.${source.state}`) : source.state}`}
+        </Text>
+      ))}
+      {line.warnings?.map((w) => (
+        <Text key={w} size="xs" c="orange" data-line-warning={w}>
+          {warningMessage(w, t)}
+        </Text>
+      ))}
+    </Stack>
+  );
+};
+
+/**
+ * The timesheet (D5): whether the invoice carries one inside its PDF, and the
+ * rows as the server wrote them — each person by the settings' label, never
+ * an entry's note. Turned on, the rows are written when the draft is saved.
+ */
+const TimesheetCard = ({
+  draft,
+  on,
+  editable,
+  onChange,
+}: {
+  draft: InvoiceDocument;
+  on: boolean;
+  editable: boolean;
+  onChange: (on: boolean) => void;
+}) => {
+  const { t, number, date } = useInvoiceFormat();
+  return (
+    <Card withBorder data-testid="timesheet-card">
+      <Stack gap="xs">
+        <Title order={4}>{t("timesheet")}</Title>
+        <Checkbox
+          label={t("timesheetFlag")}
+          description={t("timesheetFlagHint")}
+          disabled={!editable}
+          checked={on}
+          onChange={(e) => onChange(e.currentTarget.checked)}
+        />
+        {on && !draft.timesheet && (
+          <Text size="sm" c="dimmed">
+            {t("timesheetPending")}
+          </Text>
+        )}
+        {on && draft.timesheet && draft.timesheetRows.length === 0 && (
+          <Text size="sm" c="dimmed">
+            {t("timesheetEmpty")}
+          </Text>
+        )}
+        {on && draft.timesheet && draft.timesheetRows.length > 0 && (
+          <Table aria-label={t("timesheet")}>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("workDate")}</Table.Th>
+                <Table.Th>{t("workPerson")}</Table.Th>
+                <Table.Th>{t("workType")}</Table.Th>
+                <Table.Th>{t("description")}</Table.Th>
+                <Table.Th ta="right">{t("workHours")}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {draft.timesheetRows.map((row) => (
+                <Table.Tr key={row.position}>
+                  <Table.Td>{date(row.date)}</Table.Td>
+                  <Table.Td>{row.personLabel}</Table.Td>
+                  <Table.Td>{row.workType ?? ""}</Table.Td>
+                  <Table.Td>{row.description}</Table.Td>
+                  <Table.Td ta="right">{number(row.hours, 2)}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        )}
+      </Stack>
+    </Card>
+  );
+};
+
+/** On a credit-note draft (D8): the work its issue would release, as the draft stands. */
+const WouldRelease = ({ refs }: { refs: { kind: string; id: number }[] }) => {
+  const { t } = useInvoiceFormat();
+  const sourceName = useSourceName();
+  return (
+    <Card withBorder data-testid="would-release">
+      <Stack gap="xs">
+        <Title order={4}>{t("wouldReleaseTitle")}</Title>
+        {refs.length === 0 ? (
+          <Text size="sm" c="dimmed">
+            {t("wouldReleaseNone")}
+          </Text>
+        ) : (
+          <>
+            <Text size="sm">{t("wouldReleaseHint")}</Text>
+            <Text size="sm">{refs.map(sourceName).join(", ")}</Text>
+          </>
+        )}
+      </Stack>
+    </Card>
   );
 };
 
