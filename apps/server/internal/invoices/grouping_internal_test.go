@@ -349,3 +349,17 @@ func TestSuggestCoarser(t *testing.T) {
 		}
 	}
 }
+
+// D12's deadline is the same day a calendar month back, clamped to that
+// month's last day — never spilling into the month after it.
+func TestMonthBefore(t *testing.T) {
+	t.Parallel()
+	for day, want := range map[string]string{
+		"2026-03-31": "2026-02-28", "2028-03-31": "2028-02-29", "2026-03-29": "2026-02-28",
+		"2026-05-31": "2026-04-30", "2026-09-12": "2026-08-12", "2026-01-15": "2025-12-15",
+	} {
+		if got := monthBefore(groupingDay(day)).Format(time.DateOnly); got != want {
+			t.Errorf("monthBefore(%s) = %s, want %s", day, got, want)
+		}
+	}
+}

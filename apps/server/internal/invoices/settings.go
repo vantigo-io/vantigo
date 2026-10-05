@@ -176,9 +176,6 @@ func parseSettings(body gen.InvoicesSettingsRequest) (parsedSettings, map[string
 		DefaultCurrency:         strings.ToUpper(strings.TrimSpace(body.DefaultCurrency)),
 		FooterText:              optional(body.FooterText),
 		SeriesStart:             body.SeriesStart,
-		WorkVatCodeHours:        body.WorkVatCodes.Hours,
-		WorkVatCodeExpenses:     body.WorkVatCodes.Expenses,
-		WorkVatCodeMilestones:   body.WorkVatCodes.Milestones,
 	}
 
 	add("legalName", maxLength("A legal name", p.LegalName, 200))
@@ -220,6 +217,7 @@ func parseSettings(body gen.InvoicesSettingsRequest) (parsedSettings, map[string
 		add("seriesStart", "The series starts at 9007199254740991 at the latest")
 	}
 	parseEInvoicing(body, &p, add)
+	parseWorkVatCodes(body.WorkVatCodes, &p, add)
 	return p, errs
 }
 
@@ -287,24 +285,69 @@ func parseEInvoicing(body gen.InvoicesSettingsRequest, p *parsedSettings, add fu
 }
 
 // checkWorkVatCodes is D6's rule for the codes each kind of work is invoiced
-// at (invoices work design): each one a code that exists and is still offered
-// for new lines, else a 400 on its field.
-func checkWorkVatCodes(p parsedSettings, codes map[int32]vatCodeOnDay, errs map[string][]string) map[string][]string {
+// at (invoices work design): each one a code that exists and, when it changes,
+// is still offered for new lines, else a 400 on its field. A code kept as
+// stored passes though it has since been deactivated, so the seller record
+// can still be saved; the wizard refuses that default when it would use it.
+func checkWorkVatCodes(p parsedSettings, stored store.InvoicesSetting, codes map[int32]vatCodeOnDay, errs map[string][]string) map[string][]string {
+	if len(errs["workVatCodes"]) > 0 {
+		return errs
+	}
 	for _, c := range []struct {
-		field string
-		id    int32
+		field     string
+		id, was   int32
+		malformed bool
 	}{
-		{"workVatCodes.hours", p.WorkVatCodeHours}, {"workVatCodes.expenses", p.WorkVatCodeExpenses},
-		{"workVatCodes.milestones", p.WorkVatCodeMilestones},
+		{"workVatCodes.hours", p.WorkVatCodeHours, stored.WorkVatCodeHours, len(errs["workVatCodes.hours"]) > 0},
+		{"workVatCodes.expenses", p.WorkVatCodeExpenses, stored.WorkVatCodeExpenses, len(errs["workVatCodes.expenses"]) > 0},
+		{"workVatCodes.milestones", p.WorkVatCodeMilestones, stored.WorkVatCodeMilestones, len(errs["workVatCodes.milestones"]) > 0},
 	} {
+		if c.malformed {
+			continue
+		}
 		switch code, ok := codes[c.id]; {
 		case !ok:
 			errs = withFieldError(errs, c.field, "No VAT code has this id")
-		case !code.active:
+		case !code.active && c.id != c.was:
 			errs = withFieldError(errs, c.field, "This VAT code is no longer offered for new lines")
 		}
 	}
 	return errs
+}
+
+// parseWorkVatCodes reads the required workVatCodes into p (invoices work
+// design D6): absent is a 400 on the field — a client that predates it would
+// otherwise reset the codes by leaving it out — and so is anything but three
+// code ids. Whether each code exists and is offered is checkWorkVatCodes'.
+func parseWorkVatCodes(raw json.RawMessage, p *parsedSettings, add func(field, msg string)) {
+	if len(raw) == 0 || string(raw) == "null" {
+		add("workVatCodes", "workVatCodes is required: the VAT code for hours, expenses and milestones")
+		return
+	}
+	var codes struct {
+		Hours      *int32 `json:"hours"`
+		Expenses   *int32 `json:"expenses"`
+		Milestones *int32 `json:"milestones"`
+	}
+	if err := json.Unmarshal(raw, &codes); err != nil {
+		add("workVatCodes", "workVatCodes is an object of three VAT code ids: hours, expenses and milestones")
+		return
+	}
+	for _, c := range []struct {
+		field string
+		v     *int32
+		dst   *int32
+	}{
+		{"workVatCodes.hours", codes.Hours, &p.WorkVatCodeHours},
+		{"workVatCodes.expenses", codes.Expenses, &p.WorkVatCodeExpenses},
+		{"workVatCodes.milestones", codes.Milestones, &p.WorkVatCodeMilestones},
+	} {
+		if c.v == nil {
+			add(c.field, "A VAT code is required for each kind of work")
+			continue
+		}
+		*c.dst = *c.v
+	}
 }
 
 // nextNumber is the number the next issue takes (D2): the counter's next
@@ -401,11 +444,16 @@ var errRefused = errors.New("invoices: refused")
 // series start before the first issue.
 func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSettingsRequestObject) (gen.PutInvoicesSettingsResponseObject, error) {
 	parsed, errs := parseSettings(*req.Body)
-	codes, err := vatCodesOn(ctx, store.New(s.deps.Pool), pgDate(businessDay(s.deps.Clock())))
+	q := store.New(s.deps.Pool)
+	codes, err := vatCodesOn(ctx, q, pgDate(businessDay(s.deps.Clock())))
 	if err != nil {
 		return nil, err
 	}
-	errs = checkWorkVatCodes(parsed, codes, errs)
+	stored, err := q.GetSettings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the settings: %w", err)
+	}
+	errs = checkWorkVatCodes(parsed, stored, codes, errs)
 	if len(errs) > 0 {
 		return gen.PutInvoicesSettings400ApplicationProblemPlusJSONResponse(invalid(invalidSettingsTitle, errs)), nil
 	}

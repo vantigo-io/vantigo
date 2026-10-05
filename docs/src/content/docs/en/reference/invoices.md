@@ -277,7 +277,7 @@ invoiced, per project and per kind, as the billable reads answer it.
   reads is composed (time, expenses and projects all switched off), and 409
   `projects_unavailable` with the projects module off — work is invoiced per project.
 - **The projects**: for a customer, every project it is billed for
-  (`ProjectDirectory.ProjectsForCustomer`, at most 100, in any status); for a project,
+  (`ProjectDirectory.ProjectsForCustomer`, at most 2 000, in any status — exactly 2 000 warns `work_truncated`, since there may be more); for a project,
   that one (404 for an unknown id) and its customer. Ordered by code.
 - **The work**: each composed billable read over those projects, dated on or before
   `until` when given, on the pool and never under a lock, one after the other. Time's
@@ -313,10 +313,10 @@ effective `amount`.
 
 | Warning | Where | When |
 | --- | --- | --- |
-| `work_overdue_to_invoice` | the project | Its oldest selectable work is dated more than one calendar month before today in Oslo — an hour's or an expense's date, a milestone's `readyAt` day: merverdiavgiftsforskriften § 5-2-2's "senest en måned etter levering", the discrete rule. The continuous-service rule (§ 5-2-4) is not applied: nothing tells Vantigo which projects are continuous. |
+| `work_overdue_to_invoice` | the project | Its oldest selectable work is dated before the same day a calendar month back from today in Oslo — the month's last day when it is shorter, so 31 March looks back to 28 February — an hour's or an expense's date, a milestone's `readyAt` day: merverdiavgiftsforskriften § 5-2-2's "senest en måned etter levering", the discrete rule. The continuous-service rule (§ 5-2-4) is not applied: nothing tells Vantigo which projects are continuous. |
 | `currency_not_nok` | the row | It is in another currency than NOK. |
 | `supplier_invoice_rebilled` | the row | A supplier invoice whose supplier (trimmed, case-folded) and number Expenses says another entry has already invoiced, or that another row of this answer repeats — both rows of the pair. Expenses allows the number twice. |
-| `work_truncated` | the answer | A billable read had more than 5 000 rows. |
+| `work_truncated` | the answer | A billable read had more than 5 000 rows, or the customer has 2 000 projects, as many as the directory answers. |
 
 None refuses anything. The view needs `invoices:create`: whoever builds the invoice sees
 the hours, the people and the rates it will state, as any issued PDF shows them to
@@ -374,8 +374,11 @@ same 409 — never a 500, never a deadlock — and its draft is rolled back with
 **Prefills.** A new draft's delivery period is the request's, else the work's first
 and last day (an hour's or an expense's date, a milestone's ready day), so every line's
 period sits inside the header's; its `yourReference` and terms are the billing
-profile's, as `POST /` takes them. An append keeps the target's header, its delivery
-replaced only by a period the request gives.
+profile's, as `POST /` takes them. An append keeps the rest of the target's header, and
+an append widens the target's delivery period to cover the added work, unless the
+request gives one: the target's period — or its delivery day as both ends — stretched
+to the added work's first and last day, written as a period; a target without a
+delivery takes the work's own.
 
 **What each held row takes** (`line_sources`): an hour its hours and Time's exact amount
 (up to eight decimals); a mileage line its kilometres and bill amount; an outlay, a
@@ -423,10 +426,14 @@ in the bill amount; Invoices adds none. No line says "utlegg"
 ### VAT codes for work
 
 `PUT /settings` (`invoices:manage`, with its revision) carries `workVatCodes: {hours,
-expenses, milestones}`, **required**: the code each kind of work's lines take, each a
-code that exists and is active (else a 400 on `workVatCodes.hours`,
-`workVatCodes.expenses` or `workVatCodes.milestones`). All three are 1 — `3`, 25 % —
-until changed; `GET /settings` answers them.
+expenses, milestones}`, **required** — a body without it is a 400 on `workVatCodes`, so a
+client that predates it cannot reset the codes by leaving it out: the code each kind of
+work's lines take, each a code that exists (else a 400 on `workVatCodes.hours`,
+`workVatCodes.expenses` or `workVatCodes.milestones`) and, when it differs from the
+stored one, is active — a code kept as stored passes though it has since been
+deactivated, so the seller record can still be saved, and the wizard refuses that
+default when it would use it. All three are 1 — `3`, 25 % — until changed; `GET
+/settings` answers them.
 
 The wizard takes, per kind of work in the selection, the request's `vatCodes.<kind>`,
 else the settings' — or, while the seller is not VAT-registered, id 9 (`7`, category O)
@@ -1692,7 +1699,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | --- | --- | --- |
 | `GET /meta` | | |
 | `GET /settings` | | |
-| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent, a work VAT code unknown or inactive); 409 `series_locked`, or a stale revision (no code) |
+| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent, `workVatCodes` absent, a work VAT code unknown, or changed to an inactive one); 409 `series_locked`, or a stale revision (no code) |
 | `GET /settings/access-point` | `invoices:manage` | none: 200 with `hasCredentials: false` when nothing is stored |
 | `PUT /settings/access-point` | `invoices:manage` | 400 on `provider`, `legalEntityId` or `apiKey` (blank, too long, or omitted while none is stored); 409 `transmissions_active` on a provider switch; 503 `ehf_unavailable`, a kept key that cannot be opened |
 | `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
@@ -1703,7 +1710,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /vat-codes/{id}/rates` | `invoices:manage` | 404; 400 on `ratePercent` or `validFrom`; 409 `rate_change_in_past` |
 | `DELETE /vat-codes/{id}/rates/{rateId}` | `invoices:manage` | 404; 409 `rate_period_not_latest`, `rate_period_last`, `rate_period_in_use` |
 | `GET /work` | `invoices:create` | 400 neither or both of `customerId` and `projectId`; 409 `work_unavailable`, `projects_unavailable`; 404 an unknown project |
-| `POST /from-work` | `invoices:create` | 400 on the field (`sources[i]`, `grouping`, `revision`, `deliveryTo`, `invoiceId`, `vatCodes.<kind>`, `sources`); 404 the target; 409 `invoice_issued`, `too_many_sources`, the customer gates, `projects_unavailable`, `source_not_for_customer`, `source_not_selectable`, `source_not_invoiceable`, `source_changed`, `mixed_currency`, `currency_not_nok`, `too_many_lines` (with `suggestedGrouping`), a stale revision, `source_held_elsewhere` (with `heldBy`) |
+| `POST /from-work` | `invoices:create` | 400 on the field (`customerId`, `sources`, `sources[i]`, `grouping`, `revision`, `deliveryTo`, `invoiceId`, `vatCodes.<kind>`, `lines` — the document total too large); 404 the target; 409 `invoice_issued`, `too_many_sources`, the customer gates, `projects_unavailable`, `source_not_for_customer`, `source_not_selectable`, `source_not_invoiceable`, `source_changed`, `mixed_currency`, `currency_not_nok`, `too_many_lines` (with `suggestedGrouping`), a stale revision, `source_held_elsewhere` (with `heldBy`) |
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included); 409 the customer gates |
 | `GET /{id}` | | 404 |

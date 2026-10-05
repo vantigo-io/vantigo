@@ -251,6 +251,11 @@ func (s *server) GetInvoicesWork(ctx context.Context, req gen.GetInvoicesWorkReq
 	if err != nil {
 		return nil, err
 	}
+	// The directory answers at most MaxActualsRequests projects; exactly that
+	// many may mean more, whose work is not here.
+	if len(projects) == contracts.MaxActualsRequests && !slices.Contains(view.Warnings, warningWorkTruncated) {
+		view.Warnings = append(view.Warnings, warningWorkTruncated)
+	}
 	view.Users = make([]gen.InvoicesWorkUser, 0, len(users))
 	for _, u := range users {
 		view.Users = append(view.Users, gen.InvoicesWorkUser{Id: u.ID, DisplayName: u.DisplayName})
@@ -329,7 +334,7 @@ func (s *server) workView(ctx context.Context, q *store.Queries, currency string
 	}
 
 	today := businessDay(s.deps.Clock())
-	deadline := today.AddDate(0, -1, 0)
+	deadline := monthBefore(today)
 	totals := map[string]*big.Rat{}
 	addTotal := func(cur string, amount *big.Rat) {
 		if totals[cur] == nil {
@@ -785,6 +790,34 @@ func storedLines(rows []store.InvoicesLine) ([]draftLine, error) {
 	return out, nil
 }
 
+// widenDelivery is an append's delivery period (D3): the target's — its
+// period, or its day as both ends — widened to cover the added work's first
+// and last day; the work's own when the target has no delivery at all.
+func widenDelivery(target store.InvoicesInvoice, first, last pgtype.Date) (pgtype.Date, pgtype.Date) {
+	from, to := target.DeliveryFrom, target.DeliveryTo
+	if target.DeliveryDate.Valid {
+		from, to = target.DeliveryDate, target.DeliveryDate
+	}
+	if !from.Valid || !to.Valid {
+		return first, last
+	}
+	if first.Time.Before(from.Time) {
+		from = first
+	}
+	if last.Time.After(to.Time) {
+		to = last
+	}
+	return from, to
+}
+
+// monthBefore is the same day a calendar month before day, clamped to that
+// month's last day: 31 March gives 28 (or 29) February, never 3 March (D12).
+func monthBefore(day time.Time) time.Time {
+	y, m := day.Year(), day.Month()-1
+	last := time.Date(y, m+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	return time.Date(y, m, min(day.Day(), last), 0, 0, 0, 0, time.UTC)
+}
+
 // fromWorkResult is the wizard's transaction's outcome.
 type fromWorkResult struct {
 	doc     store.InvoicesInvoice
@@ -942,11 +975,14 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 		return gen.PostInvoicesFromWork400ApplicationProblemPlusJSONResponse(invalid(invalidWorkTitle, errs)), nil
 	}
 
-	// The delivery period: the request's, else the work's first and last day.
+	// The delivery period: the request's, else the work's first and last day
+	// — on an append widened from the target's, under its lock — so every
+	// line's period sits inside the header's (D3).
 	var from, to pgtype.Date
-	if body.DeliveryFrom != nil {
+	periodGiven := body.DeliveryFrom != nil
+	if periodGiven {
 		from, to = pgDate(utcDay(body.DeliveryFrom.Time)), pgDate(utcDay(body.DeliveryTo.Time))
-	} else if target == nil {
+	} else {
 		var first, last time.Time
 		for _, rows := range held {
 			for _, r := range rows {
@@ -1044,12 +1080,12 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 			if err != nil {
 				return err
 			}
-			deliveryDate, deliveryFrom, deliveryTo := locked.DeliveryDate, locked.DeliveryFrom, locked.DeliveryTo
-			if from.Valid {
-				deliveryDate, deliveryFrom, deliveryTo = pgtype.Date{}, from, to
+			deliveryFrom, deliveryTo := from, to
+			if !periodGiven {
+				deliveryFrom, deliveryTo = widenDelivery(locked, from, to)
 			}
 			doc, err = txq.UpdateDraft(ctx, store.UpdateDraftParams{
-				ID: locked.ID, CustomerID: locked.CustomerID, DeliveryDate: deliveryDate, DeliveryFrom: deliveryFrom, DeliveryTo: deliveryTo,
+				ID: locked.ID, CustomerID: locked.CustomerID, DeliveryFrom: deliveryFrom, DeliveryTo: deliveryTo,
 				DeliveryAddressLine1: locked.DeliveryAddressLine1, DeliveryAddressLine2: locked.DeliveryAddressLine2,
 				DeliveryPostalCode: locked.DeliveryPostalCode, DeliveryCity: locked.DeliveryCity, DeliveryCountry: locked.DeliveryCountry,
 				PaymentTermsDays: locked.PaymentTermsDays, YourReference: locked.YourReference, OurReference: locked.OurReference,

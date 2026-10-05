@@ -737,7 +737,7 @@ export interface components {
             /** @enum {string} */
             outcome: "delivered" | "failed";
         };
-        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. revision is the one the caller read: a stale one is a 409 naming both. */
+        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. revision is the one the caller read: a stale one is a 409 naming both. */
         InvoicesSettingsRequest: {
             addressLine1: string;
             addressLine2?: string;
@@ -769,7 +769,15 @@ export interface components {
             /** Format: int64 */
             seriesStart: number;
             vatRegistered: boolean;
-            workVatCodes: components["schemas"]["InvoicesWorkVatCodes"];
+            /** @description The VAT code each kind of work is invoiced at (invoices work design D6), each the id of an active code — a changed one; one kept as stored passes even if it has since become inactive. Required — a body without it is a 400 on workVatCodes, so a client that predates it cannot reset the codes by leaving it out. */
+            workVatCodes: {
+                /** Format: int32 */
+                expenses: number;
+                /** Format: int32 */
+                hours: number;
+                /** Format: int32 */
+                milestones: number;
+            };
         };
         /** @description The seller record and the series start (D2). A text field that is not set is the empty string. seriesLocked is true once anything is issued; from then on seriesStart cannot change, and every other field still can — issued documents keep their own seller snapshot. peppolId is the seller's address on the Peppol network, read when a document is sent, never part of the snapshot; kidLength and kidAlgorithm are the KID agreement, which an issued invoice's kid was computed under. */
         InvoicesSettingsResponse: {
@@ -2492,7 +2500,7 @@ export interface operations {
                     "application/json": components["schemas"]["InvoicesInvoiceResponse"];
                 };
             };
-            /** @description Bad Request — a field did not pass; the errors name it (sources[i], grouping, vatCodes.<kind>, invoiceId, revision, deliveryTo). */
+            /** @description Bad Request — a field did not pass; the errors name it (customerId, sources, sources[i], grouping, vatCodes.<kind>, invoiceId, revision, deliveryTo, lines — the document total too large). */
             400: {
                 headers: {
                     [name: string]: unknown;

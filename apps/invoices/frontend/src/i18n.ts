@@ -152,7 +152,7 @@ export const invoicesCatalog = {
     "warning.supplier_invoice_rebilled":
       "A supplier invoice with this supplier and number is already invoiced, or appears twice here. Check it is not billed twice.",
     "warning.work_truncated":
-      "Not all the work is listed: there is more than one read shows. Invoice some of it, or list up to an earlier date, to see the rest.",
+      "Not all the work is listed: there is more than one read can show. Invoice some of it, or list up to an earlier date, to see the rest.",
     "workReason.held": "Already on a draft or an issued invoice",
     "workReason.fixed_price": "Fixed-price project: the hours are shown, not invoiced",
     "workReason.non_billable": "The project is not billable",
@@ -756,7 +756,7 @@ export const invoicesCatalog = {
     "warning.supplier_invoice_rebilled":
       "En leverandørfaktura med denne leverandøren og dette nummeret er allerede fakturert, eller står her to ganger. Sjekk at den ikke faktureres dobbelt.",
     "warning.work_truncated":
-      "Ikke alt arbeidet vises: det er mer enn én lesing viser. Fakturer noe av det, eller vis til en tidligere dato, for å se resten.",
+      "Ikke alt arbeidet vises: det er mer enn én lesing kan vise. Fakturer noe av det, eller vis til en tidligere dato, for å se resten.",
     "workReason.held": "Ligger allerede på et utkast eller en utstedt faktura",
     "workReason.fixed_price": "Fastprisprosjekt: timene vises, men faktureres ikke",
     "workReason.non_billable": "Prosjektet er ikke fakturerbart",
