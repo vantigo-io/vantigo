@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
 
 // InLockedTx exposes inLockedTx to the external tests, whose contract-call
@@ -159,4 +162,15 @@ func SetEhfCallTimeout(d time.Duration) func() {
 func SetEhfAfterCall(hook func(ctx context.Context, transmissionID int64)) func() {
 	ehfAfterCall = hook
 	return func() { ehfAfterCall = nil }
+}
+
+// RePullNote is rePullNote over db, the sources given as parallel kinds and
+// ids, for the test of the note the wizard suggests when it pulls released
+// work again.
+func RePullNote(ctx context.Context, db store.DBTX, language string, kinds []string, ids []int64) (string, error) {
+	refs := make([]sourceRef, 0, len(ids))
+	for i, id := range ids {
+		refs = append(refs, sourceRef{kind: contracts.WorkSourceKind(kinds[i]), id: id})
+	}
+	return rePullNote(ctx, store.New(db), language, refs)
 }

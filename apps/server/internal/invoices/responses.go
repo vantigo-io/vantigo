@@ -392,6 +392,11 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			resp.Lines[i].LineGross, resp.Lines[i].LineAllowance = floatFromRat(a.gross, 2), floatFromRat(a.allowance, 2)
 			resp.Lines[i].LineNet = floatFromRat(a.net, 2)
 		}
+		// What its issue would release, as it would decide it (invoices
+		// work design D8).
+		if err := withWouldRelease(ctx, q, cd, stored, &resp); err != nil {
+			return gen.InvoicesInvoiceResponse{}, err
+		}
 	} else {
 		codes, err := vatCodesOn(ctx, q, pgDate(today))
 		if err != nil {

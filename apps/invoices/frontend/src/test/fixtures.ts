@@ -376,6 +376,74 @@ export const creditDraft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDo
   };
 };
 
+/**
+ * A credit-note draft of an invoice made from work (invoices work design D8):
+ * it returns the hours line in full, so its issue would release both hour
+ * entries; it holds no work of its own, so its counts are zero.
+ */
+export const workCreditDraft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument =>
+  creditDraft({
+    sources: {
+      count: 0,
+      held: 0,
+      invoiced: 0,
+      released: 0,
+      wouldRelease: [
+        { kind: "time.entry", id: 501 },
+        { kind: "time.entry", id: 502 },
+      ],
+    },
+    ...overrides,
+  });
+
+/**
+ * Invoice 1000 made from work, after a credit note returned its hours line in
+ * full (D8): the two hour entries are released, the mileage still invoiced.
+ */
+export const releasedWork = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
+  const base = issued();
+  const source = { projectId: 41 };
+  return {
+    ...base,
+    lines: [
+      {
+        ...base.lines[0],
+        sources: [
+          { ...source, kind: "time.entry", id: 501, date: "2026-09-01", quantity: 4, amount: 4800, state: "released" },
+          {
+            ...source,
+            kind: "time.entry",
+            id: 502,
+            date: "2026-09-02",
+            quantity: 3.5,
+            amount: 4200,
+            state: "released",
+          },
+        ],
+        warnings: [],
+      },
+      {
+        ...base.lines[1],
+        sources: [
+          {
+            ...source,
+            kind: "expenses.entry",
+            id: 601,
+            date: "2026-09-03",
+            quantity: 90,
+            amount: 450,
+            state: "invoiced",
+          },
+        ],
+        warnings: [],
+      },
+      { ...base.lines[2], sources: [], warnings: [] },
+    ],
+    sources: { count: 3, held: 0, invoiced: 1, released: 2 },
+    ...overrides,
+  };
+};
+
 /** A page of the list: a draft, then two issued documents. */
 export const listPage = (overrides: Partial<InvoiceList["pagination"]> = {}): InvoiceList => ({
   data: [

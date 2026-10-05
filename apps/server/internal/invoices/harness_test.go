@@ -688,6 +688,9 @@ type fakeHolder struct {
 	calls  []holderCall
 	refuse map[int64]string
 	fail   error
+	// disclaimed, when set, makes Kinds answer none: the holder composed,
+	// but claiming no kind any more.
+	disclaimed bool
 }
 
 // holderCall is one command: mark or release, its ref and sources, and what
@@ -744,6 +747,14 @@ func (f *fakeHolders) failWith(kind contracts.WorkSourceKind, err error) {
 	f.kinds[kind].fail = err
 }
 
+// disclaim makes kind's holder claim no kind from then on, as a holder
+// composed without it would.
+func (f *fakeHolders) disclaim(kind contracts.WorkSourceKind) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.kinds[kind].disclaimed = true
+}
+
 // duringCall sets onCall.
 func (f *fakeHolders) duringCall(fn func()) {
 	f.mu.Lock()
@@ -765,7 +776,14 @@ func (f *fakeHolders) callsOf(kind contracts.WorkSourceKind) []holderCall {
 	return slices.Clone(f.kinds[kind].calls)
 }
 
-func (h *fakeHolder) Kinds() []contracts.WorkSourceKind { return []contracts.WorkSourceKind{h.kind} }
+func (h *fakeHolder) Kinds() []contracts.WorkSourceKind {
+	h.all.mu.Lock()
+	defer h.all.mu.Unlock()
+	if h.disclaimed {
+		return nil
+	}
+	return []contracts.WorkSourceKind{h.kind}
+}
 
 func (h *fakeHolder) MarkInvoiced(ctx context.Context, tx pgx.Tx, ref contracts.InvoiceRef, sources []contracts.WorkSource) error {
 	return h.command(ctx, tx, "mark", ref, sources)

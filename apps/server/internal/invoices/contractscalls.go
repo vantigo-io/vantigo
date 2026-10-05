@@ -97,7 +97,6 @@ func markInvoiced(ctx context.Context, tx pgx.Tx, kind contracts.WorkSourceKind,
 	return h.MarkInvoiced(ctx, tx, ref, sources)
 }
 
-//nolint:unused // releaseWork's, which the credit note's issue calls (invoices work plan Task 10)
 func releaseInvoiced(ctx context.Context, tx pgx.Tx, kind contracts.WorkSourceKind, h contracts.InvoicedWorkHolder,
 	ref contracts.InvoiceRef, sources []contracts.WorkSource,
 ) error {

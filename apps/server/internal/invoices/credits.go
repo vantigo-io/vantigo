@@ -596,10 +596,13 @@ func numericPair(a, b pgtype.Numeric) (*big.Rat, *big.Rat, error) {
 var creditIssueAfterOriginalLock func(ctx context.Context, invoiceID int64)
 
 // creditIssueChecks are the checks only a credit note keeps (D6 step 5): the
-// original locked FOR UPDATE — the last lock of the issue's order — then its
+// original locked FOR UPDATE — the last lock of Invoices' own order — then its
 // credit book read under that lock, after the counter, so every credit note
 // issued before this one is seen; the credit note totalled by total, whose
-// amounts and VAT the issue writes as they are; and both caps.
+// amounts and VAT the issue writes as they are; and both caps. Then, under
+// the same lock, what it releases (invoices work design D8): the invoiced
+// work of every original line it returns in full — total's squared, the
+// line's last return — never of a line credited in part or at a lower price.
 func creditIssueChecks(ctx context.Context, txq *store.Queries, locked store.InvoicesInvoice, lines []store.InvoicesLine) (issuePlan, *gen.InvoicesConflictProblem, error) {
 	original, err := txq.LockInvoice(ctx, *locked.CreditsInvoiceID)
 	if err != nil {
@@ -647,7 +650,18 @@ func creditIssueChecks(ctx context.Context, txq *store.Queries, locked store.Inv
 		r.LinePosition = breaches[0].position
 		return issuePlan{}, r, nil
 	}
-	plan := issuePlan{summary: &planSummary{rows: t.rows, totals: t.totals, ambiguous: t.ambiguous}}
+	invoiced, err := invoicedOn(ctx, txq, book)
+	if err != nil {
+		return issuePlan{}, nil, err
+	}
+	releases, err := releasesOf(invoiced, lines, t.squared)
+	if err != nil {
+		return issuePlan{}, nil, err
+	}
+	plan := issuePlan{
+		summary:  &planSummary{rows: t.rows, totals: t.totals, ambiguous: t.ambiguous},
+		original: &book.original, releases: releases,
+	}
 	for i, l := range lines {
 		issued := issuedLine{id: l.ID, position: l.Position, taxed: t.taxed[i]}
 		if t.squared[i] {
