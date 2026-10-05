@@ -190,6 +190,13 @@ VAT-registered. The settings page has no card for them yet; saving it keeps them
 they are, and the screen for them comes with the uninvoiced work
 ([VAT codes for work](/en/reference/invoices/#vat-codes-for-work)).
 
+They also hold the **timesheet's** default and how it names people: whether a new invoice
+draft carries a timesheet unless you choose otherwise — off until changed — and the
+person label, which is the initials by default ("KN"; a second "KN" becomes "KN2"), or a
+number ("Person 1", "Person 2" in the order they appear on the timesheet), or the full
+name. Like the work VAT codes they have no card on the settings page yet, and saving it
+keeps them as they are ([the timesheet](/en/reference/invoices/#the-timesheet)).
+
 ## Finding a document
 
 **Invoices** in the sidebar lists every draft and issued document: drafts first, then by
@@ -319,6 +326,21 @@ you can change. The view and the wizard need
 `invoices:create`. The screens for them come in a later step of this phase; until then
 they are there for an integration
 ([Invoicing work](/en/reference/invoices/#invoicing-work)).
+
+**The timesheet.** An invoice can carry a timesheet inside its PDF: after the invoice
+itself, on pages of its own, every hour entry it bills — the date, the person, the work
+type, the task (or else the project's name) and the hours — with a total per person and
+one in all. It never shows the note a person wrote on an entry. A draft made from work
+has one when you ask for it, or when the settings make it the default; turning it on for
+a draft writes it from the hours the draft holds, turning it off removes it, every save
+keeps it to the hours the draft still bills, and refreshing the work writes it again. The
+preview shows it, and once the invoice is issued the timesheet is part of it and never
+changes, whatever later happens to a user. A timesheet tells the customer who worked on
+what: telling your employees that their hours are shown to customers is the employer's
+job — the privacy notice of GDPR art. 13 — which is why initials are the default and the
+full name is a choice you make in the settings. The switch on the draft comes with the
+screens for invoicing work; until then it is there for an integration
+([the timesheet](/en/reference/invoices/#the-timesheet)).
 
 ## Issuing
 
@@ -683,7 +705,7 @@ buyer printed on them. When a person is anonymised in Customers, their drafts ar
 deleted, the recipient of every send is blanked — the **To** column then reads
 *(anonymised)* — the notes on their payments are emptied, and an EHF still waiting in
 the queue that Vantigo never tried to hand to the access point is cancelled; the issued documents, with the
-buyer they name, stay. No document is sent to an anonymised customer again, though a
+buyer they name and their timesheets, stay. No document is sent to an anonymised customer again, though a
 credit note can still be issued, naming the buyer the original named.
 
 ## Permissions

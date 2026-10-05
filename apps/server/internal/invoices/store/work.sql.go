@@ -752,3 +752,41 @@ func (q *Queries) TimesheetRowsOf(ctx context.Context, invoiceID int64) ([]Invoi
 	}
 	return items, nil
 }
+
+const timesheetRowsOfDocuments = `-- name: TimesheetRowsOfDocuments :many
+SELECT id, invoice_id, position, source_id, person_label, entry_date, hours, work_type, description FROM invoices.timesheet_rows
+WHERE invoice_id = ANY($1::bigint[])
+ORDER BY invoice_id, position
+`
+
+// TimesheetRowsOfDocuments is the timesheets of the given documents as
+// printed, each in order: the customer's personal-data export (D5).
+func (q *Queries) TimesheetRowsOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesTimesheetRow, error) {
+	rows, err := q.db.Query(ctx, timesheetRowsOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesTimesheetRow
+	for rows.Next() {
+		var i InvoicesTimesheetRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.Position,
+			&i.SourceID,
+			&i.PersonLabel,
+			&i.EntryDate,
+			&i.Hours,
+			&i.WorkType,
+			&i.Description,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

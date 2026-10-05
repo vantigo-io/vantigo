@@ -10,6 +10,8 @@ import (
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/line"
+	"github.com/johnfercher/maroto/v2/pkg/components/page"
+	"github.com/johnfercher/maroto/v2/pkg/components/row"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
@@ -70,6 +72,9 @@ type pdfLabels struct {
 	payment, account, iban, bic, payWithNumber, orgNumber, foreignID, watermark         string
 	kid, payWithKid                                                                     string
 	deducted, deductedRef                                                               string
+	// The timesheet block (invoices work design D5): its title, its columns
+	// but the description, a person's total and the whole's.
+	timesheet, sheetDate, sheetPerson, sheetWorkType, sheetHours, sheetTotalFor, sheetTotal string
 }
 
 var labels = map[string]pdfLabels{
@@ -86,6 +91,8 @@ var labels = map[string]pdfLabels{
 		watermark: "UTKAST — ikke et salgsdokument",
 		kid:       "KID", payWithKid: "Vennligst bruk KID ved betaling",
 		deducted: "Fratrukket a konto", deductedRef: "Faktura %d av %s",
+		timesheet: "Timeliste", sheetDate: "Dato", sheetPerson: "Person", sheetWorkType: "Arbeidstype", sheetHours: "Timer",
+		sheetTotalFor: "Sum %s", sheetTotal: "Sum timer",
 	},
 	"en": {
 		invoice: "Invoice", creditNote: "Credit note", number: "Number", issueDate: "Invoice date",
@@ -100,6 +107,8 @@ var labels = map[string]pdfLabels{
 		watermark: "UTKAST — ikke et salgsdokument",
 		kid:       "KID", payWithKid: "Please use the KID with your payment",
 		deducted: "Deducted on account", deductedRef: "Invoice %d of %s",
+		timesheet: "Timesheet", sheetDate: "Date", sheetPerson: "Person", sheetWorkType: "Work type", sheetHours: "Hours",
+		sheetTotalFor: "Total %s", sheetTotal: "Total hours",
 	},
 }
 
@@ -149,8 +158,18 @@ type pdfDocument struct {
 	// deducted is every invoice a final settlement deducts (invoices work
 	// design D7), listed under the references; none on a credit note.
 	deducted []deductedRef
-	created  time.Time
-	preview  bool
+	// timesheet is the document's timesheet rows as stored (invoices work
+	// design D5), in order; none without one.
+	timesheet []pdfTimesheetRow
+	created   time.Time
+	preview   bool
+}
+
+// pdfTimesheetRow is one timesheet row as a document prints it.
+type pdfTimesheetRow struct {
+	date                          time.Time
+	person, workType, description string
+	hours                         *big.Rat
 }
 
 // pdfModel is every word a document prints, in the order it prints them: what
@@ -171,7 +190,20 @@ type pdfModel struct {
 	payment      [][2]string
 	paymentNote  string
 	note, footer string
-	created      time.Time
+	// timesheet is the timesheet block (invoices work design D5), on its own
+	// pages after everything else; nil without one.
+	timesheet *pdfTimesheet
+	created   time.Time
+}
+
+// pdfTimesheet is a timesheet block as it prints: its title, its column
+// header (date, person, work type, description, hours), its rows and its
+// totals — one per person, in order of first appearance, then the whole.
+type pdfTimesheet struct {
+	title  string
+	header []string
+	rows   [][]string
+	totals [][2]string
 }
 
 // groupDigits writes an integer part with sep between thousands.
@@ -404,7 +436,36 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		}
 	}
 	m.note, m.footer = d.note, d.footer
+	m.timesheet = timesheetBlock(d.timesheet, l, lang)
 	return m
+}
+
+// timesheetBlock is D5's timesheet as words, nil without rows: one row per
+// stored row, then a total per person in order of first appearance and the
+// whole, the hours with two decimals in the document's language.
+func timesheetBlock(rows []pdfTimesheetRow, l pdfLabels, lang string) *pdfTimesheet {
+	if len(rows) == 0 {
+		return nil
+	}
+	t := &pdfTimesheet{title: l.timesheet, header: []string{l.sheetDate, l.sheetPerson, l.sheetWorkType, l.description, l.sheetHours}}
+	hours := func(v *big.Rat) string { return formatDecimal(v, 2, 2, lang) }
+	perPerson := map[string]*big.Rat{}
+	var people []string
+	total := new(big.Rat)
+	for _, r := range rows {
+		t.rows = append(t.rows, []string{formatDate(r.date, lang), r.person, r.workType, r.description, hours(r.hours)})
+		if perPerson[r.person] == nil {
+			perPerson[r.person] = new(big.Rat)
+			people = append(people, r.person)
+		}
+		perPerson[r.person].Add(perPerson[r.person], r.hours)
+		total.Add(total, r.hours)
+	}
+	for _, p := range people {
+		t.totals = append(t.totals, [2]string{fmt.Sprintf(l.sheetTotalFor, p), hours(perPerson[p])})
+	}
+	t.totals = append(t.totals, [2]string{l.sheetTotal, hours(total)})
+	return t
 }
 
 // renderPDF lays a model out on A4 and answers the bytes.
@@ -512,10 +573,49 @@ func renderPDF(m pdfModel) ([]byte, error) {
 	if m.footer != "" {
 		doc.AddAutoRow(text.NewCol(12, m.footer, props.Text{Top: 3, Size: 8}))
 	}
+	if m.timesheet != nil {
+		renderTimesheet(doc, m.timesheet)
+	}
 
 	out, err := doc.Generate()
 	if err != nil {
 		return nil, fmt.Errorf("invoices: render the PDF: %w", err)
 	}
 	return out.GetBytes(), nil
+}
+
+// renderTimesheet lays the timesheet out on pages of its own after the
+// document (D5): a new page with the title and the column header, then the
+// rows through AddRows, which breaks to a new page wherever one ends, then
+// the totals.
+func renderTimesheet(doc core.Maroto, t *pdfTimesheet) {
+	sizes := []int{2, 2, 2, 4, 2}
+	sheetRow := func(cells []string, header bool) core.Row {
+		cols := make([]core.Col, 0, len(cells))
+		for i, c := range cells {
+			style := props.Text{}
+			if i == len(cells)-1 {
+				style.Align = align.Right
+			}
+			if header {
+				style.Style = fontstyle.Bold
+			}
+			cols = append(cols, text.NewCol(sizes[i], c, style))
+		}
+		return row.New().Add(cols...)
+	}
+	doc.AddPages(page.New().Add(text.NewRow(12, t.title, props.Text{Style: fontstyle.Bold, Size: 18}), sheetRow(t.header, true)))
+	rows := make([]core.Row, 0, len(t.rows))
+	for _, r := range t.rows {
+		rows = append(rows, sheetRow(r, false))
+	}
+	doc.AddRows(rows...)
+	doc.AddRows(line.NewRow(4))
+	for i, kv := range t.totals {
+		style := props.Text{Align: align.Right}
+		if i == len(t.totals)-1 {
+			style.Style = fontstyle.Bold
+		}
+		doc.AddRow(5, col.New(4), text.NewCol(6, kv[0], style), text.NewCol(2, kv[1], style))
+	}
 }

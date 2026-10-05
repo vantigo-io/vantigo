@@ -119,6 +119,21 @@ type exportedDocument struct {
 	Payments      []exportedPayment      `json:"payments,omitzero"`
 	Deliveries    []exportedDelivery     `json:"deliveries,omitzero"`
 	Transmissions []exportedTransmission `json:"transmissions,omitzero"`
+	// Timesheet is the document's timesheet as printed (invoices work design
+	// D5), an issued document's and a draft's alike — the customer received,
+	// or would receive, it; nil leaves the key out of a document without one.
+	Timesheet []exportedTimesheetRow `json:"timesheet,omitzero"`
+}
+
+// exportedTimesheetRow is one timesheet row as the PDF prints it: the
+// person as labelled, never the time entry's note.
+type exportedTimesheetRow struct {
+	Position    int32  `json:"position"`
+	PersonLabel string `json:"personLabel"`
+	Date        string `json:"date"`
+	Hours       string `json:"hours"`
+	WorkType    string `json:"workType,omitempty"`
+	Description string `json:"description"`
 }
 
 // exportedPayment is one registration of money received, as it was
@@ -295,7 +310,8 @@ func decimalOf(n pgtype.Numeric, places int) (string, error) {
 // staff-written notes as data held about the person. An issued document
 // carries its payments, removed ones with their removal, its deliveries
 // (payments and delivery design D6) and its EHF transmissions (EHF and KID
-// design D12). Every read is in one REPEATABLE READ, READ ONLY transaction,
+// design D12); every document its timesheet as printed (invoices work design
+// D5). Every read is in one REPEATABLE READ, READ ONLY transaction,
 // as the customers module reads its own part of the export: a payment or a
 // send landing midway cannot make the file disagree with itself.
 func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
@@ -370,6 +386,21 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 	for _, t := range transmissions {
 		transmissionsOf[t.InvoiceID] = append(transmissionsOf[t.InvoiceID], transmissionExported(t))
 	}
+	sheets, err := q.TimesheetRowsOfDocuments(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read customer %d's timesheets: %w", customerID, err)
+	}
+	timesheetOf := map[int64][]exportedTimesheetRow{}
+	for _, r := range sheets {
+		hours, err := decimalOf(r.Hours, 2)
+		if err != nil {
+			return nil, err
+		}
+		timesheetOf[r.InvoiceID] = append(timesheetOf[r.InvoiceID], exportedTimesheetRow{
+			Position: r.Position, PersonLabel: r.PersonLabel, Date: orEmpty(dateText(r.EntryDate)), Hours: hours,
+			WorkType: orEmpty(r.WorkType), Description: r.Description,
+		})
+	}
 	// A credit note's customer is its original's (credits.go), so the
 	// original is almost always among docs; one that is not is read.
 	byID := make(map[int64]store.InvoicesInvoice, len(docs))
@@ -385,6 +416,7 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 				d.DeliveryCity, nil, d.DeliveryCountry),
 			Currency: d.Currency, Buyer: buyerOf(d), YourReference: d.YourReference, OurReference: d.OurReference,
 			OrderReference: d.OrderReference, Note: d.Note, InternalNote: d.InternalNote, Lines: []exportedLine{},
+			Timesheet: timesheetOf[d.ID],
 		}
 		if d.CreditsInvoiceID != nil {
 			original, ok := byID[*d.CreditsInvoiceID]
@@ -443,7 +475,9 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 // after its wait and which refuses any later send; blanks every delivery's
 // recipient; blanks every payment's note, live and removed; cancels every
 // queued EHF transmission of theirs that was never attempted, leased or not
-// (EHF and KID design D12); and deletes the drafts. A draft is
+// (EHF and KID design D12); and deletes the drafts — their line sources and
+// timesheet rows with them, by the cascade (invoices work design D2, D5),
+// while an issued document's timesheet stays with it. A draft is
 // not a salgsdokument, so it has no retention basis and GDPR art. 17
 // applies; an issued document, its buyer snapshot and its payments are
 // bookkeeping material kept under bokføringsloven § 13 — five years after

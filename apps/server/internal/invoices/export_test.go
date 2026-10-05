@@ -121,17 +121,39 @@ func SetAfterPDFRender(hook func(ctx context.Context, body []byte) []byte) func(
 	return func() { afterPDFRender = nil }
 }
 
+// PDFModel is what SetPDFModelBuilt reports of one PDF's model: its
+// watermark ("" for none), whether it carries a number, and its timesheet
+// block (nil for none).
+type PDFModel struct {
+	Watermark string
+	Numbered  bool
+	Timesheet *PDFTimesheet
+}
+
+// PDFTimesheet is a model's timesheet block as it prints it (invoices work
+// design D5): its title, its column header, its rows and its totals — one
+// per person, then the whole.
+type PDFTimesheet struct {
+	Title  string
+	Header []string
+	Rows   [][]string
+	Totals [][2]string
+}
+
 // SetPDFModelBuilt installs a hook told, for every PDF laid out, its
-// document's id, its watermark ("" for none) and whether it carries a
-// number, and answers the function that removes it. A test using it does not
-// run in parallel: the hook is the package's.
-func SetPDFModelBuilt(hook func(invoiceID int64, watermark string, numbered bool)) func() {
+// document's id and what its model says (PDFModel), and answers the function
+// that removes it. A test using it does not run in parallel: the hook is the
+// package's.
+func SetPDFModelBuilt(hook func(invoiceID int64, m PDFModel)) func() {
 	pdfModelBuilt = func(id int64, m pdfModel) {
-		numbered := false
+		report := PDFModel{Watermark: m.watermark}
 		for _, row := range m.meta {
-			numbered = numbered || row[0] == labels["nb"].number || row[0] == labels["en"].number
+			report.Numbered = report.Numbered || row[0] == labels["nb"].number || row[0] == labels["en"].number
 		}
-		hook(id, m.watermark, numbered)
+		if t := m.timesheet; t != nil {
+			report.Timesheet = &PDFTimesheet{Title: t.title, Header: t.header, Rows: t.rows, Totals: t.totals}
+		}
+		hook(id, report)
 	}
 	return func() { pdfModelBuilt = nil }
 }

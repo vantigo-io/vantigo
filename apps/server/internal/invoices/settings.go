@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"net/mail"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/kid"
@@ -24,7 +26,8 @@ import (
 // issued document keeps the seller snapshot it was issued with. Phase 2 adds
 // the seller's Peppol id (EHF and KID design D2) and the KID agreement (D3),
 // neither of which is part of the snapshot; phase 3 the VAT code each kind of
-// work is invoiced at (invoices work design D6), which the wizard pre-fills.
+// work is invoiced at (invoices work design D6), which the wizard pre-fills,
+// and the timesheet's default and person label (D5).
 
 // The codes and titles of this file's 409s, and its warning.
 const (
@@ -218,7 +221,44 @@ func parseSettings(body gen.InvoicesSettingsRequest) (parsedSettings, map[string
 	}
 	parseEInvoicing(body, &p, add)
 	parseWorkVatCodes(body.WorkVatCodes, &p, add)
+	parseTimesheetSettings(body, &p, add)
 	return p, errs
+}
+
+// msgTimesheetPersonLabel is the 400 on timesheetPersonLabel, from the
+// parse and from the column's CHECK alike.
+const msgTimesheetPersonLabel = "A timesheet names people by initials, number or name"
+
+// parseTimesheetSettings reads the two required timesheet fields into p
+// (invoices work design D5): absent or null is a 400 on the field — a client
+// that predates them would otherwise reset them by leaving them out — and
+// the label is initials, number or name, as the column's CHECK
+// (ck_settings_timesheet_person_label) has it; the CHECK answers the same
+// 400 should the two lists ever part (timesheetLabelRefused).
+func parseTimesheetSettings(body gen.InvoicesSettingsRequest, p *parsedSettings, add func(field, msg string)) {
+	decode := func(field string, raw json.RawMessage, v any, wrongType string) bool {
+		switch {
+		case len(raw) == 0 || string(raw) == "null":
+			add(field, field+" is required")
+		case json.Unmarshal(raw, v) != nil:
+			add(field, wrongType)
+		default:
+			return true
+		}
+		return false
+	}
+	decode("timesheetDefault", body.TimesheetDefault, &p.TimesheetDefault, "timesheetDefault is true or false")
+	if decode("timesheetPersonLabel", body.TimesheetPersonLabel, &p.TimesheetPersonLabel, msgTimesheetPersonLabel) &&
+		!slices.Contains([]string{labelInitials, labelNumber, labelName}, p.TimesheetPersonLabel) {
+		add("timesheetPersonLabel", msgTimesheetPersonLabel)
+	}
+}
+
+// timesheetLabelRefused reports whether err is the settings' label CHECK
+// refusing a value.
+func timesheetLabelRefused(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == "ck_settings_timesheet_person_label"
 }
 
 // parseEInvoicing reads the three required-nullable fields (reading 16) into
@@ -402,7 +442,9 @@ func settingsResponse(row store.InvoicesSetting, locked bool, next int64) gen.In
 		WorkVatCodes: gen.InvoicesWorkVatCodes{
 			Hours: row.WorkVatCodeHours, Expenses: row.WorkVatCodeExpenses, Milestones: row.WorkVatCodeMilestones,
 		},
-		LegalName: row.LegalName, OrganisationNumber: row.OrganisationNumber,
+		TimesheetDefault:     row.TimesheetDefault,
+		TimesheetPersonLabel: gen.InvoicesSettingsResponseTimesheetPersonLabel(row.TimesheetPersonLabel),
+		LegalName:            row.LegalName, OrganisationNumber: row.OrganisationNumber,
 		VatRegistered: row.VatRegistered, InForetaksregisteret: row.InForetaksregisteret,
 		AddressLine1: row.AddressLine1, AddressLine2: row.AddressLine2,
 		PostalCode: row.PostalCode, City: row.City, Country: row.Country,
@@ -488,6 +530,10 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 			return errRefused
 		}
 		saved, err = txq.UpdateSettings(ctx, parsed)
+		if timesheetLabelRefused(err) {
+			unfit = withFieldError(nil, "timesheetPersonLabel", msgTimesheetPersonLabel)
+			return errRefused
+		}
 		if err != nil {
 			return fmt.Errorf("invoices: change the settings: %w", err)
 		}

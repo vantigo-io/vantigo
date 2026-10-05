@@ -193,6 +193,13 @@ mva-registrert. Innstillingssiden har ikke et kort for dem ennå; en lagring beh
 som de er, og skjermbildet for dem kommer med det ufakturerte arbeidet
 ([mva-koder for arbeid](/en/reference/invoices/#vat-codes-for-work)).
 
+De holder også standardvalget for **timelisten** og hvordan den navngir folk: om et nytt
+fakturautkast får en timeliste med mindre du velger noe annet — av til du endrer det — og
+personmerket, som er initialene som standard («KN»; en ny «KN» blir «KN2»), et nummer
+(«Person 1», «Person 2» i den rekkefølgen de står på timelisten) eller hele navnet. Som
+mva-kodene for arbeid har de ikke et kort på innstillingssiden ennå, og en lagring
+beholder dem som de er ([timelisten](/en/reference/invoices/#the-timesheet)).
+
 ## Finne et dokument
 
 **Fakturaer** i sidemenyen lister hvert utkast og hvert utstedte dokument: utkast først,
@@ -324,6 +331,21 @@ kan endre. Oversikten og veiviseren krever
 `invoices:create`. Skjermbildene for dem kommer i et senere steg av denne fasen; inntil
 da er de der for en integrasjon
 ([Invoicing work](/en/reference/invoices/#invoicing-work)).
+
+**Timelisten.** En faktura kan ha en timeliste i PDF-en: etter selve fakturaen, på egne
+sider, hver timeoppføring den fakturerer — datoen, personen, arbeidstypen, oppgaven (eller
+ellers prosjektets navn) og timene — med en sum per person og en sum for alt. Den viser
+aldri merknaden en person skrev på en oppføring. Et utkast laget av arbeid får en når du
+ber om det, eller når innstillingene gjør det til standard; slår du den på for et utkast,
+skrives den fra timene utkastet holder, slår du den av, fjernes den, hver lagring holder
+den til timene utkastet fortsatt fakturerer, og en oppfrisking av arbeidet skriver den på
+nytt. Forhåndsvisningen viser den, og når fakturaen er utstedt, er timelisten en del av
+den og endres aldri, uansett hva som senere skjer med en bruker. En timeliste forteller
+kunden hvem som har jobbet med hva: å fortelle de ansatte at timene deres vises for
+kunder, er arbeidsgiverens oppgave — informasjonen GDPR art. 13 krever — og derfor er
+initialer standard, og hele navnet er et valg du tar i innstillingene. Bryteren på
+utkastet kommer med skjermbildene for fakturering av arbeid; inntil da er den der for en
+integrasjon ([timelisten](/en/reference/invoices/#the-timesheet)).
 
 ## Utstede
 
@@ -690,7 +712,7 @@ dem. Anonymiseres en person i Kunder, slettes utkastene deres, mottakeren på hv
 sending blankes — kolonnen **Til** viser da *(anonymisert)* — merknadene på betalingene
 deres tømmes, og en EHF som fortsatt venter i køen, og som Vantigo aldri har prøvd å
 overlevere til aksesspunktet, avbrytes; de utstedte dokumentene, med kjøperen de
-navngir, blir stående. Ingen dokumenter sendes til en anonymisert kunde igjen, men en
+navngir og timelistene sine, blir stående. Ingen dokumenter sendes til en anonymisert kunde igjen, men en
 kreditnota kan fortsatt utstedes, med kjøperen originalen navnga.
 
 ## Rettigheter

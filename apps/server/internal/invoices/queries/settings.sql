@@ -12,9 +12,10 @@ SELECT * FROM invoices.settings WHERE id = 1 FOR UPDATE;
 
 -- name: UpdateSettings :one
 -- UpdateSettings replaces the seller record, the series start, the seller's
--- Peppol id, the KID agreement (EHF and KID design D2, D3) and the VAT code
--- each kind of work is invoiced at (invoices work design D6), and moves the
--- revision on. The caller holds the row (LockSettings) and has checked the
+-- Peppol id, the KID agreement (EHF and KID design D2, D3), the VAT code
+-- each kind of work is invoiced at (invoices work design D6) and the
+-- timesheet's default and person label (D5), and moves the revision on. The
+-- label's CHECK refuses anything but initials, number or name. The caller holds the row (LockSettings) and has checked the
 -- revision and the series lock.
 UPDATE invoices.settings SET
     legal_name = @legal_name,
@@ -40,6 +41,8 @@ UPDATE invoices.settings SET
     work_vat_code_hours = @work_vat_code_hours,
     work_vat_code_expenses = @work_vat_code_expenses,
     work_vat_code_milestones = @work_vat_code_milestones,
+    timesheet_default = @timesheet_default,
+    timesheet_person_label = @timesheet_person_label,
     updated_at = @now::timestamptz,
     revision = revision + 1
 WHERE id = 1

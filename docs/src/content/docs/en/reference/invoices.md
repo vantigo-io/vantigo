@@ -87,7 +87,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.lines` | Description, quantity (3 decimals), unit, unit price (4), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, the invoice a deduction line deducts (`deducts_invoice_id` — an unconstrained reference, deliberately without a foreign key, whose `FOR KEY SHARE` on the deducted invoice would cycle with the newest-first lock of a customer's documents; the save and the issue accept only an issued invoice of the same customer, and an issued document is never deleted), and the VAT snapshot written at issue. The quantity is above 0, or below 0 on a deduction line only (`ck_lines_quantity`), and a deduction line carries no discount (`ck_lines_deduction_no_discount`). `(id, invoice_id)` is unique, so a child row names its line and its document together and the two never disagree. |
 | `invoices.line_sources` | The work a line bills: the source's kind (`time.entry`, `expenses.entry`, `projects.milestone`) and id — opaque, the rows are other modules' — the revision it was taken at, an expense's kind (`source_subkind`, only on an expense), the project, the quantity, the source's exact amount (`numeric(22,8)`: an hour's amount carries up to eight decimals), the currency, the work's date and the state: `held` from the draft, `invoiced` by the issue, `released` by the credit note that returns its line. Its line and document are one composite key, and the rows go with their line. A source is live — `held` or `invoiced` — on one row at most (`ux_line_sources_live`). A row is written `held`; under a draft its one change is to `invoiced`, under an issued document its one change is from `invoiced` to `released`, once, nothing else changed. A row is deleted only under a draft and only while `held`, so dropping a hold never frees an invoiced source. A trigger refuses the rest (`invoices: a line source is written held`, `invoices: a line source changes only its state`, `invoices: a line source is deleted only while held`, `invoices: issued document is immutable`). Every save of a draft deletes its lines and so its held rows, and inserts the rows it carries anew under the new lines, in one statement ordered by kind and id ([Invoicing work](#invoicing-work)). |
 | `invoices.line_releases` | A credit note's release of an original line's source: the credit note, its line and the source, a source released once. Frozen with the credit note at its issue. |
-| `invoices.timesheet_rows` | The timesheet as printed, a snapshot: the position, the time entry, the person's label, the date, the hours, the work type and the description — never the entry's note. Frozen with its document at issue, deleted with a deleted draft. |
+| `invoices.timesheet_rows` | The timesheet as printed, a snapshot: the position, the time entry, the person's label, the date, the hours, the work type and the description — never the entry's note. Written whole while the document's `timesheet` flag is on, pruned by every save to the hours the draft still holds ([The timesheet](#the-timesheet)); frozen with its document at issue, deleted with a deleted draft. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
 | `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
 | `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient (`''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
@@ -109,10 +109,12 @@ Phase 3's schema (`00040_invoices_work.sql`, the
 adds the line sources, the releases, the timesheet rows, the deduction line, the
 document's project and timesheet flag and the work settings in one migration. The
 wizard adds line sources and every save of a draft carries them and derives its
-project from them, the issue invoices them ([Invoicing work](#invoicing-work)), and the
-work VAT codes are on the settings; the timesheet rows, the deduction line and the
-timesheet flag and settings sit at their defaults until the phase's later steps give
-them behaviour.
+project from them, the issue invoices them ([Invoicing work](#invoicing-work)), the
+work VAT codes and the timesheet's default and person label are on the settings, a
+final settlement deducts its a-konto invoices with deduction lines
+([A-konto and the final settlement](#a-konto-and-the-final-settlement)), and an invoice
+whose flag is on carries its timesheet rows into its PDF
+([The timesheet](#the-timesheet)).
 
 The seeded codes, each from 2026-01-01: `3` 25 %, `31` 15 %, `32` 11.11 %, `33` 12 %
 (all S), `5` Z, `51` AE, `52` G, `6` **E** (unntatt, mval. kap. 3) and `7` **O** (a seller
@@ -331,7 +333,9 @@ composed — and `work: {hours, expenses, milestones}`, which kinds.
 or, with `invoiceId` and the `revision` it was read at, adds it to an existing invoice
 draft of the same customer — 200. The body: `customerId`, `sources: [{kind, id,
 revision}]`, `grouping` (default `project`), `vatCodes: {hours?, expenses?,
-milestones?}`, an optional `deliveryFrom`/`deliveryTo` and an optional `note`. **In order**, each before
+milestones?}`, an optional `deliveryFrom`/`deliveryTo`, an optional `note` and an
+optional `timesheet` — absent, the settings' `timesheetDefault` for a new draft and the
+target's own flag for an append ([The timesheet](#the-timesheet)). **In order**, each before
 any transaction:
 
 1. **The body**: a customer, at least one source, each of a known kind and named once
@@ -358,8 +362,10 @@ any transaction:
    that is not NOK — `currency_not_nok`.
 6. **The lines**: each kind's VAT code ([VAT codes for work](#vat-codes-for-work)), the
    people the lines name (`UserDirectory.Users`, for the `person` and `itemised`
-   groupings), the grouping below. More than 500 lines with the target's own — every one,
-   a settlement's deduction lines included — is 409
+   groupings), the grouping below. With the timesheet on, the hours an append's target
+   already holds are read again by id (`BillableHours`) and every hour's person is named
+   through the same one `UserDirectory.Users` read. More than 500 lines with the target's
+   own — every one, a settlement's deduction lines included — is 409
    `too_many_lines` with `suggestedGrouping`, the next coarser grouping whose lines fit
    (absent when none does); a line too large for its columns is a 400 on `sources`.
 
@@ -375,7 +381,9 @@ new work and refuses with 409 `source_held_elsewhere` — `heldBy` and the sourc
 first such document — and only then holds the work, in **one statement ordered by kind
 and id**. Two wizards racing for the same work end in one hold: the second either finds
 the first's hold under its lock, or fails on `ux_line_sources_live`, answered with the
-same 409 — never a 500, never a deadlock — and its draft is rolled back with it.
+same 409 — never a 500, never a deadlock — and its draft is rolled back with it. With the
+timesheet on, its rows are then written for every hour the draft holds, the target's and
+the new alike; an append turning a target's timesheet off deletes them.
 
 **Prefills.** A new draft's delivery period is the request's, else the work's first
 and last day (an hour's or an expense's date, a milestone's ready day), so every line's
@@ -546,7 +554,9 @@ date and kind; a source no longer answered is dropped and named in `releasedSour
 and so is one its module now answers in another currency than the draft took it in — a
 refresh never takes work into a document in a currency it was not taken in. A kind whose module is switched off is carried as it stood. Under the
 lock the save requires the held work it read — the same sources at the same revisions
-and amounts — or answers 409 `invoice_changed`: a save slipped in between.
+and amounts — or answers 409 `invoice_changed`: a save slipped in between. A draft whose
+timesheet is on has it written again from the refreshed hours, every row's label with it
+([The timesheet](#the-timesheet)).
 
 ### The project
 
@@ -771,6 +781,78 @@ references, "Fratrukket a konto: Faktura 985 av 01.08.2026" / "Deducted on accou
 Invoice 985 of 2026-08-01" ([The PDF](#the-pdf)). The EHF carries one
 `cac:BillingReference` per invoice deducted (BG-3) and the deductions as negative lines;
 it writes no `PrepaidAmount` ([The EHF document](#the-ehf-document)).
+
+### The timesheet
+
+An invoice may carry a **timesheet** inside its PDF (the design's D5): one row per hour
+entry the invoice holds — the date, the person, the work type, the description and the
+hours — so the customer sees what the hours lines bill. It is optional per invoice: the
+document's `timesheet` flag, off unless asked for, which the settings'
+`timesheetDefault` turns on for every new invoice draft whose request leaves it out — the
+wizard's, and one created by hand with `POST /`. A credit note carries none (`timesheet:
+true` on a credit-note draft is a 400 on `timesheet`). `PUT /settings` (`invoices:manage`,
+with its revision) carries `timesheetDefault` and `timesheetPersonLabel`, both
+**required** — a body without either, or with null, is a 400 on it, so a client that
+predates them cannot reset them by leaving them out — and a label other than `initials`,
+`number` or `name` is a 400 on `timesheetPersonLabel`, whether the parse or the column's
+CHECK (`ck_settings_timesheet_person_label`) refuses it. `GET /settings` answers them,
+`false` and `initials` until changed.
+
+**What a row holds.** The rows are `invoices.timesheet_rows`, a snapshot taken when they
+are written: the hours as Time's billable read answers them (`contracts.BillableHour`),
+the work type's name, and as the **description the task title, else the project's
+name** — **never the time entry's note**. The note is the person's own text and may hold
+health data ("legetime", a sick child), and the billable read does not carry it, so it
+never reaches this module. The rows are ordered by date, then by the entry; a total per
+person and the whole close the block.
+
+**The person** is labelled by the settings' `timesheetPersonLabel`, applied when the rows
+are written:
+
+| Label | Prints |
+| --- | --- |
+| `initials` (the default) | the display name's initials — Kari Nordmann is "KN"; a second person whose initials are "KN" is "KN2", a third "KN3", in order of first appearance on the timesheet |
+| `number` | "Person 1", "Person 2", … in order of first appearance on the timesheet — Vantigo stores no employee number |
+| `name` | the display name; a second person of the same name gets " 2" |
+
+A person the user directory no longer knows is "?". The names are read through
+`UserDirectory.Users`, on the pool, before the writer's transaction — never under its
+lock.
+
+**When the rows are written.** Each write is whole — every row deleted, then one per
+hour the draft holds that Time's billable read answers, every person labelled afresh — so
+a timesheet never carries two numbering schemes:
+
+- **The wizard** (`POST /from-work`) with the timesheet on writes them for every hour
+  the draft holds once the work is added — on an append the target's own hours, read
+  again by id, among them.
+- **A save turning the flag on** (`PUT /{id}` with `timesheet: true` on a draft whose
+  flag is off) reads the held hours through `BillableHours` by id and their people,
+  before its transaction, and writes them.
+- **A refresh** (`refreshSources: true`) writes them again from the refreshed hours, every
+  label with them.
+
+Otherwise **every save prunes** them to the hours the draft still holds — an hour dropped
+from its line loses its row, the others keep theirs as written, and a customer change,
+which drops every hold, empties the timesheet; **a save turning the flag off** deletes
+them; one leaving `timesheet` out keeps the flag. An hour the billable read no longer
+answers gets no row — the issue refuses it anyway (`source_not_invoiceable`). With Time
+switched off there is nothing to write rows from: a save prunes them and turning the flag
+on writes none.
+
+**Frozen at issue.** The flag is frozen with the document and the rows by the child
+trigger (`refuse_issued_child_change`), so an issued invoice's timesheet is exactly what
+its stored PDF printed. Nothing identity later does to a user — renaming, disabling or
+deleting them — touches a snapshot, and neither does a change of the label.
+
+**The employees' data.** A timesheet discloses employees' work to a customer. The basis
+for that is the employer's — the installation's — under GDPR art. 6(1)(f) or (b), and the
+notice art. 13 requires is the employer's to give its employees; the user guide says so.
+The minimised label, `initials`, is the default (art. 25(2)); `name` is an opt-in on the
+settings. The rows are kept with the document — **five years after the end of the
+financial year** (bokføringsloven § 13, the conservative reading) — and an issued
+document's rows are part of the sales document, which art. 17(3)(b) exempts from
+erasure ([Retention and personal data](#retention-and-personal-data)).
 
 ## Issuing
 
@@ -1037,6 +1119,16 @@ and prints a deduction line with a leading minus on its quantity and its amount 
 "-125 000,00"), the unit price positive ([A-konto and the final
 settlement](#a-konto-and-the-final-settlement)). A credit note of a settlement lists
 none: its one preceding invoice is the settlement.
+
+**The timesheet** of an invoice whose flag is on prints after everything else, on pages
+of its own: "Timeliste" / "Timesheet", the columns "Dato", "Person", "Arbeidstype",
+"Beskrivelse", "Timer" / "Date", "Person", "Work type", "Description", "Hours", one line
+per stored row with the hours to two decimals, then "Sum <person>" / "Total <person>" for
+each person in order of first appearance and "Sum timer" / "Total hours" for the whole.
+It is laid out with maroto's `AddRows`, which breaks to a new page wherever one ends, so a
+timesheet of any length paginates. It is part of the one PDF: the store-once key and the
+stored hash cover it like every other word, the EHF attaches it with the rest, and the
+draft's preview renders it as it stands ([The timesheet](#the-timesheet)).
 
 `GET /invoices/{id}/preview.pdf` renders a draft on demand with the watermark
 "UTKAST — ikke et salgsdokument", no number, today's date, the current settings and,
@@ -1733,6 +1825,12 @@ evidence stores are the record of the transmission: like the PDF, they are kept 
 years after the end of the financial year, and the module never deletes an object
 ([Sending as EHF](#sending-as-ehf)).
 
+**A timesheet is kept with its document** for the same five years: an issued
+invoice's rows are part of the sales document its PDF printed, which art. 17(3)(b)
+exempts from erasure, and nothing identity does to a user — renaming, disabling or
+deleting them — touches a row ([The timesheet](#the-timesheet)). A draft's rows go with
+the draft.
+
 The module fills both customer slots ([module boundaries](/en/contributing/module-boundaries/)):
 
 - **Merging customers** (`contracts.CustomerReferenceHolder`) re-points every document of
@@ -1757,7 +1855,10 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   failed or cancelled, a resolution's note, and the reason as the API answers it —
   e-mail addresses and participant ids redacted, never `last_error` as stored. No
   bytes are exported: not the UBL, not the evidence, not their object keys, not the
-  provider's reference. A draft has none of the three.
+  provider's reference. A draft has none of the three. Every document that carries a
+  timesheet, issued or draft, carries `timesheet` — its rows as printed, each with its
+  position, person label, date, hours, work type and description — since the customer
+  received it, or would; never a time entry's note.
 - **Anonymisation**, inside the customers module's transaction, in this order: it locks
   the person's documents `FOR UPDATE`, newest first — the merge holder's statement, the
   module's lock order — so a delivery insert, whose trigger takes the document `FOR
@@ -1767,10 +1868,11 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   attempted (`submit_attempted_at` NULL), leased or not — a worker holding one stamps
   its marker only on a row still `queued`, so it finds the row cancelled and makes no
   call; and deletes the drafts. It reports five kinds, in this order:
-  - `invoices.drafts` — the drafts deleted, invoice and credit-note drafts alike: a
-    draft is not a sales document and has no retention basis, so GDPR art. 17 applies;
-  - `invoices.documents`, at 0 — every issued document, its buyer snapshot and its
-    internal note are kept under § 13; the note is immutable once issued, so
+  - `invoices.drafts` — the drafts deleted, invoice and credit-note drafts alike, their
+    line sources and timesheet rows with them by the cascade: a draft is not a sales
+    document and has no retention basis, so GDPR art. 17 applies;
+  - `invoices.documents`, at 0 — every issued document, its buyer snapshot, its
+    timesheet and its internal note are kept under § 13; the note is immutable once issued, so
     anonymisation has no more standing to touch it than any other write does;
   - `invoices.payments` — the payment notes blanked (0 when none had one). A
     registration is kept, because it is bookkeeping material kept with the document,
@@ -1848,7 +1950,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | --- | --- | --- |
 | `GET /meta` | | |
 | `GET /settings` | | |
-| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent, `workVatCodes` absent, a work VAT code unknown, or changed to an inactive one); 409 `series_locked`, or a stale revision (no code) |
+| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent, `workVatCodes` absent, a work VAT code unknown, or changed to an inactive one, `timesheetDefault` or `timesheetPersonLabel` absent or null, a label other than `initials`, `number` or `name`); 409 `series_locked`, or a stale revision (no code) |
 | `GET /settings/access-point` | `invoices:manage` | none: 200 with `hasCredentials: false` when nothing is stored |
 | `PUT /settings/access-point` | `invoices:manage` | 400 on `provider`, `legalEntityId` or `apiKey` (blank, too long, or omitted while none is stored); 409 `transmissions_active` on a provider switch; 503 `ehf_unavailable`, a kept key that cannot be opened |
 | `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
@@ -1863,7 +1965,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included; a deduction line's `quantity`, `unitPrice`, `discountPercent`, `deductsInvoiceId`, `vatCodeId`, `sources`); 409 the customer gates, `deduction_duplicated` (with `linePosition`) |
 | `GET /{id}` | | 404 |
-| `PUT /{id}` | `invoices:create` | 404; 400 (a line's `sources` against the work the draft holds, at most 5 000; a deduction line's fields as on `POST /`; on a credit note a line's `deductsInvoiceId`, or a quantity of the other sign than the line it credits); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `deduction_duplicated` (with `linePosition`) |
+| `PUT /{id}` | `invoices:create` | 404; 400 (a line's `sources` against the work the draft holds, at most 5 000; a deduction line's fields as on `POST /`; on a credit note a line's `deductsInvoiceId`, or a quantity of the other sign than the line it credits; `timesheet: true` on a credit-note draft); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `deduction_duplicated` (with `linePosition`) |
 | `DELETE /{id}` | `invoices:create` | 404; 409 `invoice_issued` |
 | `POST /{id}/issue` | `invoices:issue` | 400 a body that does not decode (none, or an `issueDate` that is no calendar day); 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |

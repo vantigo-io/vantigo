@@ -171,12 +171,12 @@ INSERT INTO invoices.invoices (
     kind, customer_id, delivery_date, delivery_from, delivery_to,
     delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country,
     payment_terms_days, currency, your_reference, our_reference, order_reference, note, internal_note,
-    net_total, vat_total, gross_total, vat_total_nok, created_by_user_id, created_at, updated_at
+    net_total, vat_total, gross_total, vat_total_nok, timesheet, created_by_user_id, created_at, updated_at
 ) VALUES (
     'invoice', $1, $2, $3, $4,
     $5, $6, $7, $8, $9,
     $10, $11, $12, $13, $14, $15, $16,
-    $17, $18, $19, $20, $21, $22::timestamptz, $22::timestamptz
+    $17, $18, $19, $20, $21, $22, $23::timestamptz, $23::timestamptz
 )
 RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet
 `
@@ -202,13 +202,15 @@ type InsertInvoiceDraftParams struct {
 	VatTotal             pgtype.Numeric
 	GrossTotal           pgtype.Numeric
 	VatTotalNok          pgtype.Numeric
+	Timesheet            bool
 	CreatedByUserID      uuid.UUID
 	Now                  time.Time
 }
 
 // InsertInvoiceDraft writes an invoice draft (D4). It has no number, no issue
 // date and no snapshots; its totals are the ones computed with today's rates,
-// which the issue computes again for the issue date.
+// which the issue computes again for the issue date. timesheet is whether it
+// carries a timesheet (invoices work design D5).
 func (q *Queries) InsertInvoiceDraft(ctx context.Context, arg InsertInvoiceDraftParams) (InvoicesInvoice, error) {
 	row := q.db.QueryRow(ctx, insertInvoiceDraft,
 		arg.CustomerID,
@@ -231,6 +233,7 @@ func (q *Queries) InsertInvoiceDraft(ctx context.Context, arg InsertInvoiceDraft
 		arg.VatTotal,
 		arg.GrossTotal,
 		arg.VatTotalNok,
+		arg.Timesheet,
 		arg.CreatedByUserID,
 		arg.Now,
 	)
@@ -826,9 +829,10 @@ UPDATE invoices.invoices SET
     vat_total = $17,
     gross_total = $18,
     vat_total_nok = $19,
-    updated_at = $20::timestamptz,
+    timesheet = $20,
+    updated_at = $21::timestamptz,
     revision = revision + 1
-WHERE id = $21 AND status = 'draft'
+WHERE id = $22 AND status = 'draft'
 RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet
 `
 
@@ -852,12 +856,14 @@ type UpdateDraftParams struct {
 	VatTotal             pgtype.Numeric
 	GrossTotal           pgtype.Numeric
 	VatTotalNok          pgtype.Numeric
+	Timesheet            bool
 	Now                  time.Time
 	ID                   int64
 }
 
-// UpdateDraft replaces a draft's own fields and moves its revision on. The
-// caller holds the row (LockInvoice) and has checked it is still a draft.
+// UpdateDraft replaces a draft's own fields — its timesheet flag among them
+// (invoices work design D5) — and moves its revision on. The caller holds the
+// row (LockInvoice) and has checked it is still a draft.
 func (q *Queries) UpdateDraft(ctx context.Context, arg UpdateDraftParams) (InvoicesInvoice, error) {
 	row := q.db.QueryRow(ctx, updateDraft,
 		arg.CustomerID,
@@ -879,6 +885,7 @@ func (q *Queries) UpdateDraft(ctx context.Context, arg UpdateDraftParams) (Invoi
 		arg.VatTotal,
 		arg.GrossTotal,
 		arg.VatTotalNok,
+		arg.Timesheet,
 		arg.Now,
 		arg.ID,
 	)

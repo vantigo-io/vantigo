@@ -192,6 +192,9 @@ func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoi
 	if err != nil {
 		return nil, fmt.Errorf("invoices: render document %d: %w", inv.ID, err)
 	}
+	if doc.timesheet, err = timesheetOf(ctx, q, inv); err != nil {
+		return nil, err
+	}
 	m := buildPDFModel(doc)
 	if pdfModelBuilt != nil {
 		pdfModelBuilt(inv.ID, m)
@@ -201,6 +204,33 @@ func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoi
 		return nil, fmt.Errorf("invoices: render document %d: %w", inv.ID, err)
 	}
 	return body, nil
+}
+
+// timesheetOf is a document's timesheet as its PDF prints it (invoices work
+// design D5): its own stored rows, in order, when it carries one — part of
+// the one PDF, so the store-once key and hash cover it as they cover every
+// other word, and the EHF attaches it with the rest.
+func timesheetOf(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice) ([]pdfTimesheetRow, error) {
+	if !inv.Timesheet {
+		return nil, nil
+	}
+	rows, err := q.TimesheetRowsOf(ctx, inv.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read document %d's timesheet: %w", inv.ID, err)
+	}
+	out := make([]pdfTimesheetRow, 0, len(rows))
+	for _, r := range rows {
+		hours, err := ratFromNumeric(r.Hours)
+		if err != nil {
+			return nil, err
+		}
+		work := ""
+		if r.WorkType != nil {
+			work = *r.WorkType
+		}
+		out = append(out, pdfTimesheetRow{date: r.EntryDate.Time, person: r.PersonLabel, workType: work, description: r.Description, hours: hours})
+	}
+	return out, nil
 }
 
 // pdfModelBuilt, when a test sets it (export_test.go), is told every model a
@@ -569,6 +599,9 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 		}
 	}
 	doc.summaries, doc.totals, doc.preview = summaries, totals, true
+	if doc.timesheet, err = timesheetOf(ctx, q, inv); err != nil {
+		return nil, err
+	}
 	if previewRendered != nil {
 		previewRendered(inv.ID, doc.totals.vat)
 	}

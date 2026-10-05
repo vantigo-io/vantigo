@@ -294,6 +294,15 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 	if err := withSources(held, inv.Status == statusDraft, stored, &resp); err != nil {
 		return gen.InvoicesInvoiceResponse{}, err
 	}
+	// The timesheet as stored (D5): a snapshot, never a live read.
+	resp.Timesheet = inv.Timesheet
+	sheet, err := q.TimesheetRowsOf(ctx, inv.ID)
+	if err != nil {
+		return gen.InvoicesInvoiceResponse{}, fmt.Errorf("invoices: read document %d's timesheet: %w", inv.ID, err)
+	}
+	if resp.TimesheetRows, err = timesheetResponse(sheet); err != nil {
+		return gen.InvoicesInvoiceResponse{}, err
+	}
 	switch {
 	case inv.BuyerName != nil:
 		resp.CustomerName = inv.BuyerName

@@ -234,8 +234,11 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         kidLength: values.kidLength,
         kidAlgorithm: values.kidAlgorithm,
         // The codes each kind of work is invoiced at (invoices work design
-        // D6) have no card here yet: they go back as they were read.
+        // D6) and the timesheet's default and person label (D5) have no card
+        // here yet: they go back as they were read.
         workVatCodes: values.workVatCodes,
+        timesheetDefault: values.timesheetDefault,
+        timesheetPersonLabel: values.timesheetPersonLabel,
         revision: settings.revision,
       }),
     onSuccess: async (saved) => {

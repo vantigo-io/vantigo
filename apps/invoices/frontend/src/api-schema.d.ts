@@ -757,7 +757,7 @@ export interface components {
             /** @enum {string} */
             outcome: "delivered" | "failed";
         };
-        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. revision is the one the caller read: a stale one is a 409 naming both. */
+        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. timesheetDefault and timesheetPersonLabel are required too (invoices work design D5; a body without either, or with null, is a 400 on it): whether a new draft — the wizard's or one created by hand — carries a timesheet unless its request says, and how the timesheet names each person — initials, number or name, anything else a 400 on timesheetPersonLabel. revision is the one the caller read: a stale one is a 409 naming both. */
         InvoicesSettingsRequest: {
             addressLine1: string;
             addressLine2?: string;
@@ -788,6 +788,10 @@ export interface components {
             revision: number;
             /** Format: int64 */
             seriesStart: number;
+            /** @description Whether a new invoice draft carries a timesheet unless its request says (invoices work design D5). Required — a body without it is a 400 on timesheetDefault. */
+            timesheetDefault: boolean;
+            /** @description How a timesheet names each person (invoices work design D5) — initials (the display name's initials, a second KN becoming KN2), number (Person 1, Person 2 in order of first appearance on the timesheet) or name (the display name). Required; anything else is a 400 on timesheetPersonLabel. */
+            timesheetPersonLabel: string;
             vatRegistered: boolean;
             /** @description The VAT code each kind of work is invoiced at (invoices work design D6), each the id of an active code — a changed one; one kept as stored passes even if it has since become inactive. Required — a body without it is a 400 on workVatCodes, so a client that predates it cannot reset the codes by leaving it out. */
             workVatCodes: {
@@ -838,6 +842,13 @@ export interface components {
             seriesLocked: boolean;
             /** Format: int64 */
             seriesStart: number;
+            /** @description Whether a new invoice draft carries a timesheet unless its request says (invoices work design D5); false until changed. */
+            timesheetDefault: boolean;
+            /**
+             * @description How a timesheet names each person (invoices work design D5) — initials (the default), number or name — applied when its rows are written.
+             * @enum {string}
+             */
+            timesheetPersonLabel: "initials" | "number" | "name";
             /** Format: date-time */
             updatedAt: string;
             vatRegistered: boolean;
@@ -1068,6 +1079,8 @@ export interface components {
              * @description Required on PUT; the revision the caller read. A stale one is a 409 naming both.
              */
             revision?: number;
+            /** @description Whether the invoice carries a timesheet inside its PDF (invoices work design D5). On a create, absent takes the settings' timesheetDefault; on a PUT, absent keeps the draft's. Turned on, the save reads the hours the draft holds through Time's billable read and the people's names, before its transaction, and writes the rows; turned off, it deletes them; every save prunes them to the hours the draft still holds, and a refreshSources writes them again. true on a credit-note draft is a 400. */
+            timesheet?: boolean;
             yourReference?: string;
         };
         /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
@@ -1166,6 +1179,10 @@ export interface components {
             state: string;
             /** @description draft or issued. */
             status: string;
+            /** @description Whether the document carries a timesheet inside its PDF (invoices work design D5); frozen at issue. */
+            timesheet: boolean;
+            /** @description The timesheet as printed (invoices work design D5), in order: a snapshot of the hours the document holds, each person named by the settings' label when the rows were written — never the time entry's note. Empty without a timesheet. Kept with the document; nothing identity later does to a user changes it. */
+            timesheetRows: components["schemas"]["InvoicesTimesheetRow"][];
             /** Format: double */
             uncreditedAmount?: number;
             /** Format: date-time */
@@ -1177,6 +1194,20 @@ export interface components {
             vatTotalNok: number;
             warnings: string[];
             yourReference: string;
+        };
+        /** @description One row of a document's timesheet (invoices work design D5) — one time entry as printed. description is the entry's task title, else its project's name; never the entry's note. */
+        InvoicesTimesheetRow: {
+            /** Format: date */
+            date: string;
+            description: string;
+            /** Format: double */
+            hours: number;
+            /** @description The person as the settings' timesheetPersonLabel named them when the row was written — initials, Person n, or the display name. */
+            personLabel: string;
+            /** Format: int32 */
+            position: number;
+            /** @description The entry's work type; absent for none. */
+            workType?: string;
         };
         /** @description One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft. A deduction line (invoices work design D7) carries deductsInvoiceId, a quantity of -1 and a positive unitPrice, so its lineGross and lineNet are negative; a credit note's line crediting one carries it too, with a negative quantity. On a document that bills work (invoices work design D2) every line carries sources — [] for a line that bills none — and warnings, its own codes (line_differs_from_sources, source_changed, source_not_invoiceable); both absent on a document that bills no work. */
         InvoicesLine: {
@@ -1526,6 +1557,8 @@ export interface components {
             /** Format: int32 */
             revision?: number;
             sources: components["schemas"]["InvoicesFromWorkSource"][];
+            /** @description Whether the draft carries a timesheet inside its PDF (invoices work design D5) — absent takes the settings' timesheetDefault for a new draft and the target's own for an append. On, the rows are written for every hour the draft then holds, each person named through the user directory before the transaction. */
+            timesheet?: boolean;
             vatCodes?: components["schemas"]["InvoicesFromWorkVatCodes"];
         };
         PaginatedResponseOfInvoicesInvoiceListItem: {

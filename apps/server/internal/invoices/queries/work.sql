@@ -149,6 +149,13 @@ RETURNING *;
 -- TimesheetRowsOf is a document's timesheet as printed (D5), in order.
 SELECT * FROM invoices.timesheet_rows WHERE invoice_id = @invoice_id ORDER BY position;
 
+-- name: TimesheetRowsOfDocuments :many
+-- TimesheetRowsOfDocuments is the timesheets of the given documents as
+-- printed, each in order: the customer's personal-data export (D5).
+SELECT * FROM invoices.timesheet_rows
+WHERE invoice_id = ANY(@invoice_ids::bigint[])
+ORDER BY invoice_id, position;
+
 -- name: InsertTimesheetRows :exec
 -- InsertTimesheetRows writes a draft's timesheet rows in one statement (D5):
 -- the arrays run in parallel; an empty work type is NULL. Never the entry's
