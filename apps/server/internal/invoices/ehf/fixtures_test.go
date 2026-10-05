@@ -259,6 +259,20 @@ func fixtures(t *testing.T) map[string]ehf.Document {
 	settlement.PDFName = "faktura-10057.pdf"
 	out["invoice-final-settlement"] = settlement
 
+	// A settlement across a rate change (D7): the work at today's 26 %, the
+	// deduction at the a-konto line's 25 % snapshot — a negative VAT row at
+	// the old rate beside a positive one at today's.
+	rateChange := baseInvoice("10059")
+	rateChange.Deducted = []ehf.DocumentReference{{Number: "10040", IssueDate: "2026-08-01"}}
+	rateChange.Lines = []ehf.Line{
+		line("1", "Sluttoppgjør", "stk", "1", "200000", "0", "S", "26"),
+		line("2", "Tidligere fakturert a konto, faktura 10040", "", "-1", "100000", "0", "S", "25"),
+	}
+	rateChange.VAT = []ehf.VATRow{vat("S", "26", "200000.00", "52000.00", ""), vat("S", "25", "-100000.00", "-25000.00", "")}
+	rateChange.NetTotal, rateChange.VATTotal, rateChange.GrossTotal = rat("100000.00"), rat("27000.00"), rat("127000.00")
+	rateChange.PDFName = "faktura-10059.pdf"
+	out["invoice-settlement-rate-change"] = rateChange
+
 	// Its credit note reverses it whole: the deductions copied as negative
 	// lines, the totals positive, its original the one BillingReference.
 	creditSettlement := settlement

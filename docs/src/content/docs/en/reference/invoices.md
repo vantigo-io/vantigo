@@ -84,7 +84,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.vat_codes` | The tenant's codes: label, name, SAF-T code, UNCL5305 category, exemption reason, active. |
 | `invoices.vat_code_rates` | Each code's rates as dated periods that never overlap (an exclusion constraint). A rate change is a new period, not a new code. |
 | `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, the stored PDF's key and SHA-256, an invoice's `kid` with the `kid_algorithm` it was computed with (set at issue, both or neither, never on a credit note), the project its work belongs to — `project_id` and its code `project_reference`, both or neither (`ck_invoices_project`), derived by every save of an invoice draft and copied by a credit note ([The project](#the-project)) — and the `timesheet` flag (off by default). Every one of them is frozen at issue with the rest of the row. |
-| `invoices.lines` | Description, quantity (3 decimals), unit, unit price (4), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, the invoice a deduction line deducts (`deducts_invoice_id`), and the VAT snapshot written at issue. The quantity is above 0, or below 0 on a deduction line only (`ck_lines_quantity`), and a deduction line carries no discount (`ck_lines_deduction_no_discount`). `(id, invoice_id)` is unique, so a child row names its line and its document together and the two never disagree. |
+| `invoices.lines` | Description, quantity (3 decimals), unit, unit price (4), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, the invoice a deduction line deducts (`deducts_invoice_id` — an unconstrained reference, deliberately without a foreign key, whose `FOR KEY SHARE` on the deducted invoice would cycle with the newest-first lock of a customer's documents; the save and the issue accept only an issued invoice of the same customer, and an issued document is never deleted), and the VAT snapshot written at issue. The quantity is above 0, or below 0 on a deduction line only (`ck_lines_quantity`), and a deduction line carries no discount (`ck_lines_deduction_no_discount`). `(id, invoice_id)` is unique, so a child row names its line and its document together and the two never disagree. |
 | `invoices.line_sources` | The work a line bills: the source's kind (`time.entry`, `expenses.entry`, `projects.milestone`) and id — opaque, the rows are other modules' — the revision it was taken at, an expense's kind (`source_subkind`, only on an expense), the project, the quantity, the source's exact amount (`numeric(22,8)`: an hour's amount carries up to eight decimals), the currency, the work's date and the state: `held` from the draft, `invoiced` by the issue, `released` by the credit note that returns its line. Its line and document are one composite key, and the rows go with their line. A source is live — `held` or `invoiced` — on one row at most (`ux_line_sources_live`). A row is written `held`; under a draft its one change is to `invoiced`, under an issued document its one change is from `invoiced` to `released`, once, nothing else changed. A row is deleted only under a draft and only while `held`, so dropping a hold never frees an invoiced source. A trigger refuses the rest (`invoices: a line source is written held`, `invoices: a line source changes only its state`, `invoices: a line source is deleted only while held`, `invoices: issued document is immutable`). Every save of a draft deletes its lines and so its held rows, and inserts the rows it carries anew under the new lines, in one statement ordered by kind and id ([Invoicing work](#invoicing-work)). |
 | `invoices.line_releases` | A credit note's release of an original line's source: the credit note, its line and the source, a source released once. Frozen with the credit note at its issue. |
 | `invoices.timesheet_rows` | The timesheet as printed, a snapshot: the position, the time entry, the person's label, the date, the hours, the work type and the description — never the entry's note. Frozen with its document at issue, deleted with a deleted draft. |
@@ -684,8 +684,8 @@ it as one. A **final settlement** is an invoice that also carries **deduction li
 each deducting one earlier invoice of the same customer at one of its VAT codes:
 
 - `deductsInvoiceId` on the line request names the invoice deducted; it is frozen on the
-  line (`invoices.lines.deducts_invoice_id`) and answered on the line as
-  `deductsInvoiceId`.
+  line (`invoices.lines.deducts_invoice_id`, with no foreign key — [The model](#the-model))
+  and answered on the line as `deductsInvoiceId`.
 - The quantity is exactly **-1**, the unit price the amount deducted, **above 0** — so
   EN 16931's BR-27 (no negative price) holds — and the discount 0; the line's gross and
   net are then negative. The quantity may be negative only on such a line: anywhere else
@@ -700,9 +700,13 @@ each deducting one earlier invoice of the same customer at one of its VAT codes:
   code as it stands today: a code no longer offered for new lines (`vat_code_inactive`)
   or with no rate on the issue date (`vat_code_not_valid`) refuses neither its save nor
   its issue.
-- The deducted document is an **issued invoice of the same customer** — never a draft,
-  a credit note, another customer's invoice or the settlement itself: a 400 on
-  `lines[i].deductsInvoiceId`. A deduction line bills no work: naming `sources` on one is
+- The deducted document is an **issued invoice of the same customer, in the
+  settlement's currency** — never a draft (the settlement itself included), a credit
+  note, another customer's invoice or one in another currency: a 400 on
+  `lines[i].deductsInvoiceId`.
+- **A document is not deductible at a code where it carries deduction lines of its
+  own** — a settlement's lines there mix today's rate with its a-kontos' older snapshots:
+  a 400 on `lines[i].vatCodeId`, and `GET …/deductible` leaves that code out. A deduction line bills no work: naming `sources` on one is
   a 400 on `lines[i].sources`.
 - **One deduction line per (deducted invoice, VAT code)** per draft: a second is 409
   `deduction_duplicated`, with the second line's `linePosition`, on a create or a save.
@@ -722,10 +726,13 @@ row-locks the invoices it deducts**: every write that changes what an a-konto ha
 is itself an issue — a credit note of it, another settlement, a credit note of a
 settlement — and the counter serialises every issue, so the cap read under it is exact;
 a row lock would cycle with the customers merge, which locks a customer's documents
-newest first, whenever an a-konto is newer than the settlement's draft. A deducted
-document that is no longer an issued invoice of this customer when the settlement is
-issued — re-pointed by a merge — has nothing left to deduct for it, and is refused
-`deduction_exceeds_invoice` with the line too.
+newest first, whenever an a-konto is newer than the settlement's draft. **A save locks
+the draft only, and a deduction line takes no lock on the deducted invoice** — nor does
+the creation of a settlement's credit note, which locks its original: the column has no
+foreign key. The issue re-checks that each deducted document is still an issued invoice
+of this customer in its currency, deductible at the line's code; one that is not has
+nothing left to deduct for it, and is refused `deduction_exceeds_invoice` with the line
+too.
 
 **A settlement's gross must be positive.** A draft whose deductions take as much as it
 bills, or more, warns `invoice_total_not_positive`, and its issue is refused with it.
@@ -738,7 +745,8 @@ full on account ends with its last a-konto, not a zero settlement.
 for an invoice draft, every issued invoice of its customer with something left to deduct,
 per VAT code: `invoiceId`, `number`, `issueDate`, `vatCodeId`, the snapshot's `category`
 and `ratePercent`, and `left`, by number and then code. The draft itself is never one,
-and a settlement is listed like any invoice — what it billed less what it deducted. An
+nor an invoice in another currency than the draft's; a settlement is listed like any
+invoice, but never at a code where it deducts itself. An
 unknown id is a 404, an issued document 409 `invoice_issued`, and a credit-note draft
 409 `credit_note_deducts_nothing`: a credit note deducts nothing. It is the editor's
 "Deduct earlier invoices" step; the step itself arrives with the app's screens.
@@ -774,8 +782,9 @@ profile, and for work the projects and the issuer's name — are read before the
 transaction and the object store is used after it; none is ever called under a lock. The
 lock order is always document → settings → counter → original → the source modules'
 rows (Projects, Expenses, Time), and nothing takes them in another order — a
-settlement's deducted invoices are read after the counter and never locked ([A-konto and
-the final settlement](#a-konto-and-the-final-settlement)): `PUT /settings` takes only the settings row, the rate operations the
+settlement's deducted invoices are read after the counter and never locked, and its save
+and its credit note's creation lock only the draft and the original ([A-konto and the
+final settlement](#a-konto-and-the-final-settlement)): `PUT /settings` takes only the settings row, the rate operations the
 settings row and then the VAT code, `PUT /vat-codes/{id}` only the code, a payment's
 registration or removal only its invoice, a send's delivery row only its document,
 `FOR SHARE`, and the send as EHF its document `FOR UPDATE` and then the access-point

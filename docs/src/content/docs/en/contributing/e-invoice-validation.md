@@ -67,7 +67,9 @@ Both sets live beside the writer, under
   under each algorithm, a delivery period and place, a seller that is not VAT
   registered, an invoice naming its project (BT-11, `invoice-project`), a final
   settlement deducting two a-konto invoices — two `BillingReference`s and negative
-  deduction lines, no `PrepaidAmount` (`invoice-final-settlement`) — and five credit
+  deduction lines, no `PrepaidAmount` (`invoice-final-settlement`) — one across a rate
+  change, a negative VAT row at the a-konto's 25 % beside a positive one at today's 26 %
+  (`invoice-settlement-rate-change`), and five credit
   notes — full, partial, final with the squaring row, one naming its project in an
   `AdditionalDocumentReference` with type code 50 (`credit-note-project`), and one of
   the settlement, its deductions copied as negative lines (`credit-note-of-settlement`).

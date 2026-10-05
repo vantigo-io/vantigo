@@ -487,7 +487,7 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 		return nil, err
 	}
 	errs = checkInvoiceLines(in.lines, codes, errs)
-	errs, duplicated, err := deductionRules(ctx, q, in.customerID, 0, in.lines, errs)
+	errs, duplicated, err := deductionRules(ctx, q, in.customerID, settings.DefaultCurrency, in.lines, errs)
 	if err != nil {
 		return nil, err
 	}
@@ -579,7 +579,7 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 		return nil, err
 	}
 	errs = checkInvoiceLines(in.lines, codes, errs)
-	errs, duplicated, err := deductionRules(ctx, q, in.customerID, current.ID, in.lines, errs)
+	errs, duplicated, err := deductionRules(ctx, q, in.customerID, current.Currency, in.lines, errs)
 	if err != nil {
 		return nil, err
 	}
@@ -634,6 +634,12 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	withReleased(saved.released, &resp)
 	return gen.PutInvoicesById200JSONResponse(resp), nil
 }
+
+// saveAfterLines is called inside a draft's save right after its lines are
+// written, with the draft's id, so a test can show what the save holds there:
+// the draft, and never an invoice its deduction lines deduct (invoices work
+// design D7). nil in production.
+var saveAfterLines func(ctx context.Context, invoiceID int64)
 
 // errDocumentGone is a document deleted between a handler's first read and
 // its lock — two users, one deleting and one saving or issuing. The handler
@@ -735,6 +741,9 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 		lineIDs, err := writeLines(ctx, txq, id, in.lines)
 		if err != nil {
 			return err
+		}
+		if saveAfterLines != nil {
+			saveAfterLines(ctx, id)
 		}
 		carried, out.released = rows, released
 		if err := insertSources(ctx, txq, id, lineIDs, rows); err != nil {

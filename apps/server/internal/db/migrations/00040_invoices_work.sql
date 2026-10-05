@@ -11,9 +11,21 @@
 
 -- A line's id together with its document's, so a child table can name both
 -- and never disagree with its line (invoices work design D2, D8).
+--
+-- deducts_invoice_id is the issued invoice a settlement's deduction line
+-- deducts (D7): an unconstrained reference, deliberately without a foreign
+-- key. A foreign key would take FOR KEY SHARE on the deducted invoice's row
+-- at every insert of a deduction line — a save, or a settlement's credit
+-- note copying its lines — while the draft is held FOR UPDATE, two rows of
+-- invoices.invoices in ascending order whenever the a-konto is the newer,
+-- which cycles with the newest-first FOR UPDATE of a customer's documents
+-- (LockCustomerDocuments: the merge, the anonymisation). Its integrity is
+-- the module's: the save and the issue accept only an issued invoice of the
+-- same customer, and tr_invoices_immutable refuses deleting an issued
+-- document, so the row it names never goes away.
 ALTER TABLE invoices.lines
     ADD CONSTRAINT uq_lines_id_invoice UNIQUE (id, invoice_id),
-    ADD COLUMN deducts_invoice_id bigint REFERENCES invoices.invoices (id) ON DELETE RESTRICT,
+    ADD COLUMN deducts_invoice_id bigint,
     DROP CONSTRAINT ck_lines_quantity,
     ADD CONSTRAINT ck_lines_quantity
         CHECK (quantity > 0 OR (quantity < 0 AND deducts_invoice_id IS NOT NULL)),

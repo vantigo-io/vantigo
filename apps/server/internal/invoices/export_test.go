@@ -67,6 +67,24 @@ func SetFromWorkBeforeInsert(hook func(ctx context.Context, invoiceID int64)) fu
 	return func() { fromWorkBeforeInsert = nil }
 }
 
+// SetSaveAfterLines installs a hook a draft's save calls inside its
+// transaction right after the lines are written, with the draft's id, and
+// answers the function that removes it. A test using it does not run in
+// parallel: the hook is the package's.
+func SetSaveAfterLines(hook func(ctx context.Context, invoiceID int64)) func() {
+	saveAfterLines = hook
+	return func() { saveAfterLines = nil }
+}
+
+// SetCreditAfterCopy installs a hook a credit-note draft's creation calls
+// inside its transaction right after the original's lines are copied, with
+// the credit note's id, and answers the function that removes it. A test
+// using it does not run in parallel: the hook is the package's.
+func SetCreditAfterCopy(hook func(ctx context.Context, invoiceID int64)) func() {
+	creditAfterCopy = hook
+	return func() { creditAfterCopy = nil }
+}
+
 // SetPaymentAfterLock installs a hook both payment writes — a registration
 // and a removal — call inside their transaction right after the invoice is
 // locked, and answers the function that removes it. A race test holds one

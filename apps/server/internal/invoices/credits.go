@@ -92,7 +92,13 @@ func (s *server) PostInvoicesByIdCredit(ctx context.Context, req gen.PostInvoice
 		if err != nil {
 			return fmt.Errorf("invoices: create a credit note for %d: %w", original.ID, err)
 		}
-		return txq.CopyLinesToCredit(ctx, store.CopyLinesToCreditParams{CreditID: created.ID, OriginalID: original.ID})
+		if err := txq.CopyLinesToCredit(ctx, store.CopyLinesToCreditParams{CreditID: created.ID, OriginalID: original.ID}); err != nil {
+			return err
+		}
+		if creditAfterCopy != nil {
+			creditAfterCopy(ctx, created.ID)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -103,6 +109,12 @@ func (s *server) PostInvoicesByIdCredit(ctx context.Context, req gen.PostInvoice
 	}
 	return gen.PostInvoicesByIdCredit201JSONResponse(resp), nil
 }
+
+// creditAfterCopy is called inside a credit-note draft's creation right after
+// its lines are copied, with the credit note's id, so a test can show what the
+// creation holds there: the original, and never an invoice a settlement's
+// deduction lines deduct (invoices work design D7). nil in production.
+var creditAfterCopy func(ctx context.Context, invoiceID int64)
 
 // originalLines are an invoice's lines by id.
 func originalLines(ctx context.Context, q *store.Queries, originalID int64) (map[int64]store.InvoicesLine, error) {

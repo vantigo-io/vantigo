@@ -409,13 +409,14 @@ invoice for the whole that deducts what the a-konto invoices already billed. A s
 is an ordinary draft with one **deduction line** per earlier invoice and VAT code:
 
 - the line names the earlier invoice it deducts, an issued invoice of the same customer
-  — never a draft, a credit note or another customer's;
+  in the same currency — never a draft, a credit note or another customer's;
 - its **Quantity** is **-1** and its **Unit price** the amount deducted, above 0, with
   no discount; its amount prints with a minus, "-125 000,00", and lowers the total;
 - its **VAT code** is one the earlier invoice has a line at, and it is taxed at the rate
   that invoice was issued with — so a rate change since, or a code no longer offered,
   does not change it. The text proposed is *Tidligere fakturert a konto, faktura 985* /
-  *Previously invoiced on account, invoice 985*.
+  *Previously invoiced on account, invoice 985*. A settlement can itself be deducted
+  later, but not at a VAT code where it deducts earlier invoices.
 
 The step in the editor that lists the earlier invoices and proposes the lines comes with
 the app's screens for invoicing work; the rules below hold already, and the server

@@ -416,13 +416,14 @@ som trekker fra det a konto-fakturaene allerede har fakturert. Et sluttoppgjør 
 vanlig utkast med én **fradragslinje** per tidligere faktura og mva-kode:
 
 - linjen viser til den tidligere fakturaen den trekker fra, en utstedt faktura til samme
-  kunde — aldri et utkast, en kreditnota eller en annen kundes faktura;
+  kunde i samme valuta — aldri et utkast, en kreditnota eller en annen kundes faktura;
 - **Antall** er **-1** og **Enhetspris** beløpet som trekkes fra, over 0, uten rabatt;
   beløpet skrives med minus, «-125 000,00», og senker totalen;
 - **Mva-koden** er en den tidligere fakturaen har en linje på, og linjen avgiftsberegnes
   med satsen den fakturaen ble utstedt med — så en satsendring siden, eller en kode som
   ikke lenger tilbys, endrer den ikke. Teksten som foreslås, er *Tidligere fakturert a
-  konto, faktura 985* / *Previously invoiced on account, invoice 985*.
+  konto, faktura 985* / *Previously invoiced on account, invoice 985*. Et sluttoppgjør kan
+  selv trekkes fra senere, men ikke på en mva-kode der det trekker fra tidligere fakturaer.
 
 Steget i redigeringen som viser de tidligere fakturaene og foreslår linjene, kommer med
 appens skjermbilder for fakturering av arbeid; reglene under gjelder allerede, og

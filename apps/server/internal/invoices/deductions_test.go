@@ -156,9 +156,13 @@ func TestDeduction_TheSaveRules(t *testing.T) {
 	}{{"a draft", draft.ID}, {"a credit note", note.ID}, {"another customer's invoice", other.ID}, {"no document", 999999}} {
 		refused400(t, d.what+" as the deducted", post(ordinary(), deductionOf(d.id, 1000, vat25)), "lines[1].deductsInvoiceId")
 	}
-	refused400(t, "itself as the deducted",
-		c.Do(http.MethodPut, invoicePath(draft.ID), settledAcme(draft, ordinary(), deductionOf(draft.ID, 1000, vat25))),
-		"lines[1].deductsInvoiceId")
+	// The draft itself is a draft: the status check refuses it, as any draft.
+	itself := c.Do(http.MethodPut, invoicePath(draft.ID), settledAcme(draft, ordinary(), deductionOf(draft.ID, 1000, vat25)))
+	refused400(t, "itself as the deducted", itself, "lines[1].deductsInvoiceId")
+	if itself.Status == http.StatusBadRequest && !slices.Contains(problemOf(t, itself).Errors["lines[1].deductsInvoiceId"],
+		"Only an issued invoice of the same customer, never this document, a draft or a credit note, is deducted") {
+		t.Errorf("itself as the deducted = %s, want the not-an-issued-invoice message", itself.Body)
+	}
 
 	cd := creditDraft(t, h, other.ID)
 	named := creditLine(cd.Lines[0])
@@ -584,6 +588,10 @@ func TestCredit_InvoiceDeductedPerVatCode(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
 	a := issuedFor(t, h, customerAcme, line("Høy", 1, 100000, vat25), line("Lav", 1, 40000, vat15))
+	// An earlier settlement whose deduction a credit note gave back in full
+	// takes nothing, and is not named.
+	given := issuedFor(t, h, customerAcme, line("Delleveranse", 1, 50000, vat25), deduction(a, 10000, vat25))
+	issued(t, h, creditDraft(t, h, given.ID).ID)
 	s := issuedFor(t, h, customerAcme, line("Sluttoppgjør", 1, 200000, vat25), deduction(a, 60000, vat25))
 
 	c1 := creditDraft(t, h, a.ID)
@@ -591,8 +599,8 @@ func TestCredit_InvoiceDeductedPerVatCode(t *testing.T) {
 	high["unitPrice"] = 40000.01
 	c1 = saveCredit(t, h, c1, creditBody(c1, high))
 	p := refusedWith(t, h, c1.ID, "", "invoice_deducted")
-	if !strings.Contains(p.Detail, fmt.Sprint(*s.Number)) {
-		t.Errorf("detail = %q, want it naming settlement %d", p.Detail, *s.Number)
+	if want := fmt.Sprintf("settlement %d deducted", *s.Number); !strings.Contains(p.Detail, want) {
+		t.Errorf("detail = %q, want it naming settlement %d alone (%q)", p.Detail, *s.Number, want)
 	}
 	high["unitPrice"], high["quantity"] = 40000, 1
 	c1 = saveCredit(t, h, c1, creditBody(c1, high))
@@ -654,7 +662,8 @@ func TestPDF_TheDeductionsMinusSigns(t *testing.T) {
 // GET /invoices/{id}/deductible: per (issued invoice of the draft's customer,
 // VAT code) with something left — net of a credit note and of a settlement
 // that took it all — by number and code, with the a-konto line's snapshot;
-// never another customer's, a credit note or the draft's own deductions.
+// never another customer's, a credit note, the draft's own deductions or a
+// settlement at a code where it deducts.
 func TestDeductible_TheRead(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
@@ -664,14 +673,16 @@ func TestDeductible_TheRead(t *testing.T) {
 	lowered := creditLine(credit.Lines[0])
 	lowered["unitPrice"] = 20000
 	issued(t, h, saveCredit(t, h, credit, creditBody(credit, lowered)).ID)
-	s1 := issuedFor(t, h, customerAcme, line("Delleveranse", 1, 100000, vat25), deduction(a2, 50000, vat25))
+	s1 := issuedFor(t, h, customerAcme, line("Delleveranse", 1, 100000, vat25), line("Materiell", 1, 30000, vat15), deduction(a2, 50000, vat25))
 	issuedFor(t, h, customerPerson, line("Annen kunde", 1, 1000, vat25))
 
 	d := createDraft(t, h, draftBody(customerAcme, line("Sluttoppgjør", 1, 300000, vat25), deduction(a1, 1000, vat25)))
 	want := []deductibleJSON{
 		{InvoiceID: a1.ID, Number: *a1.Number, IssueDate: "2026-09-12", VatCodeID: vat25, Category: "S", RatePercent: 25, Left: 80000},
 		{InvoiceID: a1.ID, Number: *a1.Number, IssueDate: "2026-09-12", VatCodeID: vat15, Category: "S", RatePercent: 15, Left: 40000},
-		{InvoiceID: s1.ID, Number: *s1.Number, IssueDate: "2026-09-12", VatCodeID: vat25, Category: "S", RatePercent: 25, Left: 50000},
+		// A settlement is listed like any invoice, but never at a code where
+		// it deducts itself: a2 is gone, deducted in full.
+		{InvoiceID: s1.ID, Number: *s1.Number, IssueDate: "2026-09-12", VatCodeID: vat15, Category: "S", RatePercent: 15, Left: 30000},
 	}
 	if got := deductibleOf(t, h, d.ID); !slices.Equal(got, want) {
 		t.Errorf("deductible = %+v\nwant %+v", got, want)
@@ -679,4 +690,155 @@ func TestDeductible_TheRead(t *testing.T) {
 	if res := h.SignIn(t, "invoices:access").Do(http.MethodGet, deductiblePath(d.ID), nil); res.Status != http.StatusForbidden {
 		t.Errorf("deductible without invoices:create = %d, want 403", res.Status)
 	}
+}
+
+// plantDeduction writes a deduction line of id at vatCodeID on draft at
+// position, past the save's rules, as a row only the issue then judges.
+func plantDeduction(t *testing.T, h *harness, draft int64, position int32, id int64, vatCodeID int32) {
+	t.Helper()
+	h.Exec(t, `
+		INSERT INTO invoices.lines (invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id,
+		    deducts_invoice_id, line_gross, line_allowance, line_net)
+		VALUES ($1, $2, 'Tidligere fakturert a konto', -1, '', 1000, 0, $3, $4, -1000, 0, -1000)`, draft, position, vatCodeID, id)
+}
+
+// A settlement is not deductible at a code where it deducts others itself:
+// its lines there mix today's rate with an older snapshot. The deductible
+// read leaves the code out, the save refuses it on the line's VAT code, and
+// the issue finds nothing left there.
+func TestDeduction_ASettlementIsNotDeductibleWhereItDeducts(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	a := issuedFor(t, h, customerAcme, line("A konto", 1, 100000, vat25))
+	s := issuedFor(t, h, customerAcme, line("Høy", 1, 150000, vat25), line("Lav", 1, 40000, vat15), deduction(a, 100000, vat25))
+
+	d := createDraft(t, h, draftBody(customerAcme, line("Sluttoppgjør", 1, 300000, vat25)))
+	var codes []int32
+	for _, r := range deductibleOf(t, h, d.ID) {
+		if r.InvoiceID == s.ID {
+			codes = append(codes, r.VatCodeID)
+		}
+	}
+	if !slices.Equal(codes, []int32{vat15}) {
+		t.Errorf("the settlement is deductible at %v, want at 15 %% alone", codes)
+	}
+	refused400(t, "a deduction of the settlement where it deducts",
+		creator(t, h).Do(http.MethodPost, invoicesPath, draftBody(customerAcme, line("Sluttoppgjør", 1, 300000, vat25), deduction(s, 1000, vat25))),
+		"lines[1].vatCodeId")
+	createDraft(t, h, draftBody(customerAcme, line("Sluttoppgjør", 1, 300000, vat25), deduction(s, 1000, vat15)))
+
+	plantDeduction(t, h, d.ID, 2, s.ID, vat25)
+	conflictAt(t, "the issue of a planted deduction where the settlement deducts", issueWith(t, h, d.ID, ""), "deduction_exceeds_invoice", 2)
+}
+
+// The deducted invoice is in the settlement's currency: another currency's is
+// left out of the deductible read, refused on the line at the save, and
+// refused with the line at the issue.
+func TestDeduction_TheCurrencyMustBeTheSettlements(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	euro := createDraft(t, h, draftBody(customerAcme, line("A konto i euro", 1, 1000, vat25)))
+	h.Exec(t, `UPDATE invoices.invoices SET currency = 'EUR' WHERE id = $1`, euro.ID)
+	e := issued(t, h, euro.ID)
+	if e.Currency != "EUR" {
+		t.Fatalf("the planted a-konto is in %s, want EUR", e.Currency)
+	}
+
+	d := createDraft(t, h, draftBody(customerAcme, line("Sluttoppgjør", 1, 300000, vat25)))
+	for _, r := range deductibleOf(t, h, d.ID) {
+		if r.InvoiceID == e.ID {
+			t.Errorf("the deductible read lists the EUR invoice %d for a NOK draft", e.ID)
+		}
+	}
+	res := creator(t, h).Do(http.MethodPost, invoicesPath, draftBody(customerAcme, line("Sluttoppgjør", 1, 300000, vat25), deduction(e, 1000, vat25)))
+	refused400(t, "a deduction of an invoice in another currency", res, "lines[1].deductsInvoiceId")
+	if res.Status == http.StatusBadRequest && !slices.Contains(problemOf(t, res).Errors["lines[1].deductsInvoiceId"],
+		"The deducted invoice is in another currency than this one") {
+		t.Errorf("the currency refusal = %s", res.Body)
+	}
+
+	plantDeduction(t, h, d.ID, 2, e.ID, vat25)
+	conflictAt(t, "the issue of a planted deduction in another currency", issueWith(t, h, d.ID, ""), "deduction_exceeds_invoice", 2)
+}
+
+// lockProbes is what the two NOWAIT probes saw from inside a parked
+// transaction: whether the deducted invoice's row and the transaction's own
+// document's row could be locked at once.
+type lockProbes struct {
+	mu                  sync.Mutex
+	probed              bool
+	deducted, ownRecord error
+}
+
+func (p *lockProbes) record(conn *pgx.Conn, deducted, own int64) {
+	free, held := rowFree(conn, deducted), rowFree(conn, own)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.probed, p.deducted, p.ownRecord = true, free, held
+}
+
+// check fails t unless the probes ran, the deducted invoice was free and the
+// transaction's own row held (55P03).
+func (p *lockProbes) check(t *testing.T, what, own string) {
+	t.Helper()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.probed {
+		t.Fatalf("%s: the seam never ran", what)
+	}
+	if p.deducted != nil {
+		t.Errorf("%s: FOR UPDATE NOWAIT of the deducted invoice = %v, want it free: nothing locks it", what, p.deducted)
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(p.ownRecord, &pgErr) || pgErr.Code != "55P03" {
+		t.Errorf("%s: FOR UPDATE NOWAIT of the %s = %v, want 55P03: the probe sees a held row", what, own, p.ownRecord)
+	}
+}
+
+// A save writing a deduction line locks the draft and never the invoice it
+// deducts — here the newer of the two, so a lock on it would take two
+// documents in ascending order and cycle with the newest-first lock of a
+// customer's documents (the merge, the anonymisation). Parked right after
+// its lines are written, a FOR UPDATE NOWAIT of the a-konto from a connection
+// of its own succeeds, and one of the draft gets 55P03. Not parallel: the
+// seam is the package's.
+func TestDeduction_TheSaveLocksTheDraftNotTheAKonto(t *testing.T) {
+	h := readyToIssue(t)
+	d := createDraft(t, h, draftBody(customerAcme, line("Sluttoppgjør", 1, 150000, vat25)))
+	a := issuedFor(t, h, customerAcme, line("A konto", 1, 100000, vat25))
+	if a.ID <= d.ID {
+		t.Fatalf("the a-konto %d is not newer than the draft %d", a.ID, d.ID)
+	}
+	probe, probes := rawConn(t, h), &lockProbes{}
+	restore := invoices.SetSaveAfterLines(func(_ context.Context, id int64) {
+		if id == d.ID {
+			probes.record(probe, a.ID, d.ID)
+		}
+	})
+	defer restore()
+	putDoc(t, creator(t, h), d.ID, settledAcme(d, line("Sluttoppgjør", 1, 150000, vat25), deduction(a, 100000, vat25)))
+	probes.check(t, "the save", "draft")
+}
+
+// A credit note of a settlement copies its deduction lines and locks its
+// original — the settlement — by design, never the invoice they deduct,
+// here newer than the settlement. Parked right after the copy, a FOR UPDATE
+// NOWAIT of the a-konto succeeds and one of the settlement gets 55P03. Not
+// parallel: the seam is the package's.
+func TestDeduction_TheCreditOfASettlementLocksTheOriginalNotTheAKonto(t *testing.T) {
+	h := readyToIssue(t)
+	d := createDraft(t, h, draftBody(customerAcme, line("Sluttoppgjør", 1, 150000, vat25)))
+	a := issuedFor(t, h, customerAcme, line("A konto", 1, 100000, vat25))
+	s := issued(t, h, putDoc(t, creator(t, h), d.ID, settledAcme(d, line("Sluttoppgjør", 1, 150000, vat25), deduction(a, 100000, vat25))).ID)
+	if a.ID <= s.ID {
+		t.Fatalf("the a-konto %d is not newer than the settlement %d", a.ID, s.ID)
+	}
+	probe, probes := rawConn(t, h), &lockProbes{}
+	restore := invoices.SetCreditAfterCopy(func(context.Context, int64) { probes.record(probe, a.ID, s.ID) })
+	defer restore()
+	c := creditDraft(t, h, s.ID)
+	if c.Lines[1].DeductsInvoiceID == nil || *c.Lines[1].DeductsInvoiceID != a.ID {
+		t.Errorf("the credit's lines = %+v, want the deduction copied", c.Lines)
+	}
+	probes.check(t, "the credit-note draft's creation", "settlement")
 }
