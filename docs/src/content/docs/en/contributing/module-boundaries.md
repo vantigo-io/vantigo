@@ -212,7 +212,8 @@ Communications' outbox is the working example.
   source kind two invoiced-work holders both claim (`module: two modules both stamp
   "time.entry": a, b`), naming the kind and both — a holder a caller preset on
   `Deps.InvoicedWork` (a test harness's fake) claims its kinds first and is named
-  `Deps.InvoicedWork`. `module.Workers`, which has no error to return, panics on the
+  `Deps.InvoicedWork`, and a nil one is dropped from the slot, which never hands an
+  issue a nil holder. `module.Workers`, which has no error to return, panics on the
   same kind claimed twice.
 - **Rule 7**: `no-restricted-imports` in each module frontend's `eslint.config.js`,
   run by `bun run frontend:lint` locally and in CI.
