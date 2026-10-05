@@ -35,7 +35,7 @@ import {
 } from "../api/milestones";
 import { type Project, projectQueryOptions } from "../api/projects";
 import type { ApiError } from "../api/request";
-import { ApiValidationError } from "../api/request";
+import { ApiConflictError, ApiValidationError } from "../api/request";
 import { BudgetBar } from "../components/budget-bar";
 import { Field } from "../components/field";
 import { LoggedSplit } from "../components/logged-split";
@@ -56,7 +56,34 @@ export interface ProjectEconomyProps {
    * and imports nothing from it, so the host is the one that can say.
    */
   expensesHref?: string;
+  /**
+   * Where this project's Invoicing tab lives (invoices work design D18): the
+   * invoice plan then links to it, where the ready work is chosen and an
+   * invoice drafted. The host hands it over only when that tab is open to the
+   * caller.
+   */
+  invoicingHref?: string;
+  /**
+   * Where one invoice lives in the host's routes, for a milestone the
+   * Invoices module invoiced: "Invoiced by invoice n" is then a link. Without
+   * it the words stand alone.
+   */
+  invoiceHref?: (invoiceId: number) => string;
 }
+
+/** A host-given path as a link: the shell's router link where there is one, a plain anchor otherwise. */
+const HostLink = ({ href, children }: { href: string; children: ReactNode }) => {
+  const Link = useShellLink();
+  return Link ? (
+    <Anchor size="sm" renderRoot={(props) => <Link to={href} {...props} />}>
+      {children}
+    </Anchor>
+  ) : (
+    <Anchor size="sm" href={href}>
+      {children}
+    </Anchor>
+  );
+};
 
 /**
  * The Economy tab (design §7): the budget against what has been logged, what
@@ -70,7 +97,7 @@ export interface ProjectEconomyProps {
  * The costs section carries nothing but money, so it stands or falls with the
  * `expenses` block the server either sends or does not.
  */
-export const ProjectEconomy = ({ projectId, expensesHref }: ProjectEconomyProps) => {
+export const ProjectEconomy = ({ projectId, expensesHref, invoicingHref, invoiceHref }: ProjectEconomyProps) => {
   const { t } = useI18n("projects");
   const { data: project, isPending, isError, error } = useQuery(projectQueryOptions(projectId));
 
@@ -93,7 +120,13 @@ export const ProjectEconomy = ({ projectId, expensesHref }: ProjectEconomyProps)
       <BudgetSection projectId={projectId} />
       <ExpensesSection projectId={projectId} />
       {project.capabilities.canSeeFinancials ? (
-        <InvoicePlan projectId={projectId} project={project} expensesHref={expensesHref} />
+        <InvoicePlan
+          projectId={projectId}
+          project={project}
+          expensesHref={expensesHref}
+          invoicingHref={invoicingHref}
+          invoiceHref={invoiceHref}
+        />
       ) : (
         <EmptyState icon={IconLock} title={t("financialsHidden")} description={t("invoicePlanHiddenDescription")} />
       )}
@@ -668,10 +701,14 @@ const InvoicePlan = ({
   projectId,
   project,
   expensesHref,
+  invoicingHref,
+  invoiceHref,
 }: {
   projectId: number;
   project: Project;
   expensesHref?: string;
+  invoicingHref?: string;
+  invoiceHref?: (invoiceId: number) => string;
 }) => {
   const { t } = useI18n("projects");
   const { data: plan, isPending, isError, error } = useQuery(milestonePlanQueryOptions(projectId));
@@ -704,11 +741,18 @@ const InvoicePlan = ({
                 {t("invoicePlanDescription")}
               </Text>
             </Stack>
-            {canManage && currency && (
-              <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setModalState({ mode: "create" })}>
-                {t("addMilestone")}
-              </Button>
-            )}
+            <Group gap="sm">
+              {invoicingHref && <HostLink href={invoicingHref}>{t("invoiceTheWork")}</HostLink>}
+              {canManage && currency && (
+                <Button
+                  size="xs"
+                  leftSection={<IconPlus size={14} />}
+                  onClick={() => setModalState({ mode: "create" })}
+                >
+                  {t("addMilestone")}
+                </Button>
+              )}
+            </Group>
           </Group>
 
           {!currency && (
@@ -756,6 +800,7 @@ const InvoicePlan = ({
                         moveDownTo={at >= 0 && at < open.length - 1 ? open[at + 1].position : undefined}
                         onEdit={setModalState}
                         onInvoice={setInvoicing}
+                        invoiceHref={invoiceHref}
                       />
                     );
                   })}
@@ -891,6 +936,7 @@ const MilestoneRow = ({
   moveDownTo,
   onEdit,
   onInvoice,
+  invoiceHref,
 }: {
   milestone: BillingMilestone;
   /** The project's `capabilities.canManageMilestones` — who may reorder the plan. */
@@ -900,6 +946,7 @@ const MilestoneRow = ({
   moveDownTo?: number;
   onEdit: (state: MilestoneModalState) => void;
   onInvoice: (milestone: BillingMilestone) => void;
+  invoiceHref?: (invoiceId: number) => string;
 }) => {
   const { t } = useI18n("projects");
   const dates = useProjectDates();
@@ -952,7 +999,9 @@ const MilestoneRow = ({
       </Menu.Item>,
     );
   }
-  if (can.canUndoInvoiced) {
+  // A milestone the Invoices module invoiced is that invoice's: only a credit
+  // note returning its line takes it back, so no manual undo is offered.
+  if (can.canUndoInvoiced && !milestone.invoicedByInvoice) {
     items.push(
       <Menu.Item key="undo" onClick={actions.confirmUndo}>
         {t("undoMilestoneInvoiced")}
@@ -1018,9 +1067,21 @@ const MilestoneRow = ({
         <MilestoneAmount milestone={milestone} />
       </Table.Td>
       <Table.Td>
-        <Badge variant="light" color={milestoneStatusColor(milestone.status)}>
-          {t(milestoneStatusLabelKey(milestone.status))}
-        </Badge>
+        <Stack gap={2} align="flex-start">
+          <Badge variant="light" color={milestoneStatusColor(milestone.status)}>
+            {t(milestoneStatusLabelKey(milestone.status))}
+          </Badge>
+          {milestone.invoicedByInvoice &&
+            (invoiceHref ? (
+              <HostLink href={invoiceHref(milestone.invoicedByInvoice.invoiceId)}>
+                {t("invoicedByInvoice", { number: milestone.invoicedByInvoice.number })}
+              </HostLink>
+            ) : (
+              <Text size="sm" data-testid="invoiced-by-invoice">
+                {t("invoicedByInvoice", { number: milestone.invoicedByInvoice.number })}
+              </Text>
+            ))}
+        </Stack>
       </Table.Td>
       <Table.Td>
         {items.length > 0 && (
@@ -1058,6 +1119,12 @@ const useMilestoneActions = (milestone: BillingMilestone) => {
     if (error instanceof ApiValidationError) {
       const message = error.fieldErrors.status ?? Object.values(error.fieldErrors)[0] ?? error.message;
       notifications.show({ color: "red", title, message });
+      return;
+    }
+    // A milestone the Invoices module invoiced: only a credit note takes it back.
+    if (error instanceof ApiConflictError && error.code === "invoiced_by_invoices") {
+      const number = error.problem.invoiceNumber;
+      notifications.show({ color: "red", title, message: t("invoicedByInvoicesRefusal", { number: number ?? "" }) });
       return;
     }
     const conflict = (error as ApiError).status === 409;

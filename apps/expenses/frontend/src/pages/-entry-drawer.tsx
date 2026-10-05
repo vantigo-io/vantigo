@@ -14,7 +14,7 @@ import { BillingModal } from "./-billing-modal";
 import { MarkInvoicedModal } from "./-mark-invoiced-modal";
 import { RateOverrideModal } from "./-rate-override-modal";
 import { RejectModal } from "./-reject-modal";
-import { useUndoInvoiced } from "./-undo-invoiced";
+import { canUndoInvoiced, useUndoInvoiced } from "./-undo-invoiced";
 
 export interface EntryDrawerProps {
   /** The expense being looked at, or null when the drawer is closed. */
@@ -28,6 +28,8 @@ export interface EntryDrawerProps {
    * drawer beside another module's figures and has to refresh those too.
    */
   onChanged?: () => void;
+  /** Where one invoice lives in the host's routes, for the line's "Invoiced by invoice n". */
+  invoiceHref?: (invoiceId: number) => string;
 }
 
 /**
@@ -40,10 +42,18 @@ export interface EntryDrawerProps {
  * refreshing underneath never changes it, so two people editing the same
  * expense still get the 409 that is the point of the guard.
  */
-export const EntryDrawer = ({ expense, onClose, onChanged }: EntryDrawerProps) => {
+export const EntryDrawer = ({ expense, onClose, onChanged, invoiceHref }: EntryDrawerProps) => {
   return (
     <Drawer opened={expense !== null} onClose={onClose} position="right" size="lg" title={expense?.description ?? ""}>
-      {expense && <EntryActions key={expense.id} expense={expense} onClose={onClose} onChanged={onChanged} />}
+      {expense && (
+        <EntryActions
+          key={expense.id}
+          expense={expense}
+          onClose={onClose}
+          onChanged={onChanged}
+          invoiceHref={invoiceHref}
+        />
+      )}
     </Drawer>
   );
 };
@@ -52,10 +62,12 @@ const EntryActions = ({
   expense,
   onClose,
   onChanged,
+  invoiceHref,
 }: {
   expense: Expense;
   onClose: () => void;
   onChanged?: () => void;
+  invoiceHref?: (invoiceId: number) => string;
 }) => {
   const { t } = useI18n("expenses");
   const queryClient = useQueryClient();
@@ -110,7 +122,7 @@ const EntryActions = ({
   return (
     <Stack>
       <RefusalList messages={refusals} />
-      <EntryDetails expense={current} />
+      <EntryDetails expense={current} invoiceHref={invoiceHref} />
 
       <Group wrap="wrap">
         {current.capabilities.canApprove && (
@@ -143,7 +155,7 @@ const EntryActions = ({
             {t("markInvoiced")}
           </Button>
         )}
-        {current.capabilities.canUndoInvoiced && (
+        {canUndoInvoiced(current) && (
           <Button
             variant="default"
             color="red"

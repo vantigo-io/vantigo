@@ -251,3 +251,21 @@ describe("the invoice list's EHF column", () => {
     expect(within(rows[3]).getByTestId("ehf-badge")).toHaveAttribute("data-status", "delivered");
   });
 });
+
+describe("the project a document's work belongs to", () => {
+  it("is a column, and filters the list on it until cleared", async () => {
+    const fetchMock = server();
+    renderRoute("/invoices");
+
+    expect(await screen.findByRole("columnheader", { name: "Project" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Show only project P-41" }));
+    await waitFor(() => expect(fetchMock.actualCalls.some(([url]) => path(url).includes("projectId=41"))).toBe(true));
+    expect(screen.getByTestId("project-filter")).toHaveTextContent("Project P-41");
+
+    const before = fetchMock.actualCalls.length;
+    await userEvent.click(screen.getByRole("button", { name: "Clear the project filter" }));
+    expect(screen.queryByTestId("project-filter")).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.actualCalls.length).toBeGreaterThan(before));
+    expect(path(fetchMock.actualCalls[fetchMock.actualCalls.length - 1][0])).not.toContain("projectId");
+  });
+});

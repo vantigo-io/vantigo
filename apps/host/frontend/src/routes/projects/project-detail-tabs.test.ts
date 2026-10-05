@@ -26,6 +26,7 @@ describe("project detail tab visibility", () => {
       "economy",
       "time",
       "expenses",
+      "invoicing",
     ]);
   });
 
@@ -85,10 +86,22 @@ describe("project detail tab visibility", () => {
     ).toContain("expenses");
   });
 
-  it("puts the two tabs other modules add last, time before expenses", () => {
+  it("puts the three tabs other modules add last: time, expenses, then invoicing", () => {
     const shown = values(moduleKeys, ["*"], canSeeEverything);
-    expect(shown.at(-1)).toBe("expenses");
-    expect(shown.indexOf("time")).toBeLessThan(shown.indexOf("expenses"));
+    expect(shown.slice(-3)).toEqual(["time", "expenses", "invoicing"]);
+  });
+
+  // Invoicing is the third tab from another module (invoices work design
+  // D18): the uninvoiced work lists the hours, the people and the rates an
+  // invoice will state, so it is the drafter's — invoices:create — and the
+  // installation has to have mounted invoices.
+  it("shows the invoicing tab only when the module is on and the caller holds invoices:create", () => {
+    expect(values(moduleKeys, ["projects:access", "invoices:access", "invoices:create"], canSeeEverything)).toContain(
+      "invoicing",
+    );
+    expect(values(moduleKeys, ["projects:access", "invoices:access"], canSeeEverything)).not.toContain("invoicing");
+    expect(values(["projects", "time", "expenses"], ["*"], canSeeEverything)).not.toContain("invoicing");
+    expect(values(undefined, ["*"], canSeeEverything)).not.toContain("invoicing");
   });
 
   // Tasks follow the project's own roles — there is no task permission and no
@@ -122,7 +135,7 @@ describe("project detail tab visibility", () => {
         canManageMilestones: true,
         canSeeCosts: false,
       }),
-    ).toEqual(["overview", "tasks", "people", "economy", "time", "expenses"]);
+    ).toEqual(["overview", "tasks", "people", "economy", "time", "expenses", "invoicing"]);
   });
 
   it("hides the billing tab while the project is still loading, but keeps economy", () => {
@@ -133,6 +146,7 @@ describe("project detail tab visibility", () => {
       "economy",
       "time",
       "expenses",
+      "invoicing",
     ]);
   });
 

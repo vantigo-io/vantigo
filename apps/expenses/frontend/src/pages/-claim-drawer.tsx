@@ -18,7 +18,7 @@ import { BillingModal } from "./-billing-modal";
 import { MarkInvoicedModal } from "./-mark-invoiced-modal";
 import { RateOverrideModal } from "./-rate-override-modal";
 import { RejectModal } from "./-reject-modal";
-import { useUndoInvoiced } from "./-undo-invoiced";
+import { canUndoInvoiced, useUndoInvoiced } from "./-undo-invoiced";
 
 export interface ClaimDrawerProps {
   /**
@@ -190,7 +190,7 @@ const ClaimActions = ({ claimId, onClose }: { claimId: number; onClose: () => vo
             {t("markInvoiced")}
           </Button>
         )}
-        {current.capabilities.canUndoInvoiced && (
+        {canUndoInvoiced(current) && (
           <Button
             size="xs"
             h={40}

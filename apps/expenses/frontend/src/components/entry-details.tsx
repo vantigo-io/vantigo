@@ -8,6 +8,7 @@ import { useExpenseFormat } from "../lib/format";
 import { perDiemTypeLabelKey } from "../lib/per-diem";
 import { expenseKindLabelKey, takesReceipts } from "../lib/status";
 import { ExpenseStatusBadge } from "./expense-status-badge";
+import { InvoicedByBadge } from "./invoiced-by-badge";
 import { PerDiemDetails } from "./per-diem-details";
 import { ReceiptThumbnails } from "./receipt-thumbnails";
 
@@ -15,6 +16,8 @@ export interface EntryDetailsProps {
   expense: Expense;
   /** Left out, the receipts are shown; the list rows pass false to keep a row short. */
   withReceipts?: boolean;
+  /** Where one invoice lives in the host's routes: "Invoiced by invoice n" is then a link. */
+  invoiceHref?: (invoiceId: number) => string;
 }
 
 const Field = ({ label, children }: { label: string; children: ReactNode }) => (
@@ -36,7 +39,7 @@ const Field = ({ label, children }: { label: string; children: ReactNode }) => (
  * stands, and the rate override is there while one stands. Nothing is
  * re-derived and nothing is guessed.
  */
-export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps) => {
+export const EntryDetails = ({ expense, withReceipts = true, invoiceHref }: EntryDetailsProps) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const mileage = expense.kind === "mileage";
@@ -62,6 +65,9 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
         <Badge variant="default">{t(expenseKindLabelKey(expense.kind))}</Badge>
         {expense.rateOverride && <Badge color="orange">{t("rateOverridden")}</Badge>}
         {overdue && <Badge color="red">{t("overdue")}</Badge>}
+        {expense.billing?.invoice?.invoicedBy && (
+          <InvoicedByBadge invoicedBy={expense.billing.invoice.invoicedBy} invoiceHref={invoiceHref} />
+        )}
       </Group>
 
       {expense.decision?.status === "rejected" && expense.decision.reason && (

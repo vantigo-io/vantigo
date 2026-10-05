@@ -39,6 +39,7 @@ vi.mock("@vantigo/invoices-ui", () => ({
       customer {customerId} canCreate {String(canCreate)} as {userDisplayName ?? "nobody"}
     </div>
   ),
+  UninvoicedWorkPanel: ({ customerId }: { customerId: number }) => <div>uninvoiced work of customer {customerId}</div>,
 }));
 
 // The customer as the layout's loader cached it: normalised, so an unmerged
@@ -111,6 +112,21 @@ describe("the customer page's invoices tab", () => {
   it("offers no new invoice while the customer is not yet known", () => {
     renderTab(creator, undefined, { data: undefined });
     expect(screen.getByText("customer 42 canCreate false as Kari Nordmann")).toBeInTheDocument();
+  });
+
+  // The uninvoiced work lists the hours, the people and the rates an invoice
+  // will state, so it is the drafter's (invoices work design D10, D18).
+  it("puts the customer's uninvoiced work above the list for a caller with invoices:create", () => {
+    renderTab(["invoices:access", "invoices:create"]);
+    const work = screen.getByText("uninvoiced work of customer 42");
+    const list = screen.getByText(/customer 42 canCreate/);
+    expect(work.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows no uninvoiced work without invoices:create", () => {
+    renderTab(["invoices:access", "customers:view"]);
+    expect(screen.queryByText(/uninvoiced work/)).not.toBeInTheDocument();
+    expect(screen.getByText(/customer 42 canCreate/)).toBeInTheDocument();
   });
 
   it("renders the not-enabled page in place when the installation did not mount invoices", () => {

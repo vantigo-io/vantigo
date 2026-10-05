@@ -59,6 +59,18 @@ export const refusalMessage = (
 };
 
 /**
+ * A refusal of the wizard's (`POST /from-work`) in words: its own wording
+ * (`workRefusal.<code>`) first — a source the wizard was handed is a piece of
+ * the chosen work, where the issue's words name a line — and the module's
+ * `refusal.<code>` otherwise, as `refusalMessage` says it.
+ */
+export const workRefusalMessage = (error: unknown, t: Translate, date: (day: string) => string = (d) => d): string => {
+  const code = refusalCode(error);
+  if (code && `workRefusal.${code}` in invoicesCatalog.en) return t(`workRefusal.${code}`);
+  return refusalMessage(error, t, date);
+};
+
+/**
  * A refusal code in words, without an error to carry it — a `blockedBy` the
  * server judged ahead of the request: the catalog's `refusal.<code>`, or the
  * code itself when this version has no words for it.
@@ -73,7 +85,8 @@ export const refusalWords = (code: string, t: Translate): string =>
  * the catalog's `fieldInvalid.<field>` — a line's `lines[2].quantity` by
  * `fieldInvalid.line.quantity`, and a field of another request than the
  * draft's under its `scope`, a payment's `note` by `fieldInvalid.payment.note`
- * — and by the server's own sentence only where
+ * — a wizard's `sources[3]` by `fieldInvalid.fromWork.sources` — and by the
+ * server's own sentence only where
  * the catalog has no words for the field. Each field's
  * catalog sentence covers every rule the server checks on it, so it says what
  * was refused in the reader's language.
@@ -87,7 +100,8 @@ export const fieldRefusals = (
   const onInputs: Record<string, string> = {};
   const elsewhere: string[] = [];
   for (const [field, message] of Object.entries(error.fieldErrors)) {
-    const key = `fieldInvalid.${scope ? `${scope}.` : ""}${field.replace(/^lines\[\d+\]\./, "line.")}`;
+    const named = field.replace(/^lines\[\d+\]\./, "line.").replace(/^sources\[\d+\]$/, "sources");
+    const key = `fieldInvalid.${scope ? `${scope}.` : ""}${named}`;
     const words = key in invoicesCatalog.en ? t(key) : message;
     if (hasInput(field)) onInputs[field] = words;
     else elsewhere.push(words);

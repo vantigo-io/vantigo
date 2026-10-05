@@ -18,6 +18,7 @@ export const timeCatalog = {
     statusApproved: "Approved",
     statusRejected: "Rejected",
     statusInvoiced: "Invoiced",
+    statusInvoicedBy: "Invoiced by invoice {{number}}",
 
     myWeek: "My week",
     myWeekDescription: "Your hours for the week, a row for each project, line and task you work on.",
@@ -233,6 +234,7 @@ export const timeCatalog = {
     statusApproved: "Godkjent",
     statusRejected: "Avvist",
     statusInvoiced: "Fakturert",
+    statusInvoicedBy: "Fakturert på faktura {{number}}",
 
     myWeek: "Min uke",
     myWeekDescription: "Timene dine for uken, en rad for hvert prosjekt, hver linje og hver oppgave du jobber med.",

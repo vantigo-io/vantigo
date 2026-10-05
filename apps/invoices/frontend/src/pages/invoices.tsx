@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  CloseButton,
   Group,
   Modal,
   Pagination,
@@ -59,6 +60,9 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
     placeholderData: keepPreviousData,
   });
   const [creating, setCreating] = useState(false);
+  // The project filter (invoices work design D9) is set from a row's project
+  // reference, which is also what the chip names it by.
+  const [projectReference, setProjectReference] = useState<string | null>(null);
   const set = (next: Partial<InvoiceListFilters>) =>
     setFilters((current) => ({ ...current, ...next, page: next.page ?? 1 }));
   const canCreate = Boolean(meta.data?.capabilities.canCreate) && canViewCustomers;
@@ -161,6 +165,19 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
           value={filters.to ?? null}
           onChange={(d) => set({ to: d ?? undefined })}
         />
+        {filters.projectId !== undefined && (
+          <Group gap={4} data-testid="project-filter">
+            <Text size="sm">{t("projectFilter", { reference: projectReference ?? filters.projectId })}</Text>
+            <CloseButton
+              size="sm"
+              aria-label={t("clearProjectFilter")}
+              onClick={() => {
+                setProjectReference(null);
+                set({ projectId: undefined });
+              }}
+            />
+          </Group>
+        )}
       </Group>
       {list.isError && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadInvoices")}>
@@ -173,7 +190,14 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
       )}
       {list.data && list.data.data.length > 0 && (
         <>
-          <InvoiceTable rows={list.data.data} showCustomer />
+          <InvoiceTable
+            rows={list.data.data}
+            showCustomer
+            onProject={(projectId, reference) => {
+              setProjectReference(reference);
+              set({ projectId });
+            }}
+          />
           {list.data.pagination.totalPages > 1 && (
             <Pagination
               total={list.data.pagination.totalPages}

@@ -531,3 +531,88 @@ describe("the invoice settings", () => {
     expect(screen.queryByText("The VAT code changed")).not.toBeInTheDocument();
   });
 });
+
+describe("the Work to invoice card", () => {
+  const workCard = () => screen.findByTestId("work-card");
+
+  it("shows the code per kind of work and the timesheet's default and label, and saves the changes", async () => {
+    const fetchMock = server();
+    renderWithProviders(<SettingsPage />);
+
+    const card = await workCard();
+    await waitFor(() =>
+      expect(within(card).getByRole("combobox", { name: "VAT code for hours" })).toHaveValue("3 — Utgående mva 25 %"),
+    );
+    expect(within(card).getByRole("checkbox", { name: "Attach a timesheet to new invoices" })).not.toBeChecked();
+    expect(within(card).getByRole("combobox", { name: "How the timesheet names each person" })).toHaveValue(
+      "Initials (KN)",
+    );
+
+    await userEvent.click(within(card).getByRole("combobox", { name: "VAT code for expenses" }));
+    await userEvent.click(await screen.findByRole("option", { name: "31 — Utgående mva 15 %" }));
+    await userEvent.click(within(card).getByRole("checkbox", { name: "Attach a timesheet to new invoices" }));
+    await userEvent.click(within(card).getByRole("combobox", { name: "How the timesheet names each person" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Full name" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
+    expect(sent(fetchMock, "PUT").body).toMatchObject({
+      workVatCodes: { hours: 1, expenses: 2, milestones: 1 },
+      timesheetDefault: true,
+      timesheetPersonLabel: "name",
+      revision: 5,
+    });
+  });
+
+  it("names a stored code that is no longer offered", async () => {
+    const state = world();
+    state.settings = settings({ workVatCodes: { hours: 9, expenses: 1, milestones: 1 } });
+    server({}, state);
+    renderWithProviders(<SettingsPage />);
+    const card = await workCard();
+    await waitFor(() =>
+      expect(within(card).getByRole("combobox", { name: "VAT code for hours" })).toHaveValue(
+        "3G — Gammel sats (no longer offered)",
+      ),
+    );
+  });
+
+  it("puts a refused code and a refused label on their own inputs, in words", async () => {
+    server({
+      "PUT /api/v1/invoices/settings": jsonResponse(400, {
+        title: "Invalid invoice settings",
+        status: 400,
+        errors: {
+          "workVatCodes.milestones": ["VAT code 9 is not active"],
+          timesheetPersonLabel: ["timesheetPersonLabel must be initials, number or name"],
+        },
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+
+    const card = await workCard();
+    await userEvent.click(within(card).getByRole("checkbox", { name: "Attach a timesheet to new invoices" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(within(card).getByRole("combobox", { name: "VAT code for milestones" })).toHaveAccessibleDescription(
+        "Choose a VAT code that exists and is offered for new lines.",
+      ),
+    );
+    expect(
+      within(card).getByRole("combobox", { name: "How the timesheet names each person" }),
+    ).toHaveAccessibleDescription(expect.stringContaining("Initials, number or name."));
+    expect(screen.queryByText("Could not save the settings")).not.toBeInTheDocument();
+    expect(screen.queryByText(/is not active/)).not.toBeInTheDocument();
+
+    // Changing one code takes its own refusal away and leaves the other's.
+    await userEvent.click(within(card).getByRole("combobox", { name: "VAT code for milestones" }));
+    await userEvent.click(await screen.findByRole("option", { name: "5 — Fritatt innenlands 0 %" }));
+    expect(within(card).getByRole("combobox", { name: "VAT code for milestones" })).not.toHaveAccessibleDescription(
+      "Choose a VAT code that exists and is offered for new lines.",
+    );
+    expect(
+      within(card).getByRole("combobox", { name: "How the timesheet names each person" }),
+    ).toHaveAccessibleDescription(expect.stringContaining("Initials, number or name."));
+  });
+});

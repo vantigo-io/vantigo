@@ -1,4 +1,4 @@
-import { ApiValidationError } from "../api/request";
+import { ApiConflictError, ApiValidationError } from "../api/request";
 
 /**
  * What to tell the person when the server refused a write. A validation
@@ -12,6 +12,18 @@ export const refusalMessage = (error: Error, preferredField?: string): string =>
     return Object.values(messages)[0] ?? error.message;
   }
   return error.message;
+};
+
+/**
+ * The number of the invoice a 409 `invoiced_by_invoices` names (invoices work
+ * design D1): a line the Invoices module invoiced, whose mark only a credit
+ * note returning it takes back — refused on a manual mark and on its undo.
+ * Undefined for any other error; a number the problem leaves out is "".
+ */
+export const invoicedByInvoicesNumber = (error: unknown): number | string | undefined => {
+  if (!(error instanceof ApiConflictError) || error.code !== "invoiced_by_invoices") return undefined;
+  const number = error.problem.invoiceNumber;
+  return typeof number === "number" ? number : "";
 };
 
 /**

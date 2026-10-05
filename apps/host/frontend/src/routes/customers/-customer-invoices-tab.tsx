@@ -3,7 +3,7 @@ import { useParams } from "@tanstack/react-router";
 import { customerQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { isReadOnlyCustomer } from "@vantigo/customers-ui/lib/customer-read-only";
 import { useI18n } from "@vantigo/frontend-shell";
-import { CustomerInvoicesPanel } from "@vantigo/invoices-ui";
+import { CustomerInvoicesPanel, UninvoicedWorkPanel } from "@vantigo/invoices-ui";
 import { ModuleNotEnabledPage } from "../../components/errors";
 import { enabledModuleKeys } from "../../lib/enabled-modules";
 import { useInvoiceAccess } from "../../lib/invoice-access";
@@ -19,6 +19,12 @@ import "../../i18n";
  * draft for — active, neither merged away nor anonymised. An archived or
  * disabled customer, or one still loading, gets no "New invoice".
  *
+ * Above the list sits the customer's work not yet invoiced (invoices work
+ * design D18), for a caller who may draft an invoice of it — `invoices:create`
+ * alone, since the view lists the hours, the people and the rates the invoice
+ * will state and the wizard names the customer by id. The panel says nothing
+ * on an installation that invoices no work.
+ *
  * It sits beside the route file rather than inside it because the route file
  * may export nothing but its `Route` without costing the bundle a code split.
  */
@@ -31,15 +37,18 @@ export const CustomerInvoicesTab = () => {
   const customer = useQuery(customerQueryOptions(customerId));
   if (!enabledModuleKeys().includes("invoices")) return <ModuleNotEnabledPage appLabel={t("navigation.invoices")} />;
   return (
-    <CustomerInvoicesPanel
-      customerId={customerId}
-      canCreate={
-        access.canCreateInvoices &&
-        access.canViewCustomers &&
-        !isReadOnlyCustomer(customer.data) &&
-        customer.data?.status === "active"
-      }
-      userDisplayName={access.userDisplayName}
-    />
+    <>
+      {access.canCreateInvoices && <UninvoicedWorkPanel customerId={customerId} />}
+      <CustomerInvoicesPanel
+        customerId={customerId}
+        canCreate={
+          access.canCreateInvoices &&
+          access.canViewCustomers &&
+          !isReadOnlyCustomer(customer.data) &&
+          customer.data?.status === "active"
+        }
+        userDisplayName={access.userDisplayName}
+      />
+    </>
   );
 };

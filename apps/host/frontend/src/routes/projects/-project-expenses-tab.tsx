@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { ProjectExpensesPanel } from "@vantigo/expenses-ui/components/project-expenses-panel";
 import { useI18n } from "@vantigo/frontend-shell";
+import { useInvoiceHref } from "../../lib/invoice-access";
 import { ModuleTabGate } from "./-module-tab-gate";
 import "../../i18n";
 
@@ -27,6 +28,8 @@ export const ProjectExpensesTab = () => {
   const { t } = useI18n("host");
   const { projectId } = useParams({ from: "/projects/$projectId" });
   const queryClient = useQueryClient();
+  // Where a line the Invoices module invoiced links to, when the caller may open invoices.
+  const invoiceHref = useInvoiceHref();
   return (
     <ModuleTabGate module="expenses" permission="expenses:access" appLabel={t("navigation.expenses")}>
       {/* Keyed on the project: the panel keeps its filter, its page and its
@@ -37,6 +40,7 @@ export const ProjectExpensesTab = () => {
       <ProjectExpensesPanel
         key={projectId}
         projectId={projectId}
+        invoiceHref={invoiceHref}
         onChanged={() => void queryClient.invalidateQueries({ queryKey: ["projects", "economy"] })}
       />
     </ModuleTabGate>

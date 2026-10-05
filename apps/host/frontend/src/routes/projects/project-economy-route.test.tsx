@@ -11,9 +11,23 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 vi.mock("@vantigo/projects-ui/pages/project-economy", () => ({
-  ProjectEconomy: ({ projectId, expensesHref }: { projectId: number; expensesHref?: string }) => (
+  ProjectEconomy: ({
+    projectId,
+    expensesHref,
+    invoicingHref,
+    invoiceHref,
+  }: {
+    projectId: number;
+    expensesHref?: string;
+    invoicingHref?: string;
+    invoiceHref?: (invoiceId: number) => string;
+  }) => (
     <div>
-      economy for project {projectId} → {expensesHref ?? "no expenses link"}
+      <p>
+        economy for project {projectId} → {expensesHref ?? "no expenses link"}
+      </p>
+      <p>invoicing → {invoicingHref ?? "no invoicing link"}</p>
+      <p>invoice 990 → {invoiceHref?.(990) ?? "no invoice link"}</p>
     </div>
   ),
 }));
@@ -63,6 +77,33 @@ describe("the project page's economy route", () => {
   // Expenses app is an ordinary combination — and every operation of that API
   // demands `expenses:access`. A link for them would land on a page of
   // refusals under a tab strip the tab is not even in.
+  // The Invoicing tab is the invoices module's, behind invoices:create (D18):
+  // the link to it follows the tab, from the same function.
+  it("points the invoice plan at the project's Invoicing tab when that tab is open to the caller", () => {
+    renderRoute(["projects", "invoices"], ["invoices:access", "invoices:create"]);
+    expect(screen.getByText("invoicing → /projects/31/invoicing")).toBeInTheDocument();
+  });
+
+  it("offers no invoicing link without invoices:create or without the module", () => {
+    renderRoute(["projects", "invoices"], ["invoices:access"]);
+    expect(screen.getByText("invoicing → no invoicing link")).toBeInTheDocument();
+    cleanup();
+    renderRoute(["projects"], ["invoices:access", "invoices:create"]);
+    expect(screen.getByText("invoicing → no invoicing link")).toBeInTheDocument();
+  });
+
+  // "Invoiced by invoice n" links to the invoice for whoever may read invoices.
+  it("says where an invoice lives to a caller who may read invoices, and to nobody else", () => {
+    renderRoute(["projects", "invoices"], ["invoices:access"]);
+    expect(screen.getByText("invoice 990 → /invoices/990")).toBeInTheDocument();
+    cleanup();
+    renderRoute(["projects", "invoices"], ["projects:access"]);
+    expect(screen.getByText("invoice 990 → no invoice link")).toBeInTheDocument();
+    cleanup();
+    renderRoute(["projects"], ["invoices:access"]);
+    expect(screen.getByText("invoice 990 → no invoice link")).toBeInTheDocument();
+  });
+
   it("offers no link to a caller who may not open the Expenses tab", () => {
     renderRoute(["projects", "expenses"], ["projects:access"]);
 

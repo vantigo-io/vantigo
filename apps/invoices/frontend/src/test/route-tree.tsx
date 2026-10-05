@@ -11,6 +11,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
+import type { ReactNode } from "react";
 import "../i18n";
 import { INVOICE_ROUTE_PATH } from "../lib/routes";
 import { InvoicesPage } from "../pages/invoices";
@@ -44,6 +45,40 @@ export const renderRoute = (url: string, { canViewCustomers = true }: { canViewC
     routeTree: makeRouteTree(canViewCustomers),
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [url] }),
+  });
+  render(
+    <MantineProvider env="test">
+      <Notifications />
+      <ModalsProvider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ModalsProvider>
+    </MantineProvider>,
+  );
+  return { router, queryClient };
+};
+
+/**
+ * Mounts one component the host places on its own page — the uninvoiced
+ * work panel on a customer's or a project's tab — at `/here`, beside the
+ * document route its links and the wizard lead to, so a test reads the URL
+ * back after a click.
+ */
+export const renderAtHost = (ui: ReactNode) => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: () => <Outlet /> });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([
+      createRoute({ getParentRoute: () => rootRoute, path: "/here", component: () => ui }),
+      createRoute({
+        getParentRoute: () => rootRoute,
+        path: INVOICE_ROUTE_PATH,
+        component: () => <p>The document</p>,
+      }),
+    ]),
+    context: { queryClient },
+    history: createMemoryHistory({ initialEntries: ["/here"] }),
   });
   render(
     <MantineProvider env="test">
