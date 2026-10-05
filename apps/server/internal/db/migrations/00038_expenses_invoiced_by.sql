@@ -14,6 +14,14 @@ ALTER TABLE expenses.entries
     ADD CONSTRAINT ck_entries_invoiced_by_stamp
         CHECK (invoiced_invoice_id IS NULL OR (invoiced_at IS NOT NULL AND invoice_reference IS NULL));
 
+-- The index behind the billable read's supplier_invoice_rebilled (invoices
+-- work design D15): for every supplier invoice it asks whether another one
+-- with the same number has already been invoiced. Partial on exactly that, so
+-- it holds only the invoiced supplier invoices and the lookup is one probe by
+-- number; the supplier is compared on the few rows it finds.
+CREATE INDEX ix_entries_supplier_invoice_invoiced ON expenses.entries (supplier_invoice_number)
+    WHERE kind = 'supplier_invoice' AND invoiced_at IS NOT NULL;
+
 -- ready_to_invoice is the one "ready to invoice" rule (invoices work design D3):
 -- the unit approved, billable, not a per diem day, priced. It deliberately
 -- leaves out "not invoiced yet" — every caller states invoiced_at IS NULL
@@ -31,6 +39,7 @@ $$;
 
 -- +goose Down
 DROP FUNCTION expenses.ready_to_invoice(text, boolean, text, numeric);
+DROP INDEX expenses.ix_entries_supplier_invoice_invoiced;
 ALTER TABLE expenses.entries
     DROP CONSTRAINT ck_entries_invoiced_by_stamp,
     DROP CONSTRAINT ck_entries_invoiced_by,

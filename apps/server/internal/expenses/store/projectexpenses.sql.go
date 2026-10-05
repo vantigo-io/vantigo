@@ -96,15 +96,15 @@ type ProjectExpenseGroupsRow struct {
 //
 // Ready is expenses.ready_to_invoice (00038) and not yet invoiced, the very
 // rule GET /entries?toInvoice=true lists by, so the figure and the list stay
-// one sentence. Ready and unpriced exclude per diem days outright. A per diem day bills
-// nobody anything (design §4) and no door in this module can make one
-// billable, so today the clause changes no figure — but the two doors that
-// decide the same thing on the write side, POST /entries/{id}/invoiced and
-// accessFor's CanMarkInvoiced, both name per diem explicitly for the same
-// reason: a row that went billable before that ban was in force must not be
-// invoiceable either. A figure called "ready to invoice" must not name a line
-// the invoicing door would refuse, so the ban is stated here too rather than
-// trusted.
+// one sentence. Ready and unpriced exclude per diem days outright. A per
+// diem day bills nobody anything (design §4) and no door in this module can
+// make one billable, so today the clause changes no figure — but the two
+// doors that decide the same thing on the write side, POST
+// /entries/{id}/invoiced and accessFor's CanMarkInvoiced, both name per diem
+// explicitly for the same reason: a row that went billable before that ban
+// was in force must not be invoiceable either. A figure called "ready to
+// invoice" must not name a line the invoicing door would refuse, so the ban
+// is stated here too rather than trusted.
 //
 // The amounts are the unrounded numeric sums as text — rounding every group
 // and adding those is a different number from rounding the sum once, and only
