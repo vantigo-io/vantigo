@@ -728,7 +728,10 @@ func TestDeduction_ASettlementIsNotDeductibleWhereItDeducts(t *testing.T) {
 	createDraft(t, h, draftBody(customerAcme, line("Sluttoppgjør", 1, 300000, vat25), deduction(s, 1000, vat15)))
 
 	plantDeduction(t, h, d.ID, 2, s.ID, vat25)
-	conflictAt(t, "the issue of a planted deduction where the settlement deducts", issueWith(t, h, d.ID, ""), "deduction_exceeds_invoice", 2)
+	p := conflictAt(t, "the issue of a planted deduction where the settlement deducts", issueWith(t, h, d.ID, ""), "deduction_exceeds_invoice", 2)
+	if !strings.Contains(p.Detail, "deducts earlier invoices at this VAT code itself") {
+		t.Errorf("detail = %q, want it saying the invoice deducts at this code itself", p.Detail)
+	}
 }
 
 // The deducted invoice is in the settlement's currency: another currency's is
@@ -841,4 +844,71 @@ func TestDeduction_TheCreditOfASettlementLocksTheOriginalNotTheAKonto(t *testing
 		t.Errorf("the credit's lines = %+v, want the deduction copied", c.Lines)
 	}
 	probes.check(t, "the credit-note draft's creation", "settlement")
+}
+
+// The wizard's append re-writes the target's lines: a settlement's deduction
+// line keeps the invoice it deducts, its -1 and its price, and its a-konto's
+// 25 % snapshot after a rate change to 26 % — in the totals the append
+// stores, in the draft's answer, and at the issue, which agree.
+func TestFromWork_AnAppendKeepsASettlementsDeductionLine(t *testing.T) {
+	t.Parallel()
+	f := newWorkFixture(t, newFakeHolders().options()...)
+	h := f.h
+	a := issuedFor(t, h, customerAcme, line("A konto", 1, 100000, vat25))
+	if res := manager(t, h).Do(http.MethodPost, fmt.Sprintf("%s/%d/rates", vatCodesPath, vat25),
+		map[string]any{"ratePercent": 26, "validFrom": "2026-09-13"}); res.Status != http.StatusCreated {
+		t.Fatalf("rate change = %d %s", res.Status, res.Body)
+	}
+	h.Advance(24 * time.Hour)
+	d := createDraft(t, h, draftBody(customerAcme, line("Sluttoppgjør", 1, 150000, vat25), deduction(a, 100000, vat25)))
+
+	body := fromWorkBody(customerAcme, workSrc("projects.milestone", workMilestne, 1))
+	body["invoiceId"], body["revision"] = d.ID, d.Revision
+	if res, _ := postFromWork(t, creator(t, h), body); res.Status != http.StatusOK {
+		t.Fatalf("append = %d %s, want 200", res.Status, res.Body)
+	}
+	// 160 000 at 26 % and -100 000 at the a-konto's 25 %.
+	const vat, gross = 41600 - 25000, 60000 + 41600 - 25000
+	got := getInvoice(t, h, d.ID)
+	if len(got.Lines) != 3 {
+		t.Fatalf("the appended draft has %d lines, want 3", len(got.Lines))
+	}
+	if l := got.Lines[1]; l.DeductsInvoiceID == nil || *l.DeductsInvoiceID != a.ID || l.Quantity != -1 || l.UnitPrice != 100000 || l.LineNet != -100000 {
+		t.Errorf("the deduction after the append = %+v, want -1 × 100 000 deducting %d", l, a.ID)
+	}
+	if got.VatTotal != vat || got.GrossTotal != gross {
+		t.Errorf("the appended draft = VAT %v gross %v, want %v and %v", got.VatTotal, got.GrossTotal, vat, gross)
+	}
+	if stored := modtest.One[string](t, h.Harness, `SELECT vat_total::text || ' ' || gross_total::text FROM invoices.invoices WHERE id = $1`, d.ID); stored != "16600.00 76600.00" {
+		t.Errorf("the totals the append stored = %s, want 16600.00 76600.00", stored)
+	}
+	inv := issued(t, h, d.ID)
+	if inv.VatTotal != vat || inv.GrossTotal != gross || *inv.Lines[1].VatRatePercent != 25 {
+		t.Errorf("the issued settlement = VAT %v gross %v at %v %%, want %v and %v at 25 %%", inv.VatTotal, inv.GrossTotal,
+			*inv.Lines[1].VatRatePercent, vat, gross)
+	}
+}
+
+// too_many_lines counts every line of the append's target, a deduction line
+// included: 499 lines, one of them a deduction, and two more is past 500;
+// one more is not.
+func TestFromWork_TooManyLinesCountsTheTargetsDeductionLines(t *testing.T) {
+	t.Parallel()
+	f := newWorkFixture(t)
+	h := f.h
+	a := issuedFor(t, h, customerAcme, line("A konto", 1, 100000, vat25))
+	d := createDraft(t, h, draftBody(customerAcme, line("Sluttoppgjør", 1, 150000, vat25), deduction(a, 100000, vat25)))
+	h.Exec(t, `
+		INSERT INTO invoices.lines (invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id,
+		    line_gross, line_allowance, line_net)
+		SELECT $1, g, 'Fyll', 1, 'timer', 1, 0, 1, 1, 0, 1 FROM generate_series(3, 499) AS g`, d.ID)
+	d = getInvoice(t, h, d.ID)
+
+	body := fromWorkBody(customerAcme, workSrc("time.entry", workHourKari, 2), workSrc("time.entry", workHourOla, 1))
+	body["invoiceId"], body["revision"], body["grouping"] = d.ID, d.Revision, "itemised"
+	refusedFromWork(t, h, body, "too_many_lines")
+	body["sources"] = []map[string]any{workSrc("time.entry", workHourKari, 2)}
+	if res, doc := postFromWork(t, creator(t, h), body); res.Status != http.StatusOK || len(doc.Lines) != 500 {
+		t.Errorf("499 lines and one more = %d with %d lines, want 200 with 500", res.Status, len(doc.Lines))
+	}
 }
