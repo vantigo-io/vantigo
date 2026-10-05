@@ -42,6 +42,8 @@ type TimeEntry struct {
 	WorkTypeName          *string
 	BillMultiplierPercent pgtype.Numeric
 	CostMultiplierPercent pgtype.Numeric
+	InvoicedInvoiceID     *int64
+	InvoicedNumber        *int64
 }
 
 type TimePersonRate struct {

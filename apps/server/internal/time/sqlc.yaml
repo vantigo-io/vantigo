@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00010_time_baseline.sql
       - ../db/migrations/00032_time_work_types.sql
+      - ../db/migrations/00037_time_invoiced_by.sql
     queries: queries
     gen:
       go:

@@ -21,9 +21,15 @@
 // "time" without "projects" and "projects" without "customers", so the
 // directory is always there when time is — and the rate chain still checks it
 // for nil where it reads it, a defensive floor rather than a mode (a harness
-// can compose time without customers), never at mount. It provides one
-// contract of its own: contracts.ProjectActuals (actuals.go), what has been
-// logged against a project, which projects reads its economy from.
+// can compose time without customers), never at mount. It provides two
+// contracts of its own: contracts.ProjectActuals (actuals.go), what has been
+// logged against a project, which projects reads its economy from, and
+// contracts.BillableHours (billable.go), the approved, billable, priced
+// entries not yet invoiced, row by row, which an invoice is built from. And it
+// fills the InvoicedWork slot (invoiced_work.go, module-boundaries rule 10):
+// the holder through which the invoices issue stamps an entry invoiced, and a
+// credit note's issue takes the stamp back — the one way in and out of the
+// invoiced state.
 package timetracking
 
 import (
@@ -59,13 +65,17 @@ var limits = map[string]ratelimit.Policy{}
 // Module is time as a platform module: its contract mounted under
 // /api/v1/time/, its four permissions in the composed catalog, and the
 // contracts.ProjectActuals it publishes to whoever wants to compare what was
-// logged with what was planned — projects' economy first.
+// logged with what was planned — projects' economy first — beside the
+// contracts.BillableHours an invoice is built from and the invoiced-work
+// holder the invoices issue stamps entries through.
 func Module() module.Module {
 	return module.Module{
-		Name:        "time",
-		Permissions: permissions,
-		Mount:       mount,
-		Actuals:     newActuals,
+		Name:          "time",
+		Permissions:   permissions,
+		Mount:         mount,
+		Actuals:       newActuals,
+		BillableHours: newBillableHours,
+		InvoicedWork:  newInvoicedWorkHolder,
 	}
 }
 

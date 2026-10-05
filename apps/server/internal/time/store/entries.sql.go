@@ -103,7 +103,7 @@ func (q *Queries) DeleteEntry(ctx context.Context, arg DeleteEntryParams) (int64
 }
 
 const getEntries = `-- name: GetEntries :many
-SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent FROM time.entries WHERE id = ANY($1::bigint[])
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent, invoiced_invoice_id, invoiced_number FROM time.entries WHERE id = ANY($1::bigint[])
 `
 
 // GetEntries reads the entries in ids without locking them: what a batch
@@ -149,6 +149,8 @@ func (q *Queries) GetEntries(ctx context.Context, ids []int64) ([]TimeEntry, err
 			&i.WorkTypeName,
 			&i.BillMultiplierPercent,
 			&i.CostMultiplierPercent,
+			&i.InvoicedInvoiceID,
+			&i.InvoicedNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -161,7 +163,7 @@ func (q *Queries) GetEntries(ctx context.Context, ids []int64) ([]TimeEntry, err
 }
 
 const getEntry = `-- name: GetEntry :one
-SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent FROM time.entries WHERE id = $1
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent, invoiced_invoice_id, invoiced_number FROM time.entries WHERE id = $1
 `
 
 // GetEntry fetches one entry by id. Who may see it is decided in Go
@@ -201,6 +203,8 @@ func (q *Queries) GetEntry(ctx context.Context, id int64) (TimeEntry, error) {
 		&i.WorkTypeName,
 		&i.BillMultiplierPercent,
 		&i.CostMultiplierPercent,
+		&i.InvoicedInvoiceID,
+		&i.InvoicedNumber,
 	)
 	return i, err
 }
@@ -219,7 +223,7 @@ INSERT INTO time.entries (
     $17, $18, $19, $20,
     $21::timestamptz, $21::timestamptz
 )
-RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent
+RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent, invoiced_invoice_id, invoiced_number
 `
 
 type InsertEntryParams struct {
@@ -307,12 +311,14 @@ func (q *Queries) InsertEntry(ctx context.Context, arg InsertEntryParams) (TimeE
 		&i.WorkTypeName,
 		&i.BillMultiplierPercent,
 		&i.CostMultiplierPercent,
+		&i.InvoicedInvoiceID,
+		&i.InvoicedNumber,
 	)
 	return i, err
 }
 
 const listEntries = `-- name: ListEntries :many
-SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent FROM time.entries
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent, invoiced_invoice_id, invoiced_number FROM time.entries
 WHERE ($1::uuid IS NULL OR user_id = $1::uuid)
   AND ($2::boolean OR user_id = $3::uuid OR project_id = ANY($4::integer[]))
   AND ($5::date IS NULL
@@ -389,6 +395,8 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Tim
 			&i.WorkTypeName,
 			&i.BillMultiplierPercent,
 			&i.CostMultiplierPercent,
+			&i.InvoicedInvoiceID,
+			&i.InvoicedNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -401,7 +409,7 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Tim
 }
 
 const lockEntries = `-- name: LockEntries :many
-SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent FROM time.entries
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent, invoiced_invoice_id, invoiced_number FROM time.entries
 WHERE id = ANY($1::bigint[])
 ORDER BY id
 FOR UPDATE
@@ -451,6 +459,8 @@ func (q *Queries) LockEntries(ctx context.Context, ids []int64) ([]TimeEntry, er
 			&i.WorkTypeName,
 			&i.BillMultiplierPercent,
 			&i.CostMultiplierPercent,
+			&i.InvoicedInvoiceID,
+			&i.InvoicedNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -463,7 +473,7 @@ func (q *Queries) LockEntries(ctx context.Context, ids []int64) ([]TimeEntry, er
 }
 
 const lockEntry = `-- name: LockEntry :one
-SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent FROM time.entries WHERE id = $1 FOR UPDATE
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent, invoiced_invoice_id, invoiced_number FROM time.entries WHERE id = $1 FOR UPDATE
 `
 
 // LockEntry reads one entry and holds its row until the transaction ends. An
@@ -504,6 +514,8 @@ func (q *Queries) LockEntry(ctx context.Context, id int64) (TimeEntry, error) {
 		&i.WorkTypeName,
 		&i.BillMultiplierPercent,
 		&i.CostMultiplierPercent,
+		&i.InvoicedInvoiceID,
+		&i.InvoicedNumber,
 	)
 	return i, err
 }
@@ -515,7 +527,7 @@ UPDATE time.entries SET
     revision = revision + 1,
     updated_at = $1::timestamptz
 WHERE id = ANY($2::bigint[]) AND status = 'draft'
-RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent
+RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent, invoiced_invoice_id, invoiced_number
 `
 
 type SubmitEntriesParams struct {
@@ -566,6 +578,8 @@ func (q *Queries) SubmitEntries(ctx context.Context, arg SubmitEntriesParams) ([
 			&i.WorkTypeName,
 			&i.BillMultiplierPercent,
 			&i.CostMultiplierPercent,
+			&i.InvoicedInvoiceID,
+			&i.InvoicedNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -628,7 +642,7 @@ UPDATE time.entries SET
     revision = revision + 1,
     updated_at = $20::timestamptz
 WHERE id = $21 AND revision = $22 AND status IN ('draft', 'rejected') AND user_id = $23
-RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent
+RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent, invoiced_invoice_id, invoiced_number
 `
 
 type UpdateEntryParams struct {
@@ -723,6 +737,8 @@ func (q *Queries) UpdateEntry(ctx context.Context, arg UpdateEntryParams) (TimeE
 		&i.WorkTypeName,
 		&i.BillMultiplierPercent,
 		&i.CostMultiplierPercent,
+		&i.InvoicedInvoiceID,
+		&i.InvoicedNumber,
 	)
 	return i, err
 }

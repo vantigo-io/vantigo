@@ -16,8 +16,9 @@ in the shared PostgreSQL database, and serves `openapi/time.yaml` under
 It sits on top of [Projects](/en/reference/projects/): hours hang off a project, optionally a
 billing line and a task, and `time` without `projects` is a startup error. It stops
 short of invoicing. Time **snapshots** the rate that applied when the hours were
-submitted and marks entries invoiced when somebody tells it they were; it issues no
-invoice and holds no invoice line.
+submitted, and its entries are marked invoiced inside the issue of the
+[Invoices](/en/reference/invoices/) invoice that bills them; it issues no invoice and
+holds no invoice line ([what Time gives invoicing](#what-time-gives-invoicing)).
 
 ## Domain model
 
@@ -28,8 +29,10 @@ invoice and holds no invoice line.
   `rateSource` that produced them, the picked work type's snapshot (`workTypeId`, its
   name, `billMultiplierPercent` and `costMultiplierPercent`; all empty for ordinary
   hours), a `status`, a `rejectionReason`, the
-  `submittedAt`/`approvedAt`/`approvedBy`/`invoicedAt` stamps, and `revision` for
-  concurrent edits. The id is a `bigint`.
+  `submittedAt`/`approvedAt`/`approvedBy`/`invoicedAt` stamps, the invoice that
+  invoiced it (`invoicedBy`: the invoice's id and number, the columns
+  `invoiced_invoice_id`/`invoiced_number`, opaque — both or neither, and only on an
+  invoiced entry), and `revision` for concurrent edits. The id is a `bigint`.
 - **Person rate card** (`time.person_rates`) — one row per person per `validFrom`
   date: `billRate`, `costRate` and the `currency` both are quoted in. Rates are
   effective-dated; the row with the latest `validFrom` on or before an entry's date
@@ -175,18 +178,20 @@ at 333.33 and 150 % is worth 749.99 (749.9925), not 1.5 × 500.00.
 ## The state machine
 
 ```text
-        submit            approve           (invoicing)
+        submit            approve        (an invoice's issue)
 draft ───────────► submitted ───────► approved ───────────► invoiced
-  ▲                    │                  │
-  │                    │ reject           │ unapprove
-  │                    ▼                  │
+  ▲                    │                  │  ◄───────────────────┘
+  │                    │ reject           │   (a credit note's issue)
+  │                    ▼                  │ unapprove
   │                 rejected              │
   │       edit          │                 │
   └─────────────────────┴─────────────────┘
 ```
 
 An edit takes a rejected entry back to `draft`; unapprove takes an approved one back
-to `draft` too. `invoiced` has no way out.
+to `draft` too. Only a credit note takes an invoiced entry back: `invoiced → approved`
+has no endpoint, and happens only inside the issue of the credit note that returns
+the entry's invoice line in full ([what Time gives invoicing](#what-time-gives-invoicing)).
 
 - **draft** — the owner's to edit or delete. Content edits are owner-only.
 - **submitted** — frozen rates, waiting for an approver. The owner can no longer edit
@@ -195,11 +200,14 @@ to `draft` too. `invoiced` has no way out.
 - **rejected** — an approver sent it back with a reason (required, at most 1000
   characters). Editing a rejected entry makes it a draft again and clears
   `submittedAt`, so it has to be submitted afresh.
-- **invoiced** — terminal. Nothing moves an invoiced entry, unapprove included. This
-  module never writes `status: "invoiced"` or `invoicedAt` itself — the column, the
-  `WHERE status = 'approved'` guards and the "Entry N is invoiced" refusals all exist
-  for the future Invoices module to use. Tests reach the state directly through the
-  database.
+- **invoiced** — billed. No operation of this module moves an invoiced entry: an
+  edit or a delete answers 403, a submit refuses it as not a draft, and approve,
+  reject and unapprove refuse it with "Entry N is invoiced". The state is written only by the Invoices issue, through the holder
+  below, which sets `status`, `invoicedAt` and `invoicedBy`; and taken back only by a
+  credit note's issue, which returns the entry to `approved` with its approval stamps
+  as they were. An entry marked invoiced some other way — by hand in the database, as
+  the tests reach the state — carries `invoicedAt` and no `invoicedBy`, and no credit
+  note releases it.
 
 **Unapprove** takes an approved entry back to a **fresh draft**: it clears
 `submittedAt` as well as the approval, so the week reports unsubmitted changes and the
@@ -366,31 +374,73 @@ items for an unsubmitted week and for a submission that has waited a week — th
 titles are written by the host, from the item's type and entity id, because the
 server builds them from data and they would otherwise arrive in English.
 
-## What invoicing will read
+## What Time gives invoicing
 
-Time provides **no contract yet**; the module it is waiting for is invoicing, and the
-seam is already the right shape for it:
+Time gives the [Invoices](/en/reference/invoices/) module two things: a read of the
+hours an invoice can be built from, and the holder through which an invoice's issue
+marks them invoiced (and a credit note's takes the mark back). Neither is an
+endpoint; both are contracts Compose wires in
+([module boundaries](/en/contributing/module-boundaries/), rules 5 and 10).
 
-- **Approved, billable entries with a bill rate** are the invoiceable set: `hours ×
-  billRate × billMultiplierPercent / 100` (100 % for ordinary hours) in
-  `billCurrency`, computed exactly — the queries multiply by
-  `COALESCE(bill_multiplier_percent, 100) * 0.01`, which numeric does without
-  rounding — and rounded once per invoice line, never
-  from the display-only `effectiveRate`. Grouped by project and by the **trackable
-  code** `<project>-<line>` the billing line gives them — and, within a line, by work
-  type, since an overtime hour is billed at its own price.
-- The multiplier is a **snapshot** beside the rate, frozen with it, so a type whose
-  percentage changes after the hours were submitted bills them at what was promised.
-- The rate is a **snapshot**, so an invoice built next month from last month's hours
-  bills what was promised, not what the rate card says today.
+**`contracts.BillableHours`** (`internal/time/billable.go`) is the invoiceable set,
+row by row: **approved, billable entries with a bill rate** — an invoiced entry is
+no longer approved, so it is not there. Each row carries the entry's id, revision,
+project, billing line, person, date, hours (in hundredths), bill rate, currency,
+multiplier, work type and task title, and its **amount**: `hours × billRate ×
+billMultiplierPercent / 100` (100 % for ordinary hours), computed exactly — the
+query multiplies by `COALESCE(bill_multiplier_percent, 100) * 0.01`, which numeric
+does without rounding, so the decimal text carries up to eight decimals (1.25 h at
+100.33 and 150.25 % is `188.43228125`) — never from the display-only
+`effectiveRate`, and rounded only where an invoice line is. The entry's **note is
+never part of it**: it is the person's own text, not the customer's.
+
+- Read **by projects** (at most 2 000 at a time), it answers the projects' rows ordered
+  by project, date and id, at most 5 000, and says `More` when there were more; read
+  **by ids** (at most 5 000), it answers exactly those still billable — an entry
+  since invoiced, unapproved or otherwise no longer billable is simply absent. An
+  optional `until` keeps the work dated on or before a day.
+- It reads on the pool, from this module's own tables only, never calling a
+  directory back — the project's facts are the caller's to read — and authorizes
+  nothing: the caller has already decided who may see what.
+- The rate and the multiplier are **snapshots** frozen at submission, so an invoice
+  built next month from last month's hours bills what was promised, not what the
+  rate card or the work type says today.
 - `unpricedHours` on the project summary is what an invoice cannot price: billable
   hours with no rate, or priced in a currency the project does not bill in.
-- Setting `invoicedAt` makes an entry **terminal** — nothing edits, unapproves or
-  re-approves it. That is what makes it safe for invoicing to own the stamp.
-- The **period lock** is how a month gets closed before it is invoiced.
 
-Until that module exists, no endpoint writes `invoicedAt`; the column and the status
-are there so the state machine is complete rather than retrofitted.
+**The invoiced-work holder** (`internal/time/invoiced_work.go`) is the module's
+`contracts.InvoicedWorkHolder` for the kind `time.entry`, the one writer of the
+`invoiced` state. The Invoices issue calls it **inside its own transaction**, after
+every check and the invoice's number, with the entries the invoice bills as the
+draft read them through `BillableHours`; Time's entries are the last rows that
+transaction locks, after Projects' and Expenses'.
+
+- **The stamp** (`MarkInvoiced`) locks the entries in id order — the order every
+  batch here takes them in — and judges each as it stands under the lock, in this
+  order: already `invoiced` → `source_already_invoiced` (so an entry marked by hand is
+  named for what it is); missing, not `approved`, not billable or without a bill rate
+  → `source_not_invoiceable`; another revision, project, currency or amount than the
+  draft read → `source_changed`. Amounts are compared by value, so `125.4125` and
+  `125.41250000` are one amount. The first refusal answers, nothing is written, and
+  the whole issue rolls back with its number. Otherwise every entry becomes
+  `invoiced` with `invoicedAt` the issue's own time, `invoicedBy` the invoice's id and
+  number, and its revision bumped.
+- **The release** (`ReleaseInvoiced`), in the issue of the credit note that returns
+  an entry's line in full, takes the same locks in the same order before it writes,
+  moves every entry carrying that invoice's stamp **back to `approved`** — clearing
+  `invoicedAt` and `invoicedBy`, keeping the approval stamps, bumping the revision —
+  and leaves an entry that does not carry the stamp as it is, logging a warning: a
+  credit note is never blocked.
+- **The period lock does not apply** to either direction: a stamp is not an edit of
+  the hours, and the lock is how a month is closed *before* it is invoiced.
+- The holder uses the transaction it is handed and nothing else — no pool, no
+  directory, no clock: every timestamp it writes is the issue's. It marks its context
+  as one of this module's locked transactions, so
+  [no directory call inside a locked transaction](#no-directory-call-inside-a-locked-transaction)
+  holds inside it too.
+  It runs **whether or not Time is enabled**: the `time` schema is migrated anyway, and
+  an invoice built while the module was on can still be issued and credited after it
+  is switched off.
 
 ## What Time reports to other modules
 
@@ -505,6 +555,11 @@ Two startup rules to know:
 `customers` is never off when time is on: `projects` without `customers` fails
 configuration with **`projects requires customers`**, so the rate chain's customer
 step always has a directory to ask.
+
+With `time` off, `contracts.BillableHours` is not composed, so Invoices offers no
+hours to invoice; the invoiced-work holder is composed all the same, so an invoice
+already holding hours still stamps them when it is issued, and a credit note still
+releases them ([what Time gives invoicing](#what-time-gives-invoicing)).
 
 Time contributes **no background worker** and **no rate-limited operation**.
 
