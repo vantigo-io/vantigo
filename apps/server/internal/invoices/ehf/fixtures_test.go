@@ -229,6 +229,19 @@ func fixtures(t *testing.T) map[string]ehf.Document {
 	period.NetTotal, period.VATTotal, period.GrossTotal = rat("15000.00"), rat("3750.00"), rat("18750.00")
 	out["invoice-delivery-period-and-place"] = period
 
+	// The project the work belongs to (invoices work design D9): BT-11 on an
+	// invoice; on a credit note, whose syntax has no ProjectReference, an
+	// AdditionalDocumentReference with DocumentTypeCode 50.
+	project := baseInvoice("10055")
+	project.ProjectReference = "P-41"
+	out["invoice-project"] = project
+	creditProject := credit
+	creditProject.Number = "10056"
+	creditProject.Original = &ehf.DocumentReference{Number: "10055", IssueDate: "2026-10-01"}
+	creditProject.ProjectReference = "P-41"
+	creditProject.PDFName = "kreditnota-10056.pdf"
+	out["credit-note-project"] = creditProject
+
 	return out
 }
 

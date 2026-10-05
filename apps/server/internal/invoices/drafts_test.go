@@ -77,6 +77,8 @@ type invoiceJSON struct {
 	Kid               *string       `json:"kid"`
 	KidAlgorithm      *string       `json:"kidAlgorithm"`
 	Revision          int32         `json:"revision"`
+	ProjectID         *int32        `json:"projectId"`
+	ProjectReference  *string       `json:"projectReference"`
 	Buyer             *struct {
 		CustomerNumber     int64   `json:"customerNumber"`
 		Type               string  `json:"type"`

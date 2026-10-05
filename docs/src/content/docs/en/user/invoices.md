@@ -284,7 +284,11 @@ changed since it was added, or can no longer be invoiced — an entry unapproved
 milestone moved back — the draft warns about it, and refreshing the work takes its
 current figures and drops what can no longer be invoiced; the issue would refuse either.
 Work arrives on a draft only through the uninvoiced view of a customer or a project,
-which comes with the screens for it; until then no draft holds any.
+which comes with the screens for it; until then no draft holds any. When all the work a
+draft bills belongs to one project, the draft names that project by its code — printed
+on the PDF as *Prosjekt* / *Project*, carried in the EHF, kept by the issued invoice and
+by its credit notes, and the last column, *Project*, of the accountant's export
+([the project](/en/reference/invoices/#the-project)).
 
 ## Issuing
 
@@ -574,8 +578,8 @@ On the journal, **Export CSV** downloads the range shown as `invoices-<from>-<to
 The file has one row per document and VAT rate — a credit note's amounts negative —
 with fixed English columns: Number, Kind, Issue date, Delivery, Due, Customer number,
 Buyer, Buyer org no, Currency, SAF-T code, Rate, Base, VAT, Base NOK, VAT NOK, Credits
-number and KID — import the KID column as text, or the spreadsheet drops its leading
-zeros. It opens in a spreadsheet as Norwegian systems expect: `;` between cells, the
+number, KID and Project — import the KID column as text, or the spreadsheet drops its
+leading zeros. It opens in a spreadsheet as Norwegian systems expect: `;` between cells, the
 decimal comma, UTF-8 ([the CSV export](/en/reference/invoices/#the-csv-export)).
 
 A range of more than 5000 rows is refused — *The export would hold more than 5000 rows;

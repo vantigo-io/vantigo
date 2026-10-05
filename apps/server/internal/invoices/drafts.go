@@ -106,6 +106,9 @@ type draftInput struct {
 	// refresh is what refreshSources read before the save's transaction, nil
 	// without it.
 	refresh *sourcesRefresh
+	// projectCodes is what the save's derived project may need from the
+	// project directory, read before its transaction (saveProjectCodes).
+	projectCodes map[int32]string
 }
 
 // amount is one number of a line: finite, at least minimum (above it when
@@ -553,19 +556,24 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	if len(errs) > 0 {
 		return gen.PutInvoicesById400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, errs)), nil
 	}
-	// refreshSources reads the held work and its modules' answer for it now,
-	// on the pool, before the save's transaction: no contract call is made
-	// under its lock (D2).
+	// The held work, read on the pool before the save's transaction: what
+	// refreshSources asks its modules about now, and what the derived
+	// project is judged on — no contract call is made under the lock (D2).
+	held, err := sourcesOf(ctx, q, req.Id)
+	if err != nil {
+		return nil, err
+	}
 	if req.Body.RefreshSources != nil && *req.Body.RefreshSources {
-		read, err := sourcesOf(ctx, q, req.Id)
+		now, kinds, err := s.billableNow(ctx, held)
 		if err != nil {
 			return nil, err
 		}
-		now, kinds, err := s.billableNow(ctx, read)
-		if err != nil {
-			return nil, err
-		}
-		in.refresh = &sourcesRefresh{read: read, now: now, kind: kinds}
+		in.refresh = &sourcesRefresh{read: held, now: now, kind: kinds}
+	}
+	// The derived project's code, should the save need one (D9): read here,
+	// before the transaction, like everything the directory answers.
+	if in.projectCodes, err = s.saveProjectCodes(ctx, current, in, held); err != nil {
+		return nil, err
 	}
 	saved, err := s.saveDraft(ctx, req.Id, *req.Body.Revision, in, totals)
 	if errors.Is(err, errDocumentGone) {
@@ -609,8 +617,10 @@ type draftSaved struct {
 // are read under the document's lock, before DeleteLines takes them with the
 // old lines: each named again on a new line is re-inserted under it with the
 // snapshot the draft took, in one statement; what no line names, and every
-// hold when the customer changed (plan reading 33), is dropped. A row deleted
-// since the caller read it is errDocumentGone.
+// hold when the customer changed (plan reading 33), is dropped; an invoice
+// draft's project is then derived from the work it carries (D9,
+// setDocumentProject). A row deleted since the caller read it is
+// errDocumentGone.
 func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in draftInput, totals documentTotals) (draftSaved, error) {
 	net, vat, gross, vatNOK, err := numerics(totals)
 	if err != nil {
@@ -688,7 +698,16 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 			return err
 		}
 		carried, out.released = rows, released
-		return insertSources(ctx, txq, id, lineIDs, rows)
+		if err := insertSources(ctx, txq, id, lineIDs, rows); err != nil {
+			return err
+		}
+		// A credit note holds no work: it keeps the project it copied from
+		// its original (D9).
+		if locked.Kind != kindInvoice {
+			return nil
+		}
+		out.doc, err = setDocumentProject(ctx, txq, out.doc, rows, in.projectCodes)
+		return err
 	})
 	if errors.Is(err, errSourceHeldElsewhere) {
 		refusal, err := heldElsewhere(ctx, store.New(s.deps.Pool), id, carried)

@@ -135,13 +135,15 @@ WHERE s.state = 'released'
     WHERE u.kind = s.source_kind AND u.id = s.source_id)
 ORDER BY c.issued_at DESC, r.id DESC;
 
--- name: SetDocumentProject :exec
+-- name: SetDocumentProject :one
 -- SetDocumentProject writes the project a draft's work belongs to and its
 -- code, derived by every save (D9): both, or NULL when the work spans two
--- projects or there is none.
+-- projects or there is none. The caller holds the draft (LockInvoice); the
+-- trigger refuses it on an issued document.
 UPDATE invoices.invoices
 SET project_id = sqlc.narg(project_id), project_reference = sqlc.narg(project_reference)
-WHERE id = @id;
+WHERE id = @id
+RETURNING *;
 
 -- name: TimesheetRowsOf :many
 -- TimesheetRowsOf is a document's timesheet as printed (D5), in order.

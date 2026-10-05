@@ -623,10 +623,11 @@ func (q *Queries) ReleasesOf(ctx context.Context, invoiceID int64) ([]ReleasesOf
 	return items, nil
 }
 
-const setDocumentProject = `-- name: SetDocumentProject :exec
+const setDocumentProject = `-- name: SetDocumentProject :one
 UPDATE invoices.invoices
 SET project_id = $1, project_reference = $2
 WHERE id = $3
+RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet
 `
 
 type SetDocumentProjectParams struct {
@@ -637,10 +638,84 @@ type SetDocumentProjectParams struct {
 
 // SetDocumentProject writes the project a draft's work belongs to and its
 // code, derived by every save (D9): both, or NULL when the work spans two
-// projects or there is none.
-func (q *Queries) SetDocumentProject(ctx context.Context, arg SetDocumentProjectParams) error {
-	_, err := q.db.Exec(ctx, setDocumentProject, arg.ProjectID, arg.ProjectReference, arg.ID)
-	return err
+// projects or there is none. The caller holds the draft (LockInvoice); the
+// trigger refuses it on an issued document.
+func (q *Queries) SetDocumentProject(ctx context.Context, arg SetDocumentProjectParams) (InvoicesInvoice, error) {
+	row := q.db.QueryRow(ctx, setDocumentProject, arg.ProjectID, arg.ProjectReference, arg.ID)
+	var i InvoicesInvoice
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Status,
+		&i.Number,
+		&i.CustomerID,
+		&i.CreditsInvoiceID,
+		&i.IssueDate,
+		&i.DeliveryDate,
+		&i.DeliveryFrom,
+		&i.DeliveryTo,
+		&i.DeliveryAddressLine1,
+		&i.DeliveryAddressLine2,
+		&i.DeliveryPostalCode,
+		&i.DeliveryCity,
+		&i.DeliveryCountry,
+		&i.PaymentTermsDays,
+		&i.DueDate,
+		&i.Currency,
+		&i.ExchangeRate,
+		&i.ExchangeRateDate,
+		&i.YourReference,
+		&i.OurReference,
+		&i.OrderReference,
+		&i.Note,
+		&i.InternalNote,
+		&i.BuyerCustomerNumber,
+		&i.BuyerType,
+		&i.BuyerName,
+		&i.BuyerOrganisationNumber,
+		&i.BuyerForeignID,
+		&i.BuyerAddressLine1,
+		&i.BuyerAddressLine2,
+		&i.BuyerPostalCode,
+		&i.BuyerCity,
+		&i.BuyerRegion,
+		&i.BuyerCountry,
+		&i.BuyerPeppolID,
+		&i.BuyerGln,
+		&i.BuyerLanguage,
+		&i.SellerLegalName,
+		&i.SellerOrganisationNumber,
+		&i.SellerVatRegistered,
+		&i.SellerInForetaksregisteret,
+		&i.SellerAddressLine1,
+		&i.SellerAddressLine2,
+		&i.SellerPostalCode,
+		&i.SellerCity,
+		&i.SellerCountry,
+		&i.SellerBankAccount,
+		&i.SellerIban,
+		&i.SellerBic,
+		&i.SellerEmail,
+		&i.SellerFooterText,
+		&i.NetTotal,
+		&i.VatTotal,
+		&i.GrossTotal,
+		&i.VatTotalNok,
+		&i.PdfObjectKey,
+		&i.PdfSha256,
+		&i.IssuedAt,
+		&i.IssuedByUserID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Revision,
+		&i.Kid,
+		&i.KidAlgorithm,
+		&i.ProjectID,
+		&i.ProjectReference,
+		&i.Timesheet,
+	)
+	return i, err
 }
 
 const timesheetRowsOf = `-- name: TimesheetRowsOf :many

@@ -14,7 +14,11 @@ accounting system reads without retyping, with Vantigo's PDF of the document emb
 It travels over **Peppol**, a network of access points: the sender hands the document to
 its access point, which looks the receiver up in the network's registry and delivers it
 to the receiver's access point. Vantigo is not an access point itself; it hands each
-document to one, **Storecove**, through Storecove's API.
+document to one, **Storecove**, through Storecove's API. An invoice whose work belongs
+to one project names it in the EHF by the project's code — as the project reference
+(BT-11, `cac:ProjectReference`) on an invoice, and on a credit note, whose format has no
+such field, as an additional document reference with type code 50 — so the buyer's
+system can route it ([the mapping](/en/reference/invoices/#the-ehf-document)).
 
 The duties: public bodies have required EHF from their suppliers since 2019, and from
 **1 January 2027** a Norwegian business must send its invoices to other Norwegian

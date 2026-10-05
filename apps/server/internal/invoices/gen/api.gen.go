@@ -197,6 +197,12 @@ type InvoicesInvoiceListItem struct {
 	// OpenAmount On an issued invoice, gross less what its issued credit notes credit and what its live payments paid; negative when a credit note followed a payment.
 	OpenAmount *float64 `json:"openAmount,omitempty"`
 
+	// ProjectId The project all of the document's work belongs to (invoices work design D9) — derived from its line sources, never written by a request; absent when its work spans two projects or it bills none.
+	ProjectId *int32 `json:"projectId,omitempty"`
+
+	// ProjectReference The project's code as the document took it, beside projectId — the reference its PDF and EHF print.
+	ProjectReference *string `json:"projectReference,omitempty"`
+
 	// State The derived state (D3): draft, issued (an issued credit note), credited, paid, overdue, partially_paid or open.
 	State  string `json:"state"`
 	Status string `json:"status"`
@@ -294,6 +300,12 @@ type InvoicesInvoiceResponse struct {
 
 	// PdfStored On an issued document, whether its PDF is stored. False only when storing it after the issue failed; the next download stores it.
 	PdfStored *bool `json:"pdfStored,omitempty"`
+
+	// ProjectId The project all of the document's work belongs to (invoices work design D9): set by every save of an invoice draft to the one project all its line sources share, absent when they span two projects or there are none, or when the project directory no longer knows it; never written by a request; frozen at issue; a credit note copies its original's.
+	ProjectId *int32 `json:"projectId,omitempty"`
+
+	// ProjectReference The project's code, a snapshot taken when the draft's work first came to span that one project — what the PDF prints and the EHF carries (BT-11 on an invoice, an AdditionalDocumentReference with DocumentTypeCode 50 on a credit note). Present exactly when projectId is.
+	ProjectReference *string `json:"projectReference,omitempty"`
 
 	// RefundDue On an issued invoice whose openAmount is below zero, the amount owed back (−openAmount); absent otherwise. The figure only — refunds are not a flow in this phase.
 	RefundDue *float64 `json:"refundDue,omitempty"`
@@ -795,13 +807,16 @@ type GetInvoicesParams struct {
 	Kind   *string `form:"kind,omitempty" json:"kind,omitempty"`
 
 	// State One of open, partially_paid, overdue, paid or credited, judged against today in Oslo; only an issued invoice can match it.
-	State      *string             `form:"state,omitempty" json:"state,omitempty"`
-	CustomerId *int32              `form:"customerId,omitempty" json:"customerId,omitempty"`
-	Search     *string             `form:"search,omitempty" json:"search,omitempty"`
-	From       *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
-	To         *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
-	Page       *int32              `form:"page,omitempty" json:"page,omitempty"`
-	PageSize   *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	State      *string `form:"state,omitempty" json:"state,omitempty"`
+	CustomerId *int32  `form:"customerId,omitempty" json:"customerId,omitempty"`
+
+	// ProjectId The documents whose work belongs to this project (invoices work design D9) — the derived project, so a document whose work spans two projects matches neither.
+	ProjectId *int32              `form:"projectId,omitempty" json:"projectId,omitempty"`
+	Search    *string             `form:"search,omitempty" json:"search,omitempty"`
+	From      *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+	To        *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+	Page      *int32              `form:"page,omitempty" json:"page,omitempty"`
+	PageSize  *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // GetInvoicesExportCsvParams defines parameters for GetInvoicesExportCsv.
@@ -1026,6 +1041,19 @@ func (siw *ServerInterfaceWrapper) GetInvoices(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "customerId"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "projectId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "projectId", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "projectId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
 		}
 		return
 	}

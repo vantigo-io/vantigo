@@ -65,7 +65,9 @@ Both sets live beside the writer, under
 - **`golden/`** holds the documents `TestEHF_Goldens` renders from fixed fixtures: an
   invoice with every VAT category, a discount, a foreign buyer, a person as buyer, a KID
   under each algorithm, a delivery period and place, a seller that is not VAT
-  registered, and three credit notes — full, partial and final with the squaring row.
+  registered, an invoice naming its project (BT-11, `invoice-project`), and four credit
+  notes — full, partial, final with the squaring row, and one naming its project in an
+  `AdditionalDocumentReference` with type code 50 (`credit-note-project`).
   `go test ./internal/invoices/ehf/ -update` rewrites them. After changing the writer,
   regenerate them, run the oracle, and commit them together.
 - **`invalid/`** holds hand-tampered documents: each is a golden with one change, and

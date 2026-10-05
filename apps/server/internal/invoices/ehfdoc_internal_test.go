@@ -184,3 +184,19 @@ func TestEHFDocumentOf_Refuses(t *testing.T) {
 		}
 	}
 }
+
+// The document's project reference (invoices work design D9) is carried from
+// its own row, as the PDF prints it; none without one.
+func TestEHFDocumentOf_TheProjectReference(t *testing.T) {
+	t.Parallel()
+	inv, lines, sums := issuedRows(t)
+	d, err := ehfDocumentOf(inv, lines, sums, nil, "0192:923456783", []byte("%PDF"))
+	if err != nil || d.ProjectReference != "" {
+		t.Fatalf("without a project = %q, %v; want none", d.ProjectReference, err)
+	}
+	project, reference := int32(41), "P-41"
+	inv.ProjectID, inv.ProjectReference = &project, &reference
+	if d, err = ehfDocumentOf(inv, lines, sums, nil, "0192:923456783", []byte("%PDF")); err != nil || d.ProjectReference != "P-41" {
+		t.Errorf("with a project = %q, %v; want P-41", d.ProjectReference, err)
+	}
+}

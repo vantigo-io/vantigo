@@ -15,6 +15,11 @@ innebygd. Den går gjennom **Peppol**, et nettverk av aksesspunkter: avsenderen
 overleverer dokumentet til sitt aksesspunkt, som slår opp mottakeren i nettverkets
 register og leverer det til mottakerens aksesspunkt. Vantigo er ikke selv et
 aksesspunkt; det overleverer hvert dokument til ett, **Storecove**, gjennom API-et deres.
+En faktura der alt arbeidet hører til ett prosjekt, navngir prosjektet i EHF-en med
+prosjektets kode — som prosjektreferanse (BT-11, `cac:ProjectReference`) på en faktura,
+og på en kreditnota, der formatet ikke har det feltet, som en tilleggsdokumentreferanse
+med typekode 50 — slik at kjøperens system kan rute den
+([tilordningen](/en/reference/invoices/#the-ehf-document)).
 
 Pliktene: offentlige virksomheter har krevd EHF fra leverandørene sine siden 2019, og fra
 **1. januar 2027** skal en norsk virksomhet sende fakturaene sine til andre norske

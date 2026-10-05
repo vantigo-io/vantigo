@@ -83,7 +83,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.counters` | The one counter row, `documents`; it exists exactly when something has been issued. |
 | `invoices.vat_codes` | The tenant's codes: label, name, SAF-T code, UNCL5305 category, exemption reason, active. |
 | `invoices.vat_code_rates` | Each code's rates as dated periods that never overlap (an exclusion constraint). A rate change is a new period, not a new code. |
-| `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, the stored PDF's key and SHA-256, an invoice's `kid` with the `kid_algorithm` it was computed with (set at issue, both or neither, never on a credit note), the project its work belongs to — `project_id` and its code `project_reference`, both or neither (`ck_invoices_project`) — and the `timesheet` flag (off by default). Every one of them is frozen at issue with the rest of the row. |
+| `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, the stored PDF's key and SHA-256, an invoice's `kid` with the `kid_algorithm` it was computed with (set at issue, both or neither, never on a credit note), the project its work belongs to — `project_id` and its code `project_reference`, both or neither (`ck_invoices_project`), derived by every save of an invoice draft and copied by a credit note ([The project](#the-project)) — and the `timesheet` flag (off by default). Every one of them is frozen at issue with the rest of the row. |
 | `invoices.lines` | Description, quantity (3 decimals), unit, unit price (4), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, the invoice a deduction line deducts (`deducts_invoice_id`), and the VAT snapshot written at issue. The quantity is above 0, or below 0 on a deduction line only (`ck_lines_quantity`), and a deduction line carries no discount (`ck_lines_deduction_no_discount`). `(id, invoice_id)` is unique, so a child row names its line and its document together and the two never disagree. |
 | `invoices.line_sources` | The work a line bills: the source's kind (`time.entry`, `expenses.entry`, `projects.milestone`) and id — opaque, the rows are other modules' — the revision it was taken at, an expense's kind (`source_subkind`, only on an expense), the project, the quantity, the source's exact amount (`numeric(22,8)`: an hour's amount carries up to eight decimals), the currency, the work's date and the state: `held` from the draft, `invoiced` by the issue, `released` by the credit note that returns its line. Its line and document are one composite key, and the rows go with their line. A source is live — `held` or `invoiced` — on one row at most (`ux_line_sources_live`). A row is written `held`; under a draft its one change is to `invoiced`, under an issued document its one change is from `invoiced` to `released`, once, nothing else changed. A row is deleted only under a draft and only while `held`, so dropping a hold never frees an invoiced source. A trigger refuses the rest (`invoices: a line source is written held`, `invoices: a line source changes only its state`, `invoices: a line source is deleted only while held`, `invoices: issued document is immutable`). Every save of a draft deletes its lines and so its held rows, and inserts the rows it carries anew under the new lines, in one statement ordered by kind and id ([Invoicing work](#invoicing-work)). |
 | `invoices.line_releases` | A credit note's release of an original line's source: the credit note, its line and the source, a source released once. Frozen with the credit note at its issue. |
@@ -108,10 +108,11 @@ Phase 3's schema (`00040_invoices_work.sql`, the
 [design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-05-invoices-work-to-invoices-design.md))
 adds the line sources, the releases, the timesheet rows, the deduction line, the
 document's project and timesheet flag and the work settings in one migration. A draft's
-save carries its line sources ([Invoicing work](#invoicing-work)); nothing adds one yet
-— work arrives with the uninvoiced view — and the releases, the timesheet rows, the
-deduction line, the project, the timesheet flag and the work settings sit at their
-defaults until the phase's later steps give them behaviour.
+save carries its line sources and derives its project from them
+([Invoicing work](#invoicing-work)); nothing adds a source yet — work arrives with the
+uninvoiced view — and the releases, the timesheet rows, the deduction line, the
+timesheet flag and the work settings sit at their defaults until the phase's later steps
+give them behaviour.
 
 The seeded codes, each from 2026-01-01: `3` 25 %, `31` 15 %, `32` 11.11 %, `33` 12 %
 (all S), `5` Z, `51` AE, `52` G, `6` **E** (unntatt, mval. kap. 3) and `7` **O** (a seller
@@ -339,6 +340,37 @@ and so is one its module now answers in another currency than the draft took it 
 refresh never takes work into a document in a currency it was not taken in. A kind whose module is switched off is carried as it stood. Under the
 lock the save requires the held work it read — the same sources at the same revisions
 and amounts — or answers 409 `invoice_changed`: a save slipped in between.
+
+### The project
+
+A document names **the project its work belongs to** (`project_id`) with that project's
+code as a snapshot (`project_reference`, at most 30 characters) — the reference its PDF
+and its EHF print from the document's own row, never the directory. Both are
+**derived, never written by a request** (a `projectId` or `projectReference` in a body
+is ignored):
+
+- **Every save of an invoice draft** sets them to the one project all the line sources
+  the draft holds after the save share, and to NULL when they span two projects or
+  there are none. Work from another project arriving on a draft that had one clears it
+  at the next save; a save that drops the second project's work sets the first.
+- **The code** is the stored `project_reference` while the project is unchanged — a
+  later rename in Projects does not move it. Otherwise it is read through
+  `ProjectDirectory.Projects` **before the save's transaction**, a contract call never
+  made under the lock, and only when the work the request keeps — the held work its
+  lines name, at a refresh's current project — belongs to one project the draft does not
+  already name. With Projects switched off, or the project gone from the directory,
+  there is no code and both columns stay NULL (`ck_invoices_project`).
+- **The issue freezes them** with the rest of the row; the trigger refuses a change.
+- **A credit note copies its original's** at `POST /{id}/credit` and keeps them through
+  its saves and its issue: it holds no work to derive one from.
+
+`GET /invoices?projectId=` lists the documents that name a project — the derived one, so
+a document whose work spans two projects matches neither. Every document and list item
+carries `projectId` and `projectReference` when set. The PDF prints "Prosjekt" /
+"Project" and the reference after the references ([The PDF](#the-pdf)), the EHF carries
+it as BT-11 or, on a credit note, a reference of type 50
+([The EHF document](#the-ehf-document)), and the CSV export's last column is `Project`
+([The CSV export](#the-csv-export)).
 
 ### The write-back
 
@@ -667,6 +699,10 @@ but the bytes may change with a maroto, gofpdf or font upgrade; stored PDFs neve
 under it asks for the KID ("Vennligst bruk KID ved betaling" / "Please use the KID with
 your payment") when there is one, and for the invoice number otherwise.
 
+**The project** a document's work belongs to prints in the meta block after the
+references, "Prosjekt" / "Project" and its reference, when the document names one
+([The project](#the-project)).
+
 `GET /invoices/{id}/preview.pdf` renders a draft on demand with the watermark
 "UTKAST — ikke et salgsdokument", no number, today's date, the current settings and,
 for an invoice draft, the customer's current profile at today's rates; a credit-note
@@ -713,6 +749,8 @@ buyer is the snapshot's, as the PDF prints it):
 | `cac:Delivery/cbc:ActualDeliveryDate` | `delivery_date` |
 | `cac:Delivery/cac:DeliveryLocation/cac:Address` | the place of delivery, **only when it has a country** (BR-57); one without a country is left out of the EHF, the PDF still prints it |
 | `cac:AdditionalDocumentReference` | the stored PDF: `cbc:ID` the number, `cbc:DocumentDescription` "Faktura (PDF)" / "Invoice (PDF)" ("Kreditnota (PDF)" / "Credit note (PDF)" on a credit note), `cac:Attachment/cbc:EmbeddedDocumentBinaryObject` the bytes in Base64 with `mimeCode="application/pdf"` and `filename` the download's name |
+| `cac:ProjectReference/cbc:ID` (BT-11, invoice only) | `project_reference`, when set ([The project](#the-project)); one per invoice (PEPPOL-EN16931-R080), after the `AdditionalDocumentReference` as the schema orders it |
+| a second `cac:AdditionalDocumentReference` (credit note only) | `project_reference`, when set: a credit note's syntax has no `ProjectReference`, so `cbc:ID` the reference and `cbc:DocumentTypeCode` **50**, no description and no attachment (BIS §11.3.7), after the PDF's |
 | `cac:AccountingSupplierParty/cac:Party` | `cbc:EndpointID@schemeID` the seller's Peppol id split at its colon; `cac:PartyName/cbc:Name` and `cac:PostalAddress` from the seller snapshot; `cac:PartyTaxScheme` with `cbc:CompanyID` `NO<organisation number>MVA` under `VAT` **only when VAT-registered** (NO-R-001), and `Foretaksregisteret` under `TAX` **only when registered there** (NO-R-002, a warning when absent); `cac:PartyLegalEntity` the legal name and the organisation number under `schemeID="0192"`; `cac:Contact/cbc:ElectronicMail` the seller's e-mail when set |
 | `cac:AccountingCustomerParty/cac:Party` | `cbc:EndpointID@schemeID` from `buyer_peppol_id` (the scheme its prefix, the value the rest); `cac:PostalAddress` from the buyer snapshot, the region as `cbc:CountrySubentity`; `cac:PartyLegalEntity/cbc:RegistrationName` **always** (BR-07), with `cbc:CompanyID@schemeID="0192"` for a Norwegian business's organisation number, `cbc:CompanyID` without a scheme for a foreign id, and none for a person |
 | `cac:PaymentMeans` (invoice only) | **one**, `cbc:PaymentMeansCode` **30** (credit transfer); `cac:PayeeFinancialAccount/cbc:ID` the domestic account, or for a buyer whose country is not NO the IBAN with `cac:FinancialInstitutionBranch/cbc:ID` the BIC when the seller has an IBAN; `cbc:PaymentID` the KID, and **no `PaymentID` at all without one** — Norwegian receivers read it as a KID |
@@ -1262,7 +1300,7 @@ negative in every amount column, as the journal signs it (it is stored positive)
 The columns, fixed and English, in this order:
 
 ```text
-Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number;KID
+Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number;KID;Project
 ```
 
 | Column | Rule |
@@ -1283,7 +1321,8 @@ Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;
 | `Base NOK` | `Base` × the document's exchange rate (1 in this phase), rounded to øre — the one computed column |
 | `VAT NOK` | the VAT row's stored NOK VAT |
 | `Credits number` | on a credit note, the number of the invoice it credits; empty on an invoice |
-| `KID` | an invoice's KID, appended last in phase 2 so the earlier columns keep their places; empty without one and on a credit note. Guarded as text, though a KID never begins with a character the guard is for. A spreadsheet that reads it as a number strips its leading zeros — import the column as text |
+| `KID` | an invoice's KID, appended in phase 2 so the earlier columns keep their places; empty without one and on a credit note. Guarded as text, though a KID never begins with a character the guard is for. A spreadsheet that reads it as a number strips its leading zeros — import the column as text |
+| `Project` | the document's project reference as frozen at issue — a credit note's its original's ([The project](#the-project)) — appended last in phase 3; empty on a document that names no project |
 
 **The byte format** is the expenses payroll file's ([the payroll CSV](/en/reference/expenses/#the-payroll-csv)),
 duplicated into this module as customers duplicated it — depguard keeps modules from
@@ -1294,7 +1333,7 @@ amount is the stored `numeric` as exact text, never a float, and a credit note's
 stays `0,00`.
 
 **The formula guard is on the text columns only.** `Kind`, `Delivery`, `Customer number`,
-`Buyer`, `Buyer org no`, `Currency`, `SAF-T code`, `Credits number` and `KID` get an apostrophe in
+`Buyer`, `Buyer org no`, `Currency`, `SAF-T code`, `Credits number`, `KID` and `Project` get an apostrophe in
 front when they begin with `=`, `+`, `-`, `@`, a tab or a CR, so a buyer named `=cmd`
 opens as text. `Number`, `Issue date`, `Due`, `Rate` and the four amounts are never
 guarded: the payroll file guards every cell because none of its amounts is ever
@@ -1484,7 +1523,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `PUT /vat-codes/{id}` | `invoices:manage` | 404; 400; 409 `vat_code_in_use`, a stale revision |
 | `POST /vat-codes/{id}/rates` | `invoices:manage` | 404; 400 on `ratePercent` or `validFrom`; 409 `rate_change_in_past` |
 | `DELETE /vat-codes/{id}/rates/{rateId}` | `invoices:manage` | 404; 409 `rate_period_not_latest`, `rate_period_last`, `rate_period_in_use` |
-| `GET /` | | 400 paging, status, kind, state, `from` after `to` |
+| `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included); 409 the customer gates |
 | `GET /{id}` | | 404 |
 | `PUT /{id}` | `invoices:create` | 404; 400 (a line's `sources` against the work the draft holds, at most 5 000); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`) |

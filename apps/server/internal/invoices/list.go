@@ -17,7 +17,8 @@ import (
 // convention, drafts first and then by number descending. There is no keyset
 // cursor: number is NULL on every draft. Each item carries its derived state
 // and, on an issued invoice, its open amount, both from the query (D3); an
-// issued document its latest EHF status.
+// issued document its latest EHF status; and every document the project its
+// work belongs to, which the list filters on (invoices work design D9).
 
 // The paging bounds every module's list uses; listMaxPage keeps page ×
 // pageSize inside the int32 offset.
@@ -85,7 +86,7 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 	}
 	page, pageSize := pageParams(p.Page, p.PageSize)
 	params := store.ListInvoicesParams{
-		Status: p.Status, Kind: p.Kind, CustomerID: p.CustomerId, State: p.State,
+		Status: p.Status, Kind: p.Kind, CustomerID: p.CustomerId, ProjectID: p.ProjectId, State: p.State,
 		Today:      pgDate(businessDay(s.deps.Clock())),
 		PageOffset: (page - 1) * pageSize, PageSize: pageSize,
 	}
@@ -109,7 +110,7 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 		return nil, fmt.Errorf("invoices: list: %w", err)
 	}
 	total, err := q.CountInvoices(ctx, store.CountInvoicesParams{
-		Status: params.Status, Kind: params.Kind, CustomerID: params.CustomerID,
+		Status: params.Status, Kind: params.Kind, CustomerID: params.CustomerID, ProjectID: params.ProjectID,
 		SearchNumber: params.SearchNumber, SearchPattern: params.SearchPattern,
 		IssuedFrom: params.IssuedFrom, IssuedTo: params.IssuedTo, State: params.State, Today: params.Today,
 	})
@@ -158,6 +159,7 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 			Id: r.ID, Kind: r.Kind, Status: r.Status, State: row.State, Number: r.Number, CustomerId: r.CustomerID,
 			IssueDate: wireDateOf(r.IssueDate), DueDate: wireDateOf(r.DueDate), GrossTotal: gross,
 			Currency: r.Currency, CreditsInvoiceId: r.CreditsInvoiceID, CustomerName: r.BuyerName,
+			ProjectId: r.ProjectID, ProjectReference: r.ProjectReference,
 		}
 		// The open amount is an issued invoice's only: a draft has nothing
 		// to pay yet, and a credit note is never paid (D3).

@@ -24,6 +24,8 @@ type listJSON struct {
 		State        string   `json:"state"`
 		OpenAmount   *float64 `json:"openAmount"`
 		EhfStatus    *string  `json:"ehfStatus"`
+		ProjectID    *int32   `json:"projectId"`
+		ProjectRef   *string  `json:"projectReference"`
 	} `json:"data"`
 	Pagination struct {
 		Page        int32 `json:"page"`
@@ -264,6 +266,41 @@ func TestList_TheStateFilterAndTheOpenAmount(t *testing.T) {
 		want := fmt.Sprintf("'state' must be one of open, partially_paid, overdue, paid or credited, but was '%s'.", bad)
 		if p := problemOf(t, res); p.Detail != want {
 			t.Errorf("GET /invoices?state=%s = %q, want %q", bad, p.Detail, want)
+		}
+	}
+}
+
+// projectId lists the documents whose work belongs to that project — the
+// derived project (invoices work design D9), so a draft whose work spans two
+// projects matches neither — with the count over the same filter; each item
+// carries its project and reference.
+func TestList_TheProjectFilter(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.WithProjects(newFakeProjects()))
+	c := creator(t, h)
+	one := sourcedDraft(t, h)
+	putDoc(t, c, one.ID, sourcedBody(one, customerAcme, theSameLines()...))
+	two := plantedDraft(t, h, acrossTwo()...)
+	putDoc(t, c, two.ID, sourcedBody(two, customerAcme, linesNaming(acrossTwo(), 1, 2, 3)...))
+	createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
+
+	got := list(t, h, "?projectId=41")
+	if !slices.Equal(ids(got), []int64{one.ID}) || got.Pagination.TotalCount != 1 {
+		t.Fatalf("projectId=41 = %v (total %d), want only %d", ids(got), got.Pagination.TotalCount, one.ID)
+	}
+	if d := got.Data[0]; d.ProjectID == nil || *d.ProjectID != project41 || d.ProjectRef == nil || *d.ProjectRef != "P-41" {
+		t.Errorf("the item's project = %v %v, want 41 P-41", d.ProjectID, d.ProjectRef)
+	}
+	if got := list(t, h, "?projectId=42"); len(got.Data) != 0 || got.Pagination.TotalCount != 0 {
+		t.Errorf("projectId=42 = %v, want none: the two-project draft names no project", ids(got))
+	}
+	all := list(t, h, "")
+	if len(all.Data) != 3 {
+		t.Fatalf("unfiltered = %v, want three", ids(all))
+	}
+	for _, d := range all.Data {
+		if d.ID != one.ID && (d.ProjectID != nil || d.ProjectRef != nil) {
+			t.Errorf("document %d carries project %v %v, want none", d.ID, d.ProjectID, d.ProjectRef)
 		}
 	}
 }

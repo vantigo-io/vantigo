@@ -3,6 +3,7 @@ package ehf_test
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/xml"
 	"flag"
 	"math/big"
 	"os"
@@ -59,7 +60,7 @@ var (
 	invoiceOrder = []string{
 		"CustomizationID", "ProfileID", "ID", "IssueDate", "DueDate", "InvoiceTypeCode", "DocumentCurrencyCode",
 		"BuyerReference", "InvoicePeriod", "OrderReference", "BillingReference", "AdditionalDocumentReference",
-		"AccountingSupplierParty", "AccountingCustomerParty", "Delivery", "PaymentMeans", "PaymentTerms",
+		"ProjectReference", "AccountingSupplierParty", "AccountingCustomerParty", "Delivery", "PaymentMeans", "PaymentTerms",
 		"TaxTotal", "LegalMonetaryTotal", "InvoiceLine",
 	}
 	creditNoteOrder = []string{
@@ -606,6 +607,86 @@ func TestEHF_TheEmbeddedPDF(t *testing.T) {
 	}
 	expect(t, render(t, fixture(t, "invoice-foreign-buyer")), "Invoice (PDF)", "cac:AdditionalDocumentReference", "cbc:DocumentDescription")
 	expect(t, render(t, fixture(t, "credit-note")), "Kreditnota (PDF)", "cac:AdditionalDocumentReference", "cbc:DocumentDescription")
+}
+
+// documentRefs is what the project tests read back of a rendered document,
+// with encoding/xml and namespace-qualified names: its additional document
+// references and its project references.
+type documentRefs struct {
+	XMLName    xml.Name
+	Additional []struct {
+		ID          string    `xml:"urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2 ID"`
+		TypeCode    string    `xml:"urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2 DocumentTypeCode"`
+		Description string    `xml:"urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2 DocumentDescription"`
+		Attachment  *struct{} `xml:"urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2 Attachment"`
+	} `xml:"urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2 AdditionalDocumentReference"`
+	Project []struct {
+		ID string `xml:"urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2 ID"`
+	} `xml:"urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2 ProjectReference"`
+}
+
+func readRefs(t *testing.T, d ehf.Document) documentRefs {
+	t.Helper()
+	body, err := ehf.Render(d)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	var refs documentRefs
+	if err := xml.Unmarshal(body, &refs); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	return refs
+}
+
+// An invoice names the project its work belongs to as BT-11,
+// cac:ProjectReference/cbc:ID — one (PEPPOL-EN16931-R080) — right after the
+// AdditionalDocumentReference, the UBL order; an invoice without a project
+// has none, and the PDF's reference is unchanged beside it.
+func TestEHF_ProjectReferenceIsBT11(t *testing.T) {
+	t.Parallel()
+	refs := readRefs(t, fixture(t, "invoice-project"))
+	if refs.XMLName.Space != nsInvoice || len(refs.Project) != 1 || refs.Project[0].ID != "P-41" {
+		t.Errorf("project references = %+v in %v, want one, P-41, on an Invoice", refs.Project, refs.XMLName)
+	}
+	if len(refs.Additional) != 1 || refs.Additional[0].ID != "10055" || refs.Additional[0].TypeCode != "" || refs.Additional[0].Attachment == nil {
+		t.Errorf("additional references = %+v, want the PDF's alone", refs.Additional)
+	}
+	root := render(t, fixture(t, "invoice-project"))
+	names := make([]string, 0, len(root.Children))
+	for _, c := range root.Children {
+		names = append(names, c.Name.Local)
+	}
+	if i := slices.Index(names, "ProjectReference"); i < 1 || names[i-1] != "AdditionalDocumentReference" || names[i+1] != "AccountingSupplierParty" {
+		t.Errorf("top-level order = %v, want ProjectReference between AdditionalDocumentReference and AccountingSupplierParty", names)
+	}
+	if refs := readRefs(t, fixture(t, "invoice-every-category")); len(refs.Project) != 0 {
+		t.Errorf("an invoice without a project carries %+v", refs.Project)
+	}
+}
+
+// A credit note's syntax has no ProjectReference: it names its project in a
+// second cac:AdditionalDocumentReference, cbc:ID the reference and
+// cbc:DocumentTypeCode 50, with no attachment and no description (BIS
+// §11.3.7) — after the PDF's; a credit note without a project has the PDF's
+// alone.
+func TestEHF_ACreditNoteNamesItsProjectWithCode50(t *testing.T) {
+	t.Parallel()
+	refs := readRefs(t, fixture(t, "credit-note-project"))
+	if refs.XMLName.Space != nsCreditNote || len(refs.Project) != 0 {
+		t.Errorf("a credit note's project references = %+v in %v, want none on a CreditNote", refs.Project, refs.XMLName)
+	}
+	if len(refs.Additional) != 2 {
+		t.Fatalf("additional references = %+v, want the PDF's and the project's", refs.Additional)
+	}
+	if pdf := refs.Additional[0]; pdf.ID != "10056" || pdf.TypeCode != "" || pdf.Attachment == nil {
+		t.Errorf("first reference = %+v, want the PDF", pdf)
+	}
+	if p := refs.Additional[1]; p.ID != "P-41" || p.TypeCode != "50" || p.Attachment != nil || p.Description != "" {
+		t.Errorf("second reference = %+v, want P-41 with type code 50 and no attachment", p)
+	}
+	if refs := readRefs(t, fixture(t, "credit-note")); len(refs.Additional) != 1 {
+		t.Errorf("a credit note without a project = %+v, want the PDF's reference alone", refs.Additional)
+	}
 }
 
 // Amounts are written with exactly two decimals and never in exponent form,

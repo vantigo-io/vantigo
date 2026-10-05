@@ -53,7 +53,7 @@ func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 	d := ehf.Document{
 		Kind: p.kind, Language: language, Number: strconv.FormatInt(*inv.Number, 10),
 		IssueDate: p.issueDate.Format(time.DateOnly), DueDate: date(p.dueDate), Currency: p.currency,
-		BuyerReference: p.yourReference, OrderReference: p.orderRef,
+		BuyerReference: p.yourReference, OrderReference: p.orderRef, ProjectReference: p.projectRef,
 		DeliveryDate: date(p.deliveryDate), DeliveryFrom: date(p.deliveryFrom), DeliveryTo: date(p.deliveryTo),
 		Seller: ehf.Seller{
 			PeppolID: sellerPeppolID, Name: p.seller.name, Address: address(p.seller, ""),

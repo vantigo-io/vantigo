@@ -27,7 +27,11 @@ const (
 	// allowanceDiscount is UNCL5189 95, "Discount": every line allowance
 	// needs a reason or a reason code (BR-42).
 	allowanceDiscount = "95"
-	vatScheme         = "VAT"
+	// projectDocumentTypeCode is the UNCL1001 code Peppol BIS assigns to a
+	// credit note's project reference, carried as an additional document
+	// reference (BIS §11.3.7).
+	projectDocumentTypeCode = "50"
+	vatScheme               = "VAT"
 )
 
 // The fixed words a document carries, in its language.
@@ -127,6 +131,23 @@ func Render(d Document) ([]byte, error) {
 			attr("mimeCode", "application/pdf"), attr("filename", d.PDFName))
 		w.end("cac:Attachment")
 		w.end("cac:AdditionalDocumentReference")
+	}
+	// The project the work belongs to (invoices work design D9): BT-11 on an
+	// invoice, one (PEPPOL-EN16931-R080), after the additional references as
+	// the schema orders them; a credit note's syntax has no ProjectReference,
+	// so it names the project in a reference of its own, type code 50 and no
+	// attachment (BIS §11.3.7).
+	if d.ProjectReference != "" {
+		if invoice {
+			w.start("cac:ProjectReference")
+			w.leaf("cbc:ID", d.ProjectReference)
+			w.end("cac:ProjectReference")
+		} else {
+			w.start("cac:AdditionalDocumentReference")
+			w.leaf("cbc:ID", d.ProjectReference)
+			w.leaf("cbc:DocumentTypeCode", projectDocumentTypeCode)
+			w.end("cac:AdditionalDocumentReference")
+		}
 	}
 
 	// The seller (D4): its Peppol id at render time, the snapshot's name and

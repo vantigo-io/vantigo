@@ -253,6 +253,7 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		Note: inv.Note, InternalNote: inv.InternalNote, Buyer: buyerResponse(inv), Seller: sellerResponse(inv),
 		IssuedAt: inv.IssuedAt, IssuedByUserId: inv.IssuedByUserID, Kid: inv.Kid, KidAlgorithm: inv.KidAlgorithm,
 		CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt, Revision: inv.Revision,
+		ProjectId: inv.ProjectID, ProjectReference: inv.ProjectReference,
 		Lines: make([]gen.InvoicesLine, 0, len(stored)), VatSummaries: []gen.InvoicesVatSummary{}, Warnings: []string{},
 	}
 	if inv.DeliveryAddressLine1 != nil {

@@ -60,7 +60,8 @@ DELETE FROM invoices.invoices WHERE id = @id AND status = 'draft';
 -- ListInvoices is one page of GET /invoices (D4): drafts first, then by number
 -- descending, the id breaking ties so a page never shifts under a reader.
 -- search is a number (exact) or a buyer-name pattern; a draft has no buyer
--- snapshot and is found through customer_id instead.
+-- snapshot and is found through customer_id instead. project_id is the
+-- document's own derived project (invoices work design D9).
 --
 -- Each row carries its derived state (D3): credited (the issued credit notes'
 -- gross) and paid (the live payments' sum) from one lateral join each, read
@@ -85,6 +86,7 @@ LEFT JOIN LATERAL (
 WHERE (sqlc.narg(status)::text IS NULL OR i.status = sqlc.narg(status)::text)
   AND (sqlc.narg(kind)::text IS NULL OR i.kind = sqlc.narg(kind)::text)
   AND (sqlc.narg(customer_id)::int IS NULL OR i.customer_id = sqlc.narg(customer_id)::int)
+  AND (sqlc.narg(project_id)::int IS NULL OR i.project_id = sqlc.narg(project_id)::int)
   AND ((sqlc.narg(search_number)::bigint IS NULL AND sqlc.narg(search_pattern)::text IS NULL)
        OR i.number = sqlc.narg(search_number)::bigint
        OR i.buyer_name ILIKE sqlc.narg(search_pattern)::text)
@@ -111,6 +113,7 @@ LEFT JOIN LATERAL (
 WHERE (sqlc.narg(status)::text IS NULL OR i.status = sqlc.narg(status)::text)
   AND (sqlc.narg(kind)::text IS NULL OR i.kind = sqlc.narg(kind)::text)
   AND (sqlc.narg(customer_id)::int IS NULL OR i.customer_id = sqlc.narg(customer_id)::int)
+  AND (sqlc.narg(project_id)::int IS NULL OR i.project_id = sqlc.narg(project_id)::int)
   AND ((sqlc.narg(search_number)::bigint IS NULL AND sqlc.narg(search_pattern)::text IS NULL)
        OR i.number = sqlc.narg(search_number)::bigint
        OR i.buyer_name ILIKE sqlc.narg(search_pattern)::text)

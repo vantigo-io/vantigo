@@ -569,3 +569,111 @@ func (r *sourcesRefresh) apply(rows []heldSource) (kept []heldSource, dropped []
 	}
 	return kept, dropped
 }
+
+// The document's project (invoices work design D9, plan reading 14): the one
+// project all of a draft's held work belongs to, derived — never written by
+// a request — and stored with the project's code as a snapshot, the
+// reference the PDF and the EHF print from the document's own row. The code
+// comes from the draft's stored reference while the project is unchanged,
+// and otherwise from the project directory, read before the writer's
+// transaction (a contract call is never made under its lock) into
+// projectCodes; with Projects switched off or the project gone from the
+// directory there is no code, and both columns are NULL
+// (ck_invoices_project).
+
+// projectCodes is the codes of entries by project id: what a writer read
+// through ProjectDirectory before its transaction, for setDocumentProject.
+func projectCodes(entries []contracts.ProjectEntry) map[int32]string {
+	codes := make(map[int32]string, len(entries))
+	for _, e := range entries {
+		codes[e.ID] = e.Code
+	}
+	return codes
+}
+
+// oneProject is the project every row belongs to, false when they span two
+// or there are none.
+func oneProject(rows []heldSource) (int32, bool) {
+	if len(rows) == 0 {
+		return 0, false
+	}
+	for _, r := range rows[1:] {
+		if r.projectID != rows[0].projectID {
+			return 0, false
+		}
+	}
+	return rows[0].projectID, true
+}
+
+// setDocumentProject derives D9's project from rows — every line source the
+// draft holds once the writer's own writes are done, the work a save
+// carries or, for the uninvoiced view's wizard, the target's carried work
+// and the work it adds — and stores it on the locked draft doc, on txq,
+// inside the writer's transaction; it answers doc as it then stands. The
+// reference is doc's own stored one when the project is unchanged, else
+// codes[project] (projectCodes of what the writer read before its
+// transaction); a project codes does not know leaves both columns NULL. A
+// project the draft already names, unchanged, writes nothing.
+func setDocumentProject(ctx context.Context, txq *store.Queries, doc store.InvoicesInvoice, rows []heldSource, codes map[int32]string) (store.InvoicesInvoice, error) {
+	var projectID *int32
+	var reference *string
+	if p, ok := oneProject(rows); ok {
+		switch code, known := codes[p]; {
+		case doc.ProjectID != nil && *doc.ProjectID == p && doc.ProjectReference != nil:
+			projectID, reference = &p, doc.ProjectReference
+		case known:
+			projectID, reference = &p, &code
+		}
+	}
+	if sameInt32(projectID, doc.ProjectID) && sameText(reference, doc.ProjectReference) {
+		return doc, nil
+	}
+	set, err := txq.SetDocumentProject(ctx, store.SetDocumentProjectParams{ID: doc.ID, ProjectID: projectID, ProjectReference: reference})
+	if err != nil {
+		return store.InvoicesInvoice{}, fmt.Errorf("invoices: set draft %d's project: %w", doc.ID, err)
+	}
+	return set, nil
+}
+
+func sameInt32(a, b *int32) bool {
+	return (a == nil) == (b == nil) && (a == nil || *a == *b)
+}
+
+// saveProjectCodes is what a save of current needs from the project
+// directory for its derived project, read before the save's transaction: the
+// code of the one project the work the request keeps belongs to — the held
+// work its lines name, at a refresh's current project — when the draft does
+// not already name that project. Nothing is read for a draft without work,
+// work spanning two projects, a customer change (which drops every hold) or
+// a project the draft names already; nor with Projects switched off. held is
+// the draft's work as read on the pool. The save's lock judges the work
+// again; a save slipped in between moves the revision and is refused there.
+func (s *server) saveProjectCodes(ctx context.Context, current store.InvoicesInvoice, in draftInput, held []heldSource) (map[int32]string, error) {
+	if s.deps.Projects == nil || in.customerID != current.CustomerID || len(held) == 0 {
+		return nil, nil
+	}
+	byRef := make(map[sourceRef]heldSource, len(held))
+	for _, h := range held {
+		byRef[h.ref()] = h
+	}
+	var kept []heldSource
+	for _, l := range in.lines {
+		for _, r := range l.sources {
+			if h, ok := byRef[r]; ok {
+				kept = append(kept, h)
+			}
+		}
+	}
+	if in.refresh != nil {
+		kept, _ = in.refresh.apply(kept)
+	}
+	p, ok := oneProject(kept)
+	if !ok || (current.ProjectID != nil && *current.ProjectID == p) {
+		return nil, nil
+	}
+	entries, err := s.projectEntries(ctx, []int32{p})
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read project %d for draft %d: %w", p, current.ID, err)
+	}
+	return projectCodes(entries), nil
+}

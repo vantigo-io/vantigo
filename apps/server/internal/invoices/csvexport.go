@@ -24,10 +24,11 @@ import (
 // one computed column, Base NOK, is big.Rat arithmetic rounded to øre.
 
 // exportHeader is D5's header row, fixed and English, in its order. A new
-// column goes at the end: KID is EHF and KID design D3's.
+// column goes at the end: KID is EHF and KID design D3's, Project invoices
+// work design D9's.
 var exportHeader = []string{
 	"Number", "Kind", "Issue date", "Delivery", "Due", "Customer number", "Buyer", "Buyer org no",
-	"Currency", "SAF-T code", "Rate", "Base", "VAT", "Base NOK", "VAT NOK", "Credits number", "KID",
+	"Currency", "SAF-T code", "Rate", "Base", "VAT", "Base NOK", "VAT NOK", "Credits number", "KID", "Project",
 }
 
 // tooManyRowsToExport is the cap's 400 (D5): a bare problem asking for a
@@ -163,6 +164,9 @@ func exportCells(r store.ExportRowsRow) ([]csvValue, error) {
 		// The module's own digits and at most a MOD11 '-' at the end: the
 		// guard never fires on one, and stays as defence in depth.
 		text(csvText(r.Kid)),
+		// The project's code as the document took it: the projects module's
+		// text, so guarded.
+		text(csvText(r.ProjectReference)),
 	}, nil
 }
 

@@ -308,3 +308,35 @@ func TestPDFModel_TheKIDLine(t *testing.T) {
 		}
 	}
 }
+
+// The project the document's work belongs to prints in the meta block after
+// the references — "Prosjekt" / "Project" and the reference — from the
+// document's own row (invoices work design D9), on an issued document and a
+// preview alike; a document that names none prints no line.
+func TestPDF_TheProjectLine(t *testing.T) {
+	t.Parallel()
+	number, reference, project := int64(7), "P-41", int32(41)
+	zero, err := numericFromRat(new(big.Rat), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := pdfDocumentOf(store.InvoicesInvoice{
+		Kind: kindInvoice, Currency: "NOK", Number: &number, IssueDate: pgDate(time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)),
+		OrderReference: "PO-9", ProjectID: &project, ProjectReference: &reference,
+		NetTotal: zero, VatTotal: zero, GrossTotal: zero,
+	}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("pdfDocumentOf: %v", err)
+	}
+	m := buildPDFModel(d)
+	if last := m.meta[len(m.meta)-1]; last != [2]string{"Prosjekt", "P-41"} || m.meta[len(m.meta)-2] != [2]string{"Ordrereferanse", "PO-9"} {
+		t.Errorf("nb meta = %q, want Prosjekt P-41 after the order reference", m.meta)
+	}
+	d.language = "en"
+	if m := buildPDFModel(d); m.meta[len(m.meta)-1] != [2]string{"Project", "P-41"} {
+		t.Errorf("en meta = %q, want Project P-41 last", m.meta)
+	}
+	if m := buildPDFModel(anInvoice()); slices.ContainsFunc(m.meta, func(kv [2]string) bool { return kv[0] == "Prosjekt" }) {
+		t.Errorf("without a project the meta = %q", m.meta)
+	}
+}

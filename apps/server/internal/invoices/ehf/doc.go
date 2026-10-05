@@ -34,6 +34,11 @@ type Document struct {
 	BuyerReference, OrderReference string
 	// Original is the invoice a credit note credits (BT-25/26).
 	Original *DocumentReference
+	// ProjectReference is the project the document's work belongs to, as the
+	// document took it (invoices work design D9): BT-11 on an invoice, an
+	// additional document reference of type 50 on a credit note. Empty for
+	// none.
+	ProjectReference string
 	// DeliveryDate, or the period DeliveryFrom–DeliveryTo; DeliveryPlace,
 	// written only when it has a country (BR-57).
 	DeliveryDate, DeliveryFrom, DeliveryTo string
