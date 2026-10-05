@@ -946,7 +946,7 @@ export interface components {
             ourReference?: string;
             /** Format: int32 */
             paymentTermsDays?: number;
-            /** @description PUT of an invoice draft only (invoices work design D2): re-read the work the draft holds through the source modules' billable reads, before the save's transaction, and take each source's current revision, project, currency, quantity, amount, date and kind; work no longer invoiceable is dropped and named in releasedSources. A save that slipped in between the read and the save's lock and changed the held work is 409 invoice_changed. true on a create or on a credit-note draft is a 400. */
+            /** @description PUT of an invoice draft only (invoices work design D2): re-read the work the draft holds through the source modules' billable reads, before the save's transaction, and take each source's current revision, project, quantity, amount, date and kind; work no longer invoiceable, or now in another currency than the draft took it in, is dropped and named in releasedSources. A save that slipped in between the read and the save's lock and changed the held work is 409 invoice_changed. true on a create or on a credit-note draft is a 400. */
             refreshSources?: boolean;
             /**
              * Format: int32
@@ -2239,7 +2239,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — invoice_issued, a customer gate, a stale revision, invoice_changed (refreshSources, when the held work changed between its read and the save's lock) or source_held_elsewhere. */
+            /** @description Conflict — invoice_issued, a customer gate, a stale revision or invoice_changed (refreshSources, when the held work changed between its read and the save's lock). */
             409: {
                 headers: {
                     [name: string]: unknown;

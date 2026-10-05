@@ -213,7 +213,7 @@ type InvoicesInvoiceRequest struct {
 	OurReference     *string                  `json:"ourReference,omitempty"`
 	PaymentTermsDays *int32                   `json:"paymentTermsDays,omitempty"`
 
-	// RefreshSources PUT of an invoice draft only (invoices work design D2): re-read the work the draft holds through the source modules' billable reads, before the save's transaction, and take each source's current revision, project, currency, quantity, amount, date and kind; work no longer invoiceable is dropped and named in releasedSources. A save that slipped in between the read and the save's lock and changed the held work is 409 invoice_changed. true on a create or on a credit-note draft is a 400.
+	// RefreshSources PUT of an invoice draft only (invoices work design D2): re-read the work the draft holds through the source modules' billable reads, before the save's transaction, and take each source's current revision, project, quantity, amount, date and kind; work no longer invoiceable, or now in another currency than the draft took it in, is dropped and named in releasedSources. A save that slipped in between the read and the save's lock and changed the held work is 409 invoice_changed. true on a create or on a credit-note draft is a 400.
 	RefreshSources *bool `json:"refreshSources,omitempty"`
 
 	// Revision Required on PUT; the revision the caller read. A stale one is a 409 naming both.
