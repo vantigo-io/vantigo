@@ -835,7 +835,19 @@ and reminder runs (purring, inkassovarsel) that enforce the 14-day rules and the
 from a dated rates table (the inkassosats, the late-interest rate); the B2B standard
 compensation; per-customer reminder settings; an inkasso hand-off export.
 
-*Unblocks:* receivables without a spreadsheet.
+**A payments port**, the access-point pattern of phase 2 applied to money in: a
+`PaymentProvider` port in a shared server package (not inside Invoices, so a later
+Point of sale module consumes the same adapters), **Vipps MobilePay ePayment first**
+— a payment request on an invoice, the customer's approval in the app, the callback or
+poll matched to the document as a registered payment — with credentials sealed in their
+own table, a fake for every suite, and a tagged test against the provider's test
+environment. **The quick invoice** beside it: create and issue in one step for a job
+finished on site (a single line, a person or business buyer, the ordinary number series),
+optionally with a Vipps payment request attached. This is a credit sale — the invoice is
+the document and the payment follows it — which is what keeps it inside Invoices; a sale
+paid at the counter is a cash sale and belongs to the Point of sale module below.
+
+*Unblocks:* receivables without a spreadsheet; Point of sale's payment adapters.
 
 ### Phase 5 — Energy consumption billing
 
@@ -851,4 +863,48 @@ Recurring invoices and retainers (a subscription may be invoiced up to a year ah
 eFaktura and AvtaleGiro for consumers · a customer portal · a bank API for payments ·
 several legal entities per tenant, each with its own series · a posting export in
 SAF-T-friendly form to Tripletex, Fiken or PowerOffice.
+
+## Point of sale
+
+A new module, for a sale paid at the moment of delivery: a haircut, a counter sale, a
+single job settled on the spot from a tablet. It is **its own module**, not an Invoices
+feature, because a cash sale is a different legal document from an invoice: under
+bokføringsforskriften a sale settled at delivery by cash, card or Vipps is **kontantsalg**
+and must be registered in an approved cash register system (kassasystem) with its own
+receipt numbering, a sales journal, X and Z reports, a receipt in the prescribed form
+and a product declaration filed with Skatteetaten — separate records, retention and
+audit rules from the invoice series. It consumes Products (the catalog and tax
+categories), optionally Customers (a named buyer on a receipt) and the payments port of
+Invoices phase 4; it produces accounting output per VAT rate as Invoices' CSV does; it
+never issues invoices — a buyer at the counter who wants an invoice is handed to
+Invoices' quick invoice. A counter sale is also an order fulfilled and paid at once, so
+this module is a candidate first consumer of the deferred Orders model and is sequenced
+after the payments port and, where the timing allows, after Orders.
+
+### Phase 1 — Research, three models side by side
+
+Before any design, a research pass in the shape of the Storecove spike, with sources,
+that settles which model is viable for which customer:
+
+1. **The cash-register rules**: what makes a sale kontantsalg (Vipps counts as cash),
+   the exemptions (small cash volumes, sporadic and mobile sales), what an approved
+   kassasystem must do and declare, what the receipt must say, and where the line runs
+   between "an invoice paid at once by Vipps" and a cash sale.
+2. **Vantigo as the register** with a card terminal attached: which terminal APIs work
+   from a web app on a tablet in Norway (Adyen's terminal API, Viva Wallet, Stripe
+   Terminal if available here, Nets/Verifone integrations), and what each costs in
+   certification and in device handling (drawer, printer, offline).
+3. **An external register, Vantigo as the books**: Zettle by PayPal and SumUp, whose
+   apps are themselves approved registers and whose purchases APIs can feed Vantigo's
+   accounting export, products and customers — the cheap path for a shop that already
+   owns one, with no cash-register obligation on Vantigo's side.
+4. **Vipps at the counter** through the phase 4 payments port in either model.
+
+*Unblocks:* the decision between building a register and integrating one.
+
+### Later
+
+The register itself (basket, product grid, payment screen, shifts and cash counts,
+receipts, X/Z reports, the product declaration) · gift cards and deposits · a
+customer-facing display.
 
