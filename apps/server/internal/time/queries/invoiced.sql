@@ -6,7 +6,8 @@
 -- whether there was more. amount is hours × bill rate × the multiplier (100 %
 -- for ordinary hours), exact — numeric multiplies without rounding, so it
 -- carries up to eight decimals — the figure the holder judges a draft's
--- amount against. The note is never read: it is the person's own text.
+-- amount against. The multiplier is its decimal text, '' for ordinary hours.
+-- The note is never read: it is the person's own text.
 SELECT id,
        revision,
        project_id,
@@ -16,7 +17,7 @@ SELECT id,
        (hours * 100)::bigint AS hours_hundredths,
        bill_rate::text AS bill_rate,
        COALESCE(bill_currency, '')::text AS currency,
-       bill_multiplier_percent,
+       COALESCE(bill_multiplier_percent::text, '')::text AS bill_multiplier_percent,
        work_type_id,
        work_type_name,
        task_title,
@@ -41,7 +42,7 @@ SELECT id,
        (hours * 100)::bigint AS hours_hundredths,
        bill_rate::text AS bill_rate,
        COALESCE(bill_currency, '')::text AS currency,
-       bill_multiplier_percent,
+       COALESCE(bill_multiplier_percent::text, '')::text AS bill_multiplier_percent,
        work_type_id,
        work_type_name,
        task_title,

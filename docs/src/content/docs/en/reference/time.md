@@ -180,12 +180,15 @@ at 333.33 and 150 % is worth 749.99 (749.9925), not 1.5 × 500.00.
 ```text
         submit            approve        (an invoice's issue)
 draft ───────────► submitted ───────► approved ───────────► invoiced
-  ▲                    │                  │  ◄───────────────────┘
-  │                    │ reject           │   (a credit note's issue)
-  │                    ▼                  │ unapprove
+  ▲                    │                  │
+  │                    │ reject           │ unapprove
+  │                    ▼                  │
   │                 rejected              │
   │       edit          │                 │
   └─────────────────────┴─────────────────┘
+
+                                      approved ◄─────────── invoiced
+                                            (a credit note's issue)
 ```
 
 An edit takes a rejected entry back to `draft`; unapprove takes an approved one back

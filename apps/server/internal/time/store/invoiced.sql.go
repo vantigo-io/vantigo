@@ -23,7 +23,7 @@ SELECT id,
        (hours * 100)::bigint AS hours_hundredths,
        bill_rate::text AS bill_rate,
        COALESCE(bill_currency, '')::text AS currency,
-       bill_multiplier_percent,
+       COALESCE(bill_multiplier_percent::text, '')::text AS bill_multiplier_percent,
        work_type_id,
        work_type_name,
        task_title,
@@ -50,7 +50,7 @@ type BillableHoursByIDsRow struct {
 	HoursHundredths       int64
 	BillRate              string
 	Currency              string
-	BillMultiplierPercent pgtype.Numeric
+	BillMultiplierPercent string
 	WorkTypeID            *int32
 	WorkTypeName          *string
 	TaskTitle             *string
@@ -105,7 +105,7 @@ SELECT id,
        (hours * 100)::bigint AS hours_hundredths,
        bill_rate::text AS bill_rate,
        COALESCE(bill_currency, '')::text AS currency,
-       bill_multiplier_percent,
+       COALESCE(bill_multiplier_percent::text, '')::text AS bill_multiplier_percent,
        work_type_id,
        work_type_name,
        task_title,
@@ -134,7 +134,7 @@ type BillableHoursForProjectsRow struct {
 	HoursHundredths       int64
 	BillRate              string
 	Currency              string
-	BillMultiplierPercent pgtype.Numeric
+	BillMultiplierPercent string
 	WorkTypeID            *int32
 	WorkTypeName          *string
 	TaskTitle             *string
@@ -148,7 +148,8 @@ type BillableHoursForProjectsRow struct {
 // whether there was more. amount is hours × bill rate × the multiplier (100 %
 // for ordinary hours), exact — numeric multiplies without rounding, so it
 // carries up to eight decimals — the figure the holder judges a draft's
-// amount against. The note is never read: it is the person's own text.
+// amount against. The multiplier is its decimal text, ” for ordinary hours.
+// The note is never read: it is the person's own text.
 func (q *Queries) BillableHoursForProjects(ctx context.Context, arg BillableHoursForProjectsParams) ([]BillableHoursForProjectsRow, error) {
 	rows, err := q.db.Query(ctx, billableHoursForProjects, arg.ProjectIds, arg.Until, arg.RowLimit)
 	if err != nil {
