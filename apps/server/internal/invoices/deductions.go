@@ -417,8 +417,13 @@ func issueDeductions(ctx context.Context, txq *store.Queries, locked store.Invoi
 				l.Position, *d.deductsInvoiceID)), nil
 		}
 		// A code where the deducted invoice deducts others itself is not
-		// deductible: deductibleOf leaves it out, so the cap finds nothing
-		// left there and refuses the line.
+		// deductible (deductibleOf leaves it out): refused in its own words,
+		// not as a cap with nothing left.
+		if snap.deductsHere {
+			return nil, refuse(l.Position, fmt.Sprintf(
+				"Line %d deducts document %d, which deducts earlier invoices at this VAT code itself, so it is not deductible at it.",
+				l.Position, *d.deductsInvoiceID)), nil
+		}
 		out[l.ID] = snap.taxed
 	}
 	left, err := deductibleOf(ctx, txq, locked.CustomerID, locked.ID, ids)

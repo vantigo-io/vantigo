@@ -249,7 +249,8 @@ export const workView = (overrides: Partial<WorkView> = {}): WorkView => ({
  * holding its work.
  */
 export const fromWorkDraft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
-  const { deliveryDate: _deliveryDate, ...base } = draft();
+  const base = draft();
+  delete base.deliveryDate;
   const held = { projectId: 41, state: "held" };
   const line = { discountPercent: 0, vatCodeId: 1, warnings: [] };
   return {

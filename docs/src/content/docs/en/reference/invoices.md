@@ -358,14 +358,18 @@ any transaction:
    that is not NOK — `currency_not_nok`.
 6. **The lines**: each kind's VAT code ([VAT codes for work](#vat-codes-for-work)), the
    people the lines name (`UserDirectory.Users`, for the `person` and `itemised`
-   groupings), the grouping below. More than 500 lines with the target's own is 409
+   groupings), the grouping below. More than 500 lines with the target's own — every one,
+   a settlement's deduction lines included — is 409
    `too_many_lines` with `suggestedGrouping`, the next coarser grouping whose lines fit
    (absent when none does); a line too large for its columns is a 400 on `sources`.
 
 Then **one transaction**: the new draft is inserted — or the target is locked `FOR
 UPDATE`, still a draft and at the body's revision (else 409 `invoice_issued` or the
 revision 409) — and its lines written: an append keeps the target's own lines first,
-their work carried, and adds the new ones after, the totals computed again. Under that
+their work carried — a settlement's deduction lines with the invoice they deduct, their
+-1 and their a-kontos' snapshots ([A-konto and the final
+settlement](#a-konto-and-the-final-settlement)) — and adds the new ones after, the totals
+computed again. Under that
 lock the wizard reads whether another live document holds or has invoiced any of the
 new work and refuses with 409 `source_held_elsewhere` — `heldBy` and the source name the
 first such document — and only then holds the work, in **one statement ordered by kind

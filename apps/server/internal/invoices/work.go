@@ -772,11 +772,17 @@ func checkWorkLines(lines []draftLine, errs map[string][]string) map[string][]st
 }
 
 // storedLines are a draft's stored lines as a save writes them again: their
-// fields as stored, their amounts computed again.
+// fields as stored — a settlement's deduction line with the invoice it
+// deducts, its quantity of -1 and its positive price (invoices work design
+// D7) — their amounts computed again. A deduction's snapshot is the
+// caller's to add (withDeductionSnapshots) before it is taxed.
 func storedLines(rows []store.InvoicesLine) ([]draftLine, error) {
 	out := make([]draftLine, 0, len(rows))
 	for _, r := range rows {
-		l := draftLine{description: r.Description, unit: r.Unit, vatCodeID: r.VatCodeID, creditsLineID: r.CreditsLineID, sourcesGiven: true}
+		l := draftLine{
+			description: r.Description, unit: r.Unit, vatCodeID: r.VatCodeID, creditsLineID: r.CreditsLineID,
+			deductsInvoiceID: r.DeductsInvoiceID, sourcesGiven: true,
+		}
 		var err error
 		if l.quantity, err = ratFromNumeric(r.Quantity); err != nil {
 			return nil, err
@@ -985,7 +991,7 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 		if err != nil {
 			return nil, fmt.Errorf("invoices: read document %d's lines: %w", target.ID, err)
 		}
-		existing = len(n)
+		existing = len(n) // every line of the target, a settlement's deduction lines included
 	}
 	if existing+len(lines) > maxLines {
 		refusal := conflict(codeTooManyLines, cannotInvoiceWorkTitle, fmt.Sprintf(
@@ -1099,6 +1105,11 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 			}
 			kept, err := storedLines(stored)
 			if err != nil {
+				return err
+			}
+			// A settlement's deductions keep their a-kontos' snapshots
+			// (D7), read from the documents' own rows and never locked.
+			if err := withDeductionSnapshots(ctx, txq, kept); err != nil {
 				return err
 			}
 			all = append(kept, lines...)
