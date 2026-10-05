@@ -95,6 +95,7 @@ func invoicesInstallation(t *testing.T, opts ...modtest.Option) (*modtest.Harnes
 		"email": sellerEmail, "defaultPaymentTermsDays": 14, "defaultCurrency": "NOK",
 		"footerText": "Takk for handelen.", "seriesStart": 1,
 		"peppolId": nil, "kidLength": nil, "kidAlgorithm": nil, "revision": 1,
+		"workVatCodes": map[string]any{"hours": 1, "expenses": 1, "milestones": 1},
 	}, nil)
 	return h, admin, smtp
 }

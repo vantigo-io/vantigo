@@ -84,13 +84,16 @@ type InvoicesBuyer struct {
 	Type string `json:"type"`
 }
 
-// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save would hold is held by another live draft or invoiced by an unreleased issued line; the detail names that document), the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off), and invoice_changed also when the draft's work changed between the issue's reads and its lock, storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
+// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off), and invoice_changed also when the draft's work changed between the issue's reads and its lock, storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 type InvoicesConflictProblem struct {
 	// AllowedIssueDates On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise.
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
 	Code              *string               `json:"code,omitempty"`
 	Detail            *string               `json:"detail,omitempty"`
-	Instance          *string               `json:"instance,omitempty"`
+
+	// HeldBy The live document that holds a piece of work (invoices work design D2, D3) — a draft that holds it, or an issued invoice that invoiced it — by id, number (an issued one's only) and status.
+	HeldBy   *InvoicesWorkHeldBy `json:"heldBy,omitempty"`
+	Instance *string             `json:"instance,omitempty"`
 
 	// LinePosition On a refusal about one line (vat_code_inactive, vat_code_not_valid, credit_exceeds_line, and the issue's refusals about a source — the first line holding it), the line's position, 1-based. Absent otherwise.
 	LinePosition *int32 `json:"linePosition,omitempty"`
@@ -110,14 +113,17 @@ type InvoicesConflictProblem struct {
 	// Rules On ehf_invalid, every pre-check rule the document's EHF failed. Absent otherwise.
 	Rules *[]InvoicesEhfRule `json:"rules,omitempty"`
 
-	// SourceId On the issue's refusals about a source (source_not_invoiceable, source_changed, source_already_invoiced, source_customer_changed, source_not_selectable), the source's id in its own module. Absent otherwise.
+	// SourceId On the issue's and the wizard's refusals about a source (source_not_invoiceable, source_changed, source_already_invoiced, source_customer_changed, source_not_selectable, source_not_for_customer, source_held_elsewhere), the source's id in its own module. Absent otherwise.
 	SourceId *int64 `json:"sourceId,omitempty"`
 
-	// SourceKind On the issue's refusals about a source, its kind — time.entry, expenses.entry or projects.milestone. Absent otherwise.
+	// SourceKind On the issue's and the wizard's refusals about a source, its kind — time.entry, expenses.entry or projects.milestone. Absent otherwise.
 	SourceKind *string `json:"sourceKind,omitempty"`
 	Status     *int32  `json:"status,omitempty"`
-	Title      *string `json:"title,omitempty"`
-	Type       *string `json:"type,omitempty"`
+
+	// SuggestedGrouping On too_many_lines, the next coarser grouping whose lines fit in 500 — date, person, work_type or project. Absent otherwise, and absent when none fits.
+	SuggestedGrouping *string `json:"suggestedGrouping,omitempty"`
+	Title             *string `json:"title,omitempty"`
+	Type              *string `json:"type,omitempty"`
 }
 
 // InvoicesCreditNoteRef One credit note of an invoice, a draft (number absent) or issued.
@@ -176,6 +182,34 @@ type InvoicesEhfState struct {
 	Status        string                 `json:"status"`
 	SubmittedAt   *time.Time             `json:"submittedAt,omitempty"`
 	Transmissions []InvoicesTransmission `json:"transmissions"`
+}
+
+// InvoicesFromWorkRequest POST /invoices/from-work's body (invoices work design D3, D4, D6): the customer, the work by identity (at most 5 000 with an append target's held work, none twice), the grouping — project (the default), work_type, person, date or itemised — the VAT codes per kind, an optional delivery period (both or neither; the first and last work dates when absent), and, to add the work to an existing invoice draft of this customer, its invoiceId with the revision it was read at.
+type InvoicesFromWorkRequest struct {
+	CustomerId   int32                    `json:"customerId"`
+	DeliveryFrom *openapi_types.Date      `json:"deliveryFrom,omitempty"`
+	DeliveryTo   *openapi_types.Date      `json:"deliveryTo,omitempty"`
+	Grouping     *string                  `json:"grouping,omitempty"`
+	InvoiceId    *int64                   `json:"invoiceId,omitempty"`
+	Revision     *int32                   `json:"revision,omitempty"`
+	Sources      []InvoicesFromWorkSource `json:"sources"`
+
+	// VatCodes The wizard's VAT code per kind of work (invoices work design D6), each optional — absent takes the settings' default, or id 9 (code 7, category O) for every kind while the seller is not VAT-registered. A code given must exist and be active (a 400 on vatCodes.<kind>); a default that has become inactive, with no code given, is a 400 on vatCodes.<kind> too.
+	VatCodes *InvoicesFromWorkVatCodes `json:"vatCodes,omitempty"`
+}
+
+// InvoicesFromWorkSource A piece of work the wizard takes, by identity and the revision the view showed — judged for an hour entry and a milestone, display-only for an expense (invoices work design D1, D3).
+type InvoicesFromWorkSource struct {
+	Id       int64  `json:"id"`
+	Kind     string `json:"kind"`
+	Revision int32  `json:"revision"`
+}
+
+// InvoicesFromWorkVatCodes The wizard's VAT code per kind of work (invoices work design D6), each optional — absent takes the settings' default, or id 9 (code 7, category O) for every kind while the seller is not VAT-registered. A code given must exist and be active (a 400 on vatCodes.<kind>); a default that has become inactive, with no code given, is a 400 on vatCodes.<kind> too.
+type InvoicesFromWorkVatCodes struct {
+	Expenses   *int32 `json:"expenses,omitempty"`
+	Hours      *int32 `json:"hours,omitempty"`
+	Milestones *int32 `json:"milestones,omitempty"`
 }
 
 // InvoicesInvoiceListItem One document in the list. customerName is the buyer snapshot's name on an issued document and the customer's current name on a draft, absent when the directory no longer knows it.
@@ -514,6 +548,24 @@ type InvoicesMetaResponse struct {
 
 	// VatCodes The VAT codes a new line may take — active, with a rate period covering today — each with today's rate.
 	VatCodes []InvoicesVatCodeInForce `json:"vatCodes"`
+
+	// Work Which kinds of work this installation can invoice (invoices work design D3) — each true when the module that owns it is switched on and provides its billable read.
+	Work InvoicesMetaWork `json:"work"`
+
+	// WorkAvailable Whether any work can be invoiced here — at least one of the billable reads (time's hours, expenses' lines, projects' milestones) is composed, so the uninvoiced view answers (invoices work design D3). Without it GET /invoices/work is 409 work_unavailable.
+	WorkAvailable bool `json:"workAvailable"`
+}
+
+// InvoicesMetaWork Which kinds of work this installation can invoice (invoices work design D3) — each true when the module that owns it is switched on and provides its billable read.
+type InvoicesMetaWork struct {
+	// Expenses Expenses' lines (expenses.entry).
+	Expenses bool `json:"expenses"`
+
+	// Hours Time's hour entries (time.entry).
+	Hours bool `json:"hours"`
+
+	// Milestones Projects' billing milestones (projects.milestone).
+	Milestones bool `json:"milestones"`
 }
 
 // InvoicesPayment One payment registered against an issued invoice (D2). A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing.
@@ -574,7 +626,7 @@ type InvoicesSendRequest struct {
 	Recipient *string `json:"recipient,omitempty"`
 }
 
-// InvoicesSettingsRequest PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. revision is the one the caller read: a stale one is a 409 naming both.
+// InvoicesSettingsRequest PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. revision is the one the caller read: a stale one is a 409 naming both.
 type InvoicesSettingsRequest struct {
 	AddressLine1            string  `json:"addressLine1"`
 	AddressLine2            *string `json:"addressLine2,omitempty"`
@@ -603,6 +655,9 @@ type InvoicesSettingsRequest struct {
 	Revision      int32           `json:"revision"`
 	SeriesStart   int64           `json:"seriesStart"`
 	VatRegistered bool            `json:"vatRegistered"`
+
+	// WorkVatCodes The VAT code each kind of work is invoiced at (invoices work design D6) — the settings' defaults, which the uninvoiced view's wizard pre-fills, each the id of a code. All three are 1 (code 3, 25 %) until changed.
+	WorkVatCodes InvoicesWorkVatCodes `json:"workVatCodes"`
 }
 
 // InvoicesSettingsResponse The seller record and the series start (D2). A text field that is not set is the empty string. seriesLocked is true once anything is issued; from then on seriesStart cannot change, and every other field still can — issued documents keep their own seller snapshot. peppolId is the seller's address on the Peppol network, read when a document is sent, never part of the snapshot; kidLength and kidAlgorithm are the KID agreement, which an issued invoice's kid was computed under.
@@ -645,6 +700,9 @@ type InvoicesSettingsResponse struct {
 
 	// Warnings Never refusals. kid_headroom_low — the next number leaves fewer than two digits of the KID agreement's length (a hundredfold growth) before issuing is refused with kid_length_exceeded.
 	Warnings []string `json:"warnings"`
+
+	// WorkVatCodes The VAT code each kind of work is invoiced at (invoices work design D6) — the settings' defaults, which the uninvoiced view's wizard pre-fills, each the id of a code. All three are 1 (code 3, 25 %) until changed.
+	WorkVatCodes InvoicesWorkVatCodes `json:"workVatCodes"`
 }
 
 // InvoicesSourceRef A piece of work by identity (invoices work design D2): kind is time.entry (an hour entry), expenses.entry (an expense line) or projects.milestone (a billing milestone), and id is its row in the module that owns it.
@@ -795,6 +853,129 @@ type InvoicesVatSummary struct {
 	VatCategory     string  `json:"vatCategory"`
 }
 
+// InvoicesWorkExpense One expense line ready to invoice and not yet invoiced (invoices work design D3): its kind (outlay, mileage or supplier_invoice), date, description, the supplier and its invoice number on a supplier invoice, the net amount, the markup, the distance and the rate per km on mileage, and billAmount, what the customer is billed with the markup in it. selectable and reason as on an hour (never fixed_price: only hours are a fixed-price project's information). warnings: currency_not_nok, and supplier_invoice_rebilled — a supplier invoice whose supplier and number another entry already invoiced, or that another row of this answer repeats.
+type InvoicesWorkExpense struct {
+	BillAmount    float64            `json:"billAmount"`
+	BillRatePerKm *float64           `json:"billRatePerKm,omitempty"`
+	ClaimId       *int64             `json:"claimId,omitempty"`
+	Currency      string             `json:"currency"`
+	Date          openapi_types.Date `json:"date"`
+	Description   string             `json:"description"`
+	DistanceKm    *float64           `json:"distanceKm,omitempty"`
+
+	// HeldBy The live document that holds a piece of work (invoices work design D2, D3) — a draft that holds it, or an issued invoice that invoiced it — by id, number (an issued one's only) and status.
+	HeldBy                *InvoicesWorkHeldBy `json:"heldBy,omitempty"`
+	Id                    int64               `json:"id"`
+	Kind                  string              `json:"kind"`
+	MarkupPercent         *float64            `json:"markupPercent,omitempty"`
+	NetAmount             float64             `json:"netAmount"`
+	Reason                *string             `json:"reason,omitempty"`
+	Revision              int32               `json:"revision"`
+	Selectable            bool                `json:"selectable"`
+	Supplier              *string             `json:"supplier,omitempty"`
+	SupplierInvoiceNumber *string             `json:"supplierInvoiceNumber,omitempty"`
+	Warnings              *[]string           `json:"warnings,omitempty"`
+}
+
+// InvoicesWorkHeldBy The live document that holds a piece of work (invoices work design D2, D3) — a draft that holds it, or an issued invoice that invoiced it — by id, number (an issued one's only) and status.
+type InvoicesWorkHeldBy struct {
+	InvoiceId int64  `json:"invoiceId"`
+	Number    *int64 `json:"number,omitempty"`
+	Status    string `json:"status"`
+}
+
+// InvoicesWorkHeldOnDraft How many of a project's sources of one kind a draft holds (invoices work design D3).
+type InvoicesWorkHeldOnDraft struct {
+	Count     int32  `json:"count"`
+	InvoiceId int64  `json:"invoiceId"`
+	Kind      string `json:"kind"`
+}
+
+// InvoicesWorkHour One approved, billable, priced hour entry not yet invoiced (invoices work design D3). hours is the entry's hours; billRate the rate per hour, billMultiplierPercent its work type's multiplier (absent for none); rate the effective rate a line bills it at — billRate × the multiplier / 100, rounded half away from zero to four decimals; amount Time's exact amount (hours × billRate × the multiplier, up to eight decimals). selectable is whether the wizard takes it; when not, reason says why — held (heldBy names the live document that has it), non_billable (its project is non-billable), fixed_price (its project is fixed-price: its hours are shown, not invoiced), currency (not NOK) or no_customer (its project bills no customer). A row that is not selectable counts in no total. warnings: currency_not_nok.
+type InvoicesWorkHour struct {
+	Amount                float64            `json:"amount"`
+	BillMultiplierPercent *float64           `json:"billMultiplierPercent,omitempty"`
+	BillRate              float64            `json:"billRate"`
+	BillingLineId         *int32             `json:"billingLineId,omitempty"`
+	Currency              string             `json:"currency"`
+	Date                  openapi_types.Date `json:"date"`
+
+	// HeldBy The live document that holds a piece of work (invoices work design D2, D3) — a draft that holds it, or an issued invoice that invoiced it — by id, number (an issued one's only) and status.
+	HeldBy       *InvoicesWorkHeldBy `json:"heldBy,omitempty"`
+	Hours        float64             `json:"hours"`
+	Id           int64               `json:"id"`
+	Rate         float64             `json:"rate"`
+	Reason       *string             `json:"reason,omitempty"`
+	Revision     int32               `json:"revision"`
+	Selectable   bool                `json:"selectable"`
+	TaskTitle    *string             `json:"taskTitle,omitempty"`
+	UserId       openapi_types.UUID  `json:"userId"`
+	Warnings     *[]string           `json:"warnings,omitempty"`
+	WorkTypeId   *int32              `json:"workTypeId,omitempty"`
+	WorkTypeName *string             `json:"workTypeName,omitempty"`
+}
+
+// InvoicesWorkMilestone One billing milestone ready to invoice (invoices work design D3): its name and description, the planned date, when it became ready (readyAt) and that day in Oslo (date, the work's date), and amount, its effective amount — a percent of the fixed price resolved by Projects. selectable and reason as on an hour.
+type InvoicesWorkMilestone struct {
+	Amount      float64            `json:"amount"`
+	Currency    string             `json:"currency"`
+	Date        openapi_types.Date `json:"date"`
+	Description string             `json:"description"`
+
+	// HeldBy The live document that holds a piece of work (invoices work design D2, D3) — a draft that holds it, or an issued invoice that invoiced it — by id, number (an issued one's only) and status.
+	HeldBy      *InvoicesWorkHeldBy `json:"heldBy,omitempty"`
+	Id          int64               `json:"id"`
+	Name        string              `json:"name"`
+	PlannedDate *openapi_types.Date `json:"plannedDate,omitempty"`
+	ReadyAt     time.Time           `json:"readyAt"`
+	Reason      *string             `json:"reason,omitempty"`
+	Revision    int32               `json:"revision"`
+	Selectable  bool                `json:"selectable"`
+	Warnings    *[]string           `json:"warnings,omitempty"`
+}
+
+// InvoicesWorkProject One project's uninvoiced work (invoices work design D3): the project's code, name, billing type (time-and-materials, fixed-price or non-billable) and currency, its hours, expenses and milestones — each kind in its provider's order, held work listed and not selectable — what drafts hold of it (heldOnDrafts, per draft and kind), and warnings: work_overdue_to_invoice when its oldest selectable item is dated more than one calendar month before today (D12).
+type InvoicesWorkProject struct {
+	BillingType  string                    `json:"billingType"`
+	Code         string                    `json:"code"`
+	Currency     *string                   `json:"currency,omitempty"`
+	Expenses     []InvoicesWorkExpense     `json:"expenses"`
+	HeldOnDrafts []InvoicesWorkHeldOnDraft `json:"heldOnDrafts"`
+	Hours        []InvoicesWorkHour        `json:"hours"`
+	Id           int32                     `json:"id"`
+	Milestones   []InvoicesWorkMilestone   `json:"milestones"`
+	Name         string                    `json:"name"`
+	Warnings     []string                  `json:"warnings"`
+}
+
+// InvoicesWorkResponse GET /invoices/work's answer (invoices work design D3): the customer (absent for a project that bills none), its projects — every project of the customer, or the one asked for — with their uninvoiced work, the totals of the selectable work per currency, the people the hours name, and warnings: work_truncated when a billable read had more than 5 000 rows to answer and the rest is not here.
+type InvoicesWorkResponse struct {
+	CustomerId *int32                `json:"customerId,omitempty"`
+	Projects   []InvoicesWorkProject `json:"projects"`
+	Totals     []InvoicesWorkTotal   `json:"totals"`
+	Users      []InvoicesWorkUser    `json:"users"`
+	Warnings   []string              `json:"warnings"`
+}
+
+// InvoicesWorkTotal The selectable work's amount in one currency.
+type InvoicesWorkTotal struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
+// InvoicesWorkUser A person whose hours the answer lists, named by the user directory.
+type InvoicesWorkUser struct {
+	DisplayName string             `json:"displayName"`
+	Id          openapi_types.UUID `json:"id"`
+}
+
+// InvoicesWorkVatCodes The VAT code each kind of work is invoiced at (invoices work design D6) — the settings' defaults, which the uninvoiced view's wizard pre-fills, each the id of a code. All three are 1 (code 3, 25 %) until changed.
+type InvoicesWorkVatCodes struct {
+	Expenses   int32 `json:"expenses"`
+	Hours      int32 `json:"hours"`
+	Milestones int32 `json:"milestones"`
+}
+
 // PaginatedResponseOfInvoicesInvoiceListItem defines model for PaginatedResponseOfInvoicesInvoiceListItem.
 type PaginatedResponseOfInvoicesInvoiceListItem struct {
 	Data       []InvoicesInvoiceListItem       `json:"data"`
@@ -842,8 +1023,20 @@ type GetInvoicesStatsSummaryParams struct {
 	To   *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
 
+// GetInvoicesWorkParams defines parameters for GetInvoicesWork.
+type GetInvoicesWorkParams struct {
+	CustomerId *int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
+	ProjectId  *int32 `form:"projectId,omitempty" json:"projectId,omitempty"`
+
+	// Until The latest work date to list, inclusive; absent lists every date.
+	Until *openapi_types.Date `form:"until,omitempty" json:"until,omitempty"`
+}
+
 // PostInvoicesJSONRequestBody defines body for PostInvoices for application/json ContentType.
 type PostInvoicesJSONRequestBody = InvoicesInvoiceRequest
+
+// PostInvoicesFromWorkJSONRequestBody defines body for PostInvoicesFromWork for application/json ContentType.
+type PostInvoicesFromWorkJSONRequestBody = InvoicesFromWorkRequest
 
 // PutInvoicesSettingsJSONRequestBody defines body for PutInvoicesSettings for application/json ContentType.
 type PutInvoicesSettingsJSONRequestBody = InvoicesSettingsRequest
@@ -889,6 +1082,9 @@ type ServerInterface interface {
 	// GetInvoicesExportCsv Export the issued documents as CSV
 	// (GET /api/v1/invoices/export.csv)
 	GetInvoicesExportCsv(w http.ResponseWriter, r *http.Request, params GetInvoicesExportCsvParams)
+	// PostInvoicesFromWork Invoice work
+	// (POST /api/v1/invoices/from-work)
+	PostInvoicesFromWork(w http.ResponseWriter, r *http.Request)
 	// GetInvoicesJournal The invoice journal
 	// (GET /api/v1/invoices/journal)
 	GetInvoicesJournal(w http.ResponseWriter, r *http.Request, params GetInvoicesJournalParams)
@@ -931,6 +1127,9 @@ type ServerInterface interface {
 	// DeleteInvoicesVatCodesByIdRatesByRateId Remove a VAT code's latest rate period
 	// (DELETE /api/v1/invoices/vat-codes/{id}/rates/{rateId})
 	DeleteInvoicesVatCodesByIdRatesByRateId(w http.ResponseWriter, r *http.Request, id int32, rateId int32)
+	// GetInvoicesWork List the uninvoiced work
+	// (GET /api/v1/invoices/work)
+	GetInvoicesWork(w http.ResponseWriter, r *http.Request, params GetInvoicesWorkParams)
 	// DeleteInvoicesById Delete a draft
 	// (DELETE /api/v1/invoices/{id})
 	DeleteInvoicesById(w http.ResponseWriter, r *http.Request, id int64)
@@ -1185,6 +1384,20 @@ func (siw *ServerInterfaceWrapper) GetInvoicesExportCsv(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetInvoicesExportCsv(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesFromWork operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesFromWork(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesFromWork(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1516,6 +1729,65 @@ func (siw *ServerInterfaceWrapper) DeleteInvoicesVatCodesByIdRatesByRateId(w htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteInvoicesVatCodesByIdRatesByRateId(w, r, id, rateId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesWork operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesWork(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetInvoicesWorkParams
+
+	// ------------- Optional query parameter "customerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "customerId", r.URL.Query(), &params.CustomerId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "customerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "projectId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "projectId", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "projectId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "until" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "until", r.URL.Query(), &params.Until, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "until"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "until", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesWork(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2059,6 +2331,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/vat-codes/{id}/rates/{rateId}", wrapper.DeleteInvoicesVatCodesByIdRatesByRateId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices", wrapper.GetInvoices)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices", wrapper.PostInvoices)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/work", wrapper.GetInvoicesWork)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/from-work", wrapper.PostInvoicesFromWork)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/{id}", wrapper.DeleteInvoicesById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}", wrapper.GetInvoicesById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/{id}", wrapper.PutInvoicesById)
@@ -2288,6 +2562,106 @@ func (response GetInvoicesExportCsv403JSONResponse) VisitGetInvoicesExportCsvRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesFromWorkRequestObject struct {
+	Body *PostInvoicesFromWorkJSONRequestBody
+}
+
+type PostInvoicesFromWorkResponseObject interface {
+	VisitPostInvoicesFromWorkResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesFromWork200JSONResponse InvoicesInvoiceResponse
+
+func (response PostInvoicesFromWork200JSONResponse) VisitPostInvoicesFromWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesFromWork201JSONResponse InvoicesInvoiceResponse
+
+func (response PostInvoicesFromWork201JSONResponse) VisitPostInvoicesFromWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesFromWork400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesFromWork400ApplicationProblemPlusJSONResponse) VisitPostInvoicesFromWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesFromWork401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesFromWork401JSONResponse) VisitPostInvoicesFromWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesFromWork403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesFromWork403JSONResponse) VisitPostInvoicesFromWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesFromWork404Response struct {
+}
+
+func (response PostInvoicesFromWork404Response) VisitPostInvoicesFromWorkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesFromWork409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesFromWork409ApplicationProblemPlusJSONResponse) VisitPostInvoicesFromWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3220,6 +3594,92 @@ func (response DeleteInvoicesVatCodesByIdRatesByRateId404Response) VisitDeleteIn
 type DeleteInvoicesVatCodesByIdRatesByRateId409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
 
 func (response DeleteInvoicesVatCodesByIdRatesByRateId409ApplicationProblemPlusJSONResponse) VisitDeleteInvoicesVatCodesByIdRatesByRateIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesWorkRequestObject struct {
+	Params GetInvoicesWorkParams
+}
+
+type GetInvoicesWorkResponseObject interface {
+	VisitGetInvoicesWorkResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesWork200JSONResponse InvoicesWorkResponse
+
+func (response GetInvoicesWork200JSONResponse) VisitGetInvoicesWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesWork400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response GetInvoicesWork400ApplicationProblemPlusJSONResponse) VisitGetInvoicesWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesWork401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesWork401JSONResponse) VisitGetInvoicesWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesWork403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesWork403JSONResponse) VisitGetInvoicesWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesWork404Response struct {
+}
+
+func (response GetInvoicesWork404Response) VisitGetInvoicesWorkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInvoicesWork409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response GetInvoicesWork409ApplicationProblemPlusJSONResponse) VisitGetInvoicesWorkResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4530,6 +4990,9 @@ type StrictServerInterface interface {
 	// GetInvoicesExportCsv Export the issued documents as CSV
 	// (GET /api/v1/invoices/export.csv)
 	GetInvoicesExportCsv(ctx context.Context, request GetInvoicesExportCsvRequestObject) (GetInvoicesExportCsvResponseObject, error)
+	// PostInvoicesFromWork Invoice work
+	// (POST /api/v1/invoices/from-work)
+	PostInvoicesFromWork(ctx context.Context, request PostInvoicesFromWorkRequestObject) (PostInvoicesFromWorkResponseObject, error)
 	// GetInvoicesJournal The invoice journal
 	// (GET /api/v1/invoices/journal)
 	GetInvoicesJournal(ctx context.Context, request GetInvoicesJournalRequestObject) (GetInvoicesJournalResponseObject, error)
@@ -4572,6 +5035,9 @@ type StrictServerInterface interface {
 	// DeleteInvoicesVatCodesByIdRatesByRateId Remove a VAT code's latest rate period
 	// (DELETE /api/v1/invoices/vat-codes/{id}/rates/{rateId})
 	DeleteInvoicesVatCodesByIdRatesByRateId(ctx context.Context, request DeleteInvoicesVatCodesByIdRatesByRateIdRequestObject) (DeleteInvoicesVatCodesByIdRatesByRateIdResponseObject, error)
+	// GetInvoicesWork List the uninvoiced work
+	// (GET /api/v1/invoices/work)
+	GetInvoicesWork(ctx context.Context, request GetInvoicesWorkRequestObject) (GetInvoicesWorkResponseObject, error)
 	// DeleteInvoicesById Delete a draft
 	// (DELETE /api/v1/invoices/{id})
 	DeleteInvoicesById(ctx context.Context, request DeleteInvoicesByIdRequestObject) (DeleteInvoicesByIdResponseObject, error)
@@ -4731,6 +5197,37 @@ func (sh *strictHandler) GetInvoicesExportCsv(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetInvoicesExportCsvResponseObject); ok {
 		if err := validResponse.VisitGetInvoicesExportCsvResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesFromWork operation middleware
+func (sh *strictHandler) PostInvoicesFromWork(w http.ResponseWriter, r *http.Request) {
+	var request PostInvoicesFromWorkRequestObject
+
+	var body PostInvoicesFromWorkJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesFromWork(ctx, request.(PostInvoicesFromWorkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesFromWork")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesFromWorkResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesFromWorkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -5113,6 +5610,32 @@ func (sh *strictHandler) DeleteInvoicesVatCodesByIdRatesByRateId(w http.Response
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DeleteInvoicesVatCodesByIdRatesByRateIdResponseObject); ok {
 		if err := validResponse.VisitDeleteInvoicesVatCodesByIdRatesByRateIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesWork operation middleware
+func (sh *strictHandler) GetInvoicesWork(w http.ResponseWriter, r *http.Request, params GetInvoicesWorkParams) {
+	var request GetInvoicesWorkRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesWork(ctx, request.(GetInvoicesWorkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesWork")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesWorkResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesWorkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -56,6 +56,17 @@ func SetIssueBeforeLock(hook func(ctx context.Context, invoiceID int64)) func() 
 	return func() { issueBeforeLock = nil }
 }
 
+// SetFromWorkBeforeInsert installs a hook the wizard (POST /invoices/from-work)
+// calls inside its transaction after LiveSourcesElsewhere found the work free
+// and before it inserts the holds, with the draft's id, and answers the
+// function that removes it. A race test parks one wizard there while another
+// commits. A test using it does not run in parallel: the hook is the
+// package's.
+func SetFromWorkBeforeInsert(hook func(ctx context.Context, invoiceID int64)) func() {
+	fromWorkBeforeInsert = hook
+	return func() { fromWorkBeforeInsert = nil }
+}
+
 // SetPaymentAfterLock installs a hook both payment writes — a registration
 // and a removal — call inside their transaction right after the invoice is
 // locked, and answers the function that removes it. A race test holds one

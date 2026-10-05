@@ -107,12 +107,12 @@ migration; [Sending as EHF](#sending-as-ehf) queues a transmission and its
 Phase 3's schema (`00040_invoices_work.sql`, the
 [design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-05-invoices-work-to-invoices-design.md))
 adds the line sources, the releases, the timesheet rows, the deduction line, the
-document's project and timesheet flag and the work settings in one migration. A draft's
-save carries its line sources and derives its project from them
-([Invoicing work](#invoicing-work)); nothing adds a source yet — work arrives with the
-uninvoiced view — and the releases, the timesheet rows, the deduction line, the
-timesheet flag and the work settings sit at their defaults until the phase's later steps
-give them behaviour.
+document's project and timesheet flag and the work settings in one migration. The
+wizard adds line sources and every save of a draft carries them and derives its
+project from them, the issue invoices them ([Invoicing work](#invoicing-work)), and the
+work VAT codes are on the settings; the timesheet rows, the deduction line and the
+timesheet flag and settings sit at their defaults until the phase's later steps give
+them behaviour.
 
 The seeded codes, each from 2026-01-01: `3` 25 %, `31` 15 %, `32` 11.11 %, `33` 12 %
 (all S), `5` Z, `51` AE, `52` G, `6` **E** (unntatt, mval. kap. 3) and `7` **O** (a seller
@@ -130,7 +130,9 @@ most 999 999 999.99, a document 99 999 999 999.99 gross, and at most 500 lines.
 Both live on `PUT /settings` (`invoices:manage`), beside the seller record, and are
 **required and nullable** on it: a body without `peppolId`, `kidLength` or
 `kidAlgorithm` is a 400 on that field, so a client that predates them cannot clear them
-by leaving them out; null is a value.
+by leaving them out; null is a value. The same body carries `workVatCodes`, required
+too: the VAT code each kind of work is invoiced at ([VAT codes for
+work](#vat-codes-for-work)).
 
 **The seller's Peppol id** is the sender's address on the Peppol network, read when a
 document is sent and never part of the seller snapshot. It is a four-digit scheme, a
@@ -264,6 +266,181 @@ source rows stay the other modules'; this module keeps, per line, which of them 
 line bills, and reads them only through the three billable read contracts
 (`contracts.BillableHours`, `BillableExpenses`, `BillableMilestones`), each optional — a
 module switched off has none.
+
+### The uninvoiced view
+
+`GET /work?customerId=` or `GET /work?projectId=` (`invoices:create`), exactly one of the
+two (else a 400 on `customerId`), with an optional `until` date: the work not yet
+invoiced, per project and per kind, as the billable reads answer it.
+
+- **Before anything is read**, 409 `work_unavailable` when none of the three billable
+  reads is composed (time, expenses and projects all switched off), and 409
+  `projects_unavailable` with the projects module off — work is invoiced per project.
+- **The projects**: for a customer, every project it is billed for
+  (`ProjectDirectory.ProjectsForCustomer`, at most 100, in any status); for a project,
+  that one (404 for an unknown id) and its customer. Ordered by code.
+- **The work**: each composed billable read over those projects, dated on or before
+  `until` when given, on the pool and never under a lock, one after the other. Time's
+  hours are approved, billable and priced; Expenses' lines are ready to invoice
+  (`expenses.ready_to_invoice`); Projects' milestones are ready. None is already
+  invoiced. A read with more than 5 000 rows answers the first 5 000 and the view
+  warns `work_truncated`.
+- **What live documents hold**, from this module's own rows: work a draft holds or an
+  issued invoice has invoiced (`line_sources` `held` or `invoiced`) is **listed, not
+  selectable**, with `heldBy: {invoiceId, number?, status}`, and each project answers
+  `heldOnDrafts: [{invoiceId, kind, count}]`.
+- **The people** the hours name, through `UserDirectory.Users`, as `users: [{id,
+  displayName}]`.
+
+Each row carries `selectable` and, when it is not, `reason`:
+
+| Reason | When |
+| --- | --- |
+| `held` | A live document holds it (`heldBy` names it). |
+| `no_customer` | Its project bills no customer (a project's view only). |
+| `non_billable` | Its project is `non-billable` — possible when a project changed model after the work was approved. Any kind. |
+| `fixed_price` | An hour of a `fixed-price` project: shown as information, the hours against the plan; the project's ready milestones are what it invoices (design D14). |
+| `currency` | Not in NOK, the one currency this module invoices in (D11). |
+
+A row that is not selectable counts in no total; `totals` is the selectable work's
+amount per currency. An hour answers its hours, its bill rate, its multiplier and its
+effective `rate` — the bill rate times the multiplier, rounded half away from zero to
+four decimals, the unit price a line bills it at — and Time's exact `amount`; an
+expense its kind, description, supplier and supplier invoice number, net amount,
+markup, distance and rate per km, and `billAmount`; a milestone its name, planned date,
+`readyAt` and `date` (that instant's Oslo business day, the work's date) and its
+effective `amount`.
+
+| Warning | Where | When |
+| --- | --- | --- |
+| `work_overdue_to_invoice` | the project | Its oldest selectable work is dated more than one calendar month before today in Oslo — an hour's or an expense's date, a milestone's `readyAt` day: merverdiavgiftsforskriften § 5-2-2's "senest en måned etter levering", the discrete rule. The continuous-service rule (§ 5-2-4) is not applied: nothing tells Vantigo which projects are continuous. |
+| `currency_not_nok` | the row | It is in another currency than NOK. |
+| `supplier_invoice_rebilled` | the row | A supplier invoice whose supplier (trimmed, case-folded) and number Expenses says another entry has already invoiced, or that another row of this answer repeats — both rows of the pair. Expenses allows the number twice. |
+| `work_truncated` | the answer | A billable read had more than 5 000 rows. |
+
+None refuses anything. The view needs `invoices:create`: whoever builds the invoice sees
+the hours, the people and the rates it will state, as any issued PDF shows them to
+`invoices:access` (D10). `GET /meta` answers `workAvailable` — any billable read
+composed — and `work: {hours, expenses, milestones}`, which kinds.
+
+### From work to a draft
+
+`POST /from-work` (`invoices:create`) makes an invoice draft of the chosen work — 201 —
+or, with `invoiceId` and the `revision` it was read at, adds it to an existing invoice
+draft of the same customer — 200. The body: `customerId`, `sources: [{kind, id,
+revision}]`, `grouping` (default `project`), `vatCodes: {hours?, expenses?,
+milestones?}`, and an optional `deliveryFrom`/`deliveryTo`. **In order**, each before
+any transaction:
+
+1. **The body**: a customer, at least one source, each of a known kind and named once
+   (400 on `sources[i]`), a known grouping, `invoiceId` and `revision` together, a
+   delivery period of both days in order. An append's target: 404 unknown, 409
+   `invoice_issued` once issued, 400 on `invoiceId` for a credit note ("a credit note
+   adds no work") or another customer's draft. Then 409 `too_many_sources` past 5 000
+   sources — the target's held work counted with the new — before anything another
+   module answers is read.
+2. **The settings, the billing profile and the customer gates**
+   ([Drafts](#drafts)).
+3. **The sources by id**, through each composed billable read, on the pool.
+4. **Their projects** (`ProjectDirectory.Projects`; 409 `projects_unavailable` with the
+   module off).
+5. **The judgments**, each over every source before the next, the first source refused
+   named in `sourceKind` and `sourceId`: a project billing another customer, or gone —
+   409 `source_not_for_customer`; an hour of a `fixed-price` or `non-billable` project,
+   or any work of a `non-billable` one — `source_not_selectable`; a source no longer
+   answered (unapproved, not ready, invoiced, deleted) or of a kind whose module is off
+   — `source_not_invoiceable`; another revision than the body's, for an hour or a
+   milestone — `source_changed` (an expense's revision is display-only: a reimbursement
+   moves it without changing what is billed, and its billing facts are taken as read
+   now); then the currencies: more than one — `mixed_currency`, judged first — and one
+   that is not NOK — `currency_not_nok`.
+6. **The lines**: each kind's VAT code ([VAT codes for work](#vat-codes-for-work)), the
+   people the lines name (`UserDirectory.Users`, for the `person` and `itemised`
+   groupings), the grouping below. More than 500 lines with the target's own is 409
+   `too_many_lines` with `suggestedGrouping`, the next coarser grouping whose lines fit
+   (absent when none does); a line too large for its columns is a 400 on `sources`.
+
+Then **one transaction**: the new draft is inserted — or the target is locked `FOR
+UPDATE`, still a draft and at the body's revision (else 409 `invoice_issued` or the
+revision 409) — and its lines written: an append keeps the target's own lines first,
+their work carried, and adds the new ones after, the totals computed again. Under that
+lock the wizard reads whether another live document holds or has invoiced any of the
+new work and refuses with 409 `source_held_elsewhere` — `heldBy` and the source name the
+first such document — and only then holds the work, in **one statement ordered by kind
+and id**. Two wizards racing for the same work end in one hold: the second either finds
+the first's hold under its lock, or fails on `ux_line_sources_live`, answered with the
+same 409 — never a 500, never a deadlock — and its draft is rolled back with it.
+
+**Prefills.** A new draft's delivery period is the request's, else the work's first
+and last day (an hour's or an expense's date, a milestone's ready day), so every line's
+period sits inside the header's; its `yourReference` and terms are the billing
+profile's, as `POST /` takes them. An append keeps the target's header, its delivery
+replaced only by a period the request gives.
+
+**What each held row takes** (`line_sources`): an hour its hours and Time's exact amount
+(up to eight decimals); a mileage line its kilometres and bill amount; an outlay, a
+supplier invoice and a milestone 1 and their amount; an expense its kind; every row the
+revision, the project, the currency and the date.
+
+**Grouping and the line text** (D4). The key is always the project and the kind of work,
+then the grouping's term:
+
+| `grouping` | Hours | Expenses | Milestones |
+| --- | --- | --- | --- |
+| `project` (default) | one line per project | one line per expense kind | one line each |
+| `work_type` | per work type | per expense kind | one line each |
+| `person` | per person | per expense kind | one line each |
+| `date` | per day | per expense kind | one line each |
+| `itemised` | one line per entry | one line per expense | one line each |
+
+**A line has one unit price**, so within a key hours split further by their effective
+rate: two people at two rates on one project are two lines under `project`, and an hour
+of a work type with a multiplier is billed at its own price. The rate is rounded to the
+four decimals `unit_price` holds; where that reaches the øre, the line's net differs from
+Time's exact amount and the draft warns `line_differs_from_sources`
+([The link and its states](#the-link-and-its-states)). Lines are ordered by the
+project's code, then hours, expenses and milestones, then the key.
+
+The text is in the buyer's language — English for a billing profile in English,
+Norwegian otherwise, as the buyer snapshot decides:
+
+| Kind | Norwegian | English | Quantity, unit, price |
+| --- | --- | --- | --- |
+| hours | "Konsulenttimer, <project>, <period>", and " – <work type>" or " – <person>" by grouping | "Consulting hours, <project>, <period>" | the hours, `timer` / `hours` (both `HUR`), the effective rate |
+| hours, itemised | "Konsulenttimer, <project>, <day> – <person>[ – <work type>]" | "Consulting hours, <project>, <day> – <person>[ – <work type>]" | as above |
+| outlay | "Viderefakturerte kostnader, <project>, <period>" (itemised: the expense's description) | "Re-billed costs, <project>, <period>" | 1, no unit, the bill amounts summed |
+| mileage | "Kjøregodtgjørelse, <project>, <period>" (itemised: and " – <description>") | "Mileage, <project>, <period>" | grouped: 1, no unit, the sum; itemised: the kilometres, `km` (`KMT`), the rate per km |
+| supplier invoice | "Viderefakturert leverandørfaktura <supplier> <number>"; two or more on one line "Viderefakturerte leverandørfakturaer, <project>, <period>" | "Re-billed supplier invoice <supplier> <number>"; "Re-billed supplier invoices, <project>, <period>" | 1, no unit, the bill amount |
+| milestone | its name | its name | 1, no unit, its effective amount |
+
+`<project>` is the project's name. `<period>` runs from the line's first to its last
+work date: a whole calendar month by name ("september 2026", "September 2026"),
+otherwise its days — "3. sep. 2026" / "3 Sep 2026", "1.–15. sep. 2026" / "1–15 Sep 2026",
+"28. aug.–3. sep. 2026" / "28 Aug – 3 Sep 2026". The markup is Expenses' own, already
+in the bill amount; Invoices adds none. No line says "utlegg"
+([VAT codes for work](#vat-codes-for-work)).
+
+### VAT codes for work
+
+`PUT /settings` (`invoices:manage`, with its revision) carries `workVatCodes: {hours,
+expenses, milestones}`, **required**: the code each kind of work's lines take, each a
+code that exists and is active (else a 400 on `workVatCodes.hours`,
+`workVatCodes.expenses` or `workVatCodes.milestones`). All three are 1 — `3`, 25 % —
+until changed; `GET /settings` answers them.
+
+The wizard takes, per kind of work in the selection, the request's `vatCodes.<kind>`,
+else the settings' — or, while the seller is not VAT-registered, id 9 (`7`, category O)
+for every kind, since the issue refuses any other category then. A code given must
+exist and be active (400 on `vatCodes.<kind>`); a default that has since become
+inactive, with no code given, is a 400 on `vatCodes.<kind>` naming it — choose another,
+or change the default in the settings. A kind the selection does not have is not
+judged. A line's code is then editable like any.
+
+**Every re-billed expense takes the chosen code** — the main supply's rate, never the
+receipt's (merverdiavgiftsloven § 4-2 (1)); the VAT Expenses records on a receipt never
+reaches the line. **Utlegg** — a cost paid on the customer's behalf and passed on
+outside the VAT base (§ 4-1 (2) a) — is **not supported**: no line text says "utlegg",
+and a re-billed cost is a sale like any other.
 
 ### The link and its states
 
@@ -1473,9 +1650,9 @@ No built-in role holds any of these; Owner has the wildcard.
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
 | `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats. |
-| `invoices:create` | no | Create, edit and delete drafts; preview a draft. |
+| `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one ([Invoicing work](#invoicing-work)). |
 | `invoices:issue` | yes | Issue a draft; create a credit-note draft; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one. |
-| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, VAT codes and their rates, and the access point's credentials. |
+| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, VAT codes and their rates, and the access point's credentials. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason. |
 
 `invoices:payments` is sensitive because a registration changes what the company says it
@@ -1515,7 +1692,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | --- | --- | --- |
 | `GET /meta` | | |
 | `GET /settings` | | |
-| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent); 409 `series_locked`, or a stale revision (no code) |
+| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent, a work VAT code unknown or inactive); 409 `series_locked`, or a stale revision (no code) |
 | `GET /settings/access-point` | `invoices:manage` | none: 200 with `hasCredentials: false` when nothing is stored |
 | `PUT /settings/access-point` | `invoices:manage` | 400 on `provider`, `legalEntityId` or `apiKey` (blank, too long, or omitted while none is stored); 409 `transmissions_active` on a provider switch; 503 `ehf_unavailable`, a kept key that cannot be opened |
 | `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
@@ -1525,6 +1702,8 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `PUT /vat-codes/{id}` | `invoices:manage` | 404; 400; 409 `vat_code_in_use`, a stale revision |
 | `POST /vat-codes/{id}/rates` | `invoices:manage` | 404; 400 on `ratePercent` or `validFrom`; 409 `rate_change_in_past` |
 | `DELETE /vat-codes/{id}/rates/{rateId}` | `invoices:manage` | 404; 409 `rate_period_not_latest`, `rate_period_last`, `rate_period_in_use` |
+| `GET /work` | `invoices:create` | 400 neither or both of `customerId` and `projectId`; 409 `work_unavailable`, `projects_unavailable`; 404 an unknown project |
+| `POST /from-work` | `invoices:create` | 400 on the field (`sources[i]`, `grouping`, `revision`, `deliveryTo`, `invoiceId`, `vatCodes.<kind>`, `sources`); 404 the target; 409 `invoice_issued`, `too_many_sources`, the customer gates, `projects_unavailable`, `source_not_for_customer`, `source_not_selectable`, `source_not_invoiceable`, `source_changed`, `mixed_currency`, `currency_not_nok`, `too_many_lines` (with `suggestedGrouping`), a stale revision, `source_held_elsewhere` (with `heldBy`) |
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included); 409 the customer gates |
 | `GET /{id}` | | 404 |

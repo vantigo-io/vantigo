@@ -202,6 +202,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the uninvoiced work
+         * @description The uninvoiced view (invoices work design D3): exactly one of customerId and projectId, else a 400. For a customer, every project it is billed for (ProjectDirectory.ProjectsForCustomer); for a project, that one and its customer. Then the work of those projects through the billable reads — time's approved, billable, priced hours, expenses' lines ready to invoice and projects' ready milestones — dated on or before until when given, on the pool. Work a live draft holds or an issued invoice invoiced is listed and not selectable, with heldBy, and counts in no total; so are a fixed-price project's hours (shown as information), a non-billable project's work and work in another currency than NOK. 409 work_unavailable when no billable read is composed, projects_unavailable with the projects module switched off; 404 for an unknown project.
+         */
+        get: operations["getInvoicesWork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/from-work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice work
+         * @description The wizard (invoices work design D3, D4): makes an invoice draft of the chosen work, or adds it to an existing invoice draft of the same customer (invoiceId with its revision). In order, before any transaction — the body (a 400; a source named twice included) and 409 too_many_sources past 5 000 sources with the target's; the settings, the billing profile and the customer gates; the sources by id through the billable reads; their projects; then source_not_for_customer, source_not_selectable, source_not_invoiceable (no longer billable, or of a module that is off), source_changed (another revision than the body's, for an hour entry or a milestone), mixed_currency and currency_not_nok; then the lines, grouped by the grouping in the customer's language, at most 500 with the target's (409 too_many_lines with suggestedGrouping). Then one transaction locks the target (or inserts the draft), writes the lines and holds the work — a source another live document holds is 409 source_held_elsewhere with heldBy. 201 with the new draft, 200 with the target.
+         */
+        post: operations["postInvoicesFromWork"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/{id}": {
         parameters: {
             query?: never;
@@ -565,6 +605,18 @@ export interface components {
             today: string;
             /** @description The VAT codes a new line may take — active, with a rate period covering today — each with today's rate. */
             vatCodes: components["schemas"]["InvoicesVatCodeInForce"][];
+            work: components["schemas"]["InvoicesMetaWork"];
+            /** @description Whether any work can be invoiced here — at least one of the billable reads (time's hours, expenses' lines, projects' milestones) is composed, so the uninvoiced view answers (invoices work design D3). Without it GET /invoices/work is 409 work_unavailable. */
+            workAvailable: boolean;
+        };
+        /** @description Which kinds of work this installation can invoice (invoices work design D3) — each true when the module that owns it is switched on and provides its billable read. */
+        InvoicesMetaWork: {
+            /** @description Expenses' lines (expenses.entry). */
+            expenses: boolean;
+            /** @description Time's hour entries (time.entry). */
+            hours: boolean;
+            /** @description Projects' billing milestones (projects.milestone). */
+            milestones: boolean;
         };
         /** @description One VAT code as a new line may take it, with the rate in force today. A draft holds only the code; the rate a line carries is resolved at issue for the issue date (D3). */
         InvoicesVatCodeInForce: {
@@ -580,12 +632,13 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save would hold is held by another live draft or invoiced by an unreleased issued line; the detail names that document), the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off), and invoice_changed also when the draft's work changed between the issue's reads and its lock, storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off), and invoice_changed also when the draft's work changed between the issue's reads and its lock, storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
             code?: string | null;
             detail?: string | null;
+            heldBy?: components["schemas"]["InvoicesWorkHeldBy"];
             instance?: string | null;
             /**
              * Format: int32
@@ -610,13 +663,15 @@ export interface components {
             rules?: components["schemas"]["InvoicesEhfRule"][];
             /**
              * Format: int64
-             * @description On the issue's refusals about a source (source_not_invoiceable, source_changed, source_already_invoiced, source_customer_changed, source_not_selectable), the source's id in its own module. Absent otherwise.
+             * @description On the issue's and the wizard's refusals about a source (source_not_invoiceable, source_changed, source_already_invoiced, source_customer_changed, source_not_selectable, source_not_for_customer, source_held_elsewhere), the source's id in its own module. Absent otherwise.
              */
             sourceId?: number;
-            /** @description On the issue's refusals about a source, its kind — time.entry, expenses.entry or projects.milestone. Absent otherwise. */
+            /** @description On the issue's and the wizard's refusals about a source, its kind — time.entry, expenses.entry or projects.milestone. Absent otherwise. */
             sourceKind?: string;
             /** Format: int32 */
             status?: number | null;
+            /** @description On too_many_lines, the next coarser grouping whose lines fit in 500 — date, person, work_type or project. Absent otherwise, and absent when none fits. */
+            suggestedGrouping?: string;
             title?: string | null;
             type?: string | null;
         };
@@ -682,7 +737,7 @@ export interface components {
             /** @enum {string} */
             outcome: "delivered" | "failed";
         };
-        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. revision is the one the caller read: a stale one is a 409 naming both. */
+        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. revision is the one the caller read: a stale one is a 409 naming both. */
         InvoicesSettingsRequest: {
             addressLine1: string;
             addressLine2?: string;
@@ -714,6 +769,7 @@ export interface components {
             /** Format: int64 */
             seriesStart: number;
             vatRegistered: boolean;
+            workVatCodes: components["schemas"]["InvoicesWorkVatCodes"];
         };
         /** @description The seller record and the series start (D2). A text field that is not set is the empty string. seriesLocked is true once anything is issued; from then on seriesStart cannot change, and every other field still can — issued documents keep their own seller snapshot. peppolId is the seller's address on the Peppol network, read when a document is sent, never part of the snapshot; kidLength and kidAlgorithm are the KID agreement, which an issued invoice's kid was computed under. */
         InvoicesSettingsResponse: {
@@ -759,6 +815,7 @@ export interface components {
             vatRegistered: boolean;
             /** @description Never refusals. kid_headroom_low — the next number leaves fewer than two digits of the KID agreement's length (a hundredfold growth) before issuing is refused with kid_length_exceeded. */
             warnings: string[];
+            workVatCodes: components["schemas"]["InvoicesWorkVatCodes"];
         };
         /** @description PUT /settings/access-point's body (EHF and KID design D7). provider is storecove, the one provider so far; legalEntityId is the Storecove legal entity documents are sent as, a positive integer; apiKey is the provider's API key — omitted or null keeps the stored one, which is required the first time, and an empty or blank one is a 400. The key is sealed by the secrets box and never answered. */
         InvoicesAccessPointRequest: {
@@ -1237,6 +1294,183 @@ export interface components {
             /** Format: double */
             vatAmountNok: number;
             vatCategory: string;
+        };
+        /** @description The VAT code each kind of work is invoiced at (invoices work design D6) — the settings' defaults, which the uninvoiced view's wizard pre-fills, each the id of a code. All three are 1 (code 3, 25 %) until changed. */
+        InvoicesWorkVatCodes: {
+            /** Format: int32 */
+            expenses: number;
+            /** Format: int32 */
+            hours: number;
+            /** Format: int32 */
+            milestones: number;
+        };
+        /** @description The wizard's VAT code per kind of work (invoices work design D6), each optional — absent takes the settings' default, or id 9 (code 7, category O) for every kind while the seller is not VAT-registered. A code given must exist and be active (a 400 on vatCodes.<kind>); a default that has become inactive, with no code given, is a 400 on vatCodes.<kind> too. */
+        InvoicesFromWorkVatCodes: {
+            /** Format: int32 */
+            expenses?: number;
+            /** Format: int32 */
+            hours?: number;
+            /** Format: int32 */
+            milestones?: number;
+        };
+        /** @description The live document that holds a piece of work (invoices work design D2, D3) — a draft that holds it, or an issued invoice that invoiced it — by id, number (an issued one's only) and status. */
+        InvoicesWorkHeldBy: {
+            /** Format: int64 */
+            invoiceId: number;
+            /** Format: int64 */
+            number?: number;
+            status: string;
+        };
+        /** @description How many of a project's sources of one kind a draft holds (invoices work design D3). */
+        InvoicesWorkHeldOnDraft: {
+            /** Format: int32 */
+            count: number;
+            /** Format: int64 */
+            invoiceId: number;
+            kind: string;
+        };
+        /** @description One approved, billable, priced hour entry not yet invoiced (invoices work design D3). hours is the entry's hours; billRate the rate per hour, billMultiplierPercent its work type's multiplier (absent for none); rate the effective rate a line bills it at — billRate × the multiplier / 100, rounded half away from zero to four decimals; amount Time's exact amount (hours × billRate × the multiplier, up to eight decimals). selectable is whether the wizard takes it; when not, reason says why — held (heldBy names the live document that has it), non_billable (its project is non-billable), fixed_price (its project is fixed-price: its hours are shown, not invoiced), currency (not NOK) or no_customer (its project bills no customer). A row that is not selectable counts in no total. warnings: currency_not_nok. */
+        InvoicesWorkHour: {
+            /** Format: double */
+            amount: number;
+            /** Format: double */
+            billMultiplierPercent?: number;
+            /** Format: double */
+            billRate: number;
+            /** Format: int32 */
+            billingLineId?: number;
+            currency: string;
+            /** Format: date */
+            date: string;
+            heldBy?: components["schemas"]["InvoicesWorkHeldBy"];
+            /** Format: double */
+            hours: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: double */
+            rate: number;
+            reason?: string;
+            /** Format: int32 */
+            revision: number;
+            selectable: boolean;
+            taskTitle?: string;
+            /** Format: uuid */
+            userId: string;
+            warnings?: string[];
+            /** Format: int32 */
+            workTypeId?: number;
+            workTypeName?: string;
+        };
+        /** @description One expense line ready to invoice and not yet invoiced (invoices work design D3): its kind (outlay, mileage or supplier_invoice), date, description, the supplier and its invoice number on a supplier invoice, the net amount, the markup, the distance and the rate per km on mileage, and billAmount, what the customer is billed with the markup in it. selectable and reason as on an hour (never fixed_price: only hours are a fixed-price project's information). warnings: currency_not_nok, and supplier_invoice_rebilled — a supplier invoice whose supplier and number another entry already invoiced, or that another row of this answer repeats. */
+        InvoicesWorkExpense: {
+            /** Format: double */
+            billAmount: number;
+            /** Format: double */
+            billRatePerKm?: number;
+            /** Format: int64 */
+            claimId?: number;
+            currency: string;
+            /** Format: date */
+            date: string;
+            description: string;
+            /** Format: double */
+            distanceKm?: number;
+            heldBy?: components["schemas"]["InvoicesWorkHeldBy"];
+            /** Format: int64 */
+            id: number;
+            kind: string;
+            /** Format: double */
+            markupPercent?: number;
+            /** Format: double */
+            netAmount: number;
+            reason?: string;
+            /** Format: int32 */
+            revision: number;
+            selectable: boolean;
+            supplier?: string;
+            supplierInvoiceNumber?: string;
+            warnings?: string[];
+        };
+        /** @description One billing milestone ready to invoice (invoices work design D3): its name and description, the planned date, when it became ready (readyAt) and that day in Oslo (date, the work's date), and amount, its effective amount — a percent of the fixed price resolved by Projects. selectable and reason as on an hour. */
+        InvoicesWorkMilestone: {
+            /** Format: double */
+            amount: number;
+            currency: string;
+            /** Format: date */
+            date: string;
+            description: string;
+            heldBy?: components["schemas"]["InvoicesWorkHeldBy"];
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: date */
+            plannedDate?: string;
+            /** Format: date-time */
+            readyAt: string;
+            reason?: string;
+            /** Format: int32 */
+            revision: number;
+            selectable: boolean;
+            warnings?: string[];
+        };
+        /** @description One project's uninvoiced work (invoices work design D3): the project's code, name, billing type (time-and-materials, fixed-price or non-billable) and currency, its hours, expenses and milestones — each kind in its provider's order, held work listed and not selectable — what drafts hold of it (heldOnDrafts, per draft and kind), and warnings: work_overdue_to_invoice when its oldest selectable item is dated more than one calendar month before today (D12). */
+        InvoicesWorkProject: {
+            billingType: string;
+            code: string;
+            currency?: string;
+            expenses: components["schemas"]["InvoicesWorkExpense"][];
+            heldOnDrafts: components["schemas"]["InvoicesWorkHeldOnDraft"][];
+            hours: components["schemas"]["InvoicesWorkHour"][];
+            /** Format: int32 */
+            id: number;
+            milestones: components["schemas"]["InvoicesWorkMilestone"][];
+            name: string;
+            warnings: string[];
+        };
+        /** @description The selectable work's amount in one currency. */
+        InvoicesWorkTotal: {
+            /** Format: double */
+            amount: number;
+            currency: string;
+        };
+        /** @description A person whose hours the answer lists, named by the user directory. */
+        InvoicesWorkUser: {
+            displayName: string;
+            /** Format: uuid */
+            id: string;
+        };
+        /** @description GET /invoices/work's answer (invoices work design D3): the customer (absent for a project that bills none), its projects — every project of the customer, or the one asked for — with their uninvoiced work, the totals of the selectable work per currency, the people the hours name, and warnings: work_truncated when a billable read had more than 5 000 rows to answer and the rest is not here. */
+        InvoicesWorkResponse: {
+            /** Format: int32 */
+            customerId?: number;
+            projects: components["schemas"]["InvoicesWorkProject"][];
+            totals: components["schemas"]["InvoicesWorkTotal"][];
+            users: components["schemas"]["InvoicesWorkUser"][];
+            warnings: string[];
+        };
+        /** @description A piece of work the wizard takes, by identity and the revision the view showed — judged for an hour entry and a milestone, display-only for an expense (invoices work design D1, D3). */
+        InvoicesFromWorkSource: {
+            /** Format: int64 */
+            id: number;
+            kind: string;
+            /** Format: int32 */
+            revision: number;
+        };
+        /** @description POST /invoices/from-work's body (invoices work design D3, D4, D6): the customer, the work by identity (at most 5 000 with an append target's held work, none twice), the grouping — project (the default), work_type, person, date or itemised — the VAT codes per kind, an optional delivery period (both or neither; the first and last work dates when absent), and, to add the work to an existing invoice draft of this customer, its invoiceId with the revision it was read at. */
+        InvoicesFromWorkRequest: {
+            /** Format: int32 */
+            customerId: number;
+            /** Format: date */
+            deliveryFrom?: string;
+            /** Format: date */
+            deliveryTo?: string;
+            grouping?: string;
+            /** Format: int64 */
+            invoiceId?: number;
+            /** Format: int32 */
+            revision?: number;
+            sources: components["schemas"]["InvoicesFromWorkSource"][];
+            vatCodes?: components["schemas"]["InvoicesFromWorkVatCodes"];
         };
         PaginatedResponseOfInvoicesInvoiceListItem: {
             data: components["schemas"]["InvoicesInvoiceListItem"][];
@@ -2149,6 +2383,150 @@ export interface operations {
                 };
             };
             /** @description Conflict — customer_merged (with mergedInto), customer_archived, customer_blocked or customer_missing. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesWork: {
+        parameters: {
+            query?: {
+                customerId?: number;
+                projectId?: number;
+                /** @description The latest work date to list, inclusive; absent lists every date. */
+                until?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesWorkResponse"];
+                };
+            };
+            /** @description Bad Request — neither or both of customerId and projectId. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no project has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — work_unavailable or projects_unavailable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesFromWork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesFromWorkRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the work added to the target draft. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Created — the new draft. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it (sources[i], grouping, vatCodes.<kind>, invoiceId, revision, deliveryTo). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has the target's id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — too_many_sources, a customer gate, projects_unavailable, source_not_for_customer, source_not_selectable, source_not_invoiceable, source_changed, mixed_currency, currency_not_nok, too_many_lines (with suggestedGrouping), source_held_elsewhere (with heldBy), invoice_issued (the target), or a stale revision of the target. */
             409: {
                 headers: {
                     [name: string]: unknown;

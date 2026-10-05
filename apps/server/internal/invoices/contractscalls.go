@@ -88,6 +88,33 @@ func (s *server) userEntry(ctx context.Context, id uuid.UUID) (*contracts.UserEn
 	return s.deps.Users.User(ctx, id)
 }
 
+// projectEntry is the one project the uninvoiced view is asked about
+// (invoices work design D3): its customer, billing type and currency. nil for
+// a project the directory does not know; a caller checks deps.Projects first.
+func (s *server) projectEntry(ctx context.Context, id int32) (*contracts.ProjectEntry, error) {
+	noteContractCall(ctx, "Projects.Project")
+	return s.deps.Projects.Project(ctx, id)
+}
+
+// projectsForCustomer is every project a customer is billed for, the
+// uninvoiced view's projects (D3), at most contracts.MaxActualsRequests of
+// them — one billable read's batch. A caller checks deps.Projects first.
+func (s *server) projectsForCustomer(ctx context.Context, customerID int32) ([]contracts.ProjectEntry, error) {
+	noteContractCall(ctx, "Projects.ProjectsForCustomer")
+	return s.deps.Projects.ProjectsForCustomer(ctx, customerID)
+}
+
+// userEntries names the people whose hours the uninvoiced view lists, and
+// whom the wizard's lines name (D3, D4), in one round trip. An empty batch
+// asks nobody; a user the directory does not know is absent.
+func (s *server) userEntries(ctx context.Context, ids []uuid.UUID) ([]contracts.UserEntry, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	noteContractCall(ctx, "Users.Users")
+	return s.deps.Users.Users(ctx, ids)
+}
+
 // markInvoiced and releaseInvoiced are a holder's two commands, run on the
 // issue's own transaction (rule 10) and reported as bound to it.
 func markInvoiced(ctx context.Context, tx pgx.Tx, kind contracts.WorkSourceKind, h contracts.InvoicedWorkHolder,
@@ -116,7 +143,8 @@ func (s *server) customerEntries(ctx context.Context, ids []int32) ([]contracts.
 
 // billableHours, billableExpenses and billableMilestones are the source
 // modules' line-level reads (invoices work design D3), made on the pool and
-// never inside withLockedTx: a held source's freshness on GET and the reads
+// never inside withLockedTx: the uninvoiced view, the wizard's reads before
+// its transaction, a held source's freshness on GET and the reads
 // refreshSources makes before its save's transaction. A caller checks the
 // slot is composed first — nil is the module switched off.
 func (s *server) billableHours(ctx context.Context, req contracts.BillableRequest) (contracts.BillableHoursPage, error) {

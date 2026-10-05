@@ -514,6 +514,9 @@ type fakeBillable struct {
 	onRead func()
 	// failure, when set, is what every read fails with.
 	failure error
+	// more is what every page answers as More: the provider had more than
+	// one page.
+	more bool
 }
 
 // billableCall is one read: which, by which ids, and whether under a lock.
@@ -596,12 +599,21 @@ func (f *fakeBillable) record(ctx context.Context, method string, req contracts.
 	return after, f.failure
 }
 
-// wanted reports whether a row of project with id is what req asks for.
-func wanted(req contracts.BillableRequest, id int64, project int32) bool {
+// answerMore makes every page say More, as a provider with more than one
+// page of work does.
+func (f *fakeBillable) answerMore(more bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.more = more
+}
+
+// wanted reports whether a row of project with id, dated date, is what req
+// asks for: by id, or by project on or before Until.
+func wanted(req contracts.BillableRequest, id int64, project int32, date time.Time) bool {
 	if len(req.IDs) > 0 {
 		return slices.Contains(req.IDs, id)
 	}
-	return slices.Contains(req.ProjectIDs, project)
+	return slices.Contains(req.ProjectIDs, project) && (req.Until.IsZero() || !date.After(req.Until))
 }
 
 func (f *fakeBillable) BillableHours(ctx context.Context, req contracts.BillableRequest) (contracts.BillableHoursPage, error) {
@@ -614,9 +626,9 @@ func (f *fakeBillable) BillableHours(ctx context.Context, req contracts.Billable
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	page := contracts.BillableHoursPage{Hours: []contracts.BillableHour{}}
+	page := contracts.BillableHoursPage{Hours: []contracts.BillableHour{}, More: f.more}
 	for _, h := range f.hours {
-		if wanted(req, h.ID, h.ProjectID) {
+		if wanted(req, h.ID, h.ProjectID, h.Date) {
 			page.Hours = append(page.Hours, h)
 		}
 	}
@@ -634,9 +646,9 @@ func (f *fakeBillable) BillableExpenses(ctx context.Context, req contracts.Billa
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	page := contracts.BillableExpensesPage{Expenses: []contracts.BillableExpense{}}
+	page := contracts.BillableExpensesPage{Expenses: []contracts.BillableExpense{}, More: f.more}
 	for _, e := range f.expenses {
-		if wanted(req, e.ID, e.ProjectID) {
+		if wanted(req, e.ID, e.ProjectID, e.Date) {
 			page.Expenses = append(page.Expenses, e)
 		}
 	}
@@ -654,9 +666,9 @@ func (f *fakeBillable) BillableMilestones(ctx context.Context, req contracts.Bil
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	page := contracts.BillableMilestonesPage{Milestones: []contracts.BillableMilestone{}}
+	page := contracts.BillableMilestonesPage{Milestones: []contracts.BillableMilestone{}, More: f.more}
 	for _, m := range f.milestones {
-		if wanted(req, m.ID, m.ProjectID) {
+		if wanted(req, m.ID, m.ProjectID, m.ReadyAt) {
 			page.Milestones = append(page.Milestones, m)
 		}
 	}
@@ -821,7 +833,8 @@ func (h *fakeHolder) command(ctx context.Context, tx pgx.Tx, op string, ref cont
 }
 
 // fakeProjects is contracts.ProjectDirectory over projects a test puts in —
-// the issue reads whom a held source's project bills and how (D1) — composed
+// the issue reads whom a held source's project bills and how (D1), the
+// uninvoiced view a customer's projects or one project (D3) — composed
 // with WithProjects, since depguard keeps projects out of this package's
 // tests. Only what this module reads is answered; anything else panics on the
 // embedded nil directory. Safe for concurrent use.
@@ -873,6 +886,21 @@ func (f *fakeProjects) Project(_ context.Context, id int32) (*contracts.ProjectE
 		return nil, nil
 	}
 	return &p, nil
+}
+
+// ProjectsForCustomer answers the customer's projects by id ascending, as
+// projects does.
+func (f *fakeProjects) ProjectsForCustomer(_ context.Context, customerID int32) ([]contracts.ProjectEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []contracts.ProjectEntry{}
+	for _, p := range f.projects {
+		if p.CustomerID != nil && *p.CustomerID == customerID {
+			out = append(out, p)
+		}
+	}
+	slices.SortFunc(out, func(a, b contracts.ProjectEntry) int { return int(a.ID - b.ID) })
+	return out, nil
 }
 
 func (f *fakeProjects) Projects(_ context.Context, ids []int32) ([]contracts.ProjectEntry, error) {

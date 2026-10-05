@@ -183,6 +183,13 @@ and 7), so most businesses need to change nothing here.
   it still lies in the future. A rate cannot be changed from a day on or before an
   issued document's date ([the rules](/en/reference/invoices/#endpoints)).
 
+The settings also hold the VAT code each kind of work is invoiced at — hours, expenses
+and billing milestones — which a draft made from work starts its lines with: code 3
+(25 %) for all three until changed, and code 7 for every kind while the seller is not
+VAT-registered. The settings page has no card for them yet; saving it keeps them as
+they are, and the screen for them comes with the uninvoiced work
+([VAT codes for work](/en/reference/invoices/#vat-codes-for-work)).
+
 ## Finding a document
 
 **Invoices** in the sidebar lists every draft and issued document: drafts first, then by
@@ -283,12 +290,31 @@ uninvoiced again; the save says *The save released work from this draft*. When w
 changed since it was added, or can no longer be invoiced — an entry unapproved, a
 milestone moved back — the draft warns about it, and refreshing the work takes its
 current figures and drops what can no longer be invoiced; the issue would refuse either.
-Work arrives on a draft only through the uninvoiced view of a customer or a project,
-which comes with the screens for it; until then no draft holds any. When all the work a
-draft bills belongs to one project, the draft names that project by its code — printed
-on the PDF as *Prosjekt* / *Project*, carried in the EHF, kept by the issued invoice and
-by its credit notes, and the last column, *Project*, of the accountant's export
-([the project](/en/reference/invoices/#the-project)).
+Work arrives on a draft only through the uninvoiced view of a customer or a project.
+When all the work a draft bills belongs to one project, the draft names that project by
+its code — printed on the PDF as *Prosjekt* / *Project*, carried in the EHF, kept by the
+issued invoice and by its credit notes, and the last column, *Project*, of the
+accountant's export ([the project](/en/reference/invoices/#the-project)).
+
+**Invoicing work.** The uninvoiced view lists, for a customer or one project, the work
+not yet invoiced — approved billable hours, expenses ready to invoice and ready billing
+milestones — per project and kind, with what is selected adding up per currency. Work
+already on a draft or an issued invoice is shown but cannot be chosen, and names the
+document that has it; so are a fixed-price project's hours (the project invoices its
+milestones), a non-billable project's work and work in another currency than NOK. A
+project whose oldest work is more than a month old is flagged, since the law asks for
+the invoice within a month of delivery, and a supplier invoice that seems to be
+billed twice is flagged too. From the chosen work Vantigo makes a draft — or adds it to
+one of the customer's drafts — grouped into lines by project, work type, person, day or
+one line each, written in the customer's language ("Konsulenttimer, Apollo, september
+2026" or "Consulting hours, Apollo, September 2026"), each kind at its VAT code, the
+delivery period from the first to the last day of the work. It is refused, saying why,
+when some of the work is already on another draft, has changed or can no longer be
+invoiced since it was listed, is in more than one currency, or would make more than 500
+lines — then a coarser grouping is suggested. The view and the wizard need
+`invoices:create`. The screens for them come in a later step of this phase; until then
+they are there for an integration
+([Invoicing work](/en/reference/invoices/#invoicing-work)).
 
 ## Issuing
 

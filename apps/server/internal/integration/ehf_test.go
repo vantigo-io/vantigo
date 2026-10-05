@@ -150,6 +150,7 @@ func ehfInstallation(t *testing.T) (*modtest.Harness, *modtest.Client, *storecov
 		"email": sellerEmail, "defaultPaymentTermsDays": 14, "defaultCurrency": "NOK",
 		"footerText": "Takk for handelen.", "seriesStart": 1,
 		"peppolId": ehfSellerPeppolID, "kidLength": 10, "kidAlgorithm": "mod10", "revision": settings.Revision,
+		"workVatCodes": map[string]any{"hours": 1, "expenses": 1, "milestones": 1},
 	}, nil)
 	return h, admin, storecove, lookup, objects
 }

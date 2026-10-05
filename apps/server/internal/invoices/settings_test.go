@@ -36,7 +36,12 @@ type settingsJSON struct {
 	KidAlgorithm            *string  `json:"kidAlgorithm"`
 	MissingSellerFields     []string `json:"missingSellerFields"`
 	Warnings                []string `json:"warnings"`
-	Revision                int32    `json:"revision"`
+	WorkVatCodes            struct {
+		Hours      int32 `json:"hours"`
+		Expenses   int32 `json:"expenses"`
+		Milestones int32 `json:"milestones"`
+	} `json:"workVatCodes"`
+	Revision int32 `json:"revision"`
 }
 
 // problemJSON is a refusal as a client reads it: the conflict's code, the
@@ -50,6 +55,8 @@ type problemJSON struct {
 	LinePosition      *int32              `json:"linePosition"`
 	SourceKind        *string             `json:"sourceKind"`
 	SourceID          *int64              `json:"sourceId"`
+	HeldBy            *heldByJSON         `json:"heldBy"`
+	SuggestedGrouping *string             `json:"suggestedGrouping"`
 	AllowedIssueDates []string            `json:"allowedIssueDates"`
 	PeppolRegistered  *bool               `json:"peppolRegistered"`
 	PeppolCanReceive  *bool               `json:"peppolCanReceive"`
@@ -57,6 +64,13 @@ type problemJSON struct {
 		ID      string `json:"id"`
 		Message string `json:"message"`
 	} `json:"rules"`
+}
+
+// heldByJSON is the live document that holds a piece of work.
+type heldByJSON struct {
+	InvoiceID int64  `json:"invoiceId"`
+	Number    *int64 `json:"number"`
+	Status    string `json:"status"`
 }
 
 func problemOf(t *testing.T, res interface{ JSON(any) }) problemJSON {
@@ -80,6 +94,7 @@ func completeSeller(revision int32) map[string]any {
 		"email": "faktura@kraft-verket.no", "defaultPaymentTermsDays": 14, "defaultCurrency": "NOK",
 		"footerText": "Takk for handelen.", "seriesStart": 1,
 		"peppolId": nil, "kidLength": nil, "kidAlgorithm": nil, "revision": revision,
+		"workVatCodes": map[string]any{"hours": 1, "expenses": 1, "milestones": 1},
 	}
 }
 
