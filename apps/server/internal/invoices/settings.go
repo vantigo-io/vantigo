@@ -23,7 +23,8 @@ import (
 // field but the series start stays editable after the first issue, because an
 // issued document keeps the seller snapshot it was issued with. Phase 2 adds
 // the seller's Peppol id (EHF and KID design D2) and the KID agreement (D3),
-// neither of which is part of the snapshot.
+// neither of which is part of the snapshot; phase 3 the VAT code each kind of
+// work is invoiced at (invoices work design D6), which the wizard pre-fills.
 
 // The codes and titles of this file's 409s, and its warning.
 const (
@@ -175,6 +176,9 @@ func parseSettings(body gen.InvoicesSettingsRequest) (parsedSettings, map[string
 		DefaultCurrency:         strings.ToUpper(strings.TrimSpace(body.DefaultCurrency)),
 		FooterText:              optional(body.FooterText),
 		SeriesStart:             body.SeriesStart,
+		WorkVatCodeHours:        body.WorkVatCodes.Hours,
+		WorkVatCodeExpenses:     body.WorkVatCodes.Expenses,
+		WorkVatCodeMilestones:   body.WorkVatCodes.Milestones,
 	}
 
 	add("legalName", maxLength("A legal name", p.LegalName, 200))
@@ -282,6 +286,27 @@ func parseEInvoicing(body gen.InvoicesSettingsRequest, p *parsedSettings, add fu
 	}
 }
 
+// checkWorkVatCodes is D6's rule for the codes each kind of work is invoiced
+// at (invoices work design): each one a code that exists and is still offered
+// for new lines, else a 400 on its field.
+func checkWorkVatCodes(p parsedSettings, codes map[int32]vatCodeOnDay, errs map[string][]string) map[string][]string {
+	for _, c := range []struct {
+		field string
+		id    int32
+	}{
+		{"workVatCodes.hours", p.WorkVatCodeHours}, {"workVatCodes.expenses", p.WorkVatCodeExpenses},
+		{"workVatCodes.milestones", p.WorkVatCodeMilestones},
+	} {
+		switch code, ok := codes[c.id]; {
+		case !ok:
+			errs = withFieldError(errs, c.field, "No VAT code has this id")
+		case !code.active:
+			errs = withFieldError(errs, c.field, "This VAT code is no longer offered for new lines")
+		}
+	}
+	return errs
+}
+
 // nextNumber is the number the next issue takes (D2): the counter's next
 // value once anything is issued — issued says so — and seriesStart before.
 func nextNumber(ctx context.Context, q *store.Queries, seriesStart int64) (next int64, issued bool, err error) {
@@ -330,7 +355,10 @@ func settingsResponse(row store.InvoicesSetting, locked bool, next int64) gen.In
 	}
 	return gen.InvoicesSettingsResponse{
 		PeppolId: row.PeppolID, KidLength: length, KidAlgorithm: row.KidAlgorithm,
-		Warnings:  settingsWarnings(row, next),
+		Warnings: settingsWarnings(row, next),
+		WorkVatCodes: gen.InvoicesWorkVatCodes{
+			Hours: row.WorkVatCodeHours, Expenses: row.WorkVatCodeExpenses, Milestones: row.WorkVatCodeMilestones,
+		},
 		LegalName: row.LegalName, OrganisationNumber: row.OrganisationNumber,
 		VatRegistered: row.VatRegistered, InForetaksregisteret: row.InForetaksregisteret,
 		AddressLine1: row.AddressLine1, AddressLine2: row.AddressLine2,
@@ -373,6 +401,11 @@ var errRefused = errors.New("invoices: refused")
 // series start before the first issue.
 func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSettingsRequestObject) (gen.PutInvoicesSettingsResponseObject, error) {
 	parsed, errs := parseSettings(*req.Body)
+	codes, err := vatCodesOn(ctx, store.New(s.deps.Pool), pgDate(businessDay(s.deps.Clock())))
+	if err != nil {
+		return nil, err
+	}
+	errs = checkWorkVatCodes(parsed, codes, errs)
 	if len(errs) > 0 {
 		return gen.PutInvoicesSettings400ApplicationProblemPlusJSONResponse(invalid(invalidSettingsTitle, errs)), nil
 	}
@@ -383,7 +416,7 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 	var saved store.InvoicesSetting
 	var locked bool
 	var next int64
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := txq.LockSettings(ctx)
 		if err != nil {
 			return fmt.Errorf("invoices: lock the settings: %w", err)

@@ -16,7 +16,7 @@ import (
 // store or not, a mail driver that sends or not, EHF or not), what the seller
 // still lacks, whether the series has started, the VAT codes a new line may
 // take today, and what the caller may do — so no client re-derives a rule
-// this module owns.
+// this module owns — and which work it can invoice.
 
 // GetInvoicesMeta Get the Invoices metadata
 // (GET /api/v1/invoices/meta)
@@ -66,6 +66,12 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 		AccessPointCredentialsRejected: rejected,
 		Today:                          wireDate(today),
 		VatCodes:                       inForce,
+		// What work this installation can invoice (invoices work design D3):
+		// the billable reads composed, each optional.
+		WorkAvailable: s.workAvailable(),
+		Work: gen.InvoicesMetaWork{
+			Hours: s.deps.BillableHours != nil, Expenses: s.deps.BillableExpenses != nil, Milestones: s.deps.BillableMilestones != nil,
+		},
 		Capabilities: gen.InvoicesMetaCapabilities{
 			CanCreate:           s.has(ctx, "invoices:create"),
 			CanIssue:            canIssue,

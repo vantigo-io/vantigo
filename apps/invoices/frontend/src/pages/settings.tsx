@@ -233,6 +233,9 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         peppolId: values.peppolId?.trim() || null,
         kidLength: values.kidLength,
         kidAlgorithm: values.kidAlgorithm,
+        // The codes each kind of work is invoiced at (invoices work design
+        // D6) have no card here yet: they go back as they were read.
+        workVatCodes: values.workVatCodes,
         revision: settings.revision,
       }),
     onSuccess: async (saved) => {

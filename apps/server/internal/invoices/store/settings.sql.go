@@ -161,7 +161,10 @@ UPDATE invoices.settings SET
     peppol_id = $18,
     kid_length = $19,
     kid_algorithm = $20,
-    updated_at = $21::timestamptz,
+    work_vat_code_hours = $21,
+    work_vat_code_expenses = $22,
+    work_vat_code_milestones = $23,
+    updated_at = $24::timestamptz,
     revision = revision + 1
 WHERE id = 1
 RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label
@@ -188,12 +191,16 @@ type UpdateSettingsParams struct {
 	PeppolID                *string
 	KidLength               *int16
 	KidAlgorithm            *string
+	WorkVatCodeHours        int32
+	WorkVatCodeExpenses     int32
+	WorkVatCodeMilestones   int32
 	Now                     time.Time
 }
 
 // UpdateSettings replaces the seller record, the series start, the seller's
-// Peppol id and the KID agreement (EHF and KID design D2, D3), and moves
-// the revision on. The caller holds the row (LockSettings) and has checked the
+// Peppol id, the KID agreement (EHF and KID design D2, D3) and the VAT code
+// each kind of work is invoiced at (invoices work design D6), and moves the
+// revision on. The caller holds the row (LockSettings) and has checked the
 // revision and the series lock.
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (InvoicesSetting, error) {
 	row := q.db.QueryRow(ctx, updateSettings,
@@ -217,6 +224,9 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.PeppolID,
 		arg.KidLength,
 		arg.KidAlgorithm,
+		arg.WorkVatCodeHours,
+		arg.WorkVatCodeExpenses,
+		arg.WorkVatCodeMilestones,
 		arg.Now,
 	)
 	var i InvoicesSetting

@@ -43,6 +43,8 @@ export const meta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta => ({
     canSend: true,
     canSendEhf: false,
   },
+  workAvailable: true,
+  work: { hours: true, expenses: true, milestones: true },
   ...overrides,
 });
 
@@ -123,6 +125,195 @@ export const workDraft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocu
     projectReference: "P-41",
     releasedSources: [{ kind: "projects.milestone", id: 701 }],
     warnings: ["line_differs_from_sources", "sources_released"],
+    ...overrides,
+  };
+};
+
+type WorkView = components["schemas"]["InvoicesWorkResponse"];
+
+/**
+ * GET /invoices/work for Acme as the server answers it (invoices work design
+ * D3): project P-41 with Kari's 4 h selectable and Ola's 3.5 h held by draft
+ * 1001, a mileage expense and a ready milestone; the fixed-price project
+ * P-42's hours shown, not selectable; the totals over the selectable work.
+ */
+export const workView = (overrides: Partial<WorkView> = {}): WorkView => ({
+  customerId: 2001,
+  projects: [
+    {
+      id: 41,
+      code: "P-41",
+      name: "Apollo",
+      billingType: "time-and-materials",
+      currency: "NOK",
+      hours: [
+        {
+          id: 801,
+          revision: 2,
+          date: "2026-09-01",
+          userId: "00000000-0000-0000-0000-00000000000a",
+          hours: 4,
+          billRate: 1200,
+          rate: 1200,
+          amount: 4800,
+          currency: "NOK",
+          workTypeId: 5,
+          workTypeName: "Utvikling",
+          selectable: true,
+        },
+        {
+          id: 802,
+          revision: 1,
+          date: "2026-09-02",
+          userId: "00000000-0000-0000-0000-00000000000b",
+          hours: 3.5,
+          billRate: 1200,
+          rate: 1200,
+          amount: 4200,
+          currency: "NOK",
+          selectable: false,
+          reason: "held",
+          heldBy: { invoiceId: 1001, status: "draft" },
+        },
+      ],
+      expenses: [
+        {
+          id: 902,
+          revision: 1,
+          kind: "mileage",
+          date: "2026-09-04",
+          description: "Oslo–Drammen",
+          netAmount: 405,
+          distanceKm: 90,
+          billRatePerKm: 4.5,
+          billAmount: 405,
+          currency: "NOK",
+          selectable: true,
+        },
+      ],
+      milestones: [
+        {
+          id: 951,
+          revision: 1,
+          name: "Fase 1",
+          description: "",
+          readyAt: "2026-09-05T10:00:00Z",
+          date: "2026-09-05",
+          amount: 10000,
+          currency: "NOK",
+          selectable: true,
+        },
+      ],
+      heldOnDrafts: [{ invoiceId: 1001, kind: "time.entry", count: 1 }],
+      warnings: [],
+    },
+    {
+      id: 42,
+      code: "P-42",
+      name: "Borealis",
+      billingType: "fixed-price",
+      currency: "NOK",
+      hours: [
+        {
+          id: 803,
+          revision: 1,
+          date: "2026-07-03",
+          userId: "00000000-0000-0000-0000-00000000000a",
+          hours: 2,
+          billRate: 1000,
+          rate: 1000,
+          amount: 2000,
+          currency: "NOK",
+          selectable: false,
+          reason: "fixed_price",
+        },
+      ],
+      expenses: [],
+      milestones: [],
+      heldOnDrafts: [],
+      warnings: [],
+    },
+  ],
+  totals: [{ currency: "NOK", amount: 15205 }],
+  users: [
+    { id: "00000000-0000-0000-0000-00000000000a", displayName: "Kari Nordmann" },
+    { id: "00000000-0000-0000-0000-00000000000b", displayName: "Ola Hansen" },
+  ],
+  warnings: [],
+  ...overrides,
+});
+
+/**
+ * POST /invoices/from-work's answer (201): a new Acme draft of Kari's hours,
+ * the mileage and the milestone grouped by project, in Norwegian, every line
+ * holding its work.
+ */
+export const fromWorkDraft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
+  const { deliveryDate: _deliveryDate, ...base } = draft();
+  const held = { projectId: 41, state: "held" };
+  const line = { discountPercent: 0, vatCodeId: 1, warnings: [] };
+  return {
+    ...base,
+    id: 1002,
+    deliveryFrom: "2026-09-01",
+    deliveryTo: "2026-09-05",
+    lines: [
+      {
+        ...line,
+        id: 5101,
+        position: 1,
+        description: "Konsulenttimer, Apollo, 1. sep. 2026",
+        quantity: 4,
+        unit: "timer",
+        unitPrice: 1200,
+        lineGross: 4800,
+        lineAllowance: 0,
+        lineNet: 4800,
+        sources: [{ ...held, kind: "time.entry", id: 801, date: "2026-09-01", quantity: 4, amount: 4800 }],
+      },
+      {
+        ...line,
+        id: 5102,
+        position: 2,
+        description: "Kjøregodtgjørelse, Apollo, 4. sep. 2026",
+        quantity: 1,
+        unit: "",
+        unitPrice: 405,
+        lineGross: 405,
+        lineAllowance: 0,
+        lineNet: 405,
+        sources: [{ ...held, kind: "expenses.entry", id: 902, date: "2026-09-04", quantity: 90, amount: 405 }],
+      },
+      {
+        ...line,
+        id: 5103,
+        position: 3,
+        description: "Fase 1",
+        quantity: 1,
+        unit: "",
+        unitPrice: 10000,
+        lineGross: 10000,
+        lineAllowance: 0,
+        lineNet: 10000,
+        sources: [{ ...held, kind: "projects.milestone", id: 951, date: "2026-09-05", quantity: 1, amount: 10000 }],
+      },
+    ],
+    vatSummaries: [
+      {
+        vatCategory: "S",
+        ratePercent: 25,
+        safTCode: "3",
+        taxableAmount: 15205,
+        vatAmount: 3801.25,
+        vatAmountNok: 3801.25,
+      },
+    ],
+    netTotal: 15205,
+    vatTotal: 3801.25,
+    grossTotal: 19006.25,
+    vatTotalNok: 3801.25,
+    sources: { count: 3, held: 3, invoiced: 0, released: 0 },
+    warnings: [],
     ...overrides,
   };
 };
@@ -588,6 +779,7 @@ export const settings = (overrides: Partial<InvoiceSettings> = {}): InvoiceSetti
   kidAlgorithm: null,
   missingSellerFields: ["postalCode", "bankAccount"],
   warnings: [],
+  workVatCodes: { hours: 1, expenses: 1, milestones: 1 },
   revision: 5,
   updatedAt: "2026-09-12T10:00:00Z",
   ...overrides,

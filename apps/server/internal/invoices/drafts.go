@@ -290,6 +290,7 @@ func parseDraft(body gen.InvoicesInvoiceRequest, currency string) (draftInput, m
 // vatCodeOnDay is one code as a draft line is judged against it.
 type vatCodeOnDay struct {
 	active         bool
+	code           string
 	category, safT string
 	reason         *string
 	rate           *big.Rat // nil when no period covers the day
@@ -303,7 +304,7 @@ func vatCodesOn(ctx context.Context, q *store.Queries, day pgtype.Date) (map[int
 	}
 	out := make(map[int32]vatCodeOnDay, len(rows))
 	for _, r := range rows {
-		c := vatCodeOnDay{active: r.Active, category: r.EhfCategory, safT: r.SafTCode, reason: r.ExemptionReason}
+		c := vatCodeOnDay{active: r.Active, code: r.Code, category: r.EhfCategory, safT: r.SafTCode, reason: r.ExemptionReason}
 		if r.RatePercent.Valid {
 			if c.rate, err = ratFromNumeric(r.RatePercent); err != nil {
 				return nil, err

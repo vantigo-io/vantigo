@@ -186,6 +186,13 @@ og 7), så de fleste bedrifter trenger ikke endre noe her.
   ligger i framtiden. En sats kan ikke endres fra en dag på eller før et utstedt
   dokuments dato ([reglene](/en/reference/invoices/#endpoints)).
 
+Innstillingene holder også mva-koden hver type arbeid faktureres med — timer, utgifter og
+faktureringsmilepæler — som et utkast laget av arbeid gir linjene sine: kode 3 (25 %) for
+alle tre til du endrer dem, og kode 7 for alle typer så lenge selgeren ikke er
+mva-registrert. Innstillingssiden har ikke et kort for dem ennå; en lagring beholder dem
+som de er, og skjermbildet for dem kommer med det ufakturerte arbeidet
+([mva-koder for arbeid](/en/reference/invoices/#vat-codes-for-work)).
+
 ## Finne et dokument
 
 **Fakturaer** i sidemenyen lister hvert utkast og hvert utstedte dokument: utkast først,
@@ -287,12 +294,32 @@ til, eller kan det ikke lenger faktureres — en registrering som ikke lenger er
 en milepæl som er flyttet tilbake — advarer utkastet om det, og å oppdatere arbeidet tar
 med de nye tallene og fjerner det som ikke lenger kan faktureres; utstedelsen ville
 avvist begge deler. Arbeid kommer bare inn på et utkast gjennom oversikten over
-ufakturert arbeid for en kunde eller et prosjekt, som kommer med skjermbildene for det;
-inntil da holder ingen utkast noe arbeid. Når alt arbeidet et utkast fakturerer hører til
-ett prosjekt, navngir utkastet prosjektet med koden sin — skrevet ut på PDF-en som
-*Prosjekt* / *Project*, med i EHF-en, beholdt av den utstedte fakturaen og av
-kreditnotaene til den, og den siste kolonnen, *Project*, i eksporten til regnskapsføreren
-([prosjektet](/en/reference/invoices/#the-project)).
+ufakturert arbeid for en kunde eller et prosjekt. Når alt arbeidet et utkast fakturerer
+hører til ett prosjekt, navngir utkastet prosjektet med koden sin — skrevet ut på PDF-en
+som *Prosjekt* / *Project*, med i EHF-en, beholdt av den utstedte fakturaen og av
+kreditnotaene til den, og den siste kolonnen, *Project*, i eksporten til
+regnskapsføreren ([prosjektet](/en/reference/invoices/#the-project)).
+
+**Fakturere arbeid.** Oversikten over ufakturert arbeid viser, for en kunde eller ett
+prosjekt, arbeidet som ikke er fakturert ennå — godkjente fakturerbare timer, utgifter
+klare til fakturering og faktureringsmilepæler som er klare — per prosjekt og type, med
+summen av det som er valgt per valuta. Arbeid som alt ligger på et utkast eller en
+utstedt faktura vises, men kan ikke velges, og navngir dokumentet som har det; det
+samme gjelder timer på et fastprisprosjekt (prosjektet fakturerer milepælene sine),
+arbeid på et prosjekt som ikke er fakturerbart og arbeid i en annen valuta enn NOK. Et
+prosjekt der det eldste arbeidet er mer enn en måned gammelt, flagges, siden loven krever
+faktura senest en måned etter levering, og en leverandørfaktura som ser ut til å
+faktureres dobbelt flagges også. Av det valgte arbeidet lager Vantigo et utkast — eller
+legger det til et av kundens utkast — gruppert i linjer per prosjekt, arbeidstype,
+person, dag eller én linje hver, skrevet på kundens språk («Konsulenttimer, Apollo,
+september 2026» eller «Consulting hours, Apollo, September 2026»), hver type med sin
+mva-kode og leveringsperioden fra første til siste dag med arbeid. Det avvises, med
+begrunnelse, når noe av arbeidet alt ligger på et annet utkast, er endret eller ikke
+lenger kan faktureres siden det ble vist, er i mer enn én valuta, eller ville gitt mer
+enn 500 linjer — da foreslås en grovere gruppering. Oversikten og veiviseren krever
+`invoices:create`. Skjermbildene for dem kommer i et senere steg av denne fasen; inntil
+da er de der for en integrasjon
+([Invoicing work](/en/reference/invoices/#invoicing-work)).
 
 ## Utstede
 

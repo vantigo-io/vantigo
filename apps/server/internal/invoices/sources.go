@@ -244,28 +244,53 @@ func insertSources(ctx context.Context, txq *store.Queries, invoiceID int64, lin
 	return nil
 }
 
-// heldElsewhere is the 409 source_held_elsewhere for rows, naming the first
-// other live document that holds one of them — read on q after the refused
-// transaction rolled back.
-func heldElsewhere(ctx context.Context, q *store.Queries, invoiceID int64, rows []heldSource) (gen.InvoicesConflictProblem, error) {
+// liveElsewhere is the 409 source_held_elsewhere for rows when another live
+// document holds or has invoiced one of them, nil when none does: the first
+// such document — the oldest row — as heldBy, and the source it holds (D2).
+// The wizard reads it on its own transaction, under the draft's lock, before
+// it holds anything; a save's index violation reads it on the pool after the
+// refused transaction rolled back.
+func liveElsewhere(ctx context.Context, q *store.Queries, invoiceID int64, rows []heldSource) (*gen.InvoicesConflictProblem, error) {
 	p := store.LiveSourcesElsewhereParams{InvoiceID: invoiceID}
 	for _, r := range rows {
 		p.Kinds, p.Ids = append(p.Kinds, string(r.kind)), append(p.Ids, r.id)
 	}
 	found, err := q.LiveSourcesElsewhere(ctx, p)
 	if err != nil {
-		return gen.InvoicesConflictProblem{}, fmt.Errorf("invoices: read where draft %d's sources are held: %w", invoiceID, err)
+		return nil, fmt.Errorf("invoices: read where document %d's sources are held: %w", invoiceID, err)
 	}
-	detail := "Some of this work is held by another document."
-	if len(found) > 0 {
-		f := found[0]
-		holder := fmt.Sprintf("draft %d", f.InvoiceID)
-		if f.Number != nil {
-			holder = fmt.Sprintf("invoice %d", *f.Number)
-		}
-		detail = fmt.Sprintf("%s %d is held by %s.", f.SourceKind, f.SourceID, holder)
+	if len(found) == 0 {
+		return nil, nil
 	}
-	return conflict(codeSourceHeldElsewhere, "The work is held elsewhere", detail), nil
+	f := found[0]
+	return heldByProblem(f.SourceKind, f.SourceID, gen.InvoicesWorkHeldBy{InvoiceId: f.InvoiceID, Number: f.Number, Status: f.Status}), nil
+}
+
+// heldByProblem is source_held_elsewhere naming the source and the document
+// that has it.
+func heldByProblem(kind string, id int64, by gen.InvoicesWorkHeldBy) *gen.InvoicesConflictProblem {
+	holder := fmt.Sprintf("draft %d", by.InvoiceId)
+	if by.Number != nil {
+		holder = fmt.Sprintf("invoice %d", *by.Number)
+	}
+	p := conflict(codeSourceHeldElsewhere, "The work is held elsewhere", fmt.Sprintf("%s %d is held by %s.", kind, id, holder))
+	p.HeldBy, p.SourceKind, p.SourceId = &by, &kind, &id
+	return &p
+}
+
+// heldElsewhere is the 409 source_held_elsewhere for rows, naming the first
+// other live document that holds one of them — read on q after the refused
+// transaction rolled back. When the holder has let go meanwhile, the answer
+// names neither.
+func heldElsewhere(ctx context.Context, q *store.Queries, invoiceID int64, rows []heldSource) (gen.InvoicesConflictProblem, error) {
+	p, err := liveElsewhere(ctx, q, invoiceID, rows)
+	if err != nil {
+		return gen.InvoicesConflictProblem{}, err
+	}
+	if p == nil {
+		return conflict(codeSourceHeldElsewhere, "The work is held elsewhere", "Some of this work is held by another document."), nil
+	}
+	return *p, nil
 }
 
 // sameHeldSet reports whether two reads of a draft's sources hold the same

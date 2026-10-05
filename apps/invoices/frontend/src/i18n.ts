@@ -146,6 +146,18 @@ export const invoicesCatalog = {
       "Work on this draft has changed since it was added; refresh the work, or the issue will refuse it.",
     "warning.source_not_invoiceable":
       "Work on this draft can no longer be invoiced; refresh the work to drop it, or the issue will refuse it.",
+    "warning.work_overdue_to_invoice":
+      "Some of this project's work was delivered more than a month ago; the law asks for the invoice within a month of delivery.",
+    "warning.currency_not_nok": "This work is in another currency than NOK, which this module does not invoice in.",
+    "warning.supplier_invoice_rebilled":
+      "A supplier invoice with this supplier and number is already invoiced, or appears twice here. Check it is not billed twice.",
+    "warning.work_truncated":
+      "Not all the work is listed: there is more than one read shows. Invoice some of it, or list up to an earlier date, to see the rest.",
+    "workReason.held": "Already on a draft or an issued invoice",
+    "workReason.fixed_price": "Fixed-price project: the hours are shown, not invoiced",
+    "workReason.non_billable": "The project is not billable",
+    "workReason.currency": "Not in NOK",
+    "workReason.no_customer": "The project bills no customer",
     preview: "Preview",
     issue: "Issue",
     saveBeforePreview: "Save the changes before previewing.",
@@ -439,6 +451,19 @@ export const invoicesCatalog = {
       "Work on line {{line}} belongs to a project that is now fixed-price or non-billable, so it cannot be invoiced as it stands.",
     "refusal.projects_unavailable":
       "This invoice bills work, and the Projects module is switched off, so its work cannot be checked. Nothing was issued.",
+    "refusal.work_unavailable": "No module that records billable work — Time, Expenses or Projects — is switched on.",
+    "refusal.too_many_sources": "One document holds at most 5 000 pieces of work. Choose fewer, or make another draft.",
+    "refusal.source_not_for_customer": "Some of the chosen work belongs to a project that does not bill this customer.",
+    "refusal.mixed_currency": "The chosen work is in more than one currency, and one invoice is in one currency.",
+    "refusal.currency_not_nok": "The chosen work is not in NOK, the only currency this module invoices in.",
+    "refusal.too_many_lines": "Grouped this way the work makes more than 500 lines. Choose a coarser grouping.",
+    "workRefusal.source_not_invoiceable":
+      "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
+    "workRefusal.source_changed":
+      "Some of the chosen work changed since it was listed. Read the work again and choose.",
+    "workRefusal.source_not_selectable":
+      "Some of the chosen work is on a fixed-price or non-billable project, so it cannot be invoiced.",
+    "workRefusal.projects_unavailable": "Work is invoiced per project, and the Projects module is switched off.",
 
     eInvoicing: "E-invoicing",
     eInvoicingDescription: "Send documents as EHF over the Peppol network, through an access point.",
@@ -725,6 +750,18 @@ export const invoicesCatalog = {
       "Arbeid på dette utkastet er endret siden det ble lagt til; oppdater arbeidet, ellers avviser utstedelsen det.",
     "warning.source_not_invoiceable":
       "Arbeid på dette utkastet kan ikke lenger faktureres; oppdater arbeidet for å fjerne det, ellers avviser utstedelsen det.",
+    "warning.work_overdue_to_invoice":
+      "Noe av arbeidet på dette prosjektet ble levert for mer enn en måned siden; loven krever faktura senest en måned etter levering.",
+    "warning.currency_not_nok": "Dette arbeidet er i en annen valuta enn NOK, som denne modulen ikke fakturerer i.",
+    "warning.supplier_invoice_rebilled":
+      "En leverandørfaktura med denne leverandøren og dette nummeret er allerede fakturert, eller står her to ganger. Sjekk at den ikke faktureres dobbelt.",
+    "warning.work_truncated":
+      "Ikke alt arbeidet vises: det er mer enn én lesing viser. Fakturer noe av det, eller vis til en tidligere dato, for å se resten.",
+    "workReason.held": "Ligger allerede på et utkast eller en utstedt faktura",
+    "workReason.fixed_price": "Fastprisprosjekt: timene vises, men faktureres ikke",
+    "workReason.non_billable": "Prosjektet er ikke fakturerbart",
+    "workReason.currency": "Ikke i NOK",
+    "workReason.no_customer": "Prosjektet fakturerer ingen kunde",
     preview: "Forhåndsvis",
     issue: "Utsted",
     saveBeforePreview: "Lagre endringene før du forhåndsviser.",
@@ -1016,6 +1053,22 @@ export const invoicesCatalog = {
       "Arbeid på linje {{line}} hører til et prosjekt som nå er fastpris eller ikke fakturerbart, så det kan ikke faktureres slik det er.",
     "refusal.projects_unavailable":
       "Denne fakturaen fakturerer arbeid, og Prosjekter-modulen er slått av, så arbeidet kan ikke kontrolleres. Ingenting ble utstedt.",
+    "refusal.work_unavailable":
+      "Ingen modul som registrerer fakturerbart arbeid — Timer, Utlegg eller Prosjekter — er slått på.",
+    "refusal.too_many_sources":
+      "Ett dokument kan holde høyst 5 000 arbeidsposter. Velg færre, eller lag et nytt utkast.",
+    "refusal.source_not_for_customer":
+      "Noe av det valgte arbeidet hører til et prosjekt som ikke fakturerer denne kunden.",
+    "refusal.mixed_currency": "Det valgte arbeidet er i mer enn én valuta, og én faktura er i én valuta.",
+    "refusal.currency_not_nok": "Det valgte arbeidet er ikke i NOK, den eneste valutaen denne modulen fakturerer i.",
+    "refusal.too_many_lines": "Gruppert slik blir arbeidet mer enn 500 linjer. Velg en grovere gruppering.",
+    "workRefusal.source_not_invoiceable":
+      "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
+    "workRefusal.source_changed":
+      "Noe av det valgte arbeidet er endret siden det ble vist. Les arbeidet på nytt og velg.",
+    "workRefusal.source_not_selectable":
+      "Noe av det valgte arbeidet ligger på et fastpris- eller ikke-fakturerbart prosjekt, så det kan ikke faktureres.",
+    "workRefusal.projects_unavailable": "Arbeid faktureres per prosjekt, og Prosjekter-modulen er slått av.",
 
     eInvoicing: "E-faktura",
     eInvoicingDescription: "Send dokumenter som EHF i Peppol-nettverket, gjennom et aksesspunkt.",

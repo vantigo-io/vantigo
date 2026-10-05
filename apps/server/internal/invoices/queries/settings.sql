@@ -12,8 +12,9 @@ SELECT * FROM invoices.settings WHERE id = 1 FOR UPDATE;
 
 -- name: UpdateSettings :one
 -- UpdateSettings replaces the seller record, the series start, the seller's
--- Peppol id and the KID agreement (EHF and KID design D2, D3), and moves
--- the revision on. The caller holds the row (LockSettings) and has checked the
+-- Peppol id, the KID agreement (EHF and KID design D2, D3) and the VAT code
+-- each kind of work is invoiced at (invoices work design D6), and moves the
+-- revision on. The caller holds the row (LockSettings) and has checked the
 -- revision and the series lock.
 UPDATE invoices.settings SET
     legal_name = @legal_name,
@@ -36,6 +37,9 @@ UPDATE invoices.settings SET
     peppol_id = sqlc.narg(peppol_id),
     kid_length = sqlc.narg(kid_length),
     kid_algorithm = sqlc.narg(kid_algorithm),
+    work_vat_code_hours = @work_vat_code_hours,
+    work_vat_code_expenses = @work_vat_code_expenses,
+    work_vat_code_milestones = @work_vat_code_milestones,
     updated_at = @now::timestamptz,
     revision = revision + 1
 WHERE id = 1
