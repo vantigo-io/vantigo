@@ -1032,6 +1032,15 @@ func TestSettings_WorkVatCodes(t *testing.T) {
 	if res := manager.Do(http.MethodPut, settingsPath, kept); res.Status != http.StatusOK {
 		t.Errorf("an inactive code kept as stored = %d %s, want 200", res.Status, res.Body)
 	}
+	// The same inactive code moved to hours is a change there, refused on
+	// hours alone; kept for expenses it still passes.
+	moved := completeSeller(saved.Revision + 1)
+	moved["workVatCodes"] = map[string]any{"hours": 3, "expenses": 3, "milestones": 9}
+	res := manager.Do(http.MethodPut, settingsPath, moved)
+	if errs := problemOf(t, res).Errors; res.Status != http.StatusBadRequest || len(errs["workVatCodes.hours"]) == 0 ||
+		len(errs["workVatCodes.expenses"]) != 0 || len(errs["workVatCodes.milestones"]) != 0 {
+		t.Errorf("code 3 moved to hours = %d %s, want 400 on workVatCodes.hours only", res.Status, res.Body)
+	}
 	stale := completeSeller(read.Revision)
 	if res := manager.Do(http.MethodPut, settingsPath, stale); res.Status != http.StatusConflict {
 		t.Errorf("a stale revision = %d, want 409", res.Status)
@@ -1081,5 +1090,72 @@ func TestFromWork_ProjectsUnavailable(t *testing.T) {
 	refusedFromWork(t, h, fromWorkBody(customerAcme, workSrc("time.entry", workHourKari, 2)), "projects_unavailable")
 	if n := h.Count(t, `SELECT count(*) FROM invoices.invoices`); n != 0 {
 		t.Errorf("%d documents, want none", n)
+	}
+}
+
+// appendBody is an append of sources to d at its revision.
+func appendBody(d invoiceJSON, sources ...map[string]any) map[string]any {
+	body := fromWorkBody(d.CustomerID, sources...)
+	body["invoiceId"], body["revision"] = d.ID, d.Revision
+	return body
+}
+
+func appended(t *testing.T, h *harness, body map[string]any) invoiceJSON {
+	t.Helper()
+	res := creator(t, h).Do(http.MethodPost, fromWorkPath, body)
+	if res.Status != http.StatusOK {
+		t.Fatalf("append = %d %s, want 200", res.Status, res.Body)
+	}
+	var doc invoiceJSON
+	res.JSON(&doc)
+	return doc
+}
+
+func deliveryOf(d invoiceJSON) string {
+	deref := func(s *string) string {
+		if s == nil {
+			return "-"
+		}
+		return *s
+	}
+	return fmt.Sprintf("day %s, period %s–%s", deref(d.DeliveryDate), deref(d.DeliveryFrom), deref(d.DeliveryTo))
+}
+
+// An append's delivery (D3): a target delivered on one day, widened by work
+// on either side of it, becomes the period that covers both; one whose day
+// the work does not leave keeps its day; one with no delivery takes the span
+// of all the work it holds, its own included; and a period the request gives
+// is the draft's, whatever the work.
+func TestFromWork_AppendWidensTheDelivery(t *testing.T) {
+	t.Parallel()
+	f := newWorkFixture(t)
+	onDay := func(day string) invoiceJSON {
+		body := draftBody(customerAcme, line("Arbeid", 1, 100, vat25))
+		body["deliveryDate"] = day
+		return createDraft(t, f.h, body)
+	}
+
+	widened := appended(t, f.h, appendBody(onDay("2026-09-03"),
+		workSrc("time.entry", workHourKari, 2), workSrc("projects.milestone", workMilestne, 1)))
+	if got := deliveryOf(widened); got != "day -, period 2026-09-01–2026-09-05" {
+		t.Errorf("a day widened by work on the 1st and the 5th = %s", got)
+	}
+	kept := appended(t, f.h, appendBody(onDay("2026-09-02"), workSrc("time.entry", workHourOla, 1)))
+	if got := deliveryOf(kept); got != "day 2026-09-02, period -–-" {
+		t.Errorf("a day the work does not leave = %s, want the day kept", got)
+	}
+
+	body := draftBody(customerAcme, line("Arbeid", 1, 100, vat25))
+	delete(body, "deliveryDate")
+	none := createDraft(t, f.h, body)
+	plantSource(t, f.h, none.ID, planted{position: 1, kind: "time.entry", id: 7001, revision: 1, quantity: "1", amount: "100", date: "2026-08-20"})
+	if got := deliveryOf(appended(t, f.h, appendBody(none, workSrc("expenses.entry", workOutlay, 4)))); got != "day -, period 2026-08-20–2026-09-03" {
+		t.Errorf("no delivery = %s, want the span of the held and the added work", got)
+	}
+
+	given := appendBody(onDay("2026-09-10"), workSrc("expenses.entry", workMileage, 1))
+	given["deliveryFrom"], given["deliveryTo"] = "2026-08-01", "2026-08-31"
+	if got := deliveryOf(appended(t, f.h, given)); got != "day -, period 2026-08-01–2026-08-31" {
+		t.Errorf("a period given = %s, want exactly the request's", got)
 	}
 }

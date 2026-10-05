@@ -1464,7 +1464,7 @@ export interface components {
             /** Format: int32 */
             revision: number;
         };
-        /** @description POST /invoices/from-work's body (invoices work design D3, D4, D6): the customer, the work by identity (at most 5 000 with an append target's held work, none twice), the grouping — project (the default), work_type, person, date or itemised — the VAT codes per kind, an optional delivery period (both or neither; the first and last work dates when absent), and, to add the work to an existing invoice draft of this customer, its invoiceId with the revision it was read at. */
+        /** @description POST /invoices/from-work's body (invoices work design D3, D4, D6): the customer, the work by identity (at most 5 000 with an append target's held work, none twice), the grouping — project (the default), work_type, person, date or itemised — the VAT codes per kind, an optional delivery period (both or neither; the first and last work dates when absent), an optional note (a re-pull note suggested when absent), and, to add the work to an existing invoice draft of this customer, its invoiceId with the revision it was read at. */
         InvoicesFromWorkRequest: {
             /** Format: int32 */
             customerId: number;
@@ -1475,6 +1475,8 @@ export interface components {
             grouping?: string;
             /** Format: int64 */
             invoiceId?: number;
+            /** @description The draft's note, printed on the document, at most 1 000 characters. Absent or empty, the wizard suggests one when the work was released by a credit note before — "Erstatter faktura <n>, kreditert med kreditnota <c>" / "Replaces invoice <n>, credited by credit note <c>" — in the buyer's language. An append writes a note only on a target whose note is empty. */
+            note?: string;
             /** Format: int32 */
             revision?: number;
             sources: components["schemas"]["InvoicesFromWorkSource"][];
@@ -2500,7 +2502,7 @@ export interface operations {
                     "application/json": components["schemas"]["InvoicesInvoiceResponse"];
                 };
             };
-            /** @description Bad Request — a field did not pass; the errors name it (customerId, sources, sources[i], grouping, vatCodes.<kind>, invoiceId, revision, deliveryTo, lines — the document total too large). */
+            /** @description Bad Request — a field did not pass; the errors name it (customerId, sources, sources[i], grouping, vatCodes.<kind>, invoiceId, revision, deliveryTo, note, lines — the document total too large). */
             400: {
                 headers: {
                     [name: string]: unknown;

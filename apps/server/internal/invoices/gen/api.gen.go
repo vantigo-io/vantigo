@@ -184,15 +184,18 @@ type InvoicesEhfState struct {
 	Transmissions []InvoicesTransmission `json:"transmissions"`
 }
 
-// InvoicesFromWorkRequest POST /invoices/from-work's body (invoices work design D3, D4, D6): the customer, the work by identity (at most 5 000 with an append target's held work, none twice), the grouping — project (the default), work_type, person, date or itemised — the VAT codes per kind, an optional delivery period (both or neither; the first and last work dates when absent), and, to add the work to an existing invoice draft of this customer, its invoiceId with the revision it was read at.
+// InvoicesFromWorkRequest POST /invoices/from-work's body (invoices work design D3, D4, D6): the customer, the work by identity (at most 5 000 with an append target's held work, none twice), the grouping — project (the default), work_type, person, date or itemised — the VAT codes per kind, an optional delivery period (both or neither; the first and last work dates when absent), an optional note (a re-pull note suggested when absent), and, to add the work to an existing invoice draft of this customer, its invoiceId with the revision it was read at.
 type InvoicesFromWorkRequest struct {
-	CustomerId   int32                    `json:"customerId"`
-	DeliveryFrom *openapi_types.Date      `json:"deliveryFrom,omitempty"`
-	DeliveryTo   *openapi_types.Date      `json:"deliveryTo,omitempty"`
-	Grouping     *string                  `json:"grouping,omitempty"`
-	InvoiceId    *int64                   `json:"invoiceId,omitempty"`
-	Revision     *int32                   `json:"revision,omitempty"`
-	Sources      []InvoicesFromWorkSource `json:"sources"`
+	CustomerId   int32               `json:"customerId"`
+	DeliveryFrom *openapi_types.Date `json:"deliveryFrom,omitempty"`
+	DeliveryTo   *openapi_types.Date `json:"deliveryTo,omitempty"`
+	Grouping     *string             `json:"grouping,omitempty"`
+	InvoiceId    *int64              `json:"invoiceId,omitempty"`
+
+	// Note The draft's note, printed on the document, at most 1 000 characters. Absent or empty, the wizard suggests one when the work was released by a credit note before — "Erstatter faktura <n>, kreditert med kreditnota <c>" / "Replaces invoice <n>, credited by credit note <c>" — in the buyer's language. An append writes a note only on a target whose note is empty.
+	Note     *string                  `json:"note,omitempty"`
+	Revision *int32                   `json:"revision,omitempty"`
+	Sources  []InvoicesFromWorkSource `json:"sources"`
 
 	// VatCodes The wizard's VAT code per kind of work (invoices work design D6), each optional — absent takes the settings' default, or id 9 (code 7, category O) for every kind while the seller is not VAT-registered. A code given must exist and be active (a 400 on vatCodes.<kind>); a default that has become inactive, with no code given, is a 400 on vatCodes.<kind> too.
 	VatCodes *InvoicesFromWorkVatCodes `json:"vatCodes,omitempty"`

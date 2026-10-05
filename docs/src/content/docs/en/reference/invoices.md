@@ -329,7 +329,7 @@ composed — and `work: {hours, expenses, milestones}`, which kinds.
 or, with `invoiceId` and the `revision` it was read at, adds it to an existing invoice
 draft of the same customer — 200. The body: `customerId`, `sources: [{kind, id,
 revision}]`, `grouping` (default `project`), `vatCodes: {hours?, expenses?,
-milestones?}`, and an optional `deliveryFrom`/`deliveryTo`. **In order**, each before
+milestones?}`, an optional `deliveryFrom`/`deliveryTo` and an optional `note`. **In order**, each before
 any transaction:
 
 1. **The body**: a customer, at least one source, each of a known kind and named once
@@ -377,8 +377,23 @@ period sits inside the header's; its `yourReference` and terms are the billing
 profile's, as `POST /` takes them. An append keeps the rest of the target's header, and
 an append widens the target's delivery period to cover the added work, unless the
 request gives one: the target's period — or its delivery day as both ends — stretched
-to the added work's first and last day, written as a period; a target without a
-delivery takes the work's own.
+to the added work's first and last day, written as a period; a target delivered on one
+day that the added work does not leave keeps that delivery date, the period unset; a
+target without a delivery takes the first and last day of all the work it then holds,
+its own and the added.
+
+**The note.** The request may give the draft's `note` (at most 1 000 characters). Without
+one, when any of the chosen work was released by a credit note before, the wizard
+suggests the note naming the invoice it replaces ([Release on
+credit](#release-on-credit)), in the buyer's language, read on the pool before the
+transaction. An append writes a note only on a target whose note is empty.
+
+**The project.** The draft's project is derived like any other draft's
+([The project](#the-project)): after the work is held, from every line source the draft
+then holds — on an append the target's own and the added — set when they share one
+project and unset when they span two or more or there are none; the code comes from the
+project directory read at step 4, which on an append also covers the projects of the
+target's held work.
 
 **What each held row takes** (`line_sources`): an hour its hours and Time's exact amount
 (up to eight decimals); a mileage line its kilometres and bill amount; an outlay, a
@@ -648,7 +663,13 @@ under the original's lock. The original answers its released rows with the state
 
 **Pulling released work again.** Released work is uninvoiced: no live row holds it, so a
 new draft may hold it and a new invoice bill it, with **no mandatory reference** to the
-credit note.
+credit note. The uninvoiced view lists it selectable again, and when the wizard takes it
+without a note of the request's, it suggests one naming, for each piece of work, the
+invoice its latest release replaced and the credit note that released it — "Erstatter
+faktura <n>, kreditert med kreditnota <c>" in Norwegian, "Replaces invoice <n>, credited
+by credit note <c>" in English, the buyer's language deciding — each pair once, the
+newest first, joined by ". "; work never released adds nothing. It is a suggestion: the
+note can be edited like any.
 
 ## Issuing
 
@@ -1710,7 +1731,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /vat-codes/{id}/rates` | `invoices:manage` | 404; 400 on `ratePercent` or `validFrom`; 409 `rate_change_in_past` |
 | `DELETE /vat-codes/{id}/rates/{rateId}` | `invoices:manage` | 404; 409 `rate_period_not_latest`, `rate_period_last`, `rate_period_in_use` |
 | `GET /work` | `invoices:create` | 400 neither or both of `customerId` and `projectId`; 409 `work_unavailable`, `projects_unavailable`; 404 an unknown project |
-| `POST /from-work` | `invoices:create` | 400 on the field (`customerId`, `sources`, `sources[i]`, `grouping`, `revision`, `deliveryTo`, `invoiceId`, `vatCodes.<kind>`, `lines` — the document total too large); 404 the target; 409 `invoice_issued`, `too_many_sources`, the customer gates, `projects_unavailable`, `source_not_for_customer`, `source_not_selectable`, `source_not_invoiceable`, `source_changed`, `mixed_currency`, `currency_not_nok`, `too_many_lines` (with `suggestedGrouping`), a stale revision, `source_held_elsewhere` (with `heldBy`) |
+| `POST /from-work` | `invoices:create` | 400 on the field (`customerId`, `sources`, `sources[i]`, `grouping`, `revision`, `deliveryTo`, `invoiceId`, `vatCodes.<kind>`, `note`, `lines` — the document total too large); 404 the target; 409 `invoice_issued`, `too_many_sources`, the customer gates, `projects_unavailable`, `source_not_for_customer`, `source_not_selectable`, `source_not_invoiceable`, `source_changed`, `mixed_currency`, `currency_not_nok`, `too_many_lines` (with `suggestedGrouping`), a stale revision, `source_held_elsewhere` (with `heldBy`) |
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included); 409 the customer gates |
 | `GET /{id}` | | 404 |

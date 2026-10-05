@@ -311,7 +311,11 @@ one line each, written in the customer's language ("Konsulenttimer, Apollo, sept
 delivery period from the first to the last day of the work. It is refused, saying why,
 when some of the work is already on another draft, has changed or can no longer be
 invoiced since it was listed, is in more than one currency, or would make more than 500
-lines — then a coarser grouping is suggested. The view and the wizard need
+lines — then a coarser grouping is suggested. The draft names its project when all its
+work belongs to one, as any draft does. Work a credit note gave back is listed again,
+and when it is taken into a new draft without a note of your own, the draft's note
+suggests what it replaces — *Erstatter faktura 1, kreditert med kreditnota 2* — which
+you can change. The view and the wizard need
 `invoices:create`. The screens for them come in a later step of this phase; until then
 they are there for an integration
 ([Invoicing work](/en/reference/invoices/#invoicing-work)).
