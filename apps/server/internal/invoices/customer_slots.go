@@ -110,9 +110,13 @@ type exportedDocument struct {
 	YourReference   string           `json:"yourReference,omitempty"`
 	OurReference    string           `json:"ourReference,omitempty"`
 	OrderReference  string           `json:"orderReference,omitempty"`
-	Note            string           `json:"note,omitempty"`
-	InternalNote    string           `json:"internalNote,omitempty"`
-	Lines           []exportedLine   `json:"lines"`
+	// ProjectReference is the project's code as the document snapshotted it
+	// (invoices work design D9) — what its PDF and its EHF print — absent
+	// when its work spans two projects or it has none.
+	ProjectReference string         `json:"projectReference,omitempty"`
+	Note             string         `json:"note,omitempty"`
+	InternalNote     string         `json:"internalNote,omitempty"`
+	Lines            []exportedLine `json:"lines"`
 	// Payments, Deliveries and Transmissions are an issued document's,
 	// empty when it has none; a draft has none of them, and nil leaves the
 	// key out (payments and delivery design D6, EHF and KID design D12).
@@ -310,8 +314,8 @@ func decimalOf(n pgtype.Numeric, places int) (string, error) {
 // staff-written notes as data held about the person. An issued document
 // carries its payments, removed ones with their removal, its deliveries
 // (payments and delivery design D6) and its EHF transmissions (EHF and KID
-// design D12); every document its timesheet as printed (invoices work design
-// D5). Every read is in one REPEATABLE READ, READ ONLY transaction,
+// design D12); every document its project's code as snapshotted (invoices
+// work design D9) and its timesheet as printed (D5). Every read is in one REPEATABLE READ, READ ONLY transaction,
 // as the customers module reads its own part of the export: a payment or a
 // send landing midway cannot make the file disagree with itself.
 func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
@@ -415,7 +419,8 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 			DeliveryAddress: addressOf(d.DeliveryAddressLine1, d.DeliveryAddressLine2, d.DeliveryPostalCode,
 				d.DeliveryCity, nil, d.DeliveryCountry),
 			Currency: d.Currency, Buyer: buyerOf(d), YourReference: d.YourReference, OurReference: d.OurReference,
-			OrderReference: d.OrderReference, Note: d.Note, InternalNote: d.InternalNote, Lines: []exportedLine{},
+			OrderReference: d.OrderReference, ProjectReference: orEmpty(d.ProjectReference), Note: d.Note,
+			InternalNote: d.InternalNote, Lines: []exportedLine{},
 			Timesheet: timesheetOf[d.ID],
 		}
 		if d.CreditsInvoiceID != nil {

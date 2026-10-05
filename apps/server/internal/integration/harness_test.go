@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -287,4 +288,196 @@ func signInAdmin(t *testing.T, h *modtest.Harness) (*modtest.Client, uuid.UUID) 
 func httpGet(t *testing.T, c *modtest.Client, path string) *modtest.Response {
 	t.Helper()
 	return c.Do(http.MethodGet, path, nil)
+}
+
+// The invoicing-work installation (invoices work design D1, D3): customers,
+// projects, time, expenses and invoices — every one real — so the holders an
+// issue stamps through and the billable reads its view and wizard read are
+// the source modules' own, resolved by Compose as cmd/vantigo resolves them,
+// and the merge reaches every module's CustomerReferenceHolder in Compose's
+// order. It is invoicesInstallation's installation (a real object store, the
+// seller saved complete and VAT-registered) over all five modules.
+
+// workPermissions are what the one caller of a work installation holds
+// beyond customers' and invoices': it creates and manages the projects (their
+// manager), approves the hours, records, prices, approves and reimburses the
+// expenses, and reads every figure.
+var workPermissions = []string{
+	"projects:access", "projects:create", "projects:manage-all", "projects:view-all", "projects:view-financials",
+	"time:access", "time:approve", "time:manage",
+	"expenses:access", "expenses:approve", "expenses:manage",
+}
+
+// workInstallation is the five modules composed in the binary's order, the
+// caller answered as Kari Nordmann, the seller complete. opts are applied
+// after the installation's own, so one of them — modtest.WithPoolMaxConns,
+// the races' — may size what these build.
+func workInstallation(t *testing.T, opts ...modtest.Option) (*modtest.Harness, *modtest.Client, uuid.UUID) {
+	t.Helper()
+	h, admin, adminID, _ := installInvoices(t,
+		[]string{modCustomers, modProjects, modTime, modExpenses, modInvoices}, workPermissions, opts...)
+	h.Exec(t, `UPDATE identity.users SET display_name = 'Kari Nordmann' WHERE id = $1`, adminID)
+	return h, admin, adminID
+}
+
+// workProject is the part of ProjectResponse the work tests read.
+type workProject struct {
+	Id       int32  `json:"id"`
+	Code     string `json:"code"`
+	Name     string `json:"name"`
+	Revision int32  `json:"revision"`
+}
+
+// newWorkProject creates an active project for customer through the real
+// POST /api/v1/projects, body's fields over a NOK time-and-materials project
+// billing 1 200 an hour by default, the caller its manager.
+func newWorkProject(t *testing.T, c *modtest.Client, customer int32, code string, body map[string]any) workProject {
+	t.Helper()
+	req := map[string]any{
+		"code": code, "name": "Prosjekt " + code, "customerId": customer,
+		"billingType": "time-and-materials", "currency": "NOK", "defaultBillRate": 1200,
+	}
+	for k, v := range body {
+		req[k] = v
+	}
+	var p workProject
+	okJSON(t, c, http.MethodPost, projectsPath, req, &p)
+	okJSON(t, c, http.MethodPut, fmt.Sprintf("%s/%d/status", projectsPath, p.Id), map[string]any{"status": "active"}, nil)
+	return p
+}
+
+// workHour is the part of TimeEntryResponse the work tests read.
+type workHour struct {
+	Id         int64   `json:"id"`
+	Status     string  `json:"status"`
+	Revision   int32   `json:"revision"`
+	Hours      float64 `json:"hours"`
+	InvoicedAt *string `json:"invoicedAt"`
+	InvoicedBy *struct {
+		InvoiceId int64 `json:"invoiceId"`
+		Number    int64 `json:"number"`
+	} `json:"invoicedBy"`
+}
+
+const timeEntries = "/api/v1/time/entries"
+
+// approvedHours logs hours on project as who on date, submits them as who
+// and approves them as approver — the project's manager — answering the
+// entry as approved.
+func approvedHours(t *testing.T, who, approver *modtest.Client, project int32, date string, hours float64) workHour {
+	t.Helper()
+	var e workHour
+	okJSON(t, who, http.MethodPost, timeEntries, map[string]any{"projectId": project, "entryDate": date, "hours": hours}, &e)
+	okJSON(t, who, http.MethodPost, timeEntries+"/submit", map[string]any{"ids": []int64{e.Id}}, nil)
+	var approved []workHour
+	okJSON(t, approver, http.MethodPost, timeEntries+"/approve", map[string]any{"ids": []int64{e.Id}}, &approved)
+	if len(approved) != 1 || approved[0].Status != "approved" {
+		t.Fatalf("approve entry %d = %+v, want it approved", e.Id, approved)
+	}
+	return approved[0]
+}
+
+// readHour is one time entry as it now stands.
+func readHour(t *testing.T, c *modtest.Client, id int64) workHour {
+	t.Helper()
+	var e workHour
+	okJSON(t, c, http.MethodGet, fmt.Sprintf("%s/%d", timeEntries, id), nil, &e)
+	return e
+}
+
+// workExpense is the part of ExpensesEntryResponse the work tests read: the
+// invoice stamp under billing, which only a financial viewer sees.
+type workExpense struct {
+	Id            int64  `json:"id"`
+	Revision      int32  `json:"revision"`
+	Status        string `json:"status"`
+	Reimbursement *struct {
+		Date string `json:"date"`
+	} `json:"reimbursement"`
+	Billing *struct {
+		BillAmount float64 `json:"billAmount"`
+		Invoice    *struct {
+			Reference  *string `json:"reference"`
+			InvoicedBy *struct {
+				InvoiceId int64 `json:"invoiceId"`
+				Number    int64 `json:"number"`
+			} `json:"invoicedBy"`
+		} `json:"invoice"`
+	} `json:"billing"`
+}
+
+// rebillableExpense records an employee-paid outlay of gross on project,
+// billable with a 10 % markup, and has it submitted and approved — ready to
+// invoice, and owed to the employee.
+func rebillableExpense(t *testing.T, c *modtest.Client, project int32, date string, gross float64) workExpense {
+	t.Helper()
+	var e workExpense
+	okJSON(t, c, http.MethodPost, expensesEntries, map[string]any{
+		"kind": "outlay", "categoryId": materialsCategory, "entryDate": date, "description": "Hotell Bergen",
+		"paidBy": "employee", "currency": "NOK", "grossAmount": gross, "vatAmount": gross / 5,
+		"projectId": project, "billable": true, "markupPercent": 10.0,
+	}, &e)
+	move(t, c, expensesSubmit, map[string]any{"entryIds": []int64{e.Id}})
+	move(t, c, expensesApprove, map[string]any{"entryIds": []int64{e.Id}})
+	return readExpense(t, c, e.Id)
+}
+
+// readExpense is one expense as it now stands.
+func readExpense(t *testing.T, c *modtest.Client, id int64) workExpense {
+	t.Helper()
+	var e workExpense
+	okJSON(t, c, http.MethodGet, fmt.Sprintf("%s/%d", expensesEntries, id), nil, &e)
+	return e
+}
+
+// workMilestone is the part of BillingMilestoneResponse the work tests read.
+type workMilestone struct {
+	Id                int64    `json:"id"`
+	Status            string   `json:"status"`
+	Revision          int32    `json:"revision"`
+	Amount            *float64 `json:"amount"`
+	Percent           *float64 `json:"percent"`
+	EffectiveAmount   *float64 `json:"effectiveAmount"`
+	InvoicedByInvoice *struct {
+		InvoiceId int64 `json:"invoiceId"`
+		Number    int64 `json:"number"`
+	} `json:"invoicedByInvoice"`
+}
+
+// newMilestone adds a billing milestone to project — body is its amount or
+// percent — and moves it to ready.
+func newMilestone(t *testing.T, c *modtest.Client, project int32, name string, body map[string]any) workMilestone {
+	t.Helper()
+	req := map[string]any{"name": name}
+	for k, v := range body {
+		req[k] = v
+	}
+	var m workMilestone
+	okJSON(t, c, http.MethodPost, fmt.Sprintf("%s/%d/milestones", projectsPath, project), req, &m)
+	return moveMilestone(t, c, m, "ready")
+}
+
+// moveMilestone moves m to status at its revision.
+func moveMilestone(t *testing.T, c *modtest.Client, m workMilestone, status string) workMilestone {
+	t.Helper()
+	var moved workMilestone
+	okJSON(t, c, http.MethodPost, fmt.Sprintf("%s/milestones/%d/status", projectsPath, m.Id),
+		map[string]any{"status": status, "revision": m.Revision}, &moved)
+	return moved
+}
+
+// readMilestone is one of project's milestones as it now stands.
+func readMilestone(t *testing.T, c *modtest.Client, project int32, id int64) workMilestone {
+	t.Helper()
+	var plan struct {
+		Milestones []workMilestone `json:"milestones"`
+	}
+	okJSON(t, c, http.MethodGet, fmt.Sprintf("%s/%d/milestones", projectsPath, project), nil, &plan)
+	for _, m := range plan.Milestones {
+		if m.Id == id {
+			return m
+		}
+	}
+	t.Fatalf("project %d has no milestone %d", project, id)
+	return workMilestone{}
 }

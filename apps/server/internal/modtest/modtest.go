@@ -56,6 +56,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/health"
 	"github.com/vantigo-io/vantigo/server/internal/identity"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
@@ -135,6 +136,7 @@ type setup struct {
 	smtpSend     func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore  storage.ObjectStore
 	peppolLookup func(ctx context.Context, participant string) (peppol.Result, error)
+	poolMaxConns int32
 }
 
 // Option adjusts a harness before it is built.
@@ -351,6 +353,20 @@ func WithPeppolLookup(fn func(ctx context.Context, participant string) (peppol.R
 	return func(s *setup) { s.peppolLookup = fn }
 }
 
+// WithPoolMaxConns builds the installation's pool at n connections on the
+// harness's migrated database (testdb.Migrated's URL, db.WithMaxConns) in
+// place of the shared default size, for a test that must starve when
+// anything takes a connection it should not: the integration races run two
+// writers on a pool of two, so a call that takes a second pool connection
+// while its transaction holds locks waits for ever — to the test's deadline
+// — instead of passing on a larger pool (invoices work design D1). Every raw
+// lock-holder and probe of such a test opens its own pgx.Connect, outside
+// the pool. The default pool testdb.Migrated opened is closed at once, so
+// the installation holds no connection but the pool's.
+func WithPoolMaxConns(n int32) Option {
+	return func(s *setup) { s.poolMaxConns = n }
+}
+
 // WithEnv sets one additional environment variable a harness loads its
 // configuration from, merged over the harness's own defaults (APP_ENV,
 // DATABASE_URL, ...). For a setting modtest itself has no dedicated Option
@@ -432,6 +448,16 @@ func New(t *testing.T, opts ...Option) *Harness {
 	}
 	if len(s.modules) == 0 {
 		t.Fatal("modtest: no module under test; pass modtest.WithModule(m)")
+	}
+
+	if s.poolMaxConns > 0 {
+		pool.Close()
+		sized, err := db.Open(context.Background(), databaseURL, db.WithMaxConns(s.poolMaxConns))
+		if err != nil {
+			t.Fatalf("modtest: open a pool of %d: %v", s.poolMaxConns, err)
+		}
+		t.Cleanup(sized.Close)
+		pool = sized
 	}
 
 	var stubbed []string

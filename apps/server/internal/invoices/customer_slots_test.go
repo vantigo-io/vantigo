@@ -710,3 +710,109 @@ func TestCustomerSlots_EraseCancelsOnlyNeverAttempted(t *testing.T) {
 		t.Errorf("after a second erase the cancelled row's time = %v, want its first %s", row.CancelledAt, erasedAt)
 	}
 }
+
+// The erase takes a draft's holds and its timesheet with it — the cascade
+// from the deleted draft (invoices work design D2, D5) — and keeps an issued
+// document's: the live index (ux_line_sources_live) is free afterwards, so
+// the draft's work is selectable again, while the issued invoice's work stays
+// invoiced. Neither holder is called: deleting a draft releases nothing a
+// source module stamped.
+func TestErase_ADraftsHoldsAndTimesheetGoWithIt(t *testing.T) {
+	t.Parallel()
+	holders := newFakeHolders()
+	f := newWorkFixture(t, holders.options()...)
+	h := f.h
+	inv := issued(t, h, tsFromWork(t, h, withSheet, workSrc("time.entry", workHour42, 1)).ID)
+	draft := tsFromWork(t, h, withSheet, allSeptember()...)
+	if n := h.Count(t, `SELECT count(*) FROM invoices.line_sources WHERE invoice_id = $1`, draft.ID); n != 5 || len(draft.TimesheetRows) != 2 {
+		t.Fatalf("the draft holds %d sources and %d timesheet rows, want 5 and 2", n, len(draft.TimesheetRows))
+	}
+	calls := len(holders.calledOrder())
+
+	data := invoices.Module().CustomerPersonalData(disabledDeps(h))
+	inTx(t, h, true, func(tx pgx.Tx) {
+		if _, err := data.EraseCustomerData(context.Background(), tx, customerAcme); err != nil {
+			t.Fatalf("EraseCustomerData: %v", err)
+		}
+	})
+	for table, want := range map[string]int{"line_sources": 0, "timesheet_rows": 0} {
+		if n := h.Count(t, `SELECT count(*) FROM invoices.`+table+` WHERE invoice_id = $1`, draft.ID); n != want {
+			t.Errorf("the draft's %s = %d rows after the erase, want %d", table, n, want)
+		}
+	}
+	if got := modtest.One[[]string](t, h.Harness, `SELECT array_agg(state ORDER BY id) FROM invoices.line_sources WHERE invoice_id = $1`, inv.ID); !slices.Equal(got, []string{"invoiced"}) {
+		t.Errorf("the issued invoice's sources = %v after the erase, want its one invoiced row kept", got)
+	}
+	if got := storedRows(t, h, inv.ID); len(got) != 1 {
+		t.Errorf("the issued invoice's timesheet = %v after the erase, want its row kept", got)
+	}
+	if n := len(holders.calledOrder()); n != calls {
+		t.Errorf("the erase called a holder %d times, want none", n-calls)
+	}
+
+	again := tsFromWork(t, h, withSheet, allSeptember()...)
+	if n := h.Count(t, `SELECT count(*) FROM invoices.line_sources WHERE invoice_id = $1 AND state = 'held'`, again.ID); n != 5 {
+		t.Errorf("the work pulled again holds %d sources, want all 5: the live index still held the erased draft's", n)
+	}
+	refusedFromWork(t, h, fromWorkBody(customerAcme, workSrc("time.entry", workHour42, 1)), "source_held_elsewhere")
+}
+
+// The export names each document's project as it printed it — its
+// projectReference, the code the document snapshotted (D9) — beside its
+// timesheet (D5): an issued invoice of one project's work and a draft of
+// another's each carry their own — the issued one the code it printed, not the
+// project's code since — and a draft spanning two projects and one made by
+// hand carry neither key.
+func TestExport_TheProjectAndTheTimesheet(t *testing.T) {
+	t.Parallel()
+	f := newWorkFixture(t, newFakeHolders().options()...)
+	h := f.h
+	issuedOne := issued(t, h, tsFromWork(t, h, withSheet, project41Work()...).ID)
+	tsFromWork(t, h, withSheet, workSrc("time.entry", workHour42, 1))
+	f.billable.putExpense(contracts.BillableExpense{ID: 903, Revision: 1, ProjectID: project42, Kind: "outlay", Date: wDay("2026-09-04"),
+		Description: "Ferje", NetAmount: "300.00", BillAmount: "300.00", Currency: "NOK"})
+	tsFromWork(t, h, nil, workSrc("expenses.entry", workMileage, 1), workSrc("expenses.entry", 903, 1))
+	f.projects.edit(project41, func(p *contracts.ProjectEntry) { p.Code = "P-41-NY" })
+	createDraft(t, h, draftBody(customerAcme, line("For hånd", 1, 100, vat25)))
+
+	type exportedJSON struct {
+		Number           *int64          `json:"number"`
+		ProjectReference *string         `json:"projectReference"`
+		Timesheet        json.RawMessage `json:"timesheet"`
+	}
+	var section struct {
+		Documents []exportedJSON `json:"documents"`
+		Drafts    []exportedJSON `json:"drafts"`
+	}
+	raw := exportOf(t, h, customerAcme)
+	if err := json.Unmarshal([]byte(raw), &section); err != nil {
+		t.Fatalf("export %s: %v", raw, err)
+	}
+	str := func(s *string) string {
+		if s == nil {
+			return "<absent>"
+		}
+		return *s
+	}
+	if len(section.Documents) != 1 || section.Documents[0].Number == nil || *section.Documents[0].Number != *issuedOne.Number ||
+		str(section.Documents[0].ProjectReference) != "P-41" {
+		t.Fatalf("documents = %s, want invoice %d naming the code it printed, P-41", raw, *issuedOne.Number)
+	}
+	if want := `[{"position":1,"personLabel":"KN","date":"2026-09-01","hours":"4.00","description":"Project 41"},` +
+		`{"position":2,"personLabel":"OH","date":"2026-09-02","hours":"3.50","description":"Project 41"}]`; string(section.Documents[0].Timesheet) != want {
+		t.Errorf("the issued invoice's timesheet = %s, want %s", section.Documents[0].Timesheet, want)
+	}
+	drafts := []string{}
+	for _, d := range section.Drafts {
+		drafts = append(drafts, str(d.ProjectReference)+" "+string(d.Timesheet))
+	}
+	slices.Sort(drafts)
+	if want := []string{"<absent> ", "<absent> ",
+		`P-42 [{"position":1,"personLabel":"KN","date":"2026-09-03","hours":"2.00","description":"Project 42"}]`,
+	}; !slices.Equal(drafts, want) {
+		t.Errorf("drafts = %q, want %q: project 42's naming it with its timesheet, the two-project one and the one by hand neither", drafts, want)
+	}
+	if n := strings.Count(raw, `"projectReference"`); n != 2 {
+		t.Errorf("export %s names %d projects, want the issued invoice's and project 42's draft's", raw, n)
+	}
+}
