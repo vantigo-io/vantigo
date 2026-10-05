@@ -275,6 +275,21 @@ skrivebeskyttet.
 Lagret noen andre utkastet i mellomtiden, sier redigeringen **Utkastet er endret** og
 tilbyr **Last inn på nytt**, som forkaster dine ulagrede endringer for den nyeste versjonen.
 
+**Et utkast laget av arbeid.** Et utkast kan fakturere ufakturert arbeid — timer, utgifter
+og faktureringsmilepæler fra prosjektene — og holder da arbeidet på linjene sine: hver linje vet hvilke registreringer den fakturerer, og så lenge utkastet
+holder dem, kan ikke noe annet utkast ta dem. En lagring beholder arbeidet på linjen, også
+når du endrer linjens tekst eller beløp; en linje der beløpet ikke lenger stemmer med
+arbeidet, sier fra under **Verdt å se på** (*Beløpet på en linje avviker fra arbeidet den
+fakturerer*), og det er lov — en nedskrivning, en avrunding. Fjerner du linjen, eller
+bytter utkastets kunde, frigjøres arbeidet, som da er ufakturert igjen; lagringen sier
+*Lagringen frigjorde arbeid fra dette utkastet*. Er arbeidet endret siden det ble lagt
+til, eller kan det ikke lenger faktureres — en registrering som ikke lenger er godkjent,
+en milepæl som er flyttet tilbake — advarer utkastet om det, og å oppdatere arbeidet tar
+med de nye tallene og fjerner det som ikke lenger kan faktureres; utstedelsen ville
+avvist begge deler. Arbeid kommer bare inn på et utkast gjennom oversikten over
+ufakturert arbeid for en kunde eller et prosjekt, som kommer med skjermbildene for det;
+inntil da holder ingen utkast noe arbeid.
+
 ## Utstede
 
 Klikk **Utsted** i utkastets topptekst — tilbys med `invoices:issue`, etter en lagring,

@@ -85,7 +85,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.vat_code_rates` | Each code's rates as dated periods that never overlap (an exclusion constraint). A rate change is a new period, not a new code. |
 | `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, the stored PDF's key and SHA-256, an invoice's `kid` with the `kid_algorithm` it was computed with (set at issue, both or neither, never on a credit note), the project its work belongs to — `project_id` and its code `project_reference`, both or neither (`ck_invoices_project`) — and the `timesheet` flag (off by default). Every one of them is frozen at issue with the rest of the row. |
 | `invoices.lines` | Description, quantity (3 decimals), unit, unit price (4), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, the invoice a deduction line deducts (`deducts_invoice_id`), and the VAT snapshot written at issue. The quantity is above 0, or below 0 on a deduction line only (`ck_lines_quantity`), and a deduction line carries no discount (`ck_lines_deduction_no_discount`). `(id, invoice_id)` is unique, so a child row names its line and its document together and the two never disagree. |
-| `invoices.line_sources` | The work a line bills: the source's kind (`time.entry`, `expenses.entry`, `projects.milestone`) and id — opaque, the rows are other modules' — the revision it was taken at, an expense's kind (`source_subkind`, only on an expense), the project, the quantity, the source's exact amount (`numeric(22,8)`: an hour's amount carries up to eight decimals), the currency, the work's date and the state: `held` from the draft, `invoiced` by the issue, `released` by the credit note that returns its line. Its line and document are one composite key, and the rows go with their line. A source is live — `held` or `invoiced` — on one row at most (`ux_line_sources_live`). A row is written `held`; under a draft its one change is to `invoiced`, under an issued document its one change is from `invoiced` to `released`, once, nothing else changed. A row is deleted only under a draft and only while `held`, so dropping a hold never frees an invoiced source. A trigger refuses the rest (`invoices: a line source is written held`, `invoices: a line source changes only its state`, `invoices: a line source is deleted only while held`, `invoices: issued document is immutable`). |
+| `invoices.line_sources` | The work a line bills: the source's kind (`time.entry`, `expenses.entry`, `projects.milestone`) and id — opaque, the rows are other modules' — the revision it was taken at, an expense's kind (`source_subkind`, only on an expense), the project, the quantity, the source's exact amount (`numeric(22,8)`: an hour's amount carries up to eight decimals), the currency, the work's date and the state: `held` from the draft, `invoiced` by the issue, `released` by the credit note that returns its line. Its line and document are one composite key, and the rows go with their line. A source is live — `held` or `invoiced` — on one row at most (`ux_line_sources_live`). A row is written `held`; under a draft its one change is to `invoiced`, under an issued document its one change is from `invoiced` to `released`, once, nothing else changed. A row is deleted only under a draft and only while `held`, so dropping a hold never frees an invoiced source. A trigger refuses the rest (`invoices: a line source is written held`, `invoices: a line source changes only its state`, `invoices: a line source is deleted only while held`, `invoices: issued document is immutable`). Every save of a draft deletes its lines and so its held rows, and inserts the rows it carries anew under the new lines, in one statement ordered by kind and id ([Invoicing work](#invoicing-work)). |
 | `invoices.line_releases` | A credit note's release of an original line's source: the credit note, its line and the source, a source released once. Frozen with the credit note at its issue. |
 | `invoices.timesheet_rows` | The timesheet as printed, a snapshot: the position, the time entry, the person's label, the date, the hours, the work type and the description — never the entry's note. Frozen with its document at issue, deleted with a deleted draft. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
@@ -107,9 +107,11 @@ migration; [Sending as EHF](#sending-as-ehf) queues a transmission and its
 Phase 3's schema (`00040_invoices_work.sql`, the
 [design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-05-invoices-work-to-invoices-design.md))
 adds the line sources, the releases, the timesheet rows, the deduction line, the
-document's project and timesheet flag and the work settings in one migration. Nothing
-writes them yet: the columns sit at their defaults and the tables are empty until
-invoicing work arrives.
+document's project and timesheet flag and the work settings in one migration. A draft's
+save carries its line sources ([Invoicing work](#invoicing-work)); nothing adds one yet
+— work arrives with the uninvoiced view — and the releases, the timesheet rows, the
+deduction line, the project, the timesheet flag and the work settings sit at their
+defaults until the phase's later steps give them behaviour.
 
 The seeded codes, each from 2026-01-01: `3` 25 %, `31` 15 %, `32` 11.11 %, `33` 12 %
 (all S), `5` Z, `51` AE, `52` G, `6` **E** (unntatt, mval. kap. 3) and `7` **O** (a seller
@@ -242,11 +244,98 @@ Peppol needs one of the two (`PEPPOL-EN16931-R003`), and neither changes after t
 issue, so the send as EHF would refuse the document with `buyer_reference_missing` and
 only a credit note would mend it ([Sending as EHF](#sending-as-ehf)).
 
+A draft that bills work carries its sources on its lines, and every save carries them
+by rule; its warnings `line_differs_from_sources`, `sources_released`, `source_changed`
+and `source_not_invoiceable` are under [Invoicing work](#invoicing-work).
+
 In the app's editor, the totals shown while a draft is being worked on are computed in
 the browser by this same rule and are an estimate; the figures the server actually
 saves — and, for the last credit note against an invoice, the exact reconciliation
 under [Credit notes](#credit-notes) — are always the server's own computation, run
 again server-side on save.
+
+## Invoicing work
+
+Phase 3 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-05-invoices-work-to-invoices-design.md))
+invoices the work other modules record: Time's hour entries (`time.entry`), Expenses'
+lines (`expenses.entry`) and Projects' billing milestones (`projects.milestone`). The
+source rows stay the other modules'; this module keeps, per line, which of them the
+line bills, and reads them only through the three billable read contracts
+(`contracts.BillableHours`, `BillableExpenses`, `BillableMilestones`), each optional — a
+module switched off has none.
+
+### The link and its states
+
+A line's work is its rows in `invoices.line_sources`, one per source: the kind and id,
+and the snapshot the draft took of it — its revision, its project, the quantity (hours,
+kilometres or 1), its exact amount, its currency, its date and, for an expense, its kind.
+
+| State | Meaning |
+| --- | --- |
+| `held` | On a draft. The work is reserved for this draft: no other document can take it. |
+| `invoiced` | On an issued invoice. |
+| `released` | The credit note that returned its line in full gave the work back; it is uninvoiced again. |
+
+**The floor.** A source is `held` or `invoiced` on one row at most, whatever the
+interleaving (`ux_line_sources_live`); a hold an insert would duplicate is 409
+`source_held_elsewhere`, naming the document that has it.
+
+**What a save carries.** A save replaces a draft's lines, so the rows go with the old
+lines; the save reads them under the document's lock first and inserts again, under
+the new lines, each one a line still names — with the snapshot it had, never a figure
+from the request — in **one statement ordered by kind and id**, so two transactions
+holding overlapping work wait on the index in one order and one fails rather than both
+deadlocking. The request names a line's work by identity only, in `lines[i].sources`
+(`[{kind, id}]`):
+
+- On a draft that holds work, **every line names its sources** — `[]` for none. A line
+  that leaves the field out is a 400 on `lines[i].sources`: a client that does not know
+  the field cannot drop work by omission.
+- A save **never adds work**: a source the draft does not hold is a 400 on
+  `lines[i].sources` ("work is added through the uninvoiced view"), and so is one named
+  twice, or a kind this module does not know. A draft that holds no work takes no field
+  at all.
+- At most 5 000 sources on one document — one billable read's page; past it, a 400 on
+  `lines` before any read.
+- `POST /invoices` holds no work: a line naming sources is a 400, and so is
+  `refreshSources`. A credit-note draft adds none either: sources or `refreshSources` on
+  one is a 400.
+
+**What a save drops.** Work no line names any more — left out, or on a line removed —
+and, when the save changes the draft's customer, every hold the draft had (the lines'
+sources are then not held: a client changing the customer sends `[]`). Deleting the draft
+drops its holds with its lines. A save that drops work names it in `releasedSources`
+(`[{kind, id}]`) with the warning `sources_released`; the work is uninvoiced again. A
+merge that re-points the draft to the surviving customer drops nothing.
+
+**The sources on a document.** Every document that bills work answers, from its own
+rows and never a live read, `sources: {count, held, invoiced, released}` and on each line
+`sources[]` — `{kind, id, projectId, date, quantity, amount, state}` — and `warnings`, the
+line's own codes; a document that bills no work carries neither.
+
+**The warnings.** None refuses a save.
+
+| Warning | When |
+| --- | --- |
+| `line_differs_from_sources` | On a draft, a line's net is not its sources' amounts summed and rounded to øre — a write-down, a rounding. On the line and once on the document. |
+| `sources_released` | On a save's answer, the save dropped work; `releasedSources` names it. |
+| `source_changed` | On `GET` of an invoice draft, a source's billing facts changed since the draft took them: for an hour entry or a milestone its revision, project, currency or amount; for an expense its bill amount, project, currency or kind — never its revision, which a reimbursement moves without changing what is billed. On the line and once on the document. |
+| `source_not_invoiceable` | On `GET` of an invoice draft, a source its module no longer answers as billable — unapproved, invoiced elsewhere, deleted. On the line and once on the document. |
+
+**Freshness.** `GET /{id}` of an invoice draft that holds work, for a caller holding
+`invoices:create`, reads its sources by id through the billable reads, on the pool and
+never under a lock, and judges each one by the facts above, amounts by value. A kind
+whose module is switched off is not judged; a read that fails is logged and the
+warnings are left out. A reader without `invoices:create`, the list, an issued document
+and a credit-note draft read nothing.
+
+**Refresh.** `PUT /{id}` with `refreshSources: true` reads the draft's held work and the
+billable reads' answer for it before the save's transaction, and the save takes, for
+each source its module still answers, its current revision, project, currency,
+quantity, amount, date and kind; a source no longer answered is dropped and named in
+`releasedSources`. A kind whose module is switched off is carried as it stood. Under the
+lock the save requires the held work it read — the same sources at the same revisions
+and amounts — or answers 409 `invoice_changed`: a save slipped in between.
 
 ## Issuing
 
@@ -1291,9 +1380,9 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /vat-codes/{id}/rates` | `invoices:manage` | 404; 400 on `ratePercent` or `validFrom`; 409 `rate_change_in_past` |
 | `DELETE /vat-codes/{id}/rates/{rateId}` | `invoices:manage` | 404; 409 `rate_period_not_latest`, `rate_period_last`, `rate_period_in_use` |
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` |
-| `POST /` | `invoices:create` | 400 on the field; 409 the customer gates |
+| `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included); 409 the customer gates |
 | `GET /{id}` | | 404 |
-| `PUT /{id}` | `invoices:create` | 404; 400; 409 `invoice_issued`, the customer gates, a stale revision |
+| `PUT /{id}` | `invoices:create` | 404; 400 (a line's `sources` against the work the draft holds, at most 5 000); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `source_held_elsewhere` |
 | `DELETE /{id}` | `invoices:create` | 404; 409 `invoice_issued` |
 | `POST /{id}/issue` | `invoices:issue` | 400 a body that does not decode (none, or an `issueDate` that is no calendar day); 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |

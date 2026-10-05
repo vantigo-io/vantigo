@@ -707,6 +707,16 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 			add(ref.field, "A credit note keeps its original's references")
 		}
 	}
+	// A correction credits what was billed; it adds no work (invoices work
+	// design D2, D16).
+	for i, l := range in.lines {
+		if len(l.sources) > 0 {
+			errs = withSourceError(errs, i, msgSourcesOnCredit)
+		}
+	}
+	if body.RefreshSources != nil && *body.RefreshSources {
+		add("refreshSources", msgSourcesOnCredit)
+	}
 	book, err := bookOf(ctx, q, current)
 	if err != nil {
 		return nil, err
@@ -779,17 +789,20 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 	for i := range in.lines {
 		in.lines[i].amounts = t.amounts[i]
 	}
-	saved, refusal, err := s.saveDraft(ctx, current.ID, *body.Revision, in, t.totals)
+	saved, err := s.saveDraft(ctx, current.ID, *body.Revision, in, t.totals)
 	if errors.Is(err, errDocumentGone) {
 		return gen.PutInvoicesById404Response{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if refusal != nil {
-		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(*refusal), nil
+	if saved.invalid != nil {
+		return gen.PutInvoicesById400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, saved.invalid)), nil
 	}
-	resp, err := s.creditDraftResponse(ctx, q, saved, &book)
+	if saved.refusal != nil {
+		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(*saved.refusal), nil
+	}
+	resp, err := s.creditDraftResponse(ctx, q, saved.doc, &book)
 	if err != nil {
 		return nil, err
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -85,6 +86,11 @@ type draftLine struct {
 	vatCodeID                     int32
 	creditsLineID                 *int64
 	amounts                       lineAmounts
+	// sources is the work the line bills, by identity (invoices work design
+	// D2); sourcesGiven tells [] (none) from a request that left the field
+	// out.
+	sources      []sourceRef
+	sourcesGiven bool
 }
 
 // draftInput is one validated draft body.
@@ -97,6 +103,9 @@ type draftInput struct {
 	ourReference, orderReference           string
 	note, internalNote                     string
 	lines                                  []draftLine
+	// refresh is what refreshSources read before the save's transaction, nil
+	// without it.
+	refresh *sourcesRefresh
 }
 
 // amount is one number of a line: finite, at least minimum (above it when
@@ -223,11 +232,30 @@ func parseDraft(body gen.InvoicesInvoiceRequest, currency string) (draftInput, m
 		add("lines", fmt.Sprintf("At most %d lines", maxLines))
 		return in, errs
 	}
+	// A save can add no work, so its bound is its body's (D2): at most as
+	// many identities as one billable read answers, before any read.
+	named := 0
+	for _, l := range body.Lines {
+		if l.Sources != nil {
+			named += len(*l.Sources)
+		}
+	}
+	if named > contracts.MaxBillableRows {
+		add("lines", fmt.Sprintf("At most %d sources on one document", contracts.MaxBillableRows))
+		return in, errs
+	}
 	for i, l := range body.Lines {
 		field := func(name string) string { return fmt.Sprintf("lines[%d].%s", i, name) }
 		line := draftLine{
 			description: strings.TrimSpace(l.Description), unit: optionalText(l.Unit),
-			vatCodeID: l.VatCodeId, creditsLineID: l.CreditsLineId,
+			vatCodeID: l.VatCodeId, creditsLineID: l.CreditsLineId, sourcesGiven: l.Sources != nil,
+		}
+		var sourceErrs map[string][]string
+		line.sources, sourceErrs = parseLineSources(i, l)
+		for field, msgs := range sourceErrs {
+			for _, msg := range msgs {
+				add(field, msg)
+			}
 		}
 		if line.description == "" {
 			add(field("description"), "A line needs a description")
@@ -347,11 +375,14 @@ func addressColumns(a *gen.InvoicesDeliveryAddress) (line1, line2, postal, city,
 	return &a.Line1, a.Line2, a.PostalCode, &a.City, &a.Country
 }
 
-// writeLines replaces a draft's lines with lines, on txq.
-func writeLines(ctx context.Context, txq *store.Queries, invoiceID int64, lines []draftLine) error {
+// writeLines replaces a draft's lines with lines, on txq, and answers the new
+// lines' ids by position. The delete takes the lines' held sources with it
+// (the cascade); a save carries them across (carrySources, insertSources).
+func writeLines(ctx context.Context, txq *store.Queries, invoiceID int64, lines []draftLine) ([]int64, error) {
 	if err := txq.DeleteLines(ctx, invoiceID); err != nil {
-		return fmt.Errorf("invoices: clear draft %d's lines: %w", invoiceID, err)
+		return nil, fmt.Errorf("invoices: clear draft %d's lines: %w", invoiceID, err)
 	}
+	ids := make([]int64, 0, len(lines))
 	for i, l := range lines {
 		p := store.InsertLineParams{
 			InvoiceID: invoiceID, Position: int32(i + 1), Description: l.description, Unit: l.unit,
@@ -367,14 +398,16 @@ func writeLines(ctx context.Context, txq *store.Queries, invoiceID int64, lines 
 			{&p.LineGross, l.amounts.gross, 2}, {&p.LineAllowance, l.amounts.allowance, 2}, {&p.LineNet, l.amounts.net, 2},
 		} {
 			if *c.dst, err = numericFromRat(c.v, c.places); err != nil {
-				return err
+				return nil, err
 			}
 		}
-		if _, err := txq.InsertLine(ctx, p); err != nil {
-			return fmt.Errorf("invoices: write draft %d's line %d: %w", invoiceID, i+1, err)
+		id, err := txq.InsertLine(ctx, p)
+		if err != nil {
+			return nil, fmt.Errorf("invoices: write draft %d's line %d: %w", invoiceID, i+1, err)
 		}
+		ids = append(ids, id)
 	}
-	return nil
+	return ids, nil
 }
 
 // PostInvoices Create an invoice draft
@@ -391,6 +424,16 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 		return nil, fmt.Errorf("invoices: read the settings: %w", err)
 	}
 	in, errs := parseDraft(*req.Body, settings.DefaultCurrency)
+	// Work arrives on a draft only through the uninvoiced view (D2, D3): a
+	// create holds none, and has none to refresh.
+	for i, l := range in.lines {
+		if len(l.sources) > 0 {
+			errs = withSourceError(errs, i, msgSourcesOnCreate)
+		}
+	}
+	if req.Body.RefreshSources != nil && *req.Body.RefreshSources {
+		errs = withFieldError(errs, "refreshSources", "A new draft holds no work to refresh")
+	}
 	if len(errs) > 0 {
 		return gen.PostInvoices400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, errs)), nil
 	}
@@ -440,7 +483,8 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 		if err != nil {
 			return fmt.Errorf("invoices: create a draft: %w", err)
 		}
-		return writeLines(ctx, txq, created.ID, in.lines)
+		_, err = writeLines(ctx, txq, created.ID, in.lines)
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -509,20 +553,38 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	if len(errs) > 0 {
 		return gen.PutInvoicesById400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, errs)), nil
 	}
-	saved, refusal, err := s.saveDraft(ctx, req.Id, *req.Body.Revision, in, totals)
+	// refreshSources reads the held work and its modules' answer for it now,
+	// on the pool, before the save's transaction: no contract call is made
+	// under its lock (D2).
+	if req.Body.RefreshSources != nil && *req.Body.RefreshSources {
+		read, err := sourcesOf(ctx, q, req.Id)
+		if err != nil {
+			return nil, err
+		}
+		now, kinds, err := s.billableNow(ctx, read)
+		if err != nil {
+			return nil, err
+		}
+		in.refresh = &sourcesRefresh{read: read, now: now, kind: kinds}
+	}
+	saved, err := s.saveDraft(ctx, req.Id, *req.Body.Revision, in, totals)
 	if errors.Is(err, errDocumentGone) {
 		return gen.PutInvoicesById404Response{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if refusal != nil {
-		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(*refusal), nil
+	if saved.invalid != nil {
+		return gen.PutInvoicesById400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, saved.invalid)), nil
 	}
-	resp, err := s.invoiceResponse(ctx, q, saved, profile)
+	if saved.refusal != nil {
+		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(*saved.refusal), nil
+	}
+	resp, err := s.invoiceResponse(ctx, q, saved.doc, profile)
 	if err != nil {
 		return nil, err
 	}
+	withReleased(saved.released, &resp)
 	return gen.PutInvoicesById200JSONResponse(resp), nil
 }
 
@@ -531,18 +593,32 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 // answers it with its operation's 404, as if the first read had missed.
 var errDocumentGone = errors.New("invoices: the document was deleted")
 
+// draftSaved is a save's outcome: the saved row and the work the save
+// dropped (D2), or why it was refused — a 409, or a 400 on the fields only
+// the lock can judge (a line's sources against the work the draft holds).
+type draftSaved struct {
+	doc      store.InvoicesInvoice
+	released []sourceRef
+	refusal  *gen.InvoicesConflictProblem
+	invalid  map[string][]string
+}
+
 // saveDraft is the transaction every draft replace runs: the row taken FOR
 // UPDATE, still a draft and at the revision the caller read; then the row and
-// its lines replaced. A row deleted since the caller read it is
-// errDocumentGone.
-func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in draftInput, totals documentTotals) (store.InvoicesInvoice, *gen.InvoicesConflictProblem, error) {
+// its lines replaced, the lines' work carried across (D2). The held sources
+// are read under the document's lock, before DeleteLines takes them with the
+// old lines: each named again on a new line is re-inserted under it with the
+// snapshot the draft took, in one statement; what no line names, and every
+// hold when the customer changed (plan reading 33), is dropped. A row deleted
+// since the caller read it is errDocumentGone.
+func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in draftInput, totals documentTotals) (draftSaved, error) {
 	net, vat, gross, vatNOK, err := numerics(totals)
 	if err != nil {
-		return store.InvoicesInvoice{}, nil, err
+		return draftSaved{}, err
 	}
 	line1, line2, postal, city, country := addressColumns(in.address)
-	var refusal *gen.InvoicesConflictProblem
-	var saved store.InvoicesInvoice
+	var out draftSaved
+	var carried []heldSource
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		locked, err := txq.LockInvoice(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -551,20 +627,53 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 		if err != nil {
 			return fmt.Errorf("invoices: lock document %d: %w", id, err)
 		}
-		switch {
-		case locked.Status != statusDraft:
-			refusal = ptr(invoiceIssued())
-		case locked.Revision != revision:
-			refusal = ptr(revisionConflict("Invoice", locked.Revision, revision))
-		}
-		if refusal != nil {
+		if locked.Status != statusDraft {
+			out.refusal = ptr(invoiceIssued())
 			return errRefused
 		}
+		held, err := sourcesOf(ctx, txq, id)
+		if err != nil {
+			return err
+		}
+		// A refresh judged the work it read before this lock; a save that
+		// slipped in between and changed that work makes its judgment moot
+		// (plan reading 32).
+		if in.refresh != nil && !sameHeldSet(in.refresh.read, held) {
+			out.refusal = ptr(conflict(codeInvoiceChanged, "The draft changed",
+				"The work this draft holds changed while it was being refreshed; read the draft again and retry."))
+			return errRefused
+		}
+		if locked.Revision != revision {
+			out.refusal = ptr(revisionConflict("Invoice", locked.Revision, revision))
+			return errRefused
+		}
+		var released []sourceRef
+		if in.customerID != locked.CustomerID && len(held) > 0 {
+			dropped, err := txq.DeleteHeldSourcesOf(ctx, id)
+			if err != nil {
+				return fmt.Errorf("invoices: release draft %d's sources: %w", id, err)
+			}
+			for _, d := range dropped {
+				released = append(released, sourceRef{kind: contracts.WorkSourceKind(d.SourceKind), id: d.SourceID})
+			}
+			held = nil
+		}
+		rows, dropped, invalidSources := carrySources(held, in.lines)
+		if invalidSources != nil {
+			out.invalid = invalidSources
+			return errRefused
+		}
+		released = append(released, dropped...)
+		if in.refresh != nil {
+			rows, dropped = in.refresh.apply(rows)
+			released = append(released, dropped...)
+		}
+		slices.SortFunc(released, compareRefs)
 		yourReference := ""
 		if in.yourReference != nil {
 			yourReference = *in.yourReference
 		}
-		saved, err = txq.UpdateDraft(ctx, store.UpdateDraftParams{
+		out.doc, err = txq.UpdateDraft(ctx, store.UpdateDraftParams{
 			ID: id, CustomerID: in.customerID, DeliveryDate: in.deliveryDate, DeliveryFrom: in.deliveryFrom, DeliveryTo: in.deliveryTo,
 			DeliveryAddressLine1: line1, DeliveryAddressLine2: line2, DeliveryPostalCode: postal, DeliveryCity: city, DeliveryCountry: country,
 			PaymentTermsDays: in.paymentTermsDays, YourReference: yourReference, OurReference: in.ourReference,
@@ -574,12 +683,24 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 		if err != nil {
 			return fmt.Errorf("invoices: replace draft %d: %w", id, err)
 		}
-		return writeLines(ctx, txq, id, in.lines)
+		lineIDs, err := writeLines(ctx, txq, id, in.lines)
+		if err != nil {
+			return err
+		}
+		carried, out.released = rows, released
+		return insertSources(ctx, txq, id, lineIDs, rows)
 	})
-	if refusal != nil {
-		return store.InvoicesInvoice{}, refusal, nil
+	if errors.Is(err, errSourceHeldElsewhere) {
+		refusal, err := heldElsewhere(ctx, store.New(s.deps.Pool), id, carried)
+		if err != nil {
+			return draftSaved{}, err
+		}
+		return draftSaved{refusal: &refusal}, nil
 	}
-	return saved, nil, err
+	if out.refusal != nil || out.invalid != nil {
+		return draftSaved{refusal: out.refusal, invalid: out.invalid}, nil
+	}
+	return out, err
 }
 
 // DeleteInvoicesById Delete a draft
@@ -642,6 +763,9 @@ func (s *server) GetInvoicesById(ctx context.Context, req gen.GetInvoicesByIdReq
 	if err != nil {
 		return nil, err
 	}
+	if inv.Status == statusDraft && inv.Kind == kindInvoice && s.has(ctx, "invoices:create") {
+		s.withDraftFreshness(ctx, q, inv.ID, &resp)
+	}
 	// The one read besides the send that answers what a send would open with
 	// (payments and delivery design D4) — by e-mail and as EHF (EHF and KID
 	// design D10): no write adds a directory call.
@@ -651,4 +775,23 @@ func (s *server) GetInvoicesById(ctx context.Context, req gen.GetInvoicesByIdReq
 		}
 	}
 	return gen.GetInvoicesById200JSONResponse(resp), nil
+}
+
+// withDraftFreshness warns on an invoice draft's response which of its held
+// sources changed or are no longer invoiceable (D2) — read by id through the
+// billable reads, on the pool, for a caller who builds invoices
+// (invoices:create), the one who can act on it. A read that fails is logged
+// and leaves the warnings out: a read of the draft is never refused for a
+// neighbour, and the issue judges the work again under its lock.
+func (s *server) withDraftFreshness(ctx context.Context, q *store.Queries, invoiceID int64, resp *gen.InvoicesInvoiceResponse) {
+	held, err := sourcesOf(ctx, q, invoiceID)
+	if err == nil && len(held) > 0 {
+		var verdicts map[sourceRef]string
+		if verdicts, err = s.freshness(ctx, held); err == nil {
+			withFreshness(held, verdicts, resp)
+		}
+	}
+	if err != nil {
+		s.deps.Logger.WarnContext(ctx, "invoices: a draft's work could not be judged fresh", "invoiceId", invoiceID, "error", err)
+	}
 }

@@ -84,7 +84,7 @@ type InvoicesBuyer struct {
 	Type string `json:"type"`
 }
 
-// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
+// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save would hold is held by another live draft or invoiced by an unreleased issued line; the detail names that document), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 type InvoicesConflictProblem struct {
 	// AllowedIssueDates On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise.
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
@@ -196,7 +196,7 @@ type InvoicesInvoiceListItem struct {
 	Status string `json:"status"`
 }
 
-// InvoicesInvoiceRequest A draft, created (POST) or replaced whole (PUT, with revision) (D4). customerId is the buyer. currency, when given, is NOK — "Only NOK in this phase". Delivery is deliveryDate alone, deliveryFrom with deliveryTo (from on or before to), or none — none only on a draft; the issue refuses it. references are at most 100 characters each, note and internalNote 1000. lines are at most 500. On create, an omitted yourReference is the billing profile's buyerReference and an omitted paymentTermsDays the profile's terms, else the settings' default; on PUT an invoice's paymentTermsDays is required and an omitted reference is cleared. On a credit-note draft only what D8 allows may change: lines may be removed, a quantity or a unit price lowered, and a description, the note and the internal note edited.
+// InvoicesInvoiceRequest A draft, created (POST) or replaced whole (PUT, with revision) (D4). customerId is the buyer. currency, when given, is NOK — "Only NOK in this phase". Delivery is deliveryDate alone, deliveryFrom with deliveryTo (from on or before to), or none — none only on a draft; the issue refuses it. references are at most 100 characters each, note and internalNote 1000. lines are at most 500. On create, an omitted yourReference is the billing profile's buyerReference and an omitted paymentTermsDays the profile's terms, else the settings' default; on PUT an invoice's paymentTermsDays is required and an omitted reference is cleared. On a credit-note draft only what D8 allows may change: lines may be removed, a quantity or a unit price lowered, and a description, the note and the internal note edited. A line's sources name the work it bills (invoices work design D2): never on a create or a credit note; on a PUT of a draft that holds work, required on every line ([] for none), each source one the draft already holds, named once — a save moves work between lines or drops it, and never adds any. At most 5000 sources on one document.
 type InvoicesInvoiceRequest struct {
 	Currency   *string `json:"currency,omitempty"`
 	CustomerId int32   `json:"customerId"`
@@ -213,12 +213,15 @@ type InvoicesInvoiceRequest struct {
 	OurReference     *string                  `json:"ourReference,omitempty"`
 	PaymentTermsDays *int32                   `json:"paymentTermsDays,omitempty"`
 
+	// RefreshSources PUT of an invoice draft only (invoices work design D2): re-read the work the draft holds through the source modules' billable reads, before the save's transaction, and take each source's current revision, project, currency, quantity, amount, date and kind; work no longer invoiceable is dropped and named in releasedSources. A save that slipped in between the read and the save's lock and changed the held work is 409 invoice_changed. true on a create or on a credit-note draft is a 400.
+	RefreshSources *bool `json:"refreshSources,omitempty"`
+
 	// Revision Required on PUT; the revision the caller read. A stale one is a 409 naming both.
 	Revision      *int32  `json:"revision,omitempty"`
 	YourReference *string `json:"yourReference,omitempty"`
 }
 
-// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue). An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised.
+// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised.
 type InvoicesInvoiceResponse struct {
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
 
@@ -288,13 +291,19 @@ type InvoicesInvoiceResponse struct {
 
 	// RefundDue On an issued invoice whose openAmount is below zero, the amount owed back (−openAmount); absent otherwise. The figure only — refunds are not a flow in this phase.
 	RefundDue *float64 `json:"refundDue,omitempty"`
-	Revision  int32    `json:"revision"`
+
+	// ReleasedSources On a save's answer only, the work the save dropped (invoices work design D2) — removed from every line, its line removed, the customer changed, or no longer invoiceable on a refresh — with the warning sources_released. Absent when nothing was dropped.
+	ReleasedSources *[]InvoicesSourceRef `json:"releasedSources,omitempty"`
+	Revision        int32                `json:"revision"`
 
 	// Seller The seller snapshot (D4), copied from the settings at issue.
 	Seller *InvoicesSeller `json:"seller,omitempty"`
 
 	// SendDefaults What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the Oslo business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read.
 	SendDefaults *InvoicesSendDefaults `json:"sendDefaults,omitempty"`
+
+	// Sources The work a document bills, counted by state from its own rows (invoices work design D2): count in all, held (on a draft), invoiced (by the issue) and released (by a credit note). Answered on a document that bills work, absent otherwise.
+	Sources *InvoicesSourcesBlock `json:"sources,omitempty"`
 
 	// State The derived state, judged against today in Oslo (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise).
 	State string `json:"state"`
@@ -378,25 +387,27 @@ type InvoicesJournalTotals struct {
 	VatTotal   float64               `json:"vatTotal"`
 }
 
-// InvoicesLine One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft.
+// InvoicesLine One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft. On a document that bills work (invoices work design D2) every line carries sources — [] for a line that bills none — and warnings, its own codes (line_differs_from_sources, source_changed, source_not_invoiceable); both absent on a document that bills no work.
 type InvoicesLine struct {
 	// CreditsLineId On a credit note's line, the original line it credits.
-	CreditsLineId   *int64   `json:"creditsLineId,omitempty"`
-	Description     string   `json:"description"`
-	DiscountPercent float64  `json:"discountPercent"`
-	ExemptionReason *string  `json:"exemptionReason,omitempty"`
-	Id              int64    `json:"id"`
-	LineAllowance   float64  `json:"lineAllowance"`
-	LineGross       float64  `json:"lineGross"`
-	LineNet         float64  `json:"lineNet"`
-	Position        int32    `json:"position"`
-	Quantity        float64  `json:"quantity"`
-	SafTCode        *string  `json:"safTCode,omitempty"`
-	Unit            string   `json:"unit"`
-	UnitPrice       float64  `json:"unitPrice"`
-	VatCategory     *string  `json:"vatCategory,omitempty"`
-	VatCodeId       int32    `json:"vatCodeId"`
-	VatRatePercent  *float64 `json:"vatRatePercent,omitempty"`
+	CreditsLineId   *int64                `json:"creditsLineId,omitempty"`
+	Description     string                `json:"description"`
+	DiscountPercent float64               `json:"discountPercent"`
+	ExemptionReason *string               `json:"exemptionReason,omitempty"`
+	Id              int64                 `json:"id"`
+	LineAllowance   float64               `json:"lineAllowance"`
+	LineGross       float64               `json:"lineGross"`
+	LineNet         float64               `json:"lineNet"`
+	Position        int32                 `json:"position"`
+	Quantity        float64               `json:"quantity"`
+	SafTCode        *string               `json:"safTCode,omitempty"`
+	Sources         *[]InvoicesLineSource `json:"sources,omitempty"`
+	Unit            string                `json:"unit"`
+	UnitPrice       float64               `json:"unitPrice"`
+	VatCategory     *string               `json:"vatCategory,omitempty"`
+	VatCodeId       int32                 `json:"vatCodeId"`
+	VatRatePercent  *float64              `json:"vatRatePercent,omitempty"`
+	Warnings        *[]string             `json:"warnings,omitempty"`
 }
 
 // InvoicesLineRequest One line of a draft. description is 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20. vatCodeId is an active code. creditsLineId is a credit-note draft's own and names the original line the line credits.
@@ -405,9 +416,23 @@ type InvoicesLineRequest struct {
 	Description     string   `json:"description"`
 	DiscountPercent *float64 `json:"discountPercent,omitempty"`
 	Quantity        float64  `json:"quantity"`
-	Unit            *string  `json:"unit,omitempty"`
-	UnitPrice       float64  `json:"unitPrice"`
-	VatCodeId       int32    `json:"vatCodeId"`
+
+	// Sources The work the line bills, by identity (invoices work design D2). Required on every line of a draft that holds work — [] for none — and refused on a create and on a credit note.
+	Sources   *[]InvoicesSourceRef `json:"sources,omitempty"`
+	Unit      *string              `json:"unit,omitempty"`
+	UnitPrice float64              `json:"unitPrice"`
+	VatCodeId int32                `json:"vatCodeId"`
+}
+
+// InvoicesLineSource One piece of work a line bills (invoices work design D2), answered from the document's own rows and never a live read: its kind and id, its project, the work's date, the quantity (hours, kilometres or 1) and the exact amount the draft took from the source — at most eight decimals — and state: held (on a draft), invoiced (by the issue) or released (by the credit note that returned its line in full).
+type InvoicesLineSource struct {
+	Amount    float64            `json:"amount"`
+	Date      openapi_types.Date `json:"date"`
+	Id        int64              `json:"id"`
+	Kind      string             `json:"kind"`
+	ProjectId int32              `json:"projectId"`
+	Quantity  float64            `json:"quantity"`
+	State     string             `json:"state"`
 }
 
 // InvoicesMetaCapabilities What the caller may do in the Invoices app, answered by the server so no client re-derives a permission rule.
@@ -602,6 +627,20 @@ type InvoicesSettingsResponse struct {
 
 	// Warnings Never refusals. kid_headroom_low — the next number leaves fewer than two digits of the KID agreement's length (a hundredfold growth) before issuing is refused with kid_length_exceeded.
 	Warnings []string `json:"warnings"`
+}
+
+// InvoicesSourceRef A piece of work by identity (invoices work design D2): kind is time.entry (an hour entry), expenses.entry (an expense line) or projects.milestone (a billing milestone), and id is its row in the module that owns it.
+type InvoicesSourceRef struct {
+	Id   int64  `json:"id"`
+	Kind string `json:"kind"`
+}
+
+// InvoicesSourcesBlock The work a document bills, counted by state from its own rows (invoices work design D2): count in all, held (on a draft), invoiced (by the issue) and released (by a credit note). Answered on a document that bills work, absent otherwise.
+type InvoicesSourcesBlock struct {
+	Count    int32 `json:"count"`
+	Held     int32 `json:"held"`
+	Invoiced int32 `json:"invoiced"`
+	Released int32 `json:"released"`
 }
 
 // InvoicesStatsSummaryResponse The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's Oslo date. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on an Oslo day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK.
