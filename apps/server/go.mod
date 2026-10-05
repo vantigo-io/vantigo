@@ -9,6 +9,7 @@ require (
 	github.com/go-webauthn/webauthn v0.18.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/johnfercher/go-tree v1.1.0
 	github.com/johnfercher/maroto/v2 v2.4.2
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/oasdiff/yaml v0.1.1
@@ -59,7 +60,6 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/johnfercher/go-tree v1.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.21 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
