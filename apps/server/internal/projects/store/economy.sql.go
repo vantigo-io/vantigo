@@ -75,7 +75,7 @@ func (q *Queries) ManagedActiveProjects(ctx context.Context, arg ManagedActivePr
 }
 
 const openMilestonesForProjects = `-- name: OpenMilestonesForProjects :many
-SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones
+SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at, invoiced_invoice_id, invoiced_number FROM projects.billing_milestones
 WHERE project_id = ANY($1::integer[])
   AND status IN ('planned', 'ready')
 ORDER BY project_id, (planned_date IS NULL), planned_date, position, id
@@ -123,6 +123,8 @@ func (q *Queries) OpenMilestonesForProjects(ctx context.Context, projectIds []in
 			&i.CreatedByUserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.InvoicedInvoiceID,
+			&i.InvoicedNumber,
 		); err != nil {
 			return nil, err
 		}

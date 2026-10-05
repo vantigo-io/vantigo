@@ -1,6 +1,13 @@
 package projects
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/vantigo-io/vantigo/server/internal/projects/store"
+)
 
 // TestPercentOfPrice pins design §3.2's percent arithmetic: a milestone's
 // effective amount is the project's fixed price times the milestone's
@@ -60,5 +67,64 @@ func TestPercentOfPrice_Unreadable(t *testing.T) {
 		if _, ok := percentOfPrice(tc.price, tc.percent); ok {
 			t.Errorf("percentOfPrice(%q, %q) reported success, want a refusal", tc.price, tc.percent)
 		}
+	}
+}
+
+// TestMilestoneEffectiveAmountRat_HalfUpToCents pins the one figure invoicing
+// reads and writes of a milestone (invoices work design D1, D3): the effective
+// amount as an exact decimal, a percent rounded half up to cents by
+// percentOfPrice's own rule — 33.33 % of 3 750.30 is 1 249.974 999, so
+// 1 249.97, and 50 % of 999.99 is exactly 499.995, so 500.00 — and the same
+// figure percentOfPrice answers. A frozen amount wins over the flat one, and
+// a percent with no fixed price is errMilestoneUnpriced.
+func TestMilestoneEffectiveAmountRat_HalfUpToCents(t *testing.T) {
+	t.Parallel()
+	numeric := func(text string) pgtype.Numeric {
+		var n pgtype.Numeric
+		if err := n.Scan(text); err != nil {
+			t.Fatalf("numeric %q: %v", text, err)
+		}
+		return n
+	}
+
+	for _, tc := range []struct {
+		name      string
+		milestone store.ProjectsBillingMilestone
+		price     string
+		want      string
+	}{
+		{"a third of a price with cents", store.ProjectsBillingMilestone{Percent: numeric("33.33")}, "3750.30", "1249.97"},
+		{"a half cent rounds up", store.ProjectsBillingMilestone{Percent: numeric("50.00")}, "999.99", "500.00"},
+		{"a flat amount as entered", store.ProjectsBillingMilestone{Amount: numeric("1234.50")}, "", "1234.50"},
+		{"the frozen amount over the flat one", store.ProjectsBillingMilestone{Amount: numeric("1234.50"), InvoicedAmount: numeric("1000.00")}, "", "1000.00"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			project := store.ProjectsProject{}
+			if tc.price != "" {
+				project.FixedPriceAmount = numeric(tc.price)
+			}
+			got, err := milestoneEffectiveAmountRat(tc.milestone, project)
+			if err != nil {
+				t.Fatalf("milestoneEffectiveAmountRat: %v", err)
+			}
+			if got.FloatString(2) != tc.want {
+				t.Errorf("= %s, want %s", got.FloatString(2), tc.want)
+			}
+			if exact := got.FloatString(10); exact != tc.want+"00000000" {
+				t.Errorf("= %s exactly, want %s to the cent and nothing past it", exact, tc.want)
+			}
+			if tc.price != "" {
+				percent, _, _ := numericText(tc.milestone.Percent)
+				float, _ := percentOfPrice(tc.price, percent)
+				if f, _ := got.Float64(); f != float {
+					t.Errorf("= %v, but percentOfPrice answers %v", f, float)
+				}
+			}
+		})
+	}
+
+	if _, err := milestoneEffectiveAmountRat(store.ProjectsBillingMilestone{Percent: numeric("25.00")}, store.ProjectsProject{}); !errors.Is(err, errMilestoneUnpriced) {
+		t.Errorf("a percent with no fixed price: %v, want errMilestoneUnpriced", err)
 	}
 }

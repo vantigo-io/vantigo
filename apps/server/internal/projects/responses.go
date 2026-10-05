@@ -483,28 +483,29 @@ func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsP
 		return gen.BillingMilestoneResponse{}, err
 	}
 	return gen.BillingMilestoneResponse{
-		Id:               m.ID,
-		ProjectId:        m.ProjectID,
-		Name:             m.Name,
-		Description:      m.Description,
-		PlannedDate:      dateFromPgtype(m.PlannedDate),
-		Amount:           amount,
-		Percent:          percent,
-		EffectiveAmount:  effective,
-		Currency:         milestoneCurrency(m, project),
-		Status:           m.Status,
-		Position:         m.Position,
-		Overdue:          milestoneOverdue(m, now),
-		ReadyAt:          m.ReadyAt,
-		ReadyBy:          milestonePerson(m.ReadyByUserID, people),
-		InvoicedAt:       m.InvoicedAt,
-		InvoicedBy:       milestonePerson(m.InvoicedByUserID, people),
-		InvoiceReference: m.InvoiceReference,
-		InvoiceDate:      dateFromPgtype(m.InvoiceDate),
-		Revision:         m.Revision,
-		CreatedAt:        m.CreatedAt,
-		UpdatedAt:        m.UpdatedAt,
-		Capabilities:     milestoneCapabilities(m, project, a),
+		Id:                m.ID,
+		ProjectId:         m.ProjectID,
+		Name:              m.Name,
+		Description:       m.Description,
+		PlannedDate:       dateFromPgtype(m.PlannedDate),
+		Amount:            amount,
+		Percent:           percent,
+		EffectiveAmount:   effective,
+		Currency:          milestoneCurrency(m, project),
+		Status:            m.Status,
+		Position:          m.Position,
+		Overdue:           milestoneOverdue(m, now),
+		ReadyAt:           m.ReadyAt,
+		ReadyBy:           milestonePerson(m.ReadyByUserID, people),
+		InvoicedAt:        m.InvoicedAt,
+		InvoicedBy:        milestonePerson(m.InvoicedByUserID, people),
+		InvoiceReference:  m.InvoiceReference,
+		InvoiceDate:       dateFromPgtype(m.InvoiceDate),
+		InvoicedByInvoice: milestoneInvoice(m),
+		Revision:          m.Revision,
+		CreatedAt:         m.CreatedAt,
+		UpdatedAt:         m.UpdatedAt,
+		Capabilities:      milestoneCapabilities(m, project, a),
 	}, nil
 }
 
@@ -519,6 +520,16 @@ func milestoneCurrency(m store.ProjectsBillingMilestone, project store.ProjectsP
 		return m.AmountCurrency
 	}
 	return project.Currency
+}
+
+// milestoneInvoice is the invoice the Invoices module stamped a milestone
+// with (invoices work design D1), nil on one marked invoiced by hand or not
+// invoiced at all.
+func milestoneInvoice(m store.ProjectsBillingMilestone) *gen.BillingMilestoneInvoice {
+	if m.InvoicedInvoiceID == nil || m.InvoicedNumber == nil {
+		return nil
+	}
+	return &gen.BillingMilestoneInvoice{InvoiceId: *m.InvoicedInvoiceID, Number: *m.InvoicedNumber}
 }
 
 // milestonePerson names one stamp's user, nil when there is no stamp. An id

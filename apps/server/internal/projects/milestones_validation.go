@@ -473,33 +473,59 @@ func milestoneFromUpdate(body gen.BillingMilestoneUpdateRequest) gen.BillingMile
 // Whatever its status, the response omits its amount rather than inventing
 // one, and the plan leaves it out of the totals.
 func milestoneEffectiveAmount(m store.ProjectsBillingMilestone, project store.ProjectsProject) (float64, error) {
-	if m.InvoicedAmount.Valid {
-		return floatFromNumeric(m.InvoicedAmount)
+	amount, err := milestoneEffectiveAmountRat(m, project)
+	if err != nil {
+		return 0, err
 	}
-	if m.Amount.Valid {
-		return floatFromNumeric(m.Amount)
+	f, _ := amount.Float64()
+	return f, nil
+}
+
+// milestoneEffectiveAmountRat is milestoneEffectiveAmount's rule as the exact
+// decimal it is, before anything turns it into a float64: the frozen amount,
+// else the flat amount, else percentOfPriceRat — the fixed price times the
+// percent rounded half up to cents. It is the one figure behind everything
+// invoicing reads or writes of a milestone (invoices work design D1, D3):
+// BillableMilestone.Amount, the invoices holder's comparison with the amount a
+// draft took, and the invoiced_amount that holder freezes — so the three can
+// never be a rounding apart. It fails as milestoneEffectiveAmount does, with
+// errMilestoneUnpriced for a milestone nothing can price.
+func milestoneEffectiveAmountRat(m store.ProjectsBillingMilestone, project store.ProjectsProject) (*big.Rat, error) {
+	for _, stored := range []pgtype.Numeric{m.InvoicedAmount, m.Amount} {
+		text, ok, err := numericText(stored)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		amount, ok := new(big.Rat).SetString(text)
+		if !ok {
+			return nil, fmt.Errorf("projects: milestone %d: cannot read the stored amount %q", m.ID, text)
+		}
+		return amount, nil
 	}
 	if !m.Percent.Valid {
-		return 0, fmt.Errorf("projects: milestone %d: %w — it carries neither an amount nor a percent", m.ID, errMilestoneUnpriced)
+		return nil, fmt.Errorf("projects: milestone %d: %w — it carries neither an amount nor a percent", m.ID, errMilestoneUnpriced)
 	}
 	percent, ok, err := numericText(m.Percent)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if !ok {
-		return 0, fmt.Errorf("projects: milestone %d: %w — its percent could not be read", m.ID, errMilestoneUnpriced)
+		return nil, fmt.Errorf("projects: milestone %d: %w — its percent could not be read", m.ID, errMilestoneUnpriced)
 	}
 	price, ok, err := numericText(project.FixedPriceAmount)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if !ok {
-		return 0, fmt.Errorf("projects: milestone %d: %w — it is %s %% of a fixed price project %d no longer has",
+		return nil, fmt.Errorf("projects: milestone %d: %w — it is %s %% of a fixed price project %d no longer has",
 			m.ID, errMilestoneUnpriced, percent, project.ID)
 	}
-	amount, ok := percentOfPrice(price, percent)
+	amount, ok := percentOfPriceRat(price, percent)
 	if !ok {
-		return 0, fmt.Errorf("projects: milestone %d: cannot resolve %s %% of %s", m.ID, percent, price)
+		return nil, fmt.Errorf("projects: milestone %d: cannot resolve %s %% of %s", m.ID, percent, price)
 	}
 	return amount, nil
 }
@@ -556,6 +582,11 @@ func milestoneCapabilities(m store.ProjectsBillingMilestone, project store.Proje
 		// promise a move the status handler would then refuse, or the UI
 		// offers a button that answers 400.
 		if msg, _ := milestoneMoveRefusal(m, project, to, move); msg != "" {
+			return false
+		}
+		// An invoicing the Invoices module stamped is undone only by a credit
+		// note; the status move refuses it with invoiced_by_invoices.
+		if move.ClearInvoice && m.InvoicedInvoiceID != nil {
 			return false
 		}
 		if move.Right == rightFinancials {
@@ -664,17 +695,28 @@ func exactCents(v float64) *big.Rat {
 // reachable from a stored numeric but must not silently become 0.00 — a
 // milestone showing nothing planned is worse than an error.
 func percentOfPrice(priceText, percentText string) (float64, bool) {
-	price, ok := new(big.Rat).SetString(priceText)
+	amount, ok := percentOfPriceRat(priceText, percentText)
 	if !ok {
 		return 0, false
+	}
+	f, _ := amount.Float64()
+	return f, true
+}
+
+// percentOfPriceRat is percentOfPrice before the float64: the same product,
+// rounded by the same rule to the same cents, as an exact decimal.
+func percentOfPriceRat(priceText, percentText string) (*big.Rat, bool) {
+	price, ok := new(big.Rat).SetString(priceText)
+	if !ok {
+		return nil, false
 	}
 	percent, ok := new(big.Rat).SetString(percentText)
 	if !ok {
-		return 0, false
+		return nil, false
 	}
 	amount := new(big.Rat).Mul(price, percent)
 	amount.Quo(amount, big.NewRat(100, 1))
-	return roundHalfUpCents(amount), true
+	return roundHalfUpAtRat(amount, 100), true
 }
 
 // roundHalfUpCents rounds r to two decimals, a half cent away from zero, and
@@ -690,6 +732,13 @@ func roundHalfUpCents(r *big.Rat) float64 { return roundHalfUpAt(r, 100) }
 // it and the economy's percentages round to a single decimal with it, so the
 // two can never disagree about which way a half goes.
 func roundHalfUpAt(r *big.Rat, scale int64) float64 {
+	f, _ := roundHalfUpAtRat(r, scale).Float64()
+	return f
+}
+
+// roundHalfUpAtRat is roundHalfUpAt's rounding itself, answered as the exact
+// decimal it lands on rather than the float64 nearest it.
+func roundHalfUpAtRat(r *big.Rat, scale int64) *big.Rat {
 	scaled := new(big.Rat).Mul(r, new(big.Rat).SetInt64(scale))
 	half := big.NewRat(1, 2)
 	if scaled.Sign() < 0 {
@@ -697,8 +746,7 @@ func roundHalfUpAt(r *big.Rat, scale int64) float64 {
 	}
 	scaled.Add(scaled, half)
 	whole := new(big.Int).Quo(scaled.Num(), scaled.Denom()) // truncates toward zero
-	f, _ := new(big.Rat).SetFrac(whole, big.NewInt(scale)).Float64()
-	return f
+	return new(big.Rat).SetFrac(whole, big.NewInt(scale))
 }
 
 // numericText is a stored decimal as the text its column holds — pgtype's own

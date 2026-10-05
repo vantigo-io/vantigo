@@ -27,28 +27,30 @@ type ProjectsBillingLine struct {
 }
 
 type ProjectsBillingMilestone struct {
-	ID               int32
-	ProjectID        int32
-	Name             string
-	Description      *string
-	PlannedDate      pgtype.Date
-	Amount           pgtype.Numeric
-	AmountCurrency   *string
-	Percent          pgtype.Numeric
-	Status           string
-	Position         int32
-	ReadyAt          *time.Time
-	ReadyByUserID    *uuid.UUID
-	InvoicedAt       *time.Time
-	InvoicedByUserID *uuid.UUID
-	InvoiceReference *string
-	InvoiceDate      pgtype.Date
-	InvoicedAmount   pgtype.Numeric
-	EverMoved        bool
-	Revision         int32
-	CreatedByUserID  uuid.UUID
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                int32
+	ProjectID         int32
+	Name              string
+	Description       *string
+	PlannedDate       pgtype.Date
+	Amount            pgtype.Numeric
+	AmountCurrency    *string
+	Percent           pgtype.Numeric
+	Status            string
+	Position          int32
+	ReadyAt           *time.Time
+	ReadyByUserID     *uuid.UUID
+	InvoicedAt        *time.Time
+	InvoicedByUserID  *uuid.UUID
+	InvoiceReference  *string
+	InvoiceDate       pgtype.Date
+	InvoicedAmount    pgtype.Numeric
+	EverMoved         bool
+	Revision          int32
+	CreatedByUserID   uuid.UUID
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	InvoicedInvoiceID *int64
+	InvoicedNumber    *int64
 }
 
 type ProjectsCounter struct {

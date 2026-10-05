@@ -235,6 +235,14 @@ A move is refused when the project no longer supports the milestone — no curre
 fixed price behind a share, or an amount in a currency the project has left; the
 message names the reason (full table:
 [Billing milestones and the invoice plan](/en/reference/projects/#billing-milestones-and-the-invoice-plan)).
+
+When an invoice issued in **Invoices** bills a milestone that is ready to invoice, the
+milestone becomes **Invoiced** by itself, by whoever issued the invoice, with the
+invoice's date and the amount frozen. Such a milestone does not offer **Undo the
+invoicing**: only a credit note that returns its invoice line puts it back to ready to
+invoice — and the credit note always does, even if the project has changed since.
+**Mark as invoiced** by hand stays for milestones you invoice outside Vantigo.
+
 With Expenses enabled, a line under the table says how many *billable expenses ready
 to invoice* there are, with **View the expenses** when you may open the Expenses tab.
 

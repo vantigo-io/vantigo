@@ -235,6 +235,15 @@ En overgang avvises når prosjektet ikke lenger støtter milepælen — ingen va
 ingen fastpris bak en andel, eller et beløp i en valuta prosjektet har forlatt;
 meldingen oppgir grunnen (full tabell:
 [Billing milestones and the invoice plan](/en/reference/projects/#billing-milestones-and-the-invoice-plan)).
+
+Når en faktura utstedt i **Fakturaer** fakturerer en milepæl som er klar til
+fakturering, blir milepælen **Fakturert** av seg selv, av den som utstedte fakturaen,
+med fakturaens dato og beløpet låst. En slik milepæl tilbyr ikke **Angre
+faktureringen**: bare en kreditnota som returnerer fakturalinjen dens, setter den
+tilbake til klar til fakturering — og kreditnotaen gjør det alltid, også om prosjektet
+er endret siden. **Merk som fakturert** for hånd er der fortsatt for milepæler du
+fakturerer utenfor Vantigo.
+
 Med Utlegg aktivert sier en linje under tabellen hvor mange *utlegg klare til
 fakturering* det er, med **Se utleggene** når du kan åpne Utlegg-fanen.
 

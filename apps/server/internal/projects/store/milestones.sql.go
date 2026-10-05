@@ -61,7 +61,7 @@ func (q *Queries) DeleteMilestone(ctx context.Context, id int32) (int64, error) 
 }
 
 const getMilestone = `-- name: GetMilestone :one
-SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones WHERE id = $1
+SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at, invoiced_invoice_id, invoiced_number FROM projects.billing_milestones WHERE id = $1
 `
 
 // GetMilestone fetches one milestone by id. It is the read that resolves
@@ -95,6 +95,8 @@ func (q *Queries) GetMilestone(ctx context.Context, id int32) (ProjectsBillingMi
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InvoicedInvoiceID,
+		&i.InvoicedNumber,
 	)
 	return i, err
 }
@@ -107,7 +109,7 @@ INSERT INTO projects.billing_milestones (
     $1, $2, $3, $4, $5, $6, $7, $8,
     $9, $10::timestamptz, $10::timestamptz
 )
-RETURNING id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
+RETURNING id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at, invoiced_invoice_id, invoiced_number
 `
 
 type InsertMilestoneParams struct {
@@ -168,6 +170,8 @@ func (q *Queries) InsertMilestone(ctx context.Context, arg InsertMilestoneParams
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InvoicedInvoiceID,
+		&i.InvoicedNumber,
 	)
 	return i, err
 }
@@ -207,7 +211,7 @@ func (q *Queries) ListOpenPercentMilestoneNames(ctx context.Context, projectID i
 }
 
 const listProjectMilestones = `-- name: ListProjectMilestones :many
-SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones
+SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at, invoiced_invoice_id, invoiced_number FROM projects.billing_milestones
 WHERE project_id = $1
 ORDER BY (status = 'cancelled'), position, id
 `
@@ -249,6 +253,8 @@ func (q *Queries) ListProjectMilestones(ctx context.Context, projectID int32) ([
 			&i.CreatedByUserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.InvoicedInvoiceID,
+			&i.InvoicedNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -261,7 +267,7 @@ func (q *Queries) ListProjectMilestones(ctx context.Context, projectID int32) ([
 }
 
 const lockMilestone = `-- name: LockMilestone :one
-SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones WHERE id = $1 FOR UPDATE
+SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at, invoiced_invoice_id, invoiced_number FROM projects.billing_milestones WHERE id = $1 FOR UPDATE
 `
 
 // LockMilestone is GetMilestone with the row held for the rest of the
@@ -298,8 +304,67 @@ func (q *Queries) LockMilestone(ctx context.Context, id int32) (ProjectsBillingM
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InvoicedInvoiceID,
+		&i.InvoicedNumber,
 	)
 	return i, err
+}
+
+const lockMilestonesByIDs = `-- name: LockMilestonesByIDs :many
+SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at, invoiced_invoice_id, invoiced_number FROM projects.billing_milestones
+WHERE id = ANY($1::integer[])
+ORDER BY id
+FOR UPDATE
+`
+
+// LockMilestonesByIDs is LockMilestone for the invoices issue's holder
+// (invoiced_work.go): every named milestone held for the rest of the caller's
+// transaction, by id ascending — one fixed order, so two transactions that
+// lock overlapping sets queue rather than deadlock. Like LockMilestone it is
+// taken after the projects' own row locks, never before.
+func (q *Queries) LockMilestonesByIDs(ctx context.Context, ids []int32) ([]ProjectsBillingMilestone, error) {
+	rows, err := q.db.Query(ctx, lockMilestonesByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectsBillingMilestone
+	for rows.Next() {
+		var i ProjectsBillingMilestone
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.Description,
+			&i.PlannedDate,
+			&i.Amount,
+			&i.AmountCurrency,
+			&i.Percent,
+			&i.Status,
+			&i.Position,
+			&i.ReadyAt,
+			&i.ReadyByUserID,
+			&i.InvoicedAt,
+			&i.InvoicedByUserID,
+			&i.InvoiceReference,
+			&i.InvoiceDate,
+			&i.InvoicedAmount,
+			&i.EverMoved,
+			&i.Revision,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.InvoicedInvoiceID,
+			&i.InvoicedNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const maxMilestonePosition = `-- name: MaxMilestonePosition :one
@@ -387,7 +452,7 @@ UPDATE projects.billing_milestones SET
     revision = revision + 1,
     updated_at = $7::timestamptz
 WHERE id = $8
-RETURNING id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
+RETURNING id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at, invoiced_invoice_id, invoiced_number
 `
 
 type UpdateMilestoneParams struct {
@@ -443,6 +508,8 @@ func (q *Queries) UpdateMilestone(ctx context.Context, arg UpdateMilestoneParams
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InvoicedInvoiceID,
+		&i.InvoicedNumber,
 	)
 	return i, err
 }
@@ -464,7 +531,7 @@ UPDATE projects.billing_milestones SET
     revision = revision + 1,
     updated_at = $12::timestamptz
 WHERE id = $13
-RETURNING id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
+RETURNING id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at, invoiced_invoice_id, invoiced_number
 `
 
 type UpdateMilestoneStatusParams struct {
@@ -540,6 +607,8 @@ func (q *Queries) UpdateMilestoneStatus(ctx context.Context, arg UpdateMilestone
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InvoicedInvoiceID,
+		&i.InvoicedNumber,
 	)
 	return i, err
 }

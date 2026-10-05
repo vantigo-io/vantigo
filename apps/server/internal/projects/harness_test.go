@@ -1162,28 +1162,37 @@ func moveMilestone(t *testing.T, c *modtest.Client, m milestoneJSON, position in
 // pointer: a milestone carries exactly one of amount and percent, and the
 // four invoice fields exist only while it is invoiced.
 type milestoneJSON struct {
-	Id               int32                     `json:"id"`
-	ProjectId        int32                     `json:"projectId"`
-	Name             string                    `json:"name"`
-	Description      *string                   `json:"description"`
-	PlannedDate      *string                   `json:"plannedDate"`
-	Amount           *float64                  `json:"amount"`
-	Percent          *float64                  `json:"percent"`
-	EffectiveAmount  *float64                  `json:"effectiveAmount"`
-	Currency         *string                   `json:"currency"`
-	Status           string                    `json:"status"`
-	Position         int32                     `json:"position"`
-	Overdue          bool                      `json:"overdue"`
-	ReadyAt          *time.Time                `json:"readyAt"`
-	ReadyBy          *milestonePersonJSON      `json:"readyBy"`
-	InvoicedAt       *time.Time                `json:"invoicedAt"`
-	InvoicedBy       *milestonePersonJSON      `json:"invoicedBy"`
-	InvoiceReference *string                   `json:"invoiceReference"`
-	InvoiceDate      *string                   `json:"invoiceDate"`
-	Revision         int32                     `json:"revision"`
-	CreatedAt        time.Time                 `json:"createdAt"`
-	UpdatedAt        time.Time                 `json:"updatedAt"`
-	Capabilities     milestoneCapabilitiesJSON `json:"capabilities"`
+	Id               int32                `json:"id"`
+	ProjectId        int32                `json:"projectId"`
+	Name             string               `json:"name"`
+	Description      *string              `json:"description"`
+	PlannedDate      *string              `json:"plannedDate"`
+	Amount           *float64             `json:"amount"`
+	Percent          *float64             `json:"percent"`
+	EffectiveAmount  *float64             `json:"effectiveAmount"`
+	Currency         *string              `json:"currency"`
+	Status           string               `json:"status"`
+	Position         int32                `json:"position"`
+	Overdue          bool                 `json:"overdue"`
+	ReadyAt          *time.Time           `json:"readyAt"`
+	ReadyBy          *milestonePersonJSON `json:"readyBy"`
+	InvoicedAt       *time.Time           `json:"invoicedAt"`
+	InvoicedBy       *milestonePersonJSON `json:"invoicedBy"`
+	InvoiceReference *string              `json:"invoiceReference"`
+	InvoiceDate      *string              `json:"invoiceDate"`
+	// InvoicedByInvoice is the invoice the Invoices module stamped it with,
+	// absent on a milestone marked invoiced by hand.
+	InvoicedByInvoice *milestoneInvoiceJSON     `json:"invoicedByInvoice"`
+	Revision          int32                     `json:"revision"`
+	CreatedAt         time.Time                 `json:"createdAt"`
+	UpdatedAt         time.Time                 `json:"updatedAt"`
+	Capabilities      milestoneCapabilitiesJSON `json:"capabilities"`
+}
+
+// milestoneInvoiceJSON decodes BillingMilestoneInvoice.
+type milestoneInvoiceJSON struct {
+	InvoiceId int64 `json:"invoiceId"`
+	Number    int64 `json:"number"`
 }
 
 // milestonePersonJSON decodes BillingMilestonePerson — who marked a milestone

@@ -651,6 +651,15 @@ func (s *server) PostProjectsMilestonesByMilestoneIdStatus(ctx context.Context, 
 		if before.Revision != body.Revision {
 			return revisionRefusal{current: before.Revision}
 		}
+		// A milestone the Invoices module invoiced carries the invoice's id,
+		// and only the credit note that returns its line takes it back
+		// (invoices work design D1): the manual undo refuses it, after the
+		// revision and against the locked row. One marked invoiced by hand
+		// carries no id and undoes as before.
+		if before.InvoicedInvoiceID != nil && before.InvoicedNumber != nil &&
+			before.Status == milestoneStatusInvoiced && status == milestoneStatusReady {
+			return invoicedByInvoicesRefusal{invoiceID: *before.InvoicedInvoiceID, number: *before.InvoicedNumber}
+		}
 		// The move itself, decided against the locked row and only once the
 		// revision has said the caller is looking at that row.
 		under, allowed := milestoneMoveFor(before.Status, status)
@@ -709,13 +718,17 @@ func (s *server) PostProjectsMilestonesByMilestoneIdStatus(ctx context.Context, 
 	})
 	var refusal fieldRefusal
 	var revConflict revisionRefusal
+	var invoiced invoicedByInvoicesRefusal
 	switch {
 	case errors.As(err, &refusal):
 		return gen.PostProjectsMilestonesByMilestoneIdStatus400ApplicationProblemPlusJSONResponse(
 			invalidProject(refusal.errs)), nil
 	case errors.As(err, &revConflict):
 		return gen.PostProjectsMilestonesByMilestoneIdStatus409ApplicationProblemPlusJSONResponse(
-			revisionConflict(revConflict.current, body.Revision)), nil
+			conflictProblem(revisionConflict(revConflict.current, body.Revision))), nil
+	case errors.As(err, &invoiced):
+		return gen.PostProjectsMilestonesByMilestoneIdStatus409ApplicationProblemPlusJSONResponse(
+			invoicedByInvoices(invoiced)), nil
 	case errors.Is(err, errMilestoneMoveForbidden):
 		return gen.PostProjectsMilestonesByMilestoneIdStatus403JSONResponse(forbidden()), nil
 	case errors.Is(err, errProjectVanished), errors.Is(err, errMilestoneGone):
