@@ -106,12 +106,25 @@ func schemaReference(schema string) *regexp.Regexp {
 // comments are not modelled; none of the scanned files uses one.
 var sqlComments = regexp.MustCompile(`(?s)--[^\n]*|/\*.*?\*/`)
 
+// workSourceKinds matches the three invoiced-work source kinds as SQL string
+// literals — contracts.WorkSourceKind's values, which invoices.line_sources
+// stores and CHECKs (invoices work design D2). 'time.entry' is a contract
+// value, not a qualified name, so it is blanked like a comment; any other
+// literal, a 'time.entries'::regclass among them, is still scanned.
+var workSourceKinds = regexp.MustCompile(`'(time\.entry|expenses\.entry|projects\.milestone)'`)
+
+// scannedSQL is body as the cross-schema scan reads it: its comments and its
+// work-source kind literals each replaced by a space rather than removed, so
+// neither can join the words on either side of it into a reference.
+func scannedSQL(body string) string {
+	return workSourceKinds.ReplaceAllString(sqlComments.ReplaceAllString(body, " "), " ")
+}
+
 // referencesSchema reports whether body — a migration or query file —
-// qualifies a name with schema anywhere outside a comment. A comment is
-// replaced by a space rather than removed, so it cannot join the words on
-// either side of it into a reference.
+// qualifies a name with schema anywhere outside a comment or a work-source
+// kind literal.
 func referencesSchema(schema, body string) bool {
-	return schemaReference(schema).MatchString(sqlComments.ReplaceAllString(body, " "))
+	return schemaReference(schema).MatchString(scannedSQL(body))
 }
 
 // TestNoModuleReferencesAnotherModulesSchema is the cross-schema scan: no
@@ -128,7 +141,7 @@ func TestNoModuleReferencesAnotherModulesSchema(t *testing.T) {
 				continue
 			}
 			if referencesSchema(schema, f.body) {
-				match := schemaReference(schema).FindString(sqlComments.ReplaceAllString(f.body, " "))
+				match := schemaReference(schema).FindString(scannedSQL(f.body))
 				t.Errorf("%s (owned by %q) references schema %q via %q", f.path, f.owner, schema, match)
 			}
 		}
@@ -159,6 +172,10 @@ func TestSchemaReference_MatchesQualifiedNamesOnly(t *testing.T) {
 		{"time", "SELECT 1 /* time.Time */", false},
 		{"time", "SELECT 1 /* a\nsecond time.\n */ FROM x", false},
 		{"time", "SELECT 1 -- a second time.\nFROM x", false},
+		{"time", "CHECK (source_kind IN ('time.entry', 'expenses.entry'))", false},
+		{"projects", "WHERE source_kind = 'projects.milestone'", false},
+		{"time", "SELECT 'time.entries'::regclass", true},
+		{"time", "SELECT 'time.entry' FROM time.entries", true},
 	} {
 		if got := referencesSchema(tc.schema, tc.text); got != tc.want {
 			t.Errorf("referencesSchema(%q, %q) = %v, want %v", tc.schema, tc.text, got, tc.want)
@@ -2378,11 +2395,11 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect tables: %v", err)
 	}
-	// deliveries, erased_customers and payments are 00035's, and
-	// access_point_credentials and transmissions 00036's; applyUpDownUp ends
-	// with every migration applied, so they stand here beside the seven this
-	// one creates.
-	if want := []string{"access_point_credentials", "counters", "deliveries", "erased_customers", "invoices", "lines", "payments", "settings", "transmissions", "vat_code_rates", "vat_codes", "vat_summaries"}; !equalStrings(gotTables, want) {
+	// deliveries, erased_customers and payments are 00035's,
+	// access_point_credentials and transmissions 00036's, and line_releases,
+	// line_sources and timesheet_rows 00040's; applyUpDownUp ends with every
+	// migration applied, so they stand here beside the seven this one creates.
+	if want := []string{"access_point_credentials", "counters", "deliveries", "erased_customers", "invoices", "line_releases", "line_sources", "lines", "payments", "settings", "timesheet_rows", "transmissions", "vat_code_rates", "vat_codes", "vat_summaries"}; !equalStrings(gotTables, want) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
 	}
 
@@ -2491,10 +2508,13 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("collect triggers: %v", err)
 	}
 	// The four on deliveries and payments are 00035's, the two on
-	// transmissions 00036's, as above.
+	// transmissions 00036's, the three on line_releases, line_sources and
+	// timesheet_rows 00040's, as above.
 	if want := []string{
 		"deliveries:tr_deliveries_immutable", "deliveries:tr_deliveries_parent", "invoices:tr_invoices_immutable",
+		"line_releases:tr_line_releases_immutable", "line_sources:tr_line_sources_immutable",
 		"lines:tr_lines_immutable", "payments:tr_payments_immutable", "payments:tr_payments_parent",
+		"timesheet_rows:tr_timesheet_rows_immutable",
 		"transmissions:tr_transmissions_immutable", "transmissions:tr_transmissions_parent",
 		"vat_summaries:tr_vat_summaries_immutable",
 	}; !equalStrings(gotTriggers, want) {
@@ -3188,7 +3208,7 @@ func TestInvoicesEhfKid_AppliesAndIsIdempotent(t *testing.T) {
 // quote one, and no generated field is named after a keyword.
 func TestInvoicesSchema_NamesNoColumnWithAReservedWord(t *testing.T) {
 	url := testdb.URL(t)
-	migrateTo(t, url, 36)
+	migrateTo(t, url, 40)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)
