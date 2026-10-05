@@ -295,8 +295,9 @@ invoiced, per project and per kind, as the billable reads answer it.
   reads is composed (time, expenses and projects all switched off), and 409
   `projects_unavailable` with the projects module off — work is invoiced per project.
 - **The projects**: for a customer, every project it is billed for
-  (`ProjectDirectory.ProjectsForCustomer`, at most 2 000, in any status — exactly 2 000 warns `work_truncated`, since there may be more); for a project,
-  that one (404 for an unknown id) and its customer. Ordered by code.
+  (`ProjectDirectory.ProjectsForCustomer`, at most 2 000, in any status — exactly
+  2 000 warns `work_truncated`, since there may be more); for a project, that one (404
+  for an unknown id) and its customer. Ordered by code.
 - **The work**: each composed billable read over those projects, dated on or before
   `until` when given, on the pool and never under a lock, one after the other. Time's
   hours are approved, billable and priced; Expenses' lines are ready to invoice
@@ -491,9 +492,9 @@ judged. A line's code is then editable like any.
 The app's card "Work to invoice" on the settings page offers the active codes and the
 one stored, marked "(no longer offered)" when it has since been deactivated. The
 wizard shows, for each kind it is given, the code the server would take — the
-settings', or id 9 (code `7`) while the seller is not VAT-registered — and always sends the code
-shown for every kind chosen, so a deactivated default is the 400 above, said under the
-field.
+settings', or id 9 (code `7`) while the seller is not VAT-registered — and always
+sends the code shown for every kind chosen, so a deactivated default is the 400 above,
+said under the field.
 
 **Every re-billed expense takes the chosen code** — the main supply's rate, never the
 receipt's (merverdiavgiftsloven § 4-2 (1)); the VAT Expenses records on a receipt never
