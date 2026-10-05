@@ -681,13 +681,27 @@ func TestInvoicedWork_ReleaseTolerates(t *testing.T) {
 	commitWith(t, h, func(tx pgx.Tx) error {
 		return holder.MarkInvoiced(context.Background(), tx, otherRef, []contracts.WorkSource{sourceOf(other, "100000.00")})
 	})
+	named := readyMilestone(t, c, project.Id, map[string]any{"name": "Annet prosjekt"})
+	commitWith(t, h, func(tx pgx.Tx) error {
+		return holder.MarkInvoiced(context.Background(), tx, ref, []contracts.WorkSource{sourceOf(named, "100000.00")})
+	})
+	elsewhere := sourceOf(named, "100000.00")
+	elsewhere.ProjectID = amountProject(t, c, "IW0016").Id
 	gone := sourceOf(ready, "100000.00")
 	gone.ID = 999999
 	tx := begin(t, h)
 
 	if err := holder.ReleaseInvoiced(context.Background(), tx, creditNoteOf(ref),
-		[]contracts.WorkSource{sourceOf(ready, "100000.00"), sourceOf(other, "100000.00"), gone}); err != nil {
+		[]contracts.WorkSource{sourceOf(ready, "100000.00"), sourceOf(other, "100000.00"), gone, elsewhere}); err != nil {
 		t.Fatalf("ReleaseInvoiced: %v", err)
+	}
+	// A source naming another project than the milestone's own: its project
+	// was not locked, so the stamp is left as it is, with a warning naming both.
+	if got := readMilestoneRow(t, tx, named.Id); got.Status != milestoneInvoiced || got.InvoicedInvoiceID == nil || *got.InvoicedInvoiceID != ref.ID {
+		t.Errorf("the milestone named under another project = %+v, want its stamp kept", got)
+	}
+	if n := strings.Count(logs.String(), `"source_project_id":`); n != 1 {
+		t.Errorf("%d warnings naming source_project_id, want one: %s", n, logs.String())
 	}
 	if got := readMilestoneRow(t, tx, ready.Id); got.Status != milestoneReady || got.Revision != ready.Revision {
 		t.Errorf("the never-stamped milestone = %+v, want it untouched", got)
