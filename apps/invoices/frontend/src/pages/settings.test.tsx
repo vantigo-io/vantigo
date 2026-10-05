@@ -564,6 +564,20 @@ describe("the Work to invoice card", () => {
     });
   });
 
+  // The server refuses a changed code that is inactive: only the codes
+  // offered for new lines are offered, with the one stored.
+  it("offers the active codes, never an inactive one that is not stored", async () => {
+    server();
+    renderWithProviders(<SettingsPage />);
+    const card = await workCard();
+    await waitFor(() =>
+      expect(within(card).getByRole("combobox", { name: "VAT code for hours" })).toHaveValue("3 — Utgående mva 25 %"),
+    );
+    await userEvent.click(within(card).getByRole("combobox", { name: "VAT code for hours" }));
+    expect(await screen.findByRole("option", { name: "31 — Utgående mva 15 %" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /3G — Gammel sats/ })).not.toBeInTheDocument();
+  });
+
   it("names a stored code that is no longer offered", async () => {
     const state = world();
     state.settings = settings({ workVatCodes: { hours: 9, expenses: 1, milestones: 1 } });

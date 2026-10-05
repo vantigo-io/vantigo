@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
 import type { WorkView } from "../api/work";
-import { jsonResponse, path } from "../test/api";
+import { jsonResponse, path, refusal } from "../test/api";
 import { stubFetch } from "../test/fetch";
 import { meta, workView } from "../test/fixtures";
 import { renderAtHost } from "../test/route-tree";
@@ -128,6 +128,28 @@ describe("the uninvoiced work panel", () => {
     server(workView(), { workAvailable: false });
     renderAtHost(<UninvoicedWorkPanel projectId={41} />);
     expect(await screen.findByText(/No module that records billable work/)).toBeInTheDocument();
+  });
+
+  // The host passes false on a customer the server would take no draft for.
+  it("lists the work but offers no wizard where the host says no draft can be made", async () => {
+    server();
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} canInvoice={false} />);
+    expect(await table("Hours on P-41")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Invoice the chosen work" })).not.toBeInTheDocument();
+  });
+
+  it("says a view that could not be read in the work's own words, never the issue's", async () => {
+    stubFetch((input: RequestInfo | URL) => {
+      const url = path(input);
+      if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta());
+      if (url === "/api/v1/invoices/work?customerId=2001") return refusal(409, "projects_unavailable");
+      return new Response(null, { status: 404 });
+    });
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} />);
+    expect(
+      await screen.findByText("Work is invoiced per project, and the Projects module is switched off."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing was issued/)).not.toBeInTheDocument();
   });
 
   it("says there is nothing to invoice when the view is empty", async () => {

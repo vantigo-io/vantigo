@@ -56,6 +56,12 @@ describe("the project page's Invoicing tab", () => {
     expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
   });
 
+  it("refuses a caller with invoices:create but not invoices:access, which the API asks too", () => {
+    renderTab(["projects", "invoices"], ["invoices:create"]);
+    expect(screen.queryByText(/uninvoiced work/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+  });
+
   it("renders the not-enabled page when the installation did not mount invoices", () => {
     renderTab(["projects"], ["*"]);
     expect(screen.queryByText(/uninvoiced work/)).not.toBeInTheDocument();

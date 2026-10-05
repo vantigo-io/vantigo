@@ -23,7 +23,7 @@ import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useHoursFormat } from "../lib/hours";
 import { rowKey, rowLabel, rowRef, type WeekRowRef } from "../lib/rows";
-import { timeEntryStatusLabelKey } from "../lib/status";
+import { timeEntryStatusLabel, timeEntryStatusLabelKey } from "../lib/status";
 import { addDays, dayUrl, isIsoDate, mondayOf, today, weekDays } from "../lib/week";
 import { RowPicker } from "./-row-picker";
 
@@ -431,7 +431,11 @@ const WeekCell = ({ row, date, entries, locked, label, onKeep }: WeekCellProps) 
     tooltip = entry.rejectionReason
       ? t("rejectedBecause", { reason: entry.rejectionReason })
       : t(timeEntryStatusLabelKey(entry.status));
-  else if (entry && readOnly) tooltip = t(timeEntryStatusLabelKey(entry.status));
+  else if (entry && readOnly) {
+    // An entry the Invoices module invoiced names its invoice, as the day view does.
+    const status = timeEntryStatusLabel(entry.status, entry.invoicedBy ?? undefined);
+    tooltip = t(status.key, status.values);
+  }
 
   return (
     <HoursCell

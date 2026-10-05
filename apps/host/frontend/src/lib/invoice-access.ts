@@ -25,7 +25,10 @@ export const useInvoiceAccess = () => {
   return {
     ready: authorization.isSuccess || authorization.isError,
     canViewCustomers: hasPermissions(authorization.data?.permissions, ["customers:view"]),
-    canCreateInvoices: hasPermissions(authorization.data?.permissions, ["invoices:create"]),
+    // The API asks both together; `hasPermissions` is any-of, so two calls.
+    canCreateInvoices:
+      hasPermissions(authorization.data?.permissions, ["invoices:access"]) &&
+      hasPermissions(authorization.data?.permissions, ["invoices:create"]),
     userDisplayName: session.data?.user.displayName,
   };
 };

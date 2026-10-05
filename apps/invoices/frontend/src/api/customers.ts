@@ -40,3 +40,23 @@ export const customerSearchQueryOptions = (search: string, anyStatus = false) =>
       return answer.data;
     },
   });
+
+interface BillingProfileLanguage {
+  language?: string | null;
+}
+
+/**
+ * The language a customer's documents are written in, from its billing
+ * profile — the server's rule: English for "en", Norwegian otherwise. Read
+ * over HTTP as the picker reads the list, so it needs `customers:view`.
+ */
+export const customerLanguageQueryOptions = (customerId: number) =>
+  queryOptions({
+    queryKey: [INVOICES_QUERY_KEY, "customer-language", customerId],
+    queryFn: async ({ signal }): Promise<"en" | "nb"> => {
+      const profile = await request<BillingProfileLanguage>(`/api/v1/customers/${customerId}/billing-profile`, {
+        signal,
+      });
+      return profile.language === "en" ? "en" : "nb";
+    },
+  });

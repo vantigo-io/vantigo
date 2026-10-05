@@ -430,7 +430,7 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         </Stack>
       </Card>
       <KidCard settings={settings} values={values} errors={errors} set={set} />
-      <WorkCard values={values} errors={errors} set={set} />
+      <WorkCard stored={settings.workVatCodes} values={values} errors={errors} set={set} />
       <Group justify="flex-end">
         <Button loading={save.isPending} disabled={!dirty} onClick={() => save.mutate()}>
           {t("save")}
@@ -554,20 +554,28 @@ const workKinds = ["hours", "expenses", "milestones"] as const;
  * refused code or label is said on its own input.
  */
 const WorkCard = ({
+  stored,
   values,
   errors,
   set,
 }: {
+  /** The codes as saved: one kept as stored passes the server though it is no longer offered. */
+  stored: InvoiceSettings["workVatCodes"];
   values: InvoiceSettings;
   errors: Record<string, string>;
   set: <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K], field?: string) => void;
 }) => {
   const { t } = useInvoiceFormat();
   const codes = useQuery(vatCodesQueryOptions());
-  const options = (codes.data ?? []).map((c) => {
-    const label = t("vatCodeOption", { code: c.code, name: c.name });
-    return { value: String(c.id), label: c.active ? label : t("vatCodeNotOffered", { label }) };
-  });
+  // The codes offered for new lines, and any one stored that no longer is —
+  // never another inactive code, which the server would refuse.
+  const storedIds = new Set(Object.values(stored));
+  const options = (codes.data ?? [])
+    .filter((c) => c.active || storedIds.has(c.id))
+    .map((c) => {
+      const label = t("vatCodeOption", { code: c.code, name: c.name });
+      return { value: String(c.id), label: c.active ? label : t("vatCodeNotOffered", { label }) };
+    });
   return (
     <Card withBorder data-testid="work-card">
       <Stack>

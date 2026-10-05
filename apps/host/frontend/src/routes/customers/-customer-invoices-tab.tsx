@@ -36,17 +36,15 @@ export const CustomerInvoicesTab = () => {
   // The layout's loader has already put the customer in the cache.
   const customer = useQuery(customerQueryOptions(customerId));
   if (!enabledModuleKeys().includes("invoices")) return <ModuleNotEnabledPage appLabel={t("navigation.invoices")} />;
+  // The customer the server would take a draft for — active, neither merged
+  // away nor anonymised — whether by hand or from work.
+  const invoiceable = !isReadOnlyCustomer(customer.data) && customer.data?.status === "active";
   return (
     <>
-      {access.canCreateInvoices && <UninvoicedWorkPanel customerId={customerId} />}
+      {access.canCreateInvoices && <UninvoicedWorkPanel customerId={customerId} canInvoice={invoiceable} />}
       <CustomerInvoicesPanel
         customerId={customerId}
-        canCreate={
-          access.canCreateInvoices &&
-          access.canViewCustomers &&
-          !isReadOnlyCustomer(customer.data) &&
-          customer.data?.status === "active"
-        }
+        canCreate={access.canCreateInvoices && access.canViewCustomers && invoiceable}
         userDisplayName={access.userDisplayName}
       />
     </>

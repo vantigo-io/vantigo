@@ -15,7 +15,7 @@ import {
   workQueryOptions,
 } from "../api/work";
 import { invoicesCatalog } from "../i18n";
-import { refusalMessage, warningMessage } from "../lib/errors";
+import { warningMessage, workRefusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { type ChosenWork, totalsOf } from "../lib/work";
 import { FromWorkWizard } from "../pages/-from-work-wizard";
@@ -26,6 +26,13 @@ export interface UninvoicedWorkPanelProps {
   customerId?: number;
   /** The one project whose work is listed — the project page's Invoicing tab. Exactly one of the two. */
   projectId?: number;
+  /**
+   * Whether the work may be made into a draft here. The host passes false on a
+   * customer the server would take no draft for — not active, merged away or
+   * anonymised — as it does for "New invoice": the work is listed, and the
+   * wizard is not offered. True when left out.
+   */
+  canInvoice?: boolean;
 }
 
 /** A row of the view, whatever its kind, as the panel lists and chooses it. */
@@ -57,7 +64,7 @@ const rowKey = (kind: string, id: number) => `${kind}:${id}`;
  * caller who holds `invoices:create`; an installation that invoices no work
  * shows nothing on a customer and says why on a project.
  */
-export const UninvoicedWorkPanel = ({ customerId, projectId }: UninvoicedWorkPanelProps) => {
+export const UninvoicedWorkPanel = ({ customerId, projectId, canInvoice = true }: UninvoicedWorkPanelProps) => {
   const { t, money, unitPrice, number, date } = useInvoiceFormat();
   const scope: WorkScope = customerId !== undefined ? { customerId } : { projectId: projectId ?? 0 };
   const meta = useQuery(invoicesMetaQueryOptions());
@@ -115,6 +122,7 @@ export const UninvoicedWorkPanel = ({ customerId, projectId }: UninvoicedWorkPan
           rate: h.rate,
           userId: h.userId,
           workTypeId: h.workTypeId,
+          label: t("workHourLabel", { person, date: date(h.date) }),
         },
         label: t("workHourLabel", { person, date: date(h.date) }),
         cells: [
@@ -141,6 +149,7 @@ export const UninvoicedWorkPanel = ({ customerId, projectId }: UninvoicedWorkPan
         amount: e.billAmount,
         currency: e.currency,
         expenseKind: e.kind,
+        label: t("workExpenseLabel", { description: e.description, date: date(e.date) }),
       },
       label: t("workExpenseLabel", { description: e.description, date: date(e.date) }),
       cells: [
@@ -171,6 +180,7 @@ export const UninvoicedWorkPanel = ({ customerId, projectId }: UninvoicedWorkPan
         date: m.date,
         amount: m.amount,
         currency: m.currency,
+        label: m.name,
       },
       label: m.name,
       cells: [date(m.date), m.name, m.description, "", money(m.amount, m.currency)],
@@ -200,7 +210,7 @@ export const UninvoicedWorkPanel = ({ customerId, projectId }: UninvoicedWorkPan
               {t("uninvoicedWorkDescription")}
             </Text>
           </Stack>
-          {work.data?.customerId !== undefined && (
+          {work.data?.customerId !== undefined && canInvoice && (
             <Button
               size="xs"
               leftSection={<IconFileInvoice size={14} />}
@@ -213,7 +223,7 @@ export const UninvoicedWorkPanel = ({ customerId, projectId }: UninvoicedWorkPan
         </Group>
         {(meta.isError || work.isError) && (
           <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadWork")}>
-            {refusalMessage(meta.error ?? work.error, t, date)}
+            {workRefusalMessage(meta.error ?? work.error, t, date)}
           </Alert>
         )}
         {(meta.isPending || (available && work.isPending)) && <ContentSkeleton rows={3} rowHeight={40} />}
