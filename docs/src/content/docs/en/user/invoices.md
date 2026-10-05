@@ -401,6 +401,43 @@ would give back, and the invoice then shows that work as released. A new invoice
 the released work again; it does not have to name the credit note
 ([release on credit](/en/reference/invoices/#release-on-credit)).
 
+## Final settlement
+
+A large job is often invoiced **on account** (*a konto*) as it goes — an ordinary invoice
+for each instalment, typically a milestone — and closed with a **final settlement**: an
+invoice for the whole that deducts what the a-konto invoices already billed. A settlement
+is an ordinary draft with one **deduction line** per earlier invoice and VAT code:
+
+- the line names the earlier invoice it deducts, an issued invoice of the same customer
+  — never a draft, a credit note or another customer's;
+- its **Quantity** is **-1** and its **Unit price** the amount deducted, above 0, with
+  no discount; its amount prints with a minus, "-125 000,00", and lowers the total;
+- its **VAT code** is one the earlier invoice has a line at, and it is taxed at the rate
+  that invoice was issued with — so a rate change since, or a code no longer offered,
+  does not change it. The text proposed is *Tidligere fakturert a konto, faktura 985* /
+  *Previously invoiced on account, invoice 985*.
+
+The step in the editor that lists the earlier invoices and proposes the lines comes with
+the app's screens for invoicing work; the rules below hold already, and the server
+applies them to every save and issue.
+
+A deduction may take no more than the earlier invoice has **left** at its VAT code: what
+it billed there, less what credit notes gave back of it and what earlier settlements
+deducted. A draft past that says so under **Worth a look** (*A deduction takes more than
+the earlier invoice has left at its VAT code*), and the issue is refused naming the line.
+A settlement must come to **more than zero**: one that deducts as much as it bills, or
+more, is warned about and cannot be issued — a fixed price billed in full on account ends
+with its last a-konto invoice. Two deduction lines for the same invoice and VAT code are
+refused when you save; keep one.
+
+The PDF lists the invoices deducted under the references (*Fratrukket a konto: Faktura
+985 av 01.08.2026*), and the EHF names each of them as a preceding invoice. **Crediting a
+settlement** reverses its deductions too — the credit note copies them as minus lines —
+and gives the earlier invoices back what was deducted; a credit note of the deductions
+alone, below zero, is refused. **Crediting an a-konto invoice that a settlement
+deducted** is refused beyond what the settlement left of it: credit the settlement first
+([a-konto and the final settlement](/en/reference/invoices/#a-konto-and-the-final-settlement)).
+
 ## Registering payments
 
 Vantigo does not read bank files: money received is registered by hand, on the issued

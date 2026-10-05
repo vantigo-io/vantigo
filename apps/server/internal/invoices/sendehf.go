@@ -223,7 +223,11 @@ func (s *server) renderEHF(ctx context.Context, q *store.Queries, inv store.Invo
 		}
 		original = &o
 	}
-	doc, err := ehfDocumentOf(inv, lines, sums, original, sellerPeppolID, pdf.body)
+	deducted, err := deductedRefsOf(ctx, q, inv, lines)
+	if err != nil {
+		return renderedEHF{}, nil, err
+	}
+	doc, err := ehfDocumentOf(inv, lines, sums, original, deducted, sellerPeppolID, pdf.body)
 	if err != nil {
 		return renderedEHF{}, nil, err
 	}

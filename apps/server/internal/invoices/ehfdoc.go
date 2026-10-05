@@ -12,14 +12,15 @@ import (
 // ehfDocumentOf is an issued document as its EHF carries it (EHF and KID
 // design D4): its own rows and snapshots, read through pdfDocumentOf — the
 // same parties, totals, VAT rows and KID the stored PDF prints, the KID
-// re-verified against its stored algorithm there — plus what only the EHF
+// re-verified against its stored algorithm there, and a settlement's deducted
+// invoices as BG-3 (invoices work design D7) — plus what only the EHF
 // needs: each line's gross, allowance, position and VAT category, the
 // buyer's Peppol id, region and type, the seller's Peppol id at the time of
 // sending (D2: not part of the snapshot), and the stored PDF's bytes with
 // the download's file name. Never the settings beyond that id, the directory
 // or the VAT tables.
 func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums []store.InvoicesVatSummary,
-	original *store.InvoicesInvoice, sellerPeppolID string, pdf []byte,
+	original *store.InvoicesInvoice, deducted []deductedRef, sellerPeppolID string, pdf []byte,
 ) (ehf.Document, error) {
 	if inv.Status != statusIssued || inv.Number == nil {
 		return ehf.Document{}, fmt.Errorf("invoices: document %d is not issued; it has no EHF", inv.ID)
@@ -27,7 +28,7 @@ func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 	if inv.Kind == kindCreditNote && (original == nil || original.Number == nil) {
 		return ehf.Document{}, fmt.Errorf("invoices: credit note %d without its issued original; its EHF needs the original's number and date", inv.ID)
 	}
-	p, err := pdfDocumentOf(inv, lines, sums, original)
+	p, err := pdfDocumentOf(inv, lines, sums, original, deducted)
 	if err != nil {
 		return ehf.Document{}, err
 	}
@@ -80,6 +81,11 @@ func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 		d.Original = &ehf.DocumentReference{
 			Number: strconv.FormatInt(p.credits.number, 10), IssueDate: p.credits.issueDate.Format(time.DateOnly),
 		}
+	}
+	for _, r := range p.deducted {
+		d.Deducted = append(d.Deducted, ehf.DocumentReference{
+			Number: strconv.FormatInt(r.number, 10), IssueDate: r.issueDate.Format(time.DateOnly),
+		})
 	}
 	for i, l := range lines {
 		pl := p.lines[i]

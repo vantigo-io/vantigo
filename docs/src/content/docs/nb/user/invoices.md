@@ -408,6 +408,44 @@ deretter det arbeidet som frigjort. En ny faktura kan fakturere det frigjorte ar
 nytt; den trenger ikke å nevne kreditnotaen
 ([frigjøring ved kreditering](/en/reference/invoices/#release-on-credit)).
 
+## Sluttoppgjør
+
+Et stort oppdrag faktureres ofte **a konto** underveis — en vanlig faktura for hvert
+avdrag, gjerne en milepæl — og avsluttes med et **sluttoppgjør**: en faktura for helheten
+som trekker fra det a konto-fakturaene allerede har fakturert. Et sluttoppgjør er et
+vanlig utkast med én **fradragslinje** per tidligere faktura og mva-kode:
+
+- linjen viser til den tidligere fakturaen den trekker fra, en utstedt faktura til samme
+  kunde — aldri et utkast, en kreditnota eller en annen kundes faktura;
+- **Antall** er **-1** og **Enhetspris** beløpet som trekkes fra, over 0, uten rabatt;
+  beløpet skrives med minus, «-125 000,00», og senker totalen;
+- **Mva-koden** er en den tidligere fakturaen har en linje på, og linjen avgiftsberegnes
+  med satsen den fakturaen ble utstedt med — så en satsendring siden, eller en kode som
+  ikke lenger tilbys, endrer den ikke. Teksten som foreslås, er *Tidligere fakturert a
+  konto, faktura 985* / *Previously invoiced on account, invoice 985*.
+
+Steget i redigeringen som viser de tidligere fakturaene og foreslår linjene, kommer med
+appens skjermbilder for fakturering av arbeid; reglene under gjelder allerede, og
+serveren bruker dem ved hver lagring og utstedelse.
+
+Et fradrag kan ikke ta mer enn den tidligere fakturaen har **igjen** på sin mva-kode: det
+den fakturerte der, minus det kreditnotaer har gitt tilbake av det og det tidligere
+sluttoppgjør har trukket fra. Et utkast som går over, sier fra under **Verdt å se på**
+(*Et fradrag tar mer enn den tidligere fakturaen har igjen på sin mva-kode*), og
+utstedelsen avvises med linjen. Et sluttoppgjør må bli **mer enn null**: ett som trekker
+fra like mye som det fakturerer, eller mer, får en advarsel og kan ikke utstedes — en
+fastpris fakturert i sin helhet a konto avsluttes med den siste a konto-fakturaen. To
+fradragslinjer for samme faktura og mva-kode avvises når du lagrer; behold én.
+
+PDF-en viser fakturaene som er trukket fra under referansene (*Fratrukket a konto: Faktura
+985 av 01.08.2026*), og EHF-en nevner hver av dem som en tidligere faktura. **Å kreditere
+et sluttoppgjør** reverserer også fradragene — kreditnotaen kopierer dem som minuslinjer —
+og gir de tidligere fakturaene tilbake det som ble trukket fra; en kreditnota av bare
+fradragene, under null, avvises. **Å kreditere en a konto-faktura et sluttoppgjør har
+trukket fra** avvises utover det sluttoppgjøret lot være igjen av den: krediter
+sluttoppgjøret først
+([a konto og sluttoppgjør](/en/reference/invoices/#a-konto-and-the-final-settlement)).
+
 ## Registrere betalinger
 
 Vantigo leser ikke bankfiler: mottatte penger registreres for hånd, på den utstedte

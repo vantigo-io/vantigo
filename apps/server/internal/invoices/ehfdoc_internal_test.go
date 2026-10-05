@@ -68,7 +68,7 @@ func TestEHFDocumentOf_TheRows(t *testing.T) {
 	t.Parallel()
 	inv, lines, sums := issuedRows(t)
 	pdf := []byte("%PDF-1.4 stored")
-	d, err := ehfDocumentOf(inv, lines, sums, nil, "0192:923456783", pdf)
+	d, err := ehfDocumentOf(inv, lines, sums, nil, nil, "0192:923456783", pdf)
 	if err != nil {
 		t.Fatalf("ehfDocumentOf: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestEHFDocumentOf_ACreditNoteToAPerson(t *testing.T) {
 	inv.Kind, inv.DueDate, inv.Kid, inv.KidAlgorithm = kindCreditNote, pgtype.Date{}, nil, nil
 	person, en := "person", "en"
 	inv.BuyerType, inv.BuyerOrganisationNumber, inv.BuyerLanguage = &person, nil, &en
-	d, err := ehfDocumentOf(inv, lines, sums, &original, "0192:923456783", []byte("%PDF"))
+	d, err := ehfDocumentOf(inv, lines, sums, &original, nil, "0192:923456783", []byte("%PDF"))
 	if err != nil {
 		t.Fatalf("ehfDocumentOf: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestEHFDocumentOf_Refuses(t *testing.T) {
 	} {
 		inv, lines, sums := issuedRows(t)
 		mutate(&inv, lines)
-		if _, err := ehfDocumentOf(inv, lines, sums, nil, "0192:923456783", nil); err == nil {
+		if _, err := ehfDocumentOf(inv, lines, sums, nil, nil, "0192:923456783", nil); err == nil {
 			t.Errorf("%s: no error", name)
 		}
 	}
@@ -190,13 +190,76 @@ func TestEHFDocumentOf_Refuses(t *testing.T) {
 func TestEHFDocumentOf_TheProjectReference(t *testing.T) {
 	t.Parallel()
 	inv, lines, sums := issuedRows(t)
-	d, err := ehfDocumentOf(inv, lines, sums, nil, "0192:923456783", []byte("%PDF"))
+	d, err := ehfDocumentOf(inv, lines, sums, nil, nil, "0192:923456783", []byte("%PDF"))
 	if err != nil || d.ProjectReference != "" {
 		t.Fatalf("without a project = %q, %v; want none", d.ProjectReference, err)
 	}
 	project, reference := int32(41), "P-41"
 	inv.ProjectID, inv.ProjectReference = &project, &reference
-	if d, err = ehfDocumentOf(inv, lines, sums, nil, "0192:923456783", []byte("%PDF")); err != nil || d.ProjectReference != "P-41" {
+	if d, err = ehfDocumentOf(inv, lines, sums, nil, nil, "0192:923456783", []byte("%PDF")); err != nil || d.ProjectReference != "P-41" {
 		t.Errorf("with a project = %q, %v; want P-41", d.ProjectReference, err)
+	}
+}
+
+// A settlement (invoices work design D7) names every invoice it deducts,
+// once each, as a cac:BillingReference with its number and issue date — two
+// deduction lines of one a-konto are one reference — its deduction line
+// carried with its negative quantity and amount, the price positive, and no
+// PrepaidAmount; a credit note carries its original alone, even of a
+// settlement.
+func TestEHF_ASettlementHasTwoBillingReferences(t *testing.T) {
+	t.Parallel()
+	inv, lines, sums := issuedRows(t)
+	s := func(v string) *string { return &v }
+	first, second := int64(990), int64(995)
+	deduction := func(position int32, id *int64, amount string) store.InvoicesLine {
+		return store.InvoicesLine{Position: position, Description: "Tidligere fakturert a konto", Quantity: num(t, "-1", 3), Unit: "",
+			UnitPrice: num(t, amount, 4), DiscountPercent: num(t, "0", 2), LineGross: num(t, "-"+amount, 2), LineAllowance: num(t, "0", 2),
+			LineNet: num(t, "-"+amount, 2), VatRatePercent: num(t, "25", 2), VatCategory: s("S"), SafTCode: s("3"), DeductsInvoiceID: id}
+	}
+	lines = append(lines, deduction(3, &first, "1000"), deduction(4, &second, "500"), deduction(5, &second, "300"))
+	deducted := []deductedRef{
+		{number: first, issueDate: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)},
+		{number: second, issueDate: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)},
+	}
+	d, err := ehfDocumentOf(inv, lines, sums, nil, deducted, "0192:923456783", []byte("%PDF"))
+	if err != nil {
+		t.Fatalf("ehfDocumentOf: %v", err)
+	}
+	want := []ehf.DocumentReference{{Number: "990", IssueDate: "2026-08-01"}, {Number: "995", IssueDate: "2026-09-01"}}
+	if len(d.Deducted) != 2 || d.Deducted[0] != want[0] || d.Deducted[1] != want[1] {
+		t.Errorf("deducted = %+v, want %+v", d.Deducted, want)
+	}
+	body, err := ehf.Render(d)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	root, err := ehf.Parse(body)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	refs := root.All("cac:BillingReference", "cac:InvoiceDocumentReference")
+	if len(refs) != 2 || refs[0].Value("cbc:ID") != "990" || refs[0].Value("cbc:IssueDate") != "2026-08-01" ||
+		refs[1].Value("cbc:ID") != "995" || refs[1].Value("cbc:IssueDate") != "2026-09-01" {
+		t.Errorf("billing references = %d, want 990 of 2026-08-01 and 995 of 2026-09-01", len(refs))
+	}
+	if bytes.Contains(body, []byte("PrepaidAmount")) {
+		t.Error("a settlement writes a PrepaidAmount; its a-kontos were VAT invoices")
+	}
+	line := root.All("cac:InvoiceLine")[2]
+	if line.Value("cbc:InvoicedQuantity") != "-1.000" || line.Value("cbc:LineExtensionAmount") != "-1000.00" ||
+		line.Value("cac:Price", "cbc:PriceAmount") != "1000.0000" {
+		t.Errorf("the deduction line = %s × %s = %s, want -1.000 × 1000.0000 = -1000.00", line.Value("cbc:InvoicedQuantity"),
+			line.Value("cac:Price", "cbc:PriceAmount"), line.Value("cbc:LineExtensionAmount"))
+	}
+
+	original := inv
+	inv.Kind, inv.DueDate, inv.Kid, inv.KidAlgorithm = kindCreditNote, pgtype.Date{}, nil, nil
+	c, err := ehfDocumentOf(inv, lines, sums, &original, deducted, "0192:923456783", []byte("%PDF"))
+	if err != nil {
+		t.Fatalf("ehfDocumentOf of a credit note: %v", err)
+	}
+	if len(c.Deducted) != 0 || c.Original == nil || c.Original.Number != "1001" {
+		t.Errorf("a settlement's credit note = deducted %+v, original %+v; want its original alone", c.Deducted, c.Original)
 	}
 }

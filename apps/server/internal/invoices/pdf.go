@@ -69,6 +69,7 @@ type pdfLabels struct {
 	vatBasis, vatAmount, vatCategory, net, vatTotal, gross, toPay                       string
 	payment, account, iban, bic, payWithNumber, orgNumber, foreignID, watermark         string
 	kid, payWithKid                                                                     string
+	deducted, deductedRef                                                               string
 }
 
 var labels = map[string]pdfLabels{
@@ -84,6 +85,7 @@ var labels = map[string]pdfLabels{
 		payWithNumber: "Vennligst oppgi fakturanummer ved betaling", orgNumber: "Org.nr.", foreignID: "VAT/Reg. no.",
 		watermark: "UTKAST — ikke et salgsdokument",
 		kid:       "KID", payWithKid: "Vennligst bruk KID ved betaling",
+		deducted: "Fratrukket a konto", deductedRef: "Faktura %d av %s",
 	},
 	"en": {
 		invoice: "Invoice", creditNote: "Credit note", number: "Number", issueDate: "Invoice date",
@@ -97,6 +99,7 @@ var labels = map[string]pdfLabels{
 		payWithNumber: "Please state the invoice number with your payment", orgNumber: "Org. no.", foreignID: "VAT/Reg. no.",
 		watermark: "UTKAST — ikke et salgsdokument",
 		kid:       "KID", payWithKid: "Please use the KID with your payment",
+		deducted: "Deducted on account", deductedRef: "Invoice %d of %s",
 	},
 }
 
@@ -143,8 +146,11 @@ type pdfDocument struct {
 		number    int64
 		issueDate time.Time
 	}
-	created time.Time
-	preview bool
+	// deducted is every invoice a final settlement deducts (invoices work
+	// design D7), listed under the references; none on a credit note.
+	deducted []deductedRef
+	created  time.Time
+	preview  bool
 }
 
 // pdfModel is every word a document prints, in the order it prints them: what
@@ -319,6 +325,12 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		if ref[1] != "" {
 			m.meta = append(m.meta, ref)
 		}
+	}
+	// A settlement's deductions print as any negative does — "-1" and
+	// "-125 000,00", the unit price positive — and the invoices they deduct
+	// under the references (invoices work design D7).
+	for _, r := range d.deducted {
+		m.meta = append(m.meta, [2]string{l.deducted, fmt.Sprintf(l.deductedRef, r.number, formatDate(r.issueDate, lang))})
 	}
 	if d.credits != nil {
 		m.creditsLine = fmt.Sprintf(l.creditsFor, d.credits.number, formatDate(d.credits.issueDate, lang))

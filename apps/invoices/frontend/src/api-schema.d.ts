@@ -256,7 +256,7 @@ export interface paths {
         get: operations["getInvoicesById"];
         /**
          * Replace a draft
-         * @description Replaces a draft whole, with revision (D4). Only a draft is edited (409 invoice_issued otherwise). A credit-note draft changes only what D8 allows — lines removed, a quantity or a unit price lowered, a description, the note and the internal note — and anything else — another customer, currency, delivery, place of delivery or reference, payment terms, a line's VAT code or unit changed, a quantity or unit price raised, a discount lowered, a line added or one credited twice — is a 400 on the field, and so is a line naming sources or refreshSources; its revision is checked first, so a stale copy is the revision 409. On an invoice draft that holds work (invoices work design D2) every line names its sources — absent is a 400 on lines[i].sources, [] drops — each one the draft holds, once — a save never adds work. A source left out of every line, on a removed line or under a changed customer is dropped and named in releasedSources. refreshSources re-reads the held work first.
+         * @description Replaces a draft whole, with revision (D4). Only a draft is edited (409 invoice_issued otherwise). A credit-note draft changes only what D8 allows — lines removed, a quantity or a unit price lowered, a description, the note and the internal note — and anything else — another customer, currency, delivery, place of delivery or reference, payment terms, a line's VAT code or unit changed, a quantity or unit price raised, a discount lowered, a line added or one credited twice — is a 400 on the field, and so is a line naming sources or deductsInvoiceId, or refreshSources; a credit line's quantity is negative exactly when the line it credits is a deduction line (invoices work design D7), compared with it by magnitude and of the same sign; its revision is checked first, so a stale copy is the revision 409. On an invoice draft that holds work (invoices work design D2) every line names its sources — absent is a 400 on lines[i].sources, [] drops — each one the draft holds, once — a save never adds work. A source left out of every line, on a removed line or under a changed customer is dropped and named in releasedSources. refreshSources re-reads the held work first.
          */
         put: operations["putInvoicesById"];
         post?: never;
@@ -344,6 +344,26 @@ export interface paths {
          * @description Creates a draft credit note for an issued invoice (D8, § 5-2-7): the customer, currency and rate, the delivery, the references and the buyer snapshot are copied from the original, and every line with its VAT code, pointing at the line it credits. It reads no directory. Several credit-note drafts may exist at once; the caps are decided at issue.
          */
         post: operations["postInvoicesByIdCredit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/deductible": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what earlier invoices have left to deduct
+         * @description For an invoice draft, what each of its customer's issued invoices — the a-kontos — has left to deduct, per VAT code (invoices work design D7): the editor's "Deduct earlier invoices" step. Only a (invoice, VAT code) with something left is listed, by number and then VAT code; the draft itself never is. It reads the documents' own rows and no directory. A credit note deducts nothing: on a credit-note draft the answer is 409 credit_note_deducts_nothing.
+         */
+        get: operations["getInvoicesByIdDeductible"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -632,7 +652,7 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off), and invoice_changed also when the draft's work changed between the issue's reads and its lock, storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock, storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -642,7 +662,7 @@ export interface components {
             instance?: string | null;
             /**
              * Format: int32
-             * @description On a refusal about one line (vat_code_inactive, vat_code_not_valid, credit_exceeds_line, and the issue's refusals about a source — the first line holding it), the line's position, 1-based. Absent otherwise.
+             * @description On a refusal about one line (vat_code_inactive, vat_code_not_valid, credit_exceeds_line, deduction_exceeds_invoice, deduction_duplicated, and the issue's refusals about a source — the first line holding it), the line's position, 1-based. Absent otherwise.
              */
             linePosition?: number;
             /**
@@ -949,6 +969,22 @@ export interface components {
             /** Format: int64 */
             number: number;
         };
+        /** @description What one issued invoice of a draft's customer — an a-konto — has left to deduct at one VAT code (invoices work design D7): its lines' net at the code, less what its issued credit notes credited on those lines, less what issued settlements' deduction lines took and their issued credit notes did not give back. category and ratePercent are the a-konto line's VAT snapshot, which a deduction at the code is taxed at; left is the most a deduction line at the code may take as its unitPrice. */
+        InvoicesDeductible: {
+            category: string;
+            /** Format: int64 */
+            invoiceId: number;
+            /** Format: date */
+            issueDate: string;
+            /** Format: double */
+            left: number;
+            /** Format: int64 */
+            number: number;
+            /** Format: double */
+            ratePercent: number;
+            /** Format: int32 */
+            vatCodeId: number;
+        };
         /** @description One e-mail that handed an issued document over (payments and delivery design D4), logged once the mail server took it. recipient is the address it went to — empty once the customer has been anonymised (D6) — and is present only for a caller with invoices:issue; a reader sees when each send happened, by whom and its subject, not the address. subject is as sent. */
         InvoicesDelivery: {
             /** Format: int64 */
@@ -1034,7 +1070,7 @@ export interface components {
             revision?: number;
             yourReference?: string;
         };
-        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
+        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
         InvoicesInvoiceResponse: {
             allowedIssueDates?: string[];
             buyer?: components["schemas"]["InvoicesBuyer"];
@@ -1142,13 +1178,18 @@ export interface components {
             warnings: string[];
             yourReference: string;
         };
-        /** @description One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft. On a document that bills work (invoices work design D2) every line carries sources — [] for a line that bills none — and warnings, its own codes (line_differs_from_sources, source_changed, source_not_invoiceable); both absent on a document that bills no work. */
+        /** @description One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft. A deduction line (invoices work design D7) carries deductsInvoiceId, a quantity of -1 and a positive unitPrice, so its lineGross and lineNet are negative; a credit note's line crediting one carries it too, with a negative quantity. On a document that bills work (invoices work design D2) every line carries sources — [] for a line that bills none — and warnings, its own codes (line_differs_from_sources, source_changed, source_not_invoiceable); both absent on a document that bills no work. */
         InvoicesLine: {
             /**
              * Format: int64
              * @description On a credit note's line, the original line it credits.
              */
             creditsLineId?: number;
+            /**
+             * Format: int64
+             * @description On a deduction line of a final settlement (invoices work design D7), the issued invoice — the a-konto — it deducts, frozen on the line; on a credit note's line, copied from the line it credits. Absent otherwise.
+             */
+            deductsInvoiceId?: number;
             description: string;
             /** Format: double */
             discountPercent: number;
@@ -1177,10 +1218,15 @@ export interface components {
             vatRatePercent?: number;
             warnings?: string[];
         };
-        /** @description One line of a draft. description is 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20. vatCodeId is an active code. creditsLineId is a credit-note draft's own and names the original line the line credits. */
+        /** @description One line of a draft. description is 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20. vatCodeId is an active code. creditsLineId is a credit-note draft's own and names the original line the line credits. A deduction line (invoices work design D7) names deductsInvoiceId and has a quantity of exactly -1, a unitPrice greater than 0 — the amount deducted — and no discount; its vatCodeId is one the deducted invoice has a line at, and need not be active. On a credit-note draft a line's quantity is negative exactly when the original line it credits is a deduction line, and never larger in magnitude. */
         InvoicesLineRequest: {
             /** Format: int64 */
             creditsLineId?: number;
+            /**
+             * Format: int64
+             * @description Makes the line a deduction of an earlier invoice — an a-konto — in a final settlement (invoices work design D7): an issued invoice of the same customer, never a draft, a credit note or the document itself (a 400 on lines[i].deductsInvoiceId). One deduction line per (deducted invoice, VAT code) — a second is 409 deduction_duplicated — and none naming sources (a 400 on lines[i].sources). Refused on a credit-note draft's own request: there it is derived from the original line.
+             */
+            deductsInvoiceId?: number;
             description: string;
             /** Format: double */
             discountPercent?: number;
@@ -2392,7 +2438,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — customer_merged (with mergedInto), customer_archived, customer_blocked or customer_missing. */
+            /** @description Conflict — customer_merged (with mergedInto), customer_archived, customer_blocked or customer_missing; deduction_duplicated (with linePosition), a second deduction line for one deducted invoice and VAT code (invoices work design D7). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2652,7 +2698,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — invoice_issued, a customer gate, a stale revision or invoice_changed (refreshSources, when the held work changed between its read and the save's lock). */
+            /** @description Conflict — invoice_issued, a customer gate, a stale revision, invoice_changed (refreshSources, when the held work changed between its read and the save's lock) or deduction_duplicated (with linePosition; invoices work design D7). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2775,7 +2821,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — invoice_issued, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed (with allowedIssueDates), customer_merged, customer_archived, customer_blocked, customer_missing, buyer_incomplete, vat_code_inactive and vat_code_not_valid (with linePosition), vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line (with linePosition) or credit_exceeds_invoice; for an invoice that bills work, projects_unavailable, source_customer_changed (before a number), source_not_selectable, and a holder's source_not_invoiceable, source_changed or source_already_invoiced (each with linePosition, sourceKind and sourceId). */
+            /** @description Conflict — invoice_issued, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed (with allowedIssueDates), customer_merged, customer_archived, customer_blocked, customer_missing, buyer_incomplete, vat_code_inactive and vat_code_not_valid (with linePosition), vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line (with linePosition), credit_exceeds_invoice, credit_total_negative or invoice_deducted (a credit note of an a-konto a settlement deducted; invoices work design D7); for a final settlement deduction_exceeds_invoice (with linePosition; the cap is read after the number, the deducted invoices never locked) and invoice_total_not_positive; for an invoice that bills work, projects_unavailable, source_customer_changed (before a number), source_not_selectable, and a holder's source_not_invoiceable, source_changed or source_already_invoiced (each with linePosition, sourceKind and sourceId). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2971,6 +3017,62 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — invoice_draft (the original is not issued), credit_note_not_creditable (a credit note is never credited) or invoice_fully_credited. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesByIdDeductible: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesDeductible"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — invoice_issued (an issued document deducts nothing more) or credit_note_deducts_nothing (a credit-note draft). */
             409: {
                 headers: {
                     [name: string]: unknown;

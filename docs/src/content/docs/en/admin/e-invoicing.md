@@ -18,7 +18,11 @@ document to one, **Storecove**, through Storecove's API. An invoice whose work b
 to one project names it in the EHF by the project's code — as the project reference
 (BT-11, `cac:ProjectReference`) on an invoice, and on a credit note, whose format has no
 such field, as an additional document reference with type code 50 — so the buyer's
-system can route it ([the mapping](/en/reference/invoices/#the-ehf-document)).
+system can route it ([the mapping](/en/reference/invoices/#the-ehf-document)). A final
+settlement names every a-konto invoice it deducts as a preceding invoice (BG-3, one
+`cac:BillingReference` each) and carries its deductions as lines with a quantity of -1
+and a negative amount, never as a prepaid amount, so the buyer's system sees what was
+billed before and the VAT nets out per rate.
 
 The duties: public bodies have required EHF from their suppliers since 2019, and from
 **1 January 2027** a Norwegian business must send its invoices to other Norwegian

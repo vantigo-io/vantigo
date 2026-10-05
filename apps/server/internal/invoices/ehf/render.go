@@ -110,11 +110,23 @@ func Render(d Document) ([]byte, error) {
 		w.leaf("cbc:ID", d.OrderReference)
 		w.end("cac:OrderReference")
 	}
-	if !invoice && d.Original != nil {
+	// The preceding invoices (BG-3): a credit note's original; a final
+	// settlement's a-kontos, one reference per invoice it deducts (invoices
+	// work design D7). A settlement's deductions are negative lines, never a
+	// PrepaidAmount: that lowers the amount due, not the VAT base, and the
+	// a-kontos were VAT invoices.
+	var preceding []DocumentReference
+	switch {
+	case !invoice && d.Original != nil:
+		preceding = []DocumentReference{*d.Original}
+	case invoice:
+		preceding = d.Deducted
+	}
+	for _, ref := range preceding {
 		w.start("cac:BillingReference")
 		w.start("cac:InvoiceDocumentReference")
-		w.leaf("cbc:ID", d.Original.Number)
-		w.leaf("cbc:IssueDate", d.Original.IssueDate)
+		w.leaf("cbc:ID", ref.Number)
+		w.leaf("cbc:IssueDate", ref.IssueDate)
 		w.end("cac:InvoiceDocumentReference")
 		w.end("cac:BillingReference")
 	}

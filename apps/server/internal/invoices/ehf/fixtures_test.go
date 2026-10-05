@@ -242,6 +242,32 @@ func fixtures(t *testing.T) map[string]ehf.Document {
 	creditProject.PDFName = "kreditnota-10056.pdf"
 	out["credit-note-project"] = creditProject
 
+	// A final settlement (invoices work design D7): the work, and a deduction
+	// line per (a-konto, VAT code) — quantity -1, the amount deducted as a
+	// positive price, its line amount negative — two a-kontos, so two
+	// BillingReferences; the negative amounts flow into the VAT row and the
+	// totals, and no PrepaidAmount is written.
+	settlement := baseInvoice("10057")
+	settlement.Deducted = []ehf.DocumentReference{{Number: "10040", IssueDate: "2026-08-01"}, {Number: "10041", IssueDate: "2026-09-01"}}
+	settlement.Lines = []ehf.Line{
+		line("1", "Sluttoppgjør byggetrinn 2", "stk", "1", "400000", "0", "S", "25"),
+		line("2", "Tidligere fakturert a konto, faktura 10040", "", "-1", "125000", "0", "S", "25"),
+		line("3", "Tidligere fakturert a konto, faktura 10041", "", "-1", "100000", "0", "S", "25"),
+	}
+	settlement.VAT = []ehf.VATRow{vat("S", "25", "175000.00", "43750.00", "")}
+	settlement.NetTotal, settlement.VATTotal, settlement.GrossTotal = rat("175000.00"), rat("43750.00"), rat("218750.00")
+	settlement.PDFName = "faktura-10057.pdf"
+	out["invoice-final-settlement"] = settlement
+
+	// Its credit note reverses it whole: the deductions copied as negative
+	// lines, the totals positive, its original the one BillingReference.
+	creditSettlement := settlement
+	creditSettlement.Kind, creditSettlement.Number, creditSettlement.DueDate = ehf.KindCreditNote, "10058", ""
+	creditSettlement.Deducted = nil
+	creditSettlement.Original = &ehf.DocumentReference{Number: "10057", IssueDate: "2026-10-01"}
+	creditSettlement.PDFName = "kreditnota-10058.pdf"
+	out["credit-note-of-settlement"] = creditSettlement
+
 	return out
 }
 

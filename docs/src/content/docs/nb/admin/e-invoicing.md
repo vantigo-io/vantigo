@@ -19,7 +19,11 @@ En faktura der alt arbeidet hører til ett prosjekt, navngir prosjektet i EHF-en
 prosjektets kode — som prosjektreferanse (BT-11, `cac:ProjectReference`) på en faktura,
 og på en kreditnota, der formatet ikke har det feltet, som en tilleggsdokumentreferanse
 med typekode 50 — slik at kjøperens system kan rute den
-([tilordningen](/en/reference/invoices/#the-ehf-document)).
+([tilordningen](/en/reference/invoices/#the-ehf-document)). Et sluttoppgjør nevner hver
+a konto-faktura det trekker fra som en tidligere faktura (BG-3, én
+`cac:BillingReference` hver) og fører fradragene som linjer med antall -1 og negativt
+beløp, aldri som et forhåndsbetalt beløp, så kjøperens system ser hva som ble fakturert
+før, og mvaen går opp per sats.
 
 Pliktene: offentlige virksomheter har krevd EHF fra leverandørene sine siden 2019, og fra
 **1. januar 2027** skal en norsk virksomhet sende fakturaene sine til andre norske

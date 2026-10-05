@@ -16,12 +16,13 @@ import (
 const copyLinesToCredit = `-- name: CopyLinesToCredit :exec
 INSERT INTO invoices.lines (
     invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id,
-    credits_line_id, line_gross, line_allowance, line_net
+    credits_line_id, line_gross, line_allowance, line_net, deducts_invoice_id
 )
 SELECT $1::bigint, src.position, src.description, src.quantity, src.unit, src.unit_price,
-       src.discount_percent, src.vat_code_id, src.id, src.line_gross, src.line_allowance, src.line_net
+       src.discount_percent, src.vat_code_id, src.id, src.line_gross, src.line_allowance, src.line_net,
+       src.deducts_invoice_id
 FROM invoices.lines src
-WHERE src.invoice_id = $2::bigint AND src.quantity > 0
+WHERE src.invoice_id = $2::bigint AND src.quantity <> 0
 ORDER BY src.position
 `
 
@@ -32,7 +33,10 @@ type CopyLinesToCreditParams struct {
 
 // CopyLinesToCredit copies every line of the original onto its credit-note
 // draft, each pointing at the line it credits (D8). The VAT snapshot is the
-// credit note's issue's to write, from the original line's.
+// credit note's issue's to write, from the original line's. A settlement's
+// deduction line is copied as it is — its negative quantity and the invoice
+// it deducts (invoices work design D7) — so its credit gives the deduction
+// back.
 func (q *Queries) CopyLinesToCredit(ctx context.Context, arg CopyLinesToCreditParams) error {
 	_, err := q.db.Exec(ctx, copyLinesToCredit, arg.CreditID, arg.OriginalID)
 	return err

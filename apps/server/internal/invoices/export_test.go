@@ -118,6 +118,15 @@ func SetPDFModelBuilt(hook func(invoiceID int64, watermark string, numbered bool
 	return func() { pdfModelBuilt = nil }
 }
 
+// SetPDFModelText installs a hook told, for every PDF laid out, its
+// document's id, its meta rows and its line rows as printed, and answers the
+// function that removes it. A test using it does not run in parallel: the
+// hook is the package's, shared with SetPDFModelBuilt.
+func SetPDFModelText(hook func(invoiceID int64, meta [][2]string, lines [][]string)) func() {
+	pdfModelBuilt = func(id int64, m pdfModel) { hook(id, m.meta, m.lines) }
+	return func() { pdfModelBuilt = nil }
+}
+
 // DocumentState is documentState, the Go mirror of invoices.document_state,
 // for the test that holds the two to each other.
 var DocumentState = documentState

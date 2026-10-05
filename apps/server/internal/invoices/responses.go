@@ -58,7 +58,8 @@ func deliveryEndOf(inv store.InvoicesInvoice) time.Time {
 func lineResponse(l store.InvoicesLine) (gen.InvoicesLine, error) {
 	out := gen.InvoicesLine{
 		Id: l.ID, Position: l.Position, Description: l.Description, Unit: l.Unit, VatCodeId: l.VatCodeID,
-		CreditsLineId: l.CreditsLineID, VatCategory: l.VatCategory, SafTCode: l.SafTCode, ExemptionReason: l.ExemptionReason,
+		CreditsLineId: l.CreditsLineID, DeductsInvoiceId: l.DeductsInvoiceID,
+		VatCategory: l.VatCategory, SafTCode: l.SafTCode, ExemptionReason: l.ExemptionReason,
 	}
 	var err error
 	for _, c := range []struct {
@@ -108,15 +109,22 @@ func storedSummaryResponse(r store.InvoicesVatSummary) (gen.InvoicesVatSummary, 
 	return out, nil
 }
 
-// storedDraftLines are a draft's stored lines as the arithmetic reads them.
+// storedDraftLines are a draft's stored lines as the arithmetic reads them:
+// the code, the quantity — a deduction's negative one — the price and the
+// net, and the invoice a deduction line deducts (invoices work design D7),
+// whose snapshot withDeductionSnapshots adds.
 func storedDraftLines(lines []store.InvoicesLine) ([]draftLine, error) {
 	out := make([]draftLine, 0, len(lines))
 	for _, l := range lines {
-		net, err := ratFromNumeric(l.LineNet)
-		if err != nil {
+		d := draftLine{vatCodeID: l.VatCodeID, creditsLineID: l.CreditsLineID, deductsInvoiceID: l.DeductsInvoiceID}
+		var err error
+		if d.quantity, d.unitPrice, err = numericPair(l.Quantity, l.UnitPrice); err != nil {
 			return nil, err
 		}
-		out = append(out, draftLine{vatCodeID: l.VatCodeID, amounts: lineAmounts{net: net}})
+		if d.amounts.net, err = ratFromNumeric(l.LineNet); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
 	}
 	return out, nil
 }
@@ -403,6 +411,11 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		if err != nil {
 			return gen.InvoicesInvoiceResponse{}, err
 		}
+		// A settlement's deductions are taxed at their a-kontos' snapshots
+		// (invoices work design D7).
+		if err := withDeductionSnapshots(ctx, q, lines); err != nil {
+			return gen.InvoicesInvoiceResponse{}, err
+		}
 		// VAT in NOK at the draft's own exchange rate, as its issue writes it.
 		exchangeRate, err := ratFromNumeric(inv.ExchangeRate)
 		if err != nil {
@@ -410,11 +423,16 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		}
 		rows, totals, _ = summarize(taxedLines(lines, codes), exchangeRate)
 		for _, l := range lines {
-			if c, ok := codes[l.vatCodeID]; ok && c.rate == nil {
+			if c, ok := codes[l.vatCodeID]; ok && c.rate == nil && l.deductsInvoiceID == nil {
 				resp.Warnings = append(resp.Warnings, warningVatCodeNotValid)
 				break
 			}
 		}
+		warnings, err := settlementWarnings(ctx, q, inv, lines, totals.gross)
+		if err != nil {
+			return gen.InvoicesInvoiceResponse{}, err
+		}
+		resp.Warnings = append(resp.Warnings, warnings...)
 	}
 	for _, r := range rows {
 		resp.VatSummaries = append(resp.VatSummaries, summaryResponse(r))

@@ -16,22 +16,23 @@ const invoicesPath = "/api/v1/invoices"
 func invoicePath(id int64) string { return fmt.Sprintf("%s/%d", invoicesPath, id) }
 
 type lineJSON struct {
-	ID              int64    `json:"id"`
-	Position        int32    `json:"position"`
-	Description     string   `json:"description"`
-	Quantity        float64  `json:"quantity"`
-	Unit            string   `json:"unit"`
-	UnitPrice       float64  `json:"unitPrice"`
-	DiscountPercent float64  `json:"discountPercent"`
-	VatCodeID       int32    `json:"vatCodeId"`
-	CreditsLineID   *int64   `json:"creditsLineId"`
-	LineGross       float64  `json:"lineGross"`
-	LineAllowance   float64  `json:"lineAllowance"`
-	LineNet         float64  `json:"lineNet"`
-	VatRatePercent  *float64 `json:"vatRatePercent"`
-	VatCategory     *string  `json:"vatCategory"`
-	SafTCode        *string  `json:"safTCode"`
-	ExemptionReason *string  `json:"exemptionReason"`
+	ID               int64    `json:"id"`
+	Position         int32    `json:"position"`
+	Description      string   `json:"description"`
+	Quantity         float64  `json:"quantity"`
+	Unit             string   `json:"unit"`
+	UnitPrice        float64  `json:"unitPrice"`
+	DiscountPercent  float64  `json:"discountPercent"`
+	VatCodeID        int32    `json:"vatCodeId"`
+	CreditsLineID    *int64   `json:"creditsLineId"`
+	DeductsInvoiceID *int64   `json:"deductsInvoiceId"`
+	LineGross        float64  `json:"lineGross"`
+	LineAllowance    float64  `json:"lineAllowance"`
+	LineNet          float64  `json:"lineNet"`
+	VatRatePercent   *float64 `json:"vatRatePercent"`
+	VatCategory      *string  `json:"vatCategory"`
+	SafTCode         *string  `json:"safTCode"`
+	ExemptionReason  *string  `json:"exemptionReason"`
 }
 
 type summaryJSON struct {

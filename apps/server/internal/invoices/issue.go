@@ -98,6 +98,9 @@ type issuePlan struct {
 	// of it the credit note releases (invoices work design D8).
 	original *store.InvoicesInvoice
 	releases []release
+	// settlement is an invoice that deducts an earlier one (invoices work
+	// design D7): its gross must be positive.
+	settlement bool
 }
 
 // planSummary is a document's VAT rows and totals as its issue writes them.
@@ -176,9 +179,12 @@ func dateList(dates []time.Time) string {
 
 // invoiceIssueChecks are the checks only an invoice keeps (D6 step 5): the
 // customer gates on the profile read before the transaction, the buyer, and
-// the VAT codes as they stand on the issue date.
+// the VAT codes as they stand on the issue date — but for a settlement's
+// deduction lines, taxed at their a-kontos' snapshots and capped by what the
+// a-kontos have left, read here, after the counter, and never locked
+// (invoices work design D7, issueDeductions).
 func invoiceIssueChecks(ctx context.Context, txq *store.Queries, profile *contracts.CustomerBillingProfile,
-	settings store.InvoicesSetting, issueDate time.Time, lines []store.InvoicesLine,
+	settings store.InvoicesSetting, issueDate time.Time, locked store.InvoicesInvoice, lines []store.InvoicesLine,
 ) (issuePlan, *gen.InvoicesConflictProblem, error) {
 	if refusal := customerGate(profile); refusal != nil {
 		return issuePlan{}, refusal, nil
@@ -192,7 +198,21 @@ func invoiceIssueChecks(ctx context.Context, txq *store.Queries, profile *contra
 	if err != nil {
 		return issuePlan{}, nil, err
 	}
+	deductions, refusal, err := issueDeductions(ctx, txq, locked, lines)
+	if err != nil || refusal != nil {
+		return issuePlan{}, refusal, err
+	}
+	plan.settlement = len(deductions) > 0
 	for _, l := range lines {
+		if snap, ok := deductions[l.ID]; ok {
+			net, err := ratFromNumeric(l.LineNet)
+			if err != nil {
+				return issuePlan{}, nil, err
+			}
+			snap.net = net
+			plan.lines = append(plan.lines, issuedLine{id: l.ID, position: l.Position, taxed: snap})
+			continue
+		}
 		code := codes[l.VatCodeID]
 		if !code.active {
 			r := cannotIssue(codeVatCodeInactive, fmt.Sprintf("Line %d's VAT code is no longer offered.", l.Position))
@@ -361,7 +381,7 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		var plan issuePlan
 		switch locked.Kind {
 		case kindInvoice:
-			plan, refusal, err = invoiceIssueChecks(ctx, txq, profile, settings, issueDate, lines)
+			plan, refusal, err = invoiceIssueChecks(ctx, txq, profile, settings, issueDate, locked, lines)
 		case kindCreditNote:
 			plan, refusal, err = creditIssueChecks(ctx, txq, locked, lines)
 		default:
@@ -388,6 +408,14 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		if ambiguous {
 			refusal = cannotIssue(codeVatCodesAmbiguous,
 				"Two lines share a VAT category and rate but carry different SAF-T codes, so one VAT summary row could not name its code.")
+			return errRefused
+		}
+		// A settlement whose gross is not positive could never be credited,
+		// nor the a-kontos it deducted (invoices work design D7).
+		if plan.settlement && totals.gross.Sign() <= 0 {
+			refusal = cannotIssue(codeInvoiceTotalNotPositive, fmt.Sprintf(
+				"This settlement's total is %s: a settlement deducts less than it bills. A fixed price billed in full on account ends with its last a-konto.",
+				totals.gross.FloatString(2)))
 			return errRefused
 		}
 		// An invoice under the KID agreement gets its KID from the number
