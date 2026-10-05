@@ -109,26 +109,53 @@ type InvoicesInvoice struct {
 	Revision                   int32
 	Kid                        *string
 	KidAlgorithm               *string
+	ProjectID                  *int32
+	ProjectReference           *string
+	Timesheet                  bool
 }
 
 type InvoicesLine struct {
-	ID              int64
-	InvoiceID       int64
-	Position        int32
-	Description     string
-	Quantity        pgtype.Numeric
-	Unit            string
-	UnitPrice       pgtype.Numeric
-	DiscountPercent pgtype.Numeric
-	VatCodeID       int32
-	CreditsLineID   *int64
-	LineGross       pgtype.Numeric
-	LineAllowance   pgtype.Numeric
-	LineNet         pgtype.Numeric
-	VatRatePercent  pgtype.Numeric
-	VatCategory     *string
-	SafTCode        *string
-	ExemptionReason *string
+	ID               int64
+	InvoiceID        int64
+	Position         int32
+	Description      string
+	Quantity         pgtype.Numeric
+	Unit             string
+	UnitPrice        pgtype.Numeric
+	DiscountPercent  pgtype.Numeric
+	VatCodeID        int32
+	CreditsLineID    *int64
+	LineGross        pgtype.Numeric
+	LineAllowance    pgtype.Numeric
+	LineNet          pgtype.Numeric
+	VatRatePercent   pgtype.Numeric
+	VatCategory      *string
+	SafTCode         *string
+	ExemptionReason  *string
+	DeductsInvoiceID *int64
+}
+
+type InvoicesLineRelease struct {
+	ID           int64
+	InvoiceID    int64
+	CreditLineID int64
+	LineSourceID int64
+}
+
+type InvoicesLineSource struct {
+	ID             int64
+	LineID         int64
+	InvoiceID      int64
+	SourceKind     string
+	SourceID       int64
+	SourceRevision int32
+	SourceSubkind  *string
+	ProjectID      int32
+	Quantity       pgtype.Numeric
+	Amount         pgtype.Numeric
+	Currency       string
+	State          string
+	SourceDate     pgtype.Date
 }
 
 type InvoicesPayment struct {
@@ -170,6 +197,23 @@ type InvoicesSetting struct {
 	PeppolID                *string
 	KidLength               *int16
 	KidAlgorithm            *string
+	WorkVatCodeHours        int32
+	WorkVatCodeExpenses     int32
+	WorkVatCodeMilestones   int32
+	TimesheetDefault        bool
+	TimesheetPersonLabel    string
+}
+
+type InvoicesTimesheetRow struct {
+	ID          int64
+	InvoiceID   int64
+	Position    int32
+	SourceID    int64
+	PersonLabel string
+	EntryDate   pgtype.Date
+	Hours       pgtype.Numeric
+	WorkType    *string
+	Description string
 }
 
 type InvoicesTransmission struct {

@@ -370,7 +370,7 @@ func writeLines(ctx context.Context, txq *store.Queries, invoiceID int64, lines 
 				return err
 			}
 		}
-		if err := txq.InsertLine(ctx, p); err != nil {
+		if _, err := txq.InsertLine(ctx, p); err != nil {
 			return fmt.Errorf("invoices: write draft %d's line %d: %w", invoiceID, i+1, err)
 		}
 	}
