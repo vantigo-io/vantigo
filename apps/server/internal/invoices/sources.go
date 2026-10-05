@@ -270,7 +270,11 @@ func heldElsewhere(ctx context.Context, q *store.Queries, invoiceID int64, rows 
 
 // sameHeldSet reports whether two reads of a draft's sources hold the same
 // work at the same revisions and amounts — what a refresh read before the
-// save's transaction must still find under its lock (plan reading 32).
+// save's transaction must still find under its lock (plan reading 32). It
+// compares kind, id, revision and amount only, never the line: a refresh
+// re-places the work on the request's lines anyway. The issue's own check
+// of the set it read before its lock must add the line position, since the
+// issue stamps the work onto the lines as they stand.
 func sameHeldSet(a, b []heldSource) bool {
 	if len(a) != len(b) {
 		return false
@@ -543,9 +547,11 @@ type sourcesRefresh struct {
 }
 
 // apply takes the current facts of each carried row whose module answered
-// for it — the revision, the project, the currency, the quantity, the amount,
-// the date and an expense's kind — and drops each one its module no longer
-// answers (no longer invoiceable). A kind whose module is off is carried as
+// for it — the revision, the project, the quantity, the amount, the date and
+// an expense's kind — and drops each one its module no longer answers (no
+// longer invoiceable) or answers in another currency: a source that moved
+// from the draft's currency would otherwise be taken as fresh and stamped
+// into a document in another currency without a word. A kind whose module is off is carried as
 // it stood; the issue fails closed on it.
 func (r *sourcesRefresh) apply(rows []heldSource) (kept []heldSource, dropped []sourceRef) {
 	for _, h := range rows {
@@ -554,7 +560,7 @@ func (r *sourcesRefresh) apply(rows []heldSource) (kept []heldSource, dropped []
 			continue
 		}
 		n, ok := r.now[h.ref()]
-		if !ok {
+		if !ok || n.currency != h.currency {
 			dropped = append(dropped, h.ref())
 			continue
 		}

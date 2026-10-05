@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -476,6 +477,7 @@ type fakeBillable struct {
 type billableCall struct {
 	method string
 	ids    []int64
+	until  time.Time
 	locked bool
 }
 
@@ -545,7 +547,7 @@ func (f *fakeBillable) record(ctx context.Context, method string, req contracts.
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, billableCall{method: method, ids: slices.Clone(req.IDs), locked: invoices.InLockedTx(ctx)})
+	f.calls = append(f.calls, billableCall{method: method, ids: slices.Clone(req.IDs), until: req.Until, locked: invoices.InLockedTx(ctx)})
 	after := f.onRead
 	f.onRead = nil
 	return after, f.failure

@@ -549,6 +549,9 @@ func TestSources_FreshnessOnGet(t *testing.T) {
 		if r.locked {
 			t.Errorf("%s was read under a lock", r.method)
 		}
+		if !r.until.IsZero() {
+			t.Errorf("%s was read until %v; a held source is read by id with no bound", r.method, r.until)
+		}
 	}
 	var calls []string
 	for _, call := range contractCalls.by(userID) {
@@ -559,6 +562,14 @@ func TestSources_FreshnessOnGet(t *testing.T) {
 		"Directory.BillingProfile", "BillableMilestones.BillableMilestones", "BillableExpenses.BillableExpenses", "BillableHours.BillableHours",
 	}) {
 		t.Errorf("contract calls = %v", calls)
+	}
+
+	// A milestone's amount moved at the same revision — a fixed price edited
+	// under a percent milestone — is a change too.
+	f.putMilestone(contracts.BillableMilestone{ID: milestone, Revision: 1, ProjectID: project41, Name: "Fase 1",
+		ReadyAt: time.Date(2026, 9, 4, 22, 30, 0, 0, time.UTC), Amount: "10500.00", Currency: "NOK"})
+	if doc := getWork(t, c, d.ID); !slices.Equal(doc.Lines[2].Warnings, []string{"source_changed"}) {
+		t.Errorf("a milestone at 10 500 = %v, want source_changed", doc.Lines[2].Warnings)
 	}
 
 	// A reader without invoices:create, and the list, read nothing.
@@ -720,6 +731,23 @@ func TestSources_RefreshSourcesTakesNewRevisionsAndDrops(t *testing.T) {
 		t.Errorf("after the refresh GET warns %v", doc.Warnings)
 	}
 
+	// An expense now billed in SEK is not taken into a NOK draft: dropped and
+	// named, never refreshed into "fresh".
+	e.Currency = "SEK"
+	f.putExpense(e)
+	body = draftBody(customerAcme, theSameLines()[:2]...)
+	body["paymentTermsDays"], body["revision"], body["refreshSources"] = 30, saved.Revision, true
+	res, saved = putWork(t, h, d.ID, body)
+	if res.Status != http.StatusOK {
+		t.Fatalf("refresh with an expense in SEK = %d %s", res.Status, res.Body)
+	}
+	if got := refsOf(saved.ReleasedSources); !slices.Equal(got, []string{"expenses.entry:601"}) {
+		t.Errorf("released = %v, want the expense now in SEK", got)
+	}
+	if rows := heldRows(t, h, d.ID); len(rows) != 2 || strings.Contains(strings.Join(rows, " "), "expenses.entry") {
+		t.Errorf("held = %v, want only the two hours", rows)
+	}
+
 	plain := createDraft(t, h, draftBody(customerAcme, line("Rådgivning", 1, 1000, vat25)))
 	body = sourcedBody(plain, customerAcme, line("Rådgivning", 1, 1000, vat25))
 	body["refreshSources"] = true
@@ -797,5 +825,36 @@ func TestSources_TheBlockIsAnsweredFromOwnRows(t *testing.T) {
 	}
 	if len(f.reads()) != 0 {
 		t.Errorf("reads = %v, want none: the block is the document's own rows", f.reads())
+	}
+}
+
+// A credit note credits what was billed and adds no work: a line naming a
+// source, or refreshSources, is a 400 on the field; [] is none (D2, D16).
+func TestSources_ACreditNoteDraftRefusesSourcesAndRefresh(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	saveSeller(t, h, completeSeller(1))
+	original := createDraft(t, h, draftBody(customerAcme, line("Timer", 1, 1000, vat25)))
+	plantSource(t, h, original.ID, planted{position: 1, kind: "time.entry", id: 503, revision: 1, quantity: "1", amount: "1000", date: "2026-09-04"})
+	flipIssued(t, h, original.ID, 1)
+	c := creditDraft(t, h, original.ID)
+
+	named := creditLine(c.Lines[0])
+	named["sources"] = []refJSON{ref("time.entry", 503)}
+	res := creator(t, h).Do(http.MethodPut, invoicePath(c.ID), creditBody(c, named))
+	if p := problemOf(t, res); res.Status != http.StatusBadRequest || !slices.Equal(p.Errors["lines[0].sources"], []string{"A credit note adds no work"}) {
+		t.Errorf("a credit line naming a source = %d %s, want 400 on lines[0].sources", res.Status, res.Body)
+	}
+	refresh := creditBody(c, creditLine(c.Lines[0]))
+	refresh["refreshSources"] = true
+	res = creator(t, h).Do(http.MethodPut, invoicePath(c.ID), refresh)
+	if res.Status != http.StatusBadRequest || len(problemOf(t, res).Errors["refreshSources"]) == 0 {
+		t.Errorf("a credit draft with refreshSources = %d %s, want 400 on refreshSources", res.Status, res.Body)
+	}
+	none := creditLine(c.Lines[0])
+	none["sources"] = []refJSON{}
+	saveCredit(t, h, c, creditBody(c, none))
+	if n := h.Count(t, `SELECT count(*) FROM invoices.line_sources WHERE invoice_id = $1`, c.ID); n != 0 {
+		t.Errorf("the credit draft holds %d sources, want none", n)
 	}
 }

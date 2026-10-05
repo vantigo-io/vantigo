@@ -331,9 +331,10 @@ and a credit-note draft read nothing.
 
 **Refresh.** `PUT /{id}` with `refreshSources: true` reads the draft's held work and the
 billable reads' answer for it before the save's transaction, and the save takes, for
-each source its module still answers, its current revision, project, currency,
-quantity, amount, date and kind; a source no longer answered is dropped and named in
-`releasedSources`. A kind whose module is switched off is carried as it stood. Under the
+each source its module still answers, its current revision, project, quantity, amount,
+date and kind; a source no longer answered is dropped and named in `releasedSources`,
+and so is one its module now answers in another currency than the draft took it in — a
+refresh never takes work into a document in a currency it was not taken in. A kind whose module is switched off is carried as it stood. Under the
 lock the save requires the held work it read — the same sources at the same revisions
 and amounts — or answers 409 `invoice_changed`: a save slipped in between.
 
@@ -1382,7 +1383,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included); 409 the customer gates |
 | `GET /{id}` | | 404 |
-| `PUT /{id}` | `invoices:create` | 404; 400 (a line's `sources` against the work the draft holds, at most 5 000); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `source_held_elsewhere` |
+| `PUT /{id}` | `invoices:create` | 404; 400 (a line's `sources` against the work the draft holds, at most 5 000); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`) |
 | `DELETE /{id}` | `invoices:create` | 404; 409 `invoice_issued` |
 | `POST /{id}/issue` | `invoices:issue` | 400 a body that does not decode (none, or an `issueDate` that is no calendar day); 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |
