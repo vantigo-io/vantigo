@@ -47,6 +47,11 @@ func TestJoinNote(t *testing.T) {
 	if got := joinNote([]string{"abcd", "efg"}, 8); got != "abcd…" {
 		t.Errorf("one over = %q, want the first and the mark", got)
 	}
+	// The mark's room is kept while more sentences follow: "abcd. ef" fits 8
+	// alone, but with "x" still to come it would leave no room for the "…".
+	if got := joinNote([]string{"abcd", "ef", "x"}, 8); got != "abcd…" {
+		t.Errorf("room for the mark = %q, want %q", got, "abcd…")
+	}
 	// 600 + 2 + 398 characters fit 1 000 exactly, though far more bytes.
 	wide := []string{strings.Repeat("ø", 600), strings.Repeat("ø", 398)}
 	if got := joinNote(wide, maxNote); got != wide[0]+". "+wide[1] {
