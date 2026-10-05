@@ -67,17 +67,13 @@ func (b *billableHours) BillableHours(ctx context.Context, req contracts.Billabl
 	}
 	page.Hours = make([]contracts.BillableHour, 0, len(rows))
 	for _, row := range rows {
-		hour, err := billableHour(row)
-		if err != nil {
-			return contracts.BillableHoursPage{}, err
-		}
-		page.Hours = append(page.Hours, hour)
+		page.Hours = append(page.Hours, billableHour(row))
 	}
 	return page, nil
 }
 
 // billableHour is one row as the contract carries it.
-func billableHour(row store.BillableHoursForProjectsRow) (contracts.BillableHour, error) {
+func billableHour(row store.BillableHoursForProjectsRow) contracts.BillableHour {
 	hour := contracts.BillableHour{
 		ID:              row.ID,
 		Revision:        row.Revision,
@@ -97,16 +93,11 @@ func billableHour(row store.BillableHoursForProjectsRow) (contracts.BillableHour
 	if row.TaskTitle != nil {
 		hour.TaskTitle = *row.TaskTitle
 	}
-	if row.BillMultiplierPercent.Valid {
-		v, err := row.BillMultiplierPercent.Value()
-		if err != nil {
-			return contracts.BillableHour{}, fmt.Errorf("time: read entry %d's multiplier: %w", row.ID, err)
-		}
-		text, ok := v.(string)
-		if !ok {
-			return contracts.BillableHour{}, fmt.Errorf("time: entry %d's multiplier is not a finite decimal", row.ID)
-		}
-		hour.BillMultiplierPercent = &text
+	// The multiplier arrives as the column's own decimal text, "" for
+	// ordinary hours (queries/invoiced.sql), so no float ever touches it.
+	if row.BillMultiplierPercent != "" {
+		percent := row.BillMultiplierPercent
+		hour.BillMultiplierPercent = &percent
 	}
-	return hour, nil
+	return hour
 }

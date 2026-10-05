@@ -146,7 +146,7 @@ func TestBillableHours_Until(t *testing.T) {
 	p, pool := newBillableHours(t)
 	early := seedWork(t, pool, workRow{date: "2026-09-14"})
 	onTheDay := seedWork(t, pool, workRow{date: "2026-09-15"})
-	seedWork(t, pool, workRow{date: "2026-09-16"})
+	late := seedWork(t, pool, workRow{date: "2026-09-16"})
 	until := time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC)
 
 	page, err := p.BillableHours(context.Background(), contracts.BillableRequest{ProjectIDs: []int32{projectKraftVerket}, Until: until})
@@ -155,6 +155,15 @@ func TestBillableHours_Until(t *testing.T) {
 	}
 	if got := billableIDs(page); !slices.Equal(got, []int64{early, onTheDay}) {
 		t.Errorf("ids = %v, want [%d %d], the work dated on or before %s", got, early, onTheDay, until.Format(time.DateOnly))
+	}
+
+	// The bound holds for a read by ids too.
+	page, err = p.BillableHours(context.Background(), contracts.BillableRequest{IDs: []int64{early, onTheDay, late}, Until: until})
+	if err != nil {
+		t.Fatalf("BillableHours by ids: %v", err)
+	}
+	if got := billableIDs(page); !slices.Equal(got, []int64{early, onTheDay}) {
+		t.Errorf("by ids: ids = %v, want [%d %d], the work dated on or before %s", got, early, onTheDay, until.Format(time.DateOnly))
 	}
 }
 

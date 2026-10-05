@@ -290,6 +290,17 @@ func TestInvoicedWork_RefusesWhatIsNotInvoiceable(t *testing.T) {
 		err := holder.MarkInvoiced(ctx, tx, invoiceRef(), []contracts.WorkSource{missing})
 		t.Run("missing", func(t *testing.T) { wantRefusal(t, err, contracts.SourceNotInvoiceable, 987654) })
 	})
+	// Read while approved, then unapproved — which bumps the revision too:
+	// it is no longer invoiceable before it is changed, and is named so.
+	inRolledBackTx(t, pool, func(ctx context.Context, tx pgx.Tx) {
+		id := seedWork(t, tx, workRow{})
+		source := sourceOf(t, tx, id)
+		if _, err := tx.Exec(ctx, `UPDATE time.entries SET status = 'draft', revision = revision + 1 WHERE id = $1`, id); err != nil {
+			t.Fatalf("unapprove the entry: %v", err)
+		}
+		err := holder.MarkInvoiced(ctx, tx, invoiceRef(), []contracts.WorkSource{source})
+		t.Run("unapproved since the draft read it", func(t *testing.T) { wantRefusal(t, err, contracts.SourceNotInvoiceable, id) })
+	})
 }
 
 func TestInvoicedWork_RefusesWhatChanged(t *testing.T) {
@@ -419,6 +430,18 @@ func TestInvoicedWork_ReleaseToleratesAMissingStamp(t *testing.T) {
 	})
 	if got := log.warnings(); got != 1 {
 		t.Errorf("warnings logged = %d, want 1", got)
+	}
+
+	// An entry that is not there at all is tolerated the same way.
+	holder, log = newHolder(t)
+	inRolledBackTx(t, pool, func(ctx context.Context, tx pgx.Tx) {
+		missing := contracts.WorkSource{Kind: contracts.WorkSourceHours, ID: 987654}
+		if err := holder.ReleaseInvoiced(ctx, tx, invoiceRef(), []contracts.WorkSource{missing}); err != nil {
+			t.Fatalf("ReleaseInvoiced of a missing entry = %v, want it tolerated", err)
+		}
+	})
+	if got := log.warnings(); got != 1 {
+		t.Errorf("warnings logged for a missing entry = %d, want 1", got)
 	}
 }
 
