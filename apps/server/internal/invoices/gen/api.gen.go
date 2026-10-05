@@ -192,7 +192,7 @@ type InvoicesFromWorkRequest struct {
 	Grouping     *string             `json:"grouping,omitempty"`
 	InvoiceId    *int64              `json:"invoiceId,omitempty"`
 
-	// Note The draft's note, printed on the document, at most 1 000 characters. Absent or empty, the wizard suggests one when the work was released by a credit note before — "Erstatter faktura <n>, kreditert med kreditnota <c>" / "Replaces invoice <n>, credited by credit note <c>" — in the buyer's language. An append writes a note only on a target whose note is empty.
+	// Note The draft's note, printed on the document, at most 1 000 characters. Absent or empty, the wizard suggests one when the work was released by a credit note before — "Erstatter faktura <n>, kreditert med kreditnota <c>" / "Replaces invoice <n>, credited by credit note <c>" — in the buyer's language, cut to fit the note's 1 000 characters (whole sentences, ending in "…" when any is left out). An append writes a note only on a target whose note is empty — on a target that has one, the request's note is dropped and the target's kept.
 	Note     *string                  `json:"note,omitempty"`
 	Revision *int32                   `json:"revision,omitempty"`
 	Sources  []InvoicesFromWorkSource `json:"sources"`

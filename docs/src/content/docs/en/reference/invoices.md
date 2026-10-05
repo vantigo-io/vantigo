@@ -386,7 +386,9 @@ its own and the added.
 one, when any of the chosen work was released by a credit note before, the wizard
 suggests the note naming the invoice it replaces ([Release on
 credit](#release-on-credit)), in the buyer's language, read on the pool before the
-transaction. An append writes a note only on a target whose note is empty.
+transaction, and cut to fit the note's 1 000 characters: whole sentences only, ending in
+"…" when any was left out. An append writes a note only on a target whose note is empty;
+on a target that has one, a note in the request is dropped and the target's kept.
 
 **The project.** The draft's project is derived like any other draft's
 ([The project](#the-project)): after the work is held, from every line source the draft
@@ -668,7 +670,8 @@ without a note of the request's, it suggests one naming, for each piece of work,
 invoice its latest release replaced and the credit note that released it — "Erstatter
 faktura <n>, kreditert med kreditnota <c>" in Norwegian, "Replaces invoice <n>, credited
 by credit note <c>" in English, the buyer's language deciding — each pair once, the
-newest first, joined by ". "; work never released adds nothing. It is a suggestion: the
+newest first, joined by ". " and cut to fit the note's 1 000 characters, ending in "…"
+when a pair was left out; work never released adds nothing. It is a suggestion: the
 note can be edited like any.
 
 ## Issuing
