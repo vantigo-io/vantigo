@@ -1011,7 +1011,7 @@ export const invoicesCatalog = {
     "refusal.source_already_invoiced":
       "Arbeid på linje {{line}} er allerede merket som fakturert. Fjern det fra linjen.",
     "refusal.source_customer_changed":
-      "Arbeid på linje {{line}} hører til et prosjekt som ikke lenger faktureres denne kunden. Fjern det fra linjen.",
+      "Arbeid på linje {{line}} hører til et prosjekt som ikke lenger fakturerer denne kunden. Fjern det fra linjen.",
     "refusal.source_not_selectable":
       "Arbeid på linje {{line}} hører til et prosjekt som nå er fastpris eller ikke fakturerbart, så det kan ikke faktureres slik det er.",
     "refusal.projects_unavailable":

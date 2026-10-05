@@ -373,8 +373,9 @@ In order:
    `issued_at`. Each holder locks its rows in its own order and judges them as they
    stand: already invoiced is `source_already_invoiced`; no longer approved, ready or
    billable is `source_not_invoiceable`; changed since the draft took it is
-   `source_changed` — for an hour entry or a milestone its revision, project, currency
-   or amount, for an expense its billing facts and never its revision.
+   `source_changed` — for an hour entry its revision, project, currency or amount; for a
+   milestone its revision, currency or amount; for an expense its billing facts and never
+   its revision.
 4. **Then** the document's `line_sources` move from `held` to `invoiced`, and only then
    the lines' VAT snapshots, the VAT summary and the document itself are written.
 

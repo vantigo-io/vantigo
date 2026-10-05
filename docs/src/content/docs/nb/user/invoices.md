@@ -320,7 +320,7 @@ utgiftene og milepælene linjene fakturerer — i samme steg, så de forlater de
 ufakturerte arbeidet for godt. Utstedelsen avvises, med linjen nevnt, når et arbeid på
 den ikke lenger kan faktureres (*Arbeid på linje 2 kan ikke lenger faktureres*), er endret
 siden det ble lagt til, allerede er merket som fakturert, hører til et prosjekt som ikke
-lenger faktureres denne kunden eller som nå er fastpris eller ikke fakturerbart — og også
+lenger fakturerer denne kunden eller som nå er fastpris eller ikke fakturerbart — og også
 når Prosjekter-modulen er slått av, siden arbeidet da ikke kan kontrolleres, eller når
 utkastet ble lagret av noen andre mens du utstedte. Ingenting utstedes og ingen nummer
 brukes: oppdater arbeidet eller endre linjen, og utsted på nytt

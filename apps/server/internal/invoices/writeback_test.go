@@ -351,13 +351,15 @@ func TestIssue_ProjectsUnavailableFailsClosed(t *testing.T) {
 }
 
 // A change to the draft's work between the reads before the transaction and
-// its lock — a source moved to another line, or dropped — is invoice_changed,
-// and no holder is called; the next issue judges what the draft holds then.
-// Not parallel: the hook is the package's.
+// its lock — a source moved to another line, or dropped, or work added to a
+// draft that held none — is invoice_changed, and no holder is called; the
+// next issue judges what the draft holds then. Not parallel: the hook is the
+// package's.
 func TestIssue_ASaveSlippedBetweenIsInvoiceChanged(t *testing.T) {
 	holders := newFakeHolders()
 	h := workReady(t, holders, newFakeProjects())
 	draft := sourcedDraft(t, h)
+	empty := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
 	before := counterNext(t, h)
 	var step atomic.Int32
 	slips := map[int32]string{
@@ -370,9 +372,18 @@ func TestIssue_ASaveSlippedBetweenIsInvoiceChanged(t *testing.T) {
 			FROM gone g JOIN invoices.lines l ON l.invoice_id = g.invoice_id AND l.position = 2`,
 		// the mileage is dropped.
 		2: `DELETE FROM invoices.line_sources WHERE invoice_id = $1 AND source_id = 601`,
+		// a draft that held no work when it was read gets an hour.
+		3: `INSERT INTO invoices.line_sources (line_id, invoice_id, source_kind, source_id, source_revision,
+				project_id, quantity, amount, currency, source_date)
+			SELECT l.id, l.invoice_id, 'time.entry', 503, 1, 41, 1, 100, 'NOK', '2026-09-03'
+			FROM invoices.lines l WHERE l.invoice_id = $1 AND l.position = 1`,
 	}
 	restore := invoices.SetIssueBeforeLock(func(ctx context.Context, id int64) {
-		if id != draft.ID {
+		target := draft.ID
+		if step.Load() == 3 {
+			target = empty.ID
+		}
+		if id != target {
 			return
 		}
 		if sql, ok := slips[step.Load()]; ok {
@@ -395,6 +406,16 @@ func TestIssue_ASaveSlippedBetweenIsInvoiceChanged(t *testing.T) {
 	issued(t, h, draft.ID)
 	if got := holders.calledOrder(); !slices.Equal(got, []contracts.WorkSourceKind{kindMilestone, kindHours}) {
 		t.Errorf("holders called = %v, want the milestone's and the hours': the mileage was dropped", got)
+	}
+
+	called, next := len(holders.calledOrder()), counterNext(t, h)
+	step.Store(3)
+	refusedWith(t, h, empty.ID, "", "invoice_changed")
+	if got := holders.calledOrder(); len(got) != called {
+		t.Errorf("holders called = %v after the slip into an empty draft, want no more", got)
+	}
+	if n := counterNext(t, h); n != next {
+		t.Errorf("slip 3: counter next = %d, want %d", n, next)
 	}
 }
 

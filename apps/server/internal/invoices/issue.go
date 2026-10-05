@@ -301,8 +301,11 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		}
 		// "Today" is read only now, after the counter: an issue that waited
 		// on it across Oslo midnight is dated the day it is issued, the day
-		// its issued_at falls on.
-		today := businessDay(s.deps.Clock())
+		// its issued_at falls on. The issue's clock is read here once: today,
+		// every stamp's time and the document's issued_at, so the issue date
+		// and issued_at never straddle midnight.
+		now := s.deps.Clock()
+		today := businessDay(now)
 		issueDate := today
 		if req.Body.IssueDate != nil {
 			issueDate = utcDay(req.Body.IssueDate.Time)
@@ -392,9 +395,6 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			documentKid, kidAlgorithm = &k, settings.KidAlgorithm
 		}
 
-		// The issue's own clock, read once: every stamp's time and the
-		// document's issued_at.
-		now := s.deps.Clock()
 		// The work, last of the checks and first of the writes: the holders
 		// stamp it invoiced on this transaction (D1, rule 10), before
 		// anything of the document is written.
