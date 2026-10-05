@@ -710,7 +710,9 @@ func (c *caller) accessFor(entry store.ExpensesEntry, unit entryUnit, role strin
 	// closed must not be invoiceable either.
 	a.CanMarkInvoiced = financial && entry.Billable && entry.Kind != kindPerDiem &&
 		unit.Status == statusApproved && entry.InvoicedAt == nil && entry.BillAmount.Valid
-	a.CanUndoInvoiced = financial && entry.InvoicedAt != nil
+	// A line the Invoices module invoiced is undone only by a credit note
+	// (invoiced_work.go), never by the manual door.
+	a.CanUndoInvoiced = financial && entry.InvoicedAt != nil && entry.InvoicedInvoiceID == nil
 	a.CanMarkReimbursed = standalone && c.Manage && unit.Status == statusApproved &&
 		unit.ReimbursedAt == nil && owesEmployee(entry)
 	a.CanUndoReimbursed = standalone && c.Manage && unit.ReimbursedAt != nil

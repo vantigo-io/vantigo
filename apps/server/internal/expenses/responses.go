@@ -444,9 +444,10 @@ func entryResponse(row store.ExpensesEntry, unit entryUnit, a entryAccess, names
 		// is the project's business and not the employee's.
 		if row.InvoicedAt != nil {
 			billing.Invoice = &gen.ExpensesEntryInvoice{
-				At:        *row.InvoicedAt,
-				By:        userRef(invoicedBy(row), names),
-				Reference: row.InvoiceReference,
+				At:         *row.InvoicedAt,
+				By:         userRef(invoicedBy(row), names),
+				Reference:  row.InvoiceReference,
+				InvoicedBy: invoicedByInvoice(row),
 			}
 		}
 		resp.Billing = billing

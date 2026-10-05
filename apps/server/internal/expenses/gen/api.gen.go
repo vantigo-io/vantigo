@@ -306,6 +306,22 @@ type ExpensesClaimUpdateRequest struct {
 	Revision int32 `json:"revision"`
 }
 
+// ExpensesConflictProblem ProblemDetails plus this module's refusal code (invoices work design D1). code is invoiced_by_invoices on POST /entries/{id}/invoiced and its undo when the line was invoiced through the Invoices module: such a mark is that invoice's, and only a credit note that returns the line takes it back — invoiceId and invoiceNumber name the invoice. A revision conflict carries no code; its detail names both revisions.
+type ExpensesConflictProblem struct {
+	Code     *string `json:"code,omitempty"`
+	Detail   *string `json:"detail,omitempty"`
+	Instance *string `json:"instance,omitempty"`
+
+	// InvoiceId On invoiced_by_invoices, the id of the invoice the line went out on. Absent otherwise.
+	InvoiceId *int64 `json:"invoiceId,omitempty"`
+
+	// InvoiceNumber On invoiced_by_invoices, that invoice's number. Absent otherwise.
+	InvoiceNumber *int64  `json:"invoiceNumber,omitempty"`
+	Status        *int32  `json:"status,omitempty"`
+	Title         *string `json:"title,omitempty"`
+	Type          *string `json:"type,omitempty"`
+}
+
 // ExpensesCurrencyAmount One currency's amount in a dashboard reading. Nothing is ever converted (design §4), so a caller owed money in two currencies gets two lines and never a sum that is in neither.
 type ExpensesCurrencyAmount struct {
 	Amount   float64 `json:"amount"`
@@ -376,7 +392,7 @@ type ExpensesEntryCapabilities struct {
 	// CanUnapprove Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has been neither reimbursed nor invoiced.
 	CanUnapprove bool `json:"canUnapprove"`
 
-	// CanUndoInvoiced Whether the caller may take the invoicing back — financial rights on its project, while it stands invoiced.
+	// CanUndoInvoiced Whether the caller may take the invoicing back — financial rights on its project, while it stands marked invoiced by hand. Never on a line the Invoices module invoiced, which only a credit note takes back.
 	CanUndoInvoiced bool `json:"canUndoInvoiced"`
 
 	// CanUndoReimbursed Whether the caller may take the reimbursement back — expenses:manage, while it stands reimbursed.
@@ -403,7 +419,7 @@ type ExpensesEntryDecision struct {
 	Status string `json:"status"`
 }
 
-// ExpensesEntryInvoice That a billable line has been billed on to the customer, by whom and when, with the reference of the invoice it went out on.
+// ExpensesEntryInvoice That a billable line has been billed on to the customer, by whom and when, with the reference of the invoice it went out on — or, when the Invoices module issued it, that invoice's id and number.
 type ExpensesEntryInvoice struct {
 	// At When it was marked invoiced.
 	At time.Time `json:"at"`
@@ -411,7 +427,10 @@ type ExpensesEntryInvoice struct {
 	// By One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
 	By ExpensesUserRef `json:"by"`
 
-	// Reference The invoice it went out on, as whoever marked it typed it. Absent when none was given.
+	// InvoicedBy The invoice the Invoices module issued it on, when it was invoiced that way rather than marked by hand — by is then whoever issued that invoice, and at the issue's time. Only a credit note that returns the line takes such a mark back.
+	InvoicedBy *ExpensesInvoicedBy `json:"invoicedBy,omitempty"`
+
+	// Reference The invoice it went out on, as whoever marked it typed it. Absent when none was given, and always on a line the Invoices module invoiced, which names its invoice in invoicedBy.
 	Reference *string `json:"reference,omitempty"`
 }
 
@@ -725,6 +744,12 @@ type ExpensesFlowResponse struct {
 
 	// Entries The standalone expenses that moved, in the order their ids were given.
 	Entries []ExpensesEntryResponse `json:"entries"`
+}
+
+// ExpensesInvoicedBy The invoice the Invoices module issued this line on (invoices work design D1) — its id and number. Present only on a line invoiced that way; a line marked invoiced by hand carries its typed reference instead.
+type ExpensesInvoicedBy struct {
+	InvoiceId int64 `json:"invoiceId"`
+	Number    int64 `json:"number"`
 }
 
 // ExpensesInvoicedRequest Marks one approved, billable line as billed on to the customer (decision X5). The caller needs financial rights on the line's project; the period lock does not hold it back, because invoicing is bookkeeping done after the period closes.
@@ -4623,7 +4648,7 @@ func (response PostExpensesEntriesByIdInvoiced404Response) VisitPostExpensesEntr
 	return nil
 }
 
-type PostExpensesEntriesByIdInvoiced409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+type PostExpensesEntriesByIdInvoiced409ApplicationProblemPlusJSONResponse ExpensesConflictProblem
 
 func (response PostExpensesEntriesByIdInvoiced409ApplicationProblemPlusJSONResponse) VisitPostExpensesEntriesByIdInvoicedResponse(w http.ResponseWriter) error {
 
@@ -4710,7 +4735,7 @@ func (response PostExpensesEntriesByIdInvoicedUndo404Response) VisitPostExpenses
 	return nil
 }
 
-type PostExpensesEntriesByIdInvoicedUndo409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+type PostExpensesEntriesByIdInvoicedUndo409ApplicationProblemPlusJSONResponse ExpensesConflictProblem
 
 func (response PostExpensesEntriesByIdInvoicedUndo409ApplicationProblemPlusJSONResponse) VisitPostExpensesEntriesByIdInvoicedUndoResponse(w http.ResponseWriter) error {
 

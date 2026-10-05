@@ -110,6 +110,8 @@ type ExpensesEntry struct {
 	MealDinnerPercent       pgtype.Numeric
 	SupplierInvoiceNumber   *string
 	SupplierDueDate         pgtype.Date
+	InvoicedInvoiceID       *int64
+	InvoicedNumber          *int64
 }
 
 type ExpensesRate struct {

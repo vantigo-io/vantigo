@@ -260,6 +260,10 @@ may open, and says so when that is fewer than the totals cover.
   **Invoice reference**. *Invoiced* is a stamp, not a status: the line stays approved,
   leaves the ready-to-invoice list, and counts under **Invoiced** on the card. **Undo
   invoicing** takes the stamp back after a confirmation.
+- A line that went out on an invoice issued in the **Invoices** app is invoiced by that
+  invoice. **Undo invoicing** is not offered on it: only a credit note that returns the
+  whole line takes the stamp back and puts the line in the ready-to-invoice list again.
+  Marking such a line invoiced, or undoing it, by hand is refused.
 
 Pricing and invoicing belong to whoever may see the project's money, not to
 `expenses:manage`, and the period lock does not reach them. See [pricing by the

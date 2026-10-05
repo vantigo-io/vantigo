@@ -3401,6 +3401,11 @@ var expensesColumns = map[string][]expensesColumn{
 		// due. The entry date is the invoice date, so there is no third.
 		{"supplier_invoice_number", "character varying", "YES"},
 		{"supplier_due_date", "date", "YES"},
+		// The invoice that invoiced the line, 00038's (invoices work design
+		// D1): its id and number, written only by the invoices issue and
+		// opaque here — the invoices schema is another module's.
+		{"invoiced_invoice_id", "bigint", "YES"},
+		{"invoiced_number", "bigint", "YES"},
 	},
 	"claims": {
 		{"id", "bigint", "NO"},

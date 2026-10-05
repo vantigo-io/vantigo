@@ -305,7 +305,7 @@ export interface paths {
         put?: never;
         /**
          * Mark an expense invoiced
-         * @description Marks one approved, billable line as billed on to the customer (decision X5). The caller needs financial rights on the line's project — its managers, projects:manage-all, or projects:view-financials on a project they can see — and expenses:manage is not it: paying the employee and charging the customer are different jobs. The line must be approved, billable and carry an amount to bill: a billable mileage line saved while no customer rate was in force carries none and has to be priced first. The period lock does not hold it back — the lock protects what the employee submitted and what was approved, and invoicing is bookkeeping done after the period closes. The two tracks are independent: a line that has been reimbursed is still invoiceable, and the other way round.
+         * @description Marks one approved, billable line as billed on to the customer (decision X5). The caller needs financial rights on the line's project — its managers, projects:manage-all, or projects:view-financials on a project they can see — and expenses:manage is not it: paying the employee and charging the customer are different jobs. The line must be approved, billable and carry an amount to bill: a billable mileage line saved while no customer rate was in force carries none and has to be priced first. The period lock does not hold it back — the lock protects what the employee submitted and what was approved, and invoicing is bookkeeping done after the period closes. The two tracks are independent: a line that has been reimbursed is still invoiceable, and the other way round. A line the Invoices module has already invoiced is a 409 invoiced_by_invoices naming that invoice, judged before the line's state and again under its lock.
          */
         post: operations["postExpensesEntriesByIdInvoiced"];
         delete?: never;
@@ -325,7 +325,7 @@ export interface paths {
         put?: never;
         /**
          * Undo marking an expense invoiced
-         * @description Takes the invoicing back off one line, under exactly the rights that set it and with the same revision guard.
+         * @description Takes the invoicing back off one line, under exactly the rights that set it and with the same revision guard. Only a mark made by hand can be taken back here; a line the Invoices module invoiced is a 409 invoiced_by_invoices naming that invoice, because only a credit note that returns the line takes that mark back.
          */
         post: operations["postExpensesEntriesByIdInvoicedUndo"];
         delete?: never;
@@ -1027,6 +1027,26 @@ export interface components {
              */
             revision: number;
         };
+        /** @description ProblemDetails plus this module's refusal code (invoices work design D1). code is invoiced_by_invoices on POST /entries/{id}/invoiced and its undo when the line was invoiced through the Invoices module: such a mark is that invoice's, and only a credit note that returns the line takes it back — invoiceId and invoiceNumber name the invoice. A revision conflict carries no code; its detail names both revisions. */
+        ExpensesConflictProblem: {
+            code?: string | null;
+            detail?: string | null;
+            instance?: string | null;
+            /**
+             * Format: int64
+             * @description On invoiced_by_invoices, the id of the invoice the line went out on. Absent otherwise.
+             */
+            invoiceId?: number;
+            /**
+             * Format: int64
+             * @description On invoiced_by_invoices, that invoice's number. Absent otherwise.
+             */
+            invoiceNumber?: number;
+            /** Format: int32 */
+            status?: number | null;
+            title?: string | null;
+            type?: string | null;
+        };
         /** @description One currency's amount in a dashboard reading. Nothing is ever converted (design §4), so a caller owed money in two currencies gets two lines and never a sum that is in neither. */
         ExpensesCurrencyAmount: {
             /** Format: double */
@@ -1095,7 +1115,7 @@ export interface components {
             canSubmit: boolean;
             /** @description Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has been neither reimbursed nor invoiced. */
             canUnapprove: boolean;
-            /** @description Whether the caller may take the invoicing back — financial rights on its project, while it stands invoiced. */
+            /** @description Whether the caller may take the invoicing back — financial rights on its project, while it stands marked invoiced by hand. Never on a line the Invoices module invoiced, which only a credit note takes back. */
             canUndoInvoiced: boolean;
             /** @description Whether the caller may take the reimbursement back — expenses:manage, while it stands reimbursed. */
             canUndoReimbursed: boolean;
@@ -1106,7 +1126,7 @@ export interface components {
             id: number;
             name: string;
         };
-        /** @description That a billable line has been billed on to the customer, by whom and when, with the reference of the invoice it went out on. */
+        /** @description That a billable line has been billed on to the customer, by whom and when, with the reference of the invoice it went out on — or, when the Invoices module issued it, that invoice's id and number. */
         ExpensesEntryInvoice: {
             /**
              * Format: date-time
@@ -1114,7 +1134,9 @@ export interface components {
              */
             at: string;
             by: components["schemas"]["ExpensesUserRef"];
-            /** @description The invoice it went out on, as whoever marked it typed it. Absent when none was given. */
+            /** @description The invoice the Invoices module issued it on, when it was invoiced that way rather than marked by hand — by is then whoever issued that invoice, and at the issue's time. Only a credit note that returns the line takes such a mark back. */
+            invoicedBy?: components["schemas"]["ExpensesInvoicedBy"];
+            /** @description The invoice it went out on, as whoever marked it typed it. Absent when none was given, and always on a line the Invoices module invoiced, which names its invoice in invoicedBy. */
             reference?: string;
         };
         /** @description What was decided about the expense, by whom and when — shown to everyone who may see it, its owner first of all: being told who rejected you is the point of a rejection. Present only while a decision stands; a submit and an unapprove both clear it. */
@@ -1470,6 +1492,13 @@ export interface components {
             claims: components["schemas"]["ExpensesClaimListResponse"][];
             /** @description The standalone expenses that moved, in the order their ids were given. */
             entries: components["schemas"]["ExpensesEntryResponse"][];
+        };
+        /** @description The invoice the Invoices module issued this line on (invoices work design D1) — its id and number. Present only on a line invoiced that way; a line marked invoiced by hand carries its typed reference instead. */
+        ExpensesInvoicedBy: {
+            /** Format: int64 */
+            invoiceId: number;
+            /** Format: int64 */
+            number: number;
         };
         /** @description Marks one approved, billable line as billed on to the customer (decision X5). The caller needs financial rights on the line's project; the period lock does not hold it back, because invoicing is bookkeeping done after the period closes. */
         ExpensesInvoicedRequest: {
@@ -3188,13 +3217,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — the expense has moved on since the revision that was sent. */
+            /** @description Conflict — invoiced_by_invoices when the line has already been invoiced through the Invoices module (with invoiceId and invoiceNumber), or the expense has moved on since the revision that was sent (no code). */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["ExpensesConflictProblem"];
                 };
             };
         };
@@ -3257,13 +3286,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — the expense has moved on since the revision that was sent. */
+            /** @description Conflict — invoiced_by_invoices when the line was invoiced through the Invoices module, whose mark only a credit note takes back (with invoiceId and invoiceNumber), or the expense has moved on since the revision that was sent (no code). */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["ExpensesConflictProblem"];
                 };
             };
         };

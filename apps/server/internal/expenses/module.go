@@ -92,8 +92,8 @@ var limits = map[string]ratelimit.Policy{
 }
 
 // Module is expenses as a platform module: its contract mounted under
-// /api/v1/expenses/, its four permissions in the composed catalog, and the one
-// contract it provides. It requires none — a nil Deps.Projects is a real
+// /api/v1/expenses/, its four permissions in the composed catalog, and the
+// contracts it provides. It requires none — a nil Deps.Projects is a real
 // installation, not a composition bug, which is why mount does not refuse one
 // the way time's does.
 //
@@ -101,13 +101,19 @@ var limits = map[string]ratelimit.Policy{
 // expenses cost and bill, for a module that owns budgets to read. Providing it
 // is not a dependency in either direction — an installation may run this module
 // with no projects at all, and one running projects without this module simply
-// finds Deps.Expenses nil.
+// finds Deps.Expenses nil. BillableExpenses (billable.go) is the line-level
+// read beside it, the lines ready to invoice, for the invoices module to build
+// invoices from; InvoicedWork (invoiced_work.go) is the holder its issue stamps
+// those lines through (module-boundaries rule 10), built from every module
+// given — this one included when it is switched off.
 func Module() module.Module {
 	return module.Module{
-		Name:        "expenses",
-		Permissions: permissions,
-		Mount:       mount,
-		Expenses:    newProjectExpenses,
+		Name:             "expenses",
+		Permissions:      permissions,
+		Mount:            mount,
+		Expenses:         newProjectExpenses,
+		BillableExpenses: newBillableExpenses,
+		InvoicedWork:     newInvoicedWorkHolder,
 	}
 }
 

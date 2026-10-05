@@ -257,6 +257,11 @@ færre enn summene dekker.
   godkjent, forsvinner fra listen over det som er klart til fakturering, og telles
   under **Fakturert** på kortet. **Angre faktureringen** tar stempelet tilbake etter en
   bekreftelse.
+- En linje som gikk ut på en faktura utstedt i Fakturaer-appen, er fakturert av den
+  fakturaen. **Angre faktureringen** tilbys ikke på den: bare en kreditnota som
+  krediterer hele linjen tar stempelet tilbake og legger linjen i listen over det som er
+  klart til fakturering igjen. Å merke en slik linje som fakturert, eller angre det, for
+  hånd blir avvist.
 
 Prising og fakturering tilhører den som kan se prosjektets økonomi, ikke
 `expenses:manage`, og periodelåsen når dem ikke. Se [pricing by the project

@@ -284,3 +284,95 @@ func TestExpensesInvoiced_WithoutProjects_IsA400OnProjectId(t *testing.T) {
 		t.Errorf("capabilities = %+v, want neither invoicing capability", caps)
 	}
 }
+
+// invoicesConflictJSON decodes ExpensesConflictProblem.
+type invoicesConflictJSON struct {
+	Code          *string `json:"code"`
+	Detail        *string `json:"detail"`
+	InvoiceId     *int64  `json:"invoiceId"`
+	InvoiceNumber *int64  `json:"invoiceNumber"`
+}
+
+// TestInvoiced_AnInvoicesStampIsA409OnMarkAndUndo (invoices work design D1): a
+// line the Invoices module invoiced is that invoice's. Neither a second mark
+// nor an undo is the manual door's: both are a 409 invoiced_by_invoices naming
+// the invoice, the copy says which invoice it went out on, and nobody is
+// offered the undo.
+func TestInvoiced_AnInvoicesStampIsA409OnMarkAndUndo(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager, "expenses:approve")
+	owner, _ := signInAs(t, h, projectKraftVerket, roleMember)
+	entry := billableOutlay(t, owner, manager, nil)
+	h.Exec(t, `UPDATE expenses.entries SET invoiced_at = now(), invoiced_by_user_id = user_id,
+	    invoiced_invoice_id = 7, invoiced_number = 10042, revision = revision + 1 WHERE id = $1`, entry.Id)
+
+	stamped := getEntry(t, manager, entry.Id)
+	switch {
+	case stamped.Billing == nil || stamped.Billing.Invoice == nil || stamped.Billing.Invoice.InvoicedBy == nil:
+		t.Fatalf("the stamped line carries %+v, want its invoice", stamped.Billing)
+	case stamped.Billing.Invoice.InvoicedBy.InvoiceId != 7 || stamped.Billing.Invoice.InvoicedBy.Number != 10042:
+		t.Errorf("invoicedBy = %+v, want invoice 7, number 10042", stamped.Billing.Invoice.InvoicedBy)
+	case stamped.Capabilities.CanUndoInvoiced || stamped.Capabilities.CanMarkInvoiced:
+		t.Errorf("capabilities = %+v, want neither the mark nor the undo", stamped.Capabilities)
+	}
+	if mine := getEntry(t, owner, entry.Id); mine.Billing != nil {
+		t.Errorf("the owner's copy carries billing %+v, want none: the invoice is the project's business", mine.Billing)
+	}
+
+	for _, path := range []string{entryInvoicedPath(entry.Id), entryInvoicedUndoPath(entry.Id)} {
+		r := manager.Do(http.MethodPost, path, invoicedBody(stamped.Revision, nil))
+		if r.Status != http.StatusConflict {
+			t.Errorf("POST %s: status %d body %s, want 409", path, r.Status, r.Body)
+			continue
+		}
+		var problem invoicesConflictJSON
+		r.JSON(&problem)
+		if problem.Code == nil || *problem.Code != "invoiced_by_invoices" ||
+			problem.InvoiceId == nil || *problem.InvoiceId != 7 || problem.InvoiceNumber == nil || *problem.InvoiceNumber != 10042 {
+			t.Errorf("POST %s answered %s, want invoiced_by_invoices naming invoice 7, number 10042", path, r.Body)
+		}
+	}
+	// Refused before the line's state and before the revision: a stale
+	// revision still hears which invoice holds the line.
+	r := manager.Do(http.MethodPost, entryInvoicedUndoPath(entry.Id), invoicedBody(1, nil))
+	if r.Status != http.StatusConflict || !strings.Contains(string(r.Body), "invoiced_by_invoices") {
+		t.Errorf("a stale undo: status %d body %s, want the 409 invoiced_by_invoices", r.Status, r.Body)
+	}
+	if after := getEntry(t, manager, entry.Id); after.Revision != stamped.Revision {
+		t.Errorf("revision = %d after two refusals, want %d", after.Revision, stamped.Revision)
+	}
+}
+
+// TestInvoiced_AHandStampIsUnchanged: a line marked invoiced by hand — an
+// installation that invoices elsewhere — keeps the manual door exactly as it
+// was: the undo is offered and works, and a revision conflict is the same 409
+// with no code.
+func TestInvoiced_AHandStampIsUnchanged(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager, "expenses:approve")
+	owner, _ := signInAs(t, h, projectKraftVerket, roleMember)
+	entry := billableOutlay(t, owner, manager, nil)
+	billed := markInvoiced(t, manager, entry.Id, invoicedBody(getEntry(t, manager, entry.Id).Revision,
+		map[string]any{"reference": "F-2026-118"}))
+	switch {
+	case billed.Billing == nil || billed.Billing.Invoice == nil:
+		t.Fatalf("the marked line carries %+v, want an invoice", billed.Billing)
+	case billed.Billing.Invoice.InvoicedBy != nil:
+		t.Errorf("a hand stamp carries invoicedBy %+v, want none", billed.Billing.Invoice.InvoicedBy)
+	case !billed.Capabilities.CanUndoInvoiced:
+		t.Error("canUndoInvoiced is false on a hand stamp")
+	}
+
+	r := manager.Do(http.MethodPost, entryInvoicedUndoPath(entry.Id), invoicedBody(1, nil))
+	var problem invoicesConflictJSON
+	r.JSON(&problem)
+	if r.Status != http.StatusConflict || problem.Code != nil {
+		t.Errorf("a stale undo of a hand stamp: status %d body %s, want 409 with no code", r.Status, r.Body)
+	}
+	back := undoInvoiced(t, manager, entry.Id, invoicedBody(billed.Revision, nil))
+	if back.Billing == nil || back.Billing.Invoice != nil {
+		t.Errorf("after the undo the line carries %+v, want no invoice", back.Billing)
+	}
+}
