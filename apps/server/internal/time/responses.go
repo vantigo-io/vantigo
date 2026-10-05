@@ -146,6 +146,11 @@ func entryResponse(row store.TimeEntry, a entryAccess, names entryNames) (gen.Ti
 			}
 		}
 	}
+	// The invoice that invoiced the entry, when the invoices issue stamped it
+	// (invoiced_work.go); an entry marked invoiced by hand has no invoice.
+	if row.InvoicedInvoiceID != nil && row.InvoicedNumber != nil {
+		resp.InvoicedBy = &gen.TimeInvoicedBy{InvoiceId: *row.InvoicedInvoiceID, Number: *row.InvoicedNumber}
+	}
 	if row.ApprovedByUserID != nil {
 		resp.ApprovedBy = &gen.TimeEntryApprover{
 			UserId:      *row.ApprovedByUserID,

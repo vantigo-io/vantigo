@@ -176,6 +176,12 @@ it goes back to a fresh draft and its week reports unsubmitted changes. The peri
 holds this back for everyone but `time:manage`, and an invoiced entry cannot be
 touched at all.
 
+**Invoiced hours.** An approved entry becomes **Invoiced** when an invoice that bills
+it is issued in Invoices, and from then on nobody can edit, approve or withdraw it
+here. Only a credit note that takes back the invoice line it was billed on returns it
+to **Approved**, with its approval as it was; withdrawing the approval is not a way
+round that.
+
 ## See everyone's weeks
 
 Open **Time → People** (`time:view-all`). The table has a row per person who logged an

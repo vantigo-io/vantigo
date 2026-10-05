@@ -271,6 +271,10 @@ components:
                     format: date-time
                     nullable: true
                     type: string
+                invoicedBy:
+                    allOf:
+                        - $ref: '#/components/schemas/TimeInvoicedBy'
+                    description: The invoice that invoiced the entry, present when the invoices issue stamped it. Absent — not null — on an entry that is not invoiced, and on one marked invoiced by hand.
                 note:
                     nullable: true
                     type: string
@@ -436,6 +440,19 @@ components:
             required:
                 - id
                 - name
+            type: object
+        TimeInvoicedBy:
+            description: The invoice that invoiced a time entry, by its id and number in the Invoices module. Only a credit note that returns the entry's line takes the stamp back.
+            properties:
+                invoiceId:
+                    format: int64
+                    type: integer
+                number:
+                    format: int64
+                    type: integer
+            required:
+                - invoiceId
+                - number
             type: object
         TimePersonOverview:
             description: One person's recent weeks, for the people overview.

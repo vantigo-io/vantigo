@@ -1268,7 +1268,7 @@ whoever holds financial rights on its project — [the two tracks after
 approval](#the-two-tracks-after-approval) — and "ready to invoice" is the list an
 invoice would be built from. The module that turns that list into an invoice does
 not exist yet; when it does, it owns the stamp, exactly as
-[the Time module](/en/reference/time/#what-invoicing-will-read) says of the same column on an hour.
+[the Time module](/en/reference/time/#what-time-gives-invoicing) says of the same column on an hour.
 **Supplier invoices** are done: a supplier's invoice is recorded as what it is —
 [the supplier invoice](#the-supplier-invoice) — attested, re-billed and counted
 apart in the project's economy. What is deliberately still not here is accounts

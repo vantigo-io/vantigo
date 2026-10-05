@@ -726,6 +726,8 @@ type entryJSON struct {
 	SubmittedAt     *time.Time       `json:"submittedAt"`
 	ApprovedAt      *time.Time       `json:"approvedAt"`
 	ApprovedBy      *approverJSON    `json:"approvedBy"`
+	InvoicedAt      *time.Time       `json:"invoicedAt"`
+	InvoicedBy      *invoicedByJSON  `json:"invoicedBy"`
 	Revision        int32            `json:"revision"`
 	CreatedAt       time.Time        `json:"createdAt"`
 	UpdatedAt       time.Time        `json:"updatedAt"`
@@ -733,6 +735,12 @@ type entryJSON struct {
 	Billing         *billingJSON     `json:"billing"`
 	Cost            *costJSON        `json:"cost"`
 	WorkType        *workTypeJSON    `json:"workType"`
+}
+
+// invoicedByJSON decodes TimeInvoicedBy.
+type invoicedByJSON struct {
+	InvoiceId int64 `json:"invoiceId"`
+	Number    int64 `json:"number"`
 }
 
 type approverJSON struct {

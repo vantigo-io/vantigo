@@ -550,6 +550,8 @@ export interface components {
             id: number;
             /** Format: date-time */
             invoicedAt?: string | null;
+            /** @description The invoice that invoiced the entry, present when the invoices issue stamped it. Absent — not null — on an entry that is not invoiced, and on one marked invoiced by hand. */
+            invoicedBy?: components["schemas"]["TimeInvoicedBy"];
             note?: string | null;
             projectCode: string;
             /** Format: int32 */
@@ -638,6 +640,13 @@ export interface components {
             /** Format: int32 */
             id: number;
             name: string;
+        };
+        /** @description The invoice that invoiced a time entry, by its id and number in the Invoices module. Only a credit note that returns the entry's line takes the stamp back. */
+        TimeInvoicedBy: {
+            /** Format: int64 */
+            invoiceId: number;
+            /** Format: int64 */
+            number: number;
         };
         /** @description One person's recent weeks, for the people overview. */
         TimePersonOverview: {

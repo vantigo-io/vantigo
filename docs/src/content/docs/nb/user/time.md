@@ -183,6 +183,12 @@ godkjenningen**; den går tilbake til et nytt utkast, og uken dens melder om end
 som ikke er sendt inn. Periodelåsen holder dette tilbake for alle unntatt
 `time:manage`, og en fakturert føring kan ikke røres i det hele tatt.
 
+**Fakturerte timer.** En godkjent føring blir **Fakturert** når en faktura som
+fakturerer den, utstedes i Fakturaer, og fra da av kan ingen redigere, godkjenne eller
+trekke den tilbake her. Bare en kreditnota som tar tilbake fakturalinjen den ble
+fakturert på, gjør den **Godkjent** igjen, med godkjenningen som den var; å trekke
+tilbake godkjenningen er ingen vei rundt det.
+
 ## Se ukene til alle
 
 Åpne **Timer → Personer** (`time:view-all`). Tabellen har en rad per person som har

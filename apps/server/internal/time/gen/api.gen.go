@@ -167,17 +167,20 @@ type TimeEntryResponse struct {
 	Capabilities TimeEntryCapabilities `json:"capabilities"`
 
 	// Cost Absent — not null — when the caller may not see the entry's cost rate.
-	Cost        *TimeEntryCost     `json:"cost,omitempty"`
-	CreatedAt   time.Time          `json:"createdAt"`
-	EndTime     *string            `json:"endTime,omitempty"`
-	EntryDate   openapi_types.Date `json:"entryDate"`
-	Hours       float64            `json:"hours"`
-	Id          int64              `json:"id"`
-	InvoicedAt  *time.Time         `json:"invoicedAt,omitempty"`
-	Note        *string            `json:"note,omitempty"`
-	ProjectCode string             `json:"projectCode"`
-	ProjectId   int32              `json:"projectId"`
-	ProjectName string             `json:"projectName"`
+	Cost       *TimeEntryCost     `json:"cost,omitempty"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	EndTime    *string            `json:"endTime,omitempty"`
+	EntryDate  openapi_types.Date `json:"entryDate"`
+	Hours      float64            `json:"hours"`
+	Id         int64              `json:"id"`
+	InvoicedAt *time.Time         `json:"invoicedAt,omitempty"`
+
+	// InvoicedBy The invoice that invoiced the entry, present when the invoices issue stamped it. Absent — not null — on an entry that is not invoiced, and on one marked invoiced by hand.
+	InvoicedBy  *TimeInvoicedBy `json:"invoicedBy,omitempty"`
+	Note        *string         `json:"note,omitempty"`
+	ProjectCode string          `json:"projectCode"`
+	ProjectId   int32           `json:"projectId"`
+	ProjectName string          `json:"projectName"`
 
 	// RateSource The step of the rate chain the bill rate came from: 'line', 'project', 'customer', 'person' or 'none'.
 	RateSource      string  `json:"rateSource"`
@@ -253,6 +256,12 @@ type TimeEntryUpdateRequest struct {
 type TimeEntryWorkType struct {
 	Id   int32  `json:"id"`
 	Name string `json:"name"`
+}
+
+// TimeInvoicedBy The invoice that invoiced a time entry, by its id and number in the Invoices module. Only a credit note that returns the entry's line takes the stamp back.
+type TimeInvoicedBy struct {
+	InvoiceId int64 `json:"invoiceId"`
+	Number    int64 `json:"number"`
 }
 
 // TimePersonOverview One person's recent weeks, for the people overview.
