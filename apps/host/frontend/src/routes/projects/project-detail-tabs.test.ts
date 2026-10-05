@@ -95,11 +95,13 @@ describe("project detail tab visibility", () => {
   // D18): the uninvoiced work lists the hours, the people and the rates an
   // invoice will state, so it is the drafter's — invoices:create — and the
   // installation has to have mounted invoices.
-  it("shows the invoicing tab only when the module is on and the caller holds invoices:create", () => {
+  it("shows the invoicing tab only when the module is on and the caller holds invoices:access and invoices:create", () => {
     expect(values(moduleKeys, ["projects:access", "invoices:access", "invoices:create"], canSeeEverything)).toContain(
       "invoicing",
     );
     expect(values(moduleKeys, ["projects:access", "invoices:access"], canSeeEverything)).not.toContain("invoicing");
+    // Both are needed: the API checks them together.
+    expect(values(moduleKeys, ["projects:access", "invoices:create"], canSeeEverything)).not.toContain("invoicing");
     expect(values(["projects", "time", "expenses"], ["*"], canSeeEverything)).not.toContain("invoicing");
     expect(values(undefined, ["*"], canSeeEverything)).not.toContain("invoicing");
   });

@@ -39,7 +39,11 @@ vi.mock("@vantigo/invoices-ui", () => ({
       customer {customerId} canCreate {String(canCreate)} as {userDisplayName ?? "nobody"}
     </div>
   ),
-  UninvoicedWorkPanel: ({ customerId }: { customerId: number }) => <div>uninvoiced work of customer {customerId}</div>,
+  UninvoicedWorkPanel: ({ customerId, canInvoice }: { customerId: number; canInvoice?: boolean }) => (
+    <div>
+      uninvoiced work of customer {customerId} canInvoice {String(canInvoice)}
+    </div>
+  ),
 }));
 
 // The customer as the layout's loader cached it: normalised, so an unmerged
@@ -118,15 +122,35 @@ describe("the customer page's invoices tab", () => {
   // will state, so it is the drafter's (invoices work design D10, D18).
   it("puts the customer's uninvoiced work above the list for a caller with invoices:create", () => {
     renderTab(["invoices:access", "invoices:create"]);
-    const work = screen.getByText("uninvoiced work of customer 42");
+    const work = screen.getByText("uninvoiced work of customer 42 canInvoice true");
     const list = screen.getByText(/customer 42 canCreate/);
     expect(work.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("shows no uninvoiced work without invoices:create", () => {
+  // The API asks invoices:access and invoices:create together.
+  it("shows no uninvoiced work without both invoices:access and invoices:create", () => {
     renderTab(["invoices:access", "customers:view"]);
     expect(screen.queryByText(/uninvoiced work/)).not.toBeInTheDocument();
     expect(screen.getByText(/customer 42 canCreate/)).toBeInTheDocument();
+
+    cleanup();
+    renderTab(["invoices:create", "customers:view"]);
+    expect(screen.queryByText(/uninvoiced work/)).not.toBeInTheDocument();
+    expect(screen.getByText("customer 42 canCreate false as Kari Nordmann")).toBeInTheDocument();
+  });
+
+  // The wizard makes a draft for the customer, so it follows "New invoice":
+  // never on a customer that is not active, merged away or anonymised.
+  it("lets the work be listed but not invoiced on a customer the server would take no draft for", () => {
+    for (const cached of [
+      customer({ status: "archived" }),
+      customer({ mergedInto: { id: 2, customerNumber: 2, name: "Acme" } }),
+      customer({ anonymisation: { anonymiseOn: "2026-09-12", anonymisedAt: "2026-09-12T02:00:00Z" } }),
+    ]) {
+      renderTab(creator, undefined, { data: cached });
+      expect(screen.getByText("uninvoiced work of customer 42 canInvoice false")).toBeInTheDocument();
+      cleanup();
+    }
   });
 
   it("renders the not-enabled page in place when the installation did not mount invoices", () => {

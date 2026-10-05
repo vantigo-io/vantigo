@@ -3,9 +3,10 @@ import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { ContentSkeleton } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { customerLanguageQueryOptions } from "../api/customers";
 import { type Deductible, deductibleQueryOptions } from "../api/deductible";
 import { vatCodesQueryOptions } from "../api/vat-codes";
-import "../i18n";
+import { invoicesCatalog } from "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 
@@ -21,6 +22,12 @@ export interface DeductModalProps {
   /** The invoice draft the deductions go on. */
   invoiceId: number;
   currency: string;
+  /** The draft's customer, whose billing profile says the language its lines are written in. */
+  customerId: number;
+  /** The draft's buyer snapshot's language, when it has one (a draft rarely does). */
+  buyerLanguage?: string;
+  /** Whether the caller may read the customer's billing profile (`customers:view`). */
+  canViewCustomers: boolean;
   /** The (invoice, VAT code) pairs the draft already deducts: one line each, never two (409 deduction_duplicated). */
   taken: { invoiceId: number; vatCodeId: number | null }[];
   onAdd: (lines: ProposedDeduction[]) => void;
@@ -38,8 +45,30 @@ const keyOf = (d: { invoiceId: number; vatCodeId: number | null }) => `${d.invoi
  * the amount, the row's VAT code — which the save sends with
  * `deductsInvoiceId`. A pair the draft already deducts is shown, not offered.
  */
-export const DeductModal = ({ invoiceId, currency, taken, onAdd, onClose }: DeductModalProps) => {
+export const DeductModal = ({
+  invoiceId,
+  currency,
+  customerId,
+  buyerLanguage,
+  canViewCustomers,
+  taken,
+  onAdd,
+  onClose,
+}: DeductModalProps) => {
   const { t, money, percent, date } = useInvoiceFormat();
+  // The proposed text is in the language the wizard writes the draft's other
+  // lines in — the buyer's: the snapshot's, else the billing profile's (the
+  // server's rule: English for "en", Norwegian otherwise) — so one draft's
+  // lines speak one language. Without either, the reader's.
+  const profile = useQuery({
+    ...customerLanguageQueryOptions(customerId),
+    enabled: !buyerLanguage && canViewCustomers,
+  });
+  const language = buyerLanguage ? (buyerLanguage === "en" ? "en" : "nb") : profile.data;
+  const lineText = (number: number) =>
+    language
+      ? invoicesCatalog[language].deductionLineText.replace("{{number}}", String(number))
+      : t("deductionLineText", { number });
   const deductible = useQuery(deductibleQueryOptions(invoiceId));
   const codes = useQuery(vatCodesQueryOptions());
   const [chosen, setChosen] = useState<Record<string, number | string>>({});
@@ -150,7 +179,7 @@ export const DeductModal = ({ invoiceId, currency, taken, onAdd, onClose }: Dedu
             onClick={() =>
               onAdd(
                 picked.map((row) => ({
-                  description: t("deductionLineText", { number: row.number }),
+                  description: lineText(row.number),
                   unitPrice: Number(chosen[keyOf(row)]),
                   vatCodeId: row.vatCodeId,
                   deductsInvoiceId: row.invoiceId,

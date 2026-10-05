@@ -300,6 +300,27 @@ describe("MyWeekPage", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Submitted");
   });
 
+  it("names the invoice an invoiced entry went out on, on hover", async () => {
+    stubTimeApi({
+      week: week([
+        weekRow(pmRow, [
+          entry({
+            id: 502,
+            entryDate: "2026-09-15",
+            hours: 4,
+            status: "invoiced",
+            invoicedBy: { invoiceId: 990, number: 985 },
+            capabilities: { canEdit: false, canSubmit: false, canApprove: false, canUnapprove: false },
+          }),
+        ]),
+      ]),
+    });
+    renderRoute(`/time?week=${WEEK}`);
+
+    await userEvent.hover(await findCell(PM, "Tuesday"));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Invoiced by invoice 985");
+  });
+
   it("lets a rejected entry be corrected and shows the reason on hover", async () => {
     stubTimeApi({
       week: week([

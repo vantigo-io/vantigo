@@ -287,6 +287,36 @@ describe("deducting earlier invoices", () => {
     expect(body.lines[1]).toMatchObject({ quantity: -1, unitPrice: 100000, deductsInvoiceId: 990 });
   });
 
+  // The server refuses a deduction's discount and a code other than the
+  // a-konto's: the inputs are locked as its quantity is.
+  it("locks a deduction line's quantity, discount and VAT code, and leaves the work line's open", async () => {
+    server(settlementDraft());
+    renderRoute("/invoices/1001");
+    expect(await screen.findByRole("textbox", { name: "Line 2 quantity" })).toHaveAttribute("readonly");
+    expect(screen.getByRole("textbox", { name: "Line 2 discount" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Line 2 VAT code" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Line 1 discount" })).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "Line 1 VAT code" })).toBeEnabled();
+  });
+
+  // The wizard writes a draft's lines in the buyer's language; a deduction
+  // proposed for a Norwegian customer reads Norwegian whatever the reader's.
+  it("proposes the deduction text in the customer's language", async () => {
+    server(draft(), {
+      answers: { "GET /api/v1/customers/2001/billing-profile": () => jsonResponse(200, { language: "nb" }) },
+    });
+    renderRoute("/invoices/1001");
+    await userEvent.click(await screen.findByRole("button", { name: "Deduct earlier invoices" }));
+    const dialog = await screen.findByRole("dialog", { name: "Deduct earlier invoices" });
+    await userEvent.click(
+      await within(dialog).findByRole("checkbox", { name: "Deduct invoice 985 at 3 — Utgående mva 25 %" }),
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add the deduction lines" }));
+    expect(await screen.findByRole("textbox", { name: "Line 4 description" })).toHaveValue(
+      "Tidligere fakturert a konto, faktura 985",
+    );
+  });
+
   it("says a refused deduction save by the line it names", async () => {
     server(settlementDraft(), {
       answers: { "PUT /api/v1/invoices/1001": () => refusal(409, "deduction_duplicated", { linePosition: 2 }) },

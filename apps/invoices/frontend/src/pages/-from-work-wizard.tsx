@@ -13,7 +13,7 @@ import { vatCodesQueryOptions } from "../api/vat-codes";
 import { type FromWorkInput, postFromWork, WORK_KINDS, type WorkHeldBy } from "../api/work";
 import { DocumentLink } from "../components/document-link";
 import "../i18n";
-import { fieldRefusals, refusalProblem, workRefusalMessage } from "../lib/errors";
+import { fieldRefusals, refusalCode, refusalProblem, workRefusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { invoiceLinkOptions } from "../lib/routes";
 import { type ChosenWork, GROUPINGS, type Grouping, linesFor, totalsOf } from "../lib/work";
@@ -57,7 +57,9 @@ export const FromWorkWizard = ({ customerId, work, onClose }: FromWorkWizardProp
   const meta = useQuery(invoicesMetaQueryOptions());
   const settings = useQuery(invoiceSettingsQueryOptions());
   const allCodes = useQuery(vatCodesQueryOptions());
-  const drafts = useQuery(invoiceListQueryOptions({ customerId, status: "draft", kind: "invoice" }));
+  // The customer's invoice drafts the work may go on, as many as one page of
+  // the list answers (100); past that, a hint says the others are not offered.
+  const drafts = useQuery(invoiceListQueryOptions({ customerId, status: "draft", kind: "invoice", pageSize: 100 }));
 
   const [grouping, setGrouping] = useState<Grouping>("project");
   const [targetId, setTargetId] = useState<number | null>(null);
@@ -99,9 +101,9 @@ export const FromWorkWizard = ({ customerId, work, onClose }: FromWorkWizardProp
     vatOptions.push({ value: String(id), label: t("vatCodeNotOffered", { label: name }) });
   }
 
-  const input = (): FromWorkInput => ({
+  const input = (sent: ChosenWork[]): FromWorkInput => ({
     customerId,
-    sources: work.map(({ kind, id, revision }) => ({ kind, id, revision })),
+    sources: sent.map(({ kind, id, revision }) => ({ kind, id, revision })),
     grouping,
     ...(timesheet === null ? {} : { timesheet }),
     vatCodes: Object.fromEntries(
@@ -112,8 +114,24 @@ export const FromWorkWizard = ({ customerId, work, onClose }: FromWorkWizardProp
     ...(targetId !== null && target.data ? { invoiceId: targetId, revision: target.data.revision } : {}),
   });
 
+  // A refusal names the row it is about — by its kind and id on a 409, by its
+  // place in the body on a 400 — in the panel's own words for it.
+  const refusedRows = (error: unknown, sent: ChosenWork[]): string[] => {
+    if (error instanceof ApiValidationError) {
+      return Object.keys(error.fieldErrors).flatMap((field) => {
+        const at = /^sources\[(\d+)\]/.exec(field);
+        const row = at ? sent[Number(at[1])] : undefined;
+        return row ? [row.label] : [];
+      });
+    }
+    const problem = refusalProblem(error);
+    const row = sent.find((w) => w.kind === problem.sourceKind && w.id === problem.sourceId);
+    return row ? [row.label] : [];
+  };
+  const naming = (labels: string[]) => [...new Set(labels)].map((label) => t("workRefusedRow", { label }));
+
   const create = useMutation({
-    mutationFn: () => postFromWork(input()),
+    mutationFn: (sent: ChosenWork[]) => postFromWork(input(sent)),
     onMutate: () => setRefusal(null),
     onSuccess: async (draft) => {
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
@@ -121,12 +139,19 @@ export const FromWorkWizard = ({ customerId, work, onClose }: FromWorkWizardProp
       onClose();
       navigate(invoiceLinkOptions(draft.id));
     },
-    onError: (error) => {
+    onError: (error, sent) => {
       if (error instanceof ApiValidationError) {
         const { onInputs, elsewhere } = fieldRefusals(error, t, (field) => wizardInputs.test(field), "fromWork");
         setErrors(onInputs);
-        if (elsewhere.length > 0) setRefusal({ words: elsewhere });
+        if (elsewhere.length > 0) setRefusal({ words: [...elsewhere, ...naming(refusedRows(error, sent))] });
         return;
+      }
+      // The work moved under the view — changed, held, no longer invoiceable,
+      // or the draft it was going on changed: the panel reads it again, so
+      // what is chosen is what can be chosen now. The words say to choose again.
+      const code = refusalCode(error);
+      if (code?.startsWith("source_") || code === "invoice_changed") {
+        void queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY, "work"] });
       }
       // A stale revision of the draft the work was going on: read it again.
       if (error instanceof ApiConflictError && !error.code) {
@@ -135,7 +160,7 @@ export const FromWorkWizard = ({ customerId, work, onClose }: FromWorkWizardProp
         return;
       }
       const problem = refusalProblem(error);
-      const words = [workRefusalMessage(error, t, date)];
+      const words = [workRefusalMessage(error, t, date), ...naming(refusedRows(error, sent))];
       const suggested = typeof problem.suggestedGrouping === "string" ? problem.suggestedGrouping : undefined;
       if (suggested && (GROUPINGS as readonly string[]).includes(suggested)) {
         setGrouping(suggested as Grouping);
@@ -243,6 +268,7 @@ export const FromWorkWizard = ({ customerId, work, onClose }: FromWorkWizardProp
         />
         <Select
           label={t("wizardTarget")}
+          description={drafts.data?.pagination.hasNextPage ? t("wizardDraftsTruncated") : undefined}
           data={draftOptions}
           allowDeselect={false}
           value={targetId === null ? "new" : String(targetId)}
@@ -275,7 +301,7 @@ export const FromWorkWizard = ({ customerId, work, onClose }: FromWorkWizardProp
           <Button
             disabled={!ready || halfPeriod || work.length === 0}
             loading={create.isPending}
-            onClick={() => create.mutate()}
+            onClick={() => create.mutate(work)}
           >
             {targetId === null ? t("wizardCreate") : t("wizardAddTo", { id: targetId })}
           </Button>

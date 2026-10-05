@@ -40,21 +40,26 @@ const wideView = (): WorkView => {
 };
 
 interface Options {
-  view?: WorkView;
+  /** The view, or a function giving it per read — work that moves under the panel. */
+  view?: WorkView | (() => WorkView);
+  /** Whether the customer has more drafts than one page of the list holds. */
+  moreDrafts?: boolean;
   settings?: Partial<InvoiceSettings>;
   /** What POST /from-work answers. */
   answer?: () => Response;
 }
 
-const server = ({ view = workView(), settings: own = {}, answer }: Options = {}) =>
+const server = ({ view = workView(), settings: own = {}, answer, moreDrafts = false }: Options = {}) =>
   stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = path(input);
     const method = init?.method ?? "GET";
     if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta());
-    if (url === "/api/v1/invoices/work?customerId=2001") return jsonResponse(200, view);
+    if (url === "/api/v1/invoices/work?customerId=2001") {
+      return jsonResponse(200, typeof view === "function" ? view() : view);
+    }
     if (url === "/api/v1/invoices/settings") return jsonResponse(200, settings(own));
     if (url === "/api/v1/invoices/vat-codes") return jsonResponse(200, vatCodes());
-    if (url === "/api/v1/invoices?customerId=2001&status=draft&kind=invoice") {
+    if (url === "/api/v1/invoices?customerId=2001&status=draft&kind=invoice&pageSize=100") {
       return jsonResponse(200, {
         data: [
           {
@@ -67,7 +72,14 @@ const server = ({ view = workView(), settings: own = {}, answer }: Options = {})
             grossTotal: 500,
           },
         ],
-        pagination: { page: 1, pageSize: 25, totalCount: 1, totalPages: 1, hasNextPage: false, hasPreviousPage: false },
+        pagination: {
+          page: 1,
+          pageSize: 100,
+          totalCount: moreDrafts ? 101 : 1,
+          totalPages: moreDrafts ? 2 : 1,
+          hasNextPage: moreDrafts,
+          hasPreviousPage: false,
+        },
       });
     }
     if (url === "/api/v1/invoices/1003") return jsonResponse(200, draft({ id: 1003, revision: 7, timesheet: true }));
@@ -269,5 +281,79 @@ describe("the wizard", () => {
       ),
     );
     expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  // R26: what a refusal leaves chosen is what can still be chosen. The work
+  // is read again after a source_ refusal, and a row now held drops out of
+  // the choice, its totals and the next body.
+  it("reads the work again after a source_changed refusal, naming the row, and leaves out what is now held", async () => {
+    let held = false;
+    const view = () => {
+      const v = workView();
+      if (held)
+        v.projects[0].hours[0] = {
+          ...v.projects[0].hours[0],
+          selectable: false,
+          reason: "held",
+          heldBy: { invoiceId: 1007, status: "draft" },
+        };
+      return v;
+    };
+    let posts = 0;
+    const fetchMock = server({
+      view,
+      answer: () => {
+        posts += 1;
+        if (posts > 1) return jsonResponse(201, fromWorkDraft());
+        held = true;
+        return refusal(409, "source_changed", { sourceKind: "time.entry", sourceId: 801 });
+      },
+    });
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} />);
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Choose Kari Nordmann, Sep 1, 2026" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose Fase 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Invoice the chosen work" }));
+    const dialog = await screen.findByRole("dialog", { name: "Invoice the work" });
+    expect(within(dialog).getByTestId("wizard-selection")).toHaveTextContent("2 chosen: NOK 14,800.00");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create draft" }));
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("Some of the chosen work changed since it was listed.");
+    expect(alert).toHaveTextContent("The work refused: Kari Nordmann, Sep 1, 2026.");
+    await waitFor(() =>
+      expect(within(dialog).getByTestId("wizard-selection")).toHaveTextContent("1 chosen: NOK 10,000.00"),
+    );
+    expect(screen.getByTestId("work-chosen")).toHaveTextContent("1 chosen: NOK 10,000.00");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create draft" }));
+    await waitFor(() => expect(posts).toBe(2));
+    const bodies = fetchMock.actualCalls
+      .filter(([url, init]) => path(url) === "/api/v1/invoices/from-work" && init?.method === "POST")
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies[1].sources).toEqual([{ kind: "projects.milestone", id: 951, revision: 1 }]);
+  });
+
+  it("names the row a 400 on sources[i] is about", async () => {
+    server({
+      answer: () =>
+        jsonResponse(400, { title: "Invalid", status: 400, errors: { "sources[1]": ["sources[1] is named twice"] } }),
+    });
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} />);
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Choose Kari Nordmann, Sep 1, 2026" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose Fase 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Invoice the chosen work" }));
+    const dialog = await screen.findByRole("dialog", { name: "Invoice the work" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create draft" }));
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("The chosen work could not be taken as it is.");
+    expect(alert).toHaveTextContent("The work refused: Fase 1.");
+    expect(alert).not.toHaveTextContent("Kari Nordmann");
+  });
+
+  it("says when the customer has more drafts than the list offers", async () => {
+    server({ moreDrafts: true });
+    const { dialog } = await openWizard();
+    expect(await within(dialog).findByText(/Only 100 of the customer's drafts are listed/)).toBeInTheDocument();
   });
 });

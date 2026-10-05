@@ -25,6 +25,8 @@ interface ProjectDetailGate {
   module?: ModuleKey;
   /** Any one of these grants the entry; omitted = no permission needed. */
   requiredPermissions?: readonly string[];
+  /** Every one of these is needed as well — an API that checks two permissions together. */
+  allPermissions?: readonly string[];
   /** A capability the backend reports on this very project; omitted = not asked for. */
   capability?: keyof ProjectCapabilities;
 }
@@ -142,7 +144,8 @@ export const projectDetailTabs: ProjectDetailTab[] = [
     icon: IconFileInvoice,
     to: "/projects/$projectId/invoicing",
     module: "invoices",
-    requiredPermissions: ["invoices:create"],
+    // The API asks both: invoices:access for the app, invoices:create for the view.
+    allPermissions: ["invoices:access", "invoices:create"],
   },
 ];
 
@@ -154,6 +157,7 @@ const passesGate = (
 ) =>
   (gate.module === undefined || enabledModules?.includes(gate.module) === true) &&
   hasPermissions(permissions, gate.requiredPermissions) &&
+  (gate.allPermissions ?? []).every((permission) => hasPermissions(permissions, [permission])) &&
   (gate.capability === undefined || capabilities?.[gate.capability] === true);
 
 /** The tabs the caller may see: module enabled, permission granted, capability held on this project. */

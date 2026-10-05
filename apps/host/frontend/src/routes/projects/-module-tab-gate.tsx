@@ -11,8 +11,11 @@ import "../../i18n";
 export interface ModuleTabGateProps {
   /** The module the tab's API belongs to; without it the tab does not exist. */
   module: ModuleKey;
-  /** The one permission that module's API demands of every operation. */
-  permission: string;
+  /**
+   * What that module's API demands of every operation the tab makes: one
+   * permission, or several that are each needed (an API checking two together).
+   */
+  permission: string | readonly string[];
   /** The app's own name, for the not-enabled page. */
   appLabel: string;
   children: ReactNode;
@@ -58,7 +61,8 @@ export const ModuleTabGate = ({ module, permission, appLabel, children }: Module
         <Loader size="sm" />
       </Center>
     );
-  if (!hasPermissions(authorization.data?.permissions, [permission]))
-    return <ForbiddenPage requiredModule={module} requiredPermissions={[permission]} />;
+  const required = typeof permission === "string" ? [permission] : [...permission];
+  if (!required.every((one) => hasPermissions(authorization.data?.permissions, [one])))
+    return <ForbiddenPage requiredModule={module} requiredPermissions={required} />;
   return children;
 };

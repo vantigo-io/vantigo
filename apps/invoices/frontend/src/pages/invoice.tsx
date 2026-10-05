@@ -869,7 +869,9 @@ const DraftEditor = ({
                       decimalScale={2}
                       min={0}
                       max={100}
-                      disabled={fixed}
+                      // A deduction carries no discount, and its VAT code is the
+                      // a-konto's (D7): the server refuses either changed.
+                      disabled={fixed || l.deductsInvoiceId !== undefined}
                       value={l.discountPercent}
                       error={fieldError(`lines[${i}].discountPercent`)}
                       onChange={(v) => setLine(l.key, { discountPercent: v })}
@@ -878,7 +880,7 @@ const DraftEditor = ({
                   <Table.Td>
                     <Select
                       aria-label={t("lineVatCode", { n: i + 1 })}
-                      disabled={fixed}
+                      disabled={fixed || l.deductsInvoiceId !== undefined}
                       data={vatOptions}
                       value={l.vatCodeId === null ? null : String(l.vatCodeId)}
                       error={fieldError(`lines[${i}].vatCodeId`)}
@@ -1000,6 +1002,9 @@ const DraftEditor = ({
         <DeductModal
           invoiceId={draft.id}
           currency={draft.currency}
+          customerId={draft.customerId}
+          buyerLanguage={draft.buyer?.language}
+          canViewCustomers={canViewCustomers}
           taken={lines.flatMap((l) =>
             l.deductsInvoiceId === undefined ? [] : [{ invoiceId: l.deductsInvoiceId, vatCodeId: l.vatCodeId }],
           )}

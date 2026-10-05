@@ -15,6 +15,8 @@ export interface ChosenWork {
   workTypeId?: number;
   /** An expense's kind — outlay, mileage or supplier_invoice — which groups expenses under every grouping but itemised. */
   expenseKind?: string;
+  /** How the panel names the row — the person and the day, an expense's description, a milestone's name — so a refusal can say which. */
+  label: string;
 }
 
 /** The groupings, finest last, as the server takes them (D4). */

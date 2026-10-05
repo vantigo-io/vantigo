@@ -88,6 +88,9 @@ describe("the project page's economy route", () => {
     renderRoute(["projects", "invoices"], ["invoices:access"]);
     expect(screen.getByText("invoicing → no invoicing link")).toBeInTheDocument();
     cleanup();
+    renderRoute(["projects", "invoices"], ["invoices:create"]);
+    expect(screen.getByText("invoicing → no invoicing link")).toBeInTheDocument();
+    cleanup();
     renderRoute(["projects"], ["invoices:access", "invoices:create"]);
     expect(screen.getByText("invoicing → no invoicing link")).toBeInTheDocument();
   });
