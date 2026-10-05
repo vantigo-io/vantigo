@@ -123,6 +123,12 @@ BEGIN
         IF parent_status = 'issued' THEN
             RAISE EXCEPTION 'invoices: issued document is immutable' USING ERRCODE = 'P0001';
         END IF;
+        -- Only a hold is dropped: an invoiced row left on a draft would leave
+        -- the index while the source module's stamp stays. A cascade from
+        -- deleting a draft meets held rows only.
+        IF OLD.state <> 'held' THEN
+            RAISE EXCEPTION 'invoices: a line source is deleted only while held' USING ERRCODE = 'P0001';
+        END IF;
         RETURN OLD;
     END IF;
     -- UPDATE: one transition per parent state, nothing else changed.

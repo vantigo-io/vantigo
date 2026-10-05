@@ -170,5 +170,7 @@ DELETE FROM invoices.timesheet_rows WHERE invoice_id = @invoice_id;
 
 -- name: PruneTimesheetRows :execrows
 -- PruneTimesheetRows drops a draft's rows of hours it no longer holds (D5).
+-- A nil kept arrives as NULL, and <> ALL(NULL) is NULL: COALESCE makes it
+-- the empty set, so keeping nothing deletes every row.
 DELETE FROM invoices.timesheet_rows
-WHERE invoice_id = @invoice_id AND source_id <> ALL(@kept::bigint[]);
+WHERE invoice_id = @invoice_id AND source_id <> ALL(COALESCE(@kept::bigint[], '{}'::bigint[]));

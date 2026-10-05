@@ -348,6 +348,7 @@ const (
 	invoicesWorkImmutable  = "invoices: issued document is immutable"
 	invoicesWorkHeld       = "invoices: a line source is written held"
 	invoicesWorkStateOnly  = "invoices: a line source changes only its state"
+	invoicesWorkHeldDelete = "invoices: a line source is deleted only while held"
 	invoicesWorkSetState   = `UPDATE invoices.line_sources SET state = $2 WHERE id = $1`
 	invoicesWorkSetRevAndS = `UPDATE invoices.line_sources SET state = $2, source_revision = source_revision + 1 WHERE id = $1`
 )
@@ -356,7 +357,8 @@ const (
 // (D2, plan reading 8): a source is written held; under a draft its one
 // change is held → invoiced, nothing else changed; under an issued parent
 // every INSERT, DELETE and UPDATE is refused but invoiced → released, once;
-// and a cascade from deleting a draft passes, as 00034's children's do.
+// a row is deleted only while held, a draft's invoiced row included; and a
+// cascade from deleting a draft passes, as 00034's children's do.
 func TestInvoicesWork_TheLineSourceTrigger(t *testing.T) {
 	f := newInvoicesWorkFixture(t)
 	draft := f.draft(0)
@@ -396,9 +398,16 @@ func TestInvoicesWork_TheLineSourceTrigger(t *testing.T) {
 	if err := f.exec(invoicesWorkSetState, second, "invoiced"); err != nil {
 		t.Errorf("held → invoiced under a draft: %v, want it allowed", err)
 	}
-	// A draft drops a hold by deleting it.
+	// A draft drops a hold by deleting it, and nothing but a hold: an
+	// invoiced row stays, alone or through its line's cascade.
 	if err := f.exec(`DELETE FROM invoices.line_sources WHERE id = $1`, dropped); err != nil {
 		t.Errorf("deleting a held row under a draft: %v, want it allowed", err)
+	}
+	if err := f.exec(`DELETE FROM invoices.line_sources WHERE id = $1`, first); !refusedWith(err, invoicesWorkHeldDelete) {
+		t.Errorf("deleting an invoiced row under a draft: %v, want %q", err, invoicesWorkHeldDelete)
+	}
+	if err := f.exec(`DELETE FROM invoices.lines WHERE id = $1`, line); !refusedWith(err, invoicesWorkHeldDelete) {
+		t.Errorf("deleting a draft's line with an invoiced source: %v, want %q", err, invoicesWorkHeldDelete)
 	}
 
 	f.issue(draft)
@@ -796,6 +805,47 @@ func TestInvoicesWork_LineReleasesAndTimesheetRowsAreFrozenWithTheirDocument(t *
 	}
 	if got := f.count(`SELECT count(*) FROM invoices.timesheet_rows WHERE invoice_id = $1`, gone); got != 0 {
 		t.Errorf("rows of a deleted draft = %d, want none", got)
+	}
+}
+
+// TestInvoicesWork_ThePruneWithNothingKeptDeletesEveryRow pins
+// PruneTimesheetRows as the store runs it (invoicesWorkQuery): the hours
+// kept stay and the rest go, and a nil kept — which pgx sends as NULL, the
+// natural caller's "no hours held" — deletes every row of the draft, never
+// none, and never another draft's.
+func TestInvoicesWork_ThePruneWithNothingKeptDeletesEveryRow(t *testing.T) {
+	f := newInvoicesWorkFixture(t)
+	prune, params := invoicesWorkQuery(t, "PruneTimesheetRows")
+	if !slices.Equal(params, []string{"invoice_id", "kept"}) {
+		t.Fatalf("PruneTimesheetRows takes %v, want [invoice_id kept]", params)
+	}
+	const insertRow = `
+		INSERT INTO invoices.timesheet_rows (invoice_id, position, source_id, person_label, entry_date, hours, description)
+		VALUES ($1, $2, $3, 'KN', DATE '2026-10-01', 1, 'Utvikling')`
+	sheet, other := f.draft(0), f.draft(0)
+	for i, source := range []int64{100, 101, 102} {
+		if err := f.exec(insertRow, sheet, i+1, source); err != nil {
+			t.Fatalf("seed row %d: %v", source, err)
+		}
+	}
+	if err := f.exec(insertRow, other, 1, 100); err != nil {
+		t.Fatalf("seed another draft's row: %v", err)
+	}
+	rows := func(invoiceID int64) int {
+		return f.count(`SELECT count(*) FROM invoices.timesheet_rows WHERE invoice_id = $1`, invoiceID)
+	}
+
+	tag, err := f.pool.Exec(f.ctx, prune, sheet, []int64{101})
+	if err != nil || tag.RowsAffected() != 2 || rows(sheet) != 1 {
+		t.Errorf("keeping 101: %v, %d deleted, %d left, want 2 deleted and 101 left", err, tag.RowsAffected(), rows(sheet))
+	}
+	var none []int64
+	tag, err = f.pool.Exec(f.ctx, prune, sheet, none)
+	if err != nil || tag.RowsAffected() != 1 || rows(sheet) != 0 {
+		t.Errorf("keeping nothing (nil): %v, %d deleted, %d left, want every row deleted", err, tag.RowsAffected(), rows(sheet))
+	}
+	if got := rows(other); got != 1 {
+		t.Errorf("another draft's rows = %d, want its one untouched", got)
 	}
 }
 

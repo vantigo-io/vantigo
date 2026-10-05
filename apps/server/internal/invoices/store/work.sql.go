@@ -456,7 +456,7 @@ func (q *Queries) MarkSourcesInvoiced(ctx context.Context, invoiceID int64) (int
 
 const pruneTimesheetRows = `-- name: PruneTimesheetRows :execrows
 DELETE FROM invoices.timesheet_rows
-WHERE invoice_id = $1 AND source_id <> ALL($2::bigint[])
+WHERE invoice_id = $1 AND source_id <> ALL(COALESCE($2::bigint[], '{}'::bigint[]))
 `
 
 type PruneTimesheetRowsParams struct {
@@ -465,6 +465,8 @@ type PruneTimesheetRowsParams struct {
 }
 
 // PruneTimesheetRows drops a draft's rows of hours it no longer holds (D5).
+// A nil kept arrives as NULL, and <> ALL(NULL) is NULL: COALESCE makes it
+// the empty set, so keeping nothing deletes every row.
 func (q *Queries) PruneTimesheetRows(ctx context.Context, arg PruneTimesheetRowsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, pruneTimesheetRows, arg.InvoiceID, arg.Kept)
 	if err != nil {
