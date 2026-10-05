@@ -443,17 +443,19 @@ func billableAmount(text string) (*big.Rat, error) {
 
 // billableNow reads the held sources by id through the composed billable
 // reads, on the pool — never under a lock — and answers each one still
-// billable as the snapshot it would take now, and which kinds were read: a
+// billable as the snapshot it would take now, which kinds were read — a
 // kind whose module is off has no provider and is not judged (plan reading
-// 11). Each read names at most contracts.MaxBillableRows ids, the bound a
-// save's body keeps.
-func (s *server) billableNow(ctx context.Context, held []heldSource) (map[sourceRef]heldSource, map[contracts.WorkSourceKind]bool, error) {
+// 11) — and the hours as Time answered them, which a refresh writes the
+// timesheet from (D5). Each read names at most contracts.MaxBillableRows
+// ids, the bound a save's body keeps.
+func (s *server) billableNow(ctx context.Context, held []heldSource) (map[sourceRef]heldSource, map[contracts.WorkSourceKind]bool, []contracts.BillableHour, error) {
 	ids := map[contracts.WorkSourceKind][]int64{}
 	for _, h := range held {
 		ids[h.kind] = append(ids[h.kind], h.id)
 	}
 	now := map[sourceRef]heldSource{}
 	read := map[contracts.WorkSourceKind]bool{}
+	var hours []contracts.BillableHour
 	add := func(h heldSource, err error) error {
 		if err != nil {
 			return err
@@ -464,11 +466,11 @@ func (s *server) billableNow(ctx context.Context, held []heldSource) (map[source
 	if want := ids[contracts.WorkSourceMilestone]; len(want) > 0 && s.deps.BillableMilestones != nil {
 		page, err := s.billableMilestones(ctx, contracts.BillableRequest{IDs: want})
 		if err != nil {
-			return nil, nil, fmt.Errorf("invoices: read the billable milestones: %w", err)
+			return nil, nil, nil, fmt.Errorf("invoices: read the billable milestones: %w", err)
 		}
 		for _, m := range page.Milestones {
 			if err := add(milestoneSource(m)); err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 		}
 		read[contracts.WorkSourceMilestone] = true
@@ -476,11 +478,11 @@ func (s *server) billableNow(ctx context.Context, held []heldSource) (map[source
 	if want := ids[contracts.WorkSourceExpense]; len(want) > 0 && s.deps.BillableExpenses != nil {
 		page, err := s.billableExpenses(ctx, contracts.BillableRequest{IDs: want})
 		if err != nil {
-			return nil, nil, fmt.Errorf("invoices: read the billable expenses: %w", err)
+			return nil, nil, nil, fmt.Errorf("invoices: read the billable expenses: %w", err)
 		}
 		for _, e := range page.Expenses {
 			if err := add(expenseSource(e)); err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 		}
 		read[contracts.WorkSourceExpense] = true
@@ -488,16 +490,17 @@ func (s *server) billableNow(ctx context.Context, held []heldSource) (map[source
 	if want := ids[contracts.WorkSourceHours]; len(want) > 0 && s.deps.BillableHours != nil {
 		page, err := s.billableHours(ctx, contracts.BillableRequest{IDs: want})
 		if err != nil {
-			return nil, nil, fmt.Errorf("invoices: read the billable hours: %w", err)
+			return nil, nil, nil, fmt.Errorf("invoices: read the billable hours: %w", err)
 		}
 		for _, h := range page.Hours {
 			if err := add(hourSource(h)); err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 		}
 		read[contracts.WorkSourceHours] = true
+		hours = page.Hours
 	}
-	return now, read, nil
+	return now, read, hours, nil
 }
 
 // staleness judges one held source against what its module answers now, by
@@ -525,7 +528,7 @@ func staleness(h heldSource, now heldSource, found bool) string {
 // source_changed or source_not_invoiceable, nothing for a fresh source or one
 // whose kind's module is off.
 func (s *server) freshness(ctx context.Context, held []heldSource) (map[sourceRef]string, error) {
-	now, read, err := s.billableNow(ctx, held)
+	now, read, _, err := s.billableNow(ctx, held)
 	if err != nil {
 		return nil, err
 	}

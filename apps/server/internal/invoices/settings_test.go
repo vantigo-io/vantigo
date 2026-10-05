@@ -41,7 +41,9 @@ type settingsJSON struct {
 		Expenses   int32 `json:"expenses"`
 		Milestones int32 `json:"milestones"`
 	} `json:"workVatCodes"`
-	Revision int32 `json:"revision"`
+	TimesheetDefault     bool   `json:"timesheetDefault"`
+	TimesheetPersonLabel string `json:"timesheetPersonLabel"`
+	Revision             int32  `json:"revision"`
 }
 
 // problemJSON is a refusal as a client reads it: the conflict's code, the
@@ -94,7 +96,8 @@ func completeSeller(revision int32) map[string]any {
 		"email": "faktura@kraft-verket.no", "defaultPaymentTermsDays": 14, "defaultCurrency": "NOK",
 		"footerText": "Takk for handelen.", "seriesStart": 1,
 		"peppolId": nil, "kidLength": nil, "kidAlgorithm": nil, "revision": revision,
-		"workVatCodes": map[string]any{"hours": 1, "expenses": 1, "milestones": 1},
+		"workVatCodes":     map[string]any{"hours": 1, "expenses": 1, "milestones": 1},
+		"timesheetDefault": false, "timesheetPersonLabel": "initials",
 	}
 }
 

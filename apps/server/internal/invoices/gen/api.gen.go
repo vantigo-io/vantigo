@@ -20,6 +20,27 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for InvoicesSettingsResponseTimesheetPersonLabel.
+const (
+	Initials InvoicesSettingsResponseTimesheetPersonLabel = "initials"
+	Name     InvoicesSettingsResponseTimesheetPersonLabel = "name"
+	Number   InvoicesSettingsResponseTimesheetPersonLabel = "number"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesSettingsResponseTimesheetPersonLabel enum.
+func (e InvoicesSettingsResponseTimesheetPersonLabel) Valid() bool {
+	switch e {
+	case Initials:
+		return true
+	case Name:
+		return true
+	case Number:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvoicesTransmissionResolutionOutcome.
 const (
 	Delivered InvoicesTransmissionResolutionOutcome = "delivered"
@@ -208,6 +229,9 @@ type InvoicesFromWorkRequest struct {
 	Revision *int32                   `json:"revision,omitempty"`
 	Sources  []InvoicesFromWorkSource `json:"sources"`
 
+	// Timesheet Whether the draft carries a timesheet inside its PDF (invoices work design D5) — absent takes the settings' timesheetDefault for a new draft and the target's own for an append. On, the rows are written for every hour the draft then holds, each person named through the user directory before the transaction.
+	Timesheet *bool `json:"timesheet,omitempty"`
+
 	// VatCodes The wizard's VAT code per kind of work (invoices work design D6), each optional — absent takes the settings' default, or id 9 (code 7, category O) for every kind while the seller is not VAT-registered. A code given must exist and be active (a 400 on vatCodes.<kind>); a default that has become inactive, with no code given, is a 400 on vatCodes.<kind> too.
 	VatCodes *InvoicesFromWorkVatCodes `json:"vatCodes,omitempty"`
 }
@@ -277,7 +301,10 @@ type InvoicesInvoiceRequest struct {
 	RefreshSources *bool `json:"refreshSources,omitempty"`
 
 	// Revision Required on PUT; the revision the caller read. A stale one is a 409 naming both.
-	Revision      *int32  `json:"revision,omitempty"`
+	Revision *int32 `json:"revision,omitempty"`
+
+	// Timesheet Whether the invoice carries a timesheet inside its PDF (invoices work design D5). On a create, absent takes the settings' timesheetDefault; on a PUT, absent keeps the draft's. Turned on, the save reads the hours the draft holds through Time's billable read and the people's names, before its transaction, and writes the rows; turned off, it deletes them; every save prunes them to the hours the draft still holds, and a refreshSources writes them again. true on a credit-note draft is a 400.
+	Timesheet     *bool   `json:"timesheet,omitempty"`
 	YourReference *string `json:"yourReference,omitempty"`
 }
 
@@ -375,14 +402,20 @@ type InvoicesInvoiceResponse struct {
 	State string `json:"state"`
 
 	// Status draft or issued.
-	Status           string               `json:"status"`
-	UncreditedAmount *float64             `json:"uncreditedAmount,omitempty"`
-	UpdatedAt        time.Time            `json:"updatedAt"`
-	VatSummaries     []InvoicesVatSummary `json:"vatSummaries"`
-	VatTotal         float64              `json:"vatTotal"`
-	VatTotalNok      float64              `json:"vatTotalNok"`
-	Warnings         []string             `json:"warnings"`
-	YourReference    string               `json:"yourReference"`
+	Status string `json:"status"`
+
+	// Timesheet Whether the document carries a timesheet inside its PDF (invoices work design D5); frozen at issue.
+	Timesheet bool `json:"timesheet"`
+
+	// TimesheetRows The timesheet as printed (invoices work design D5), in order: a snapshot of the hours the document holds, each person named by the settings' label when the rows were written — never the time entry's note. Empty without a timesheet. Kept with the document; nothing identity later does to a user changes it.
+	TimesheetRows    []InvoicesTimesheetRow `json:"timesheetRows"`
+	UncreditedAmount *float64               `json:"uncreditedAmount,omitempty"`
+	UpdatedAt        time.Time              `json:"updatedAt"`
+	VatSummaries     []InvoicesVatSummary   `json:"vatSummaries"`
+	VatTotal         float64                `json:"vatTotal"`
+	VatTotalNok      float64                `json:"vatTotalNok"`
+	Warnings         []string               `json:"warnings"`
+	YourReference    string                 `json:"yourReference"`
 }
 
 // InvoicesIssueRequest POST /invoices/{id}/issue's body (D6). issueDate is today (Oslo) when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document.
@@ -646,7 +679,7 @@ type InvoicesSendRequest struct {
 	Recipient *string `json:"recipient,omitempty"`
 }
 
-// InvoicesSettingsRequest PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. revision is the one the caller read: a stale one is a 409 naming both.
+// InvoicesSettingsRequest PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. timesheetDefault and timesheetPersonLabel are required too (invoices work design D5; a body without either, or with null, is a 400 on it): whether a new draft — the wizard's or one created by hand — carries a timesheet unless its request says, and how the timesheet names each person — initials, number or name, anything else a 400 on timesheetPersonLabel. revision is the one the caller read: a stale one is a 409 naming both.
 type InvoicesSettingsRequest struct {
 	AddressLine1            string  `json:"addressLine1"`
 	AddressLine2            *string `json:"addressLine2,omitempty"`
@@ -670,11 +703,17 @@ type InvoicesSettingsRequest struct {
 	OrganisationNumber string          `json:"organisationNumber"`
 
 	// PeppolId The seller's Peppol participant id (D2), a four-digit scheme, a colon and an identifier, such as 0192:974760673; a 0192 id is the seller's own organisation number. Null or empty defaults it to 0192 and the organisation number when that is set.
-	PeppolId      json.RawMessage `json:"peppolId"`
-	PostalCode    string          `json:"postalCode"`
-	Revision      int32           `json:"revision"`
-	SeriesStart   int64           `json:"seriesStart"`
-	VatRegistered bool            `json:"vatRegistered"`
+	PeppolId    json.RawMessage `json:"peppolId"`
+	PostalCode  string          `json:"postalCode"`
+	Revision    int32           `json:"revision"`
+	SeriesStart int64           `json:"seriesStart"`
+
+	// TimesheetDefault Whether a new invoice draft carries a timesheet unless its request says (invoices work design D5). Required — a body without it is a 400 on timesheetDefault.
+	TimesheetDefault json.RawMessage `json:"timesheetDefault"`
+
+	// TimesheetPersonLabel How a timesheet names each person (invoices work design D5) — initials (the display name's initials, a second KN becoming KN2), number (Person 1, Person 2 in order of first appearance on the timesheet) or name (the display name). Required; anything else is a 400 on timesheetPersonLabel.
+	TimesheetPersonLabel json.RawMessage `json:"timesheetPersonLabel"`
+	VatRegistered        bool            `json:"vatRegistered"`
 
 	// WorkVatCodes The VAT code each kind of work is invoiced at (invoices work design D6), each the id of an active code — a changed one; one kept as stored passes even if it has since become inactive. Required — a body without it is a 400 on workVatCodes, so a client that predates it cannot reset the codes by leaving it out.
 	WorkVatCodes json.RawMessage `json:"workVatCodes"`
@@ -710,13 +749,19 @@ type InvoicesSettingsResponse struct {
 	OrganisationNumber string `json:"organisationNumber"`
 
 	// PeppolId The seller's Peppol participant id; null when neither set nor derivable from the organisation number.
-	PeppolId      *string   `json:"peppolId"`
-	PostalCode    string    `json:"postalCode"`
-	Revision      int32     `json:"revision"`
-	SeriesLocked  bool      `json:"seriesLocked"`
-	SeriesStart   int64     `json:"seriesStart"`
-	UpdatedAt     time.Time `json:"updatedAt"`
-	VatRegistered bool      `json:"vatRegistered"`
+	PeppolId     *string `json:"peppolId"`
+	PostalCode   string  `json:"postalCode"`
+	Revision     int32   `json:"revision"`
+	SeriesLocked bool    `json:"seriesLocked"`
+	SeriesStart  int64   `json:"seriesStart"`
+
+	// TimesheetDefault Whether a new invoice draft carries a timesheet unless its request says (invoices work design D5); false until changed.
+	TimesheetDefault bool `json:"timesheetDefault"`
+
+	// TimesheetPersonLabel How a timesheet names each person (invoices work design D5) — initials (the default), number or name — applied when its rows are written.
+	TimesheetPersonLabel InvoicesSettingsResponseTimesheetPersonLabel `json:"timesheetPersonLabel"`
+	UpdatedAt            time.Time                                    `json:"updatedAt"`
+	VatRegistered        bool                                         `json:"vatRegistered"`
 
 	// Warnings Never refusals. kid_headroom_low — the next number leaves fewer than two digits of the KID agreement's length (a hundredfold growth) before issuing is refused with kid_length_exceeded.
 	Warnings []string `json:"warnings"`
@@ -724,6 +769,9 @@ type InvoicesSettingsResponse struct {
 	// WorkVatCodes The VAT code each kind of work is invoiced at (invoices work design D6) — the settings' defaults, which the uninvoiced view's wizard pre-fills, each the id of a code. All three are 1 (code 3, 25 %) until changed.
 	WorkVatCodes InvoicesWorkVatCodes `json:"workVatCodes"`
 }
+
+// InvoicesSettingsResponseTimesheetPersonLabel How a timesheet names each person (invoices work design D5) — initials (the default), number or name — applied when its rows are written.
+type InvoicesSettingsResponseTimesheetPersonLabel string
 
 // InvoicesSourceRef A piece of work by identity (invoices work design D2): kind is time.entry (an hour entry), expenses.entry (an expense line) or projects.milestone (a billing milestone), and id is its row in the module that owns it.
 type InvoicesSourceRef struct {
@@ -757,6 +805,20 @@ type InvoicesStatsSummaryResponse struct {
 	PaidAmount            float64   `json:"paidAmount"`
 	PaidCount             int32     `json:"paidCount"`
 	To                    time.Time `json:"to"`
+}
+
+// InvoicesTimesheetRow One row of a document's timesheet (invoices work design D5) — one time entry as printed. description is the entry's task title, else its project's name; never the entry's note.
+type InvoicesTimesheetRow struct {
+	Date        openapi_types.Date `json:"date"`
+	Description string             `json:"description"`
+	Hours       float64            `json:"hours"`
+
+	// PersonLabel The person as the settings' timesheetPersonLabel named them when the row was written — initials, Person n, or the display name.
+	PersonLabel string `json:"personLabel"`
+	Position    int32  `json:"position"`
+
+	// WorkType The entry's work type; absent for none.
+	WorkType *string `json:"workType,omitempty"`
 }
 
 // InvoicesTransmission One EHF transmission of an issued document (EHF and KID design D9): its identity, its state and when it reached each, the receiver it was addressed to, the SHA-256 of the UBL it carries, the resolution of an unconfirmed one — resolvedByUserId absent when the provider's evidence resolved it — and ublUrl, where the stored UBL is downloaded. providerRef, reason and submitAttemptedAt are answered only to a caller with invoices:issue.

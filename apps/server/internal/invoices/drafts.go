@@ -115,6 +115,11 @@ type draftInput struct {
 	// projectCodes is what the save's derived project may need from the
 	// project directory, read before its transaction (saveProjectCodes).
 	projectCodes map[int32]string
+	// timesheet is whether the draft carries a timesheet once saved
+	// (invoices work design D5), and timesheetRead what was read before the
+	// transaction to write its rows anew — nil when the save only prunes them.
+	timesheet     bool
+	timesheetRead *timesheetRead
 }
 
 // amount is one number of a line: finite, at least minimum (above it when
@@ -481,6 +486,12 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 	if in.paymentTermsDays == nil {
 		in.paymentTermsDays = &settings.DefaultPaymentTermsDays
 	}
+	// A draft carries a timesheet when its request says so, else when the
+	// settings' default does (D5); it holds no hours yet, so no rows.
+	in.timesheet = settings.TimesheetDefault
+	if req.Body.Timesheet != nil {
+		in.timesheet = *req.Body.Timesheet
+	}
 
 	codes, err := vatCodesOn(ctx, q, pgDate(businessDay(s.deps.Clock())))
 	if err != nil {
@@ -512,7 +523,7 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 			PaymentTermsDays: in.paymentTermsDays, Currency: settings.DefaultCurrency,
 			YourReference: *in.yourReference, OurReference: in.ourReference, OrderReference: in.orderReference,
 			Note: in.note, InternalNote: in.internalNote,
-			NetTotal: net, VatTotal: vat, GrossTotal: gross, VatTotalNok: vatNOK,
+			NetTotal: net, VatTotal: vat, GrossTotal: gross, VatTotalNok: vatNOK, Timesheet: in.timesheet,
 			CreatedByUserID: callerID(ctx), Now: s.deps.Clock(),
 		})
 		if err != nil {
@@ -602,12 +613,33 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	if err != nil {
 		return nil, err
 	}
-	if req.Body.RefreshSources != nil && *req.Body.RefreshSources {
-		now, kinds, err := s.billableNow(ctx, held)
+	refresh := req.Body.RefreshSources != nil && *req.Body.RefreshSources
+	var hours []contracts.BillableHour
+	if refresh {
+		now, kinds, read, err := s.billableNow(ctx, held)
 		if err != nil {
 			return nil, err
 		}
-		in.refresh = &sourcesRefresh{read: held, now: now, kind: kinds}
+		in.refresh, hours = &sourcesRefresh{read: held, now: now, kind: kinds}, read
+	}
+	// The timesheet (D5): the request's flag, else the draft's. Turned on, or
+	// refreshed, its rows are written anew — the hours as Time answers them
+	// (the refresh's own read, else one by id) and their people named, here
+	// before the transaction; otherwise the save prunes them. With Time
+	// switched off there is nothing to write them from, and they are pruned.
+	in.timesheet = current.Timesheet
+	if req.Body.Timesheet != nil {
+		in.timesheet = *req.Body.Timesheet
+	}
+	if in.timesheet && (refresh || !current.Timesheet) && s.deps.BillableHours != nil {
+		if !refresh {
+			if hours, err = s.heldHours(ctx, held); err != nil {
+				return nil, err
+			}
+		}
+		if in.timesheetRead, err = s.readTimesheet(ctx, settings.TimesheetPersonLabel, hours, nil); err != nil {
+			return nil, err
+		}
 	}
 	// The derived project's code, should the save need one (D9): read here,
 	// before the transaction, like everything the directory answers.
@@ -664,8 +696,9 @@ type draftSaved struct {
 // snapshot the draft took, in one statement; what no line names, and every
 // hold when the customer changed (plan reading 33), is dropped; an invoice
 // draft's project is then derived from the work it carries (D9,
-// setDocumentProject). A row deleted since the caller read it is
-// errDocumentGone.
+// setDocumentProject), and its timesheet pruned to the hours it still holds,
+// written anew or deleted (D5, saveTimesheet). A row deleted since the caller
+// read it is errDocumentGone.
 func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in draftInput, totals documentTotals) (draftSaved, error) {
 	net, vat, gross, vatNOK, err := numerics(totals)
 	if err != nil {
@@ -733,7 +766,7 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 			DeliveryAddressLine1: line1, DeliveryAddressLine2: line2, DeliveryPostalCode: postal, DeliveryCity: city, DeliveryCountry: country,
 			PaymentTermsDays: in.paymentTermsDays, YourReference: yourReference, OurReference: in.ourReference,
 			OrderReference: in.orderReference, Note: in.note, InternalNote: in.internalNote,
-			NetTotal: net, VatTotal: vat, GrossTotal: gross, VatTotalNok: vatNOK, Now: s.deps.Clock(),
+			NetTotal: net, VatTotal: vat, GrossTotal: gross, VatTotalNok: vatNOK, Timesheet: in.timesheet, Now: s.deps.Clock(),
 		})
 		if err != nil {
 			return fmt.Errorf("invoices: replace draft %d: %w", id, err)
@@ -750,12 +783,14 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 			return err
 		}
 		// A credit note holds no work: it keeps the project it copied from
-		// its original (D9).
+		// its original (D9), and carries no timesheet (D5).
 		if locked.Kind != kindInvoice {
 			return nil
 		}
-		out.doc, err = setDocumentProject(ctx, txq, out.doc, rows, in.projectCodes)
-		return err
+		if out.doc, err = setDocumentProject(ctx, txq, out.doc, rows, in.projectCodes); err != nil {
+			return err
+		}
+		return saveTimesheet(ctx, txq, id, in.timesheet, in.timesheetRead, rows)
 	})
 	if errors.Is(err, errSourceHeldElsewhere) {
 		refusal, err := heldElsewhere(ctx, store.New(s.deps.Pool), id, carried)

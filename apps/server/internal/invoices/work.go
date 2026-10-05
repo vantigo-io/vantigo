@@ -964,8 +964,39 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 	if len(errs) > 0 {
 		return gen.PostInvoicesFromWork400ApplicationProblemPlusJSONResponse(invalid(invalidWorkTitle, errs)), nil
 	}
+	// The timesheet (D5): the request's flag, else an append target's own,
+	// else the settings' default. On, its rows are written for every hour the
+	// draft will hold — the added ones as just read, the target's read again
+	// by id — each person named through the user directory, here before the
+	// transaction; that one read names the people a line names too.
+	timesheetOn := settings.TimesheetDefault
+	if target != nil {
+		timesheetOn = target.Timesheet
+	}
+	if body.Timesheet != nil {
+		timesheetOn = *body.Timesheet
+	}
+	var sheet *timesheetRead
+	if timesheetOn && s.deps.BillableHours != nil {
+		hours := slices.Clone(sel.hours)
+		carried, err := s.heldHours(ctx, targetHeld)
+		if err != nil {
+			return nil, err
+		}
+		names := make(map[int32]string, len(projects))
+		for id, p := range projects {
+			names[id] = p.Name
+		}
+		if sheet, err = s.readTimesheet(ctx, settings.TimesheetPersonLabel, append(hours, carried...), names); err != nil {
+			return nil, err
+		}
+	}
 	people := map[uuid.UUID]string{}
-	if grouping == groupingPerson || grouping == groupingItemised {
+	switch {
+	case grouping != groupingPerson && grouping != groupingItemised:
+	case sheet != nil:
+		people = sheet.names
+	default:
 		var ids []uuid.UUID
 		for _, h := range sel.hours {
 			if !slices.Contains(ids, h.UserID) {
@@ -1061,7 +1092,7 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 			doc, err = txq.InsertInvoiceDraft(ctx, store.InsertInvoiceDraftParams{
 				CustomerID: body.CustomerId, DeliveryFrom: from, DeliveryTo: to, PaymentTermsDays: terms,
 				Currency: settings.DefaultCurrency, YourReference: profile.BuyerReference, Note: note,
-				NetTotal: net, VatTotal: vatTotal, GrossTotal: gross, VatTotalNok: vatNOK,
+				NetTotal: net, VatTotal: vatTotal, GrossTotal: gross, VatTotalNok: vatNOK, Timesheet: timesheetOn,
 				CreatedByUserID: callerID(ctx), Now: s.deps.Clock(),
 			})
 			if err != nil {
@@ -1141,7 +1172,7 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 				DeliveryPostalCode: locked.DeliveryPostalCode, DeliveryCity: locked.DeliveryCity, DeliveryCountry: locked.DeliveryCountry,
 				PaymentTermsDays: locked.PaymentTermsDays, YourReference: locked.YourReference, OurReference: locked.OurReference,
 				OrderReference: locked.OrderReference, Note: targetNote, InternalNote: locked.InternalNote,
-				NetTotal: net, VatTotal: vatTotal, GrossTotal: gross, VatTotalNok: vatNOK, Now: s.deps.Clock(),
+				NetTotal: net, VatTotal: vatTotal, GrossTotal: gross, VatTotalNok: vatNOK, Timesheet: timesheetOn, Now: s.deps.Clock(),
 			})
 			if err != nil {
 				return fmt.Errorf("invoices: add work to draft %d: %w", locked.ID, err)
@@ -1177,6 +1208,13 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 		// save's (D9), its code from the directory read before the lock.
 		if doc, err = setDocumentProject(ctx, txq, doc, rows, projectCodes(entries)); err != nil {
 			return err
+		}
+		// The timesheet of every hour the draft now holds, written anew
+		// after the holds (D5); a target's turned off is deleted.
+		if timesheetOn || (target != nil && target.Timesheet) {
+			if err := saveTimesheet(ctx, txq, doc.ID, timesheetOn, sheet, rows); err != nil {
+				return err
+			}
 		}
 		out.doc = doc
 		return nil

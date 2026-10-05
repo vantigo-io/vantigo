@@ -786,6 +786,10 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 	if body.RefreshSources != nil && *body.RefreshSources {
 		add("refreshSources", msgSourcesOnCredit)
 	}
+	// A credit note holds no hours, so it prints no timesheet (D5).
+	if body.Timesheet != nil && *body.Timesheet {
+		add("timesheet", "A credit note carries no timesheet")
+	}
 	book, err := bookOf(ctx, q, current)
 	if err != nil {
 		return nil, err

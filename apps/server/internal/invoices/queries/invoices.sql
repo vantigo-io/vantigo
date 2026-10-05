@@ -9,23 +9,25 @@ SELECT * FROM invoices.invoices WHERE id = @id FOR UPDATE;
 -- name: InsertInvoiceDraft :one
 -- InsertInvoiceDraft writes an invoice draft (D4). It has no number, no issue
 -- date and no snapshots; its totals are the ones computed with today's rates,
--- which the issue computes again for the issue date.
+-- which the issue computes again for the issue date. timesheet is whether it
+-- carries a timesheet (invoices work design D5).
 INSERT INTO invoices.invoices (
     kind, customer_id, delivery_date, delivery_from, delivery_to,
     delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country,
     payment_terms_days, currency, your_reference, our_reference, order_reference, note, internal_note,
-    net_total, vat_total, gross_total, vat_total_nok, created_by_user_id, created_at, updated_at
+    net_total, vat_total, gross_total, vat_total_nok, timesheet, created_by_user_id, created_at, updated_at
 ) VALUES (
     'invoice', @customer_id, @delivery_date, @delivery_from, @delivery_to,
     @delivery_address_line1, @delivery_address_line2, @delivery_postal_code, @delivery_city, @delivery_country,
     @payment_terms_days, @currency, @your_reference, @our_reference, @order_reference, @note, @internal_note,
-    @net_total, @vat_total, @gross_total, @vat_total_nok, @created_by_user_id, @now::timestamptz, @now::timestamptz
+    @net_total, @vat_total, @gross_total, @vat_total_nok, @timesheet, @created_by_user_id, @now::timestamptz, @now::timestamptz
 )
 RETURNING *;
 
 -- name: UpdateDraft :one
--- UpdateDraft replaces a draft's own fields and moves its revision on. The
--- caller holds the row (LockInvoice) and has checked it is still a draft.
+-- UpdateDraft replaces a draft's own fields — its timesheet flag among them
+-- (invoices work design D5) — and moves its revision on. The caller holds the
+-- row (LockInvoice) and has checked it is still a draft.
 UPDATE invoices.invoices SET
     customer_id = @customer_id,
     delivery_date = @delivery_date,
@@ -46,6 +48,7 @@ UPDATE invoices.invoices SET
     vat_total = @vat_total,
     gross_total = @gross_total,
     vat_total_nok = @vat_total_nok,
+    timesheet = @timesheet,
     updated_at = @now::timestamptz,
     revision = revision + 1
 WHERE id = @id AND status = 'draft'

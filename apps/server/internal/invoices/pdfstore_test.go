@@ -280,13 +280,13 @@ func TestPDF_OnlyThePreviewCarriesTheWatermark(t *testing.T) {
 	}
 	var mu sync.Mutex
 	var models []model
-	defer invoices.SetPDFModelBuilt(func(id int64, watermark string, numbered bool) {
+	defer invoices.SetPDFModelBuilt(func(id int64, m invoices.PDFModel) {
 		if id != draft.ID {
 			return
 		}
 		mu.Lock()
 		defer mu.Unlock()
-		models = append(models, model{watermark, numbered})
+		models = append(models, model{m.Watermark, m.Numbered})
 	})()
 
 	if res := creator(t, h).Do(http.MethodGet, previewPath(draft.ID), nil); res.Status != http.StatusOK {
