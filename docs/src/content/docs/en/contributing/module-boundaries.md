@@ -210,8 +210,10 @@ Communications' outbox is the working example.
   a product catalog, a project directory, project actuals, project expenses,
   billable hours, billable expenses or billable milestones — naming both, or a
   source kind two invoiced-work holders both claim (`module: two modules both stamp
-  "time.entry": a, b`), naming the kind and both. `module.Workers`, which has no
-  error to return, panics on the same kind claimed twice.
+  "time.entry": a, b`), naming the kind and both — a holder a caller preset on
+  `Deps.InvoicedWork` (a test harness's fake) claims its kinds first and is named
+  `Deps.InvoicedWork`. `module.Workers`, which has no error to return, panics on the
+  same kind claimed twice.
 - **Rule 7**: `no-restricted-imports` in each module frontend's `eslint.config.js`,
   run by `bun run frontend:lint` locally and in CI.
 - **Rule 8**: by shape and by test. `RepointCustomer` is handed the caller's

@@ -588,8 +588,9 @@ a document whose work spans two projects matches neither. Every document and lis
 carries `projectId` and `projectReference` when set. The PDF prints "Prosjekt" /
 "Project" and the reference after the references ([The PDF](#the-pdf)), the EHF carries
 it as BT-11 or, on a credit note, a reference of type 50
-([The EHF document](#the-ehf-document)), and the CSV export's last column is `Project`
-([The CSV export](#the-csv-export)).
+([The EHF document](#the-ehf-document)), the CSV export's last column is `Project`
+([The CSV export](#the-csv-export)), and a person's export carries it on each document
+as `projectReference` ([Retention and personal data](#retention-and-personal-data)).
 
 ### The write-back
 
@@ -1850,7 +1851,9 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   document and every draft, each with its lines, a structured `buyer` — the full
   snapshot: name, type, organisation number, foreign id, GLN, Peppol id, language and
   the address with its region — the `deliveryAddress` when one is set, the references
-  and both notes, and, on a credit note, `credits{number, issueDate}` naming what it
+  — among them `projectReference`, the project's code as the document snapshotted and
+  printed it, when its work belongs to one project ([The project](#the-project)) — and
+  both notes, and, on a credit note, `credits{number, issueDate}` naming what it
   credits. An issued document's internal note is exported too: it is immutable once
   issued, the same as every other column, and export carves out no exception for it.
   An issued document also carries its `payments` — every registration, with its paid

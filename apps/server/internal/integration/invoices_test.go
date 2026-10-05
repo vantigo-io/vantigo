@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -69,6 +71,15 @@ func (s *smtpRecorder) mails() []mail.Outbound {
 // opts are applied after these, so one of them may replace one of these.
 func invoicesInstallation(t *testing.T, opts ...modtest.Option) (*modtest.Harness, *modtest.Client, *smtpRecorder) {
 	t.Helper()
+	h, admin, _, smtp := installInvoices(t, []string{modCustomers, modInvoices}, nil, opts...)
+	return h, admin, smtp
+}
+
+// installInvoices is invoicesInstallation over the modules named — customers
+// and invoices among them — its one caller holding customers' and invoices'
+// permissions and perms besides, answered with its user id.
+func installInvoices(t *testing.T, names, perms []string, opts ...modtest.Option) (*modtest.Harness, *modtest.Client, uuid.UUID, *smtpRecorder) {
+	t.Helper()
 	objects, err := storage.NewFS(t.TempDir(), true, true)
 	if err != nil {
 		t.Fatalf("storage.NewFS: %v", err)
@@ -80,13 +91,13 @@ func invoicesInstallation(t *testing.T, opts ...modtest.Option) (*modtest.Harnes
 		modtest.WithEnv("MAIL_DRIVER", "smtp"),
 		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"),
 		modtest.WithEnv("SMTP_FROM", "faktura@example.invalid"),
-	}, opts...), modCustomers, modInvoices)
-	admin := h.SignIn(t,
+	}, opts...), names...)
+	admin, adminID := h.SignInUser(t, append([]string{
 		"customers:view", "customers:create", "customers:update", "customers:delete", "customers:merge",
 		"customers:billing-manage", "customers:legal-identity-view", "customers:legal-identity-manage",
 		"customers:personal-data", "customers:timeline-view",
 		"invoices:access", "invoices:create", "invoices:issue", "invoices:manage", "invoices:payments",
-	)
+	}, perms...)...)
 	okJSON(t, admin, http.MethodPut, invoicesBase+"/settings", map[string]any{
 		"legalName": "Kraft-Verket AS", "organisationNumber": "974 760 673",
 		"vatRegistered": true, "inForetaksregisteret": true,
@@ -98,7 +109,7 @@ func invoicesInstallation(t *testing.T, opts ...modtest.Option) (*modtest.Harnes
 		"workVatCodes":     map[string]any{"hours": 1, "expenses": 1, "milestones": 1},
 		"timesheetDefault": false, "timesheetPersonLabel": "initials",
 	}, nil)
-	return h, admin, smtp
+	return h, admin, adminID, smtp
 }
 
 // invoiceCustomer is POST /customers's answer.

@@ -259,7 +259,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.BillableMilestones = milestonesProvider.BillableMilestones(deps)
 	}
 
-	// Customer reference holders are the one many-provider contract slot
+	// Customer reference holders are the first many-provider contract slot
 	// (contracts.CustomerReferenceHolder, customers merge design D1): every
 	// module given that declares one contributes it, in the order given, so
 	// the merge that calls them does so in the same order on every run. A
@@ -628,11 +628,24 @@ func invoicedWorkLast(mods []Module) []Module {
 // withInvoicedWork is deps with every module's contracts.InvoicedWorkHolder
 // appended to Deps.InvoicedWork, in mods order, onto a copy of whatever the
 // caller preset, so a harness's own slice is never written through. mods is
-// every module given, enabled or not. It refuses a kind two modules claim,
-// naming the kind and both: the issue hands each kind's sources to one holder.
+// every module given, enabled or not. It refuses a kind two holders claim,
+// naming the kind and both — a preset holder as "Deps.InvoicedWork", whose
+// kinds are claimed first: the issue hands each kind's sources to one holder.
+// A nil preset entry is skipped.
 func withInvoicedWork(deps Deps, mods []Module) (Deps, error) {
 	var holders []contracts.InvoicedWorkHolder
 	claimedBy := make(map[contracts.WorkSourceKind]string)
+	for _, preset := range deps.InvoicedWork {
+		if preset == nil {
+			continue
+		}
+		for _, kind := range preset.Kinds() {
+			if _, ok := claimedBy[kind]; ok {
+				return deps, fmt.Errorf("module: two modules both stamp %q: Deps.InvoicedWork, Deps.InvoicedWork", kind)
+			}
+			claimedBy[kind] = "Deps.InvoicedWork"
+		}
+	}
 	for _, mod := range mods {
 		if mod.InvoicedWork == nil {
 			continue
