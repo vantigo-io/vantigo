@@ -122,3 +122,48 @@ func TestKID_ComputeVerifyAndFits(t *testing.T) {
 		}
 	}
 }
+
+// Parse recovers the number from a KID of either algorithm, at whatever
+// length it was issued: the check character — MOD11's '-' included — is
+// cut, the leading zeros dropped, a body past int64 kept but not fitted, and
+// anything that is not 2–25 digits (the last may be '-') refused.
+func TestKidParse(t *testing.T) {
+	t.Parallel()
+	mod10, _ := kid.Compute(1001, 7, kid.Mod10)
+	mod11, _ := kid.Compute(1001, 7, kid.Mod11)
+	dash, _ := kid.Compute(6, 5, kid.Mod11)
+	for _, c := range []struct {
+		name, in string
+		body     string
+		number   int64
+		fits, ok bool
+	}{
+		{"a MOD10 KID", mod10, "001001", 1001, true, true},
+		{"a MOD11 KID", mod11, "001001", 1001, true, true},
+		{"a MOD11 dash", dash, "0006", 6, true, true},
+		{"the specification's MOD11", "123456785", "12345678", 12345678, true, true},
+		{"zeros only", "0000", "000", 0, true, true},
+		{"the shortest", "17", "1", 1, true, true},
+		{"int64's largest body", "92233720368547758070", "9223372036854775807", 9223372036854775807, true, true},
+		{"one past int64", "92233720368547758080", "9223372036854775808", 0, false, true},
+		{"zeros before a body past int64", "00009223372036854775808-", "00009223372036854775808", 0, false, true},
+		{"25 characters", "1234567890123456789012345", "123456789012345678901234", 0, false, true},
+		{"25 characters of leading zeros", "0000000000000000000010017", "000000000000000000001001", 1001, true, true},
+		{"a letter", "0010O17", "", 0, false, false},
+		{"a letter as the check", "001001X", "", 0, false, false},
+		{"a dash before the end", "00-1001", "", 0, false, false},
+		{"a dash alone", "-", "", 0, false, false},
+		{"a dash after one digit", "1-", "1", 1, true, true},
+		{"a space", "001001 7", "", 0, false, false},
+		{"a sign", "+0010017", "", 0, false, false},
+		{"too short", "7", "", 0, false, false},
+		{"empty", "", "", 0, false, false},
+		{"too long", "12345678901234567890123456", "", 0, false, false},
+	} {
+		body, number, fits, ok := kid.Parse(c.in)
+		if body != c.body || number != c.number || fits != c.fits || ok != c.ok {
+			t.Errorf("%s: Parse(%q) = %q, %d, %v, %v; want %q, %d, %v, %v",
+				c.name, c.in, body, number, fits, ok, c.body, c.number, c.fits, c.ok)
+		}
+	}
+}

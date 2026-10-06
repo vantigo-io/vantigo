@@ -121,3 +121,31 @@ func Fits(next int64, length int) (fits, headroomLow bool) {
 	}
 	return true, room < 2
 }
+
+// Parse reads a KID as a bank line carries it (payments and reminders design
+// D4): 2 to 25 characters, every one but the last a digit, the last a digit
+// or MOD11's '-'. body is the digits before the check character, as
+// written; number is their value with the leading zeros dropped, and fits is
+// false — number 0 — when it exceeds int64 (a 25-digit KID of another
+// agreement). ok is false for anything else. Parse does not judge the check
+// character; Verify does, under the algorithm a document was issued with.
+func Parse(s string) (body string, number int64, fits bool, ok bool) {
+	if len(s) < 2 || len(s) > 25 {
+		return "", 0, false, false
+	}
+	body, last := s[:len(s)-1], s[len(s)-1]
+	if last != '-' && (last < '0' || last > '9') {
+		return "", 0, false, false
+	}
+	for i := 0; i < len(body); i++ {
+		if body[i] < '0' || body[i] > '9' {
+			return "", 0, false, false
+		}
+	}
+	n, err := strconv.ParseInt(body, 10, 64)
+	if err != nil {
+		// Only a range error is left: every character is a digit.
+		return body, 0, false, true
+	}
+	return body, n, true, true
+}
