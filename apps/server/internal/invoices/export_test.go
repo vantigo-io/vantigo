@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // InLockedTx exposes inLockedTx to the external tests, whose contract-call
@@ -374,4 +377,51 @@ func EngineSettingsForTest(ctx context.Context, db store.DBTX) (reminderrules.Se
 // them.
 func DeliveriesOf(ctx context.Context, db store.DBTX, invoiceID int64) ([]time.Time, error) {
 	return deliveriesOf(ctx, store.New(db), invoiceID)
+}
+
+// countingDB is a store.DBTX that counts the statements it passes on.
+type countingDB struct {
+	db store.DBTX
+	n  atomic.Int64
+}
+
+func (c *countingDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	c.n.Add(1)
+	return c.db.Exec(ctx, sql, args...)
+}
+
+func (c *countingDB) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	c.n.Add(1)
+	return c.db.Query(ctx, sql, args...)
+}
+
+func (c *countingDB) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	c.n.Add(1)
+	return c.db.QueryRow(ctx, sql, args...)
+}
+
+// CountingDB wraps db so every Exec, Query and QueryRow is counted; the
+// function answers the count so far (Task 7b: the loader reads a handful of
+// statements for any number of invoices).
+func CountingDB(db store.DBTX) (store.DBTX, func() int) {
+	c := &countingDB{db: db}
+	return c, func() int { return int(c.n.Load()) }
+}
+
+// RuleInputsForTest is ruleInputs over db: the rule-input loader's pool
+// read of every invoice among ids on day L (Task 7b).
+func RuleInputsForTest(ctx context.Context, h module.Deps, db store.DBTX, ids []int64, L time.Time) (map[int64]reminderrules.Input, error) {
+	return (&server{deps: h}).ruleInputs(ctx, store.New(db), ids, L)
+}
+
+// RuleInputLockedForTest is ruleInputLocked inside tx: invoice id locked
+// through lockInvoice first, as its callers do, then every fact read after
+// the lock, exclude left out of flight.
+func RuleInputLockedForTest(ctx context.Context, h module.Deps, tx pgx.Tx, id int64, L time.Time, exclude int64) (reminderrules.Input, error) {
+	txq := store.New(tx)
+	inv, err := lockInvoice(ctx, txq, id)
+	if err != nil {
+		return reminderrules.Input{}, err
+	}
+	return (&server{deps: h}).ruleInputLocked(ctx, txq, inv, L, exclude)
 }
