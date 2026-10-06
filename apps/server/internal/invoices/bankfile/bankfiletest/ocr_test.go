@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -164,5 +165,54 @@ func TestBankfiletest_OCRIsAccepted(t *testing.T) {
 		if len(f.Accounts) != 2 || f.Accounts[0] != accountA || f.Accounts[1] != accountB {
 			t.Errorf("%s: accounts %v", name, f.Accounts)
 		}
+	}
+}
+
+// The builder refuses, by a panic, what it cannot write, rather than write
+// a malformed record a test would mistake for a well-formed file.
+func TestBankfiletest_OCRPanicsOnWhatItCannotWrite(t *testing.T) {
+	t.Parallel()
+	ok := bankfiletest.OCRPayment{Type: 10, Account: accountA, Settled: day(6), AmountMinor: 100, KID: "0010017"}
+	with := func(change func(*bankfiletest.OCRPayment)) []bankfiletest.OCRPayment {
+		p := ok
+		change(&p)
+		return []bankfiletest.OCRPayment{p}
+	}
+	for _, c := range []struct {
+		name         string
+		transmission string
+		payments     []bankfiletest.OCRPayment
+	}{
+		{"a transmission number of 8", "12345678", []bankfiletest.OCRPayment{ok}},
+		{"a KID of 26", "1", with(func(p *bankfiletest.OCRPayment) { p.KID = strings.Repeat("1", 26) })},
+		{"an account of 12", "1", with(func(p *bankfiletest.OCRPayment) { p.Account = "123456789031" })},
+		{"an archive reference of 10", "1", with(func(p *bankfiletest.OCRPayment) { p.ArchiveRef = "1234567890" })},
+		{"a debtor account of 12", "1", with(func(p *bankfiletest.OCRPayment) { p.DebtorAccount = "123456789012" })},
+		{"an amount of 18 digits", "1", with(func(p *bankfiletest.OCRPayment) { p.AmountMinor = 100_000_000_000_000_000 })},
+		{"a negative amount in a positive assignment", "1", append([]bankfiletest.OCRPayment{ok, ok, ok},
+			with(func(p *bankfiletest.OCRPayment) { p.AmountMinor = -100 })...)},
+		{"type 9", "1", with(func(p *bankfiletest.OCRPayment) { p.Type = 9 })},
+		{"type 22", "1", with(func(p *bankfiletest.OCRPayment) { p.Type = 22 })},
+		{"a negative net assignment", "1", with(func(p *bankfiletest.OCRPayment) { p.Negative = true })},
+		{"a negative assignment beside a positive one", "1", append(with(func(p *bankfiletest.OCRPayment) {
+			p.Account = accountB
+		}), with(func(p *bankfiletest.OCRPayment) { p.Negative = true; p.AmountMinor = 200 })...)},
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s: OCR wrote a file", c.name)
+				}
+			}()
+			bankfiletest.OCR(c.transmission, c.payments...)
+		}()
+	}
+	// The widest of each field is still written.
+	widest := with(func(p *bankfiletest.OCRPayment) {
+		p.KID, p.ArchiveRef, p.DebtorAccount = "123456789012345678901234-", "123456789", "98765432109"
+		p.AmountMinor = 99_999_999_999_999
+	})
+	if _, err := bankfile.ParseOCR(bankfiletest.OCR("9999999", widest...), today); err != nil {
+		t.Errorf("the widest fields: %v", err)
 	}
 }

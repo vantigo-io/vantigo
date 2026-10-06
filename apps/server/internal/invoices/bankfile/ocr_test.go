@@ -111,6 +111,9 @@ func TestBankFileOCR_Parse(t *testing.T) {
 		{name: "the end record missing", mutate: without(12, 13), where: "file", want: []string{"NY000089"}},
 		{name: "a record after the end", mutate: func(r []string) []string { return append(r, r[9]) },
 			where: "record 14", want: []string{"after the transmission's end"}},
+		{name: "a transmission with no assignments", mutate: func(r []string) []string {
+			return []string{r[0], put(put(put(r[12], 9, "00000000"), 17, "00000002"), 25, "00000000000000000")}
+		}, where: "record 2", want: []string{"no assignments"}},
 		{name: "the assignment end missing", mutate: without(7, 8), where: "record 8", want: []string{"NY090020"}},
 		{name: "an assignment without transactions", mutate: without(9, 11), where: "record 10", want: []string{"no transactions"}},
 		{name: "item 2 without item 1", mutate: without(2, 3), where: "record 3", want: []string{"item 2"}},
@@ -253,12 +256,23 @@ func TestBankFileOCR_Parse(t *testing.T) {
 	})
 }
 
+// Every parsed file's Accounts is a slice, never nil: the import writes it
+// to bank_files.accounts, which is NOT NULL.
+func TestBankFile_AccountsNeverNil(t *testing.T) {
+	t.Parallel()
+	var f bankfile.File
+	bankfile.Finish(&f)
+	if f.Accounts == nil || len(f.Accounts) != 0 {
+		t.Errorf("a file of no accounts: Accounts = %#v, want []string{}", f.Accounts)
+	}
+}
+
 // A hostile file costs time in proportion to its size, never more: the
 // shapes that once read the rest of the file again for every record — a
 // cap's worth of transactions padded with megabytes of white space — and
 // a megabyte of blank lines before the records, and of XML comments before
-// a root. Linear, each takes milliseconds; quadratic, the first took twenty
-// seconds.
+// a root. Linear, each takes milliseconds (a few hundred under -race);
+// quadratic, the first took twenty seconds.
 func TestBankFile_HostileInputIsLinear(t *testing.T) {
 	t.Parallel()
 	recs := records(fixture(t, "r4-example.ocr"))
@@ -272,16 +286,18 @@ func TestBankFile_HostileInputIsLinear(t *testing.T) {
 	for name, b := range map[string][]byte{"padded": padded, "blank lines": blank, "comments": comments} {
 		start := time.Now()
 		_, _ = bankfile.Parse(b, today)
-		if d := time.Since(start); d > 10*time.Second {
+		if d := time.Since(start); d > 2*time.Second {
 			t.Errorf("%s: %v for %d bytes", name, d, len(b))
 		}
 	}
 }
 
 // No input makes the parser panic, a refusal is a *bankfile.Error in UTF-8,
-// and whatever it accepts is what the import may store: positive amounts,
-// 11-digit accounts, valid UTF-8 without NUL, at most MaxTransactions,
-// fingerprinted.
+// and whatever it accepts is what the import may store: amounts within
+// numeric(14,2) and above zero, booking dates from 2000-01-01 to today,
+// accounts that normalise and are the file's own, a KID of at most 25
+// characters and a line reference of at most 60, valid UTF-8 without NUL,
+// at most MaxTransactions, fingerprinted.
 func FuzzParse(f *testing.F) {
 	for _, name := range []string{"r4-example.ocr", "two-assignments.ocr", "card-information.ocr",
 		"negative-line.ocr", "mod11-dash.ocr", "identical-lines.ocr", "overlap-a.ocr"} {
@@ -305,8 +321,12 @@ func FuzzParse(f *testing.F) {
 		if len(file.Transactions) > bankfile.MaxTransactions {
 			t.Fatalf("%d transactions", len(file.Transactions))
 		}
+		earliest := time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
 		for _, tx := range file.Transactions {
-			if _, ok := bankfile.NormaliseAccount(tx.Account); !ok || tx.AmountMinor <= 0 || len(tx.Fingerprint) != 64 || tx.Ordinal < 1 {
+			if _, ok := bankfile.NormaliseAccount(tx.Account); !ok || !slices.Contains(file.Accounts, tx.Account) ||
+				tx.AmountMinor <= 0 || tx.AmountMinor > 99_999_999_999_999 ||
+				tx.BookedOn.Before(earliest) || tx.BookedOn.After(today) ||
+				len(tx.KID) > 25 || len(tx.LineRef) > 60 || len(tx.Fingerprint) != 64 || tx.Ordinal < 1 {
 				t.Fatalf("an unstorable transaction: %+v", tx)
 			}
 			for _, s := range []string{tx.LineRef, tx.KID, tx.RemittanceText, tx.DebtorName, tx.DebtorAccount, tx.ArchiveRef, tx.BankCode} {

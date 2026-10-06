@@ -111,10 +111,14 @@ func newFile(format Format) *File {
 }
 
 // finish is what every format's parser does last: the accounts distinct and
-// ascending, the booking dates' bounds, and the fingerprints.
+// ascending, and never nil (bank_files.accounts is NOT NULL); the booking
+// dates' bounds; and the fingerprints.
 func (f *File) finish() {
 	slices.Sort(f.Accounts)
 	f.Accounts = slices.Compact(f.Accounts)
+	if f.Accounts == nil {
+		f.Accounts = []string{}
+	}
 	for i, tx := range f.Transactions {
 		if i == 0 || tx.BookedOn.Before(f.FirstBookedOn) {
 			f.FirstBookedOn = tx.BookedOn
