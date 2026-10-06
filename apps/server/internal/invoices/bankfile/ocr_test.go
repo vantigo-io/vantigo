@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -307,8 +309,20 @@ func FuzzParse(f *testing.F) {
 		}
 		f.Add(b)
 	}
+	camt, err := os.ReadDir(filepath.Join("testdata", "camt054"))
+	if err != nil {
+		f.Fatal(err)
+	}
+	for _, e := range camt {
+		b, err := os.ReadFile(filepath.Join("testdata", "camt054", e.Name()))
+		if err != nil {
+			f.Fatal(err)
+		}
+		f.Add(b)
+	}
 	f.Add([]byte("NY000010\n"))
 	f.Add([]byte(`<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.02"/>`))
+	f.Add([]byte(`<!DOCTYPE d><Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.08"/>`))
 	f.Fuzz(func(t *testing.T, b []byte) {
 		file, err := bankfile.Parse(b, today)
 		if err != nil {
@@ -318,8 +332,8 @@ func FuzzParse(f *testing.F) {
 			}
 			return
 		}
-		if len(file.Transactions) > bankfile.MaxTransactions {
-			t.Fatalf("%d transactions", len(file.Transactions))
+		if len(file.Transactions) > bankfile.MaxTransactions || utf8.RuneCountInString(file.Identity) > 200 {
+			t.Fatalf("%d transactions, the identity %q", len(file.Transactions), file.Identity)
 		}
 		earliest := time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
 		for _, tx := range file.Transactions {
@@ -329,9 +343,14 @@ func FuzzParse(f *testing.F) {
 				len(tx.KID) > 25 || len(tx.LineRef) > 60 || len(tx.Fingerprint) != 64 || tx.Ordinal < 1 {
 				t.Fatalf("an unstorable transaction: %+v", tx)
 			}
-			for _, s := range []string{tx.LineRef, tx.KID, tx.RemittanceText, tx.DebtorName, tx.DebtorAccount, tx.ArchiveRef, tx.BankCode} {
-				if !utf8.ValidString(s) || strings.ContainsRune(s, 0) {
-					t.Fatalf("an unstorable string %q in %+v", s, tx)
+			// Each string fits its bank_transactions column (D3's schema).
+			for _, c := range []struct {
+				s    string
+				size int
+			}{{tx.LineRef, 60}, {tx.KID, 25}, {tx.RemittanceText, 1000}, {tx.DebtorName, 140},
+				{tx.DebtorAccount, 34}, {tx.ArchiveRef, 35}, {tx.BankCode, 35}} {
+				if !utf8.ValidString(c.s) || strings.ContainsRune(c.s, 0) || utf8.RuneCountInString(c.s) > c.size {
+					t.Fatalf("an unstorable string %q in %+v", c.s, tx)
 				}
 			}
 		}

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.02">
+  <BkToCstmrDbtCdtNtfctn>
+    <GrpHdr>
+      <MsgId>NO20261006-000123</MsgId>
+      <CreDtTm>2026-10-06T17:35:00+02:00</CreDtTm>
+    </GrpHdr>
+    <Ntfctn>
+      <Id>20261006173500NOK8903</Id>
+      <CreDtTm>2026-10-06T17:35:00+02:00</CreDtTm>
+      <Acct>
+        <Id><Othr><Id>12345678903</Id><SchmeNm><Cd>BBAN</Cd></SchmeNm></Othr></Id>
+        <Ccy>NOK</Ccy>
+      </Acct>
+      <Ntry>
+        <NtryRef>2610061-1-1</NtryRef>
+        <Amt Ccy="NOK">1250.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-06</Dt></BookgDt>
+        <ValDt><Dt>2026-10-06</Dt></ValDt>
+        <AcctSvcrRef>90000001</AcctSvcrRef>
+        <BkTxCd>
+          <Domn><Cd>PMNT</Cd><Fmly><Cd>RCDT</Cd><SubFmlyCd>VCOM</SubFmlyCd></Fmly></Domn>
+          <Prtry><Cd>230</Cd><Issr>NETS</Issr></Prtry>
+        </BkTxCd>
+        <NtryDtls>
+          <Btch><NbOfTxs>1</NbOfTxs></Btch>
+          <TxDtls>
+            <Refs>
+              <AcctSvcrRef>123456789</AcctSvcrRef>
+              <EndToEndId>NOTPROVIDED</EndToEndId>
+            </Refs>
+            <AmtDtls><TxAmt><Amt Ccy="NOK">1250.00</Amt></TxAmt></AmtDtls>
+            <RltdPties>
+              <Dbtr><Nm>Kunde AS</Nm></Dbtr>
+              <DbtrAcct><Id><Othr><Id>98765432109</Id></Othr></Id></DbtrAcct>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <RfrdDocAmt><RmtdAmt Ccy="NOK">1250.00</RmtdAmt></RfrdDocAmt>
+                <CdtrRefInf>
+                  <Tp><CdOrPrtry><Cd>SCOR</Cd></CdOrPrtry></Tp>
+                  <Ref>0010017</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+            <RltdDts><IntrBkSttlmDt>2026-10-06</IntrBkSttlmDt></RltdDts>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Ntfctn>
+  </BkToCstmrDbtCdtNtfctn>
+</Document>

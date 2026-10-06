@@ -23,3 +23,6 @@ Sidene her dekker reglene en endring holdes til, og vedlikeholdes på engelsk:
 - [E-fakturavalidering](/en/contributing/e-invoice-validation/) — EHF-oraklet: de
   offisielle XSD- og Schematron-artefaktene over fakturamodulens fasitdokumenter,
   hvordan du kjører det, og hvordan du oppgraderer artefaktene.
+- [Validering av bankfiler](/en/contributing/bank-file-validation/) — hvordan OCR giro-
+  og camt.054-leserne holdes til formatene: elementstiene testene låser, testfilene og
+  byggerne, og hvorfor ISO 20022-XSD-oraklet er utsatt.
