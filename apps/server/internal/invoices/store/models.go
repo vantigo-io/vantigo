@@ -133,14 +133,15 @@ type InvoicesCollectionHandoff struct {
 }
 
 type InvoicesCollectionRate struct {
-	ID              int64
-	Kind            string
-	ValidFrom       pgtype.Date
-	Value           pgtype.Numeric
-	ReleaseValue    pgtype.Numeric
-	SourceRef       string
-	CreatedByUserID *uuid.UUID
-	CreatedAt       time.Time
+	ID               int64
+	Kind             string
+	ValidFrom        pgtype.Date
+	Value            pgtype.Numeric
+	ReleaseValue     pgtype.Numeric
+	ReleaseSourceRef *string
+	SourceRef        string
+	CreatedByUserID  *uuid.UUID
+	CreatedAt        time.Time
 }
 
 type InvoicesCounter struct {

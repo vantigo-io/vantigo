@@ -199,32 +199,58 @@ func TestLocks_EachHelperReportsAndHolds(t *testing.T) {
 
 // TestLocks_TheImportAccountsOrderNeverDeadlocks: two first imports naming
 // the same two new accounts in opposite orders (D3 step 7, I18) — each the
-// import's first statements on a raw transaction of its own — queue on the
-// same row in the same order: the second waits on the first, and both
-// finish, each account inserted once, never 40P01.
+// import's first statements on a raw transaction of its own — take them in
+// account order. A third transaction holds 22222222222 uncommitted, so the
+// first import, upserting {1…, 2…}, inserts 11111111111 and parks on it; the
+// second, upserting {2…, 1…}, must then wait on the first (for 11111111111),
+// never on the holder (for 22222222222, which unsorted input would try
+// first). Released, both finish, each account inserted once, never 40P01.
 func TestLocks_TheImportAccountsOrderNeverDeadlocks(t *testing.T) {
 	h := raceHarness(t)
 	probeConn := ownConn(t, h)
 	before := deadlocks(t, probeConn)
 	ctx := context.Background()
 
-	first, firstPID := rawTx(t, h)
-	if err := invoices.LockForTest(ctx, first, "lockImportAccounts", "11111111111", "22222222222"); err != nil {
-		t.Fatalf("the first import's accounts: %v", err)
+	holder, holderPID := rawTx(t, h)
+	if _, err := holder.Exec(ctx, `INSERT INTO invoices.bank_import_accounts (account, format, set_by_user_id, set_at)
+		VALUES ('22222222222', 'ocr', gen_random_uuid(), now())`); err != nil {
+		t.Fatalf("the holder's account: %v", err)
 	}
+
+	first, firstPID := rawTx(t, h)
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- invoices.LockForTest(ctx, first, "lockImportAccounts", "11111111111", "22222222222")
+	}()
+	if pid := newWaiter(t, probeConn); pid != firstPID {
+		t.Fatalf("the backend waiting is %d, want the first import's %d", pid, firstPID)
+	}
+	if got := blockersOf(t, probeConn, firstPID); !slices.Equal(got, []uint32{holderPID}) {
+		t.Fatalf("the first import waits on %v, want the holder %d", got, holderPID)
+	}
+
 	second, secondPID := rawTx(t, h)
-	done := make(chan error, 1)
-	go func() { done <- invoices.LockForTest(ctx, second, "lockImportAccounts", "22222222222", "11111111111") }()
-	if pid := newWaiter(t, probeConn); pid != secondPID {
-		t.Errorf("the backend waiting is %d, want the second import's %d", pid, secondPID)
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- invoices.LockForTest(ctx, second, "lockImportAccounts", "22222222222", "11111111111")
+	}()
+	if pid := newWaiter(t, probeConn, firstPID); pid != secondPID {
+		t.Fatalf("the backend waiting is %d, want the second import's %d", pid, secondPID)
 	}
 	if got := blockersOf(t, probeConn, secondPID); !slices.Equal(got, []uint32{firstPID}) {
-		t.Errorf("the second import waits on %v, want the first %d", got, firstPID)
+		t.Errorf("the second import waits on %v, want the first %d: the accounts are taken in account order", got, firstPID)
+	}
+
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatalf("commit the holder: %v", err)
+	}
+	if err := <-firstDone; err != nil {
+		t.Fatalf("the first import after the holder committed: %v, want it to finish", err)
 	}
 	if err := first.Commit(ctx); err != nil {
 		t.Fatalf("commit the first import: %v", err)
 	}
-	if err := <-done; err != nil {
+	if err := <-secondDone; err != nil {
 		t.Errorf("the second import after the first committed: %v, want it to finish", err)
 	}
 	if err := second.Commit(ctx); err != nil {

@@ -85,7 +85,7 @@ func receivablesObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) m
 		"functions": collect("functions", `
 			SELECT p.proname || ':' || p.provolatile::text || ':' || pg_catalog.format_type(p.prorettype, NULL)
 			FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-			WHERE n.nspname = 'invoices' AND p.proname IN ('refuse_row_change', 'refuse_bank_import_account_change',
+			WHERE n.nspname = 'invoices' AND p.proname IN ('refuse_row_delete', 'refuse_bank_import_account_change',
 			    'refuse_bank_file_change', 'refuse_bank_transaction_change', 'refuse_bank_transaction_event_change',
 			    'refuse_collection_rate_change', 'seed_collection_rate', 'guard_child_of_issued_insert',
 			    'refuse_manual_delivery_change', 'refuse_charge_payment_change', 'refuse_reminder_run_change',
@@ -96,6 +96,10 @@ func receivablesObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) m
 			SELECT indexname || ':' || indexdef FROM pg_indexes
 			WHERE schemaname = 'invoices' AND (tablename = ANY($1) OR indexname = 'ix_payments_bank_transaction')
 			ORDER BY 1`, receivablesTables),
+		"sequences": collect("sequences", `
+			SELECT sequencename || ':' || start_value FROM pg_sequences
+			WHERE schemaname = 'invoices' AND sequencename = ANY(SELECT unnest($1::text[]) || '_id_seq')
+			ORDER BY 1`, receivablesTables),
 	}
 }
 
@@ -104,8 +108,9 @@ func receivablesObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) m
 // and pins every object it adds: the fifteen tables with every column, CHECK,
 // key and foreign key, the triggers and their functions, the release's seed
 // function, and the indexes — the partial ones with their predicates; and the
-// payments' source, bank line and nullable user (D2). The Down removes all of
-// it and restores the payments as 00035 made them.
+// payments' source, bank line and nullable user (D2); every identity starting
+// at 1001. The Down removes all of it and restores the payments as 00035 made
+// them.
 func TestInvoicesReceivables_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, receivablesVersion) // 00041_invoices_receivables.sql
@@ -139,7 +144,7 @@ func TestInvoicesReceivables_AppliesAndIsIdempotent(t *testing.T) {
 			"manual_deliveries:tr_manual_deliveries_parent:guard_child_of_issued_insert",
 			"reminder_print_batches:tr_reminder_print_batches_immutable:refuse_print_batch_change",
 			"reminder_runs:tr_reminder_runs_immutable:refuse_reminder_run_change",
-			"reminder_settings:tr_reminder_settings_kept:refuse_row_change",
+			"reminder_settings:tr_reminder_settings_kept:refuse_row_delete",
 			"reminders:tr_reminders_immutable:refuse_reminder_change",
 			"reminders:tr_reminders_parent:guard_reminder_insert",
 		},
@@ -158,11 +163,18 @@ func TestInvoicesReceivables_AppliesAndIsIdempotent(t *testing.T) {
 			"refuse_print_batch_change:v:trigger",
 			"refuse_reminder_change:v:trigger",
 			"refuse_reminder_run_change:v:trigger",
-			"refuse_row_change:v:trigger",
+			"refuse_row_delete:v:trigger",
 			"refuse_waiver_change:v:trigger",
 			"seed_collection_rate:v:void",
 		},
 		"indexes": receivablesIndexes,
+		// Every identity starts at 1001, as the module's other tables do.
+		"sequences": {
+			"bank_files_id_seq:1001", "bank_transaction_events_id_seq:1001", "bank_transactions_id_seq:1001",
+			"charge_payments_id_seq:1001", "charge_waivers_id_seq:1001", "collection_handoffs_id_seq:1001",
+			"collection_rates_id_seq:1001", "invoice_holds_id_seq:1001", "manual_deliveries_id_seq:1001",
+			"reminder_print_batches_id_seq:1001", "reminder_runs_id_seq:1001", "reminders_id_seq:1001",
+		},
 	}
 	// After the Down: the payments' user is required again, and nothing else
 	// of 00041's is left.
@@ -172,7 +184,7 @@ func TestInvoicesReceivables_AppliesAndIsIdempotent(t *testing.T) {
 	expect := func(when string, want map[string][]string) {
 		t.Helper()
 		got := receivablesObjects(t, ctx, pool)
-		for _, what := range []string{"columns", "tables", "triggers", "constraints", "functions", "indexes"} {
+		for _, what := range []string{"columns", "tables", "triggers", "constraints", "functions", "indexes", "sequences"} {
 			if !equalStrings(got[what], want[what]) {
 				t.Errorf("%s: %s =\n%s\nwant\n%s", when, what, strings.Join(got[what], "\n"), strings.Join(want[what], "\n"))
 			}
@@ -296,6 +308,7 @@ var receivablesColumns = []string{
 	"collection_rates.created_by_user_id:uuid::YES:",
 	"collection_rates.id:bigint::NO:",
 	"collection_rates.kind:character varying:30:NO:",
+	"collection_rates.release_source_ref:character varying:100:YES:",
 	"collection_rates.release_value:numeric:10,2:YES:",
 	"collection_rates.source_ref:character varying:100:NO:",
 	"collection_rates.valid_from:date::NO:",
@@ -412,6 +425,7 @@ var receivablesColumns = []string{
 // payments' new three.
 var receivablesConstraints = []string{
 	"invoices.bank_files:bank_files_pkey:PRIMARY KEY (id)",
+	"invoices.bank_files:ck_bank_files_counts:CHECK (((transactions >= 0) AND (ignored >= 0) AND (duplicates >= 0)))",
 	"invoices.bank_files:ck_bank_files_format:CHECK (((format)::text = ANY ((ARRAY['ocr'::character varying, 'camt054'::character varying])::text[])))",
 	"invoices.bank_files:ck_bank_files_ignored_kinds:CHECK ((jsonb_typeof(ignored_kinds) = 'object'::text))",
 	"invoices.bank_files:uq_bank_files_identity:UNIQUE (format, file_identity)",
@@ -423,15 +437,18 @@ var receivablesConstraints = []string{
 	"invoices.bank_transaction_events:bank_transaction_events_bank_transaction_id_fkey:FOREIGN KEY (bank_transaction_id) REFERENCES invoices.bank_transactions(id) ON DELETE RESTRICT",
 	"invoices.bank_transaction_events:bank_transaction_events_pkey:PRIMARY KEY (id)",
 	"invoices.bank_transaction_events:ck_bank_transaction_events_event:CHECK (((event)::text = ANY ((ARRAY['matched'::character varying, 'queued'::character varying, 'applied'::character varying, 'dismissed'::character varying, 'reversal_handled'::character varying, 'reopened'::character varying, 'duplicate_confirmed'::character varying, 'treated_as_distinct'::character varying])::text[])))",
+	"invoices.bank_transaction_events:ck_bank_transaction_events_reason:CHECK (((reason IS NULL) OR ((reason)::text = ANY ((ARRAY['kid_invalid'::character varying, 'kid_unknown'::character varying, 'invoice_credited'::character varying, 'invoice_settled'::character varying, 'exceeds_open'::character varying, 'no_kid'::character varying, 'negative_amount'::character varying, 'reversal'::character varying, 'vipps_payout'::character varying, 'paid_before_issue'::character varying, 'account_mismatch'::character varying, 'possible_duplicate'::character varying, 'payment_removed'::character varying])::text[]))))",
 	"invoices.bank_transactions:bank_transactions_bank_file_id_fkey:FOREIGN KEY (bank_file_id) REFERENCES invoices.bank_files(id) ON DELETE RESTRICT",
 	"invoices.bank_transactions:bank_transactions_duplicate_of_id_fkey:FOREIGN KEY (duplicate_of_id) REFERENCES invoices.bank_transactions(id)",
 	"invoices.bank_transactions:bank_transactions_pkey:PRIMARY KEY (id)",
 	"invoices.bank_transactions:ck_bank_transactions_amount:CHECK ((amount > (0)::numeric))",
 	"invoices.bank_transactions:ck_bank_transactions_currency:CHECK ((currency = 'NOK'::bpchar))",
 	"invoices.bank_transactions:ck_bank_transactions_direction:CHECK (((direction)::text = ANY ((ARRAY['credit'::character varying, 'debit'::character varying])::text[])))",
+	"invoices.bank_transactions:ck_bank_transactions_format:CHECK (((format)::text = ANY ((ARRAY['ocr'::character varying, 'camt054'::character varying])::text[])))",
+	"invoices.bank_transactions:ck_bank_transactions_ordinal:CHECK ((ordinal >= 1))",
 	"invoices.bank_transactions:ck_bank_transactions_reason:CHECK (((reason IS NULL) OR ((reason)::text = ANY ((ARRAY['kid_invalid'::character varying, 'kid_unknown'::character varying, 'invoice_credited'::character varying, 'invoice_settled'::character varying, 'exceeds_open'::character varying, 'no_kid'::character varying, 'negative_amount'::character varying, 'reversal'::character varying, 'vipps_payout'::character varying, 'paid_before_issue'::character varying, 'account_mismatch'::character varying, 'possible_duplicate'::character varying, 'payment_removed'::character varying])::text[]))))",
 	"invoices.bank_transactions:ck_bank_transactions_resolution:CHECK (((resolution)::text = ANY ((ARRAY['applied'::character varying, 'not_customer_payment'::character varying, 'reversal_handled'::character varying, 'duplicate_confirmed'::character varying])::text[])))",
-	"invoices.bank_transactions:ck_bank_transactions_state:CHECK (((((status)::text = 'exception'::text) <= (reason IS NOT NULL)) AND (((status)::text = 'resolved'::text) = ((resolution IS NOT NULL) AND (resolved_at IS NOT NULL))) AND (((status)::text = 'duplicate'::text) <= (duplicate_of_id IS NOT NULL))))",
+	"invoices.bank_transactions:ck_bank_transactions_state:CHECK (((((status)::text = 'exception'::text) <= (reason IS NOT NULL)) AND (((status)::text = 'resolved'::text) = ((resolution IS NOT NULL) AND (resolved_at IS NOT NULL))) AND (((status)::text = 'duplicate'::text) <= (duplicate_of_id IS NOT NULL)) AND ((duplicate_of_id IS NULL) OR ((status)::text = ANY ((ARRAY['duplicate'::character varying, 'exception'::character varying, 'resolved'::character varying])::text[])))))",
 	"invoices.bank_transactions:ck_bank_transactions_status:CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'matched'::character varying, 'exception'::character varying, 'resolved'::character varying, 'duplicate'::character varying])::text[])))",
 	"invoices.charge_payments:charge_payments_bank_transaction_id_fkey:FOREIGN KEY (bank_transaction_id) REFERENCES invoices.bank_transactions(id) ON DELETE RESTRICT",
 	"invoices.charge_payments:charge_payments_invoice_id_fkey:FOREIGN KEY (invoice_id) REFERENCES invoices.invoices(id) ON DELETE RESTRICT",
@@ -442,16 +459,17 @@ var receivablesConstraints = []string{
 	"invoices.charge_payments:ck_charge_payments_source:CHECK (((source)::text = ANY ((ARRAY['manual'::character varying, 'ocr'::character varying, 'camt054'::character varying])::text[])))",
 	"invoices.charge_waivers:charge_waivers_invoice_id_fkey:FOREIGN KEY (invoice_id) REFERENCES invoices.invoices(id) ON DELETE RESTRICT",
 	"invoices.charge_waivers:charge_waivers_pkey:PRIMARY KEY (id)",
-	"invoices.charge_waivers:charge_waivers_reminder_id_fkey:FOREIGN KEY (reminder_id) REFERENCES invoices.reminders(id) ON DELETE RESTRICT",
 	"invoices.charge_waivers:ck_charge_waivers_amount:CHECK ((amount > (0)::numeric))",
 	"invoices.charge_waivers:ck_charge_waivers_interest_through:CHECK ((((kind)::text = 'interest'::text) = (interest_through IS NOT NULL)))",
 	"invoices.charge_waivers:ck_charge_waivers_kind:CHECK (((kind)::text = ANY ((ARRAY['fee'::character varying, 'compensation'::character varying, 'interest'::character varying])::text[])))",
 	"invoices.charge_waivers:ck_charge_waivers_reason:CHECK (((reason)::text = ANY ((ARRAY['objection_upheld'::character varying, 'claimed_in_error'::character varying, 'goodwill'::character varying, 'deadline_met'::character varying])::text[])))",
+	"invoices.charge_waivers:fk_charge_waivers_reminder:FOREIGN KEY (reminder_id, invoice_id) REFERENCES invoices.reminders(id, invoice_id) ON DELETE RESTRICT",
 	"invoices.collection_handoffs:ck_collection_handoffs_withdrawal:CHECK ((((withdrawn_on IS NULL) AND (withdrawn_by_user_id IS NULL) AND (withdrawal_reason IS NULL)) OR ((withdrawn_on IS NOT NULL) AND (withdrawn_by_user_id IS NOT NULL) AND (withdrawal_reason IS NOT NULL) AND ((withdrawal_reason)::text <> ''::text))))",
 	"invoices.collection_handoffs:collection_handoffs_invoice_id_fkey:FOREIGN KEY (invoice_id) REFERENCES invoices.invoices(id) ON DELETE RESTRICT",
 	"invoices.collection_handoffs:collection_handoffs_pkey:PRIMARY KEY (id)",
 	"invoices.collection_rates:ck_collection_rates_half_year:CHECK ((((kind)::text = 'inkassosats'::text) OR ((EXTRACT(day FROM valid_from) = (1)::numeric) AND (EXTRACT(month FROM valid_from) = ANY (ARRAY[(1)::numeric, (7)::numeric])))))",
 	"invoices.collection_rates:ck_collection_rates_kind:CHECK (((kind)::text = ANY ((ARRAY['late_interest_percent'::character varying, 'inkassosats'::character varying, 'b2b_compensation_nok'::character varying])::text[])))",
+	"invoices.collection_rates:ck_collection_rates_release:CHECK (((release_value > (0)::numeric) AND ((release_value IS NULL) = (release_source_ref IS NULL))))",
 	"invoices.collection_rates:ck_collection_rates_value:CHECK ((value > (0)::numeric))",
 	"invoices.collection_rates:collection_rates_pkey:PRIMARY KEY (id)",
 	"invoices.collection_rates:uq_collection_rates_kind_valid_from:UNIQUE (kind, valid_from)",
@@ -471,6 +489,7 @@ var receivablesConstraints = []string{
 	"invoices.reminder_print_batches:ck_reminder_print_batches_posted:CHECK ((((posted_on IS NULL) = (posted_at IS NULL)) AND ((posted_at IS NULL) = (posted_by_user_id IS NULL))))",
 	"invoices.reminder_print_batches:ck_reminder_print_batches_reprinted:CHECK (((posted_on IS NULL) OR (reprinted_at IS NULL)))",
 	"invoices.reminder_print_batches:reminder_print_batches_pkey:PRIMARY KEY (id)",
+	"invoices.reminder_runs:ck_reminder_runs_counts:CHECK (((letters >= 0) AND (skipped >= 0)))",
 	"invoices.reminder_runs:reminder_runs_pkey:PRIMARY KEY (id)",
 	"invoices.reminder_settings:ck_reminder_settings_business_charge:CHECK (((business_charge)::text = ANY ((ARRAY['fee'::character varying, 'compensation'::character varying, 'none'::character varying])::text[])))",
 	"invoices.reminder_settings:ck_reminder_settings_deadline_days:CHECK (((deadline_days >= 14) AND (deadline_days <= 60)))",
@@ -482,6 +501,8 @@ var receivablesConstraints = []string{
 	"invoices.reminder_settings:ck_reminder_settings_stale_import_days:CHECK (((stale_import_days >= 1) AND (stale_import_days <= 30)))",
 	"invoices.reminder_settings:reminder_settings_pkey:PRIMARY KEY (id)",
 	"invoices.reminders:ck_reminders_channel:CHECK (((channel)::text = ANY ((ARRAY['email'::character varying, 'paper'::character varying])::text[])))",
+	"invoices.reminders:ck_reminders_channel_status:CHECK ((((((status)::text = ANY ((ARRAY['awaiting_print'::character varying, 'printed'::character varying])::text[])) OR (print_batch_id IS NOT NULL)) <= ((channel)::text = 'paper'::text)) AND (((status)::text = ANY ((ARRAY['queued'::character varying, 'failed'::character varying])::text[])) <= ((channel)::text = 'email'::text))))",
+	"invoices.reminders:ck_reminders_charges:CHECK ((((fee_kind IS NULL) OR ((((fee_kind)::text = 'reminder_fee'::text) = (fee IS NOT NULL)) AND (((fee_kind)::text = 'compensation'::text) = (compensation IS NOT NULL)))) AND (fee > (0)::numeric) AND (compensation > (0)::numeric)))",
 	"invoices.reminders:ck_reminders_fee_kind:CHECK (((fee_kind)::text = ANY ((ARRAY['none'::character varying, 'reminder_fee'::character varying, 'compensation'::character varying])::text[])))",
 	"invoices.reminders:ck_reminders_held_reason:CHECK (((held_reason)::text = ANY ((ARRAY['collection_rates_outdated'::character varying, 'collection_regime_unreviewed'::character varying])::text[])))",
 	"invoices.reminders:ck_reminders_level:CHECK (((level)::text = ANY ((ARRAY['reminder'::character varying, 'collection_notice'::character varying])::text[])))",
@@ -492,6 +513,7 @@ var receivablesConstraints = []string{
 	"invoices.reminders:reminders_pkey:PRIMARY KEY (id)",
 	"invoices.reminders:reminders_print_batch_id_fkey:FOREIGN KEY (print_batch_id) REFERENCES invoices.reminder_print_batches(id)",
 	"invoices.reminders:reminders_run_id_fkey:FOREIGN KEY (run_id) REFERENCES invoices.reminder_runs(id)",
+	"invoices.reminders:uq_reminders_id_invoice:UNIQUE (id, invoice_id)",
 	"invoices.reminders:uq_reminders_invoice_sequence:UNIQUE (invoice_id, sequence)",
 }
 
@@ -530,6 +552,7 @@ var receivablesIndexes = []string{
 	"uq_bank_files_identity:CREATE UNIQUE INDEX uq_bank_files_identity ON invoices.bank_files USING btree (format, file_identity)",
 	"uq_bank_files_sha256:CREATE UNIQUE INDEX uq_bank_files_sha256 ON invoices.bank_files USING btree (sha256)",
 	"uq_collection_rates_kind_valid_from:CREATE UNIQUE INDEX uq_collection_rates_kind_valid_from ON invoices.collection_rates USING btree (kind, valid_from)",
+	"uq_reminders_id_invoice:CREATE UNIQUE INDEX uq_reminders_id_invoice ON invoices.reminders USING btree (id, invoice_id)",
 	"uq_reminders_invoice_sequence:CREATE UNIQUE INDEX uq_reminders_invoice_sequence ON invoices.reminders USING btree (invoice_id, sequence)",
 	"ux_bank_transactions_fingerprint:CREATE UNIQUE INDEX ux_bank_transactions_fingerprint ON invoices.bank_transactions USING btree (account, fingerprint) WHERE (duplicate_of_id IS NULL)",
 	"ux_charge_waivers_letter_kind:CREATE UNIQUE INDEX ux_charge_waivers_letter_kind ON invoices.charge_waivers USING btree (reminder_id, kind) WHERE ((kind)::text = ANY ((ARRAY['fee'::character varying, 'compensation'::character varying])::text[]))",
@@ -684,6 +707,17 @@ func (f *receivablesFixture) reminder(invoice, run int64, sequence int) (int64, 
 		RETURNING id`, invoice, run, sequence)
 }
 
+// paperReminder writes the sequence-th letter of invoice in run, awaiting
+// print on paper.
+func (f *receivablesFixture) paperReminder(invoice, run int64, sequence int) int64 {
+	f.t.Helper()
+	return f.mustInsert("seed a paper letter", `
+		INSERT INTO invoices.reminders (invoice_id, run_id, sequence, level, channel, language,
+		    created_at, created_by_user_id, status)
+		VALUES ($1, $2, $3, 'reminder', 'paper', 'nb', now(), gen_random_uuid(), 'awaiting_print')
+		RETURNING id`, invoice, run, sequence)
+}
+
 // mustReminder is reminder that must succeed.
 func (f *receivablesFixture) mustReminder(invoice, run int64, sequence int) int64 {
 	f.t.Helper()
@@ -696,12 +730,22 @@ func (f *receivablesFixture) mustReminder(invoice, run int64, sequence int) int6
 
 // The letter's facts as the dispatch writes them, for a status that needs
 // them.
-const receivablesFacts = `sent_on = DATE '2026-11-02', deadline = DATE '2026-11-16', regime = 'inkassolov_1988',
-    principal_open = 1250, fee_kind = 'reminder_fee', fee = 35, charges_earlier = 0, interest = 0,
-    interest_waived = 0, interest_paid = 0, total = 1285`
+const receivablesFacts = receivablesFactsBase + `, fee_kind = 'reminder_fee', fee = 35`
+
+// receivablesFactsBase is the facts but the charge: fee_kind, fee and
+// compensation.
+const receivablesFactsBase = `sent_on = DATE '2026-11-02', deadline = DATE '2026-11-16', regime = 'inkassolov_1988',
+    principal_open = 1250, charges_earlier = 0, interest = 0, interest_waived = 0, interest_paid = 0, total = 1285`
 
 // ptrTo is a pointer to v.
 func ptrTo[T any](v T) *T { return &v }
+
+// foreignKeyViolationOf reports whether err is a foreign key violation
+// (SQLSTATE 23503) of the constraint named constraint.
+func foreignKeyViolationOf(err error, constraint string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503" && pgErr.ConstraintName == constraint
+}
 
 // uniqueViolationOf reports whether err is a unique violation (SQLSTATE
 // 23505) of the index or constraint named constraint.
@@ -830,6 +874,7 @@ const (
 	receivablesLineImmutable    = "invoices: a bank transaction is immutable"
 	receivablesLinePending      = "invoices: a bank transaction never returns to pending"
 	receivablesLineReason       = "invoices: a bank transaction keeps its reason"
+	receivablesLineMatched      = "invoices: a bank transaction is matched only from pending"
 	receivablesEventImmutable   = "invoices: a bank transaction event is immutable"
 )
 
@@ -884,6 +929,22 @@ func TestBankFile_Immutable(t *testing.T) {
 	if err := f.exec(`DELETE FROM invoices.bank_files WHERE id = $1`, file); !refusedWith(err, receivablesFileImmutable) {
 		t.Errorf("a file deleted: %v, want %q", err, receivablesFileImmutable)
 	}
+	fresh := f.bankFile()
+	if err := f.exec(`UPDATE invoices.bank_files SET duplicates = -1 WHERE id = $1`, fresh); !checkViolationOf(err, "ck_bank_files_counts") {
+		t.Errorf("duplicates of -1: %v, want ck_bank_files_counts", err)
+	}
+	for _, c := range []struct{ name, transactions, ignored string }{
+		{"transactions of -1", "-1", "0"},
+		{"ignored of -1", "0", "-1"},
+	} {
+		if _, err := f.insert(`
+			INSERT INTO invoices.bank_files (format, sha256, file_identity, object_key, byte_size, accounts, transactions,
+			    ignored, ignored_kinds, uploaded_by_user_id, uploaded_at)
+			VALUES ('ocr', repeat('9', 64), 'neg', 'k', 1, ARRAY['15032080119'], $1::integer, $2::integer, '{}', gen_random_uuid(), now())
+			RETURNING id`, c.transactions, c.ignored); !checkViolationOf(err, "ck_bank_files_counts") {
+			t.Errorf("%s: %v, want ck_bank_files_counts", c.name, err)
+		}
+	}
 	if _, err := f.insert(`
 		INSERT INTO invoices.bank_files (format, sha256, file_identity, object_key, byte_size, accounts, transactions,
 		    ignored, ignored_kinds, uploaded_by_user_id, uploaded_at)
@@ -932,6 +993,18 @@ func TestBankFile_Immutable(t *testing.T) {
 	if err := f.exec(`UPDATE invoices.bank_transactions SET status = 'pending' WHERE id = $1`, line); !refusedWith(err, receivablesLinePending) {
 		t.Errorf("a line back to pending: %v, want %q", err, receivablesLinePending)
 	}
+	// Matched only from pending (D4): the queue resolves an exception, it
+	// never matches it (D5).
+	if err := f.exec(`UPDATE invoices.bank_transactions SET status = 'matched' WHERE id = $1`, line); !refusedWith(err, receivablesLineMatched) {
+		t.Errorf("an exception matched: %v, want %q", err, receivablesLineMatched)
+	}
+	matched := f.mustBankLine(file, strings.Repeat("c", 64))
+	if err := f.exec(`UPDATE invoices.bank_transactions SET status = 'matched' WHERE id = $1`, matched); err != nil {
+		t.Errorf("a pending line matched: %v, want it allowed", err)
+	}
+	if err := f.exec(`UPDATE invoices.bank_transactions SET resolution_note = '' WHERE id = $1`, matched); err != nil {
+		t.Errorf("a matched line's state written again: %v, want it allowed", err)
+	}
 	if err := f.exec(`UPDATE invoices.bank_transactions SET status = 'resolved', resolution = 'not_customer_payment',
 		resolved_by_user_id = gen_random_uuid(), resolved_at = now(), resolution_note = 'Not ours' WHERE id = $1`, line); err != nil {
 		t.Errorf("a line dismissed: %v, want it allowed", err)
@@ -942,9 +1015,15 @@ func TestBankFile_Immutable(t *testing.T) {
 	if err := f.exec(`UPDATE invoices.bank_transactions SET resolution_note = '' WHERE id = $1`, line); err != nil {
 		t.Errorf("a resolution note blanked: %v, want it allowed", err)
 	}
+	if err := f.exec(`UPDATE invoices.bank_transactions SET status = 'matched' WHERE id = $1`, dup); !refusedWith(err, receivablesLineMatched) {
+		t.Errorf("a duplicate matched: %v, want %q", err, receivablesLineMatched)
+	}
 	if err := f.exec(`UPDATE invoices.bank_transactions SET status = 'resolved', reason = 'possible_duplicate',
 		resolution = 'duplicate_confirmed', resolved_at = now() WHERE id = $1`, dup); err != nil {
 		t.Errorf("a duplicate confirmed: %v, want it allowed", err)
+	}
+	if err := f.exec(`UPDATE invoices.bank_transactions SET status = 'matched' WHERE id = $1`, line); !refusedWith(err, receivablesLineMatched) {
+		t.Errorf("a resolved line matched: %v, want %q", err, receivablesLineMatched)
 	}
 
 	// The events.
@@ -969,12 +1048,18 @@ func TestBankFile_Immutable(t *testing.T) {
 		VALUES ($1, 'forgotten', gen_random_uuid(), now()) RETURNING id`, line); !checkViolationOf(err, "ck_bank_transaction_events_event") {
 		t.Errorf("an unknown event: %v, want ck_bank_transaction_events_event", err)
 	}
+	if _, err := f.insert(`
+		INSERT INTO invoices.bank_transaction_events (bank_transaction_id, event, reason, by_user_id, at)
+		VALUES ($1, 'queued', 'kid_lost', gen_random_uuid(), now()) RETURNING id`, line); !checkViolationOf(err, "ck_bank_transaction_events_reason") {
+		t.Errorf("an event with an unknown reason: %v, want ck_bank_transaction_events_reason", err)
+	}
 }
 
-// TestBankTransactions_TheStateCheck pins ck_bank_transactions_state's three
-// implications and the reason's set: an exception has a reason; resolved is
+// TestBankTransactions_TheStateCheck pins ck_bank_transactions_state's
+// implications and the line's sets: an exception has a reason; resolved is
 // exactly a resolution with its time; a duplicate has its link, which
-// outlives the status.
+// outlives the status but never makes a line pending or matched; the reason,
+// the format and the ordinal.
 func TestBankTransactions_TheStateCheck(t *testing.T) {
 	t.Parallel()
 	f := newReceivablesFixture(t)
@@ -993,6 +1078,8 @@ func TestBankTransactions_TheStateCheck(t *testing.T) {
 		{"a resolved line without a resolution", "resolved", ptrTo("kid_unknown"), nil, "ck_bank_transactions_state"},
 		{"an unknown reason", "exception", ptrTo("kid_lost"), nil, "ck_bank_transactions_reason"},
 		{"an unknown status", "parked", nil, nil, "ck_bank_transactions_status"},
+		{"a linked line pending", "pending", nil, &original, "ck_bank_transactions_state"},
+		{"a linked line matched", "matched", nil, &original, "ck_bank_transactions_state"},
 	} {
 		if _, err := f.bankLine(file, strings.Repeat("c", 64), c.dupOf, c.status, c.reason); !checkViolationOf(err, c.check) {
 			t.Errorf("%s: %v, want %s", c.name, err, c.check)
@@ -1003,6 +1090,19 @@ func TestBankTransactions_TheStateCheck(t *testing.T) {
 		"possible_duplicate", "payment_removed"} {
 		if _, err := f.bankLine(file, fmt.Sprintf("%064d", i+1), nil, "exception", &reason); err != nil {
 			t.Errorf("an exception for %s: %v, want it allowed", reason, err)
+		}
+	}
+
+	for _, c := range []struct{ name, format, ordinal, check string }{
+		{"an unknown format", "csv", "1", "ck_bank_transactions_format"},
+		{"an ordinal of 0", "ocr", "0", "ck_bank_transactions_ordinal"},
+	} {
+		if err := f.exec(`
+			INSERT INTO invoices.bank_transactions (bank_file_id, line_ref, format, account, direction, booked_on,
+			    amount, currency, fingerprint, ordinal)
+			VALUES ($1, '9/9', $2, '15032080119', 'credit', DATE '2026-10-01', 1, 'NOK', repeat('e', 64), $3::smallint)`,
+			file, c.format, c.ordinal); !checkViolationOf(err, c.check) {
+			t.Errorf("%s: %v, want %s", c.name, err, c.check)
 		}
 	}
 
@@ -1124,7 +1224,7 @@ func TestCollectionRates_AppendOnly(t *testing.T) {
 	for _, c := range []struct{ name, sql string }{
 		{"a value changed", `UPDATE invoices.collection_rates SET value = 13 WHERE id = $1`},
 		{"a regulation changed", `UPDATE invoices.collection_rates SET source_ref = 'FOR-X' WHERE id = $1`},
-		{"a release value set with the value", `UPDATE invoices.collection_rates SET release_value = 13, value = 13 WHERE id = $1`},
+		{"a release value set with the value", `UPDATE invoices.collection_rates SET release_value = 13, release_source_ref = 'FOR-R', value = 13 WHERE id = $1`},
 		{"a seeded row deleted", `DELETE FROM invoices.collection_rates WHERE id = $1`},
 	} {
 		want := receivablesRateAppendOnly
@@ -1135,7 +1235,13 @@ func TestCollectionRates_AppendOnly(t *testing.T) {
 			t.Errorf("%s: %v, want %q", c.name, err, want)
 		}
 	}
-	if err := f.exec(`UPDATE invoices.collection_rates SET release_value = 12.50 WHERE id = $1`, seeded); err != nil {
+	if err := f.exec(`UPDATE invoices.collection_rates SET release_value = 12.50 WHERE id = $1`, seeded); !checkViolationOf(err, "ck_collection_rates_release") {
+		t.Errorf("a release value without its regulation: %v, want ck_collection_rates_release", err)
+	}
+	if err := f.exec(`UPDATE invoices.collection_rates SET release_value = 0, release_source_ref = 'FOR-R' WHERE id = $1`, seeded); !checkViolationOf(err, "ck_collection_rates_release") {
+		t.Errorf("a release value of 0: %v, want ck_collection_rates_release", err)
+	}
+	if err := f.exec(`UPDATE invoices.collection_rates SET release_value = 12.50, release_source_ref = 'FOR-R' WHERE id = $1`, seeded); err != nil {
 		t.Errorf("a release value set from NULL: %v, want it allowed", err)
 	}
 	if err := f.exec(`UPDATE invoices.collection_rates SET release_value = 12.75 WHERE id = $1`, seeded); !refusedWith(err, receivablesRateAppendOnly) {
@@ -1177,9 +1283,10 @@ func TestCollectionRates_AppendOnly(t *testing.T) {
 }
 
 // TestCollectionRates_ReleaseSeedOverUserRow runs the statement a later
-// release's migration runs (plan reading 4) over a row a user added first:
-// it never fails; a different value is kept beside the user's as the release
-// value, once; the same value sets nothing; a day nobody had is seeded.
+// release's migration runs (plan reading 4, D6) over a row a user added
+// first: it never fails; the release's value and regulation are kept beside
+// the user's, once, equal or not (the warning compares them); a day nobody
+// had is seeded, and seeding it again changes nothing.
 func TestCollectionRates_ReleaseSeedOverUserRow(t *testing.T) {
 	t.Parallel()
 	f := newReceivablesFixture(t)
@@ -1192,7 +1299,7 @@ func TestCollectionRates_ReleaseSeedOverUserRow(t *testing.T) {
 	read := func(kind, from string) string {
 		t.Helper()
 		return f.text(`SELECT value::text || ':' || coalesce(release_value::text, 'none') || ':' || source_ref || ':'
-			|| CASE WHEN created_by_user_id IS NULL THEN 'seeded' ELSE 'user' END
+			|| coalesce(release_source_ref, 'none') || ':' || CASE WHEN created_by_user_id IS NULL THEN 'seeded' ELSE 'user' END
 			FROM invoices.collection_rates WHERE kind = $1 AND valid_from = $2::date`, kind, from)
 	}
 
@@ -1200,23 +1307,23 @@ func TestCollectionRates_ReleaseSeedOverUserRow(t *testing.T) {
 	f.mustInsert("a user's compensation", receivablesRateInsert, "b2b_compensation_nok", "2027-01-01", 440)
 
 	seed("late_interest_percent", "2027-01-01", 13)
-	if got, want := read("late_interest_percent", "2027-01-01"), "12.75:13.00:FOR-2027-01-01-1:user"; got != want {
+	if got, want := read("late_interest_percent", "2027-01-01"), "12.75:13.00:FOR-2027-01-01-1:FOR-2026-12-20-9999:user"; got != want {
 		t.Errorf("a release seed of another value = %s, want %s", got, want)
 	}
 	seed("b2b_compensation_nok", "2027-01-01", 440)
-	if got, want := read("b2b_compensation_nok", "2027-01-01"), "440.00:none:FOR-2027-01-01-1:user"; got != want {
+	if got, want := read("b2b_compensation_nok", "2027-01-01"), "440.00:440.00:FOR-2027-01-01-1:FOR-2026-12-20-9999:user"; got != want {
 		t.Errorf("a release seed of the same value = %s, want %s", got, want)
 	}
 	seed("late_interest_percent", "2027-01-01", 13.25)
-	if got, want := read("late_interest_percent", "2027-01-01"), "12.75:13.00:FOR-2027-01-01-1:user"; got != want {
+	if got, want := read("late_interest_percent", "2027-01-01"), "12.75:13.00:FOR-2027-01-01-1:FOR-2026-12-20-9999:user"; got != want {
 		t.Errorf("a second release seed = %s, want %s: the first release value is kept", got, want)
 	}
 	seed("inkassosats", "2027-01-01", 800)
-	if got, want := read("inkassosats", "2027-01-01"), "800.00:none:FOR-2026-12-20-9999:seeded"; got != want {
+	if got, want := read("inkassosats", "2027-01-01"), "800.00:none:FOR-2026-12-20-9999:none:seeded"; got != want {
 		t.Errorf("a release seed of a new day = %s, want %s", got, want)
 	}
 	seed("inkassosats", "2027-01-01", 800)
-	if got, want := read("inkassosats", "2027-01-01"), "800.00:none:FOR-2026-12-20-9999:seeded"; got != want {
+	if got, want := read("inkassosats", "2027-01-01"), "800.00:none:FOR-2026-12-20-9999:none:seeded"; got != want {
 		t.Errorf("the same seed run twice = %s, want %s", got, want)
 	}
 }
@@ -1281,7 +1388,7 @@ func TestReminderSettings_TheRow(t *testing.T) {
 		VALUES (2, DATE '2026-12-31', now(), now())`); !checkViolationOf(err, "ck_reminder_settings_single_row") {
 		t.Errorf("a second row: %v, want ck_reminder_settings_single_row", err)
 	}
-	if err := f.exec(`DELETE FROM invoices.reminder_settings`); !refusedWith(err, "invoices: a row of reminder_settings is never updated or deleted") {
+	if err := f.exec(`DELETE FROM invoices.reminder_settings`); !refusedWith(err, "invoices: a row of reminder_settings is never deleted") {
 		t.Errorf("the row deleted: %v, want it refused", err)
 	}
 	if err := f.exec(`INSERT INTO invoices.customer_reminder_policies (customer_id, mode, updated_by_user_id, updated_at)
@@ -1303,8 +1410,9 @@ const (
 // invoice, its recipient blanked for an erased customer; never deleted; its
 // identity frozen; its facts and attempts changed only in flight; once sent
 // only its PDF set once; once withdrawn nothing — but the recipient blanked
-// in every status (the erase, B1); its message id set once while queued; and
-// ck_reminders_state for each status.
+// in every status (the erase, B1); its message id set once while queued;
+// ck_reminders_state for each status; its status tied to its channel; and
+// the charge its facts name, and only it.
 func TestReminders_Triggers(t *testing.T) {
 	t.Parallel()
 	f := newReceivablesFixture(t)
@@ -1373,35 +1481,75 @@ func TestReminders_Triggers(t *testing.T) {
 	}
 
 	// ck_reminders_state, each status.
-	for _, c := range []struct{ name, set string }{
-		{"sent without its facts", "status = 'sent', sent_at = now()"},
-		{"sent without sent_at", "status = 'sent', " + receivablesFacts},
-		{"printed without its batch", "status = 'printed', " + receivablesFacts},
-		{"withdrawn without a reason", "status = 'withdrawn', withdrawn_at = now()"},
-		{"failed without its time", "status = 'failed'"},
+	paper := f.paperReminder(invoice, run, 3)
+	for _, c := range []struct {
+		name, set string
+		id        int64
+	}{
+		{"sent without its facts", "status = 'sent', sent_at = now()", letter},
+		{"sent without sent_at", "status = 'sent', " + receivablesFacts, letter},
+		{"printed without its batch", "status = 'printed', " + receivablesFacts, paper},
+		{"withdrawn without a reason", "status = 'withdrawn', withdrawn_at = now()", letter},
+		{"failed without its time", "status = 'failed'", letter},
 	} {
-		if err := f.exec(`UPDATE invoices.reminders SET `+c.set+` WHERE id = $1`, letter); !checkViolationOf(err, "ck_reminders_state") {
+		if err := f.exec(`UPDATE invoices.reminders SET `+c.set+` WHERE id = $1`, c.id); !checkViolationOf(err, "ck_reminders_state") {
 			t.Errorf("%s: %v, want ck_reminders_state", c.name, err)
 		}
 	}
 	batch := f.mustInsert("a print batch", `INSERT INTO invoices.reminder_print_batches (post_on, created_at, created_by_user_id)
 		VALUES (DATE '2026-11-03', now(), gen_random_uuid()) RETURNING id`)
-	paper := f.mustReminder(invoice, run, 2)
-	if err := f.exec(`UPDATE invoices.reminders SET message_id = 'reminder-3@vantigo.invalid', status = 'awaiting_print' WHERE id = $1`, paper); err != nil {
-		t.Errorf("a message id set with the move to paper: %v, want it allowed (it was queued)", err)
-	}
-	paper2 := f.mustReminder(invoice, run, 3)
-	f.mustExec("a letter to paper", `UPDATE invoices.reminders SET status = 'awaiting_print' WHERE id = $1`, paper2)
-	if err := f.exec(`UPDATE invoices.reminders SET message_id = 'reminder-4@vantigo.invalid' WHERE id = $1`, paper2); !refusedWith(err, receivablesReminderMessageID) {
+	if err := f.exec(`UPDATE invoices.reminders SET message_id = 'reminder-4@vantigo.invalid' WHERE id = $1`, paper); !refusedWith(err, receivablesReminderMessageID) {
 		t.Errorf("a message id set on a letter awaiting print: %v, want %q", err, receivablesReminderMessageID)
 	}
 	for _, c := range []struct{ name, set string }{
 		{"printed", "status = 'printed', print_batch_id = $2, pdf_object_key = 'k1', pdf_sha256 = 'h1', " + receivablesFacts},
 		{"reprinted", "status = 'awaiting_print', print_batch_id = NULL, pdf_object_key = NULL, pdf_sha256 = NULL, sent_on = NULL"},
-		{"failed", "status = 'failed', failed_at = now()"},
 	} {
-		if err := f.exec(`UPDATE invoices.reminders SET `+c.set+` WHERE id = $1 AND $2::bigint IS NOT NULL`, paper2, batch); err != nil {
-			t.Errorf("a letter %s: %v, want it allowed", c.name, err)
+		if err := f.exec(`UPDATE invoices.reminders SET `+c.set+` WHERE id = $1 AND $2::bigint IS NOT NULL`, paper, batch); err != nil {
+			t.Errorf("a paper letter %s: %v, want it allowed", c.name, err)
+		}
+	}
+
+	// ck_reminders_channel_status: paper is printed, e-mail dispatched.
+	for _, c := range []struct {
+		name, set string
+		id        int64
+	}{
+		{"an e-mail awaiting print", "status = 'awaiting_print'", letter},
+		{"an e-mail naming a batch", "print_batch_id = $2", letter},
+		{"a paper letter queued", "status = 'queued'", paper},
+		{"a paper letter failed", "status = 'failed', failed_at = now()", paper},
+	} {
+		if err := f.exec(`UPDATE invoices.reminders SET `+c.set+` WHERE id = $1 AND $2::bigint IS NOT NULL`, c.id, batch); !checkViolationOf(err, "ck_reminders_channel_status") {
+			t.Errorf("%s: %v, want ck_reminders_channel_status", c.name, err)
+		}
+	}
+	if _, err := f.insert(`
+		INSERT INTO invoices.reminders (invoice_id, run_id, sequence, level, channel, language, created_at, created_by_user_id, status)
+		VALUES ($1, $2, 9, 'reminder', 'paper', 'nb', now(), gen_random_uuid(), 'queued') RETURNING id`, invoice, run); !checkViolationOf(err, "ck_reminders_channel_status") {
+		t.Errorf("a paper letter inserted queued: %v, want ck_reminders_channel_status", err)
+	}
+
+	// ck_reminders_charges: the charge the facts name, and only it.
+	for _, c := range []struct{ name, set string }{
+		{"a reminder fee without its amount", receivablesFactsBase + ", fee_kind = 'reminder_fee', fee = NULL"},
+		{"a reminder fee beside a compensation", receivablesFactsBase + ", fee_kind = 'reminder_fee', fee = 35, compensation = 460"},
+		{"a compensation without its amount", receivablesFactsBase + ", fee_kind = 'compensation', fee = NULL, compensation = NULL"},
+		{"a compensation carrying a fee", receivablesFactsBase + ", fee_kind = 'compensation', fee = 35, compensation = 460"},
+		{"a fee-free letter carrying a fee", receivablesFactsBase + ", fee_kind = 'none', fee = 35"},
+		{"a fee of 0", receivablesFactsBase + ", fee_kind = 'reminder_fee', fee = 0"},
+		{"a compensation of 0", receivablesFactsBase + ", fee_kind = 'compensation', fee = NULL, compensation = 0"},
+	} {
+		if err := f.exec(`UPDATE invoices.reminders SET `+c.set+` WHERE id = $1`, letter); !checkViolationOf(err, "ck_reminders_charges") {
+			t.Errorf("%s: %v, want ck_reminders_charges", c.name, err)
+		}
+	}
+	for _, c := range []struct{ name, set string }{
+		{"a compensation letter", receivablesFactsBase + ", fee_kind = 'compensation', fee = NULL, compensation = 460"},
+		{"a fee-free letter", receivablesFactsBase + ", fee_kind = 'none', fee = NULL, compensation = NULL"},
+	} {
+		if err := f.exec(`UPDATE invoices.reminders SET `+c.set+` WHERE id = $1`, letter); err != nil {
+			t.Errorf("%s: %v, want it allowed", c.name, err)
 		}
 	}
 
@@ -1449,6 +1597,7 @@ func TestReminders_Triggers(t *testing.T) {
 // invoice $1 and its permitted and refused changes.
 type receivablesChild struct {
 	table, insert, immutable string
+	refusesNoop              bool     // an UPDATE that changes nothing is refused (00035's rule)
 	allowed                  []string // each applied in turn, every one allowed
 	refused                  []string // each refused with immutable, after allowed
 }
@@ -1456,8 +1605,9 @@ type receivablesChild struct {
 // TestChildrenOfIssued_Triggers pins the parent guard of manual deliveries,
 // charge payments, waivers, holds and hand-offs (D8, D9, D11): never under a
 // draft or a credit note, the note blanked for an erased customer; each
-// table's single permitted change, and nothing else; never deleted; and the
-// live unique indexes.
+// table's single permitted change, and nothing else — a no-op refused where
+// 00035's rule is copied; never deleted; the anonymised customer's lift
+// note; a waiver's letter of its own invoice; and the live unique indexes.
 func TestChildrenOfIssued_Triggers(t *testing.T) {
 	t.Parallel()
 	f := newReceivablesFixture(t)
@@ -1468,7 +1618,7 @@ func TestChildrenOfIssued_Triggers(t *testing.T) {
 
 	children := []receivablesChild{
 		{
-			table: "manual_deliveries", immutable: "invoices: a manual delivery is immutable",
+			table: "manual_deliveries", immutable: "invoices: a manual delivery is immutable", refusesNoop: true,
 			insert: `INSERT INTO invoices.manual_deliveries (invoice_id, kind, delivered_on, note, recorded_by_user_id, recorded_at)
 				VALUES ($1, 'posted', DATE '2026-10-06', 'Posted by hand', gen_random_uuid(), now()) RETURNING id`,
 			allowed: []string{
@@ -1482,7 +1632,7 @@ func TestChildrenOfIssued_Triggers(t *testing.T) {
 			},
 		},
 		{
-			table: "charge_payments", immutable: "invoices: a charge payment is immutable",
+			table: "charge_payments", immutable: "invoices: a charge payment is immutable", refusesNoop: true,
 			insert: `INSERT INTO invoices.charge_payments (invoice_id, paid_on, amount, currency, source, note, registered_by_user_id, registered_at)
 				VALUES ($1, DATE '2026-11-10', 35, 'NOK', 'manual', 'Fee paid', gen_random_uuid(), now()) RETURNING id`,
 			allowed: []string{
@@ -1510,7 +1660,7 @@ func TestChildrenOfIssued_Triggers(t *testing.T) {
 			refused: []string{"charges_allowed = true", "lift_note = 'Again'", "kind = 'disputed', placed_at = now()"},
 		},
 		{
-			table: "collection_handoffs", immutable: "invoices: a hand-off is immutable",
+			table: "collection_handoffs", immutable: "invoices: a hand-off is immutable", refusesNoop: true,
 			insert: `INSERT INTO invoices.collection_handoffs (invoice_id, handed_on, agency, agency_reference, note, created_at, created_by_user_id)
 				VALUES ($1, DATE '2026-12-01', 'Inkasso AS', 'K-1', 'Sent by mail', now(), gen_random_uuid()) RETURNING id`,
 			allowed: []string{
@@ -1522,6 +1672,7 @@ func TestChildrenOfIssued_Triggers(t *testing.T) {
 	}
 	draft := f.draft(7, 0)
 	credit := f.issue(f.draft(7, invoice))
+	var erasedHold int64
 	erasedInvoice := f.issued(8)
 	erasedLetter := f.mustReminder(erasedInvoice, run, 1)
 	f.erase(8)
@@ -1541,8 +1692,16 @@ func TestChildrenOfIssued_Triggers(t *testing.T) {
 		if got := f.text(`SELECT note FROM invoices.`+c.table+` WHERE id = $1`, blanked); got != "" {
 			t.Errorf("%s for an erased customer: note %q, want it blanked", c.table, got)
 		}
+		if c.table == "invoice_holds" {
+			erasedHold = blanked
+		}
 
 		id := f.mustInsert(c.table, c.insert, invoice)
+		if c.refusesNoop {
+			if err := f.exec(`UPDATE invoices.`+c.table+` SET note = note WHERE id = $1`, id); !refusedWith(err, c.immutable) {
+				t.Errorf("%s: a no-op UPDATE: %v, want %q", c.table, err, c.immutable)
+			}
+		}
 		for _, set := range c.allowed {
 			if err := f.exec(`UPDATE invoices.`+c.table+` SET `+set+` WHERE id = $1`, id); err != nil {
 				t.Errorf("%s: %s: %v, want it allowed", c.table, set, err)
@@ -1556,6 +1715,27 @@ func TestChildrenOfIssued_Triggers(t *testing.T) {
 		if err := f.exec(`DELETE FROM invoices.`+c.table+` WHERE id = $1`, id); !refusedWith(err, c.immutable) {
 			t.Errorf("%s deleted: %v, want %q", c.table, err, c.immutable)
 		}
+	}
+
+	// The lift of an anonymised customer's hold keeps no lift note; any
+	// other lift keeps its own.
+	f.mustExec("lift the erased customer's hold", `UPDATE invoices.invoice_holds SET lifted_at = now(),
+		lifted_by_user_id = gen_random_uuid(), lift_note = 'Agreed with Kari', charges_allowed = false WHERE id = $1`, erasedHold)
+	if got := f.text(`SELECT lift_note FROM invoices.invoice_holds WHERE id = $1`, erasedHold); got != "" {
+		t.Errorf("the erased customer's lift note = %q, want it blanked", got)
+	}
+	liveHold := f.mustInsert("a live customer's hold", `INSERT INTO invoices.invoice_holds (invoice_id, kind, note, placed_at,
+		placed_by_user_id) VALUES ($1, 'disputed', 'x', now(), gen_random_uuid()) RETURNING id`, f.issued(9))
+	f.mustExec("lift a live customer's hold", `UPDATE invoices.invoice_holds SET lifted_at = now(),
+		lifted_by_user_id = gen_random_uuid(), lift_note = 'Agreed', charges_allowed = true WHERE id = $1`, liveHold)
+	if got := f.text(`SELECT lift_note FROM invoices.invoice_holds WHERE id = $1`, liveHold); got != "Agreed" {
+		t.Errorf("a live customer's lift note = %q, want it kept", got)
+	}
+
+	// A waiver names a letter of its own invoice.
+	if err := f.exec(fmt.Sprintf(`INSERT INTO invoices.charge_waivers (invoice_id, reminder_id, kind, amount, reason,
+		waived_by_user_id, waived_at) VALUES ($1, %d, 'compensation', 35, 'goodwill', gen_random_uuid(), now())`, erasedLetter), invoice); !foreignKeyViolationOf(err, "fk_charge_waivers_reminder") {
+		t.Errorf("a waiver naming another invoice's letter: %v, want fk_charge_waivers_reminder", err)
 	}
 
 	// The CHECKs of the children.
@@ -1639,6 +1819,12 @@ func TestRunsAndBatches_SetOnce(t *testing.T) {
 		if err := f.exec(`UPDATE invoices.reminder_runs SET `+set+` WHERE id = $1`, run); !refusedWith(err, runImmutable) {
 			t.Errorf("a run's %s: %v, want %q", set, err, runImmutable)
 		}
+	}
+	if err := f.exec(`UPDATE invoices.reminder_runs SET letters = -1, skipped = 0 WHERE id = $1`, run); !checkViolationOf(err, "ck_reminder_runs_counts") {
+		t.Errorf("a run's letters of -1: %v, want ck_reminder_runs_counts", err)
+	}
+	if err := f.exec(`UPDATE invoices.reminder_runs SET letters = 0, skipped = -1 WHERE id = $1`, run); !checkViolationOf(err, "ck_reminder_runs_counts") {
+		t.Errorf("a run's skipped of -1: %v, want ck_reminder_runs_counts", err)
 	}
 	if err := f.exec(`UPDATE invoices.reminder_runs SET letters = 3, skipped = 1 WHERE id = $1`, run); err != nil {
 		t.Errorf("a run's counts set: %v, want it allowed", err)

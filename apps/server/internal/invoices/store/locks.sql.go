@@ -366,7 +366,7 @@ func (q *Queries) ShareImportAccounts(ctx context.Context, accounts []string) ([
 
 const upsertImportAccounts = `-- name: UpsertImportAccounts :exec
 INSERT INTO invoices.bank_import_accounts (account, format, set_by_user_id, set_at)
-SELECT DISTINCT a, $1::text, $2::uuid, $3::timestamptz
+SELECT a, $1::text, $2::uuid, $3::timestamptz
 FROM unnest($4::text[]) AS a
 ORDER BY 1
 ON CONFLICT (account) DO NOTHING
@@ -382,7 +382,9 @@ type UpsertImportAccountsParams struct {
 // UpsertImportAccounts inserts a bank file's accounts not seen before, with
 // the file's format — the account's first import sets it (D3 step 7.1) — in
 // account order, so two first imports of overlapping files queue on the same
-// rows in the same order (I18). An account already there is left as it is.
+// rows in the same order (I18). An account already there, or named twice,
+// is left as it is. No DISTINCT: the ORDER BY alone sets the order, so a
+// plan's hashing never reorders it.
 func (q *Queries) UpsertImportAccounts(ctx context.Context, arg UpsertImportAccountsParams) error {
 	_, err := q.db.Exec(ctx, upsertImportAccounts,
 		arg.Format,
