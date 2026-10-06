@@ -10,7 +10,7 @@ the Point of sale section it hands the counter to is `ROADMAP.md:893-933`. Phase
 (payments), 2 (`2026-10-03-invoices-ehf-peppol-kid-design.md`, the access-point pattern and
 the KID) and 3 (`2026-10-05-invoices-work-to-invoices-design.md`) are its baseline.
 
-**Status:** design, revision 2, for the user's verdict on the readings. **Scope:** money in —
+**Status:** design, revision 3 (pre-flight), for the user's verdict on the readings. **Scope:** money in —
 the bank tells Vantigo what was paid, Vantigo tells the customer what is late, and a Vipps
 request lets a customer pay from a link or on the spot. **Sub-phases:** 4A the ledger and
 bank imports, 4B overdue and reminders (pull request 1, receivables); 4C the payments port,
@@ -207,6 +207,26 @@ what changed:
 Nothing was rejected. For m3 the mitigation chosen is the nonce in the return URL, so the
 token never reaches Vipps; the token's own trip through the customer's link remains, and
 the admin page covers the proxy log.
+
+**Revision 3 (pre-flight)** — amended with the PR 1 plan's pre-flight (the plan
+`docs/superpowers/plans/2026-10-06-invoices-payments-reminders.md`, its pre-flight
+findings and the coordinator's decisions on them), where the spec contradicted itself or
+could not be built as written:
+
+| Id | Finding | Change |
+| --- | --- | --- |
+| B1 | D3's insert-only events and D10's "a withdrawn row changes nothing" refused D19's erase | D3: an event's note may be blanked to `''`; D10: a letter's recipient may be blanked in every status |
+| I1 | D8's `open(d − 1)` gloss contradicted reading 5 and I7 | D8: day `d` bears gross − credit notes issued on or before `d` − payments paid on or before `d − 1` |
+| I2 | D4's other-format race could never reach the line lock (the cutover queues it on the pool) | D4: the race is two camt.054 files of one payment with different `MsgId` and `AcctSvcrRef`, `TestBankImport_SamePaymentTwoFilesRace` |
+| I6 | `<reminder-{id}@…>` collides across installations | D10: a UUID Message-ID made at the first claim, kept on every retry |
+| I8 | a withdrawal could catch a letter mid-send | D10/D11/D19: a letter being sent (facts written, lease live) is neither withdrawn nor withdrawable |
+| I9 | a future `postedOn` was accepted | D10: `postedOn` after today → 400 |
+| Q2 | D11 and D19 withdrew printed letters NI4's re-judge must see | D11/D19: holds, hand-offs and the erase withdraw `queued`, `awaiting_print` and `failed` letters, not printed ones or one being sent, and name the printed ones they left |
+| Q3 | a hand-off of an undelivered invoice | D11/D21: 409 `invoice_not_delivered` unless `acknowledgeNotDelivered: true` |
+| Q4 | a policy `PUT` racing a merge left an orphan row | D7/D18: the `PUT` locks the customer's documents `FOR SHARE` first; 404 for an erased customer |
+| Q5 | the paper page had nothing to list | D21: `getInvoicesReminders`, `getInvoicesReminderPrintBatches` |
+| m13 | an apply could never pay charges alone | D5: `amount ≥ 0`, `chargesAmount ≥ 0`, their sum above 0 |
+| m14 | the cutover by file overshot on multi-account files | D3: the latest booking date of the account's own lines in the old format |
 
 ## Decisions
 
@@ -407,7 +427,7 @@ NOT NULL`, `set_at`. `GET /invoices/bank-accounts` (`invoices:payments`) lists e
 its last file and last booked date. `PUT /invoices/bank-accounts/{account}/format
 {format}` (`invoices:manage`): the row `FOR UPDATE`; the same format → 200, nothing
 changed; another → `previous_format` the old one, `cutover_through` the latest
-`last_booked_on` of the account's files in the old format (NULL when none), `format` the
+`booked_on` of the account's own lines in the old format (NULL when none), `format` the
 new one; 404 for an account never imported. Matching then holds back what the old format
 may already have registered (D4). A change of bank is a new account and gets its own row.
 
@@ -458,7 +478,8 @@ invoices.bank_transaction_events
 ```
 
 `bank_import_accounts` changes only through the format `PUT`; `bank_files` is never updated
-or deleted; `bank_transaction_events` is insert-only (triggers, the payments' shape).
+or deleted; `bank_transaction_events` is insert-only but for its note blanked to `''` by an
+erase (D19) (triggers, the payments' shape).
 `bank_transactions` refuses DELETE and every UPDATE but its state columns — `status`,
 `reason`, `suggested_invoice_id`, `resolution`, `resolved_by_user_id`, `resolved_at`,
 `resolution_note` — comparing `to_jsonb` less those, as `refuse_payment_change` does; the
@@ -560,8 +581,11 @@ applied from the queue**, the case the user guide explains, m12); `TestMatch_Pai
 registration of the whole open amount, the manual one held after its lock
 (`paymentAfterLock`, `inv/payments.go:43`): the import waits, then queues
 `invoice_settled`; reversed, the manual one is refused `invoice_settled`; never two
-payments. `TestBankImport_OtherFormatRace` — an OCR and a camt import of the same payment,
-each held after its line lock: one payment, the other line `possible_duplicate`.
+payments. `TestBankImport_SamePaymentTwoFilesRace` — two camt.054 files of the same
+payment (an intraday and an end-of-day notification, different `MsgId` and `AcctSvcrRef`),
+each held after its line lock: one payment, the other line `possible_duplicate` by the soft
+key re-read under the lock (revision 3, I2; an OCR/camt pair is always queued by the
+cutover on the pool and never reaches the lock).
 
 ### D5 — The exception queue
 
@@ -599,8 +623,8 @@ an unambiguous one is kept in `suggested_invoice_id`. For `possible_duplicate` a
   its suggestions when open, and its events. `unapplied=true` lists every `matched` or
   `resolved` line with an unapplied rest.
 - `POST /invoices/bank-transactions/{id}/apply` `{allocations: [{invoiceId, amount,
-  chargesAmount?}], note?}` — 1 to 20 allocations, each invoice once, amounts above 0
-  with two decimals. Order: 400 on the fields; 404; 409 `bank_transaction_not_open` (not
+  chargesAmount?}], note?}` — 1 to 20 allocations, each invoice once, `amount ≥ 0` and
+  `chargesAmount ≥ 0` with two decimals and their sum above 0 (revision 3). Order: 400 on the fields; 404; 409 `bank_transaction_not_open` (not
   `exception`); `reversal` and `negative_amount` lines → 409
   `bank_transaction_not_applicable`. Then **one transaction: the line `FOR UPDATE`, then
   the invoices `FOR UPDATE` in descending id** (the module's invariant,
@@ -762,8 +786,10 @@ still listed overdue, `blocked`, `policy_none`).
 
 `GET /invoices/customers/{customerId}/reminder-policy` (`invoices:access`; 200 with
 `mode: normal` when there is no row); `PUT` (`invoices:payments`) `{mode, note}` — 400 on
-the fields; the customer must have an issued invoice or a draft here, else 404. A `PUT`
-of `normal` with an empty note deletes the row.
+the fields; under the customer's documents locked `FOR SHARE` newest first (D18,
+revision 3), the customer must have an issued invoice or a draft here and must not be
+anonymised (`erased_customers`), else 404. A `PUT` of `normal` with an empty note deletes
+the row.
 
 **Why an invoices table, not the customers billing profile** (R4 §6 item 1). The profile
 carries *where* to send (`reminder_email`, `reminder_delivery`,
@@ -906,8 +932,9 @@ fee is ever claimed on that invoice (R6). Never on a person (FRL § 4 d), in eit
 **Late interest** (`late_interest` on, mode `normal`, a delivery on or before the due
 date): **simple** interest on the principal (R3), **always cumulative from the day after
 `E`** to `L` inclusive — an interest waiver (D9) is an amount subtracted beside it, never a
-new starting day (NI1): each day `d` bears `open(d − 1) × rate(d) / 100 / 365`, where `open(d − 1)` is
-gross less the credit notes issued and the live payments paid on or before `d − 1` — so a
+new starting day (NI1): each day `d` bears `open(d) × rate(d) / 100 / 365`, where `open(d)` is
+gross less the credit notes issued on or before `d` and the live payments paid on or before
+`d − 1` (revision 3, I1) — so a
 credit note reduces the principal **from its own date** and a payment from the day after
 its `paid_on` (the interest runs to and including a payment's day; I7, reading 5) — and
 `rate(d)` the row in force on `d`; actual/365; summed exactly and **rounded to øre once**,
@@ -1101,8 +1128,9 @@ after the wait — the delivery insert's shape, `mig/00035…:156-177`) and blan
 recipient for a marked customer. An immutability trigger: no DELETE; identity columns
 never change; the facts change only while the status is `queued`, `awaiting_print`,
 `printed` or `failed`; once `sent`, nothing changes but the PDF key and hash set once and
-the recipient blanked; a `withdrawn` row changes nothing. A withdrawn letter keeps its
-sequence.
+the recipient blanked; a `withdrawn` row changes nothing but its recipient blanked — the
+erase blanks every letter's recipient in every status (D19, revision 3). A withdrawn letter
+keeps its sequence.
 
 **Why the facts are written at sending** (amendment 12): the deadline is "at least 14
 days from sending" (INKL § 9) and a fee is judged on its letter's date (INKF § 1-2).
@@ -1129,7 +1157,9 @@ LOCKED` pick (`inv/queries/transmissions.sql:56-73`'s shape), then:
    rate-limited endpoint) with the seller as Reply-To, the subject "Purring: faktura {n}"
    / "Inkassovarsel: faktura {n}" (en: "Reminder: invoice {n}" / "Debt collection notice:
    invoice {n}"), a short cover text and the PDF; **a stable Message-ID per letter**,
-   `<reminder-{id}@…>` (at least once, reading 13).
+   `<reminder-{uuid}@…>` made at the letter's first claim, stored on the row and reused on
+   every retry, so it never collides across installations (at least once, reading 13;
+   revision 3).
 4. `sent`, `sent_at`, `message_id` — a lease-checked `UPDATE`. A failure: `attempts + 1`,
    backoff `min(3600, 2^n)` s; still `queued` 48 hours after `first_attempt_at` → `failed`
    (an attention item). `POST /invoices/reminders/{reminderId}/retry` (`invoices:payments`)
@@ -1154,7 +1184,8 @@ At most one letter per second, serially.
   letters, rendered from their rows, as often as needed (`application/pdf`,
   `Cache-Control: private, no-store`).
 - `POST /invoices/reminder-print-batches/{id}/posted` `{postedOn}` — the person confirms
-  the post. **`postedOn` must equal the batch's `postOn`** (NB1): every fact on the letters
+  the post; a `postedOn` after today is a 400 (revision 3). **`postedOn` must equal the
+  batch's `postOn`** (NB1): every fact on the letters
   — R7's 14 days, R10's passed deadline, the six-month reset, the inkassosats, the regime
   and its review, the deadline itself — was judged at `L = postOn`, so a letter posted
   earlier would carry a fee judged for a later day, and one posted later would shorten its
@@ -1179,7 +1210,9 @@ answers a printed or sent letter's stored PDF (409 `reminder_not_sent` otherwise
 missing or altered object, `inv/pdfstore.go:390-440`'s checks).
 `POST /invoices/reminders/{reminderId}/withdraw` `{reason}` (`invoices:payments`) — a
 `queued`, `awaiting_print`, `printed` or `failed` letter, the letter alone locked (the
-worker re-reads the status after its own locks); 409 `reminder_not_withdrawable`.
+worker re-reads the status after its own locks), **but not one being sent** — `queued` with
+its facts written and its lease live, between the dispatch's step 1 and step 4 (revision
+3); 409 `reminder_not_withdrawable`.
 
 **The letter's content** (R4 §2.6's table), in the buyer's language (nb, en), fixed text
 pinned by golden PDFs and text extraction:
@@ -1225,8 +1258,10 @@ the B2 pair (D9). **Races**: `TestReminderRun_RacesPayment`, `TestReminderRun_Tw
 `placed_by_user_id`, `lifted_at`, `lifted_by_user_id`, `lift_note varchar(500)`,
 `charges_allowed boolean`), one live per invoice. `POST /invoices/{id}/hold` `{note}`
 (`invoices:payments`): under the invoice's lock; 404; 409 `invoice_draft`,
-`credit_note_no_reminders`, `invoice_on_hold`. Every queued, awaiting or printed letter of
-the invoice is withdrawn in the same transaction (`on_hold`). `POST
+`credit_note_no_reminders`, `invoice_on_hold`. Every `queued`, `awaiting_print` or `failed`
+letter of the invoice, but one being sent, is withdrawn in the same transaction (`on_hold`);
+a `printed` letter is left to the posting's re-judge (NI4) and named in the answer, so a
+person can pull it and withdraw it by hand (revision 3). `POST
 /invoices/{id}/hold/lift` `{note, chargesAllowed}`: 409 `invoice_not_on_hold`. **On the
 lift** the person answers whether the objection was obviously groundless:
 `chargesAllowed: false` (the form's default) means it had reasonable grounds (INKL § 17
@@ -1244,8 +1279,10 @@ default: waived).
 invoice. `POST /invoices/{id}/collection` `{handedOn, agency, agencyReference?, note?}`
 (`invoices:payments`): `handedOn` not after today and not before the issue date (400);
 under the invoice's lock; 409 `invoice_draft`, `credit_note_no_reminders`,
-`invoice_settled`, `invoice_handed_off`. Every letter in flight is withdrawn in the same
-transaction (`handed_off`). `POST /invoices/{id}/collection/withdraw` `{withdrawnOn,
+`invoice_settled`, `invoice_handed_off`, and `invoice_not_delivered` without a delivery on or
+before the due date (NI3) unless `acknowledgeNotDelivered: true` — the hand-off records
+what was already done outside Vantigo (revision 3). The letters in flight are withdrawn in
+the same transaction (`handed_off`) as a hold withdraws them, the printed ones named. `POST /invoices/{id}/collection/withdraw` `{withdrawnOn,
 reason}`: 409 `invoice_not_handed_off`. While handed off: no letters; **payments are still
 registered** — the creditor still owns the claim (INKL § 2, R4 §2.10), and a direct payment
 must be reported to the agency, which the invoice view says beside it (R4 §7 item 16); the
@@ -1848,7 +1885,7 @@ gains the new rows. Each path, in its order:
 | the reminder worker's dispatch, a print batch's letter | the invoice, then its letter |
 | a batch posted or reprinted | the batch row `FOR NO KEY UPDATE` (so the letters' key-share locks on it never conflict, m11), then its letters' invoices in descending id, then the letters |
 | a letter's withdraw or retry | the letter alone (the worker re-reads its status after its own locks) |
-| a policy `PUT` | the policy row; the merge: the documents, then the policy rows by customer id |
+| a policy `PUT` | the customer's documents `FOR SHARE` newest first, then the policy row (revision 3); the merge: the documents, then the policy rows by customer id |
 | an attempt's create | the invoice (the attempt is inserted) |
 | the capture decision, the registration | the attempt, then its invoice |
 | a cancel, a release, an abandon, a webhook nudge | the attempt alone |
@@ -1858,7 +1895,11 @@ gains the new rows. Each path, in its order:
 
 **No path locks an invoice and then a bank transaction, an account row, a print batch or an
 attempt**, so the "own row first" orders cannot cycle with each other or with the payments'
-and credit notes' invoice-only and descending locks; a removal of an imported or Vipps
+and credit notes' invoice-only and descending locks. **One named exception** (revision 3): the
+erase (D19), holding the person's documents, blanks the `resolution_note` of bank lines
+linked to the person's payments — only `resolved` lines with a non-empty note, which no path
+locks before an invoice (`apply` and `handle-reversal` take `exception` lines; `reopen` takes
+the line alone), so no cycle forms. A removal of an imported or Vipps
 payment locks only the invoice and never writes the line or the attempt (D2). Every provider
 call, object-store call, directory read and SMTP send is made **outside** any transaction
 that holds a lock — MB rule 10's restatement, kept by the harness's contract-call hook,
@@ -1887,8 +1928,9 @@ in D3–D17 runs on a pool of `MaxConns = 2` with each raw lock-holding transact
   `redirect_url`), and each payment its `source` and, for an imported one, the bank line's
   date, debtor name, debtor account and text; the section gains `reminderPolicy`.
 - **Anonymisation**, inside the customers module's transaction, after today's steps and in
-  this order: every letter in flight of the person's documents **withdrawn**
-  (`customer_anonymised`); every letter's recipient blanked; the notes of charge payments,
+  this order: every `queued`, `awaiting_print` or `failed` letter of the person's documents,
+  but one being sent, **withdrawn** (`customer_anonymised`; a printed letter is left to the
+  posting's re-judge, revision 3); every letter's recipient blanked; the notes of charge payments,
   waivers, manual deliveries, holds (and lift notes) and hand-offs blanked; the
   `resolution_note` of every bank line, and the notes of its events, **linked to the
   person's payments or charge payments** blanked (M10); every live pay link revoked; the
@@ -1940,6 +1982,7 @@ sales, receipts, X/Z reports (Point of sale).
   `getInvoicesReminderRunsById`, `postInvoicesReminderPrintBatches`,
   `getInvoicesReminderPrintBatchesByIdPdf`, `postInvoicesReminderPrintBatchesByIdPosted`,
   `…Reprint`, `getInvoicesRemindersByIdPdf`, `postInvoicesRemindersByIdWithdraw`, `…Retry`,
+  `getInvoicesReminders` and `getInvoicesReminderPrintBatches` (revision 3),
   `postInvoicesByIdManualDeliveries`, `postInvoicesByIdManualDeliveriesByDeliveryIdRemove`,
   `postInvoicesByIdHold`, `postInvoicesByIdHoldLift`,
   `postInvoicesByIdCollection`, `postInvoicesByIdCollectionWithdraw`,
@@ -1972,6 +2015,7 @@ sales, receipts, X/Z reports (Point of sale).
   `reminder_posted_late`, `reminder_posted_early`, `delivery_removed`, `delivery_relied_on`,
   `too_many_overdue`, `credit_note_no_reminders`, `invoice_on_hold`,
   `invoice_not_on_hold`, `invoice_handed_off`, `invoice_not_handed_off`,
+  `invoice_not_delivered` (revision 3; the hand-off's `acknowledgeNotDelivered`),
   `payments_unavailable`, `payment_attempts_active`, `attempt_not_abandonable`,
   `public_url_missing`, `provider_failed` (502), `pay_links_unavailable`, `pay_link_exists`,
   `too_many_attempts`, `on_site_payments_unavailable`, `buyer_identity_missing`,
@@ -2204,7 +2248,7 @@ decision's named tests are listed in it; in summary:
   once; the classification order with `possible_duplicate`; the match table; the queue's
   endpoints, reopen from `matched`, handle-reversal; the payments' source CHECK; the races
   `TestBankImport_TwoOverlappingImports` (with its first-import variant),
-  `TestBankImport_RacesManualPayment`, `TestBankImport_OtherFormatRace`,
+  `TestBankImport_RacesManualPayment`, `TestBankImport_SamePaymentTwoFilesRace`,
   `TestBankQueue_ApplyRacesManualPayment`, `TestBankQueue_ReversalRacesApply`.
 - **4B**: the seeds, the release-over-user seed and the rates API; the settings, the review
   and the policy (`TestPolicy_MergeRacesPolicyPut`); the engine (`TestReminderRules_*` —
