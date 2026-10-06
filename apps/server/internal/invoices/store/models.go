@@ -20,9 +20,140 @@ type InvoicesAccessPointCredential struct {
 	UpdatedAt        time.Time
 }
 
+type InvoicesBankFile struct {
+	ID               int64
+	Format           string
+	Sha256           string
+	FileIdentity     string
+	ObjectKey        string
+	ByteSize         int32
+	Accounts         []string
+	FirstBookedOn    pgtype.Date
+	LastBookedOn     pgtype.Date
+	Transactions     int32
+	Duplicates       *int32
+	Ignored          int32
+	IgnoredKinds     []byte
+	UploadedByUserID uuid.UUID
+	UploadedAt       time.Time
+}
+
+type InvoicesBankImportAccount struct {
+	Account        string
+	Format         string
+	PreviousFormat *string
+	CutoverThrough pgtype.Date
+	SetByUserID    uuid.UUID
+	SetAt          time.Time
+}
+
+type InvoicesBankTransaction struct {
+	ID                 int64
+	BankFileID         int64
+	LineRef            string
+	Format             string
+	Account            string
+	Direction          string
+	Negative           bool
+	BookedOn           pgtype.Date
+	ValueOn            pgtype.Date
+	OrderedOn          pgtype.Date
+	Amount             pgtype.Numeric
+	Currency           string
+	Kid                *string
+	RemittanceText     string
+	DebtorName         string
+	DebtorAccount      string
+	ArchiveRef         string
+	BankCode           string
+	Fingerprint        string
+	Ordinal            int16
+	DuplicateOfID      *int64
+	Status             string
+	Reason             *string
+	SuggestedInvoiceID *int64
+	Resolution         *string
+	ResolvedByUserID   *uuid.UUID
+	ResolvedAt         *time.Time
+	ResolutionNote     string
+}
+
+type InvoicesBankTransactionEvent struct {
+	ID                int64
+	BankTransactionID int64
+	Event             string
+	Reason            *string
+	Note              string
+	ByUserID          uuid.UUID
+	At                time.Time
+}
+
+type InvoicesChargePayment struct {
+	ID                 int64
+	InvoiceID          int64
+	PaidOn             pgtype.Date
+	Amount             pgtype.Numeric
+	Currency           string
+	Source             string
+	BankTransactionID  *int64
+	Reference          string
+	Note               string
+	RegisteredByUserID uuid.UUID
+	RegisteredAt       time.Time
+	RemovedAt          *time.Time
+	RemovedByUserID    *uuid.UUID
+	RemovalReason      *string
+}
+
+type InvoicesChargeWaiver struct {
+	ID              int64
+	InvoiceID       int64
+	ReminderID      int64
+	Kind            string
+	Amount          pgtype.Numeric
+	InterestThrough pgtype.Date
+	Reason          string
+	Note            string
+	WaivedByUserID  uuid.UUID
+	WaivedAt        time.Time
+}
+
+type InvoicesCollectionHandoff struct {
+	ID                int64
+	InvoiceID         int64
+	HandedOn          pgtype.Date
+	Agency            string
+	AgencyReference   string
+	Note              string
+	CreatedAt         time.Time
+	CreatedByUserID   uuid.UUID
+	WithdrawnOn       pgtype.Date
+	WithdrawnByUserID *uuid.UUID
+	WithdrawalReason  *string
+}
+
+type InvoicesCollectionRate struct {
+	ID              int64
+	Kind            string
+	ValidFrom       pgtype.Date
+	Value           pgtype.Numeric
+	ReleaseValue    pgtype.Numeric
+	SourceRef       string
+	CreatedByUserID *uuid.UUID
+	CreatedAt       time.Time
+}
+
 type InvoicesCounter struct {
 	CounterName string
 	NextValue   int64
+}
+
+type InvoicesCustomerReminderPolicy struct {
+	CustomerID      int32
+	Mode            string
+	Note            string
+	UpdatedByUserID uuid.UUID
+	UpdatedAt       time.Time
 }
 
 type InvoicesDelivery struct {
@@ -114,6 +245,19 @@ type InvoicesInvoice struct {
 	Timesheet                  bool
 }
 
+type InvoicesInvoiceHold struct {
+	ID             int64
+	InvoiceID      int64
+	Kind           string
+	Note           string
+	PlacedAt       time.Time
+	PlacedByUserID uuid.UUID
+	LiftedAt       *time.Time
+	LiftedByUserID *uuid.UUID
+	LiftNote       *string
+	ChargesAllowed *bool
+}
+
 type InvoicesLine struct {
 	ID               int64
 	InvoiceID        int64
@@ -158,6 +302,19 @@ type InvoicesLineSource struct {
 	SourceDate     pgtype.Date
 }
 
+type InvoicesManualDelivery struct {
+	ID               int64
+	InvoiceID        int64
+	Kind             string
+	DeliveredOn      pgtype.Date
+	Note             string
+	RecordedByUserID uuid.UUID
+	RecordedAt       time.Time
+	RemovedAt        *time.Time
+	RemovedByUserID  *uuid.UUID
+	RemovalReason    *string
+}
+
 type InvoicesPayment struct {
 	ID                 int64
 	InvoiceID          int64
@@ -166,11 +323,103 @@ type InvoicesPayment struct {
 	Currency           string
 	Reference          string
 	Note               string
-	RegisteredByUserID uuid.UUID
+	RegisteredByUserID *uuid.UUID
 	RegisteredAt       time.Time
 	RemovedAt          *time.Time
 	RemovedByUserID    *uuid.UUID
 	RemovalReason      *string
+	Source             string
+	BankTransactionID  *int64
+}
+
+type InvoicesReminder struct {
+	ID                  int64
+	InvoiceID           int64
+	RunID               int64
+	PrintBatchID        *int64
+	Sequence            int16
+	Level               string
+	AnnouncesCollection bool
+	Channel             string
+	Recipient           string
+	Language            string
+	CreatedAt           time.Time
+	CreatedByUserID     uuid.UUID
+	SentOn              pgtype.Date
+	Deadline            pgtype.Date
+	Regime              *string
+	PrincipalOpen       pgtype.Numeric
+	FeeKind             *string
+	Fee                 pgtype.Numeric
+	Compensation        pgtype.Numeric
+	ChargesEarlier      pgtype.Numeric
+	Interest            pgtype.Numeric
+	InterestWaived      pgtype.Numeric
+	InterestPaid        pgtype.Numeric
+	InterestFrom        pgtype.Date
+	InterestSegments    []byte
+	Inkassosats         pgtype.Numeric
+	Total               pgtype.Numeric
+	ChargeNotes         []string
+	PdfObjectKey        *string
+	PdfSha256           *string
+	MessageID           *string
+	SentAt              *time.Time
+	Status              string
+	HeldReason          *string
+	Attempts            int32
+	NextAttemptAt       *time.Time
+	FirstAttemptAt      *time.Time
+	LeaseID             *string
+	LeaseUntil          *time.Time
+	LastError           *string
+	FailedAt            *time.Time
+	WithdrawnAt         *time.Time
+	WithdrawnByUserID   *uuid.UUID
+	WithdrawalReason    *string
+}
+
+type InvoicesReminderPrintBatch struct {
+	ID              int64
+	PostOn          pgtype.Date
+	PostedOn        pgtype.Date
+	CreatedAt       time.Time
+	CreatedByUserID uuid.UUID
+	PostedByUserID  *uuid.UUID
+	PostedAt        *time.Time
+	ReprintedAt     *time.Time
+}
+
+type InvoicesReminderRun struct {
+	ID                      int64
+	RunOn                   pgtype.Date
+	CreatedAt               time.Time
+	CreatedByUserID         uuid.UUID
+	Letters                 *int32
+	Skipped                 *int32
+	LastBookedOn            pgtype.Date
+	StaleImportAcknowledged bool
+}
+
+type InvoicesReminderSetting struct {
+	ID                     int16
+	Enabled                bool
+	FirstReminderDays      int32
+	DeadlineDays           int32
+	GraceDays              int32
+	RemindersBeforeNotice  int32
+	CollectionNotice       bool
+	PersonCharge           string
+	BusinessCharge         string
+	LateInterest           bool
+	StaleImportDays        int32
+	Inkassolov2026From     pgtype.Date
+	RegimeReviewedThrough  pgtype.Date
+	RegimeReviewedByUserID *uuid.UUID
+	RegimeReviewedAt       time.Time
+	Revision               int32
+	UpdatedAt              time.Time
+	UpdatedByUserID        *uuid.UUID
 }
 
 type InvoicesSetting struct {

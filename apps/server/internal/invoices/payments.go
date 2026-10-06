@@ -170,7 +170,7 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 			return errRefused
 		}
 		payment.InvoiceID, payment.Currency = locked.ID, locked.Currency
-		payment.RegisteredAt, payment.RegisteredByUserID = s.deps.Clock(), callerID(ctx)
+		payment.RegisteredAt, payment.RegisteredByUserID = s.deps.Clock(), ptr(callerID(ctx))
 		if _, err := txq.InsertPayment(ctx, payment); err != nil {
 			return fmt.Errorf("invoices: register a payment against %d: %w", locked.ID, err)
 		}

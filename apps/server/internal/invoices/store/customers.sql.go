@@ -293,7 +293,7 @@ func (q *Queries) MarkCustomerErased(ctx context.Context, arg MarkCustomerErased
 }
 
 const paymentsOfDocuments = `-- name: PaymentsOfDocuments :many
-SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason FROM invoices.payments
+SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id FROM invoices.payments
 WHERE invoice_id = ANY($1::bigint[])
 ORDER BY invoice_id, paid_on, id
 `
@@ -322,6 +322,8 @@ func (q *Queries) PaymentsOfDocuments(ctx context.Context, invoiceIds []int64) (
 			&i.RemovedAt,
 			&i.RemovedByUserID,
 			&i.RemovalReason,
+			&i.Source,
+			&i.BankTransactionID,
 		); err != nil {
 			return nil, err
 		}

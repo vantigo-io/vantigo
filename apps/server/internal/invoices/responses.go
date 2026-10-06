@@ -220,7 +220,7 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 		}
 		payments = append(payments, gen.InvoicesPayment{
 			Id: p.ID, PaidOn: wireDate(p.PaidOn.Time), Amount: floatFromRat(amount, 2), Currency: p.Currency,
-			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: p.RegisteredByUserID,
+			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: *p.RegisteredByUserID,
 			RemovedAt: p.RemovedAt, RemovedByUserId: p.RemovedByUserID, RemovalReason: p.RemovalReason,
 		})
 	}
