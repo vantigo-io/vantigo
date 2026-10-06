@@ -657,8 +657,8 @@ be set — through the API for now; the screens come with the reminders themselv
 
 - **Collection rates**: the statutory late interest rate, the business compensation and
   the inkassosats, as dated rows that Vantigo's releases fill in. Someone with
-  `invoices:manage` can add a rate that takes effect after today, ahead of a release,
-  and delete one that is not yet in force and that no letter has used.
+  `invoices:manage` can add a rate that takes effect after today — and after the date of
+  the latest printed or sent letter — ahead of a release, and delete one that is not yet in force and that no letter has used.
 - **Reminder settings**: whether reminders are offered at all, how long after the due
   date the first letter comes, each letter's deadline, the charges for people and for
   businesses, and the day the new inkasso law takes effect, with its review

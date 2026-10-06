@@ -133,7 +133,7 @@ export interface paths {
         put?: never;
         /**
          * Add a collection rate
-         * @description Adds a rate ahead of a release (D6). Refused, in this order, with a 400 on the field — validFrom not after today, a half-yearly kind not on 1 January or 1 July, a value out of its kind's bounds or with more than two decimals, a sourceRef blank or too long — and with 409 collection_rate_exists when the kind already has a row on that day.
+         * @description Adds a rate ahead of a release (D6). Refused, in this order, with a 400 on the field — validFrom not after today or not after the latest printed or sent letter's date, a half-yearly kind not on 1 January or 1 July, a value out of its kind's bounds or with more than two decimals, a sourceRef blank or too long — and with 409 collection_rate_exists when the kind already has a row on that day.
          */
         post: operations["postInvoicesCollectionRates"];
         delete?: never;
@@ -154,7 +154,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a collection rate
-         * @description Deletes a user's rate that is not yet in force and that no printed or sent letter has used (D6, plan reading 6); a seeded row, a row in force or past, and a used row are 409 collection_rate_in_force. A deleted row a release had seeded over is replaced, in the same transaction, by a seeded row of the release's value and regulation, so its half-year never goes empty.
+         * @description Locks the rate row, then deletes a user's rate that is not yet in force and that no printed or sent letter has used (D6, plan reading 6); a seeded row, a row in force or past, and a used row are 409 collection_rate_in_force. A deleted row a release had seeded over is replaced, in the same transaction, by a seeded row of the release's value and regulation, so its half-year never goes empty.
          */
         delete: operations["deleteInvoicesCollectionRatesById"];
         options?: never;
@@ -1126,7 +1126,7 @@ export interface components {
             rates: components["schemas"]["InvoicesCollectionRate"][];
             warnings: "collection_rate_differs_from_release"[];
         };
-        /** @description POST /collection-rates' body (D6): a rate a user adds ahead of a release. validFrom is after today (Oslo); late_interest_percent and b2b_compensation_nok start on 1 January or 1 July; value has at most two decimals and is within its kind's bounds — late_interest_percent 0.01-30, b2b_compensation_nok 100-2000, inkassosats 100-5000; sourceRef is the regulation, 1-100 characters. Each is a 400 on its field; a row of the same kind and date is a 409 collection_rate_exists. */
+        /** @description POST /collection-rates' body (D6): a rate a user adds ahead of a release. validFrom is after today (Oslo) and after the date of the latest printed or sent letter, so a new rate never contradicts a letter already printed or posted; late_interest_percent and b2b_compensation_nok start on 1 January or 1 July; value has at most two decimals and is within its kind's bounds — late_interest_percent 0.01-30, b2b_compensation_nok 100-2000, inkassosats 100-5000; sourceRef is the regulation, 1-100 characters. Each is a 400 on its field; a row of the same kind and date is a 409 collection_rate_exists. */
         InvoicesCollectionRateRequest: {
             /** @enum {string} */
             kind: "late_interest_percent" | "b2b_compensation_nok" | "inkassosats";
@@ -1188,7 +1188,7 @@ export interface components {
             /** Format: uuid */
             updatedBy?: string;
         };
-        /** @description PUT /settings/reminders' body, a full replace (D7). Every field is required — a body without one is a 400 on it — and null is a value only for inkassolov2026From. enabled, collectionNotice and lateInterest are true or false; firstReminderDays 1-60; deadlineDays 14-60; graceDays 1-10; remindersBeforeNotice 0-2; staleImportDays 1-30; personCharge fee or none; businessCharge fee, compensation or none; regimeReviewedThrough at most a year after today (Oslo). revision is the one the caller read: a stale one is a 409 naming both. */
+        /** @description PUT /settings/reminders' body, a full replace (D7). Every field is required, revision included — a body without one is a 400 on it — and null is a value only for inkassolov2026From. enabled, collectionNotice and lateInterest are true or false; firstReminderDays 1-60; deadlineDays 14-60; graceDays 1-10; remindersBeforeNotice 0-2; staleImportDays 1-30; personCharge fee or none; businessCharge fee, compensation or none; regimeReviewedThrough at most a year after today (Oslo). revision is the one the caller read: a stale one is a 409 naming both. */
         InvoicesReminderSettingsRequest: {
             /** @enum {string} */
             businessCharge: "fee" | "compensation" | "none";

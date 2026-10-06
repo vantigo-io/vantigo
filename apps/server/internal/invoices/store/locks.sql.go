@@ -63,6 +63,31 @@ func (q *Queries) LockBankTransaction(ctx context.Context, id int64) (InvoicesBa
 	return i, err
 }
 
+const lockCollectionRate = `-- name: LockCollectionRate :one
+SELECT id, kind, valid_from, value, release_value, release_source_ref, source_ref, created_by_user_id, created_at FROM invoices.collection_rates WHERE id = $1 FOR UPDATE
+`
+
+// LockCollectionRate takes a collection rate FOR UPDATE: the DELETE's first
+// lock, before it judges whether a letter used the row (D6), so a print
+// batch holding it FOR KEY SHARE while it prints a letter relying on it is
+// waited for, and its letter seen.
+func (q *Queries) LockCollectionRate(ctx context.Context, id int64) (InvoicesCollectionRate, error) {
+	row := q.db.QueryRow(ctx, lockCollectionRate, id)
+	var i InvoicesCollectionRate
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.ValidFrom,
+		&i.Value,
+		&i.ReleaseValue,
+		&i.ReleaseSourceRef,
+		&i.SourceRef,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const lockImportAccount = `-- name: LockImportAccount :one
 SELECT account, format, previous_format, cutover_through, set_by_user_id, set_at FROM invoices.bank_import_accounts WHERE account = $1 FOR UPDATE
 `

@@ -111,6 +111,20 @@ func (q *Queries) InsertCollectionRate(ctx context.Context, arg InsertCollection
 	return i, err
 }
 
+const latestLetterDay = `-- name: LatestLetterDay :one
+SELECT max(sent_on)::date AS day FROM invoices.reminders WHERE status IN ('printed', 'sent')
+`
+
+// LatestLetterDay is the sent_on of the latest letter with facts — printed
+// or sent — or NULL: a new rate takes effect after it (D6, the Task 6
+// review's M2), so it never contradicts a letter already printed or posted.
+func (q *Queries) LatestLetterDay(ctx context.Context) (pgtype.Date, error) {
+	row := q.db.QueryRow(ctx, latestLetterDay)
+	var day pgtype.Date
+	err := row.Scan(&day)
+	return day, err
+}
+
 const listCollectionRates = `-- name: ListCollectionRates :many
 
 SELECT r.id, r.kind, r.valid_from, r.value, r.release_value, r.release_source_ref, r.source_ref, r.created_by_user_id, r.created_at,

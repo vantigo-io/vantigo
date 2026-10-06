@@ -137,10 +137,12 @@ func (s *server) GetInvoicesCollectionRates(ctx context.Context, _ gen.GetInvoic
 }
 
 // parseCollectionRate runs D6's field rules over an add, every failure
-// collected: the kind; validFrom after today and, for a half-yearly kind, on
-// 1 January or 1 July; the value within its kind's bounds with at most two
-// decimals; the regulation 1-100 characters.
-func parseCollectionRate(body gen.InvoicesCollectionRateRequest, today time.Time) (store.InsertCollectionRateParams, map[string][]string) {
+// collected: the kind; validFrom after today, after latestLetter — the
+// sent_on of the latest printed or sent letter, nil when none, so a new row
+// never contradicts a letter already printed or posted — and, for a
+// half-yearly kind, on 1 January or 1 July; the value within its kind's
+// bounds with at most two decimals; the regulation 1-100 characters.
+func parseCollectionRate(body gen.InvoicesCollectionRateRequest, today time.Time, latestLetter *time.Time) (store.InsertCollectionRateParams, map[string][]string) {
 	var errs map[string][]string
 	kind := string(body.Kind)
 	validFrom := utcDay(body.ValidFrom.Time)
@@ -152,6 +154,9 @@ func parseCollectionRate(body gen.InvoicesCollectionRateRequest, today time.Time
 	switch {
 	case !validFrom.After(today):
 		errs = withFieldError(errs, "validFrom", fmt.Sprintf("A new rate takes effect after today, %s", today.Format(time.DateOnly)))
+	case latestLetter != nil && !validFrom.After(*latestLetter):
+		errs = withFieldError(errs, "validFrom", fmt.Sprintf(
+			"A letter dated %s is already printed or sent; a new rate takes effect after it", latestLetter.Format(time.DateOnly)))
 	case halfYearly(kind) && (validFrom.Day() != 1 || (validFrom.Month() != time.January && validFrom.Month() != time.July)):
 		errs = withFieldError(errs, "validFrom", "This rate is set per half-year: it takes effect on 1 January or 1 July")
 	}
@@ -187,12 +192,16 @@ func parseCollectionRate(body gen.InvoicesCollectionRateRequest, today time.Time
 // cannot both land.
 func (s *server) PostInvoicesCollectionRates(ctx context.Context, req gen.PostInvoicesCollectionRatesRequestObject) (gen.PostInvoicesCollectionRatesResponseObject, error) {
 	now := s.deps.Clock()
-	params, errs := parseCollectionRate(*req.Body, businessDay(now))
+	q := store.New(s.deps.Pool)
+	latest, err := q.LatestLetterDay(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the latest letter's date: %w", err)
+	}
+	params, errs := parseCollectionRate(*req.Body, businessDay(now), pgDateOf(latest))
 	if errs != nil {
 		return gen.PostInvoicesCollectionRates400ApplicationProblemPlusJSONResponse(invalid(invalidCollectionRateTitle, errs)), nil
 	}
 	params.CreatedByUserID, params.Now = callerID(ctx), now
-	q := store.New(s.deps.Pool)
 	row, err := q.InsertCollectionRate(ctx, params)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "uq_collection_rates_kind_valid_from" {
@@ -218,7 +227,11 @@ func (s *server) PostInvoicesCollectionRates(ctx context.Context, req gen.PostIn
 // (DELETE /api/v1/invoices/collection-rates/{id})
 //
 // Only a user's row, not yet in force, that no printed or sent letter has
-// relied on (D6, plan reading 6). A user's row a release seeded over is
+// relied on (D6, plan reading 6). The row is locked FOR UPDATE before that is
+// judged (the Task 6 review's M1): a print batch holds the rates its letters
+// rely on FOR KEY SHARE until it commits (Task 13), so a letter printed
+// meanwhile is waited for and then seen — a statement after the lock sees
+// every commit before it. A user's row a release seeded over is
 // replaced in the same transaction by a seeded row of the release's value
 // and regulation (m6), so its half-year never goes empty and refuses every
 // interest letter.
@@ -228,11 +241,15 @@ func (s *server) DeleteInvoicesCollectionRatesById(ctx context.Context, req gen.
 	notFound := false
 	var refusal *gen.InvoicesConflictProblem
 	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		r, err := txq.GetCollectionRate(ctx, req.Id)
+		_, err := lockCollectionRate(ctx, txq, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			notFound = true
 			return errRefused
 		}
+		if err != nil {
+			return fmt.Errorf("invoices: lock collection rate %d: %w", req.Id, err)
+		}
+		r, err := txq.GetCollectionRate(ctx, req.Id)
 		if err != nil {
 			return fmt.Errorf("invoices: read collection rate %d: %w", req.Id, err)
 		}

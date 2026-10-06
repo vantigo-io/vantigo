@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -68,6 +69,13 @@ func plantPolicy(t *testing.T, h *harness, customer int32, mode, note string) {
 	t.Helper()
 	h.Exec(t, `INSERT INTO invoices.customer_reminder_policies (customer_id, mode, note, updated_by_user_id, updated_at)
 		VALUES ($1, $2, $3, gen_random_uuid(), now())`, customer, mode, note)
+}
+
+// plantPolicyBy writes a policy row set by by at at.
+func plantPolicyBy(t *testing.T, h *harness, customer int32, mode, note string, by uuid.UUID, at time.Time) {
+	t.Helper()
+	h.Exec(t, `INSERT INTO invoices.customer_reminder_policies (customer_id, mode, note, updated_by_user_id, updated_at)
+		VALUES ($1, $2, $3, $4, $5)`, customer, mode, note, by, at)
 }
 
 // policyRow is customer's row as "mode|note", or "" without one.
@@ -207,6 +215,17 @@ func merged(t *testing.T, h *harness, from, into int32) []contracts.RepointedRef
 	return moved
 }
 
+// stricterMode is the test's own reading of D7's order: none, then
+// no_charges, then normal.
+func stricterMode(a, b string) string {
+	for _, m := range []string{"none", "no_charges"} {
+		if a == m || b == m {
+			return m
+		}
+	}
+	return "normal"
+}
+
 // policiesReported is the merge's invoices.customerReminderPolicies count.
 func policiesReported(t *testing.T, moved []contracts.RepointedReferences) int64 {
 	t.Helper()
@@ -222,16 +241,21 @@ func policiesReported(t *testing.T, moved []contracts.RepointedReferences) int64
 // The merge (D7): with both rows the stricter mode wins — none over
 // no_charges over normal, whichever side holds it — and the notes are joined,
 // the survivor's first, " / ", cut to 500 characters; the absorbed row goes.
-// With only the absorbed customer's row it moves; with none nothing moves.
-// Each reported as invoices.customerReminderPolicies.
+// The merged row is the stricter row's author's — the survivor's on a tie —
+// at the merge's clock (the Task 6 review's M7). With only the absorbed
+// customer's row it moves; with none nothing moves. Each reported as
+// invoices.customerReminderPolicies.
 func TestPolicy_MergeStricterWins(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
+	planted := h.Now().Add(-48 * time.Hour)
+	h.Advance(time.Hour)
 	for _, c := range []struct {
 		from, into                       int32
 		fromMode, fromNote, intoMode, in string
 		want                             string
 	}{
+		{9116, 9117, "none", "Tvist", "none", "Konkurs", "none|Konkurs / Tvist"},
 		{9101, 9102, "none", "Tvist", "no_charges", "Fast kunde", "none|Fast kunde / Tvist"},
 		{9103, 9104, "no_charges", "Fast kunde", "none", "Tvist", "none|Tvist / Fast kunde"},
 		{9105, 9106, "no_charges", "Avtale", "normal", "Ring først", "no_charges|Ring først / Avtale"},
@@ -239,8 +263,9 @@ func TestPolicy_MergeStricterWins(t *testing.T) {
 		{9110, 9109, "none", strings.Repeat("b", 300), "normal", strings.Repeat("a", 300),
 			"none|" + (strings.Repeat("a", 300) + " / " + strings.Repeat("b", 300))[:500]},
 	} {
-		plantPolicy(t, h, c.from, c.fromMode, c.fromNote)
-		plantPolicy(t, h, c.into, c.intoMode, c.in)
+		fromBy, intoBy := uuid.New(), uuid.New()
+		plantPolicyBy(t, h, c.from, c.fromMode, c.fromNote, fromBy, planted)
+		plantPolicyBy(t, h, c.into, c.intoMode, c.in, intoBy, planted)
 		if n := policiesReported(t, merged(t, h, c.from, c.into)); n != 1 {
 			t.Errorf("merge %d → %d reported %d policies, want 1", c.from, c.into, n)
 		}
@@ -249,6 +274,20 @@ func TestPolicy_MergeStricterWins(t *testing.T) {
 		}
 		if got := policyRow(t, h, c.from); got != "" {
 			t.Errorf("merge %d → %d left the absorbed row %q", c.from, c.into, got)
+		}
+		author := intoBy
+		if c.fromMode == stricterMode(c.fromMode, c.intoMode) && c.fromMode != c.intoMode {
+			author = fromBy
+		}
+		var by uuid.UUID
+		var at time.Time
+		if err := h.Pool().QueryRow(context.Background(), `SELECT updated_by_user_id, updated_at
+			FROM invoices.customer_reminder_policies WHERE customer_id = $1`, c.into).Scan(&by, &at); err != nil {
+			t.Fatalf("read the merged row: %v", err)
+		}
+		if by != author || !at.Equal(h.Now()) {
+			t.Errorf("merge %d (%s) → %d (%s) = by %s at %s, want the stricter row's author %s at the merge's %s",
+				c.from, c.fromMode, c.into, c.intoMode, by, at, author, h.Now())
 		}
 	}
 	long := policyRow(t, h, 9109)

@@ -1,6 +1,7 @@
 package invoices_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"slices"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -353,6 +355,7 @@ func TestCollectionRates_DeleteRefusals(t *testing.T) {
 
 	used := addedRate(t, h, rateBody("inkassosats", "2026-09-15", 800))
 	later := addedRate(t, h, rateBody("inkassosats", "2026-09-20", 810))
+	tomorrow := addedRate(t, h, rateBody("inkassosats", "2026-09-13", 790))
 	printedLetter(t, h, invoice.ID, 1, "2026-09-15")
 	inUse(used.ID, "a row a printed letter relied on")
 	if r := rateOn(t, listRates(t, h), "inkassosats", "2026-09-20"); !r.Usable {
@@ -368,7 +371,6 @@ func TestCollectionRates_DeleteRefusals(t *testing.T) {
 	inUse(rateOn(t, listRates(t, h), "late_interest_percent", "2027-01-01").ID, "a seeded row")
 	inUse(rateOn(t, listRates(t, h), "inkassosats", "2026-01-01").ID, "a seeded row in force")
 
-	tomorrow := addedRate(t, h, rateBody("inkassosats", "2026-09-13", 790))
 	h.Advance(24 * time.Hour)
 	inUse(tomorrow.ID, "a user's row in force")
 
@@ -414,5 +416,121 @@ func TestCollectionRates_DeleteReseedsTheRelease(t *testing.T) {
 	created := modtest.One[time.Time](t, h.Harness, `SELECT created_at FROM invoices.collection_rates WHERE id = $1`, r.ID)
 	if !created.Equal(h.Now()) {
 		t.Errorf("created_at = %s, want the request's clock %s", created, h.Now())
+	}
+}
+
+// sentLetter plants an e-mail letter sent on sentOn with its facts.
+func sentLetter(t *testing.T, h *harness, invoiceID int64, sequence int, sentOn string) int64 {
+	t.Helper()
+	letter := queuedLetter(t, h, invoiceID, sequence)
+	h.Exec(t, `UPDATE invoices.reminders SET status = 'sent', sent_on = $2::date, sent_at = now(),
+		deadline = $2::date + 14, regime = 'inkassolov_1988', principal_open = 1250, fee_kind = 'none',
+		charges_earlier = 0, interest = 0, interest_waived = 0, interest_paid = 0, total = 1250
+		WHERE id = $1`, letter, sentOn)
+	return letter
+}
+
+// A new rate never contradicts a letter already printed or posted (D6, the
+// Task 6 review's M2): its validFrom must be after the sent_on of the latest
+// printed or sent letter — a paper letter is printed for a posting date
+// ahead of today — else a 400 on validFrom. A letter without facts, queued
+// or withdrawn, relies on nothing.
+func TestCollectionRates_PostAfterTheLatestLetter(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	invoice := issuedFor(t, h, customerAcme, line("Konsulenttimer", 1, 1000, vat25))
+	sentLetter(t, h, invoice.ID, 1, "2026-09-12")
+	printedLetter(t, h, invoice.ID, 2, "2026-09-18")
+	queuedLetter(t, h, invoice.ID, 3)
+	for _, day := range []string{"2026-09-13", "2026-09-18"} {
+		res := manager(t, h).Do(http.MethodPost, collectionRatesPath, rateBody("inkassosats", day, 800))
+		if res.Status != http.StatusBadRequest || len(problemOf(t, res).Errors["validFrom"]) == 0 {
+			t.Errorf("a rate from %s, a letter printed for 2026-09-18 = %d %s, want 400 on validFrom", day, res.Status, res.Body)
+		}
+	}
+	if r := addedRate(t, h, rateBody("inkassosats", "2026-09-19", 800)); r.ValidFrom != "2026-09-19" {
+		t.Errorf("the rate the day after the latest letter = %+v", r)
+	}
+}
+
+// The DELETE locks the rate row FOR UPDATE before it judges whether a letter
+// used it (D6, the Task 6 review's M1), so a print batch holding the row FOR
+// KEY SHARE while it prints a letter that relies on it (Task 13) is waited
+// for and then seen: the DELETE waits on the batch — pg_blocking_pids names
+// it — and, the letter committed, answers 409 collection_rate_in_force. A
+// DELETE that judged first would have found no letter and deleted the row the
+// letter printed. The seam sees the lock; deadlocks unchanged. Not parallel:
+// the seam is the package's.
+func TestCollectionRates_DeleteLocksTheRowFirst(t *testing.T) {
+	h := raceHarness(t)
+	saveSeller(t, h, completeSeller(1))
+	invoice := issuedFor(t, h, customerAcme, line("Konsulenttimer", 1, 1000, vat25))
+	relied := addedRate(t, h, rateBody("inkassosats", "2026-09-20", 800))
+	spare := addedRate(t, h, rateBody("inkassosats", "2026-09-25", 810))
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+
+	seen := &lockSeen{}
+	restore := invoices.SetLockTaken(seen.note)
+	if res := manager(t, h).Do(http.MethodDelete, collectionRatePath(spare.ID), nil); res.Status != http.StatusNoContent {
+		t.Fatalf("DELETE an unused rate = %d %s", res.Status, res.Body)
+	}
+	restore()
+	if got, want := seen.take(), []string{"collection_rate " + idKey(spare.ID)}; !slices.Equal(got, want) {
+		t.Errorf("the DELETE locked %v, want %v", got, want)
+	}
+
+	// The print batch's position: the rate row FOR KEY SHARE, and a letter
+	// dated on its first day printed in the same transaction.
+	batch := holdRow(t, h, `SELECT 1 FROM invoices.collection_rates WHERE id = $1 FOR KEY SHARE`, relied.ID)
+	ctx := context.Background()
+	var run, printBatch, letter int64
+	for _, step := range []struct {
+		dst  *int64
+		sql  string
+		args []any
+	}{
+		{&run, `INSERT INTO invoices.reminder_runs (run_on, created_at, created_by_user_id, stale_import_acknowledged)
+			VALUES (DATE '2026-09-12', now(), gen_random_uuid(), false) RETURNING id`, nil},
+		{&printBatch, `INSERT INTO invoices.reminder_print_batches (post_on, created_at, created_by_user_id)
+			VALUES (DATE '2026-09-20', now(), gen_random_uuid()) RETURNING id`, nil},
+	} {
+		if err := batch.tx.QueryRow(ctx, step.sql, step.args...).Scan(step.dst); err != nil {
+			t.Fatalf("plant in the batch's transaction: %v", err)
+		}
+	}
+	if err := batch.tx.QueryRow(ctx, `
+		INSERT INTO invoices.reminders (invoice_id, run_id, sequence, level, channel, language, created_at, created_by_user_id, status)
+		VALUES ($1, $2, 1, 'reminder', 'paper', 'nb', now(), gen_random_uuid(), 'awaiting_print') RETURNING id`,
+		invoice.ID, run).Scan(&letter); err != nil {
+		t.Fatalf("plant the letter: %v", err)
+	}
+	if _, err := batch.tx.Exec(ctx, `UPDATE invoices.reminders SET status = 'printed', print_batch_id = $2, sent_on = DATE '2026-09-20',
+		deadline = DATE '2026-10-05', regime = 'inkassolov_1988', principal_open = 1250, fee_kind = 'none',
+		charges_earlier = 0, interest = 0, interest_waived = 0, interest_paid = 0, total = 1250 WHERE id = $1`, letter, printBatch); err != nil {
+		t.Fatalf("print the letter: %v", err)
+	}
+
+	deadline, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	answered := make(chan *modtest.Response, 1)
+	client := manager(t, h)
+	go func() {
+		answered <- client.Do(http.MethodDelete, collectionRatePath(relied.ID), nil, modtest.Context(deadline))
+	}()
+	del := newWaiter(t, probeConn)
+	if got, want := blockersOf(t, probeConn, del), []uint32{batch.pid}; !slices.Equal(got, want) {
+		t.Fatalf("pg_blocking_pids(the DELETE) = %v, want the batch %v", got, want)
+	}
+	batch.release(t)
+	res := <-answered
+	if res.Status != http.StatusConflict || problemOf(t, res).Code != "collection_rate_in_force" {
+		t.Errorf("the DELETE after the letter was printed = %d %s, want 409 collection_rate_in_force", res.Status, res.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.collection_rates WHERE id = $1`, relied.ID); n != 1 {
+		t.Error("the rate the printed letter relied on was deleted")
+	}
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("deadlocks = %d, was %d", after, before)
 	}
 }

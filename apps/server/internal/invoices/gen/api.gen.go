@@ -380,7 +380,7 @@ type InvoicesCollectionRateList struct {
 // InvoicesCollectionRateListWarnings defines model for InvoicesCollectionRateList.Warnings.
 type InvoicesCollectionRateListWarnings string
 
-// InvoicesCollectionRateRequest POST /collection-rates' body (D6): a rate a user adds ahead of a release. validFrom is after today (Oslo); late_interest_percent and b2b_compensation_nok start on 1 January or 1 July; value has at most two decimals and is within its kind's bounds — late_interest_percent 0.01-30, b2b_compensation_nok 100-2000, inkassosats 100-5000; sourceRef is the regulation, 1-100 characters. Each is a 400 on its field; a row of the same kind and date is a 409 collection_rate_exists.
+// InvoicesCollectionRateRequest POST /collection-rates' body (D6): a rate a user adds ahead of a release. validFrom is after today (Oslo) and after the date of the latest printed or sent letter, so a new rate never contradicts a letter already printed or posted; late_interest_percent and b2b_compensation_nok start on 1 January or 1 July; value has at most two decimals and is within its kind's bounds — late_interest_percent 0.01-30, b2b_compensation_nok 100-2000, inkassosats 100-5000; sourceRef is the regulation, 1-100 characters. Each is a 400 on its field; a row of the same kind and date is a 409 collection_rate_exists.
 type InvoicesCollectionRateRequest struct {
 	Kind      InvoicesCollectionRateRequestKind `json:"kind"`
 	SourceRef string                            `json:"sourceRef"`
@@ -1010,7 +1010,7 @@ type InvoicesReminderSettingsBusinessCharge string
 // InvoicesReminderSettingsPersonCharge defines model for InvoicesReminderSettings.PersonCharge.
 type InvoicesReminderSettingsPersonCharge string
 
-// InvoicesReminderSettingsRequest PUT /settings/reminders' body, a full replace (D7). Every field is required — a body without one is a 400 on it — and null is a value only for inkassolov2026From. enabled, collectionNotice and lateInterest are true or false; firstReminderDays 1-60; deadlineDays 14-60; graceDays 1-10; remindersBeforeNotice 0-2; staleImportDays 1-30; personCharge fee or none; businessCharge fee, compensation or none; regimeReviewedThrough at most a year after today (Oslo). revision is the one the caller read: a stale one is a 409 naming both.
+// InvoicesReminderSettingsRequest PUT /settings/reminders' body, a full replace (D7). Every field is required, revision included — a body without one is a 400 on it — and null is a value only for inkassolov2026From. enabled, collectionNotice and lateInterest are true or false; firstReminderDays 1-60; deadlineDays 14-60; graceDays 1-10; remindersBeforeNotice 0-2; staleImportDays 1-30; personCharge fee or none; businessCharge fee, compensation or none; regimeReviewedThrough at most a year after today (Oslo). revision is the one the caller read: a stale one is a 409 naming both.
 type InvoicesReminderSettingsRequest struct {
 	BusinessCharge        json.RawMessage `json:"businessCharge"`
 	CollectionNotice      json.RawMessage `json:"collectionNotice"`
@@ -1023,7 +1023,7 @@ type InvoicesReminderSettingsRequest struct {
 	PersonCharge          json.RawMessage `json:"personCharge"`
 	RegimeReviewedThrough json.RawMessage `json:"regimeReviewedThrough"`
 	RemindersBeforeNotice json.RawMessage `json:"remindersBeforeNotice"`
-	Revision              int32           `json:"revision"`
+	Revision              json.RawMessage `json:"revision"`
 	StaleImportDays       json.RawMessage `json:"staleImportDays"`
 }
 

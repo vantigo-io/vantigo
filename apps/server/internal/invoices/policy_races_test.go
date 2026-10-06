@@ -41,8 +41,20 @@ func TestPolicy_MergeRacesPolicyPut(t *testing.T) {
 	holder := invoices.Module().CustomerReferences(h.Deps())
 	probeConn := ownConn(t, h)
 	before := deadlocks(t, probeConn)
+	// noDeadlock reads the count after each order, pinning a deadlock to the
+	// order that made it. It is each order's first cleanup, so it runs last —
+	// after a t.Fatal too, and after the order's own connections have closed:
+	// a backend that detected a deadlock reports it when it exits, where an
+	// idle one may hold it back for up to ten seconds.
+	noDeadlock := func(t *testing.T) {
+		t.Helper()
+		if after := deadlocks(t, probeConn); after != before {
+			t.Errorf("deadlocks = %d, was %d: Postgres broke a deadlock", after, before)
+		}
+	}
 
 	t.Run("the merge first", func(t *testing.T) {
+		t.Cleanup(func() { noDeadlock(t) }) // last: after the order's own connections close
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		mergeConn := ownConn(t, h)
@@ -84,6 +96,7 @@ func TestPolicy_MergeRacesPolicyPut(t *testing.T) {
 	})
 
 	t.Run("the PUT first", func(t *testing.T) {
+		t.Cleanup(func() { noDeadlock(t) }) // last: after the order's own connections close
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		parked, release := make(chan struct{}), make(chan struct{})
@@ -152,8 +165,4 @@ func TestPolicy_MergeRacesPolicyPut(t *testing.T) {
 			t.Errorf("the absorbed customer's policy = %q, want none", got)
 		}
 	})
-
-	if after := deadlocks(t, probeConn); after != before {
-		t.Errorf("deadlocks = %d, was %d: Postgres broke a deadlock", after, before)
-	}
 }
