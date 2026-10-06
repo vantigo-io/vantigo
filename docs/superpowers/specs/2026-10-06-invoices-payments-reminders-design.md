@@ -10,7 +10,7 @@ the Point of sale section it hands the counter to is `ROADMAP.md:893-933`. Phase
 (payments), 2 (`2026-10-03-invoices-ehf-peppol-kid-design.md`, the access-point pattern and
 the KID) and 3 (`2026-10-05-invoices-work-to-invoices-design.md`) are its baseline.
 
-**Status:** design, revision 1, for the user's verdict on the readings. **Scope:** money in —
+**Status:** design, revision 2, for the user's verdict on the readings. **Scope:** money in —
 the bank tells Vantigo what was paid, Vantigo tells the customer what is late, and a Vipps
 request lets a customer pay from a link or on the spot. **Sub-phases:** 4A the ledger and
 bank imports, 4B overdue and reminders (pull request 1, receivables); 4C the payments port,
@@ -180,6 +180,34 @@ posting date; I5's two-business-day grace became a minimum of one day (`grace_da
 default 3); I7 keeps the credit note's own date. I19's suggested `releasing` state became a
 `release_pending` flag on the two terminal states it concerns, so the outcome is not lost.
 
+**Revision 2** — after the critic's re-check of `19d3e405` (APPROVE WITH CHANGES: 1 new
+BLOCKER, 4 IMPORTANT, 12 MINOR; every original finding confirmed closed). Each finding and
+what changed:
+
+| Id | Finding | Change |
+| --- | --- | --- |
+| NB1 | a paper letter posted early kept a fee judged for a later day | D10: `postedOn` must equal `postOn`; earlier → 409 `reminder_posted_early`, later → `reminder_posted_late`; reprint (reading 39) |
+| NI1 | interest waivers subtracted twice between the letter and D9 | D8/D9: interest always cumulative from the day after `E`; an interest waiver is an amount (claimed and unpaid); the letter gains `interest_waived`; one formula serves the letter and D9, `interest_paid` capped net of waived; a test of waiver then later letter |
+| NI2 | the `duplicate` rows contradicted their schema | D3: the CHECK is an implication; `duplicate_of_id` frozen; the fingerprint index partial on `duplicate_of_id IS NULL`; D5: confirm-duplicate and treat-as-distinct set reason `possible_duplicate` |
+| NI3 | an undelivered invoice could still get the inkassovarsel and the hand-off | D8: without a delivery only fee-free reminders; the notice and the hand-off `blocked`, `not_delivered` (reading 40) |
+| NI4 | the posted confirmation did not re-judge | D10: it re-judges each letter at `L = postOn` under the locks D18 takes; a letter whose invoice was paid, held, handed off or anonymised, or whose outcome no longer carries its charge, is `sent` with that charge waived `claimed_in_error`; a test |
+| m1 | the pay page's SPA polls the system status | D14: `GET /api/v1/identity/system/status` allowlisted; the citations fixed to `host/routes/__root.tsx:84-89, 91-96, 237` |
+| m2 | the public origin needlessly trusted for CSRF | D14: dropped; same-origin POST passes; cookies host-only |
+| m3 | the token reached Vipps and proxy logs | D15: the return URL carries the attempt reference and a nonce, never the token; the page keeps the token in `sessionStorage`; D23: the admin page says to strip `/pay`'s query from the proxy's access log (reading 41) |
+| m4 | the camt element cap could refuse a lawful file | D3: 10 000 + 100 per transaction (510 000 at the cap) |
+| m5 | the six-month anniversary day | D8: `>` — the fee is allowed from the day after the anniversary; the chain breaks only at a gap of more than six months; the table redone (reading 32) |
+| m6 | deleting a user's rate left the half-year empty | D6: the delete re-inserts the release's value as a seeded row |
+| m7 | a manual delivery could never be removed | D8: removal with a reason, refused `delivery_relied_on` while a sent letter's charge relies on it |
+| m8 | "no import ever" | D10: stale |
+| m9 | a paper batch past the review or a missing half-year | D10: those letters are left out of the batch, stay `awaiting_print`, and are reported |
+| m10 | a late-resolved capture dated by the claim day | D13/D16: `CaptureTime` from the event log dates the payment (reading 42) |
+| m11 | the print batch's lock mode | D10/D18: the batch row `FOR NO KEY UPDATE` |
+| m12 | the soft key's same-day repeat payment | D4: a test of a genuine second payment queued, never lost; D23: the user guide explains it |
+
+Nothing was rejected. For m3 the mitigation chosen is the nonce in the return URL, so the
+token never reaches Vipps; the token's own trip through the customer's link remains, and
+the admin page covers the proxy log.
+
 ## Decisions
 
 ### D1 — Scope, phasing, authority and the switches
@@ -305,8 +333,9 @@ named `file`, at most **10 MiB** (`BodyLimits`, the customers import's pattern,
      DDMMYY with the century window 2000-2099; KID characters digits, a trailing `-`
      allowed (MOD11). Item-3 text is decoded as ISO-8859-1 (R4 §7 item 20), leniently.
    - **camt.054**: `encoding/xml` with `Decoder.Strict = true`, any `DOCTYPE` refused, at
-     most 64 levels of nesting and 200 000 elements (a hostile file is refused, not
-     parsed); both namespaces' paths (R4 §3.2's table); per entry the `TxDtls` amounts sum
+     most 64 levels of nesting and 10 000 + 100 per transaction elements — 510 000 for
+     a file at the 5 000-transaction cap, room for a `.001.02` `TxDtls` of 30–40 elements
+     (a hostile file is refused, not parsed); both namespaces' paths (R4 §3.2's table); per entry the `TxDtls` amounts sum
      to `Ntry/Amt` and their count equals `Btch/NbOfTxs` when present, and `TxsSummry`
      agrees when present; every `Ccy` is `NOK` (else 400 — **currency is a file-level
      refusal**, research case m); amounts at most two decimals. No runtime XSD validation
@@ -342,8 +371,9 @@ named `file`, at most **10 MiB** (`BodyLimits`, the customers import's pattern,
       imports wait on the index in the same order and never deadlock (phase 3's
       `line_sources` rule, reading 33);
    4. the rows the conflict skipped, inserted again as **`duplicate`** rows with
-      `duplicate_of_id` the live row they collided with (the partial index excludes
-      them), so a skipped line is kept and visible, not only counted (I16).
+      `duplicate_of_id` the live row they collided with (the partial index, `WHERE
+      duplicate_of_id IS NULL`, excludes them for good), so a skipped line is kept and
+      visible, not only counted (I16).
 8. **Matching** (D4), one transaction per bank transaction, after the commit.
 9. **201** with the import's result: the file row, `transactions`, `matched` and
    `matchedAmount`, `exceptions` and `exceptionsAmount`, `duplicates`, `ignored` (by
@@ -415,8 +445,8 @@ invoices.bank_transactions
   CONSTRAINT ck_bank_transactions_state CHECK (
       (status = 'exception') <= (reason IS NOT NULL)                       -- an exception has a reason; a resolved line keeps it
       AND (status = 'resolved') = (resolution IS NOT NULL AND resolved_at IS NOT NULL)
-      AND (status = 'duplicate') = (duplicate_of_id IS NOT NULL))
-  ux_bank_transactions_fingerprint UNIQUE (account, fingerprint) WHERE status <> 'duplicate'
+      AND (status = 'duplicate') <= (duplicate_of_id IS NOT NULL))     -- an implication: the link outlives the status
+  ux_bank_transactions_fingerprint UNIQUE (account, fingerprint) WHERE duplicate_of_id IS NULL
   ix_bank_transactions_open (status) WHERE status IN ('pending','exception','duplicate')
   ix_bank_transactions_file (bank_file_id)
   ix_bank_transactions_soft (account, booked_on, amount, kid) WHERE kid IS NOT NULL
@@ -432,7 +462,9 @@ or deleted; `bank_transaction_events` is insert-only (triggers, the payments' sh
 `bank_transactions` refuses DELETE and every UPDATE but its state columns — `status`,
 `reason`, `suggested_invoice_id`, `resolution`, `resolved_by_user_id`, `resolved_at`,
 `resolution_note` — comparing `to_jsonb` less those, as `refuse_payment_change` does; the
-note may be blanked by an erase (D19). A line never goes back to `pending`.
+note may be blanked by an erase (D19). **`duplicate_of_id` is frozen** with the rest, so a
+duplicate that is confirmed or treated as distinct keeps its link and stays out of the
+fingerprint index (NI2). A line never goes back to `pending`.
 
 **`POST /invoices/bank-files/{id}/match`** (`invoices:payments`): runs D4 over the file's
 `pending` rows, the caller registering — 200 with the same counts; 404. `GET
@@ -519,7 +551,9 @@ payments are always registered (D11).
 short, too long, past `int64`); `TestMatch_Classify` (each step by removing its guard, in
 order); `TestMatch_Cases` (each row of the table at its boundaries);
 `TestMatch_PossibleDuplicate` (the cutover; the soft key across formats; a second genuine
-payment of one file not flagged); `TestMatch_PaidOnIsBookingDate`;
+payment of one file not flagged; **a genuine same-day, same-amount, same-KID second payment
+in another file, with a different reference, queued `possible_duplicate` — never lost — and
+applied from the queue**, the case the user guide explains, m12); `TestMatch_PaidOnIsBookingDate`;
 `TestMatch_PrincipalThenCharges`; `TestMatch_DeadlineMetWaiver`;
 `TestMatch_HeldAndHandedOffStillMatch`; `TestMatch_PendingFinishedByMatchEndpoint`.
 **Races**: `TestBankImport_RacesManualPayment` — an import's match and a manual
@@ -592,9 +626,11 @@ an unambiguous one is kept in `suggested_invoice_id`. For `possible_duplicate` a
   offers the live payments of the same amount and account as candidates; nothing links
   them automatically (R4 §7 item 22).
 - `POST /invoices/bank-transactions/{id}/confirm-duplicate` `{note?}` — a
-  `possible_duplicate` or `duplicate` line: `resolved`, `duplicate_confirmed`.
+  `possible_duplicate` or `duplicate` line: `resolved`, `duplicate_confirmed`, its reason
+  set to `possible_duplicate` (so a later reopen lands on a reason; NI2).
 - `POST /invoices/bank-transactions/{id}/treat-as-distinct` — a `duplicate` line becomes
-  `exception`, `possible_duplicate`, so it can be applied (I16).
+  `exception` with reason `possible_duplicate`, so it can be applied (I16); its
+  `duplicate_of_id` stays, and it stays out of the fingerprint index.
 - `POST /invoices/bank-transactions/{id}/reopen` — a `resolved` line back to `exception`
   with its reason, or a **`matched` line whose payments were all removed** back to
   `exception`, `payment_removed` (I13); refused 409 `bank_transaction_applied` while any
@@ -650,7 +686,10 @@ release's. The API adds the rest:
   1 January or 1 July, else 400; bounds — interest 0.01–30, compensation 100–2 000,
   inkassosats 100–5 000 (400); a duplicate → 409 `collection_rate_exists`. 201.
 - `DELETE /invoices/collection-rates/{id}` (`invoices:manage`) — only while `validFrom` is
-  after today and the row is not seeded: 409 `collection_rate_in_force`. 204; 404.
+  after today and the row is not seeded: 409 `collection_rate_in_force`. 204; 404. **A
+  deleted user row whose `release_value` is set is replaced in the same transaction by a
+  seeded row of the release's value** (`created_by_user_id` NULL), so the half-year never
+  goes empty and refuses every interest letter (m6).
 
 **Reading the rates.** The engine (D8) reads the row in force **on the letter's date** for
 the inkassosats and the compensation, and **on each day** of an interest period for the
@@ -771,14 +810,21 @@ varsel or fee on it is invalid (FinKN 2017-492, R4 §2.6). **A charge — a fee,
 compensation or interest — needs a recorded delivery on or before the due date**: an
 e-mail in `invoices.deliveries` (`mig/00035…:38-48`), an EHF transmission `delivered`, or
 a **manual delivery** (`invoices.manual_deliveries`: `id`, `invoice_id`, `kind` `handed_over`
-| `posted`, `delivered_on date`, `note`, `recorded_by_user_id`, `recorded_at`; never
-changed or deleted, its note blanked on erase; inserted under an issued invoice's `FOR
-SHARE`, the payments' parent trigger shape) — `POST /invoices/{id}/manual-deliveries
-{kind, deliveredOn, note?}` (`invoices:issue`; `deliveredOn` from the issue date to today,
-400 otherwise; 409 `invoice_draft`, `credit_note_no_reminders`). The quick invoice records
-`handed_over` on its issue date in its own transaction (D17). Without one, letters may
-still be sent but carry no fee, compensation or interest, and the outcome says
-`not_delivered` (reading 30).
+| `posted`, `delivered_on date`, `note`, `recorded_by_user_id`, `recorded_at`, and
+`removed_at`, `removed_by_user_id`, `removal_reason` all or none — the payments' shape;
+never deleted, changed only by the removal, once, and its note blanked on erase; inserted
+under an issued invoice's `FOR SHARE`, the payments' parent trigger shape) — `POST
+/invoices/{id}/manual-deliveries {kind, deliveredOn, note?}` (`invoices:issue`;
+`deliveredOn` from the issue date to today, 400 otherwise; 409 `invoice_draft`,
+`credit_note_no_reminders`), and `POST /invoices/{id}/manual-deliveries/{deliveryId}/remove
+{reason}` (`invoices:issue`; the invoice locked; 404; 409 `delivery_removed`; **409
+`delivery_relied_on` while a sent letter of the invoice carries a charge not waived** — a
+mistaken record is then corrected by waiving those charges, `claimed_in_error`, and removing
+it after; m7). The quick invoice records `handed_over` on its issue date in its own
+transaction (D17). **Without a live one, the invoice is not due** (FinKN 2017-492): the
+engine offers only **fee-free `reminder` letters** — no fee, compensation or interest, at
+most `max(reminders_before_notice, 1)` of them — and the `collection_notice` and the
+`hand_off` are `blocked`, `not_delivered`, until a delivery is recorded (NI3, reading 30).
 
 **The next action**, the first that applies:
 
@@ -818,10 +864,12 @@ when the proof arrives (D4's `deadline_met`).
   barred charges (D11);
 - **the two-fee cap with the six-month reset** (R9, R11, B1): let `last` be the latest
   sent fee-bearing letter (a waived fee still counts — it was claimed). When
-  `L ≥ addMonthsClamped(last.sent_on, 6)` the count is **0**. Otherwise count back from
-  `last` through the earlier fee letters, **stopping at the first gap of six months or
-  more** between two consecutive fee letters (`next.sent_on ≥ addMonthsClamped(prev.sent_on,
-  6)`); a fee is allowed only while that count is **below 2**;
+  `L > addMonthsClamped(last.sent_on, 6)` the count is **0** — the six months end on the
+  anniversary, so the fee is allowed from **the day after** it (domstolloven § 148's month
+  rule, the conservative reading; m5, reading 32). Otherwise count back from `last` through
+  the earlier fee letters, **stopping at the first gap of more than six months** between two
+  consecutive fee letters (`next.sent_on > addMonthsClamped(prev.sent_on, 6)`); a fee is
+  allowed only while that count is **below 2**;
 - a second fee only when the previous fee letter's deadline was at least 14 days after its
   `sent_on`, has passed by `L` and was **not met** (R10 — and above);
 - the amount: the inkassosats in force on `L`, ÷ 20, **rounded to the nearest krone, .50
@@ -832,14 +880,15 @@ The reset's dates, pinned as a table (fee letters → `L` → allowed?):
 | Fee letters sent | `L` | Count | Fee |
 | --- | --- | --- | --- |
 | 1 Jan, 1 Feb | 2 Jul | 2 (Feb → Jan, a one-month gap) | refused |
-| 1 Jan, 1 Feb | 1 Aug | 0 (`L` = 1 Feb + 6 months) | allowed |
-| 1 Jan, 1 Feb | 31 Jul | 2 | refused |
-| 31 Aug | 28 Feb (non-leap) | 0 (31 Aug + 6 clamps to 28 Feb) | allowed |
-| 31 Aug | 27 Feb | 1 | allowed (one below the cap) |
-| 31 Aug, 15 Sep | 27 Feb | 2 | refused |
-| 31 Aug, 15 Sep | 15 Mar | 0 (15 Sep + 6) | allowed |
-| 1 Jan, 1 Jul, 15 Jul | 1 Aug | 2 (15 Jul → 1 Jul; 1 Jul → 1 Jan is a six-month gap, the chain stops) | refused |
-| 1 Jan, 1 Jul | 2 Jul | 1 (the chain stops at the gap) | allowed |
+| 1 Jan, 1 Feb | 1 Aug | 2 (the anniversary itself is still inside) | refused |
+| 1 Jan, 1 Feb | 2 Aug | 0 (`L` > 1 Feb + 6 months) | allowed |
+| 31 Aug | 28 Feb (non-leap) | 1 | allowed (below the cap) |
+| 15 Aug, 31 Aug | 1 Mar (non-leap) | 0 (31 Aug + 6 clamps to 28 Feb; `AddDate` would give 3 Mar and a count of 2) | allowed |
+| 31 Aug, 15 Sep | 15 Mar | 2 | refused |
+| 31 Aug, 15 Sep | 16 Mar | 0 | allowed |
+| 1 Jan, 2 Jul, 15 Jul | 1 Aug | 2 (2 Jul → 1 Jan is more than six months, the chain stops) | refused |
+| 1 Jan, 2 Jul | 3 Jul | 1 (the chain stops at the gap) | allowed |
+| 1 Jan, 1 Jul | 2 Jul | 2 (exactly six months does not break the chain) | refused |
 
 A purring sent before `E + 14` carries no fee, not a refusal (R4 §2.5). The creditor's
 betalingsoppfordring (3/20) is not offered (D20).
@@ -855,9 +904,9 @@ earlier letter of the invoice claimed it** — once per invoice, the NOK figure 
 fee is ever claimed on that invoice (R6). Never on a person (FRL § 4 d), in either regime.
 
 **Late interest** (`late_interest` on, mode `normal`, a delivery on or before the due
-date): **simple** interest on the principal (R3), from **the day after `E`** — or the day
-after the latest interest waiver's `interest_through`, whichever is later (D9) — to `L`
-inclusive: each day `d` bears `open(d − 1) × rate(d) / 100 / 365`, where `open(d − 1)` is
+date): **simple** interest on the principal (R3), **always cumulative from the day after
+`E`** to `L` inclusive — an interest waiver (D9) is an amount subtracted beside it, never a
+new starting day (NI1): each day `d` bears `open(d − 1) × rate(d) / 100 / 365`, where `open(d − 1)` is
 gross less the credit notes issued and the live payments paid on or before `d − 1` — so a
 credit note reduces the principal **from its own date** and a payment from the day after
 its `paid_on` (the interest runs to and including a payment's day; I7, reading 5) — and
@@ -868,8 +917,8 @@ from-date and the cumulative amount (D10).
 
 **The outcome** carries the action, its earliest date, the blocking reasons (`on_hold`,
 `handed_off`, `policy_none`, `reminders_disabled`, `letter_pending`, `waiting`,
-`collection_rates_outdated`, `collection_regime_unreviewed`), the charge notes
-(`not_delivered`, `charges_barred`, `fee_cap_reached`, `fee_before_14_days`), and for a
+`not_delivered`, `collection_rates_outdated`, `collection_regime_unreviewed`), the charge
+notes (`not_delivered`, `charges_barred`, `fee_cap_reached`, `fee_before_14_days`), and for a
 letter its `level`, `announces_collection`, `regime`, `fee_kind`, fee, compensation,
 interest with its segments `[{from, to, rate, base}]`, and the rate rows used.
 
@@ -893,18 +942,20 @@ R4 §2.2, §2.10). What a letter claims lives on the letter (D10): its `fee`,
 `compensation` and `interest`.
 
 **Charge waivers** (B3, I9) — `invoices.charge_waivers` (`00041`): `id`, `invoice_id`,
-`reminder_id` (the letter whose charge it waives; for interest, the latest letter that
+`reminder_id` (the letter whose charge it waives; for interest, the latest sent letter that
 claimed it), `kind` `fee` | `compensation` | `interest`, `amount numeric(14,2) > 0`,
-`interest_through date` (interest only: the interest accrued to this day is waived),
+`interest_through date` (interest only: that letter's `sent_on`, for display),
 `reason varchar(20) CHECK (reason IN ('objection_upheld','claimed_in_error','goodwill',
 'deadline_met'))`, `note varchar(500)`, `waived_by_user_id uuid NOT NULL`, `waived_at`.
 Insert-only (a trigger), inserted under an issued invoice's `FOR SHARE`. One waiver per
 (letter, kind) for fees and the compensation (a unique index); interest waivers may follow
 one another. `POST /invoices/{id}/charges/waive` (`invoices:access+invoices:payments`)
 `{waivers: [{reminderId, kind}], reason, note}` — fee and compensation waive the letter's
-whole charge; `{kind: interest}` waives the interest accrued to today. Under the invoice's
-lock; 404; 409 `charge_not_claimed` (the letter claimed no such charge, or it is waived
-already). A waived charge leaves every later letter's `charges_earlier`, the charges
+whole charge; `{kind: interest}` waives **an amount**: the interest claimed by the latest
+sent letter less every earlier interest waiver and the charge payments allocated to
+interest — what is claimed and unpaid, nothing accrued since (NI1). Under the invoice's
+lock; 404; 409 `charge_not_claimed` (the letter claimed no such charge, it is waived
+already, or no interest is left unpaid). A waived charge leaves every later letter's `charges_earlier`, the charges
 outstanding, the collection export's claimed figures and auto-match's `charges`; the
 letters themselves are history and keep what they said.
 
@@ -912,9 +963,11 @@ letters themselves are history and keep what they said.
 
 ```text
   Σ fee + Σ compensation over its sent letters − their waivers
-+ interest claimed: the latest sent letter's cumulative interest − interest waivers
++ the latest sent letter's cumulative interest − Σ interest waivers
 − Σ its live charge payments
 ```
+
+— the same terms as the letter's own total below, so the two can never disagree (NI1).
 
 When negative (a charge paid, then waived) the invoice answers `chargesRefundDue`, a
 figure; the refund is made outside Vantigo.
@@ -925,11 +978,14 @@ counting anything twice (B2):
 
 - `charges_earlier` — **the earlier letters' fees and compensation, less their waivers and
   the charge payments allocated to them; never interest**;
-- `interest` — **the cumulative interest to this letter's date** (from the day after `E`, or
-  after the latest interest waiver), the one interest figure the letter shows;
-- `interest_paid` — the charge payments allocated to interest so far;
+- `interest` — **the cumulative interest to this letter's date, from the day after `E`**,
+  the one interest figure the letter shows;
+- `interest_waived` — Σ interest waivers so far (amounts);
+- `interest_paid` — the charge payments allocated to interest so far, which the allocation
+  caps at `interest − interest_waived` of the time (a payment beyond it is a charge refund
+  due, never interest paid twice);
 - the total: principal open + `charges_earlier` + this letter's fee or compensation +
-  `interest` − `interest_paid`.
+  `interest` − `interest_waived` − `interest_paid`.
 
 **A charge payment** — `invoices.charge_payments`:
 
@@ -963,6 +1019,10 @@ and a waiver of its release (bokføringsloven § 10). No export of charges in ph
 
 **Tests**: the formula (fees, the compensation once, the latest interest, waivers of each
 kind, payments, removed ones ignored, `refundDue`); the allocation order;
+**`TestCharges_InterestWaiverThenLaterLetter`** — interest 20, 12 of it paid, an interest
+waiver (of 8), then a later letter with cumulative interest 33: the letter states 33 − 8 −
+12 = 13, D9's outstanding interest is 13, and a payment of the letter's total auto-matches
+without `exceeds_open` (NI1);
 **`TestReminderLetter_TwoLettersWithInterestAndAChargePayment`** — a golden pair: letter 1
 with a fee and interest, a charge payment between, letter 2 whose `charges_earlier`,
 `interest`, `interest_paid` and total are each pinned and whose total equals principal +
@@ -978,7 +1038,8 @@ outstanding charges; the waive endpoint's refusals; the triggers; the response b
   the deadline, the channel and recipient, warnings and charge notes), the invoices
   blocked or waiting with their reasons, and **the bank data's freshness** (I3):
   `lastBookedOn` (the latest `last_booked_on` of any imported file, or none), `stale`
-  when it is more than `stale_import_days` before today, and, for every account whose
+  when it is more than `stale_import_days` before today — **and always when no file was
+  ever imported** (m8) — and, for every account whose
   format is `ocr`, the standing note that payments without a KID never reach an OCR file
   and must be registered by hand before a run. 200; nothing written, no lock taken.
 - `{dryRun: false, items: [{invoiceId, action}], acknowledgeStaleImport?}` — **the run**,
@@ -1022,7 +1083,7 @@ created_at timestamptz NOT NULL, created_by_user_id uuid NOT NULL,
 sent_on date, deadline date, regime varchar(15) CHECK (regime IN ('inkassolov_1988','inkassolov_2026')),
 principal_open numeric(14,2), fee_kind varchar(15) CHECK (fee_kind IN ('none','reminder_fee','compensation')),
 fee numeric(14,2), compensation numeric(14,2), charges_earlier numeric(14,2),
-interest numeric(14,2), interest_paid numeric(14,2), interest_from date, interest_segments jsonb,
+interest numeric(14,2), interest_waived numeric(14,2), interest_paid numeric(14,2), interest_from date, interest_segments jsonb,
 inkassosats numeric(10,2), total numeric(14,2), charge_notes varchar(30)[],
 pdf_object_key varchar(300), pdf_sha256 char(64), message_id varchar(200), sent_at timestamptz,
 status varchar(15) NOT NULL CHECK (status IN ('queued','awaiting_print','printed','sent','withdrawn','failed')),
@@ -1083,18 +1144,31 @@ At most one letter per second, serially.
   `postOn` today or a later day, at most 7 days on (400). The batch row, then per letter
   the transaction of step 1 with `L = postOn` (a withdrawn one is reported and left out):
   the facts written with **`sent_on = postOn`** and the deadline from it; the letter
-  `printed` with the batch's id. Then each PDF rendered and stored, and 201 with the batch
-  and its combined PDF's URL.
+  `printed` with the batch's id. **A letter whose `L = postOn` falls past
+  `regime_reviewed_through` with a fee or as a notice, or into a half-year with no rate row
+  it needs, is left out of the batch, stays `awaiting_print`, and is reported** with
+  `collection_regime_unreviewed` or `collection_rates_outdated` — as the run refuses and the
+  dispatch reschedules (m9). Then each PDF rendered and stored, and 201 with the batch, its
+  combined PDF's URL and the letters left out.
 - `GET /invoices/reminder-print-batches/{id}/pdf` — the combined PDF of the batch's
   letters, rendered from their rows, as often as needed (`application/pdf`,
   `Cache-Control: private, no-store`).
 - `POST /invoices/reminder-print-batches/{id}/posted` `{postedOn}` — the person confirms
-  the post. `postedOn` on or before the batch's `postOn` (posted no later than the date the
-  letters bear — their deadline is then at least `deadline_days` from sending) → every
-  `printed` letter of the batch becomes **`sent`**, `sent_at` the request's time. Later →
-  409 **`reminder_posted_late`**: the letters must be reprinted.
-- `POST /invoices/reminder-print-batches/{id}/reprint` — every `printed` letter of the
-  batch back to `awaiting_print`, its facts and PDF key cleared (a reprint gets a new key).
+  the post. **`postedOn` must equal the batch's `postOn`** (NB1): every fact on the letters
+  — R7's 14 days, R10's passed deadline, the six-month reset, the inkassosats, the regime
+  and its review, the deadline itself — was judged at `L = postOn`, so a letter posted
+  earlier would carry a fee judged for a later day, and one posted later would shorten its
+  deadline. Earlier → 409 **`reminder_posted_early`**, later → 409
+  **`reminder_posted_late`**: the letters must be reprinted. Equal → **the re-judge**
+  (NI4): the batch row `FOR NO KEY UPDATE`, then its letters' invoices in descending id,
+  then each letter, and the engine at `L = postOn` per letter; every `printed` letter
+  becomes **`sent`** (it was posted), `sent_at` the request's time; **a letter whose invoice
+  was settled, held, handed off or anonymised since printing, or whose re-judged outcome no
+  longer carries the fee or compensation it printed, has that fee and compensation waived
+  in the same transaction, `claimed_in_error`**, and the answer lists those letters.
+- `POST /invoices/reminder-print-batches/{id}/reprint` — the batch row `FOR NO KEY UPDATE`,
+  then every `printed` letter of the batch back to `awaiting_print`, its facts and PDF key
+  cleared (a reprint gets a new key).
 - `invoices.reminder_print_batches`: `id`, `post_on date`, `posted_on date`, `created_at`,
   `created_by_user_id`, `posted_by_user_id`, `posted_at`, `reprinted_at`.
 
@@ -1116,7 +1190,7 @@ pinned by golden PDFs and text extraction:
   **separately** (R13; INKL § 10 c, d by choice): the invoice's total, credited, paid,
   **the principal open**; **earlier fees and compensation outstanding** (`charges_earlier`);
   this letter's fee or compensation; **the interest accrued to `sent_on`** with its rate(s)
-  and from-date, and what of it is already paid; **the total to pay**;
+  and from-date, what of it is waived and what is already paid; **the total to pay**;
 - the deadline and payment information: the account, the **invoice's KID** when it has
   one, else "merk betalingen med fakturanummer {n}"; the pay link (D15) when the invoice
   has a live one;
@@ -1135,8 +1209,11 @@ recipient and channel rules; 500 items); the triggers; the worker (claim and lea
 re-judge withdrawing for each reason; the outdated-rate and unreviewed reschedule, not
 counted; facts written at sending; the PDF stored once; the stable Message-ID; backoff;
 48 hours → `failed`; retry; a withdrawal during a claim); paper (a batch for a later
-`postOn`, its facts and PDFs; re-download; posted on time → `sent`; posted late → 409 and
-reprint; a printed letter blocking a run); goldens of each level in both languages and
+`postOn`, its facts and PDFs; letters past the review or a missing rate half-year left out
+and reported; re-download; posted on `postOn` → `sent`; posted early or late → 409 and
+reprint; **`TestPrintBatch_PostedRejudges`** — an invoice paid, one held and one handed off
+between printing and posting: all three `sent`, their fees waived `claimed_in_error` and
+listed; a printed letter blocking a run); goldens of each level in both languages and
 the B2 pair (D9). **Races**: `TestReminderRun_RacesPayment`, `TestReminderRun_TwoRuns`,
 `TestReminderDispatch_RacesHold`, `TestReminderDispatch_RacesImport`,
 `TestReminderDispatch_RacesWithdraw`, all without `40P01`.
@@ -1259,6 +1336,9 @@ type Provider interface {
     // authorized; "already cancelled" is success.
     Cancel(ctx context.Context, reference string, idempotencyKey string) (Payment, error)
     Refund(ctx context.Context, reference string, amount Money, idempotencyKey string) (Payment, error)
+    // CaptureTime is when the provider recorded the payment's (first) capture, from its
+    // event log; ok is false when it holds none.
+    CaptureTime(ctx context.Context, reference string) (t time.Time, ok bool, err error)
     // VerifyWebhook authenticates a callback against the registration's secret and the
     // URL it was registered at, and answers the reference it concerns.
     VerifyWebhook(r WebhookRequest, secret string, registeredURL *url.URL) (WebhookEvent, error)
@@ -1344,10 +1424,13 @@ is rendered once for that base path, `srv/web/index.go:33-51`, and `httpx.StripB
 strips only it); its host may equal `APP_URL`'s or be another. When it is another:
 
 - **`HostFilter` admits both hosts** — `security.AllowedHosts` (`srv/security/hostfilter.go:18-26`)
-  takes `APP_URL`'s host, `PUBLIC_BASE_URL`'s and loopback (`srv/server/server.go:102`);
-  the public origin is also a trusted CSRF origin (`:41-53`), harmless when the proxy
-  preserves `Host` as the platform requires (`srv/httpx/forwarded.go`: `X-Forwarded-Host`
-  is never honoured).
+  takes `APP_URL`'s host, `PUBLIC_BASE_URL`'s and loopback (`srv/server/server.go:102`).
+  The public origin is **not** added to the CSRF protection's trusted origins
+  (`:41-53`; m2): the proxy preserves `Host`, as the platform requires
+  (`srv/httpx/forwarded.go`: `X-Forwarded-Host` is never honoured), so the pay page's POST
+  is same-origin and passes, and trusting the origin would only widen what a page there may
+  send to `APP_URL`'s host. Session cookies are host-only (`srv/identity/cookies.go:99-101`,
+  no `Domain`), so the public host never receives one.
 - **On the public host the server serves only an allowlist** — a new middleware,
   `security.PublicHostGate(publicHost, allowlist)`, after `StripBasePath` so paths are
   base-relative: a request whose `Host` is the public host (port ignored) and whose method
@@ -1362,13 +1445,16 @@ strips only it); its host may equal `APP_URL`'s or be another. When it is anothe
   | `POST` | `/api/v1/invoices/pay/attempts` |
   | `GET` | `/api/v1/invoices/pay/attempts/{reference}` (one segment) |
   | `POST` | `/api/v1/invoices/vipps/webhooks` |
+  | `GET` | `/api/v1/identity/system/status` (the root layout's maintenance poll, below) |
   | `GET`, `HEAD` | `/health/*` |
 
   Sign-in, setup, every other module's API, the docs and every other SPA path answer 404
   on the public host; they stay on `APP_URL`'s. The SPA served at `/pay` must make no
-  request outside the list: the host's `main.tsx:39` already skips the session check on a
-  public path, and a host test loads `/pay?token=…` with every request recorded and fails
-  on any other path.
+  request outside the list: the root layout already skips the session query and the
+  route guard on a public path (`host/routes/__root.tsx:84-89`, `:237`), while its
+  maintenance poll, `GET /api/v1/identity/system/status` every 30 s (`:91-96`), runs on
+  every path — so it is on the list (m1). A host test loads `/pay?token=…` with every
+  request recorded and fails on any other path.
 - When the two hosts are the same, there is no gate — the operator has published `APP_URL`
   itself; the admin page recommends a separate host and says what the same host exposes.
 
@@ -1472,7 +1558,7 @@ policy per client address (I2; the router's `Limits`, `inv/module.go:74-77`):
 | --- | --- | --- |
 | `GET /invoices/pay?token=` | `invoices-pay-read` | 60 per 10 minutes |
 | `POST /invoices/pay/attempts` | `invoices-pay-attempt` | 10 per 10 minutes |
-| `GET /invoices/pay/attempts/{reference}?token=` | `invoices-pay-status` | 400 per 10 minutes |
+| `GET /invoices/pay/attempts/{reference}?nonce=` | `invoices-pay-status` | 400 per 10 minutes |
 
 The return page polls the status every **2 s for the first minute, then every 5 s** while
 `pending`, at most ten minutes — about 150 reads, within its bucket. Behind a reverse proxy
@@ -1491,11 +1577,20 @@ would share one bucket; the admin page says so (D23).
   (Vipps requires the customer's active acceptance, R4 §4.2); 404 an unknown token; 409
   the `reason`s above; 409 `too_many_attempts` (five live attempts on the invoice); 503
   `payments_unavailable`; 502 `provider_failed`; else **201 `{reference, redirectUrl}`** —
-  D16's attempt with `flow = pay_link`, `WEB_REDIRECT`, `returnUrl` =
-  `PUBLIC_BASE_URL/pay?token=<token>&attempt=<reference>`. The page opens `redirectUrl` at
+  D16's attempt with `flow = pay_link`, `WEB_REDIRECT`, and **`returnUrl` =
+  `PUBLIC_BASE_URL/pay?attempt=<reference>&nonce=<nonce>` — never the token** (m3): `nonce`
+  is 16 random bytes, base64url, stored hashed on the attempt (`return_nonce_sha256`), and
+  grants only reading that attempt's state. Before redirecting, the page keeps the token in
+  `sessionStorage`, so on return it shows the invoice again when the same browser comes
+  back, and only the attempt's state otherwise (the Vipps app may return to another
+  browser). The token thus never reaches Vipps; the nonce does, and Vipps' and the proxies'
+  logs can learn no more from it than one attempt's outcome. The page opens `redirectUrl` at
   once, unchanged (R4 §4.2).
-- `GET /invoices/pay/attempts/{reference}?token=` → `{state: pending | paid | failed |
-  cancelled}` (404 unless the reference is an attempt of the token's invoice).
+- `GET /invoices/pay/attempts/{reference}?nonce=` → `{state: pending | paid | failed |
+  cancelled}` (404 unless the nonce is that attempt's). The token itself still travels in
+  the query of the link the customer opens: the request log never writes it, but a reverse
+  proxy's access log does by default, which the admin page says, with how to strip the query
+  of `/pay` from it (D23).
 
 **The host** adds the public route `/pay` (`host/routes/pay.tsx`), rendering `PayPage` from
 `@vantigo/invoices-ui`, which calls only the three operations and works without a session.
@@ -1518,6 +1613,7 @@ bucket and the page's backoff (a fake clock); CSRF; the request log never holdin
 ```text
 id bigint identity PK, invoice_id bigint NOT NULL REFERENCES invoices.invoices ON DELETE RESTRICT,
 provider varchar(20) CHECK (provider = 'vipps'), msn varchar(10) NOT NULL,   -- the sales unit it was made under (I20)
+return_nonce_sha256 char(64),                        -- pay_link flow: the return URL's nonce, hashed (D15)
 flow varchar(10) CHECK (flow IN ('pay_link','on_site')),
 pay_link_id bigint REFERENCES invoices.pay_links,   -- pay_link flow only
 reference varchar(64) NOT NULL UNIQUE,               -- "<reference_prefix>-<invoice number>-<attempt id>" (M4)
@@ -1573,8 +1669,11 @@ leaves the attempt alone and raises `paymentReservationStranded`:
   reserved` (the status code alone is not enough, R4 §4.4), and on a definitive partial
   capture `0 < capturedAmount < reserved` register what was captured: one transaction — the
   attempt `FOR UPDATE`, the invoice `FOR UPDATE`, a payment `source = vipps`,
-  `payment_attempt_id` (the exactly-once guard), `amount` = captured, `paid_on` the Oslo
-  day of the claim's clock read, `reference` the attempt's reference, no user; the attempt
+  `payment_attempt_id` (the exactly-once guard), `amount` = captured, `paid_on` **the Oslo
+  day of the capture event's time** from the provider's event log (`CaptureTime`, D13) — so
+  a `capture_unknown` resolved weeks later does not overstate interest on a partly open
+  invoice (m10) — falling back to the claim's clock read when the log cannot be read,
+  `reference` the attempt's reference, no user; the attempt
   `captured`, `reserved_amount` NULL, `release_pending` true when `authorized > captured`,
   `refund_watch_until` 30 days on. **Definitive failure only** (B5): 6260
   (`ErrInsufficientFunds`) or 6280 (`ErrCaptureFailed`), or a successful `Get` showing
@@ -1743,11 +1842,11 @@ gains the new rows. Each path, in its order:
 | a bank match (D4) | the bank transaction, then its invoice (a deadline-met waiver inserted) |
 | the queue's apply, handle-reversal (D5) | the bank transaction, then its invoices in descending id |
 | dismiss, confirm-duplicate, treat-as-distinct, reopen | the bank transaction alone |
-| a charge payment, a waiver, a manual delivery | the invoice alone (a manual delivery's trigger shares it) |
+| a charge payment, a waiver, a manual delivery and its removal | the invoice alone (a manual delivery's trigger shares it) |
 | a hold, a lift, a hand-off, its withdrawal | the invoice, then its letters (withdrawn) and, on a barring lift, the waivers inserted |
 | a reminder run's item (D10) | the invoice (the letter is inserted) |
 | the reminder worker's dispatch, a print batch's letter | the invoice, then its letter |
-| a batch posted or reprinted | the batch row, then its letters' invoices in descending id, then the letters |
+| a batch posted or reprinted | the batch row `FOR NO KEY UPDATE` (so the letters' key-share locks on it never conflict, m11), then its letters' invoices in descending id, then the letters |
 | a letter's withdraw or retry | the letter alone (the worker re-reads its status after its own locks) |
 | a policy `PUT` | the policy row; the merge: the documents, then the policy rows by customer id |
 | an attempt's create | the invoice (the attempt is inserted) |
@@ -1841,7 +1940,8 @@ sales, receipts, X/Z reports (Point of sale).
   `getInvoicesReminderRunsById`, `postInvoicesReminderPrintBatches`,
   `getInvoicesReminderPrintBatchesByIdPdf`, `postInvoicesReminderPrintBatchesByIdPosted`,
   `…Reprint`, `getInvoicesRemindersByIdPdf`, `postInvoicesRemindersByIdWithdraw`, `…Retry`,
-  `postInvoicesByIdManualDeliveries`, `postInvoicesByIdHold`, `postInvoicesByIdHoldLift`,
+  `postInvoicesByIdManualDeliveries`, `postInvoicesByIdManualDeliveriesByDeliveryIdRemove`,
+  `postInvoicesByIdHold`, `postInvoicesByIdHoldLift`,
   `postInvoicesByIdCollection`, `postInvoicesByIdCollectionWithdraw`,
   `getInvoicesCollectionExportCsv`, `postInvoicesByIdChargePayments`,
   `postInvoicesByIdChargePaymentsByChargePaymentIdRemove`, `postInvoicesByIdChargesWaive`,
@@ -1869,7 +1969,8 @@ sales, receipts, X/Z reports (Point of sale).
   `collection_rates_outdated` (+ `kind`, `halfYear`), `collection_regime_unreviewed`,
   `bank_import_stale` (+ `lastBookedOn`), `reminders_disabled`, `reminder_not_failed`,
   `reminder_not_awaiting_print`, `reminder_not_sent`, `reminder_not_withdrawable`,
-  `reminder_posted_late`, `too_many_overdue`, `credit_note_no_reminders`, `invoice_on_hold`,
+  `reminder_posted_late`, `reminder_posted_early`, `delivery_removed`, `delivery_relied_on`,
+  `too_many_overdue`, `credit_note_no_reminders`, `invoice_on_hold`,
   `invoice_not_on_hold`, `invoice_handed_off`, `invoice_not_handed_off`,
   `payments_unavailable`, `payment_attempts_active`, `attempt_not_abandonable`,
   `public_url_missing`, `provider_failed` (502), `pay_links_unavailable`, `pay_link_exists`,
@@ -1951,7 +2052,9 @@ Per `AGENTS.md`'s page map, in each pull request for what it ships:
   raw-body option; the public host gate in the platform.
 - **`R/customers.md`**: the anonymisation table's new kinds; the merge's reminder policy rule.
 - **User guide** `en|nb/user/invoices.md`: "Importing payments from the bank" (the format per
-  account and changing it), "The exception queue", "Overdue invoices and reminders" (the
+  account and changing it; **why a genuine second payment of the same amount with the same
+  KID on the same day in another file is queued as a possible duplicate, and how to apply
+  it**, m12), "The exception queue", "Overdue invoices and reminders" (the
   stale-import confirmation; with OCR, registering payments without a KID first), "Printing
   and posting paper letters", "Recording a delivery", "A disputed invoice", "Waiving a
   charge", "Handing an invoice to collection", "Charges", "Reminder settings, the regime and
@@ -1968,7 +2071,9 @@ Per `AGENTS.md`'s page map, in each pull request for what it ships:
   `INVOICES_VIPPS_ENABLED`; **the public host** — `PUBLIC_BASE_URL`, a separate host with the
   same base path, the reverse proxy preserving `Host`, the allowlist and how to verify it
   (`curl` of `/sign-in` on the public host answering 404), **`TRUSTED_PROXY_HOPS` and
-  `TRUSTED_PROXY_CIDRS` for the pay page's rate limits**; the webhook; the
+  `TRUSTED_PROXY_CIDRS` for the pay page's rate limits**, **and keeping `/pay`'s query
+  string out of the proxy's access log** (it carries the pay token; nginx and Caddy
+  examples); the webhook; the
   `invoices-payments` worker, `capture_unknown` and abandon; **the reminder worker** and
   mail; the kontantsalg notice for an operator enabling on-site payment.
 - `admin/authentication.md`'s configuration reference: `PUBLIC_BASE_URL`,
@@ -1999,8 +2104,8 @@ Each an interpretation the user may overturn.
 3. **An outdated half-yearly rate refuses** the run and holds the dispatch.
 4. **Overpayment is left unapplied** on its bank line; **no customer credit balance and no
    refunds** in phase 4.
-5. **Interest from the day after the effective due date** (or after the latest interest
-   waiver), simple, actual/365, each day on the principal open at the end of the day before
+5. **Interest always cumulative from the day after the effective due date**, an interest
+   waiver an amount beside it (never a new start), simple, actual/365, each day on the principal open at the end of the day before
    — a credit note counting from its own date, a payment from the day after its own — split
    at every rate change, payment and credit note, rounded to øre once.
 6. **Principal first.** A payment pays the principal before any charge; a payment of charges
@@ -2019,8 +2124,8 @@ Each an interpretation the user may overturn.
 12. **`paidOn` is the booking date**; a booking before the issue date is queued.
 13. **Reminder e-mail is at least once**, with a stable Message-ID; a letter's facts are
     written at sending and frozen once sent.
-14. **A paper letter is sent when its batch is confirmed posted** on or before the date it
-    bears; posted later, it is reprinted.
+14. **A paper letter is sent when its batch is confirmed posted on the date it bears**;
+    posted on any other day, it is reprinted (reading 39).
 15. **Capture at once** on `AUTHORIZED`, of min(authorized, open), reserved under the
     invoice's lock, the provider called outside it.
 16. **Poll first, webhooks optional**; webhooks ship only if the tagged test pins the
@@ -2051,13 +2156,16 @@ Each an interpretation the user may overturn.
     inkassovarsel.
 29. **A reminder is not a salgsdokument** and takes no number (an inference).
 30. **A charge needs a recorded delivery on or before the due date** — an e-mail, a delivered
-    EHF transmission or a manual record; without one, letters are fee-free. A delivery after
-    the due date is treated as none (the due date the customer had was not a fair one).
+    EHF transmission or a manual record; without one, letters are fee-free and the
+    inkassovarsel and the hand-off are blocked (reading 40). A delivery after the due date is
+    treated as none (the due date the customer had was not a fair one).
 31. **Within charges, a payment pays fees and compensation first, oldest letter first, then
     interest**; a letter shows earlier fees and compensation, then the cumulative interest
     once, less what of it is paid.
 32. **The six-month reset is a chain** counted back from the last fee letter, stopping at a
-    gap of six months, with months added clamped to the month's end.
+    gap of more than six months, with months added clamped to the month's end; the
+    anniversary day itself is still inside the six months, so the fee is allowed from the day
+    after (domstolloven § 148's month rule, the conservative reading).
 33. **A deadline is met when the payments ordered by it cover the principal**; a fee claimed
     after a met deadline is waived when the proof arrives.
 34. **A run with any charge on stale bank data needs an explicit confirmation**
@@ -2070,6 +2178,16 @@ Each an interpretation the user may overturn.
 37. **Refunds made in the Vipps portal are watched for 30 days** and reported, never applied
     automatically.
 38. **The day's Vipps payments can be recorded as reconciled**, immutably.
+39. **A paper batch is sent on the day it bears and no other**: `postedOn` must equal
+    `postOn`; the confirmation re-judges each letter and waives a charge the day no longer
+    supports (`claimed_in_error`).
+40. **An undelivered invoice is not due**: without a recorded delivery only fee-free
+    reminders go; the inkassovarsel and the hand-off wait for one. A manual delivery can be
+    removed with a reason until a sent letter's charge relies on it.
+41. **The pay page's return URL carries an attempt nonce, never the token**; a reverse
+    proxy must keep `/pay`'s query out of its access log.
+42. **A late-resolved capture is dated by the provider's capture event**, not the day it was
+    learned.
 
 ## Testing
 
