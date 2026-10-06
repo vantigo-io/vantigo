@@ -23,19 +23,19 @@ import (
 
 // Defines values for InvoicesChargePaymentSource.
 const (
-	Camt054 InvoicesChargePaymentSource = "camt054"
-	Manual  InvoicesChargePaymentSource = "manual"
-	Ocr     InvoicesChargePaymentSource = "ocr"
+	InvoicesChargePaymentSourceCamt054 InvoicesChargePaymentSource = "camt054"
+	InvoicesChargePaymentSourceManual  InvoicesChargePaymentSource = "manual"
+	InvoicesChargePaymentSourceOcr     InvoicesChargePaymentSource = "ocr"
 )
 
 // Valid indicates whether the value is a known member of the InvoicesChargePaymentSource enum.
 func (e InvoicesChargePaymentSource) Valid() bool {
 	switch e {
-	case Camt054:
+	case InvoicesChargePaymentSourceCamt054:
 		return true
-	case Manual:
+	case InvoicesChargePaymentSourceManual:
 		return true
-	case Ocr:
+	case InvoicesChargePaymentSourceOcr:
 		return true
 	default:
 		return false
@@ -216,6 +216,27 @@ func (e InvoicesManualDeliveryRequestKind) Valid() bool {
 	case InvoicesManualDeliveryRequestKindHandedOver:
 		return true
 	case InvoicesManualDeliveryRequestKindPosted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesPaymentSource.
+const (
+	InvoicesPaymentSourceCamt054 InvoicesPaymentSource = "camt054"
+	InvoicesPaymentSourceManual  InvoicesPaymentSource = "manual"
+	InvoicesPaymentSourceOcr     InvoicesPaymentSource = "ocr"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesPaymentSource enum.
+func (e InvoicesPaymentSource) Valid() bool {
+	switch e {
+	case InvoicesPaymentSourceCamt054:
+		return true
+	case InvoicesPaymentSourceManual:
+		return true
+	case InvoicesPaymentSourceOcr:
 		return true
 	default:
 		return false
@@ -422,7 +443,7 @@ type InvoicesBankIgnored struct {
 	ZeroAmount      int32 `json:"zeroAmount"`
 }
 
-// InvoicesBankImportResult POST /invoices/bank-files' 201 (D3 step 9): the file row; transactions, the lines it brought; matched and matchedAmount, the lines registered as payments; exceptions and exceptionsAmount, the lines queued; duplicates, the lines an earlier or overlapping file had already brought; ignored, by kind; pending, the lines not yet matched. Until matching runs on an import, every line that is not a duplicate is pending.
+// InvoicesBankImportResult POST /invoices/bank-files' 201 (D3 step 9): the file row; transactions, the lines it brought; matched and matchedAmount, the lines registered as payments; exceptions and exceptionsAmount, the lines queued; duplicates, the lines an earlier or overlapping file had already brought; ignored, by kind; pending, the lines not yet matched — 0 unless matching stopped early (an error, or the request ended), when POST /invoices/bank-files/{id}/match finishes them. On POST /invoices/bank-files/{id}/match, matched and exceptions count what that request matched and queued, and pending what is still left.
 type InvoicesBankImportResult struct {
 	Duplicates       int32   `json:"duplicates"`
 	Exceptions       int32   `json:"exceptions"`
@@ -1192,20 +1213,29 @@ type InvoicesMetaWork struct {
 	Milestones bool `json:"milestones"`
 }
 
-// InvoicesPayment One payment registered against an issued invoice (D2). A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing.
+// InvoicesPayment One payment registered against an issued invoice (D2; invoices payments and reminders design D2, D4). source is manual for one registered by hand, ocr or camt054 for one a bank line was matched to, which bankTransactionId then names — registered by the person who uploaded the file or asked for the rest to be matched, paid on the line's booking day, its reference the KID. registeredByUserId is the person who registered it; it is optional on the wire, for a later source with no person. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing.
 type InvoicesPayment struct {
-	Amount             float64             `json:"amount"`
+	Amount float64 `json:"amount"`
+
+	// BankTransactionId The bank line the payment was matched or applied from; absent for one registered by hand.
+	BankTransactionId  *int64              `json:"bankTransactionId,omitempty"`
 	Currency           string              `json:"currency"`
 	Id                 int64               `json:"id"`
 	Note               string              `json:"note"`
 	PaidOn             openapi_types.Date  `json:"paidOn"`
 	Reference          string              `json:"reference"`
 	RegisteredAt       time.Time           `json:"registeredAt"`
-	RegisteredByUserId openapi_types.UUID  `json:"registeredByUserId"`
+	RegisteredByUserId *openapi_types.UUID `json:"registeredByUserId,omitempty"`
 	RemovalReason      *string             `json:"removalReason,omitempty"`
 	RemovedAt          *time.Time          `json:"removedAt,omitempty"`
 	RemovedByUserId    *openapi_types.UUID `json:"removedByUserId,omitempty"`
+
+	// Source manual, ocr or camt054.
+	Source InvoicesPaymentSource `json:"source"`
 }
+
+// InvoicesPaymentSource manual, ocr or camt054.
+type InvoicesPaymentSource string
 
 // InvoicesPaymentRemovalRequest POST /invoices/{id}/payments/{paymentId}/remove's body (D2). reason is why the registration is removed: 1-200 characters once trimmed. A removal is never undone; a mistake is registered again. The same body removes a charge payment and a manual delivery (invoices payments and reminders design D8, D9).
 type InvoicesPaymentRemovalRequest struct {
@@ -1859,6 +1889,9 @@ type ServerInterface interface {
 	// GetInvoicesBankFilesById Get an imported bank file
 	// (GET /api/v1/invoices/bank-files/{id})
 	GetInvoicesBankFilesById(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesBankFilesByIdMatch Match a bank file's pending lines
+	// (POST /api/v1/invoices/bank-files/{id}/match)
+	PostInvoicesBankFilesByIdMatch(w http.ResponseWriter, r *http.Request, id int64)
 	// GetInvoicesCollectionRates List the collection rates
 	// (GET /api/v1/invoices/collection-rates)
 	GetInvoicesCollectionRates(w http.ResponseWriter, r *http.Request)
@@ -2283,6 +2316,32 @@ func (siw *ServerInterfaceWrapper) GetInvoicesBankFilesById(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetInvoicesBankFilesById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesBankFilesByIdMatch operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesBankFilesByIdMatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesBankFilesByIdMatch(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3616,6 +3675,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/bank-files", wrapper.GetInvoicesBankFiles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/bank-files", wrapper.PostInvoicesBankFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/bank-files/{id}", wrapper.GetInvoicesBankFilesById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/bank-files/{id}/match", wrapper.PostInvoicesBankFilesByIdMatch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/bank-accounts", wrapper.GetInvoicesBankAccounts)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/bank-accounts/{account}/format", wrapper.PutInvoicesBankAccountsByAccountFormat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/journal", wrapper.GetInvoicesJournal)
@@ -4099,6 +4159,64 @@ type GetInvoicesBankFilesById404Response struct {
 }
 
 func (response GetInvoicesBankFilesById404Response) VisitGetInvoicesBankFilesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesBankFilesByIdMatchRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostInvoicesBankFilesByIdMatchResponseObject interface {
+	VisitPostInvoicesBankFilesByIdMatchResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesBankFilesByIdMatch200JSONResponse InvoicesBankImportResult
+
+func (response PostInvoicesBankFilesByIdMatch200JSONResponse) VisitPostInvoicesBankFilesByIdMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankFilesByIdMatch401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankFilesByIdMatch401JSONResponse) VisitPostInvoicesBankFilesByIdMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankFilesByIdMatch403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankFilesByIdMatch403JSONResponse) VisitPostInvoicesBankFilesByIdMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankFilesByIdMatch404Response struct {
+}
+
+func (response PostInvoicesBankFilesByIdMatch404Response) VisitPostInvoicesBankFilesByIdMatchResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
 }
@@ -7561,6 +7679,9 @@ type StrictServerInterface interface {
 	// GetInvoicesBankFilesById Get an imported bank file
 	// (GET /api/v1/invoices/bank-files/{id})
 	GetInvoicesBankFilesById(ctx context.Context, request GetInvoicesBankFilesByIdRequestObject) (GetInvoicesBankFilesByIdResponseObject, error)
+	// PostInvoicesBankFilesByIdMatch Match a bank file's pending lines
+	// (POST /api/v1/invoices/bank-files/{id}/match)
+	PostInvoicesBankFilesByIdMatch(ctx context.Context, request PostInvoicesBankFilesByIdMatchRequestObject) (PostInvoicesBankFilesByIdMatchResponseObject, error)
 	// GetInvoicesCollectionRates List the collection rates
 	// (GET /api/v1/invoices/collection-rates)
 	GetInvoicesCollectionRates(ctx context.Context, request GetInvoicesCollectionRatesRequestObject) (GetInvoicesCollectionRatesResponseObject, error)
@@ -7924,6 +8045,32 @@ func (sh *strictHandler) GetInvoicesBankFilesById(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetInvoicesBankFilesByIdResponseObject); ok {
 		if err := validResponse.VisitGetInvoicesBankFilesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesBankFilesByIdMatch operation middleware
+func (sh *strictHandler) PostInvoicesBankFilesByIdMatch(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesBankFilesByIdMatchRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesBankFilesByIdMatch(ctx, request.(PostInvoicesBankFilesByIdMatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesBankFilesByIdMatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesBankFilesByIdMatchResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesBankFilesByIdMatchResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

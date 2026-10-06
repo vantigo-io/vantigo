@@ -625,8 +625,15 @@ Each registration needs `invoices:payments`. Vantigo can also take in the bank's
 files of incoming payments — OCR giro and camt.054, imported by someone with
 `invoices:payments` ([bank files](/en/reference/invoices/#bank-files-and-the-exception-queue);
 the bank agreement and the download are on [Payments from the bank](/en/admin/payments/)).
-An imported file is kept and its payments stored, but they are not yet registered against
-your invoices: until that arrives, keep registering payments by hand.
+An imported file's payments are matched to your invoices on their KID: a payment that
+carries the KID of an issued invoice, paid to the account that invoice printed, is
+registered against it — the open amount first, any reminder charges with the rest — paid
+on the day the bank booked it, with the KID as its reference and the person who imported
+the file as the one who registered it. Every payment records where it came from:
+registered by hand, or taken from a line of an OCR giro or camt.054 file. A payment
+matching cannot place — no KID, a KID no invoice carries, more than is left to pay, or
+one that may repeat a payment already registered — is kept for a person and not
+registered.
 
 Click **Register payment** — offered while something is left to pay — and fill in:
 

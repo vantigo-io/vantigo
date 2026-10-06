@@ -12,8 +12,10 @@ sources:
 Vantigo reads the bank's own record of the money that arrived on the seller's account: a
 file of incoming payments, downloaded from the online bank and imported in Invoices by
 someone with `invoices:payments`. Each payment in it carries the KID printed on the
-invoice, which is how a payment will find its invoice once matching arrives; until then
-an imported payment is kept, not yet registered against an invoice. This page is the operator's side: the
+invoice, which is how a payment finds its invoice: right after the import, each payment
+carrying the KID of an issued invoice, paid to the account that invoice printed, is
+registered against it, by the person who imported the file; the rest are kept for a
+person to handle. This page is the operator's side: the
 agreement to ask the bank for, where the files are, the format each account is imported
 in, and what can go wrong. The rules of the import are in
 [the reference](/en/reference/invoices/#bank-files-and-the-exception-queue).
@@ -85,8 +87,8 @@ To switch an account — say from OCR to camt.054 when you take the agreement fo
 incoming payments — someone with `invoices:manage` changes the account's format
 (`PUT /api/v1/invoices/bank-accounts/{account}/format`, until the screen for it arrives
 in this release). Vantigo then records the **cutover**: the latest booking day of that
-account's payments read in the old format. Once matching arrives, a payment of the new
-format booked on or before the cutover will be held back from it and left for a person,
+account's payments read in the old format. Matching then holds back a payment of the new
+format booked on or before the cutover as a possible duplicate, left for a person,
 because the old format may already have brought it in. Make the switch once the last old-format file is
 imported, and start the new format's files from the day after. A change of bank is a new
 account, with its own format.
@@ -118,6 +120,12 @@ format and cutover, and its latest file.
   customer who paid without one, or with one the bank rejected, is not in it. Without
   tvungen KID, look for such payments on the account statement, or import camt.054
   instead. Card payments (OCR's card information) are counted and ignored.
+- **Payments left pending.** Matching runs right after the import, one payment at a
+  time; if it stops early — a database error, or the upload's request ending — the file
+  stays imported, the import's answer counts the rest as `pending`, and the stop is
+  logged at warn with the file and the payment. Someone with `invoices:payments` matches
+  the rest with `POST /api/v1/invoices/bank-files/{id}/match` (until the screen for it
+  arrives), and is then the one registering them.
 - **A negative assignment.** An OCR assignment whose payments net below zero — a reversal
   larger than the payments of the day — cannot be written in the format's end record;
   whether Mastercard Payment Services can send one at all is **uncertain**. A negative

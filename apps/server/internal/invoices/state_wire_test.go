@@ -12,6 +12,8 @@ type paymentJSON struct {
 	PaidOn             string  `json:"paidOn"`
 	Amount             float64 `json:"amount"`
 	Currency           string  `json:"currency"`
+	Source             string  `json:"source"`
+	BankTransactionID  *int64  `json:"bankTransactionId"`
 	Reference          string  `json:"reference"`
 	Note               string  `json:"note"`
 	RegisteredAt       string  `json:"registeredAt"`
