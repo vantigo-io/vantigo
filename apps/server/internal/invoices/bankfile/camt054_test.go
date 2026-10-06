@@ -237,7 +237,7 @@ func TestBankFileCamt_Parse(t *testing.T) {
 			t.Errorf("with a BOM: %+v", got)
 		}
 		_, err := bankfile.ParseCamt054(swap(t, utf, `encoding="UTF-8"`, `encoding="EBCDIC-NO"`, 1), today)
-		refusal(t, "EBCDIC", err, "file", "EBCDIC-NO", "UTF-8 and ISO-8859-1")
+		refusal(t, "EBCDIC", err, "file", "EBCDIC-NO", "UTF-8, ISO-8859-1 and US-ASCII")
 	})
 
 	t.Run("two notifications", func(t *testing.T) {
@@ -252,9 +252,10 @@ func TestBankFileCamt_Parse(t *testing.T) {
 			f.Transactions[1].LineRef != "20261006173500NOK7947/1/1" || f.Transactions[1].Account != accountB {
 			t.Errorf("two notifications: %+v", f)
 		}
-		broken := []byte(r4[:end] + strings.Replace(second, "<Ref>0010017</Ref>", "<Ref>"+strings.Repeat("1", 26)+"</Ref>", 1) + r4[end:])
+		broken := []byte(r4[:end] + strings.Replace(second, "<AcctSvcrRef>123456780</AcctSvcrRef>",
+			"<AcctSvcrRef>"+strings.Repeat("9", 36)+"</AcctSvcrRef>", 1) + r4[end:])
 		_, err := bankfile.ParseCamt054(broken, today)
-		refusal(t, "the second's KID", err, "Ntfctn[2]/Ntry[1]/NtryDtls/TxDtls[1]/RmtInf/Strd/CdtrRefInf/Ref", "26 bytes")
+		refusal(t, "the second's archive reference", err, "Ntfctn[2]/Ntry[1]/NtryDtls/TxDtls[1]/Refs/AcctSvcrRef", "36 characters")
 	})
 
 	r4 := camtFixture(t, "v02-r4-example.xml")
@@ -304,8 +305,19 @@ func TestBankFileCamt_Parse(t *testing.T) {
 			// still refuses it (research case m).
 			{"USD on a debit that is only counted", swap(t, reversals, `<Amt Ccy="NOK">45.00</Amt>`, `<Amt Ccy="USD">45.00</Amt>`, 1), today,
 				"Ntry[3]/Amt", []string{"USD"}},
-			{"EUR on a remitted amount", swap(t, r4, `<RmtdAmt Ccy="NOK">`, `<RmtdAmt Ccy="EUR">`, 1), today,
-				"Ntry[1]/NtryDtls/TxDtls[1]/RmtInf/Strd/RfrdDocAmt/RmtdAmt", []string{"EUR"}},
+			{"USD on .08's TxDtls/Amt", swap(t, r408, `<Amt Ccy="NOK">1250.00</Amt>`+"\n            <CdtDbtInd>", `<Amt Ccy="USD">1250.00</Amt>`+"\n            <CdtDbtInd>", 1), today,
+				"Ntry[1]/NtryDtls/TxDtls[1]/Amt", []string{"USD", "booked amount"}},
+			{"an Ntry/Amt without Ccy", swap(t, r4, `<Amt Ccy="NOK">1250.00</Amt>`+"\n        <CdtDbtInd>", `<Amt>1250.00</Amt>`+"\n        <CdtDbtInd>", 1), today,
+				"Ntry[1]/Amt", []string{`""`, "NOK"}},
+			{"a million attributes on one element", swap(t, r4, "<Nm>", "<Nm"+strings.Repeat(` a=""`, 1_000_000)+">", 1), today,
+				"file", []string{"a tag longer than 4096 bytes"}},
+			{"a quoted value of 5 000 '>'", swap(t, r4, "<Nm>", `<Nm a="`+strings.Repeat(">", 5000)+`">`, 1), today,
+				"file", []string{"a tag longer than 4096 bytes"}},
+			{"a bomb of namespace declarations", swap(t, r4, "<Nm>", "<Nm"+strings.Repeat(` xmlns:p="u"`, 100_000)+">", 1), today,
+				"file", []string{"a tag longer than 4096 bytes"}},
+			{"a CreDtTm of 42", swap(t, r4, "<CreDtTm>2026-10-06T17:35:00+02:00</CreDtTm>\n    </GrpHdr>",
+				"<CreDtTm>2026-10-06T17:35:00.1234567890123456+02:00</CreDtTm>\n    </GrpHdr>", 1), today,
+				"GrpHdr/CreDtTm", []string{"42 characters", "at most 35"}},
 			{"three decimals", swap(t, r4, `<TxAmt><Amt Ccy="NOK">1250.00<`, `<TxAmt><Amt Ccy="NOK">1250.001<`, 1), today,
 				"Ntry[1]/NtryDtls/TxDtls[1]/AmtDtls/TxAmt/Amt", []string{"1250.001", "two decimals"}},
 			{"a negative amount", swap(t, r4, `<Amt Ccy="NOK">1250.00</Amt>`, `<Amt Ccy="NOK">-1250.00</Amt>`, 1), today,
@@ -355,7 +367,7 @@ func TestBankFileCamt_Parse(t *testing.T) {
 			{"no MsgId", swap(t, r4, "<MsgId>NO20261006-000123</MsgId>", "<MsgId> </MsgId>", 1), today,
 				"GrpHdr/MsgId", []string{"no identification"}},
 			{"a MsgId of 36", swap(t, r4, "NO20261006-000123", strings.Repeat("M", 36), 1), today,
-				"GrpHdr/MsgId", []string{"36 bytes", "at most 35"}},
+				"GrpHdr/MsgId", []string{"36 characters", "at most 35"}},
 			{"a CreDtTm that is none", swap(t, r4, "<CreDtTm>2026-10-06T17:35:00+02:00", "<CreDtTm>i dag", 1), today,
 				"GrpHdr/CreDtTm", []string{"i dag"}},
 			{"no notification Id", swap(t, r4, "<Id>20261006173500NOK8903</Id>", "", 1), today,
@@ -366,16 +378,12 @@ func TestBankFileCamt_Parse(t *testing.T) {
 				"file", []string{"no entries"}},
 			{"no message", []byte(`<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.02"/>`), today,
 				"Document", []string{"BkToCstmrDbtCdtNtfctn"}},
-			{"a KID of 26", swap(t, r4, "<Ref>0010017</Ref>", "<Ref>"+strings.Repeat("1", 26)+"</Ref>", 1), today,
-				"Ntry[1]/NtryDtls/TxDtls[1]/RmtInf/Strd/CdtrRefInf/Ref", []string{"26 bytes", "at most 25"}},
-			{"a KID of 13 characters in 26 bytes", swap(t, r4, "<Ref>0010017</Ref>", "<Ref>"+strings.Repeat("æ", 13)+"</Ref>", 1), today,
-				"Ntry[1]/NtryDtls/TxDtls[1]/RmtInf/Strd/CdtrRefInf/Ref", []string{"26 bytes", "at most 25"}},
 			{"an archive reference of 36", swap(t, r4, "<AcctSvcrRef>123456789</AcctSvcrRef>", "<AcctSvcrRef>"+strings.Repeat("9", 36)+"</AcctSvcrRef>", 1), today,
-				"Ntry[1]/NtryDtls/TxDtls[1]/Refs/AcctSvcrRef", []string{"36 bytes"}},
+				"Ntry[1]/NtryDtls/TxDtls[1]/Refs/AcctSvcrRef", []string{"36 characters"}},
 			{"a debtor account of 35", swap(t, r4, "<Id>98765432109</Id>", "<Id>"+strings.Repeat("9", 35)+"</Id>", 1), today,
-				"Ntry[1]/NtryDtls/TxDtls[1]/RltdPties/DbtrAcct/Id", []string{"35 bytes"}},
+				"Ntry[1]/NtryDtls/TxDtls[1]/RltdPties/DbtrAcct/Id", []string{"35 characters"}},
 			{"a proprietary code of 36", swap(t, swap(t, r4, "<Domn><Cd>PMNT</Cd><Fmly><Cd>RCDT</Cd><SubFmlyCd>VCOM</SubFmlyCd></Fmly></Domn>", "", 1),
-				"<Cd>230</Cd>", "<Cd>"+strings.Repeat("2", 36)+"</Cd>", 1), today, "Ntry[1]/BkTxCd", []string{"36 bytes"}},
+				"<Cd>230</Cd>", "<Cd>"+strings.Repeat("2", 36)+"</Cd>", 1), today, "Ntry[1]/BkTxCd", []string{"36 characters"}},
 		} {
 			when := c.today
 			_, err := bankfile.ParseCamt054(c.file, when)
@@ -442,6 +450,51 @@ func TestBankFileCamt_Parse(t *testing.T) {
 		if got := f.Transactions[0].RemittanceText; got != "a b c" {
 			t.Errorf("control characters: %q", got)
 		}
+		// Only a booked amount's currency is judged: an instructed, a
+		// counter-value or a remitted amount, a charge or the entry's own
+		// AmtDtls in euros say what was sent, not what was booked.
+		for name, b := range map[string][]byte{
+			"a remitted amount":    swap(t, r4, `<RmtdAmt Ccy="NOK">`, `<RmtdAmt Ccy="EUR">`, 1),
+			"an instructed amount": swap(t, r4, "<AmtDtls><TxAmt>", `<AmtDtls><InstdAmt><Amt Ccy="EUR">110.00</Amt></InstdAmt><TxAmt>`, 1),
+			"a counter-value":      swap(t, r4, "</TxAmt></AmtDtls>", `</TxAmt><CntrValAmt><Amt Ccy="EUR">110.00</Amt></CntrValAmt></AmtDtls>`, 1),
+			"a charge, .02":        swap(t, r4, "</AmtDtls>", `</AmtDtls><Chrgs><Amt Ccy="EUR">2.00</Amt></Chrgs>`, 1),
+			"a charge, .08":        swap(t, r408, "</AmtDtls>", `</AmtDtls><Chrgs><Rcrd><Amt Ccy="EUR">2.00</Amt></Rcrd></Chrgs>`, 1),
+			"the entry's AmtDtls":  swap(t, r4, "<BkTxCd>", `<AmtDtls><InstdAmt><Amt Ccy="EUR">110.00</Amt></InstdAmt></AmtDtls><BkTxCd>`, 1),
+		} {
+			if got, err := bankfile.ParseCamt054(b, today); err != nil || got.Transactions[0].AmountMinor != 125000 {
+				t.Errorf("EUR on %s: %v", name, err)
+			}
+		}
+		// A SCOR reference longer than a KID's 25 bytes is no KID: it
+		// leads the text, and the line goes to the queue without one.
+		for name, c := range map[string]struct{ ref, ustrd, want string }{
+			"26 digits":                 {strings.Repeat("1", 26), "", "SCOR " + strings.Repeat("1", 26)},
+			"13 characters in 26 bytes": {strings.Repeat("æ", 13), "", "SCOR " + strings.Repeat("æ", 13)},
+			"with a text":               {strings.Repeat("1", 26), "Faktura 1001", "SCOR " + strings.Repeat("1", 26) + " Faktura 1001"},
+		} {
+			b := swap(t, r4, "<Ref>0010017</Ref>", "<Ref>"+c.ref+"</Ref>", 1)
+			if c.ustrd != "" {
+				b = swap(t, b, "<RmtInf>", "<RmtInf><Ustrd>"+c.ustrd+"</Ustrd>", 1)
+			}
+			got := mustCamt(t, b).Transactions[0]
+			if got.KID != "" || got.RemittanceText != c.want {
+				t.Errorf("a SCOR reference of %s: KID %q, text %q", name, got.KID, got.RemittanceText)
+			}
+		}
+		if got := mustCamt(t, swap(t, r4, "<Ref>0010017</Ref>", "<Ref>"+strings.Repeat("1", 25)+"</Ref>", 1)).Transactions[0]; got.KID != strings.Repeat("1", 25) {
+			t.Errorf("a SCOR reference of 25: KID %q", got.KID)
+		}
+		// A reference is measured in characters, as varchar(n) is: 35 of
+		// them in 70 bytes is an archive reference.
+		if got := mustCamt(t, swap(t, r4, "<AcctSvcrRef>123456789</AcctSvcrRef>", "<AcctSvcrRef>"+strings.Repeat("æ", 35)+"</AcctSvcrRef>", 1)).Transactions[0]; got.ArchiveRef != strings.Repeat("æ", 35) {
+			t.Errorf("35 characters in 70 bytes: %q", got.ArchiveRef)
+		}
+		// A comment or CDATA longer than a tag may be is no tag.
+		longTags := mustCamt(t, swap(t, r4, "<Nm>Kunde AS</Nm>", "<!--"+strings.Repeat("x", 10_000)+"--><Nm><![CDATA["+strings.Repeat("y", 5000)+"]]></Nm>", 1))
+		if got := longTags.Transactions[0].DebtorName; got != strings.Repeat("y", 140) {
+			t.Errorf("a long comment and CDATA: name %q", got)
+		}
+
 		// Without Ustrd, the entry's AddtlNtryInf is the text.
 		withInfo := swap(t, r4, "</NtryDtls>", "</NtryDtls><AddtlNtryInf>Innbetaling</AddtlNtryInf>", 1)
 		if got := mustCamt(t, withInfo).Transactions[0].RemittanceText; got != "Innbetaling" {
@@ -509,6 +562,10 @@ func TestFingerprint_CamtLines(t *testing.T) {
 	a, b := f.Transactions[0], f.Transactions[1]
 	if a.Ordinal != 1 || b.Ordinal != 2 || a.Fingerprint == b.Fingerprint {
 		t.Errorf("identical TxDtls: ordinals %d, %d; fingerprints equal %v", a.Ordinal, b.Ordinal, a.Fingerprint == b.Fingerprint)
+	}
+
+	if f.Transactions[0].BankCode != "PMNT/RCDT/VCOM" {
+		t.Errorf("the builder's default bank code: %q", f.Transactions[0].BankCode)
 	}
 
 	f = mustCamt(t, bankfiletest.Camt054(v02, "FP-2", day(6), accountA,

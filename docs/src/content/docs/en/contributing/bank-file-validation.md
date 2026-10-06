@@ -5,6 +5,7 @@ sidebar:
   order: 4
 sources:
   - apps/server/internal/invoices/bankfile/testdata
+  - apps/server/internal/invoices/bankfile/bankfiletest
 ---
 
 The Invoices module reads the bank files a seller imports: OCR giro from Mastercard
@@ -22,11 +23,15 @@ parsers are kept true to the formats.
 The server never validates a camt.054 file against its XSD. Go's `encoding/xml` does
 not read XML Schema, and validating at runtime would need libxml2 through cgo, which
 the server's static image — distroless, without a C library — does not carry. The
-parser checks instead what the import depends on, all or nothing: the file is strict, well-formed XML without a `DOCTYPE`,
-at most 64 levels deep and at most 10 000 elements plus 100 per transaction; every
-entry's transactions sum to its amount and match its batch count; the summary agrees
-with the entries; every currency is NOK; every amount has at most two decimals; every
-reference fits the column it is stored in. A refusal names the element, such as
+parser checks instead what the import depends on, all or nothing: the file is strict,
+well-formed XML without a `DOCTYPE`, no tag longer than 4 096 bytes, at most 64
+levels deep and at most 10 000 elements plus 100 per transaction; every entry's
+transactions sum to its amount and match its batch count; the summary agrees with the
+entries; every booked amount is in NOK — the entry's `Amt`, the transaction's own
+`Amt` and its `AmtDtls/TxAmt/Amt`, while an instructed, counter-value or remitted
+amount or a charge in another currency is not judged; every amount has at most two
+decimals; every reference fits the column it is stored in. A creditor reference of
+type `SCOR` longer than a KID's 25 characters is kept in the text, not as a KID. A refusal names the element, such as
 `Ntry[2]/NtryDtls/TxDtls[1]/AmtDtls/TxAmt/Amt`.
 
 ## The XSD oracle, deferred

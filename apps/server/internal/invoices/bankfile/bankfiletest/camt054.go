@@ -10,8 +10,9 @@ import (
 // CamtEntry is one entry (Ntry) of a camt.054 notification. Status is
 // BOOK when empty, CreditDebit CRDT when empty; a zero BookedOn writes no
 // BookgDt, as a pending entry has none. BankDomain is
-// "Domain/Family/SubFamily" (PMNT/RCDT/VCOM) and BankProprietary a
-// proprietary code, each written when given. Txs are its TxDtls; an entry
+// "Domain/Family/SubFamily" and BankProprietary a proprietary code, each
+// written when given; with neither, the entry is PMNT/RCDT/VCOM, as every
+// bank writes some code. Txs are its TxDtls; an entry
 // without them is written with AmountMinor as its own amount.
 type CamtEntry struct {
 	Status, CreditDebit         string
@@ -96,16 +97,18 @@ func Camt054(version, msgID string, created time.Time, account string, entries .
 		if !e.BookedOn.IsZero() {
 			w("<BookgDt><Dt>%s</Dt></BookgDt><ValDt><Dt>%[1]s</Dt></ValDt>", e.BookedOn.Format("2006-01-02"))
 		}
-		if e.BankDomain != "" || e.BankProprietary != "" {
-			w("<BkTxCd>")
-			if parts := strings.SplitN(e.BankDomain, "/", 3); len(parts) == 3 {
-				w("<Domn><Cd>%s</Cd><Fmly><Cd>%s</Cd><SubFmlyCd>%s</SubFmlyCd></Fmly></Domn>", esc(parts[0]), esc(parts[1]), esc(parts[2]))
-			}
-			if e.BankProprietary != "" {
-				w("<Prtry><Cd>%s</Cd><Issr>NETS</Issr></Prtry>", esc(e.BankProprietary))
-			}
-			w("</BkTxCd>")
+		domain := e.BankDomain
+		if domain == "" && e.BankProprietary == "" {
+			domain = "PMNT/RCDT/VCOM"
 		}
+		w("<BkTxCd>")
+		if parts := strings.SplitN(domain, "/", 3); len(parts) == 3 {
+			w("<Domn><Cd>%s</Cd><Fmly><Cd>%s</Cd><SubFmlyCd>%s</SubFmlyCd></Fmly></Domn>", esc(parts[0]), esc(parts[1]), esc(parts[2]))
+		}
+		if e.BankProprietary != "" {
+			w("<Prtry><Cd>%s</Cd><Issr>NETS</Issr></Prtry>", esc(e.BankProprietary))
+		}
+		w("</BkTxCd>")
 		w("\n")
 		if len(e.Txs) > 0 {
 			w("<NtryDtls>\n<Btch><NbOfTxs>%d</NbOfTxs></Btch>\n", len(e.Txs))
