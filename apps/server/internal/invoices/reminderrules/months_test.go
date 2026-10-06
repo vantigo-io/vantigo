@@ -35,8 +35,9 @@ func TestReminderRules_AddMonthsClamped(t *testing.T) {
 	}
 }
 
-// R4 §2.7's lenient reading: a weekend due date moves to the Monday after;
-// holidays are not moved (reading 8).
+// R4 §2.7's lenient reading: a due date on a weekend or a Norwegian public
+// holiday moves to the next business day (reading 8 as amended at Task 4's
+// review).
 func TestReminderRules_EffectiveDue(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ due, want string }{
@@ -44,7 +45,11 @@ func TestReminderRules_EffectiveDue(t *testing.T) {
 		{"2026-10-11", "2026-10-12"}, // Sunday → Monday
 		{"2026-10-12", "2026-10-12"}, // Monday
 		{"2026-10-09", "2026-10-09"}, // Friday
-		{"2026-12-25", "2026-12-25"}, // Christmas Day, a Friday: a holiday is not moved
+		{"2026-12-25", "2026-12-28"}, // Christmas Day, a Friday, Boxing Day, Sunday
+		{"2027-03-25", "2027-03-30"}, // Maundy Thursday to Easter Monday
+		{"2028-05-17", "2028-05-18"}, // 17 May, a Wednesday
+		{"2027-01-01", "2027-01-04"}, // New Year's Day, a Friday, then the weekend
+		{"2026-12-24", "2026-12-24"}, // Christmas Eve is a business day
 	} {
 		if got := EffectiveDue(day(c.due)); !got.Equal(day(c.want)) {
 			t.Errorf("EffectiveDue(%s) = %s, want %s", c.due, got.Format(time.DateOnly), c.want)

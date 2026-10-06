@@ -123,10 +123,18 @@ func TestReminderRules_FourteenDays(t *testing.T) {
 		{"a Saturday due date + 14", "2026-06-13", "2026-06-27", false},
 		{"a Saturday due date + 15, the Monday's + 13", "2026-06-13", "2026-06-28", false},
 		{"the Monday after a Saturday + 14", "2026-06-13", "2026-06-29", true},
+		{"Maundy Thursday + 14", "2027-03-25", "2027-04-08", false},
+		{"Maundy Thursday, its E + 13", "2027-03-25", "2027-04-12", false},
+		{"Maundy Thursday, its E (30 Mar) + 14", "2027-03-25", "2027-04-13", true},
+		{"17 May 2028, its E + 13", "2028-05-17", "2028-05-31", false},
+		{"17 May 2028, its E (18 May) + 14", "2028-05-17", "2028-06-01", true},
+		{"1 Jan 2027 + 14", "2027-01-01", "2027-01-15", false},
+		{"1 Jan 2027, its E (4 Jan) + 14", "2027-01-01", "2027-01-18", true},
 	} {
 		in := baseInput(c.l)
 		in.Invoice.DueDate = day(c.due)
 		in.Settings.FirstReminderDays = 1
+		in.Settings.RegimeReviewedThrough = day("2029-12-31")
 		out := Next(in)
 		if out.Letter == nil {
 			t.Fatalf("%s: %s %v, want a letter", c.name, out.Action, out.Reasons)

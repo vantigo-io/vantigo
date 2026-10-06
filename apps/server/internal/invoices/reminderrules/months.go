@@ -29,18 +29,11 @@ func lastDayOf(year int, month time.Month) int {
 	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
 }
 
-// EffectiveDue is E: the due date, moved to the following Monday when it is a
-// Saturday or a Sunday (R4 §2.7, the lenient reading); holidays are not moved
-// (the spec's reading 8).
-func EffectiveDue(due time.Time) time.Time {
-	switch due.Weekday() {
-	case time.Saturday:
-		return addDays(due, 2)
-	case time.Sunday:
-		return addDays(due, 1)
-	}
-	return due
-}
+// EffectiveDue is E: the due date, moved to the next business day when it is a
+// Saturday, a Sunday or a Norwegian public holiday (R4 §2.7, the lenient
+// reading; the spec's reading 8 as amended at Task 4's review) — the same
+// rule as the deadline's, and it only ever delays a charge.
+func EffectiveDue(due time.Time) time.Time { return nextBusinessDay(due) }
 
 // addDays is d moved n calendar days. Days here are UTC midnights, so a day is
 // always 24 hours.
@@ -71,9 +64,7 @@ func halfYearName(d time.Time) string {
 // review): deadlineDays after it, never fewer than 14 (INKL § 9, INKF § 1-3),
 // moved to the next business day when it falls on a Saturday, a Sunday or a
 // Norwegian public holiday — the debtor-favourable reading, since a payment
-// order cannot reach a bank on such a day. E itself moves only off a weekend
-// (the spec's reading 8): the due date is the customer's contract, the
-// deadline is the creditor's own choice.
+// order cannot reach a bank on such a day. E moves by the same rule.
 func LetterDeadline(sentOn time.Time, deadlineDays int) time.Time {
 	return nextBusinessDay(addDays(sentOn, max(deadlineDays, 14)))
 }
