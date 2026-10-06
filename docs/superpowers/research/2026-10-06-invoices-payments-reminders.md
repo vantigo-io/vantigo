@@ -1493,8 +1493,8 @@ payout is never an invoice payment; the credential and worker patterns of phase 
 18. **The Vipps payout clearing** — how a camt import recognises `Utb. … Vippsnr …` and
     where it routes it; whether Report API reconciliation is in phase 4 or later (§4.9).
 19. **The quick invoice** — two transactions or one refactored issue path; single line;
-    person or business; optional QR at once (§4.3, §5.8). The line to kontantsalg was not
-    studied (§7 item 41).
+    person or business; optional QR at once (§4.3, §5.8). The line to kontantsalg is
+    studied in the addendum (§9).
 20. **Attention and navigation** — an Invoices `/stats/attention` for overdue or reminder
     due, and a receivables entry gated on `invoices:payments` (§5.4).
 
@@ -1562,7 +1562,8 @@ Merged from the four studies; the section that raises each is in brackets.
     (§4.9).
 40. Stripe Payment Link and Checkout Session lifetimes (secondary) (§4.10).
 41. The line between an on-site quick invoice paid by Vipps and a kontantsalg: the Vipps
-    study defers it to the law study, which does not cover it — unstudied (§6 item 19).
+    study defers it to the law study, which does not cover it (§6 item 19). Answered by a
+    fifth study in the addendum (§9); its own UNCERTAIN items are §9.6.
 
 **Where the studies disagree or leave a gap:**
 
@@ -1577,7 +1578,8 @@ Merged from the four studies; the section that raises each is in brackets.
   carry payments without KID (§3.2), which suggests camt.054, but no bank page was read
   that says so.
 - **Kontantsalg.** The Vipps study says the legal line between an on-site Vipps payment
-  and kontantsalg is the law study's; the law study does not treat it.
+  and kontantsalg is the law study's; the law study does not treat it. The addendum's
+  study (§9) closes the gap.
 - **The payer's order date.** The law study marks its availability **UNCERTAIN** for
   camt.054; the bank study shows OCR carries it (`Oppdragsdato`, item 2 pos 42-47) and camt
   only optional settlement/acceptance dates.
@@ -1723,3 +1725,167 @@ Secondary:
 
 No external sources. The repository at `0ba2840e`, read-only; every `file:line` in §5 was
 checked against that commit when this document was assembled.
+
+## 9. Addendum — the quick invoice and kontantsalg
+
+A fifth study, made after §§1–8 were assembled, answers §7 item 41: where an on-site
+quick invoice paid by Vipps stops being a credit sale. Every source was read on
+**2026-10-06**; tags as in §2 (**LAW**, **ADMIN** for Skatteetaten's and
+Skattedirektoratet's statements). It is not legal advice.
+
+### 9.1 Verdict
+
+- **The roadmap's premise is wrong.** `ROADMAP.md:866-868` says the quick invoice "is a
+  credit sale — the invoice is the document and the payment follows it". Kontantsalg is
+  defined by **when and how the payment is settled**, not by the document: issuing an
+  invoice does not turn a sale paid at delivery into a credit sale.
+- **(a) Paid later — a credit sale.** A quick invoice paid by bank with its KID, or
+  through the pay link after the tradesperson has left, is not settled "ved levering":
+  an ordinary credit sale on the customer ledger (bokføringsforskriften § 3-1 første
+  ledd nr. 3). No kassasystem.
+- **(b) Paid on site by Vipps QR — kontantsalg.** Vipps at delivery is "kontanter" in
+  the regulation's sense, so the sale is kontantsalg. It is lawful **without** a
+  kassasystem only under the **kontantfaktura** exemption, § 5-4-1 tredje ledd, which
+  Skattedirektoratet reads narrowly (§9.3).
+- **(c) The safe middle ground.** Offer on-site payment only through a flow that
+  enforces the kontantfaktura conditions — the buyer named with an address or an
+  organisation number before any payment starts, every payment tied to one full
+  delkapittel 5-1 invoice in the ordinary series, no anonymous or receipt-only mode, a
+  notice to the user — because Skatteetaten makes that a condition for **the supplier**
+  of the software to stay outside kassasystemlova (§9.4).
+
+### 9.2 Kontantsalg, and why Vipps counts
+
+- **Bokføringsforskriften § 5-3-1** (FOR-2004-12-01-1558, last amended by
+  FOR-2026-09-29-1933): "a. kontantsalg: salg av varer og tjenester der kjøpers
+  betalingsforpliktelse overfor selger gjøres opp ved levering, ved bruk av betalingskort
+  eller kontanter som betalingsmiddel. Salg over internett eller ved oppkrav anses ikke
+  som kontantsalg, b. betalingskort: debetkort, kredittkort og faktureringskort, c.
+  kontanter: andre betalingsmidler enn betalingskort". **LAW** [BOKF-5]
+- **Kassasystemlova § 2 a–c** (LOV-2015-06-19-58) has the same definitions in nynorsk.
+  **LAW** [KASL]
+- **Bokføringsloven § 10 a**: kontantsalg is registered and documented in a kassasystem
+  with a produkterklæring; the ministry may set exemptions by regulation. **LAW** [BOKL]
+- **Vipps is "kontanter".** Skattedirektoratet's prinsipputtalelse on internet sales
+  (29.06.2017), point 2, names app payments such as Vipps and MobilePay among the
+  "andre betalingsmidler" of § 5-3-1 c; its point 3.3 treats an order paid by Vipps and
+  then handed over as ordinary kontantsalg needing a kassasystem. **ADMIN** [SKD-2017]
+- Only kontantsalg must be registered in a kassasystem (prinsipputtalelse on credit
+  sales, 15.09.2016). **ADMIN** [SKD-2016]
+
+### 9.3 The duty, and the one exemption that fits
+
+- **§ 5-3-2 første ledd**: kontantsalg is registered continuously in a kassasystem with a
+  produkterklæring "med mindre annet er bestemt i denne forskrift"; § 5-3-3 allows only
+  declared systems. **LAW**
+- **Delkapittel 5-4** lists the exemptions. § 5-4-1 (1): ambulant or sporadic kontantsalg
+  up to 3G a year, and kontantsalg up to NOK 50 000 excl. VAT a year (the latter "fra fast
+  forretningssted", prinsipputtalelse 11.11.2020 [SKD-2020]) — both depend on the user's
+  own turnover, so a product cannot rely on them. § 5-4-1 (2): pre-numbered tickets.
+  **§ 5-4-1 (3): "Kontantsalg kreves ikke registrert i et kassasystem dersom den
+  bokføringspliktige utsteder salgsdokument (kontantfaktura) i samsvar med delkapittel
+  5-1."** §§ 5-4-2 to 5-4-4 (events, vending machines, unstaffed points) do not fit;
+  § 5-4-5 requires a daily count of the till against the sales documentation "ved salg
+  som nevnt i § 5-4-1 og § 5-4-2"; § 5-4-7 is the ministry's dispensation. There is **no**
+  exemption for "sale against invoice" or for business buyers as such. **LAW** [BOKF-5]
+- FOR-2026-09-29-1933 (in force 2027/2028/2030) does not touch delkapittel 5-3 or 5-4.
+  **LAW** [FOR-1933]
+- **Skattedirektoratet's narrow reading** (prinsipputtalelse "Bruk av kontantfaktura som
+  alternativ til kassasystem", 07.01.2019) [SKD-2019], paraphrased:
+  - the ministry proposed abolishing § 5-4-1 (3) in 2018 (save for health services); the
+    proposal was not adopted, so the exemption stands;
+  - the wording has no limit, but the heading, its place and the preparatory works call
+    for a narrow reading;
+  - it is for businesses whose ordinary invoicing identifies the customer — "virksomheter
+    som regelmessig har kredittsalg hvor kunden faktureres i ettertid" — with health
+    practitioners, car dealers and workshops, hotels and airlines as examples, and
+    occasional sales of other goods by such a business covered too;
+  - it does not cover regular retail or service businesses that set up a solution
+    registering personal data at each cash sale; a business that also runs a counter,
+    restaurant or bar uses a kassasystem for that part;
+  - the kontantfaktura must hold everything a credit invoice holds, including the buyer's
+    name and address or organisation number (§ 5-1-2), and must be used for **every**
+    kontantsalg, whatever the amount;
+  - wrongful use, or a kontantfaktura lacking required content, breaches bokføringsloven
+    § 10 a, sanctioned by an overtredelsesgebyr (skattebetalingsloven § 14-7 (1) d).
+  **ADMIN**
+
+### 9.4 The supplier's side
+
+- Skatteetaten's "Spørsmål og svar om nye kassasystemer": "For ikke å komme inn under
+  kassasystemlova må leverandør sørge for at systemet er oppbygd slik at det ikke kan
+  registreres kontantsalg på systemet uten at kjøpers navn og adresse blir registrert."
+  **ADMIN** [SKE-QA]
+- Kassasystemlova §§ 1 and 2 e cover suppliers ("leverandørar"); § 5 requires the
+  produkterklæring; § 8 sets a breach fee of 30 rettsgebyr for an undeclared or
+  non-compliant system. **LAW** [KASL]
+- So a Vantigo that let a user take an on-site payment **without** the buyer's name and
+  address would expose the user (§ 10 a) and Vantigo itself (an undeclared kassasystem).
+  The buyer-identity rule is a product requirement, not advice.
+
+### 9.5 Timing and channel
+
+| Scenario | Classification | Basis |
+|---|---|---|
+| The customer scans the Vipps QR on site, at or right after completion | kontantsalg | § 5-3-1 a, c; [SKD-2017] 3.3 |
+| A card payment on site (terminal or SoftPOS) | kontantsalg | § 5-3-1 a, b |
+| The customer pays later by bank with the KID | credit sale | not settled "ved levering"; [SKD-2016] |
+| The customer pays later through the pay link, after the tradesperson has left | credit sale | the same; **UNCERTAIN** at the edges |
+| The customer pays while the tradesperson waits, or as a condition of handover | probably kontantsalg in substance | **UNCERTAIN**: no source defines the window of "ved levering" |
+
+- **The internet-sale carve-out** is limited to sales ordered and paid through the
+  seller's own online solution without visiting the seller's place of business, on the
+  customer's own equipment ([SKD-2017] 3.1–3.2). A face-to-face QR at the job site is
+  closest to its point 3.3 example, kontantsalg. Do not rely on the carve-out for a pay
+  link opened on site. Whether working at the customer's home rather than the seller's
+  premises changes this is unaddressed. **ADMIN / UNCERTAIN**
+- "Oppkrav" (cash on delivery) means collection by a carrier; not relevant.
+- Restricting on-site payment to business buyers is **not** required: the exemption
+  applies to identified private buyers too, and the restriction would add no safety.
+
+**The requirements the study derives for an on-site payment path** (the first three
+from §§9.3–9.4, the last recommended): (1) the buyer's name with an address or an
+organisation number is mandatory before a payment can start, with no "kontantkunde" and
+no exception; (2) every on-site payment is tied 1:1 to a full § 5-1-1 invoice numbered in
+the ordinary series; (3) no receipt-only or anonymous sale mode exists anywhere in the
+product until a counter-sale module ships with a declared kassasystem; (4) a notice or an
+acknowledgement that on-site payment is kontantsalg, allowed without a kassasystem only
+for a business that mainly sells on credit to identified customers, and that a shop or
+counter sale needs a kassasystem; (5) the time of each payment recorded and a daily list
+of on-site payments for reconciliation against the Vipps settlement — the preparatory
+works quoted in [SKD-2019] mention the time of day and a daily report, and § 5-4-5's
+daily count refers to "salg som nevnt i § 5-4-1", which arguably includes kontantfaktura
+sales (**UNCERTAIN** whether required; build it in).
+
+### 9.6 UNCERTAIN items
+
+1. No primary source names håndverkere, or "a Vipps payment of an invoice at delivery";
+   the verdict applies the 2017 and 2019 statements to these facts.
+2. The time window of "ved levering": a payment later the same day, or a pay link used
+   while the tradesperson is still there. Treat any payment awaited at, or required for,
+   handover as kontantsalg.
+3. Whether the internet-sale carve-out could ever cover a QR or pay link opened on site —
+   probably not ([SKD-2017] 3.3); not relied on.
+4. Whether § 5-4-5's daily reconciliation, and the preparatory works' time of day and
+   daily report, bind kontantfaktura users — plausible.
+5. The user's other kontantsalg is outside Vantigo's control: a user who also sells over
+   a counter needs a kassasystem for that part (delt virksomhet, [SKD-2019]).
+6. NRS bokføringsstandard GBS 16 (internet sales; advance, cash and credit), which
+   Skatteetaten cites, was not read.
+7. The 2026 value of 3G was not checked; it does not bear on the design.
+8. [SKD-2019] dates the regulation amendment it discusses "14. desember 2019"; the
+   Lovdata amendment notes show it is FOR-2018-12-14-1983 — a typo in the statement.
+
+### 9.7 Sources (all read 2026-10-06)
+
+Primary:
+
+- [BOKF-5] Bokføringsforskriften FOR-2004-12-01-1558, kapittel 5 — https://lovdata.no/dokument/SF/forskrift/2004-12-01-1558/KAPITTEL_5
+- [BOKL] Bokføringsloven LOV-2004-11-19-73 § 10 a — https://lovdata.no/dokument/NL/lov/2004-11-19-73
+- [KASL] Kassasystemlova LOV-2015-06-19-58 — https://lovdata.no/dokument/NL/lov/2015-06-19-58
+- [FOR-1933] FOR-2026-09-29-1933 — https://lovdata.no/dokument/LTI/forskrift/2026-09-29-1933
+- [SKD-2016] Skattedirektoratet, prinsipputtalelse "Nye krav til kassasystemer – registrering av kredittsalg" (15.09.2016) — https://www.skatteetaten.no/rettskilder/type/uttalelser/prinsipputtalelser/nye-krav-til-kassasystemer--registrering-av-kredittsalg/
+- [SKD-2017] Skattedirektoratet, prinsipputtalelse "Internettsalg etter kassasystemlova og bokføringsforskriften" (29.06.2017) — https://www.skatteetaten.no/rettskilder/type/uttalelser/prinsipputtalelser/internettsalg-etter-kassasystemlova-og-bokforingsforskriften/
+- [SKD-2019] Skattedirektoratet, prinsipputtalelse "Bruk av kontantfaktura som alternativ til kassasystem" (07.01.2019) — https://www.skatteetaten.no/rettskilder/type/uttalelser/prinsipputtalelser/bruk-av-kontantfaktura-som-alternativ-til-kassasystem/
+- [SKD-2020] Skattedirektoratet, prinsipputtalelse "Unntak for krav til kassasystem ved lavt kontantsalg" (11.11.2020) — https://www.skatteetaten.no/rettskilder/type/uttalelser/prinsipputtalelser/unntak-for-krav-til-kassasystem-ved-lavt-kontantsalg/
+- [SKE-QA] Skatteetaten, "Spørsmål og svar om nye kassasystemer" — https://www.skatteetaten.no/bedrift-og-organisasjon/starte-og-drive/rutiner-regnskap-og-kassasystem/kassasystem/sporsmal-og-svar-om-nye-kassasystemer/
