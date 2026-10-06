@@ -340,7 +340,7 @@ func FuzzParse(f *testing.F) {
 			if _, ok := bankfile.NormaliseAccount(tx.Account); !ok || !slices.Contains(file.Accounts, tx.Account) ||
 				tx.AmountMinor <= 0 || tx.AmountMinor > 99_999_999_999_999 ||
 				tx.BookedOn.Before(earliest) || tx.BookedOn.After(today) ||
-				len(tx.KID) > 25 || len(tx.LineRef) > 60 || len(tx.Fingerprint) != 64 || tx.Ordinal < 1 {
+				len(tx.KID) > 25 || len(tx.Fingerprint) != 64 || tx.Ordinal < 1 {
 				t.Fatalf("an unstorable transaction: %+v", tx)
 			}
 			// Each string fits its bank_transactions column (D3's schema).

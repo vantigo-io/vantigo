@@ -359,8 +359,11 @@ named `file`, at most **10 MiB** (`BodyLimits`, the customers import's pattern,
      a file at the 5 000-transaction cap, room for a `.001.02` `TxDtls` of 30–40 elements
      (a hostile file is refused, not parsed); both namespaces' paths (R4 §3.2's table); per entry the `TxDtls` amounts sum
      to `Ntry/Amt` and their count equals `Btch/NbOfTxs` when present, and `TxsSummry`
-     agrees when present; every `Ccy` is `NOK` (else 400 — **currency is a file-level
-     refusal**, research case m); amounts at most two decimals. No runtime XSD validation
+     agrees when present; every **booked** amount's `Ccy` is `NOK` — `Ntry/Amt`, `.08`'s
+     `TxDtls/Amt` and `TxDtls/AmtDtls/TxAmt/Amt`, a missing `Ccy` counting as not NOK;
+     an instructed, counter-value or remitted amount, a charge and `Ntry/AmtDtls` are not
+     judged, and `TxsSummry` is guarded by `Ntfctn/Acct/Ccy` (else 400 — **currency is a
+     file-level refusal**, research case m; revision after Task 3's review); amounts at most two decimals. No runtime XSD validation
      (R4 §3.7): the vendored XSDs are a test oracle (`mise run bankfiles:validate`).
    - **Both**: every booking date on or before today (Oslo, the request's one clock read)
      and not before 2000-01-01; at most 5 000 transactions in a file, since each is matched

@@ -25,10 +25,12 @@ import (
 //	      NtryDtls/Btch/NbOfTxs
 //	      NtryDtls/TxDtls (0..n)        the payments the lump sum is made of
 //
-// read in two passes. The first walks the tokens and keeps nothing: no
+// read in two passes, after a scan of the raw bytes that refuses a tag
+// longer than 4 096 bytes (so no element carries a million attributes or
+// namespace declarations). The first walks the tokens and keeps nothing: no
 // DOCTYPE, at most 64 levels, at most 10 000 + 100 per transaction found
-// elements, every Ccy NOK — so a hostile file is refused before any of it
-// is kept (D3, M9, m4). The second decodes the paths of R4 §3.2's table
+// elements, every booked amount in NOK — so a hostile file is refused
+// before any of it is kept (D3, M9, m4). The second decodes the paths of R4 §3.2's table
 // for the file's version and checks the file all or nothing: every entry's
 // transactions against its amount and its batch count, the summary against
 // the entries, every amount, date and reference; the first failure refuses
@@ -44,6 +46,8 @@ const (
 	camtMaxSum             = maxAmountMinor * MaxTransactions
 	camtRemittanceTextSize = 1000 // remittance_text varchar(1000)
 	camtNameSize           = 140  // debtor_name varchar(140)
+	camtMaxTag             = 4096
+	kidSize                = 25 // kid varchar(25), and kid.Parse's longest
 )
 
 // ParseCamt054 parses a camt.054 notification, .001.02 or .001.08, every
@@ -53,6 +57,9 @@ func ParseCamt054(b []byte, today time.Time) (*File, error) {
 		return nil, &Error{Where: "file", Message: tooLarge}
 	}
 	b = bytes.TrimPrefix(b, bom)
+	if err := checkTags(b); err != nil {
+		return nil, err
+	}
 	version, err := guardCamt(b)
 	if err != nil {
 		return nil, err
@@ -101,7 +108,7 @@ func camtDecoder(b []byte) (*xml.Decoder, *string) {
 // xmlRefusal is a decoder's error as the file's refusal.
 func xmlRefusal(err error, unsupported string) *Error {
 	if unsupported != "" {
-		return &Error{Where: "file", Message: refusalText("the file declares the encoding %q; only UTF-8 and ISO-8859-1 are read", unsupported)}
+		return &Error{Where: "file", Message: refusalText("the file declares the encoding %q; only UTF-8, ISO-8859-1 and US-ASCII are read", unsupported)}
 	}
 	var syntax *xml.SyntaxError
 	if errors.As(err, &syntax) {
@@ -179,10 +186,16 @@ func guardCamt(b []byte) (string, error) {
 				lines++
 			}
 			stack = append(stack, frame)
-			for _, a := range t.Attr {
-				if a.Name.Local == "Ccy" && a.Value != "NOK" {
+			if camtBookedAmount(stack) {
+				ccy := ""
+				for _, a := range t.Attr {
+					if a.Name.Local == "Ccy" {
+						ccy = a.Value
+					}
+				}
+				if ccy != "NOK" {
 					return "", &Error{Where: framesWhere(stack), Message: refusalText(
-						"the currency is %s; a file is read only when every amount is in NOK", a.Value)}
+						"the currency is %q; a file is read only when every booked amount is in NOK", ccy)}
 				}
 			}
 		case xml.EndElement:
@@ -196,6 +209,78 @@ func guardCamt(b []byte) (string, error) {
 		return "", &Error{Where: "file", Message: notABankFile}
 	}
 	return version, nil
+}
+
+// camtBookedAmount reports whether the element on top of stack is a
+// booked amount, whose currency decides the file (research case m): an
+// entry's Ntry/Amt, a transaction's own Amt (.08) or its
+// AmtDtls/TxAmt/Amt. An instructed, counter-value or remitted amount, a
+// charge and an entry's own AmtDtls say what was sent or agreed, not what
+// was booked, and are not judged; TxsSummry's sums are the account's,
+// whose Ntfctn/Acct/Ccy the second pass judges.
+func camtBookedAmount(stack []camtFrame) bool {
+	n := len(stack)
+	if n < 2 || stack[n-1].name != "Amt" {
+		return false
+	}
+	switch stack[n-2].name {
+	case "Ntry", "TxDtls":
+		return true
+	case "TxAmt":
+		return n >= 4 && stack[n-3].name == "AmtDtls" && stack[n-4].name == "TxDtls"
+	}
+	return false
+}
+
+// checkTags scans b's raw bytes once and refuses a tag — from its '<' to
+// its '>', quoted values honoured, comments and CDATA passed over — longer
+// than camtMaxTag bytes. The decoder reads a start element's attributes
+// and namespace declarations all at once, so this is what bounds one
+// element's cost before the decoder sees it.
+func checkTags(b []byte) error {
+	for i := 0; i < len(b); {
+		j := bytes.IndexByte(b[i:], '<')
+		if j < 0 {
+			return nil
+		}
+		i += j
+		rest := b[i:]
+		switch {
+		case bytes.HasPrefix(rest, []byte("<!--")):
+			end := bytes.Index(rest[4:], []byte("-->"))
+			if end < 0 {
+				return nil // unterminated: the decoder refuses it
+			}
+			i += 4 + end + 3
+			continue
+		case bytes.HasPrefix(rest, []byte("<![CDATA[")):
+			end := bytes.Index(rest[9:], []byte("]]>"))
+			if end < 0 {
+				return nil
+			}
+			i += 9 + end + 3
+			continue
+		}
+		var quote byte
+		k := 1
+		for ; k < len(rest); k++ {
+			c := rest[k]
+			if quote != 0 {
+				if c == quote {
+					quote = 0
+				}
+			} else if c == '"' || c == '\'' {
+				quote = c
+			} else if c == '>' {
+				break
+			}
+			if k >= camtMaxTag {
+				return &Error{Where: "file", Message: fmt.Sprintf("a tag longer than %d bytes", camtMaxTag)}
+			}
+		}
+		i += k + 1
+	}
+	return nil
 }
 
 // framesWhere is the open elements as a Where, from below the message.
@@ -344,7 +429,10 @@ func (p *camtParser) document(doc *camtDocument) error {
 	if id == "" {
 		return &Error{Where: "GrpHdr/MsgId", Message: "the message has no identification"}
 	}
-	created := strings.TrimSpace(m.GrpHdr.CreDtTm)
+	created, err := reference("GrpHdr/CreDtTm", m.GrpHdr.CreDtTm, 35)
+	if err != nil {
+		return err
+	}
 	if _, ok := camtDateTime(created); !ok {
 		return &Error{Where: "GrpHdr/CreDtTm", Message: refusalText("%q is not a date and time", created)}
 	}
@@ -678,18 +766,20 @@ func (p *camtParser) txAmount(where string, tx *camtTx, direction string) (int64
 // details fills a transaction from its TxDtls: the KID — the structured
 // creditor reference of type SCOR, whatever the bank transaction code
 // says (R4 §3.2) — the unstructured lines joined, else the entry's
-// additional information, the debtor, the archive reference.
+// additional information, the debtor, the archive reference. A SCOR
+// reference longer than a KID can be is no KID: it leads the text as
+// "SCOR <ref>", and the line reaches the queue as a payment without one.
 func (p *camtParser) details(where string, tx *camtTx, out *Transaction) error {
+	scor := ""
 	for _, s := range tx.Structured {
 		if strings.TrimSpace(s.Type) != "SCOR" {
 			continue
 		}
-		kid, err := reference(where+"/RmtInf/Strd/CdtrRefInf/Ref", s.Ref, 25)
-		if err != nil {
-			return err
-		}
-		if kid != "" {
-			out.KID = kid
+		if ref := text(s.Ref); len(ref) > kidSize {
+			scor = ref
+			break
+		} else if ref != "" {
+			out.KID = ref
 			break
 		}
 	}
@@ -700,8 +790,12 @@ func (p *camtParser) details(where string, tx *camtTx, out *Transaction) error {
 		}
 	}
 	if len(lines) > 0 {
-		out.RemittanceText = cut(strings.Join(lines, " "), camtRemittanceTextSize)
+		out.RemittanceText = strings.Join(lines, " ")
 	}
+	if scor != "" {
+		out.RemittanceText = strings.TrimSpace("SCOR " + scor + " " + out.RemittanceText)
+	}
+	out.RemittanceText = cut(out.RemittanceText, camtRemittanceTextSize)
 	name := tx.Debtor.Name02
 	if p.v08 {
 		name = tx.Debtor.Name08
@@ -741,11 +835,11 @@ func cut(s string, n int) string {
 // reference is a reference of the file — an identification, a KID, an
 // account, a code — as text, refused rather than cut when it is longer
 // than its column holds: a reference cut would be another reference. It
-// is measured in bytes, so a reference that is not ASCII is held to less.
+// is measured in characters, as varchar(n) measures it.
 func reference(where, s string, n int) (string, error) {
 	s = text(s)
-	if len(s) > n {
-		return "", &Error{Where: where, Message: refusalText("%q is %d bytes long; at most %d are read", s, len(s), n)}
+	if c := utf8.RuneCountInString(s); c > n {
+		return "", &Error{Where: where, Message: refusalText("%q is %d characters; at most %d are read", s, c, n)}
 	}
 	return s, nil
 }
