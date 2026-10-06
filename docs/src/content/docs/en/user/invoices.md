@@ -620,8 +620,13 @@ deducted** is refused beyond what the settlement left of it: credit the settleme
 
 ## Registering payments
 
-Vantigo does not read bank files: money received is registered by hand, on the issued
-invoice's page under **Payments**. Each registration needs `invoices:payments`.
+Money received is registered by hand, on the issued invoice's page under **Payments**.
+Each registration needs `invoices:payments`. Vantigo can also take in the bank's own
+files of incoming payments — OCR giro and camt.054, imported by someone with
+`invoices:payments` ([bank files](/en/reference/invoices/#bank-files-and-the-exception-queue);
+the bank agreement and the download are on [Payments from the bank](/en/admin/payments/)).
+An imported file is kept and its payments stored, but they are not yet registered against
+your invoices: until that arrives, keep registering payments by hand.
 
 Click **Register payment** — offered while something is left to pay — and fill in:
 

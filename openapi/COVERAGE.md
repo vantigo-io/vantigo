@@ -244,11 +244,14 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-## invoices (34 uncovered)
+## invoices (39 uncovered)
 
 - `DELETE /api/v1/invoices/settings/access-point` (deleteInvoicesSettingsAccessPoint)
 - `DELETE /api/v1/invoices/vat-codes/{id}/rates/{rateId}` (deleteInvoicesVatCodesByIdRatesByRateId)
 - `DELETE /api/v1/invoices/{id}` (deleteInvoicesById)
+- `GET /api/v1/invoices/bank-accounts` (getInvoicesBankAccounts)
+- `GET /api/v1/invoices/bank-files/{id}` (getInvoicesBankFilesById)
+- `GET /api/v1/invoices/bank-files` (getInvoicesBankFiles)
 - `GET /api/v1/invoices/export.csv` (getInvoicesExportCsv)
 - `GET /api/v1/invoices/journal` (getInvoicesJournal)
 - `GET /api/v1/invoices/meta` (getInvoicesMeta)
@@ -263,6 +266,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/invoices/{id}/transmissions/{transmissionId}/ubl` (getInvoicesByIdTransmissionsByTransmissionIdUbl)
 - `GET /api/v1/invoices/{id}` (getInvoicesById)
 - `GET /api/v1/invoices` (getInvoices)
+- `POST /api/v1/invoices/bank-files` (postInvoicesBankFiles)
 - `POST /api/v1/invoices/from-work` (postInvoicesFromWork)
 - `POST /api/v1/invoices/settings/access-point/verify` (postInvoicesSettingsAccessPointVerify)
 - `POST /api/v1/invoices/vat-codes/{id}/rates` (postInvoicesVatCodesByIdRates)
@@ -276,9 +280,10 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/invoices/{id}/transmissions/{transmissionId}/cancel` (postInvoicesByIdTransmissionsByTransmissionIdCancel)
 - `POST /api/v1/invoices/{id}/transmissions/{transmissionId}/resolve` (postInvoicesByIdTransmissionsByTransmissionIdResolve)
 - `POST /api/v1/invoices` (postInvoices)
+- `PUT /api/v1/invoices/bank-accounts/{account}/format` (putInvoicesBankAccountsByAccountFormat)
 - `PUT /api/v1/invoices/settings/access-point` (putInvoicesSettingsAccessPoint)
 - `PUT /api/v1/invoices/settings` (putInvoicesSettings)
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-Total: 252 of 387 operations have no recorded exchange.
+Total: 257 of 392 operations have no recorded exchange.

@@ -35,6 +35,9 @@ applikasjonen.
   EHF i Peppol-nettverket: kontoen hos Storecove og påloggingsdataene, bryterne, de to
   bakgrunnsjobbene som bærer hvert dokument, hva du gjør når en sending er ubekreftet
   eller feilet, og KID-avtalen du ber banken om.
+- **Innbetalinger.** [Innbetalinger fra banken](/nb/admin/payments/) er bankavtalen som
+  gir deg OCR-giro- eller camt.054-filer med innbetalinger, hvor hver bank lar deg laste
+  dem ned, og formatet hver kontos filer importeres i.
 
 ## Den komplette konfigurasjonsreferansen
 

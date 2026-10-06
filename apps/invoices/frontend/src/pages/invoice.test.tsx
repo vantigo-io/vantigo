@@ -496,6 +496,7 @@ describe("what the editor offers", () => {
         meta: {
           capabilities: {
             canCreate: false,
+            canImportBankFiles: false,
             canIssue: false,
             canManage: false,
             canRegisterPayments: false,

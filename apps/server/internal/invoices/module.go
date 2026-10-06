@@ -122,6 +122,9 @@ func mount(d module.Deps) (http.Handler, error) {
 		Limiter: d.Limiter,
 		Limits:  limits,
 		Catalog: d.Catalog,
+		// The bank import's upload is the one body above the platform default
+		// (bankimport.go).
+		BodyLimits: bankFileBodyLimits,
 	})
 	srv, err := newServer(d)
 	if err != nil {

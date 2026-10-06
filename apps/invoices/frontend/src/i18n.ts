@@ -461,6 +461,11 @@ export const invoicesCatalog = {
     "refusal.mixed_currency": "The chosen work is in more than one currency, and one invoice is in one currency.",
     "refusal.currency_not_nok": "The chosen work is not in NOK, the only currency this module invoices in.",
     "refusal.too_many_lines": "Grouped this way the work makes more than 500 lines. Choose a coarser grouping.",
+    "refusal.bank_account_unknown":
+      "The bank file names an account that is neither the seller's bank account nor one an issued invoice printed. Nothing was imported.",
+    "refusal.bank_file_duplicate": "This bank file was imported before. Nothing was imported again.",
+    "refusal.bank_import_format_mismatch":
+      "This account's bank files are imported in the other format. Nothing was imported; a manager can change the account's format.",
     "workRefusal.source_not_invoiceable":
       "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
     "workRefusal.source_changed":
@@ -1231,6 +1236,11 @@ export const invoicesCatalog = {
     "refusal.mixed_currency": "Det valgte arbeidet er i mer enn én valuta, og én faktura er i én valuta.",
     "refusal.currency_not_nok": "Det valgte arbeidet er ikke i NOK, den eneste valutaen denne modulen fakturerer i.",
     "refusal.too_many_lines": "Gruppert slik blir arbeidet mer enn 500 linjer. Velg en grovere gruppering.",
+    "refusal.bank_account_unknown":
+      "Bankfilen nevner en konto som verken er selgerens bankkonto eller en som en utstedt faktura har skrevet ut. Ingenting ble importert.",
+    "refusal.bank_file_duplicate": "Denne bankfilen er importert før. Ingenting ble importert på nytt.",
+    "refusal.bank_import_format_mismatch":
+      "Bankfilene til denne kontoen importeres i det andre formatet. Ingenting ble importert; en administrator kan endre kontoens format.",
     "workRefusal.source_not_invoiceable":
       "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
     "workRefusal.source_changed":

@@ -510,6 +510,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/bank-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the imported bank files
+         * @description The imported bank files, newest first (D3), each with its lines counted by status — a file with pending lines has some not yet matched. page and pageSize are the codebase's paging, 25 by default, at most 100.
+         */
+        get: operations["getInvoicesBankFiles"];
+        put?: never;
+        /**
+         * Import a bank file
+         * @description Imports an OCR giro or camt.054 (.001.02 or .001.08) file of incoming payments (invoices payments and reminders design D3), all or nothing, in order: the one multipart part named file, at most 10 MiB; its format detected; the file parsed and checked against its own control totals, every booking day on or before today in Oslo and not before 2000, at most 5 000 transactions, every booked amount in NOK; every account it names the seller's bank account or one an issued document printed (409 bank_account_unknown); the same bytes or the same file identity imported before (409 bank_file_duplicate, naming the earlier import); the bytes stored once in the object store under bank-files/<sha256>.<ocr|xml>, outside any transaction (503 storage_unavailable without one); then one transaction — the file's accounts first, in account order, the first import of an account setting its format, a file of the other format refused (409 bank_import_format_mismatch); the file row; every line in one insert ordered by fingerprint, a line an earlier or overlapping file already brought kept as a duplicate row linked to it. Every line that is not a duplicate is left pending for matching.
+         */
+        post: operations["postInvoicesBankFiles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/bank-files/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get an imported bank file
+         * @description One imported bank file and every line it brought, duplicates included, in the order they were stored (D3).
+         */
+        get: operations["getInvoicesBankFilesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/bank-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the bank import accounts
+         * @description Every receiving account a bank file was imported for (D3), in account order, with its format, the previous format and cutover a change kept, its latest file and the latest booking day of its lines.
+         */
+        get: operations["getInvoicesBankAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/bank-accounts/{account}/format": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change an account's bank file format
+         * @description Changes the format an account's bank files come in (D3): the account's row locked; the same format answers the account unchanged; another keeps the old one as previousFormat with cutoverThrough, the latest booking day of the account's own lines in the old format (absent when it has none), and sets the new one — matching then holds back a line of the new format booked on or before the cutover, which the old format may already have registered (D4). A change of bank is a new account, with its own row.
+         */
+        put: operations["putInvoicesBankAccountsByAccountFormat"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/journal": {
         parameters: {
             query?: never;
@@ -578,6 +662,8 @@ export interface components {
         InvoicesMetaCapabilities: {
             /** @description invoices:create — create, edit and delete drafts, and preview a draft. */
             canCreate: boolean;
+            /** @description invoices:payments — import OCR giro and camt.054 bank files, and read the imported files and their accounts. */
+            canImportBankFiles: boolean;
             /** @description invoices:issue — issue a draft, and create a credit-note draft. */
             canIssue: boolean;
             /** @description invoices:manage — the seller record, the series start and the VAT codes. */
@@ -970,6 +1056,127 @@ export interface components {
             /** Format: int32 */
             revision: number;
             safTCode: string;
+        };
+        /** @description One receiving account a bank file was imported for (invoices payments and reminders design D3). format is the format its files come in — ocr or camt054 — set by its first import and changed only by PUT /invoices/bank-accounts/{account}/format; previousFormat and cutoverThrough are what the last change kept: the old format and the latest booking day of the account's own lines in it, absent when the account has none (matching then holds back what the old format may already have registered, D4). lastFileId and lastUploadedAt are the latest file naming the account; lastBookedOn the latest booking day of any of its lines. */
+        InvoicesBankAccount: {
+            /** @description The account's 11 digits. */
+            account: string;
+            /** Format: date */
+            cutoverThrough?: string;
+            format: string;
+            /** Format: date */
+            lastBookedOn?: string;
+            /** Format: int64 */
+            lastFileId?: number;
+            /** Format: date-time */
+            lastUploadedAt?: string;
+            previousFormat?: string;
+            /** Format: date-time */
+            setAt: string;
+            /** Format: uuid */
+            setBy: string;
+        };
+        /** @description PUT /invoices/bank-accounts/{account}/format's body (D3). format is ocr or camt054. */
+        InvoicesBankAccountFormatRequest: {
+            format: string;
+        };
+        /** @description GET /invoices/bank-accounts — every account a bank file was imported for, in account order. */
+        InvoicesBankAccountsResponse: {
+            data: components["schemas"]["InvoicesBankAccount"][];
+        };
+        /** @description One imported bank file (D3): its format (ocr or camt054), the SHA-256 of its bytes, the accounts it names, the first and last booking days of its transactions (absent without any), how many transactions it brought (duplicates among them: the lines an earlier or overlapping file had already brought, kept as duplicate rows), how many of its lines were ignored and why (ignoredKinds), who uploaded it and when, and its lines counted by status — pending (not yet matched), exceptions and matched. */
+        InvoicesBankFile: {
+            accounts: string[];
+            /** Format: int32 */
+            duplicates: number;
+            /** Format: int32 */
+            exceptions: number;
+            /** Format: date */
+            firstBookedOn?: string;
+            format: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: int32 */
+            ignored: number;
+            ignoredKinds: components["schemas"]["InvoicesBankIgnored"];
+            /** Format: date */
+            lastBookedOn?: string;
+            /** Format: int32 */
+            matched: number;
+            /** Format: int32 */
+            pending: number;
+            sha256: string;
+            /** Format: int32 */
+            transactions: number;
+            /** Format: date-time */
+            uploadedAt: string;
+            /** Format: uuid */
+            uploadedBy: string;
+        };
+        /** @description GET /invoices/bank-files/{id} — the file and every line it brought, duplicates included, in the order they were stored. */
+        InvoicesBankFileDetail: {
+            file: components["schemas"]["InvoicesBankFile"];
+            transactions: components["schemas"]["InvoicesBankTransaction"][];
+        };
+        /** @description A bank file's ignored lines by kind (D3): debit (a camt.054 debit entry that is not a reversal), notBooked (a camt.054 entry not booked), cardInformation (OCR card information, types 18-21) and zeroAmount (a transaction of 0.00). */
+        InvoicesBankIgnored: {
+            /** Format: int32 */
+            cardInformation: number;
+            /** Format: int32 */
+            debit: number;
+            /** Format: int32 */
+            notBooked: number;
+            /** Format: int32 */
+            zeroAmount: number;
+        };
+        /** @description POST /invoices/bank-files' 201 (D3 step 9): the file row; transactions, the lines it brought; matched and matchedAmount, the lines registered as payments; exceptions and exceptionsAmount, the lines queued; duplicates, the lines an earlier or overlapping file had already brought; ignored, by kind; pending, the lines not yet matched. Until matching runs on an import, every line that is not a duplicate is pending. */
+        InvoicesBankImportResult: {
+            /** Format: int32 */
+            duplicates: number;
+            /** Format: int32 */
+            exceptions: number;
+            /** Format: double */
+            exceptionsAmount: number;
+            file: components["schemas"]["InvoicesBankFile"];
+            ignored: components["schemas"]["InvoicesBankIgnored"];
+            /** Format: int32 */
+            matched: number;
+            /** Format: double */
+            matchedAmount: number;
+            /** Format: int32 */
+            pending: number;
+            /** Format: int32 */
+            transactions: number;
+        };
+        /** @description One line of a bank file (D3), as the bank wrote it: lineRef (OCR assignment/transaction, camt.054 notification/entry/transaction), the receiving account, direction (credit, or debit for a reversal), negative (an OCR line with a minus sign), the booking, value and ordering days (orderedOn is OCR's alone), the amount, the KID as written (absent without one), the remittance text, the debtor's name and account, the bank's archive reference; and its state — status pending, matched, exception, resolved or duplicate, the reason it was queued, and duplicateOfId, the line it duplicates. */
+        InvoicesBankTransaction: {
+            account: string;
+            /** Format: double */
+            amount: number;
+            archiveRef: string;
+            /** Format: date */
+            bookedOn: string;
+            debtorAccount: string;
+            debtorName: string;
+            direction: string;
+            /** Format: int64 */
+            duplicateOfId?: number;
+            /** Format: int64 */
+            id: number;
+            kid?: string;
+            lineRef: string;
+            negative: boolean;
+            /** Format: date */
+            orderedOn?: string;
+            reason?: string;
+            remittanceText: string;
+            status: string;
+            /** Format: date */
+            valueOn?: string;
+        };
+        PaginatedResponseOfInvoicesBankFile: {
+            data: components["schemas"]["InvoicesBankFile"][];
+            pagination: components["schemas"]["PaginationMetadata"];
         };
         /** @description The buyer snapshot (D4), written at issue from the customer's billing profile and printed from, never re-read. A credit note carries its original's. */
         InvoicesBuyer: {
@@ -3678,6 +3885,273 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
                 };
+            };
+        };
+    };
+    getInvoicesBankFiles: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfInvoicesBankFile"];
+                };
+            };
+            /** @description Bad Request — paging out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoicesBankFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created — the file imported, and what became of its lines. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBankImportResult"];
+                };
+            };
+            /** @description Bad Request — on 'file' — no part named file or two of them, an empty part, a part or a body past 10 MiB, not an OCR giro or camt.054 file, or a file its own rules refuse (the message names the record or the element). Nothing is stored. A body that is not multipart at all is a bare 400. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — bank_account_unknown (the detail names the account's last four digits), bank_file_duplicate (with bankFileId, uploadedAt and uploadedBy of the earlier import) or bank_import_format_mismatch (the detail names the account and its format). Nothing is written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable, before anything is written. A bank file is the documentation of the payments booked from it, kept like the PDFs. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesBankFilesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBankFileDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no bank file has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getInvoicesBankAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBankAccountsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putInvoicesBankAccountsByAccountFormat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesBankAccountFormatRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the account as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBankAccount"];
+                };
+            };
+            /** @description Bad Request — on 'format', neither ocr nor camt054; or a body that did not decode. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no bank file was ever imported for that account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

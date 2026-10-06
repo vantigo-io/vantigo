@@ -94,6 +94,10 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.timesheet_rows` | The timesheet as printed, a snapshot: the position, the time entry, the person's label, the date, the hours, the work type and the description — never the entry's note. Written whole while the document's `timesheet` flag is on, pruned by every save to the hours the draft still holds ([The timesheet](#the-timesheet)); frozen with its document at issue, deleted with a deleted draft. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
 | `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
+| `invoices.bank_import_accounts` | One row per receiving account a bank file was imported for: the `format` its files come in (`ocr` or `camt054`), set by its first import, and — once a manager changed it — the `previous_format` with `cutover_through`, the latest booking day of the account's own lines in it; who set it and when. Never deleted; an update changes only those columns ([Bank files](#bank-files-and-the-exception-queue)). |
+| `invoices.bank_files` | One imported bank file: its format, the SHA-256 of its bytes and its own identity (each unique), the object key it is stored under, its size, the accounts it names, the first and last booking day of its lines, how many transactions it brought, how many of them were `duplicates` (set once by the import, from `NULL`), how many lines were `ignored` and `ignored_kinds` by kind, who uploaded it and when. Never deleted or changed but by that one write. |
+| `invoices.bank_transactions` | One line of a bank file as the bank wrote it — the line reference, the format, the receiving account, the direction, `negative`, the booking, value and ordering days, the amount (above 0, NOK), the KID, the remittance text, the debtor's name and account, the archive reference, the bank's code — its `fingerprint` and `ordinal`, `duplicate_of_id` when it repeats a live line, and its state: `status` (`pending`, `matched`, `exception`, `resolved` or `duplicate`), the `reason` it was queued for, the suggested invoice and the resolution. One live line per account and fingerprint (`ux_bank_transactions_fingerprint`). Never deleted; only the state columns change, never back to `pending`, and a reason once set stays. |
+| `invoices.bank_transaction_events` | What happened to a line, by whom and when — matched, queued and the queue's actions — with a reason and a note. Insert-only, but for its note blanked by an erase. |
 | `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient (`''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
 | `invoices.erased_customers` | The customers this module has anonymised, by id, with when: the marker a send and the delivery, payment and transmission triggers read. Never removed. |
 | `invoices.access_point_credentials` | One row (`id = 1`): the access point provider (`storecove`), its settings that are not secret (`settings_json`), the API key sealed by the secrets box, `rejected_at` once the provider refused the key, and `updated_at`. Kept off the settings row every issue reads `FOR SHARE`. |
@@ -1764,6 +1768,153 @@ other failure to apply it — a lost connection, a lock timeout — and a read o
 acknowledgement that fails end the cycle unacknowledged, and the next one reads the same
 event again.
 
+## Bank files and the exception queue
+
+Phase 4 reads the bank's own record of the money that arrived
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
+D3). A person with `invoices:payments` uploads a file of incoming payments; the import
+checks it all or nothing, keeps the file, and stores each payment in it as a bank line.
+**Until matching runs on an import, every line it stores is `pending`** — a line becomes
+a payment against an invoice, or a case for a person, only through matching, which is
+not part of this release yet.
+
+**Two formats.** `POST /invoices/bank-files` takes one multipart part named `file`, at
+most 10 MiB (the operation's own body limit, 10 MiB and 64 KiB for the framing). The
+format is detected from the bytes, a UTF-8 byte-order mark dropped first: an **OCR
+giro** file (Mastercard Payment Services' format, the OCR/KID agreement's) when the first
+non-blank line, CR/LF stripped, is 80 characters beginning `NY000010`; a **camt.054**
+notification when the document's root is `Document` in the namespace
+`urn:iso:std:iso:20022:tech:xsd:camt.054.001.02` or `…001.08`. Anything else is 400 on
+`file`, "Not an OCR giro or camt.054 file". A part missing, sent twice, empty or past the
+limit, and a body past the operation's limit, are the same 400 on `file`.
+
+**Checked all or nothing.** The parser (package
+[`bankfile`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/invoices/bankfile),
+a leaf that reads no database) refuses the whole file at the first rule it breaks, and
+the 400 on `file` names where — `record 7: …` for an OCR record, the element's path such
+as `Ntry[2]/NtryDtls/TxDtls[1]/Amt: …` for camt.054. Nothing is stored or written.
+
+- **OCR giro**: every record exactly 80 characters, starting `NY`; the records in the
+  grammar `10 (20 (30 31 [32])+ 88)+ 89`; an amount item's second and third records share
+  its first's transaction number and type, the third present exactly for types 20 and 21;
+  per assignment and per transmission, the transaction count, the record count (start and
+  end records included), the **signed** sum (a line with the sign `-` subtracts; a type 18
+  or 20 reversal adds, as the specification says) and the first and last settlement date
+  equal the end records'; service code 09 only; dates DDMMYY in 2000–2099; a KID of digits
+  with an optional trailing `-` (MOD11); amounts at most `numeric(14,2)`. The text of a
+  type 20 or 21 is read as ISO-8859-1.
+- **camt.054**: read with a strict XML decoder; a `DOCTYPE` or any other declaration
+  refused, at most 64 levels of nesting and 10 000 elements plus 100 per transaction, the
+  encodings UTF-8, ISO-8859-1 and US-ASCII only — a hostile file is refused, not parsed;
+  both versions' paths; per entry, the transactions' amounts sum to the entry's and their
+  count equals `Btch/NbOfTxs` when present, and `TxsSummry` agrees when present; **every
+  booked amount is in NOK** — the entry's, and `.08`'s transaction amount and
+  `AmtDtls/TxAmt` — a missing currency counting as not NOK, so a file in another currency
+  is refused whole (research case m); an instructed, counter-value or remitted amount
+  and a charge are not judged; an amount has at most two decimals. The ISO 20022 schemas
+  are not validated at run time.
+- **Both**: every booking day on or before today (Oslo, the request's one clock read)
+  and not before 2000-01-01; at most 5 000 transactions, since each is later matched in a
+  transaction of its own.
+
+**What becomes a line.** OCR: every amount item of types 10–17 (the giro kinds), its
+amount in øre; a line with the sign `-` is stored with `negative` set. Types 18–21 (card
+information — Vantigo has no terminal agreement) are checked, summed and **ignored**,
+counted `card_information`. camt.054: every transaction (`TxDtls`) of a booked (`BOOK`)
+credit entry — an entry without transactions is one line of its own amount; a debit
+entry only when it is a reversal (`RvslInd` true, or the bank code `PMNT/…/RRTN`), stored
+with `direction` `debit`; any other debit entry is ignored `debit`, an entry not booked
+`not_booked`. A transaction of 0.00 in either format is ignored `zero_amount`. Each line
+keeps what the bank wrote: `line_ref` (OCR `<assignment>/<transaction>`, camt
+`<notification>/<entry>/<transaction>`, 1-based), the receiving account, the booking day
+(OCR's settlement date, camt's `BookgDt`), the value day, OCR's ordering day
+(`ordered_on`, `Oppdragsdato`; camt has none), the amount, the KID as written (the first
+`SCOR` reference in camt; none is `NULL`), the remittance text (camt's `Ustrd` lines
+joined by a space, else the entry's `AddtlNtryInf`, else OCR's text; at most 1 000
+characters), the debtor's name and account, the archive reference (OCR's
+`Arkivreferanse`, camt's `TxDtls/Refs/AcctSvcrRef`) and the bank's transaction code.
+
+**The account** (research case m). Every account a file names — OCR's assignment
+account, camt's `Ntfctn/Acct`, a Norwegian IBAN read as its 11-digit BBAN — must be the
+seller's **Bank account** or one an issued invoice printed (its `seller_bank_account`
+snapshot), so a payment to an account the seller had before is still read. Otherwise the
+file is 409 **`bank_account_unknown`**, its detail naming the account's last four digits.
+
+**The file twice.** A file's SHA-256 and its own identity — OCR's
+`sender:transmission:recipient` from the start record (`Dataavsender`,
+`Forsendelsesnummer`, `Datamottaker`), camt's `MsgId|CreDtTm` — are each unique
+(`uq_bank_files_sha256`, `uq_bank_files_identity`, the latter per format). Either seen
+before is 409 **`bank_file_duplicate`** with `bankFileId`, `uploadedAt` and
+`uploadedBy` of the earlier import: read on the pool first, the hash before the identity,
+before anything is stored; an import that commits the same file meanwhile is caught by
+the unique index inside the transaction and answered the same way.
+
+**Stored once.** Before the transaction, the bytes are stored under the module's scope
+as `bank-files/<sha256>.ocr` or `bank-files/<sha256>.xml` — `Exists` first, `Put` only when
+absent, the PDFs' shape — because the file is the documentation of the payments booked
+from it (bokføringsloven § 10) and is kept like them: never deleted or overwritten
+([object storage](/en/admin/object-storage/)). Without an object store, or when the store
+fails, the import is 503 `storage_unavailable` and nothing is written. An object stored
+by a request that then fails is harmless: the same bytes land on the same key, and the
+next import of them finds it there.
+
+**One transaction**, READ COMMITTED, in this order:
+
+1. **The file's accounts, in account order** (`lockImportAccounts`): the accounts not
+   seen before inserted with the file's format — an account's first import sets its
+   format — then every one read `FOR SHARE`. An account whose format is not the file's is
+   409 **`bank_import_format_mismatch`**, the detail naming the account and its format,
+   and the whole import is rolled back (an account the refused file named for the first
+   time gets no row). These are the transaction's first statements, so two first imports
+   of overlapping files queue on the same rows in the same order.
+2. **The file row**, `duplicates` still `NULL`.
+3. **Every line in one `INSERT … ON CONFLICT DO NOTHING`, ordered by fingerprint**,
+   against `ux_bank_transactions_fingerprint` — one live line per account and
+   fingerprint. Two overlapping imports wait on that index in the same order, so they
+   never deadlock: the second waits for the first, then skips what the first committed.
+4. **The lines the conflict skipped**, inserted again as `duplicate` rows whose
+   `duplicate_of_id` names the live line of the same account and fingerprint; the
+   partial index leaves them out for good, so a skipped line is kept and visible, not
+   only counted.
+5. The file's `duplicates` set, once, from `NULL` (the only write `bank_files` takes).
+
+No line event is written by the import: a line's first event is its matching.
+
+**The fingerprint** is the hex SHA-256 over the receiving account, the booking day, the
+amount in øre with its sign, the KID — or, without one, the remittance text trimmed,
+case-folded and its whitespace collapsed — the debtor's account and the archive
+reference when present, and an **ordinal**: the n-th line with all the rest identical in
+the same file. The same file again under a new identity, or a file overlapping an earlier
+one, reproduces the ordinals, so its lines become `duplicate` rows; two identical
+payments in one file stay two. Two genuine identical payments of one day split across
+two files without a reference collide, and the second is a `duplicate` row a person can
+treat as distinct.
+
+**The account's format and its cutover.** `GET /invoices/bank-accounts`
+(`invoices:payments`) lists every account a file was imported for, in account order:
+its format, the previous format and cutover a change kept, who set it and when, its
+latest file and the latest booking day of its lines. `PUT
+/invoices/bank-accounts/{account}/format` (`invoices:manage`) takes `{format}`, `ocr` or
+`camt054` (else 400 on `format`), and locks the account's row `FOR UPDATE` — its only
+lock. The same format answers the account unchanged; another keeps the old one as
+`previous_format` with **`cutover_through` the latest booking day of the account's own
+lines in the old format** — never a file's `last_booked_on`, which a file naming two
+accounts can push past this one's — or `NULL` when it has none, and sets the new one. An
+account never imported is 404. Matching holds back a line of the new format booked on or
+before the cutover, which the old format may already have registered. A change of bank
+is a new account and gets its own row.
+
+**The reads.** `GET /invoices/bank-files` (`invoices:payments`) pages the files newest
+first, each with its lines counted by status — `pending`, `exceptions`, `matched` — and
+`duplicates`, `ignored` and `ignoredKinds` (`debit`, `notBooked`, `cardInformation`,
+`zeroAmount`). `GET /invoices/bank-files/{id}` answers `{file, transactions}`, every line
+the file brought, duplicates included, in the order they were stored (by fingerprint).
+The import's 201 answers the file, `transactions`, `matched` and `matchedAmount`,
+`exceptions` and `exceptionsAmount`, `duplicates`, `ignored` by kind and `pending`; with
+no matching yet, `matched` and `exceptions` are 0 and `pending` is every line that is
+not a duplicate. `GET /meta` answers `capabilities.canImportBankFiles`,
+`invoices:payments`.
+
 ## The journal
 
 `GET /invoices/journal?from&to` lists the issued documents with an issue date in the
@@ -1993,8 +2144,8 @@ No built-in role holds any of these; Owner has the wildcard.
 | `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats. |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one. |
-| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, and the access point's credentials. |
-| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason. |
+| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, and the format a bank account's files are imported in. |
+| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts. |
 
 `invoices:payments` is sensitive because a registration changes what the company says it
 is owed, and a wrong one is corrected only by a removal that stays on record.
@@ -2076,6 +2227,11 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /{id}/transmissions/{transmissionId}/cancel` | `invoices:issue` | 404 the document, or a transmission not its own; 409 `transmission_not_cancellable` |
 | `POST /{id}/transmissions/{transmissionId}/resolve` | `invoices:issue` | 400 on `outcome` (not `delivered` or `failed`) or `note` (empty, over 500); 404 the document, or a transmission not its own; 409 `transmission_not_resolvable` |
 | `GET /{id}/transmissions/{transmissionId}/ubl` | | 404 the document, or a transmission not its own; 500 a missing or altered stored UBL; 503 `storage_unavailable` |
+| `POST /bank-files` | `invoices:payments` | 400 on `file` (the part, the format, the file's own rules); 409 `bank_account_unknown`, `bank_file_duplicate` (with `bankFileId`, `uploadedAt`, `uploadedBy`); 503 `storage_unavailable`; then under the accounts' lock 409 `bank_import_format_mismatch`, `bank_file_duplicate` |
+| `GET /bank-files` | `invoices:payments` | 400 paging |
+| `GET /bank-files/{id}` | `invoices:payments` | 404 |
+| `GET /bank-accounts` | `invoices:payments` | |
+| `PUT /bank-accounts/{account}/format` | `invoices:manage` | 400 on `format`; 404 an account never imported |
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |
 | `GET /export.csv` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, more than 5000 rows |
 | `GET /stats/summary` | | 400 `from` after `to` |

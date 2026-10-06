@@ -35,6 +35,9 @@ application.
   over the Peppol network: the Storecove account and its credentials, the switches, the
   two workers that carry each document, what to do when one is unconfirmed or failed,
   and the KID agreement to ask the bank for.
+- **Payments.** [Payments from the bank](/en/admin/payments/) is the bank agreement that
+  gives you OCR giro or camt.054 files of incoming payments, where each bank lets you
+  download them, and the format each account's files are imported in.
 
 ## The complete configuration reference
 

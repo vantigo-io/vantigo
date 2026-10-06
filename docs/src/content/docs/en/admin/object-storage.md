@@ -5,6 +5,7 @@ sidebar:
   order: 41
 sources:
   - apps/server/internal/storage
+  - apps/server/internal/invoices/bankimport.go
 ---
 Object storage is the application port Communications stages and serves attachments
 through. Modules never talk to a provider SDK: they receive an `ObjectStore` scoped
@@ -104,7 +105,13 @@ three more beside it, kept the same way: the EHF as submitted,
 the document is sent; and, once the access point confirms delivery, its receipt
 `documents/<id>/<number>-<transmission>-receipt.json` and the copy it delivered
 `documents/<id>/<number>-<transmission>-delivered.xml`
-([E-invoicing](/en/admin/e-invoicing/#the-objects-written)). A scoped store refuses a
+([E-invoicing](/en/admin/e-invoicing/#the-objects-written)). An imported bank file is
+kept as it was uploaded, under `bank-files/<sha256>.ocr` (an OCR giro file) or
+`bank-files/<sha256>.xml` (a camt.054 file) — keyed by the hash of its bytes, stored once
+before the import's transaction and never deleted or overwritten, since it is the
+documentation of the payments booked from it (bokføringsloven § 10); an import that
+fails after storing it leaves an object the next import of the same bytes reuses
+([Payments from the bank](/en/admin/payments/)). A scoped store refuses a
 relative key that equals its scope or already begins with `{scope}/`: callers pass
 relative keys only and must never construct the prefix themselves.
 
