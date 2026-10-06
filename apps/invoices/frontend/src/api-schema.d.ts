@@ -186,6 +186,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/overdue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the overdue invoices
+         * @description The overdue list (invoices payments and reminders design D12): the issued invoices whose state is overdue today in Oslo — and, with charges=outstanding, also the paid ones whose charges are still outstanding — filtered by customerId and dueBefore (a due date before that day). Past 5 000 of them, 409 too_many_overdue asks for customerId or dueBefore. The whole set is read on the pool in a handful of statements and judged by the reminder engine, invoice by invoice, before the action filter (reminder, collection_notice, hand_off, blocked, waiting) and the page apply (M7); the oldest due date first. page and pageSize are the codebase's paging, 25 by default, at most 100. With the bank data's freshness and the warnings that apply.
+         */
+        get: operations["getInvoicesOverdue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/reminder-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the reminder runs
+         * @description The reminder runs, newest first (D10), each with the letters it made and the items it skipped once it finished. page and pageSize are the codebase's paging, 25 by default, at most 100.
+         */
+        get: operations["getInvoicesReminderRuns"];
+        put?: never;
+        /**
+         * Preview or make a reminder run
+         * @description A reminder run (invoices payments and reminders design D10). dryRun true is the preview: every overdue invoice whose next action is a reminder or a collection notice due today or earlier, each with its letter as it would go today, its channel and recipient (read from the customers' billing profiles, one directory call per customer), the invoices blocked or waiting, the bank data's freshness and the warnings — 200, nothing written, no lock taken; past 5 000 overdue invoices, 409 too_many_overdue. dryRun false runs items (1 to 500, each invoice once, each an issued invoice with the action its preview showed; 400 on items otherwise), refused in order: reminders_disabled; then, judged on the pool before anything is written, collection_rates_outdated (an item's letter needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (an item would carry a fee or be a collection notice past the regime review under the 1988 regime) and bank_import_stale (the bank data is stale, an item would carry a fee, the compensation or interest, and acknowledgeStaleImport is not true, with lastBookedOn) — letters without charges are never held back by it. Then the items' billing profiles are read, before any lock; the run row; and per item one transaction — the invoice FOR UPDATE and every figure after it — that skips customer_anonymised or action_changed (the engine no longer gives the item's action), or inserts the letter: queued for e-mail, awaiting_print for paper, without facts. The run's counts are set once at its end. 201.
+         */
+        post: operations["postInvoicesReminderRuns"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/reminder-runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a reminder run
+         * @description One reminder run and its letters with their current status, in the order it made them (D10, plan reading 26). The items it skipped are answered by the run itself only; the run keeps their count.
+         */
+        get: operations["getInvoicesReminderRunsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/vat-codes": {
         parameters: {
             query?: never;
@@ -882,6 +946,8 @@ export interface components {
             canManage: boolean;
             /** @description invoices:payments — register a payment against an issued invoice, and remove a registration with a reason. */
             canRegisterPayments: boolean;
+            /** @description invoices:payments — preview and make reminder runs, and read the runs. */
+            canRunReminders: boolean;
             /** @description invoices:issue and mailAvailable — send an issued document to the customer by e-mail. */
             canSend: boolean;
             /** @description invoices:issue and ehfAvailable — send an issued document to the customer as EHF over Peppol. */
@@ -905,6 +971,8 @@ export interface components {
             ehfAvailable: boolean;
             /** @description Whether this installation's mail driver is smtp. Without it nothing can be sent (503 mail_unavailable), and canSend is false. */
             mailAvailable: boolean;
+            /** @description Whether reminders are offered at all — the reminder settings' enabled (invoices payments and reminders design D7). Off, every invoice's next action is blocked reminders_disabled and a run is refused. */
+            remindersEnabled: boolean;
             /** @description The seller fields issuing still needs, by their camelCase names (legalName, organisationNumber, addressLine1, postalCode, city, bankAccount). Empty when the seller is complete. */
             missingSellerFields: string[];
             /** @description Whether the seller record is complete enough to issue. Issuing is refused with 409 seller_incomplete until it is. */
@@ -950,7 +1018,7 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -1334,6 +1402,323 @@ export interface components {
             /** Format: int32 */
             staleImportDays: number;
         };
+        /** @description The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in Oslo — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run. */
+        InvoicesBankFreshness: {
+            /** Format: date */
+            lastBookedOn?: string;
+            ocrAccounts: string[];
+            stale: boolean;
+            /** Format: int32 */
+            staleImportDays: number;
+        };
+        /** @description An invoice's hand-off to a collection agency (D11), as read. While it is live — withdrawnOn absent — no letter is made and payments are still registered. */
+        InvoicesHandoff: {
+            agency: string;
+            agencyReference: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string;
+            /** Format: date */
+            handedOn: string;
+            /** Format: int64 */
+            id: number;
+            note: string;
+            withdrawalReason?: string;
+            /** Format: uuid */
+            withdrawnBy?: string;
+            /** Format: date */
+            withdrawnOn?: string;
+        };
+        /** @description An invoice's hold (D11), as read — disputed. While it is live — liftedAt absent — no letter is made; a lift with chargesAllowed false barred fees and the compensation for good. */
+        InvoicesHold: {
+            chargesAllowed?: boolean;
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            kind: "disputed";
+            liftNote?: string;
+            /** Format: date-time */
+            liftedAt?: string;
+            /** Format: uuid */
+            liftedBy?: string;
+            note: string;
+            /** Format: date-time */
+            placedAt: string;
+            /** Format: uuid */
+            placedBy: string;
+        };
+        /** @description A run of days bearing late interest on one base at one rate (D8), both days counted; rate is percent a year. */
+        InvoicesInterestSegment: {
+            /** Format: double */
+            base: number;
+            /** Format: date */
+            from: string;
+            /** Format: double */
+            rate: number;
+            /** Format: date */
+            to: string;
+        };
+        /** @description An invoice's latest letter that was not withdrawn (D12), by sequence; sentOn and deadline once it is printed or sent. */
+        InvoicesLastLetter: {
+            announcesCollection: boolean;
+            /** Format: date */
+            deadline?: string;
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            level: "reminder" | "collection_notice";
+            /** Format: date */
+            sentOn?: string;
+            /** Format: int32 */
+            sequence: number;
+            /** @enum {string} */
+            status: "queued" | "awaiting_print" | "printed" | "sent" | "failed";
+        };
+        /** @description A letter as it would be sent today (D8, D9): its level, whether it announces the hand-off (the 2026 regime), the regime, the charge it claims and the amounts apart — the principal open, chargesEarlier (the earlier letters' fees and compensation not waived or paid; negative when charge payments beyond them pay this letter's own charge), this letter's fee or compensation, the cumulative interest from interestFrom with its segments, what of it is waived and paid — and the total: principalOpen + chargesEarlier + fee + compensation + interest − interestWaived (never below zero) − interestPaid. inkassosats is the rate the fee came from. deadline is max(deadline days, 14) after today, moved off a weekend or a public holiday. */
+        InvoicesLetterFacts: {
+            announcesCollection: boolean;
+            /** Format: double */
+            chargesEarlier: number;
+            /** Format: double */
+            compensation: number;
+            /** Format: date */
+            deadline: string;
+            /** Format: double */
+            fee: number;
+            /** @enum {string} */
+            feeKind: "none" | "reminder_fee" | "compensation";
+            /** Format: double */
+            inkassosats?: number;
+            /** Format: double */
+            interest: number;
+            /** Format: date */
+            interestFrom?: string;
+            /** Format: double */
+            interestPaid: number;
+            interestSegments: components["schemas"]["InvoicesInterestSegment"][];
+            /** Format: double */
+            interestWaived: number;
+            /** @enum {string} */
+            level: "reminder" | "collection_notice";
+            /** Format: double */
+            principalOpen: number;
+            /** @enum {string} */
+            regime: "inkassolov_1988" | "inkassolov_2026";
+            /** Format: double */
+            total: number;
+        };
+        /** @description What the reminder engine says to do next with an issued invoice today (D8): action reminder or collection_notice (a letter, due from earliestOn; letter is how it would go today when earliestOn is today or earlier), hand_off (suggested, never automatic; from earliestOn), blocked or waiting (with reasons; waiting until earliestOn), or none (the principal settled, or handed off). reasons: on_hold, handed_off, policy_none, reminders_disabled, letter_pending (a letter is on its way), waiting (the last letter's deadline and grace not yet passed), not_delivered (no delivery on or before the due date, so no collection notice or hand-off), collection_rates_outdated (with outdated naming the rate and half-year) and collection_regime_unreviewed. chargeNotes say why a letter claims less than it might: not_delivered, charges_barred, fee_cap_reached, fee_before_14_days and fee_deadline_not_missed. */
+        InvoicesNextAction: {
+            /** @enum {string} */
+            action: "reminder" | "collection_notice" | "hand_off" | "blocked" | "waiting" | "none";
+            chargeNotes: ("not_delivered" | "charges_barred" | "fee_cap_reached" | "fee_before_14_days" | "fee_deadline_not_missed")[];
+            /** Format: date */
+            earliestOn?: string;
+            letter?: components["schemas"]["InvoicesLetterFacts"];
+            outdated?: components["schemas"]["InvoicesOutdatedRate"];
+            reasons: ("on_hold" | "handed_off" | "policy_none" | "reminders_disabled" | "letter_pending" | "waiting" | "not_delivered" | "collection_rates_outdated" | "collection_regime_unreviewed")[];
+        };
+        /** @description The collection rate a letter needs and has no row for (D6, plan reading 5) — late_interest_percent, b2b_compensation_nok or inkassosats — and the half-year, as 2027-H1. */
+        InvoicesOutdatedRate: {
+            halfYear: string;
+            kind: string;
+        };
+        /** @description One overdue invoice (D12), judged by the reminder engine today: daysOverdue counted from the effective due date (the due date moved off a weekend or a public holiday), principalOpen, its charges apart (with interestToday, the late interest accrued to today as a letter today would claim it, present when interest applies), whether it was delivered on or before its due date, its latest letter, its next action, a live hold or hand-off, and its customer's reminder policy. */
+        InvoicesOverdueItem: {
+            buyerName: string;
+            buyerType?: string;
+            charges: components["schemas"]["InvoicesCharges"];
+            /** Format: int32 */
+            customerId: number;
+            /** Format: int32 */
+            daysOverdue: number;
+            delivered: boolean;
+            /** Format: date */
+            dueDate: string;
+            handoff?: components["schemas"]["InvoicesHandoff"];
+            hold?: components["schemas"]["InvoicesHold"];
+            /** Format: double */
+            interestToday?: number;
+            /** Format: int64 */
+            invoiceId: number;
+            /** Format: date */
+            issueDate: string;
+            lastLetter?: components["schemas"]["InvoicesLastLetter"];
+            nextAction: components["schemas"]["InvoicesNextAction"];
+            /** Format: int64 */
+            number: number;
+            /** @enum {string} */
+            policyMode: "normal" | "no_charges" | "none";
+            /** Format: double */
+            principalOpen: number;
+        };
+        /** @description GET /invoices/overdue (D12): one page of the overdue invoices, judged whole before the action filter and the page apply; total counts them after the filter. freshness is the bank data's. warnings: collection_rates_outdated (a rate a letter in use needs has no row for the current half-year, or a letter is blocked by one), collection_regime_unreviewed (the regime review has lapsed under the 1988 regime: fee letters and collection notices wait), collection_rate_differs_from_release (a release seeded another value over a rate a manager added), bank_data_stale and ocr_without_kid_payments (an account is imported as OCR giro). */
+        InvoicesOverdueResponse: {
+            freshness: components["schemas"]["InvoicesBankFreshness"];
+            items: components["schemas"]["InvoicesOverdueItem"][];
+            /** Format: int32 */
+            total: number;
+            warnings: ("collection_rates_outdated" | "collection_regime_unreviewed" | "collection_rate_differs_from_release" | "bank_data_stale" | "ocr_without_kid_payments")[];
+        };
+        /** @description A reminder letter (D10): made by a run without its facts, queued for e-mail or awaiting print for paper; its facts — sentOn, the deadline, the regime and the amounts — are written when it is sent (e-mail) or printed (paper) and frozen once sent. recipient is the address an e-mail letter goes to, empty for paper and once the customer is anonymised; it is answered only to a caller holding invoices:payments. */
+        InvoicesReminder: {
+            announcesCollection: boolean;
+            /** Format: int32 */
+            attempts: number;
+            /** @enum {string} */
+            channel: "email" | "paper";
+            chargeNotes?: string[];
+            /** Format: double */
+            chargesEarlier?: number;
+            /** Format: double */
+            compensation?: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string;
+            /** Format: date */
+            deadline?: string;
+            /** Format: date-time */
+            failedAt?: string;
+            /** Format: double */
+            fee?: number;
+            /** @enum {string} */
+            feeKind?: "none" | "reminder_fee" | "compensation";
+            /** Format: int64 */
+            id: number;
+            /** Format: double */
+            inkassosats?: number;
+            /** Format: double */
+            interest?: number;
+            /** Format: date */
+            interestFrom?: string;
+            /** Format: double */
+            interestPaid?: number;
+            interestSegments?: components["schemas"]["InvoicesInterestSegment"][];
+            /** Format: double */
+            interestWaived?: number;
+            /** Format: int64 */
+            invoiceId: number;
+            language: string;
+            lastError?: string;
+            /** @enum {string} */
+            level: "reminder" | "collection_notice";
+            /** Format: date-time */
+            nextAttemptAt?: string;
+            /** Format: double */
+            principalOpen?: number;
+            /** Format: int64 */
+            printBatchId?: number;
+            recipient?: string;
+            /** @enum {string} */
+            regime?: "inkassolov_1988" | "inkassolov_2026";
+            /** Format: int64 */
+            runId: number;
+            /** Format: date-time */
+            sentAt?: string;
+            /** Format: date */
+            sentOn?: string;
+            /** Format: int32 */
+            sequence: number;
+            /** @enum {string} */
+            status: "queued" | "awaiting_print" | "printed" | "sent" | "withdrawn" | "failed";
+            /** Format: double */
+            total?: number;
+            withdrawalReason?: string;
+            /** Format: date-time */
+            withdrawnAt?: string;
+            /** Format: uuid */
+            withdrawnBy?: string;
+        };
+        /** @description A reminder run (D10): when and by whom, the bank data's latest booking day it was made on, and whether the caller confirmed a run with charges on stale bank data. letters and skipped are set once at its end; a run that stopped half-way has neither. */
+        InvoicesReminderRun: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: date */
+            lastBookedOn?: string;
+            /** Format: int32 */
+            letters?: number;
+            /** Format: date */
+            runOn: string;
+            /** Format: int32 */
+            skipped?: number;
+            staleImportAcknowledged: boolean;
+        };
+        /** @description A run and its letters with their current status (plan reading 26), in the order it made them. */
+        InvoicesReminderRunDetail: {
+            letters: components["schemas"]["InvoicesReminder"][];
+            run: components["schemas"]["InvoicesReminderRun"];
+        };
+        /** @description One invoice of a run with the action the caller's preview showed for it. */
+        InvoicesReminderRunItem: {
+            /** @enum {string} */
+            action: "reminder" | "collection_notice";
+            /** Format: int64 */
+            invoiceId: number;
+        };
+        /** @description The run's preview (D10, dryRun true): every overdue invoice whose next action is a letter due today or earlier, each with the letter as it would go today, its channel and recipient and their warnings — reminder_email_missing (the customer wants e-mail and has no reminder address, so paper) and mail_unavailable (this installation cannot send e-mail, so paper) — the invoices blocked or waiting with their reasons, the bank data's freshness and the overdue list's warnings. Nothing is written and no lock is taken. */
+        InvoicesReminderRunPreview: {
+            blockedOrWaiting: components["schemas"]["InvoicesRunPreviewHeld"][];
+            freshness: components["schemas"]["InvoicesBankFreshness"];
+            letters: components["schemas"]["InvoicesRunPreviewLetter"][];
+            warnings: ("collection_rates_outdated" | "collection_regime_unreviewed" | "collection_rate_differs_from_release" | "bank_data_stale" | "ocr_without_kid_payments")[];
+        };
+        /** @description POST /invoices/reminder-runs' body (D10): dryRun true previews; dryRun false runs items — 1 to 500, each invoice once, each with the action its preview showed — and acknowledgeStaleImport true confirms a run with charges on stale bank data. */
+        InvoicesReminderRunRequest: {
+            acknowledgeStaleImport?: boolean;
+            dryRun: boolean;
+            items?: components["schemas"]["InvoicesReminderRunItem"][];
+        };
+        /** @description A run's answer (D10): the run, the letters it made — queued for e-mail or awaiting print for paper, without facts — and the items it skipped with why: customer_anonymised, or action_changed (the engine, judging the invoice under its lock, no longer gives the action the preview showed — paid meanwhile, another letter on its way, held, or newly outdated or unreviewed). */
+        InvoicesReminderRunResult: {
+            created: components["schemas"]["InvoicesReminder"][];
+            run: components["schemas"]["InvoicesReminderRun"];
+            skipped: components["schemas"]["InvoicesReminderRunSkip"][];
+        };
+        InvoicesReminderRunSkip: {
+            /** Format: int64 */
+            invoiceId: number;
+            /** @enum {string} */
+            reason: "customer_anonymised" | "action_changed";
+        };
+        /** @description An overdue invoice the run would not write to today, with its next action and the reasons. */
+        InvoicesRunPreviewHeld: {
+            buyerName: string;
+            /** Format: int32 */
+            customerId: number;
+            /** Format: int64 */
+            invoiceId: number;
+            nextAction: components["schemas"]["InvoicesNextAction"];
+            /** Format: int64 */
+            number: number;
+        };
+        /** @description A letter the run would make today, as it would go, with its channel, recipient and their warnings. */
+        InvoicesRunPreviewLetter: {
+            /** @enum {string} */
+            action: "reminder" | "collection_notice";
+            buyerName: string;
+            chargeNotes: ("not_delivered" | "charges_barred" | "fee_cap_reached" | "fee_before_14_days" | "fee_deadline_not_missed")[];
+            /** @enum {string} */
+            channel: "email" | "paper";
+            /** Format: int32 */
+            customerId: number;
+            /** Format: int64 */
+            invoiceId: number;
+            letter: components["schemas"]["InvoicesLetterFacts"];
+            /** Format: int64 */
+            number: number;
+            recipient: string;
+            warnings: ("reminder_email_missing" | "mail_unavailable")[];
+        };
+        PaginatedResponseOfInvoicesReminderRun: {
+            data: components["schemas"]["InvoicesReminderRun"][];
+            pagination: components["schemas"]["PaginationMetadata"];
+        };
         /** @description One VAT code with every rate period it has had (D3). inUse is true once any line, draft or issued, carries the code; from then on its category and SAF-T code cannot change (409 vat_code_in_use). */
         InvoicesVatCode: {
             active: boolean;
@@ -1662,7 +2047,7 @@ export interface components {
             timesheet?: boolean;
             yourReference?: string;
         };
-        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9). Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
+        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
         InvoicesInvoiceResponse: {
             allowedIssueDates?: string[];
             buyer?: components["schemas"]["InvoicesBuyer"];
@@ -1719,6 +2104,7 @@ export interface components {
             manualDeliveries?: components["schemas"]["InvoicesManualDelivery"][];
             /** Format: double */
             netTotal: number;
+            nextAction?: components["schemas"]["InvoicesNextAction"];
             note: string;
             /** Format: int64 */
             number?: number;
@@ -1754,6 +2140,8 @@ export interface components {
             refundDue?: number;
             /** @description On a save's answer only, the work the save dropped (invoices work design D2) — removed from every line, its line removed, the customer changed, or no longer invoiceable on a refresh — with the warning sources_released. Absent when nothing was dropped. */
             releasedSources?: components["schemas"]["InvoicesSourceRef"][];
+            /** @description On an issued invoice, every reminder letter (invoices payments and reminders design D10), any status, by sequence. */
+            reminders?: components["schemas"]["InvoicesReminder"][];
             /** Format: int32 */
             revision: number;
             seller?: components["schemas"]["InvoicesSeller"];
@@ -2011,6 +2399,11 @@ export interface components {
         InvoicesCharges: {
             /** Format: double */
             claimed: number;
+            /**
+             * Format: double
+             * @description The late interest accrued to today as a letter sent today would claim it — cumulative from the day after the effective due date, before waivers and what is paid of it (invoices payments and reminders design D8, D12). Present only when interest applies — late interest on, the customer's policy normal, the invoice delivered on or before its due date — and the rates cover the period.
+             */
+            interestToday?: number;
             /** Format: double */
             outstanding: number;
             /** Format: double */
@@ -2413,6 +2806,14 @@ export interface components {
             title?: string | null;
             type?: string | null;
         };
+        ProblemDetails: {
+            detail?: string | null;
+            instance?: string | null;
+            /** Format: int32 */
+            status?: number | null;
+            title?: string | null;
+            type?: string | null;
+        };
         PaginationMetadata: {
             hasNextPage: boolean;
             hasPreviousPage: boolean;
@@ -2424,14 +2825,6 @@ export interface components {
             totalCount: number;
             /** Format: int32 */
             totalPages: number;
-        };
-        ProblemDetails: {
-            detail?: string | null;
-            instance?: string | null;
-            /** Format: int32 */
-            status?: number | null;
-            title?: string | null;
-            type?: string | null;
         };
     };
     responses: never;
@@ -3128,6 +3521,235 @@ export interface operations {
                 };
             };
             /** @description Not Found — the customer has no document here, or is anonymised. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getInvoicesOverdue: {
+        parameters: {
+            query?: {
+                customerId?: number;
+                dueBefore?: string;
+                action?: "reminder" | "collection_notice" | "hand_off" | "blocked" | "waiting";
+                charges?: "outstanding";
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesOverdueResponse"];
+                };
+            };
+            /** @description Bad Request — paging out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — too_many_overdue, more than 5 000 invoices to judge; narrow by customerId or dueBefore. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesReminderRuns: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfInvoicesReminderRun"];
+                };
+            };
+            /** @description Bad Request — paging out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoicesReminderRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesReminderRunRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the preview (dryRun true). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesReminderRunPreview"];
+                };
+            };
+            /** @description Created — the run, its letters and the items it skipped. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesReminderRunResult"];
+                };
+            };
+            /** @description Bad Request — on items (none or more than 500, an invoice twice, an action that is not reminder or collection_notice, an id that is not an issued invoice). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — reminders_disabled, collection_rates_outdated (with kind and halfYear), collection_regime_unreviewed, bank_import_stale (with lastBookedOn), or on the preview too_many_overdue. Nothing is written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesReminderRunsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesReminderRunDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no run has that id. */
             404: {
                 headers: {
                     [name: string]: unknown;

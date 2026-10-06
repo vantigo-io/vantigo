@@ -480,6 +480,14 @@ export const invoicesCatalog = {
     "refusal.delivery_removed": "This delivery record is already removed.",
     "refusal.delivery_relied_on":
       "A reminder claims a charge that rests on this delivery, and no other delivery by the due date remains. Waive those charges as claimed in error first.",
+    "refusal.reminders_disabled": "Reminders are switched off in the reminder settings.",
+    "refusal.collection_rates_outdated":
+      "A letter of this run needs a collection rate for a half-year that has none. Add the rate, or wait for the release that brings it. No letter was made.",
+    "refusal.collection_regime_unreviewed":
+      "A letter of this run would claim a fee or be a debt collection notice after the collection-law regime was last reviewed. A manager reviews it in the reminder settings. No letter was made.",
+    "refusal.bank_import_stale":
+      "The latest bank file is old, and letters of this run claim charges. Import the latest bank file, or confirm the run.",
+    "refusal.too_many_overdue": "More than 5 000 invoices are overdue. Narrow the list by customer or by due date.",
     "workRefusal.source_not_invoiceable":
       "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
     "workRefusal.source_changed":
@@ -1269,6 +1277,14 @@ export const invoicesCatalog = {
     "refusal.delivery_removed": "Denne leveringen er allerede fjernet.",
     "refusal.delivery_relied_on":
       "En purring krever noe som hviler på denne leveringen, og ingen annen levering innen forfall står igjen. Ettergi først kravene med begrunnelsen «krevd ved en feil».",
+    "refusal.reminders_disabled": "Purringer er slått av i purreinnstillingene.",
+    "refusal.collection_rates_outdated":
+      "Et brev i denne kjøringen trenger en sats for et halvår som ikke har noen. Legg inn satsen, eller vent på utgivelsen som har den. Ingen brev ble laget.",
+    "refusal.collection_regime_unreviewed":
+      "Et brev i denne kjøringen ville kreve gebyr eller være et inkassovarsel etter at inkassoregelverket sist ble gjennomgått. En administrator gjennomgår det i purreinnstillingene. Ingen brev ble laget.",
+    "refusal.bank_import_stale":
+      "Den siste bankfilen er gammel, og brev i denne kjøringen krever gebyr, kompensasjon eller renter. Importer den siste bankfilen, eller bekreft kjøringen.",
+    "refusal.too_many_overdue": "Over 5 000 fakturaer har forfalt. Avgrens listen etter kunde eller forfallsdato.",
     "workRefusal.source_not_invoiceable":
       "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
     "workRefusal.source_changed":

@@ -683,6 +683,25 @@ reminder — sent, printed or on its way — claims a charge that rests on it al
 screens come with reminders; until then they are in the API ([charges](/en/reference/invoices/#charges),
 [the delivery fact](/en/reference/invoices/#the-delivery-fact)).
 
+**The overdue list and reminder runs.** Vantigo now judges every overdue invoice: what
+comes next — a reminder, a debt collection notice, a suggested hand-off to a collection
+agency, or why it waits or is blocked — with the letter as it would go today, its fee,
+compensation, interest and deadline, and whether the bank data is recent enough to trust.
+Someone with `invoices:payments` previews a run and then makes it: the letters are
+created, by e-mail to the customer's reminder address or on paper, and their figures are
+fixed when they are sent. An invoice shows its letters and what comes next. The screens
+come with the letters' sending; until then the list and the runs are in the API
+([the overdue list](/en/reference/invoices/#the-overdue-list),
+[runs](/en/reference/invoices/#runs)).
+
+**Paid on the deadline.** A payment ordered on a letter's deadline is on time, and the
+bank may book it days later. An OCR giro file says when a payment was ordered; a camt.054
+file does not, so a payment from one is judged by the day it was booked. The default
+grace of 3 days after a deadline, before the next letter, covers a payment ordered on the
+deadline and booked after a long weekend. With a grace of 1 day such a payment could draw
+a second fee that is never waived: keep the grace at 3 days or more when your bank files
+are camt.054.
+
 ## Sending a document by e-mail
 
 Open an issued invoice or credit note and click **Send**. The button needs
@@ -914,9 +933,9 @@ No built-in role holds these; an Owner holds everything
 
 | You want to | You need |
 | --- | --- |
-| Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card | `invoices:access` |
+| Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list | `invoices:access` |
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission | `invoices:issue` |
-| Register a payment or remove one with a reason; set a customer's reminder policy | `invoices:payments` |
+| Register a payment or remove one with a reason; set a customer's reminder policy; preview and make reminder runs | `invoices:payments` |
 | Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings | `invoices:manage` |

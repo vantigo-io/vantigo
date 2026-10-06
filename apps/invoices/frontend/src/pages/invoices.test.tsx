@@ -23,6 +23,7 @@ const server = (options: { canCreate?: boolean; totalPages?: number } = {}) =>
             canIssue: true,
             canManage: false,
             canRegisterPayments: true,
+            canRunReminders: true,
             canSend: true,
             canSendEhf: false,
           },

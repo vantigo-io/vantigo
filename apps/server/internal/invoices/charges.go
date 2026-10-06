@@ -312,13 +312,7 @@ func withCharges(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 	if err != nil {
 		return err
 	}
-	resp.Charges = &gen.InvoicesCharges{
-		Claimed: floatFromRat(state.Claimed, 2), Waived: floatFromRat(state.Waived, 2),
-		Paid: floatFromRat(state.Paid, 2), Outstanding: floatFromRat(state.Outstanding, 2),
-	}
-	if state.RefundDue.Sign() > 0 {
-		resp.Charges.RefundDue = ptr(floatFromRat(state.RefundDue, 2))
-	}
+	resp.Charges = chargesWire(state)
 	payments := make([]gen.InvoicesChargePayment, 0, len(rows.payments))
 	for _, p := range rows.payments {
 		amount, err := ratFromNumeric(p.Amount)
@@ -347,6 +341,19 @@ func withCharges(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 	}
 	resp.Waivers = &waivers
 	return withManualDeliveries(ctx, q, inv.ID, resp)
+}
+
+// chargesWire is the charges block on the wire (D9): refundDue only when it
+// is above zero. The document and the overdue list add interestToday.
+func chargesWire(state reminderrules.ChargeState) *gen.InvoicesCharges {
+	out := &gen.InvoicesCharges{
+		Claimed: floatFromRat(state.Claimed, 2), Waived: floatFromRat(state.Waived, 2),
+		Paid: floatFromRat(state.Paid, 2), Outstanding: floatFromRat(state.Outstanding, 2),
+	}
+	if state.RefundDue.Sign() > 0 {
+		out.RefundDue = ptr(floatFromRat(state.RefundDue, 2))
+	}
+	return out
 }
 
 // issuedInvoiceFor reads document id on the pool for a charges write and

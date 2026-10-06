@@ -53,6 +53,12 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 		return nil, err
 	}
 	canIssue := s.has(ctx, "invoices:issue")
+	// Whether reminders are offered at all (invoices payments and reminders
+	// design D1, D7).
+	reminders, _, err := s.reminderSettings(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	return gen.GetInvoicesMeta200JSONResponse(gen.InvoicesMetaResponse{
 		Currency:                       row.DefaultCurrency,
 		DefaultPaymentTermsDays:        row.DefaultPaymentTermsDays,
@@ -68,7 +74,8 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 		VatCodes:                       inForce,
 		// What work this installation can invoice (invoices work design D3):
 		// the billable reads composed, each optional.
-		WorkAvailable: s.workAvailable(),
+		WorkAvailable:    s.workAvailable(),
+		RemindersEnabled: reminders.Enabled,
 		Work: gen.InvoicesMetaWork{
 			Hours: s.deps.BillableHours != nil, Expenses: s.deps.BillableExpenses != nil, Milestones: s.deps.BillableMilestones != nil,
 		},
@@ -78,6 +85,7 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 			CanIssue:            canIssue,
 			CanManage:           s.has(ctx, "invoices:manage"),
 			CanRegisterPayments: s.has(ctx, "invoices:payments"),
+			CanRunReminders:     s.has(ctx, "invoices:payments"),
 			CanSend:             canIssue && mail,
 			CanSendEhf:          canIssue && ehf,
 		},

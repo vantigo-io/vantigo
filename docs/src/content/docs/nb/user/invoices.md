@@ -698,6 +698,25 @@ fjernes mens en purring — sendt, skrevet ut eller på vei — krever noe som h
 alene. Skjermbildene for dem kommer med purringene; til da finnes de i API-et ([purrekrav](/en/reference/invoices/#charges),
 [leveringsfaktumet](/en/reference/invoices/#the-delivery-fact)).
 
+**Forfallslisten og purrekjøringer.** Vantigo vurderer nå hver forfalte faktura: hva som
+kommer neste gang — en purring, et inkassovarsel, en foreslått overlevering til et
+inkassoselskap, eller hvorfor den venter eller er stanset — med brevet slik det ville gått
+i dag, gebyret, kompensasjonen, rentene og fristen, og om bankdataene er ferske nok til å
+stole på. Den som har `invoices:payments` forhåndsviser en kjøring og gjør den så: brevene
+lages, på e-post til kundens purreadresse eller på papir, og tallene i dem fastsettes når
+de sendes. En faktura viser brevene sine og hva som kommer neste gang. Skjermbildene
+kommer med utsendingen av brevene; til da finnes listen og kjøringene i API-et
+([forfallslisten](/en/reference/invoices/#the-overdue-list),
+[kjøringer](/en/reference/invoices/#runs)).
+
+**Betalt på fristen.** En betaling som er gitt i oppdrag på fristen i et brev, er i tide,
+og banken kan bokføre den dager senere. En OCR-girofil sier når en betaling ble gitt i
+oppdrag; en camt.054-fil gjør det ikke, så en betaling derfra vurderes etter dagen den ble
+bokført. Standardinnstillingen på 3 dagers karenstid etter en frist, før neste brev,
+dekker en betaling gitt i oppdrag på fristen og bokført etter en langhelg. Med 1 dags
+karenstid kan en slik betaling utløse et nytt gebyr som aldri ettergis: hold karenstiden på
+3 dager eller mer når bankfilene dine er camt.054.
+
 ## Sende et dokument på e-post
 
 Åpne en utstedt faktura eller kreditnota og klikk **Send**. Knappen krever
@@ -928,9 +947,9 @@ Ingen innebygd rolle har disse; en eier har alt
 
 | Du vil | Du trenger |
 | --- | --- |
-| Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet | `invoices:access` |
+| Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet, lese forfallslisten | `invoices:access` |
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending | `invoices:issue` |
-| Registrere en betaling eller fjerne en med begrunnelse; sette en kundes purreregel | `invoices:payments` |
+| Registrere en betaling eller fjerne en med begrunnelse; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer | `invoices:payments` |
 | Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, satsene for inndriving og innstillingene for purring | `invoices:manage` |
