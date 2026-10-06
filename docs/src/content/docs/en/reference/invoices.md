@@ -2808,7 +2808,9 @@ reason `on_hold` and no user. Two letters are left alone and named in the answer
   held by then, and a person can pull it from the batch and withdraw it by hand;
 - a letter **being sent** — `queued`, its facts written, under a lease still live
   (`lease_until` after the request's clock reading): it is mailed outside any lock and
-  becomes `sent`; a lift that bars charges waives its fee afterwards.
+  becomes `sent`. A letter being sent when charges are barred is marked sent with its fee
+  and compensation waived `claimed_in_error`; one already sent when a barring lift comes
+  is waived by the lift.
 
 While the hold is live no run makes a letter for the invoice, its late interest keeps
 running, and it still takes payments, manual or from a bank file
@@ -2895,20 +2897,22 @@ waived out of what is claimed**:
 | `Delivered` | The first recorded delivery of the invoice, its kind and day: `handed_over`, `posted`, `email` or `ehf`, then the date. |
 | `KID` | The invoice's KID, or empty. |
 | `Customer number`, `Debtor`, `Debtor type`, `Org no`, `Foreign id`, `Address line 1`, `Address line 2`, `Postal code`, `City`, `Country` | The buyer snapshot written at issue. No national identity number is held, so none is exported. |
-| `E-mail` | The customer's reminder address, read from the customer directory before any query; empty when the read fails, which is logged at warn. |
+| `E-mail` | The customer's reminder address, read from the customer directory before the engine's read — no query locks; empty when the read fails, which is logged at warn. |
 | `Gross`, `Credited`, `Paid`, `Principal open` | The principal: the gross, what the issued credit notes credited, the live payments, and what is open of it. |
 | `Payments` | Each live payment as `day amount`, joined by ` \| `. |
 | `Fees claimed`, `Compensation claimed` | What the sent letters claimed, net of waivers. |
 | `Charges waived` | Every waiver's total — fees, compensation and interest. |
-| `Interest rate`, `Interest from`, `Interest to`, `Interest accrued` | The late interest as a letter today would claim it: the rate in force today, the first day it accrued, today, and the amount less what was waived of it. Empty but for `Interest to` and `0,00` when no interest applies yet; the rate and the amount empty when a rate the period needs is missing. |
+| `Interest rate`, `Interest from`, `Interest to`, `Interest accrued` | The late interest as a letter today would claim it: the rate of the last interest segment (the one in force today), the first day it accrued, today, and the amount less what was waived of it. Empty but for `Interest to` and `0,00` when no interest applies yet; the rate and the amount empty when a rate the period needs is missing. |
 | `Charges paid` | The live charge payments. |
-| `Letters` | Each sent letter as `day level`, joined by ` \| `. |
+| `Letters` | Each sent letter as its day, level, deadline and the fee or compensation it claimed — `2026-07-30 reminder deadline 2026-08-13 fee 35,00 (waived)`, `(waived)` when a waiver released it — joined by ` \| `. |
 | `Notice sent`, `Notice deadline` | The latest sent collection notice's day and deadline. |
 | `Disputed` | `yes` while a hold is live, else `no`. |
 | `Handed on`, `Agency`, `Agency reference` | The live hand-off's, empty without one. |
 
-Every figure is the reminder engine's, read through the rule-input loader on one snapshot
-of the pool, with no lock and one clock reading.
+The rows, the engine's inputs (the rule-input loader's read) and the deliveries are read
+in one read-only `REPEATABLE READ` transaction on the pool — one snapshot, no lock, one
+clock reading — with the reminder addresses read from the directory between the rows and
+the engine's read. The ids are each taken once before the 500 cap counts them.
 
 ## The journal
 

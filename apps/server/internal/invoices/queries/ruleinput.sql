@@ -42,15 +42,18 @@ ORDER BY p.invoice_id, p.paid_on, p.id;
 -- — at, whose Oslo day the caller derives, never this statement — and each
 -- manual delivery not removed by its delivered_on. A failed, queued or
 -- cancelled transmission and a removed manual record are not deliveries.
-SELECT m.invoice_id, 'manual'::text AS kind, NULL::timestamptz AS at, m.delivered_on AS delivered_on
+-- manual_kind is a manual record's own kind (handed_over or posted), which
+-- the collection file names; '' for the others.
+SELECT m.invoice_id, 'manual'::text AS kind, NULL::timestamptz AS at, m.delivered_on AS delivered_on,
+       m.kind::text AS manual_kind
 FROM invoices.manual_deliveries m
 WHERE m.invoice_id = ANY(@ids::bigint[]) AND m.removed_at IS NULL
 UNION ALL
-SELECT d.invoice_id, 'email'::text, d.sent_at, NULL::date
+SELECT d.invoice_id, 'email'::text, d.sent_at, NULL::date, ''::text
 FROM invoices.deliveries d
 WHERE d.invoice_id = ANY(@ids::bigint[])
 UNION ALL
-SELECT t.invoice_id, 'ehf'::text, t.delivered_at, NULL::date
+SELECT t.invoice_id, 'ehf'::text, t.delivered_at, NULL::date, ''::text
 FROM invoices.transmissions t
 WHERE t.invoice_id = ANY(@ids::bigint[]) AND t.status = 'delivered';
 

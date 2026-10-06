@@ -134,7 +134,7 @@ func liftBody(chargesAllowed bool, note string) map[string]any {
 // for a credit note (a draft one too: the kind first), invoice_draft for a
 // draft; then, under the lock, the hold — every letter still in flight
 // withdrawn on_hold with no user (queued, awaiting print, failed, and a
-// queued one whose lease has expired), while a printed letter and a letter
+// queued one with its facts whose lease has expired or is NULL), while a printed letter and a letter
 // being sent are left and named in lettersLeft, by sequence; and a second
 // hold is invoice_on_hold.
 func TestHold_PlaceAndRefusals(t *testing.T) {
@@ -158,6 +158,9 @@ func TestHold_PlaceAndRefusals(t *testing.T) {
 	printed := plantLetterIn(t, h, inv.ID, 4, "printed")
 	sending := plantSending(t, h, inv.ID, 5, h.Now().Add(30*time.Second))
 	expired := plantSending(t, h, inv.ID, 6, h.Now().Add(-time.Second))
+	// Facts written and no lease at all: no live lease, so not being sent.
+	unleased := plantSending(t, h, inv.ID, 7, h.Now().Add(30*time.Second))
+	h.Exec(t, `UPDATE invoices.reminders SET lease_id = NULL, lease_until = NULL WHERE id = $1`, unleased)
 	batch := modtest.One[int64](t, h.Harness, `SELECT print_batch_id FROM invoices.reminders WHERE id = $1`, printed)
 
 	got := answered(t, "the hold", c.Do(http.MethodPost, holdPath(inv.ID), holdNote(" Kunden bestrider timene ")))
@@ -170,7 +173,7 @@ func TestHold_PlaceAndRefusals(t *testing.T) {
 	}) {
 		t.Errorf("lettersLeft = %+v, want the printed letter (batch %d) and the one being sent", got.LettersLeft, batch)
 	}
-	for _, id := range []int64{queued, awaiting, failed, expired} {
+	for _, id := range []int64{queued, awaiting, failed, expired, unleased} {
 		if s := letterStateOf(t, h, id); s != (letterState{"withdrawn", "on_hold", false}) {
 			t.Errorf("letter %d = %+v, want withdrawn on_hold by no user", id, s)
 		}

@@ -24,7 +24,8 @@ func withField(body map[string]any, key string, value any) map[string]any {
 // read; then 404; credit_note_no_reminders, invoice_draft; then handedOn
 // before the issue date; then under the lock invoice_settled before
 // invoice_handed_off before invoice_not_delivered — which the
-// acknowledgement lets through. The hand-off withdraws the letters in flight
+// acknowledgement lets through, and a delivery on the due day itself
+// passes. The hand-off withdraws the letters in flight
 // handed_off and leaves the printed one, named; the engine then answers none,
 // handed_off; and a payment is still registered.
 func TestHandoff_AndRefusals(t *testing.T) {
@@ -89,6 +90,10 @@ func TestHandoff_AndRefusals(t *testing.T) {
 	if n := h.Count(t, `SELECT count(*) FROM invoices.collection_handoffs WHERE invoice_id IN ($1, $2)`, inv, undelivered); n != 2 {
 		t.Errorf("%d hand-offs, want one each", n)
 	}
+	// A delivery on the due day itself is on or before it: no acknowledgement.
+	onTheDay := plantOverdue(t, h, overdueSpec{number: 103, customer: customerAcme, issue: "2026-07-01", due: "2026-07-15"})
+	plantManualDelivery(t, h, onTheDay, "2026-07-15")
+	answered(t, "delivered on the due day", c.Do(http.MethodPost, handoffPath(onTheDay), handoffBody("2026-09-12", "Kredinor AS")))
 }
 
 // The withdrawal (D11): 400 on the fields — withdrawnOn missing or after

@@ -102,19 +102,3 @@ WHERE i.kind = 'invoice' AND i.status = 'issued'
 ORDER BY i.number, i.id
 LIMIT sqlc.arg('limit');
 
--- name: ExportDeliveries :many
--- ExportDeliveries is every live delivery of the invoices, with its kind as
--- a person reads it — handed_over or posted for a manual record, email,
--- ehf — and its day or instant (RuleDeliveries' definition): the CSV's
--- Delivered column names the first.
-SELECT m.invoice_id, m.kind::text AS kind, NULL::timestamptz AS at, m.delivered_on AS delivered_on
-FROM invoices.manual_deliveries m
-WHERE m.invoice_id = ANY(@ids::bigint[]) AND m.removed_at IS NULL
-UNION ALL
-SELECT d.invoice_id, 'email'::text, d.sent_at, NULL::date
-FROM invoices.deliveries d
-WHERE d.invoice_id = ANY(@ids::bigint[])
-UNION ALL
-SELECT t.invoice_id, 'ehf'::text, t.delivered_at, NULL::date
-FROM invoices.transmissions t
-WHERE t.invoice_id = ANY(@ids::bigint[]) AND t.status = 'delivered';
