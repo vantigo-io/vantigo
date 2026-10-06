@@ -10,10 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
-	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -26,8 +23,8 @@ import (
 // charges, and what was waived is out of the claimed columns, in a column of
 // its own. Every figure is the reminder engine's, read with the rows and the
 // deliveries on one read-only snapshot of the pool at today — no lock — and
-// the E-mail column is the customer directory's, read before the engine's
-// read.
+// the E-mail column is the customer directory's, read before that snapshot
+// opens.
 
 // collectionHeader is D11's header row, fixed and English, in its order.
 var collectionHeader = []string{
@@ -56,11 +53,13 @@ func badCollectionQuery(detail string) gen.GetInvoicesCollectionExportCsv400Appl
 // GetInvoicesCollectionExportCsv Export invoices for a collection agency as CSV
 // (GET /api/v1/invoices/collection-export.csv)
 //
-// Every read is one REPEATABLE READ, read-only transaction on the pool — the
-// rows, then the engine's inputs and the deliveries — so the file is one
-// snapshot. It takes no lock: the reminder addresses are read from the
-// directory between the rows and the engine's read, outside any locked
-// transaction (the module's lock rule is about locks, and this holds none).
+// The order of its reads: the selection's rows on the pool, no transaction
+// open, judged against the cap; the reminder addresses from the directory,
+// still with no transaction open — the directory's own reads take a pool
+// connection of their own, so a call while this request held one could
+// starve a small pool; then one REPEATABLE READ, read-only transaction that
+// reads the rows again with the engine's inputs and the deliveries, so the
+// file is one snapshot. It takes no lock.
 func (s *server) GetInvoicesCollectionExportCsv(ctx context.Context, req gen.GetInvoicesCollectionExportCsvRequestObject) (gen.GetInvoicesCollectionExportCsvResponseObject, error) {
 	p := req.Params
 	byDates := p.HandedFrom != nil || p.HandedTo != nil
@@ -84,34 +83,37 @@ func (s *server) GetInvoicesCollectionExportCsv(ctx context.Context, req gen.Get
 	}
 	today := businessDay(s.deps.Clock())
 
+	selected, err := store.New(s.deps.Pool).CollectionExportRows(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the collection export: %w", err)
+	}
+	if refusal := judgeCollectionRows(selected, params.Ids); refusal != "" {
+		return badCollectionQuery(refusal), nil
+	}
+	emails := s.reminderAddresses(ctx, selected)
+
 	var refusal string
 	var body []byte
-	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
-		q := store.New(tx)
+	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		rows, err := q.CollectionExportRows(ctx, params)
 		if err != nil {
 			return fmt.Errorf("invoices: read the collection export: %w", err)
 		}
-		if len(rows) > collectionMaxRows {
-			refusal = fmt.Sprintf("This export would hold more than %d invoices; narrow the period.", collectionMaxRows)
+		// The selection again, on the snapshot: a hand-off made since the
+		// first read can push it past the cap.
+		if refusal = judgeCollectionRows(rows, params.Ids); refusal != "" {
 			return nil
 		}
-		if byIDs {
-			var missing []string
-			for _, id := range params.Ids {
-				if !slices.ContainsFunc(rows, func(r store.CollectionExportRowsRow) bool { return r.ID == id }) {
-					missing = append(missing, fmt.Sprint(id))
-				}
-			}
-			if missing != nil {
-				refusal = "Not an issued invoice: " + strings.Join(missing, ", ")
-				return nil
-			}
-		}
-		emails := s.reminderAddresses(ctx, rows)
 		ids := make([]int64, 0, len(rows))
 		for _, r := range rows {
 			ids = append(ids, r.ID)
+			if _, read := emails[r.CustomerID]; !read {
+				// A customer the first read did not see (a hand-off made, or
+				// a merge, since): its address is not read under the snapshot.
+				s.deps.Logger.WarnContext(ctx, "invoices: a customer's reminder address was not read for the collection export",
+					"customerId", r.CustomerID)
+				emails[r.CustomerID] = ""
+			}
 		}
 		ins, err := s.readRuleInputs(ctx, q, ids, today)
 		if err != nil {
@@ -149,6 +151,24 @@ func (s *server) GetInvoicesCollectionExportCsv(ctx context.Context, req gen.Get
 		return badCollectionQuery(refusal), nil
 	}
 	return csvDownload{body: body, fileName: fmt.Sprintf("invoices-collection-%s.csv", today.Format(time.DateOnly))}, nil
+}
+
+// judgeCollectionRows is the selection's 400, "" when it passes: more rows
+// than the file holds, or an id among ids that is not an issued invoice.
+func judgeCollectionRows(rows []store.CollectionExportRowsRow, ids []int64) string {
+	if len(rows) > collectionMaxRows {
+		return fmt.Sprintf("This export would hold more than %d invoices; narrow the period.", collectionMaxRows)
+	}
+	var missing []string
+	for _, id := range ids {
+		if !slices.ContainsFunc(rows, func(r store.CollectionExportRowsRow) bool { return r.ID == id }) {
+			missing = append(missing, fmt.Sprint(id))
+		}
+	}
+	if missing != nil {
+		return "Not an issued invoice: " + strings.Join(missing, ", ")
+	}
+	return ""
 }
 
 // reminderAddresses is each customer's reminder address among rows, one

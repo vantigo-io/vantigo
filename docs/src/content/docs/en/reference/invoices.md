@@ -2897,7 +2897,7 @@ waived out of what is claimed**:
 | `Delivered` | The first recorded delivery of the invoice, its kind and day: `handed_over`, `posted`, `email` or `ehf`, then the date. |
 | `KID` | The invoice's KID, or empty. |
 | `Customer number`, `Debtor`, `Debtor type`, `Org no`, `Foreign id`, `Address line 1`, `Address line 2`, `Postal code`, `City`, `Country` | The buyer snapshot written at issue. No national identity number is held, so none is exported. |
-| `E-mail` | The customer's reminder address, read from the customer directory before the engine's read — no query locks; empty when the read fails, which is logged at warn. |
+| `E-mail` | The customer's reminder address, read from the customer directory with no transaction open, before the snapshot below; empty when the read fails, which is logged at warn, and for a customer only the snapshot's re-read sees. |
 | `Gross`, `Credited`, `Paid`, `Principal open` | The principal: the gross, what the issued credit notes credited, the live payments, and what is open of it. |
 | `Payments` | Each live payment as `day amount`, joined by ` \| `. |
 | `Fees claimed`, `Compensation claimed` | What the sent letters claimed, net of waivers. |
@@ -2909,10 +2909,15 @@ waived out of what is claimed**:
 | `Disputed` | `yes` while a hold is live, else `no`. |
 | `Handed on`, `Agency`, `Agency reference` | The live hand-off's, empty without one. |
 
-The rows, the engine's inputs (the rule-input loader's read) and the deliveries are read
-in one read-only `REPEATABLE READ` transaction on the pool — one snapshot, no lock, one
-clock reading — with the reminder addresses read from the directory between the rows and
-the engine's read. The ids are each taken once before the 500 cap counts them.
+The reads, in order, with one clock reading and no lock: the selection's rows on the pool,
+with no transaction open, judged against the cap (the ids each taken once before the 500
+cap counts them); the reminder addresses from the customer directory, still with no
+transaction open — the directory's own reads take a pool connection, and one asked for
+while the export held another could starve a small pool; then one read-only
+`REPEATABLE READ` transaction that reads the rows again, judges them again, and reads the
+engine's inputs (the rule-input loader's read) and the deliveries — one snapshot for every
+figure in the file. A customer the snapshot's rows name and the first read did not (a
+hand-off recorded in between) gets an empty `E-mail`, logged at warn.
 
 ## The journal
 

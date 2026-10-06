@@ -510,9 +510,9 @@ func TestIssue_ADraftWithoutSourcesCallsNoHolderAndReadsNoDirectoryMore(t *testi
 }
 
 // The harness's recorder fails a test on either kind of call the lock rule
-// forbids — a call out of the module under a lock, and a holder's
-// transaction-bound command outside one — and on neither of the allowed
-// ones. Not parallel: a forbidden call recorded here would fail any harness
+// forbids — a call out of the module inside any of its transactions, locked
+// or a read-only snapshot, and a holder's transaction-bound command outside a
+// locked one (a snapshot is not one) — and on neither of the allowed ones. Not parallel: a forbidden call recorded here would fail any harness
 // open beside it, and it is forgotten when the test ends.
 func TestContractCallHook_FailsALockedCallAndAnUnlockedTxCommand(t *testing.T) {
 	ctx := context.Background()
@@ -527,13 +527,15 @@ func TestContractCallHook_FailsALockedCallAndAnUnlockedTxCommand(t *testing.T) {
 	}
 
 	invoices.NoteContractCall(locked, "Directory.BillingProfile")
+	invoices.NoteContractCall(invoices.ReadTxContext(ctx), "Directory.Customer")
 	invoices.NoteTxCommand(ctx, "InvoicedWork.time.entry.Mark")
+	invoices.NoteTxCommand(invoices.ReadTxContext(ctx), "InvoicedWork.time.entry.Release")
 	calls, tx := lockedContractCalls.since(before), lockedContractCalls.txSince(beforeTx)
-	if len(calls) != 1 || !strings.HasPrefix(calls[0], "Directory.BillingProfile\n") {
-		t.Errorf("locked calls = %d %v, want the billing profile read under a lock", len(calls), calls)
+	if len(calls) != 2 || !strings.HasPrefix(calls[0], "Directory.BillingProfile\n") || !strings.HasPrefix(calls[1], "Directory.Customer\n") {
+		t.Errorf("calls inside a transaction = %d %v, want the billing profile read under a lock and the customer read in a snapshot", len(calls), calls)
 	}
-	if len(tx) != 1 || !strings.HasPrefix(tx[0], "InvoicedWork.time.entry.Mark\n") {
-		t.Errorf("unlocked commands = %d %v, want the mark outside a lock", len(tx), tx)
+	if len(tx) != 2 || !strings.HasPrefix(tx[0], "InvoicedWork.time.entry.Mark\n") || !strings.HasPrefix(tx[1], "InvoicedWork.time.entry.Release\n") {
+		t.Errorf("unlocked commands = %d %v, want the mark outside a lock and the release in a read-only snapshot", len(tx), tx)
 	}
 }
 

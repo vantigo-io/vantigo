@@ -245,8 +245,10 @@ Communications' outbox is the working example.
   through one accessor reporting `InvoicedWork.<kind>.Mark|Release` by
   `noteTxCommand`, beside `noteContractCall`; the tests' contract-call hook records
   both with a `txBound` flag, and every invoices harness fails its test on a call
-  out of the module made under a lock **and** on a transaction-bound command made
-  outside one. The tests run with `modtest.WithInvoicedWork` fakes that read
+  out of the module made inside any of the module's transactions — under a lock,
+  or in a read-only snapshot (`withReadTx`), which holds a pool connection a
+  directory's own read could starve for — **and** on a transaction-bound command
+  made outside a lock. The tests run with `modtest.WithInvoicedWork` fakes that read
   `pg_current_xact_id()` through the `pgx.Tx` they are handed; the issue's
   `issueAfterAllocation(ctx, tx, invoiceID)` hook reads it through the issue's own,
   and the two must be equal — the holder rode the issue's transaction. The races are

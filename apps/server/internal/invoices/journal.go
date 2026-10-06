@@ -53,8 +53,7 @@ func (s *server) GetInvoicesJournal(ctx context.Context, req gen.GetInvoicesJour
 	// One snapshot, so the page, the totals and the gaps agree with each other
 	// even while documents are being issued.
 	var resp gen.InvoicesJournalResponse
-	err := pgx.BeginTxFunc(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
-		q := store.New(tx)
+	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		settings, err := q.GetSettings(ctx)
 		if err != nil {
 			return fmt.Errorf("invoices: read the settings: %w", err)

@@ -1,12 +1,16 @@
 package invoices_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -252,5 +256,52 @@ func TestCollectionExport_WaivedChargesOut(t *testing.T) {
 		if got[k] != w {
 			t.Errorf("%s = %q, want %q", k, got[k], w)
 		}
+	}
+}
+
+// The directory is read with no transaction open (D18's lock rule, and a
+// pool's arithmetic): on a pool of two, two exports for two customers run at
+// once; the directory's hook waits until both have reached it, then takes a
+// pool connection as the real directory's read would. Were either export
+// holding its snapshot's connection there, the two would hold both and the
+// directory would starve. Not parallel: a pool of two.
+func TestCollectionExport_TwoExportsOnAPoolOfTwo(t *testing.T) {
+	h := newHarness(t, modtest.WithPoolMaxConns(2))
+	acme := deliveredOn(t, h, 41, customerAcme, "2026-08-03")
+	kari := deliveredOn(t, h, 42, customerPerson, "2026-08-03")
+	var arrivals atomic.Int32
+	both := make(chan struct{})
+	h.customers.afterProfileRead(func(int32) {
+		if arrivals.Add(1) == 2 {
+			close(both)
+		}
+		select {
+		case <-both:
+		case <-time.After(10 * time.Second):
+			t.Errorf("the two exports never both reached the directory")
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		conn, err := h.Pool().Acquire(ctx)
+		if err != nil {
+			t.Errorf("the directory's read starved for a pool connection: %v", err)
+			return
+		}
+		conn.Release()
+	})
+	c := chargePayer(t, h)
+	statuses := make([]int, 2)
+	var wg sync.WaitGroup
+	for i, id := range []int64{acme, kari} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			statuses[i] = c.Do(http.MethodGet, fmt.Sprintf("%s?invoiceId=%d", collectionExportPath, id), nil).Status
+		}()
+	}
+	wg.Wait()
+	if !slices.Equal(statuses, []int{http.StatusOK, http.StatusOK}) {
+		t.Errorf("the two exports = %v, want both 200", statuses)
 	}
 }
