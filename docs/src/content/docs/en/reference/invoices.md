@@ -2427,7 +2427,8 @@ earlier letter's deadline that the payments in fact met — a second fee, or a f
 after a fee-free letter — is waived `deadline_met` when the proof arrives (the bank match).
 A camt.054 line carries no order day, so a payment it brings is judged by its booking
 day: the default `grace_days` of 3 covers a payment ordered on the deadline and booked
-after a long weekend.
+after an ordinary long weekend; Easter can take longer, and the stale-import confirmation
+of a run ([Runs](#runs)) is the guard then.
 
 **The reminder fee** (`fee_kind = reminder_fee`) is claimed only when every one of these
 holds:
@@ -2567,8 +2568,9 @@ function on the same figures, so the two agree — and answers every invoice who
 action is a `reminder` or a `collection_notice` due today or earlier, each with its letter
 as it would go today, its **channel and recipient**, their warnings and its charge notes;
 the invoices `blocked` or `waiting`, with their next action and reasons; the bank data's
-freshness and the list's warnings. Past 5 000 overdue invoices it is 409
-`too_many_overdue`. It writes nothing and takes no lock. **The channel** comes from the
+freshness and the list's warnings. It takes the list's `customerId` and `dueBefore`
+(read by the preview only), so more than 5 000 overdue invoices — past which it is 409
+`too_many_overdue` — can be previewed in parts. It writes nothing and takes no lock. **The channel** comes from the
 customer's billing profile, read through the directory once per customer: `paper` when
 `reminderDelivery` says paper; otherwise e-mail to `reminderEmail` — paper with
 **`reminder_email_missing`** when there is no address, paper with **`mail_unavailable`**
@@ -2597,7 +2599,11 @@ transaction**: the invoice `FOR UPDATE` and every figure read after it, so a pay
 hold or another run that held the invoice first has committed by then; an anonymised
 customer is skipped **`customer_anonymised`**; the engine judges the invoice again on
 today, and an action other than the item's — paid meanwhile, another letter now in
-flight, held, newly outdated or unreviewed — is skipped **`action_changed`**. Otherwise the
+flight, held, newly outdated or unreviewed — is skipped **`action_changed`**. So is an
+invoice whose customer is no longer the one its recipient was read for (merged since),
+and — while the bank data is stale and the run unconfirmed — a letter that now claims a
+fee, the compensation or interest though the pre-pass judged it free of charges (a
+delivery recorded meanwhile, say): the stale guard holds under the lock too. Otherwise the
 letter is inserted with the next sequence of the invoice: its level and whether it
 announces the hand-off, the channel and recipient, the language (the buyer snapshot's when
 it is English, Norwegian otherwise), the run and the caller — `queued` for e-mail, due for
@@ -2931,7 +2937,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `DELETE /collection-rates/{id}` | `invoices:manage` | 404; 409 `collection_rate_in_force` (seeded, in force or past, or used by a printed or sent letter) |
 | `GET /customers/{customerId}/reminder-policy` | | |
 | `GET /overdue` | | 400 paging; 409 `too_many_overdue` |
-| `POST /reminder-runs` | `invoices:payments` | the preview: 409 `too_many_overdue`; the run: 400 on `items`; 409 `reminders_disabled`, `collection_rates_outdated` (with `kind`, `halfYear`), `collection_regime_unreviewed`, `bank_import_stale` (with `lastBookedOn`) |
+| `POST /reminder-runs` | `invoices:payments` | the preview (narrowed by `customerId`, `dueBefore`): 409 `too_many_overdue`; the run: 400 on `items`; 409 `reminders_disabled`, `collection_rates_outdated` (with `kind`, `halfYear`), `collection_regime_unreviewed`, `bank_import_stale` (with `lastBookedOn`) |
 | `GET /reminder-runs` | `invoices:payments` | 400 paging |
 | `GET /reminder-runs/{id}` | `invoices:payments` | 404 |
 | `PUT /customers/{customerId}/reminder-policy` | `invoices:payments` | 400 on `mode` or `note`; 404 the customer has no document here, or is anonymised |

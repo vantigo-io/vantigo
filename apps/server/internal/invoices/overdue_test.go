@@ -327,6 +327,20 @@ func TestOverdue_TheCap(t *testing.T) {
 	if got := overdueOf(t, c, fmt.Sprintf("?customerId=%d", customerPerson)); got.Total != 1 {
 		t.Errorf("narrowed to Kari = %d, want her one", got.Total)
 	}
+	// The preview has the same cap and is narrowed the same way.
+	p := payer(t, h)
+	if res := p.Do(http.MethodPost, reminderRunsPath, map[string]any{"dryRun": true}); res.Status != http.StatusConflict ||
+		problemOf(t, res).Code != "too_many_overdue" {
+		t.Errorf("the preview of 5 001 = %d %s, want 409 too_many_overdue", res.Status, res.Body)
+	}
+	res = p.Do(http.MethodPost, reminderRunsPath, map[string]any{"dryRun": true, "customerId": customerPerson})
+	var preview previewJSON
+	if res.Status == http.StatusOK {
+		res.JSON(&preview)
+	}
+	if res.Status != http.StatusOK || len(preview.BlockedOrWaiting) != 1 {
+		t.Errorf("the preview narrowed to Kari = %d %s, want her one invoice", res.Status, res.Body)
+	}
 }
 
 // Every field of an item (D12): daysOverdue counted from E — a due date on

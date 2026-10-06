@@ -713,9 +713,14 @@ kommer med utsendingen av brevene; til da finnes listen og kjøringene i API-et
 og banken kan bokføre den dager senere. En OCR-girofil sier når en betaling ble gitt i
 oppdrag; en camt.054-fil gjør det ikke, så en betaling derfra vurderes etter dagen den ble
 bokført. Standardinnstillingen på 3 dagers karenstid etter en frist, før neste brev,
-dekker en betaling gitt i oppdrag på fristen og bokført etter en langhelg. Med 1 dags
-karenstid kan en slik betaling utløse et nytt gebyr som aldri ettergis: hold karenstiden på
-3 dager eller mer når bankfilene dine er camt.054.
+dekker en betaling gitt i oppdrag på fristen og bokført etter en vanlig langhelg; påsken
+kan ta lenger tid, og da er det bekreftelsen en kjøring ber om når den siste bankfilen er
+gammel, som er vernet. Med 1 dags karenstid kan en slik betaling utløse et nytt gebyr som
+aldri ettergis: hold karenstiden på 3 dager eller mer når bankfilene dine er camt.054.
+
+**Forhåndsvise en del av listen.** En forhåndsvisning kan avgrenses til én kunde eller til
+fakturaer med forfall før en dag, slik forfallslisten kan — og må avgrenses når over 5 000
+fakturaer har forfalt.
 
 ## Sende et dokument på e-post
 

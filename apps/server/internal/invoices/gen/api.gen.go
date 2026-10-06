@@ -2103,14 +2103,16 @@ type InvoicesReminderRunPreview struct {
 // InvoicesReminderRunPreviewWarnings defines model for InvoicesReminderRunPreview.Warnings.
 type InvoicesReminderRunPreviewWarnings string
 
-// InvoicesReminderRunRequest POST /invoices/reminder-runs' body (D10): dryRun true previews; dryRun false runs items — 1 to 500, each invoice once, each with the action its preview showed — and acknowledgeStaleImport true confirms a run with charges on stale bank data.
+// InvoicesReminderRunRequest POST /invoices/reminder-runs' body (D10): dryRun true previews, narrowed as the overdue list is by customerId and dueBefore (a due date before that day), so more than 5 000 overdue invoices can be previewed in parts; dryRun false runs items — 1 to 500, each invoice once, each with the action its preview showed — and acknowledgeStaleImport true confirms a run with charges on stale bank data. customerId and dueBefore are read only by the preview.
 type InvoicesReminderRunRequest struct {
 	AcknowledgeStaleImport *bool                      `json:"acknowledgeStaleImport,omitempty"`
+	CustomerId             *int32                     `json:"customerId,omitempty"`
 	DryRun                 bool                       `json:"dryRun"`
+	DueBefore              *openapi_types.Date        `json:"dueBefore,omitempty"`
 	Items                  *[]InvoicesReminderRunItem `json:"items,omitempty"`
 }
 
-// InvoicesReminderRunResult A run's answer (D10): the run, the letters it made — queued for e-mail or awaiting print for paper, without facts — and the items it skipped with why: customer_anonymised, or action_changed (the engine, judging the invoice under its lock, no longer gives the action the preview showed — paid meanwhile, another letter on its way, held, or newly outdated or unreviewed).
+// InvoicesReminderRunResult A run's answer (D10): the run, the letters it made — queued for e-mail or awaiting print for paper, without facts — and the items it skipped with why: customer_anonymised, or action_changed (the engine, judging the invoice under its lock, no longer gives the action the preview showed — paid meanwhile, another letter on its way, held, or newly outdated or unreviewed — or the letter now claims a charge on stale bank data the run did not confirm, or the invoice was merged to another customer since its recipient was read).
 type InvoicesReminderRunResult struct {
 	Created []InvoicesReminder `json:"created"`
 
