@@ -830,7 +830,7 @@ BEGIN
             OR ((OLD.lifted_at, OLD.lifted_by_user_id, OLD.charges_allowed)
                     IS NOT DISTINCT FROM (NEW.lifted_at, NEW.lifted_by_user_id, NEW.charges_allowed)
                 AND (NEW.lift_note IS NOT DISTINCT FROM OLD.lift_note OR NEW.lift_note = ''))) THEN
-        IF OLD.lifted_at IS NULL AND EXISTS (
+        IF OLD.lifted_at IS NULL AND NEW.lifted_at IS NOT NULL AND EXISTS (
             SELECT 1 FROM invoices.invoices i JOIN invoices.erased_customers e ON e.customer_id = i.customer_id
             WHERE i.id = NEW.invoice_id) THEN
             NEW.lift_note := '';
