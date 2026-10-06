@@ -362,26 +362,37 @@ func TestReminderRun_StaleGuardsEveryCharge(t *testing.T) {
 // on stale data, unconfirmed; while the first item holds its invoice, the
 // second invoice gets a delivery recorded, so judged under its lock its
 // letter would now claim a fee — it is skipped action_changed, not made with
-// a charge nobody confirmed.
+// a charge nobody confirmed. The same run confirmed makes both letters: the
+// guard is the missing confirmation's, not the stale data's.
 func TestReminderRun_StaleGuardUnderTheLock(t *testing.T) {
 	h := runReady(t, "")
 	first := plantOverdue(t, h, overdueSpec{number: 1, customer: customerAcme, issue: "2026-07-01", due: "2026-08-03"})
 	second := plantOverdue(t, h, overdueSpec{number: 2, customer: customerAcme, issue: "2026-07-01", due: "2026-08-03"})
+	third := plantOverdue(t, h, overdueSpec{number: 3, customer: customerAcme, issue: "2026-07-01", due: "2026-08-03"})
+	fourth := plantOverdue(t, h, overdueSpec{number: 4, customer: customerAcme, issue: "2026-07-01", due: "2026-08-03"})
+	deliverWhileHeld := map[int64]int64{first: second, third: fourth}
 	defer invoices.SetRunItemAfterLock(func(ctx context.Context, invoiceID int64) error {
-		if invoiceID != first {
+		other, ok := deliverWhileHeld[invoiceID]
+		if !ok {
 			return nil
 		}
 		_, err := h.Pool().Exec(ctx, `INSERT INTO invoices.manual_deliveries (invoice_id, kind, delivered_on, recorded_by_user_id, recorded_at)
-			VALUES ($1, 'handed_over', DATE '2026-07-01', gen_random_uuid(), now())`, second)
+			VALUES ($1, 'handed_over', DATE '2026-07-01', gen_random_uuid(), now())`, other)
 		return err
 	})()
+	c := payer(t, h)
 
-	r := made(t, "the run", run(payer(t, h), runBody(nil, item(first, "reminder"), item(second, "reminder"))))
+	r := made(t, "the run, unconfirmed", run(c, runBody(nil, item(first, "reminder"), item(second, "reminder"))))
 	if len(r.Created) != 1 || r.Created[0].InvoiceID != first || !slices.Equal(r.Skipped, []runSkipJSON{{second, "action_changed"}}) {
 		t.Errorf("the run = created %+v, skipped %+v; want the first made and the second skipped action_changed", r.Created, r.Skipped)
 	}
 	if n := letterRows(t, h, second); n != 0 {
 		t.Errorf("letters of the second = %d, want none", n)
+	}
+
+	r = made(t, "the run, confirmed", run(c, runBody(yes, item(third, "reminder"), item(fourth, "reminder"))))
+	if len(r.Created) != 2 || len(r.Skipped) != 0 {
+		t.Errorf("the confirmed run = created %+v, skipped %+v; want both letters made", r.Created, r.Skipped)
 	}
 }
 
