@@ -236,7 +236,7 @@ sikkerhetskopi av dem sammen med resten av lageret.
 
 ## KID-avtalen med banken
 
-En KID er referansen på en innbetaling som lar banken, og senere Vantigo, koble den til
+En KID er referansen på en innbetaling som lar banken, og Vantigos import av bankfiler, koble den til
 én faktura. Be banken om en **KID-avtale (OCR giro)** på kontoen i selgeropplysningene;
 banken registrerer en **lengde** og en **metode for kontrollsifferet**, og avviser eller
 flagger en innbetaling med en KID som ikke passer med dem.

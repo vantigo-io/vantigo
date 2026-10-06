@@ -130,6 +130,12 @@ func chargePaymentsFrom(t *testing.T, h *harness, id int64) []string {
 		WHERE bank_transaction_id = $1 AND removed_at IS NULL ORDER BY id`, id)
 }
 
+// suggestedOf is line id's suggested invoice, "-" for none.
+func suggestedOf(t *testing.T, h *harness, id int64) string {
+	t.Helper()
+	return modtest.One[string](t, h.Harness, `SELECT coalesce(suggested_invoice_id::text, '-') FROM invoices.bank_transactions WHERE id = $1`, id)
+}
+
 // eventsOf is line id's events, each "event reason by".
 func eventsOf(t *testing.T, h *harness, id int64) []string {
 	t.Helper()
@@ -264,6 +270,25 @@ func TestMatch_Classify(t *testing.T) {
 			t.Errorf("line %s = %s, want %s", w.ref, got, w.want)
 		}
 	}
+	// A line queued after its KID named an invoice keeps it as the
+	// suggestion — a possible duplicate, by the cutover or the soft key, and
+	// an invoice on the other account; one whose KID named none keeps none.
+	for _, w := range []struct {
+		file      int64
+		ref, want string
+	}{
+		{cut.File.ID, "CUT-6", idKey(c.ID)},
+		{camt.File.ID, "SOFT-B", idKey(older.ID)},
+		{ocr.File.ID, "19", idKey(older.ID)},
+		{ocr.File.ID, "15", "-"},
+		{ocr.File.ID, "13", "-"},
+		{camt.File.ID, "NOKID", "-"},
+		{camt.File.ID, "REV", "-"},
+	} {
+		if got := suggestedOf(t, h, lineID(t, h, w.file, w.ref)); got != w.want {
+			t.Errorf("line %s's suggested invoice = %s, want %s", w.ref, got, w.want)
+		}
+	}
 	if ocr.Matched != 2 || ocr.Exceptions != 9 || ocr.Pending != 0 || ocr.MatchedAmount != 200 || ocr.ExceptionsAmount != 150.95 {
 		t.Errorf("the OCR import = matched %d (%v), exceptions %d (%v), pending %d; want 2 (200), 9 (150.95), 0",
 			ocr.Matched, ocr.MatchedAmount, ocr.Exceptions, ocr.ExceptionsAmount, ocr.Pending)
@@ -367,6 +392,12 @@ func TestMatch_Cases(t *testing.T) {
 		}
 		if got := chargePaymentsFrom(t, h, id); !slices.Equal(got, w.charges) {
 			t.Errorf("line %s's charge payments = %v, want %v", w.ref, got, w.charges)
+		}
+	}
+	// A line queued under the lock keeps the invoice its KID named.
+	for ref, inv := range map[string]int64{"1": fully.ID, "3": late.ID, "9": feeOver.ID, "11": over.ID} {
+		if got := suggestedOf(t, h, lineID(t, h, r.File.ID, ref)); got != idKey(inv) {
+			t.Errorf("line %s's suggested invoice = %s, want %d", ref, got, inv)
 		}
 	}
 	if r.Matched != 6 || r.Exceptions != 5 || r.MatchedAmount != 3269.99 || r.ExceptionsAmount != 1271.02 {
@@ -498,40 +529,76 @@ func TestMatch_PrincipalThenCharges(t *testing.T) {
 	chargesAre(t, "the short line's invoice", receivablesOf(t, h, short.ID), 35, 0, 0, 35, nil)
 }
 
-// TestMatch_DeadlineMetWaiver: letter 1's deadline was missed by the booking
-// day but met by the OCR line's ordering day, so letter 2's fee, claimed
-// after it, is waived deadline_met in the match's own transaction, by the
-// uploader at the request's time (D4's last paragraph, D9); a camt.054 line,
-// which has no ordering day, waives nothing, even one booked within the
-// deadline (reading 32).
+// issueOn issues an invoice of 1000.00 with its KID while the seller banks
+// with account, then puts the seller back on sellerAccount: the invoice
+// prints account, so a file on it pays the invoice.
+func issueOn(t *testing.T, h *harness, account string) invoiceJSON {
+	t.Helper()
+	var current settingsJSON
+	h.SignIn(t, "invoices:access").Do(http.MethodGet, settingsPath, nil).JSON(&current)
+	body := completeSeller(current.Revision)
+	body["bankAccount"], body["iban"], body["bic"] = account, "", ""
+	body["kidLength"], body["kidAlgorithm"] = 7, kid.Mod10
+	saved := saveSeller(t, h, body)
+	inv := kidInvoice(t, h)
+	back := completeSeller(saved.Revision)
+	back["kidLength"], back["kidAlgorithm"] = 7, kid.Mod10
+	saveSeller(t, h, back)
+	return inv
+}
+
+// TestMatch_DeadlineMetWaiver: four invoices, each with letter 1 (no fee,
+// its deadline 29 September) and letter 2 (a fee of 35, sent 1 October).
+// A payment meets letter 1's deadline by its ordering day where the bank
+// gives one, else by its booking day (reading 32, the coordinator's decision
+// at Task 8's review): an OCR line ordered on 28 September, settled after the
+// deadline, and a camt.054 line booked on 28 September, imported after letter
+// 2 went out, each have letter 2's fee waived deadline_met in the match's own
+// transaction, by the uploader at the request's time (D4's last paragraph,
+// D9). An OCR line ordered on 30 September and a camt.054 line booked then —
+// after the deadline — waive nothing: letter 2's fee stays outstanding (I1).
 func TestMatch_DeadlineMetWaiver(t *testing.T) {
 	t.Parallel()
-	h, older := matchHarness(t)
-	a := kidInvoice(t, h)
-	letters := map[int64][2]int64{}
-	for _, inv := range []invoiceJSON{a, older} {
-		first := plantSent(t, h, inv.ID, sentFacts{1, "2026-09-15", "none", "", "", "0"}) // deadline 2026-09-29
-		second := plantSent(t, h, inv.ID, sentFacts{2, "2026-10-01", "reminder_fee", "35", "", "0"})
-		letters[inv.ID] = [2]int64{first, second}
+	h, onTime := matchHarness(t) // olderAccount, paid by camt.054
+	lateCamt := issueOn(t, h, olderAccount)
+	ocr, lateOCR := kidInvoice(t, h), kidInvoice(t, h) // sellerAccount, paid by OCR
+	letters := map[int64]int64{}
+	for _, inv := range []invoiceJSON{onTime, lateCamt, ocr, lateOCR} {
+		plantSent(t, h, inv.ID, sentFacts{1, "2026-09-15", "none", "", "", "0"}) // deadline 2026-09-29
+		letters[inv.ID] = plantSent(t, h, inv.ID, sentFacts{2, "2026-10-01", "reminder_fee", "35", "", "0"})
 	}
 	toMatchDay(h)
 	c, user := h.SignInUser(t, "invoices:access", "invoices:payments")
+	sep := func(d int) time.Time { return time.Date(2026, 9, d, 0, 0, 0, 0, time.UTC) }
 	imported(t, c, bankfiletest.OCR("1",
-		bankfiletest.OCRPayment{Type: 10, Account: sellerAccount, Settled: oct(2), Ordered: time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC), AmountMinor: 100000, KID: *a.Kid, ArchiveRef: "1"}))
-	// The camt.054 line is booked on 28 September, within letter 1's
-	// deadline; without an ordering day, it waives nothing all the same.
-	imported(t, c, camtFile("WAIVE-1", olderAccount, bankfiletest.CamtEntry{BookedOn: time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC),
-		Txs: []bankfiletest.CamtTx{{AmountMinor: 100000, KID: *older.Kid, AcctSvcrRef: "C"}}}))
+		bankfiletest.OCRPayment{Type: 10, Account: sellerAccount, Settled: oct(2), Ordered: sep(28), AmountMinor: 100000, KID: *ocr.Kid, ArchiveRef: "1"},
+		bankfiletest.OCRPayment{Type: 10, Account: sellerAccount, Settled: oct(2), Ordered: sep(30), AmountMinor: 100000, KID: *lateOCR.Kid, ArchiveRef: "2"}))
+	imported(t, c, camtFile("WAIVE-1", olderAccount,
+		bankfiletest.CamtEntry{BookedOn: sep(28), Txs: []bankfiletest.CamtTx{{AmountMinor: 100000, KID: *onTime.Kid, AcctSvcrRef: "C1"}}},
+		bankfiletest.CamtEntry{BookedOn: sep(30), Txs: []bankfiletest.CamtTx{{AmountMinor: 100000, KID: *lateCamt.Kid, AcctSvcrRef: "C2"}}}))
 
-	got := texts(t, h, `SELECT concat_ws(' ', reminder_id, kind, amount, reason, waived_by_user_id, (waived_at = $2)::text)
-		FROM invoices.charge_waivers WHERE invoice_id = $1`, a.ID, h.Now())
-	want := []string{fmt.Sprintf("%d fee 35.00 deadline_met %s true", letters[a.ID][1], user)}
-	if !slices.Equal(got, want) {
-		t.Errorf("invoice a's waivers = %v, want letter 2's fee waived deadline_met by the uploader now: %v", got, want)
-	}
-	chargesAre(t, "invoice a", receivablesOf(t, h, a.ID), 35, 35, 0, 0, nil)
-	if n := h.Count(t, `SELECT count(*) FROM invoices.charge_waivers WHERE invoice_id = $1`, older.ID); n != 0 {
-		t.Errorf("the camt.054 line's invoice has %d waivers, want none: camt.054 carries no ordering day", n)
+	for _, w := range []struct {
+		what   string
+		inv    invoiceJSON
+		waived bool
+	}{
+		{"the OCR line ordered within the deadline", ocr, true},
+		{"the camt.054 line booked within the deadline", onTime, true},
+		{"the OCR line ordered after the deadline", lateOCR, false},
+		{"the camt.054 line booked after the deadline", lateCamt, false},
+	} {
+		got := texts(t, h, `SELECT concat_ws(' ', reminder_id, kind, amount, reason, waived_by_user_id, (waived_at = $2)::text)
+			FROM invoices.charge_waivers WHERE invoice_id = $1`, w.inv.ID, h.Now())
+		var want []string
+		if w.waived {
+			want = []string{fmt.Sprintf("%d fee 35.00 deadline_met %s true", letters[w.inv.ID], user)}
+			chargesAre(t, w.what, receivablesOf(t, h, w.inv.ID), 35, 35, 0, 0, nil)
+		} else {
+			chargesAre(t, w.what, receivablesOf(t, h, w.inv.ID), 35, 0, 0, 35, nil)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: waivers %v, want %v", w.what, got, want)
+		}
 	}
 }
 
@@ -626,6 +693,34 @@ func TestMatch_PendingFinishedByMatchEndpoint(t *testing.T) {
 	}
 	if res := h.SignIn(t, "invoices:access").Do(http.MethodPost, matchPath(r.File.ID), nil); res.Status != http.StatusForbidden {
 		t.Errorf("…/match with invoices:access alone = %d, want 403", res.Status)
+	}
+}
+
+// TestMatch_InvoiceNotInNokFailsClosed: a bank line is NOK, so a line whose
+// KID names an invoice in another currency is never registered against it —
+// there is no reason of the queue for it yet, so the match fails closed: the
+// line rolls back and stays pending, matching stops with a warning naming
+// it, and the import stands (Task 8's review, MINOR 2).
+func TestMatch_InvoiceNotInNokFailsClosed(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'EUR'`)
+	euro := kidded(t, issued(t, h, createDraft(t, h, draftBody(customerEuro, line("Konsulenttime", 10, 80, vat25))).ID))
+	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'NOK'`)
+	if euro.Currency != "EUR" {
+		t.Fatalf("the invoice is in %s, want EUR", euro.Currency)
+	}
+	toMatchDay(h)
+	r := imported(t, importer(t, h), bankfiletest.OCR("1", kidPay(sellerAccount, 6, 100, *euro.Kid, "1")))
+	id := lineID(t, h, r.File.ID, "1")
+	if got := stateOf(t, h, id); got != "pending -" || r.Pending != 1 || r.Matched != 0 {
+		t.Errorf("the line = %s, the import %+v; want it left pending", got, r)
+	}
+	if got := paymentsFrom(t, h, id); len(got) != 0 {
+		t.Errorf("payments from the line = %v, want none", got)
+	}
+	if logs := h.Logs(); !strings.Contains(logs, "matching stopped early") || !strings.Contains(logs, fmt.Sprintf(`"bankTransactionId":%d`, id)) {
+		t.Errorf("no warning names line %d:\n%s", id, logs)
 	}
 }
 
