@@ -153,56 +153,6 @@ func (q *Queries) CollectionExportRows(ctx context.Context, arg CollectionExport
 	return items, nil
 }
 
-const exportDeliveries = `-- name: ExportDeliveries :many
-SELECT m.invoice_id, m.kind::text AS kind, NULL::timestamptz AS at, m.delivered_on AS delivered_on
-FROM invoices.manual_deliveries m
-WHERE m.invoice_id = ANY($1::bigint[]) AND m.removed_at IS NULL
-UNION ALL
-SELECT d.invoice_id, 'email'::text, d.sent_at, NULL::date
-FROM invoices.deliveries d
-WHERE d.invoice_id = ANY($1::bigint[])
-UNION ALL
-SELECT t.invoice_id, 'ehf'::text, t.delivered_at, NULL::date
-FROM invoices.transmissions t
-WHERE t.invoice_id = ANY($1::bigint[]) AND t.status = 'delivered'
-`
-
-type ExportDeliveriesRow struct {
-	InvoiceID   int64
-	Kind        string
-	At          *time.Time
-	DeliveredOn pgtype.Date
-}
-
-// ExportDeliveries is every live delivery of the invoices, with its kind as
-// a person reads it — handed_over or posted for a manual record, email,
-// ehf — and its day or instant (RuleDeliveries' definition): the CSV's
-// Delivered column names the first.
-func (q *Queries) ExportDeliveries(ctx context.Context, ids []int64) ([]ExportDeliveriesRow, error) {
-	rows, err := q.db.Query(ctx, exportDeliveries, ids)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ExportDeliveriesRow
-	for rows.Next() {
-		var i ExportDeliveriesRow
-		if err := rows.Scan(
-			&i.InvoiceID,
-			&i.Kind,
-			&i.At,
-			&i.DeliveredOn,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const insertHandoff = `-- name: InsertHandoff :one
 INSERT INTO invoices.collection_handoffs (invoice_id, handed_on, agency, agency_reference, note, created_at, created_by_user_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7)

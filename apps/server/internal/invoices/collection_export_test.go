@@ -69,8 +69,8 @@ func numbers(rows map[string][]string) []string {
 // handedTo — not one made before, not a withdrawn one, not an invoice never
 // handed off — or the invoices named by invoiceId, repeated, handed off or
 // not. 400 for neither, both, one date alone, handedFrom after handedTo, an
-// id that is not an issued invoice, more than 500 ids, and more than 500
-// rows — never a file cut short.
+// id that is not an issued invoice, more than 500 ids — counted after each
+// is taken once — and more than 500 rows — never a file cut short.
 func TestCollectionExport_Selections(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -106,6 +106,14 @@ func TestCollectionExport_Selections(t *testing.T) {
 		ids[i] = fmt.Sprintf("invoiceId=%d", i+1)
 	}
 	badCollection(t, "501 ids", collectionCSV(t, h, strings.Join(ids, "&")))
+	// The ids are compacted before the cap counts them: one invoice named
+	// 501 times is one invoice.
+	for i := range ids {
+		ids[i] = fmt.Sprintf("invoiceId=%d", never)
+	}
+	if got := numbers(collectionRows(t, "one id 501 times", collectionCSV(t, h, strings.Join(ids, "&")))); !slices.Equal(got, []string{"14"}) {
+		t.Errorf("one id 501 times = %v, want 14 once", got)
+	}
 
 	// 501 live hand-offs in the period: more than a file holds.
 	h.Exec(t, `
@@ -130,12 +138,14 @@ func TestCollectionExport_Selections(t *testing.T) {
 // 100 on 10 July, a payment of 200 on 1 August; a reminder sent 30 July
 // with a fee of 35 waived goodwill, and the collection notice sent 20
 // August with a fee of 35 and 3.00 of interest, of which 1.00 waived; a
-// charge payment of 10; disputed, and handed off on 10 September. The
+// charge payment of 10; disputed, and handed off on 10 September to an
+// agency named like a formula, guarded as every text column is. The
 // principal stands apart: Principal open 700. Fees claimed is net of the
 // waiver, 35; Charges waived 36 (the fee and the interest). The interest is
 // the engine's at 12.25 % from 16 July to today, on 900 for 17 days and on
 // 700 for 42 — 5.13 + 9.87, exactly 15.0020… — less the 1.00 waived: 14.00.
-// The file is text/csv, never cached, named for today.
+// Letters names each sent letter's day, level, deadline and fee, the waived
+// one marked. The file is text/csv, never cached, named for today.
 func TestCollectionExport_EachColumn(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -167,7 +177,7 @@ func TestCollectionExport_EachColumn(t *testing.T) {
 	plantChargePayment(t, h, id, "2026-09-01", "10")
 	answered(t, "the hold", c.Do(http.MethodPost, holdPath(id), holdNote("Bestrider renten")))
 	answered(t, "the hand-off", c.Do(http.MethodPost, handoffPath(id),
-		withField(handoffBody("2026-09-10", "Kredinor AS"), "agencyReference", "+47 K-1")))
+		withField(handoffBody("2026-09-10", "=Kredinor AS"), "agencyReference", "+47 K-1")))
 
 	res := collectionCSV(t, h, "handedFrom=2026-09-10&handedTo=2026-09-10")
 	if res.Status != http.StatusOK {
@@ -185,8 +195,9 @@ func TestCollectionExport_EachColumn(t *testing.T) {
 	want := csvBOM + collectionHeader + "\r\n" +
 		`7;2026-07-01;2026-07-15;2026-06-30;handed_over 2026-07-01;0000070;10001;'=Acme AS;business;923609016;;Storgata 1;` +
 		`"c/o Regnskap; 2. etg";0155;Oslo;NO;purring@acme.example;1000,00;100,00;200,00;700,00;2026-08-01 200,00;` +
-		`35,00;0,00;36,00;12,25;2026-07-16;2026-09-12;14,00;10,00;2026-07-30 reminder | 2026-08-20 collection_notice;` +
-		`2026-08-20;2026-09-03;yes;2026-09-10;Kredinor AS;'+47 K-1` + "\r\n"
+		`35,00;0,00;36,00;12,25;2026-07-16;2026-09-12;14,00;10,00;` +
+		`2026-07-30 reminder deadline 2026-08-13 fee 35,00 (waived) | 2026-08-20 collection_notice deadline 2026-09-03 fee 35,00;` +
+		`2026-08-20;2026-09-03;yes;2026-09-10;'=Kredinor AS;'+47 K-1` + "\r\n"
 	if got := string(res.Body); got != want {
 		t.Errorf("the file =\n%q\nwant\n%q", got, want)
 	}
@@ -212,5 +223,34 @@ func TestCollectionExport_DirectoryFailure(t *testing.T) {
 	logs := h.Logs()
 	if !strings.Contains(logs, "reminder address could not be read") || !strings.Contains(logs, `"level":"WARN"`) {
 		t.Errorf("the logs = %s, want the failure at warn", logs)
+	}
+}
+
+// Waived charges are out of what is claimed (D11): a business invoice whose
+// first letter claimed the compensation, waived objection_upheld by a
+// barring lift, exports Compensation claimed 0,00 and Charges waived
+// 360,00, its letter marked waived; a manual delivery is named by its own
+// kind, posted.
+func TestCollectionExport_WaivedChargesOut(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := chargePayer(t, h)
+	id := plantOverdue(t, h, overdueSpec{number: 31, customer: customerAcme, issue: "2026-07-01", due: "2026-07-15",
+		buyerType: "business", orgNo: "923609016"})
+	h.Exec(t, `INSERT INTO invoices.manual_deliveries (invoice_id, kind, delivered_on, recorded_by_user_id, recorded_at)
+		VALUES ($1, 'posted', DATE '2026-07-02', gen_random_uuid(), now())`, id)
+	plantSent(t, h, id, sentFacts{1, "2026-07-30", "compensation", "", "360", "0"})
+	answered(t, "the hold", c.Do(http.MethodPost, holdPath(id), holdNote("Bestrider")))
+	answered(t, "the barring lift", c.Do(http.MethodPost, liftPath(id), liftBody(false, "")))
+	row := collectionRows(t, "the file", collectionCSV(t, h, fmt.Sprintf("invoiceId=%d", id)))["31"]
+	got := map[string]string{"Delivered": row[4], "Fees claimed": row[22], "Compensation claimed": row[23], "Charges waived": row[24], "Letters": row[30], "Disputed": row[33]}
+	want := map[string]string{
+		"Delivered": "posted 2026-07-02", "Fees claimed": "0,00", "Compensation claimed": "0,00", "Charges waived": "360,00",
+		"Letters": "2026-07-30 reminder deadline 2026-08-13 compensation 360,00 (waived)", "Disputed": "no",
+	}
+	for k, w := range want {
+		if got[k] != w {
+			t.Errorf("%s = %q, want %q", k, got[k], w)
+		}
 	}
 }

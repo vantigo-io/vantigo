@@ -10,7 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -21,9 +24,10 @@ import (
 // off in a period, or the invoices named — one row per invoice, in the
 // module's CSV form (csvfile.go). The principal stands apart from the
 // charges, and what was waived is out of the claimed columns, in a column of
-// its own. Every figure is the reminder engine's, read through the
-// rule-input loader on one snapshot of the pool at today — no lock — and the
-// E-mail column is the customer directory's, read before any query.
+// its own. Every figure is the reminder engine's, read with the rows and the
+// deliveries on one read-only snapshot of the pool at today — no lock — and
+// the E-mail column is the customer directory's, read before the engine's
+// read.
 
 // collectionHeader is D11's header row, fixed and English, in its order.
 var collectionHeader = []string{
@@ -51,11 +55,21 @@ func badCollectionQuery(detail string) gen.GetInvoicesCollectionExportCsv400Appl
 
 // GetInvoicesCollectionExportCsv Export invoices for a collection agency as CSV
 // (GET /api/v1/invoices/collection-export.csv)
+//
+// Every read is one REPEATABLE READ, read-only transaction on the pool — the
+// rows, then the engine's inputs and the deliveries — so the file is one
+// snapshot. It takes no lock: the reminder addresses are read from the
+// directory between the rows and the engine's read, outside any locked
+// transaction (the module's lock rule is about locks, and this holds none).
 func (s *server) GetInvoicesCollectionExportCsv(ctx context.Context, req gen.GetInvoicesCollectionExportCsvRequestObject) (gen.GetInvoicesCollectionExportCsvResponseObject, error) {
 	p := req.Params
 	byDates := p.HandedFrom != nil || p.HandedTo != nil
 	byIDs := p.InvoiceId != nil && len(*p.InvoiceId) > 0
 	params := store.CollectionExportRowsParams{Ids: []int64{}, Limit: collectionMaxRows + 1}
+	if byIDs {
+		// Each invoice once, before the cap counts them.
+		params.Ids = slices.Compact(slices.Sorted(slices.Values(*p.InvoiceId)))
+	}
 	switch {
 	case byDates == byIDs:
 		return badCollectionQuery("Choose the invoices one way: handedFrom and handedTo, or invoiceId."), nil
@@ -65,35 +79,81 @@ func (s *server) GetInvoicesCollectionExportCsv(ctx context.Context, req gen.Get
 		return badCollectionQuery("'handedFrom' must be on or before 'handedTo'."), nil
 	case byDates:
 		params.HandedFrom, params.HandedTo = pgDate(utcDay(p.HandedFrom.Time)), pgDate(utcDay(p.HandedTo.Time))
-	case len(*p.InvoiceId) > collectionMaxRows:
+	case len(params.Ids) > collectionMaxRows:
 		return badCollectionQuery(fmt.Sprintf("At most %d invoices are exported at once.", collectionMaxRows)), nil
-	default:
-		params.Ids = slices.Compact(slices.Sorted(slices.Values(*p.InvoiceId)))
 	}
-	now := s.deps.Clock()
-	today := businessDay(now)
-	q := store.New(s.deps.Pool)
-	rows, err := q.CollectionExportRows(ctx, params)
-	if err != nil {
-		return nil, fmt.Errorf("invoices: read the collection export: %w", err)
-	}
-	if len(rows) > collectionMaxRows {
-		return badCollectionQuery(fmt.Sprintf("This export would hold more than %d invoices; narrow the period.", collectionMaxRows)), nil
-	}
-	if byIDs {
-		var missing []string
-		for _, id := range params.Ids {
-			if !slices.ContainsFunc(rows, func(r store.CollectionExportRowsRow) bool { return r.ID == id }) {
-				missing = append(missing, fmt.Sprint(id))
+	today := businessDay(s.deps.Clock())
+
+	var refusal string
+	var body []byte
+	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		rows, err := q.CollectionExportRows(ctx, params)
+		if err != nil {
+			return fmt.Errorf("invoices: read the collection export: %w", err)
+		}
+		if len(rows) > collectionMaxRows {
+			refusal = fmt.Sprintf("This export would hold more than %d invoices; narrow the period.", collectionMaxRows)
+			return nil
+		}
+		if byIDs {
+			var missing []string
+			for _, id := range params.Ids {
+				if !slices.ContainsFunc(rows, func(r store.CollectionExportRowsRow) bool { return r.ID == id }) {
+					missing = append(missing, fmt.Sprint(id))
+				}
+			}
+			if missing != nil {
+				refusal = "Not an issued invoice: " + strings.Join(missing, ", ")
+				return nil
 			}
 		}
-		if missing != nil {
-			return badCollectionQuery("Not an issued invoice: " + strings.Join(missing, ", ")), nil
+		emails := s.reminderAddresses(ctx, rows)
+		ids := make([]int64, 0, len(rows))
+		for _, r := range rows {
+			ids = append(ids, r.ID)
 		}
+		ins, err := s.readRuleInputs(ctx, q, ids, today)
+		if err != nil {
+			return err
+		}
+		deliveries, err := q.RuleDeliveries(ctx, ids)
+		if err != nil {
+			return fmt.Errorf("invoices: read the collection export's deliveries: %w", err)
+		}
+		first, err := firstDeliveries(deliveries)
+		if err != nil {
+			return err
+		}
+		var b bytes.Buffer
+		b.WriteString(csvByteOrderMark)
+		header := make([]csvValue, len(collectionHeader))
+		for i, name := range collectionHeader {
+			header[i] = csvValue{text: name}
+		}
+		writeCSVRow(&b, header)
+		for _, r := range rows {
+			in, ok := ins[r.ID]
+			if !ok {
+				return fmt.Errorf("invoices: document %d is not an issued invoice the rules judge", r.ID)
+			}
+			writeCSVRow(&b, collectionCells(r, in, first[r.ID], emails[r.CustomerID], today))
+		}
+		body = b.Bytes()
+		return nil
+	})
+	switch {
+	case err != nil:
+		return nil, err
+	case refusal != "":
+		return badCollectionQuery(refusal), nil
 	}
+	return csvDownload{body: body, fileName: fmt.Sprintf("invoices-collection-%s.csv", today.Format(time.DateOnly))}, nil
+}
 
-	// The reminder addresses, one directory read per customer, before any
-	// query that follows; a failure leaves the cell empty, logged at warn.
+// reminderAddresses is each customer's reminder address among rows, one
+// directory read per customer; a failure leaves it empty, logged at warn.
+func (s *server) reminderAddresses(ctx context.Context, rows []store.CollectionExportRowsRow) map[int32]string {
 	emails := map[int32]string{}
 	for _, r := range rows {
 		if _, done := emails[r.CustomerID]; done {
@@ -110,39 +170,7 @@ func (s *server) GetInvoicesCollectionExportCsv(ctx context.Context, req gen.Get
 			emails[r.CustomerID] = strings.TrimSpace(profile.ReminderEmail)
 		}
 	}
-
-	ids := make([]int64, 0, len(rows))
-	for _, r := range rows {
-		ids = append(ids, r.ID)
-	}
-	ins, err := s.ruleInputs(ctx, s.deps.Pool, ids, today)
-	if err != nil {
-		return nil, err
-	}
-	deliveries, err := q.ExportDeliveries(ctx, ids)
-	if err != nil {
-		return nil, fmt.Errorf("invoices: read the collection export's deliveries: %w", err)
-	}
-	first, err := firstDeliveries(deliveries)
-	if err != nil {
-		return nil, err
-	}
-
-	var b bytes.Buffer
-	b.WriteString(csvByteOrderMark)
-	header := make([]csvValue, len(collectionHeader))
-	for i, name := range collectionHeader {
-		header[i] = csvValue{text: name}
-	}
-	writeCSVRow(&b, header)
-	for _, r := range rows {
-		in, ok := ins[r.ID]
-		if !ok {
-			return nil, fmt.Errorf("invoices: document %d is not an issued invoice the rules judge", r.ID)
-		}
-		writeCSVRow(&b, collectionCells(r, in, first[r.ID], emails[r.CustomerID], today))
-	}
-	return csvDownload{body: b.Bytes(), fileName: fmt.Sprintf("invoices-collection-%s.csv", today.Format(time.DateOnly))}, nil
+	return emails
 }
 
 // firstDelivery is an invoice's first recorded delivery: its kind as a
@@ -152,22 +180,23 @@ type firstDelivery struct {
 	day  time.Time
 }
 
-// firstDeliveries is each invoice's first live delivery among rows, the
-// earliest day first and, on one day, the kind in name order.
-func firstDeliveries(rows []store.ExportDeliveriesRow) (map[int64]firstDelivery, error) {
+// firstDeliveries is each invoice's first live delivery among rows — the
+// engine's own deliveries (RuleDeliveries), a manual record named by its
+// own kind, handed_over or posted — the earliest day first and, on one day,
+// the kind in name order.
+func firstDeliveries(rows []store.RuleDeliveriesRow) (map[int64]firstDelivery, error) {
 	out := map[int64]firstDelivery{}
 	for _, r := range rows {
-		var day time.Time
-		switch {
-		case r.DeliveredOn.Valid:
-			day = utcDay(r.DeliveredOn.Time)
-		case r.At != nil:
-			day = businessDay(*r.At)
-		default:
-			return nil, fmt.Errorf("invoices: document %d has a %s delivery without its day", r.InvoiceID, r.Kind)
+		day, err := deliveryDay(r.InvoiceID, r.Kind, r.At, r.DeliveredOn)
+		if err != nil {
+			return nil, err
 		}
-		if f, ok := out[r.InvoiceID]; !ok || day.Before(f.day) || (day.Equal(f.day) && r.Kind < f.kind) {
-			out[r.InvoiceID] = firstDelivery{kind: r.Kind, day: day}
+		kind := r.Kind
+		if kind == deliveryKindManual {
+			kind = r.ManualKind
+		}
+		if f, ok := out[r.InvoiceID]; !ok || day.Before(f.day) || (day.Equal(f.day) && kind < f.kind) {
+			out[r.InvoiceID] = firstDelivery{kind: kind, day: day}
 		}
 	}
 	return out, nil
@@ -205,7 +234,7 @@ func collectionCells(r store.CollectionExportRowsRow, in reminderrules.Input, de
 		if l.Status != reminderrules.StatusSent || l.SentOn == nil {
 			continue
 		}
-		letters = append(letters, l.SentOn.Format(time.DateOnly)+" "+string(l.Level))
+		letters = append(letters, letterCell(l, in.Waivers))
 		if l.Level == reminderrules.LevelNotice && (notice == nil || l.Sequence > notice.Sequence) {
 			notice = &in.Letters[i]
 		}
@@ -292,6 +321,29 @@ func collectionCells(r store.CollectionExportRowsRow, in reminderrules.Input, de
 		text(csvText(r.Agency)),
 		text(csvText(r.AgencyReference)),
 	}
+}
+
+// letterCell is one sent letter in the Letters column: its day, level and
+// deadline, and the fee or compensation it claimed — "(waived)" when a
+// waiver released it.
+func letterCell(l reminderrules.Letter, ws []reminderrules.Waiver) string {
+	cell := l.SentOn.Format(time.DateOnly) + " " + string(l.Level)
+	if l.Deadline != nil {
+		cell += " deadline " + l.Deadline.Format(time.DateOnly)
+	}
+	for _, c := range []struct {
+		kind   string
+		amount *big.Rat
+	}{{reminderrules.WaiverFee, l.Fee}, {reminderrules.WaiverCompensation, l.Compensation}} {
+		if c.amount == nil || c.amount.Sign() <= 0 {
+			continue
+		}
+		cell += " " + c.kind + " " + csvAmount(c.amount, false)
+		if waived(ws, l.ID, c.kind) {
+			cell += " (waived)"
+		}
+	}
+	return cell
 }
 
 // waived is whether a waiver of kind released letter id's charge.

@@ -91,15 +91,16 @@ func (q *Queries) RuleCredits(ctx context.Context, ids []int64) ([]RuleCreditsRo
 }
 
 const ruleDeliveries = `-- name: RuleDeliveries :many
-SELECT m.invoice_id, 'manual'::text AS kind, NULL::timestamptz AS at, m.delivered_on AS delivered_on
+SELECT m.invoice_id, 'manual'::text AS kind, NULL::timestamptz AS at, m.delivered_on AS delivered_on,
+       m.kind::text AS manual_kind
 FROM invoices.manual_deliveries m
 WHERE m.invoice_id = ANY($1::bigint[]) AND m.removed_at IS NULL
 UNION ALL
-SELECT d.invoice_id, 'email'::text, d.sent_at, NULL::date
+SELECT d.invoice_id, 'email'::text, d.sent_at, NULL::date, ''::text
 FROM invoices.deliveries d
 WHERE d.invoice_id = ANY($1::bigint[])
 UNION ALL
-SELECT t.invoice_id, 'ehf'::text, t.delivered_at, NULL::date
+SELECT t.invoice_id, 'ehf'::text, t.delivered_at, NULL::date, ''::text
 FROM invoices.transmissions t
 WHERE t.invoice_id = ANY($1::bigint[]) AND t.status = 'delivered'
 `
@@ -109,6 +110,7 @@ type RuleDeliveriesRow struct {
 	Kind        string
 	At          *time.Time
 	DeliveredOn pgtype.Date
+	ManualKind  string
 }
 
 // RuleDeliveries is every live delivery of the invoices the engine's delivery
@@ -118,6 +120,8 @@ type RuleDeliveriesRow struct {
 // — at, whose Oslo day the caller derives, never this statement — and each
 // manual delivery not removed by its delivered_on. A failed, queued or
 // cancelled transmission and a removed manual record are not deliveries.
+// manual_kind is a manual record's own kind (handed_over or posted), which
+// the collection file names; ” for the others.
 func (q *Queries) RuleDeliveries(ctx context.Context, ids []int64) ([]RuleDeliveriesRow, error) {
 	rows, err := q.db.Query(ctx, ruleDeliveries, ids)
 	if err != nil {
@@ -132,6 +136,7 @@ func (q *Queries) RuleDeliveries(ctx context.Context, ids []int64) ([]RuleDelive
 			&i.Kind,
 			&i.At,
 			&i.DeliveredOn,
+			&i.ManualKind,
 		); err != nil {
 			return nil, err
 		}
