@@ -262,7 +262,9 @@ func TestReminderRun_Preview(t *testing.T) {
 // then meets alone with interest off — and bank_import_stale: with the flag
 // absent refused (no lastBookedOn while no file was ever imported, the
 // latest booking once one was), with it true made, and a run of fee-free
-// letters only never held back. A refusal writes nothing.
+// letters only never held back. The bank data is stale and unconfirmed in
+// every case before it, so each earlier code is judged first (D10). A
+// refusal writes nothing.
 func TestReminderRun_RefusalsInOrder(t *testing.T) {
 	t.Parallel()
 	h := runReady(t, "late_interest = true")
@@ -282,19 +284,21 @@ func TestReminderRun_RefusalsInOrder(t *testing.T) {
 	refusedRun(t, "reminders off", run(c, runBody(nil, item(old, "reminder"), item(fee, "reminder"))), "reminders_disabled")
 	remindersOn(t, h, "")
 
-	p := refusedRun(t, "an interest period in 2023-H2", run(c, runBody(yes, item(fee, "reminder"), item(old, "reminder"))), "collection_rates_outdated")
+	// No bank file was ever imported, so the data is stale throughout, and
+	// the outdated rate and the review still answer before it, unconfirmed.
+	p := refusedRun(t, "an interest period in 2023-H2", run(c, runBody(nil, item(fee, "reminder"), item(old, "reminder"))), "collection_rates_outdated")
 	if p.Kind == nil || *p.Kind != "late_interest_percent" || p.HalfYear == nil || *p.HalfYear != "2023-H2" {
 		t.Errorf("collection_rates_outdated names %v %v, want late_interest_percent 2023-H2", p.Kind, p.HalfYear)
 	}
 
 	moveClockTo(t, h, time.Date(2027, time.January, 4, 8, 0, 0, 0, time.UTC))
 	c = payer(t, h) // a session of the new day
-	p = refusedRun(t, "2027 with interest on", run(c, runBody(yes, item(fee, "reminder"))), "collection_rates_outdated")
+	p = refusedRun(t, "2027 with interest on", run(c, runBody(nil, item(fee, "reminder"))), "collection_rates_outdated")
 	if p.HalfYear == nil || *p.HalfYear != "2027-H1" {
 		t.Errorf("collection_rates_outdated in 2027 names %v, want 2027-H1 — judged before the review", p.HalfYear)
 	}
 	h.Exec(t, `UPDATE invoices.reminder_settings SET late_interest = false`)
-	refusedRun(t, "a fee after the review", run(c, runBody(yes, item(fee, "reminder"))), "collection_regime_unreviewed")
+	refusedRun(t, "a fee after the review", run(c, runBody(nil, item(fee, "reminder"))), "collection_regime_unreviewed")
 	h.Exec(t, `UPDATE invoices.reminder_settings SET regime_reviewed_through = DATE '2027-06-30'`)
 
 	p = refusedRun(t, "a fee, no bank file ever", run(c, runBody(nil, item(fee, "reminder"))), "bank_import_stale")
@@ -314,6 +318,139 @@ func TestReminderRun_RefusalsInOrder(t *testing.T) {
 	}
 	if r := made(t, "the fee confirmed", run(c, runBody(yes, item(fee, "reminder")))); len(r.Created) != 1 || !r.Run.StaleImportAcknowledged {
 		t.Errorf("the confirmed run = %+v, want its letter and the confirmation recorded", r)
+	}
+}
+
+// Every charge needs the stale data confirmed (D10): interest alone — a
+// person, no fee for people, late interest on — and the compensation alone —
+// a business with an organisation number, compensation chosen, no interest —
+// are each refused bank_import_stale without acknowledgeStaleImport and made
+// with it.
+func TestReminderRun_StaleGuardsEveryCharge(t *testing.T) {
+	t.Parallel()
+	h := runReady(t, "late_interest = true, person_charge = 'none'")
+	c := payer(t, h)
+	kari := deliveredOn(t, h, 1, customerPerson, "2026-08-03")
+	if p := previewOf(t, h); len(p.Letters) != 1 || p.Letters[0].Letter.FeeKind != "none" || p.Letters[0].Letter.Interest == 0 {
+		t.Fatalf("Kari's letter = %+v, want interest alone", p.Letters)
+	}
+	refusedRun(t, "interest alone, unconfirmed", run(c, runBody(nil, item(kari, "reminder"))), "bank_import_stale")
+	if r := made(t, "interest alone, confirmed", run(c, runBody(yes, item(kari, "reminder")))); len(r.Created) != 1 {
+		t.Errorf("interest alone, confirmed = %+v, want the letter", r)
+	}
+
+	h.Exec(t, `UPDATE invoices.reminder_settings SET late_interest = false, business_charge = 'compensation'`)
+	acme := plantOverdue(t, h, overdueSpec{number: 2, customer: customerAcme, issue: "2026-07-01", due: "2026-08-03",
+		buyerType: "business", orgNo: "923609016", deliveredOnIssueOn: true})
+	var letter *previewLetterJSON
+	for _, l := range previewOf(t, h).Letters {
+		if l.InvoiceID == acme {
+			letter = &l
+		}
+	}
+	if letter == nil || letter.Letter.FeeKind != "compensation" || letter.Letter.Compensation != 430 || letter.Letter.Fee != 0 ||
+		letter.Letter.Interest != 0 {
+		t.Fatalf("Acme's letter = %+v, want the compensation of 430 alone", letter)
+	}
+	refusedRun(t, "the compensation alone, unconfirmed", run(c, runBody(nil, item(acme, "reminder"))), "bank_import_stale")
+	if r := made(t, "the compensation alone, confirmed", run(c, runBody(yes, item(acme, "reminder")))); len(r.Created) != 1 {
+		t.Errorf("the compensation alone, confirmed = %+v, want the letter", r)
+	}
+}
+
+// The stale guard holds under the lock (D10): a run of two fee-free letters
+// on stale data, unconfirmed; while the first item holds its invoice, the
+// second invoice gets a delivery recorded, so judged under its lock its
+// letter would now claim a fee — it is skipped action_changed, not made with
+// a charge nobody confirmed.
+func TestReminderRun_StaleGuardUnderTheLock(t *testing.T) {
+	h := runReady(t, "")
+	first := plantOverdue(t, h, overdueSpec{number: 1, customer: customerAcme, issue: "2026-07-01", due: "2026-08-03"})
+	second := plantOverdue(t, h, overdueSpec{number: 2, customer: customerAcme, issue: "2026-07-01", due: "2026-08-03"})
+	defer invoices.SetRunItemAfterLock(func(ctx context.Context, invoiceID int64) error {
+		if invoiceID != first {
+			return nil
+		}
+		_, err := h.Pool().Exec(ctx, `INSERT INTO invoices.manual_deliveries (invoice_id, kind, delivered_on, recorded_by_user_id, recorded_at)
+			VALUES ($1, 'handed_over', DATE '2026-07-01', gen_random_uuid(), now())`, second)
+		return err
+	})()
+
+	r := made(t, "the run", run(payer(t, h), runBody(nil, item(first, "reminder"), item(second, "reminder"))))
+	if len(r.Created) != 1 || r.Created[0].InvoiceID != first || !slices.Equal(r.Skipped, []runSkipJSON{{second, "action_changed"}}) {
+		t.Errorf("the run = created %+v, skipped %+v; want the first made and the second skipped action_changed", r.Created, r.Skipped)
+	}
+	if n := letterRows(t, h, second); n != 0 {
+		t.Errorf("letters of the second = %d, want none", n)
+	}
+}
+
+// A merge between the profiles' read and an item's lock (D10): the second
+// invoice's customer is merged into another while the first item holds its
+// invoice, so under its lock the second belongs to a customer whose profile
+// the run never read — skipped action_changed, never sent to the absorbed
+// customer's address.
+func TestReminderRun_MergedSinceTheProfileWasRead(t *testing.T) {
+	h := runReady(t, "")
+	plantBankFile(t, h, "2026-09-11")
+	first := deliveredOn(t, h, 1, customerAcme, "2026-08-03")
+	second := deliveredOn(t, h, 2, customerPerson, "2026-08-03")
+	holder := invoices.Module().CustomerReferences(h.Deps())
+	mergeConn := ownConn(t, h)
+	defer invoices.SetRunItemAfterLock(func(ctx context.Context, invoiceID int64) error {
+		if invoiceID != first {
+			return nil
+		}
+		tx, err := mergeConn.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(context.Background()) }()
+		if _, err := holder.RepointCustomer(ctx, tx, customerPerson, customerNoAddress); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	})()
+
+	r := made(t, "the run", run(payer(t, h), runBody(nil, item(first, "reminder"), item(second, "reminder"))))
+	if len(r.Created) != 1 || r.Created[0].InvoiceID != first || !slices.Equal(r.Skipped, []runSkipJSON{{second, "action_changed"}}) {
+		t.Errorf("the run = created %+v, skipped %+v; want the first made and the merged one skipped action_changed", r.Created, r.Skipped)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.invoices WHERE id = $1 AND customer_id = $2`, second, customerNoAddress); n != 1 {
+		t.Fatalf("the second invoice was not merged: the test proves nothing")
+	}
+}
+
+// The preview narrows as the list does (D10, D12): by a due date before a
+// day and by customer, so a set past the cap can be previewed in parts.
+func TestReminderRun_PreviewNarrowed(t *testing.T) {
+	t.Parallel()
+	h := runReady(t, "")
+	acme := deliveredOn(t, h, 1, customerAcme, "2026-08-03")
+	kari := deliveredOn(t, h, 2, customerPerson, "2026-08-20")
+	c := payer(t, h)
+	letters := func(body map[string]any) []int64 {
+		t.Helper()
+		res := c.Do(http.MethodPost, reminderRunsPath, body)
+		if res.Status != http.StatusOK {
+			t.Fatalf("the preview %v = %d %s", body, res.Status, res.Body)
+		}
+		var p previewJSON
+		res.JSON(&p)
+		var ids []int64
+		for _, l := range p.Letters {
+			ids = append(ids, l.InvoiceID)
+		}
+		return ids
+	}
+	if got := letters(map[string]any{"dryRun": true}); !slices.Equal(got, []int64{acme, kari}) {
+		t.Errorf("the whole preview = %v, want both", got)
+	}
+	if got := letters(map[string]any{"dryRun": true, "dueBefore": "2026-08-04"}); !slices.Equal(got, []int64{acme}) {
+		t.Errorf("dueBefore 4 August = %v, want Acme's", got)
+	}
+	if got := letters(map[string]any{"dryRun": true, "customerId": customerPerson}); !slices.Equal(got, []int64{kari}) {
+		t.Errorf("Kari's preview = %v, want hers", got)
 	}
 }
 

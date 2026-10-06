@@ -698,9 +698,14 @@ come with the letters' sending; until then the list and the runs are in the API
 bank may book it days later. An OCR giro file says when a payment was ordered; a camt.054
 file does not, so a payment from one is judged by the day it was booked. The default
 grace of 3 days after a deadline, before the next letter, covers a payment ordered on the
-deadline and booked after a long weekend. With a grace of 1 day such a payment could draw
-a second fee that is never waived: keep the grace at 3 days or more when your bank files
-are camt.054.
+deadline and booked after an ordinary long weekend; Easter can take longer, and the
+confirmation a run asks for when the latest bank file is old is the guard then. With a
+grace of 1 day such a payment could draw a second fee that is never waived: keep the
+grace at 3 days or more when your bank files are camt.054.
+
+**Previewing part of the list.** A preview can be narrowed to one customer or to invoices
+due before a day, as the overdue list can — and must be, when more than 5 000 invoices are
+overdue.
 
 ## Sending a document by e-mail
 
