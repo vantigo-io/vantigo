@@ -72,30 +72,49 @@ func deliveriesOf(ctx context.Context, q *store.Queries, invoiceID int64) ([]tim
 }
 
 // reliedOn is whether removing manual delivery d would take away the
-// delivery a sent letter's charge stands on (plan reading 37): a sent letter
-// of the invoice carries a fee or the compensation not waived, or interest
-// beyond what was waived, and no other delivery on or before the due date
-// would remain. Read with txq, which holds the invoice's lock.
+// delivery a letter's charge stands on (plan reading 37): a letter of the
+// invoice that carries its facts — sent, printed, or being sent; not
+// withdrawn, not failed — carries a fee or the compensation not waived, or
+// interest beyond what was waived, and no other delivery on or before the
+// due date would remain. A printed or in-flight letter counts as a sent one does: its
+// charges are on paper or on their way. Read with txq, which holds the
+// invoice's lock.
 func reliedOn(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, d store.InvoicesManualDelivery) (bool, error) {
 	due := utcDay(inv.DueDate.Time)
 	if utcDay(d.DeliveredOn.Time).After(due) {
 		// A delivery after the due date counts as none: nothing stands on it.
 		return false, nil
 	}
-	_, rows, err := chargesOf(ctx, txq, inv.ID)
+	stored, err := txq.ClaimingLettersOf(ctx, inv.ID)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("invoices: read document %d's letters: %w", inv.ID, err)
+	}
+	letters := make([]reminderrules.Letter, 0, len(stored))
+	for _, r := range stored {
+		l, err := letterOf(r)
+		if err != nil {
+			return false, err
+		}
+		letters = append(letters, l)
+	}
+	rows, err := txq.WaiversOf(ctx, inv.ID)
+	if err != nil {
+		return false, fmt.Errorf("invoices: read document %d's waivers: %w", inv.ID, err)
 	}
 	waived := map[string]bool{}
 	interestWaived := new(big.Rat)
-	for _, w := range rows.ruleWaivers {
+	for _, w := range rows {
 		waived[fmt.Sprintf("%d %s", w.ReminderID, w.Kind)] = true
 		if w.Kind == reminderrules.WaiverInterest {
-			interestWaived.Add(interestWaived, w.Amount)
+			amount, err := ratFromNumeric(w.Amount)
+			if err != nil {
+				return false, err
+			}
+			interestWaived.Add(interestWaived, amount)
 		}
 	}
 	charged := false
-	for _, l := range rows.ruleLetters {
+	for _, l := range letters {
 		switch {
 		case l.Fee != nil && l.Fee.Sign() > 0 && !waived[fmt.Sprintf("%d %s", l.ID, reminderrules.WaiverFee)],
 			l.Compensation != nil && l.Compensation.Sign() > 0 && !waived[fmt.Sprintf("%d %s", l.ID, reminderrules.WaiverCompensation)],
@@ -249,7 +268,7 @@ func (s *server) PostInvoicesByIdManualDeliveriesByDeliveryIdRemove(ctx context.
 		}
 		if relied {
 			refusal = ptr(conflict(codeDeliveryReliedOn, cannotRemoveDeliveryTitle,
-				"A sent reminder claims a charge that stands on this delivery, and no other delivery on or before the due date "+
+				"A reminder claims a charge that stands on this delivery, and no other delivery on or before the due date "+
 					"remains. If the record is a mistake, waive those charges as claimed in error first, then remove it."))
 			return errRefused
 		}

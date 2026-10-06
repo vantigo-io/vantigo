@@ -52,3 +52,13 @@ UNION ALL
 SELECT 'ehf'::text, t.delivered_at, NULL::date
 FROM invoices.transmissions t
 WHERE t.invoice_id = @invoice_id AND t.status = 'delivered';
+
+-- name: ClaimingLettersOf :many
+-- ClaimingLettersOf is every letter of an invoice that carries its facts —
+-- sent, printed, or being sent (queued with its facts written) — by
+-- sequence: the letters whose charges a manual delivery's removal must not
+-- leave without a delivery (plan reading 37, as the Task 7 review decided).
+-- A withdrawn letter claims nothing, and a failed one has its facts cleared.
+SELECT * FROM invoices.reminders
+WHERE invoice_id = @invoice_id AND status IN ('sent', 'printed', 'queued') AND sent_on IS NOT NULL
+ORDER BY sequence, id;

@@ -177,9 +177,78 @@ func TestManualDeliveries_Removal(t *testing.T) {
 	plantEmail(t, h, emailed.ID, due.Add(21*time.Hour+30*time.Minute)) // 23:30 on the due date, in Oslo
 	remove(emailed.ID, emailedID)
 
+	// A record dated after the due date counts as none, so nothing stands on
+	// it, even with a fee sent and only one other delivery by the due date.
+	late := thousand(t, h)
+	plantEmail(t, h, late.ID, time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC))
+	plantSent(t, h, late.ID, sentFacts{1, "2026-10-01", "reminder_fee", "35", "", "0"})
+	lateID := plantID(t, h, `INSERT INTO invoices.manual_deliveries (invoice_id, kind, delivered_on, recorded_by_user_id, recorded_at)
+		VALUES ($1, 'posted', $2::date + 4, gen_random_uuid(), now()) RETURNING id`, late.ID, *late.DueDate)
+	remove(late.ID, lateID)
+
+	// Interest alone relies on it until the interest is waived.
+	interest := thousand(t, h)
+	interestID := record(interest.ID)
+	interestLetter := plantSent(t, h, interest.ID, sentFacts{1, "2026-10-01", "none", "", "", "3.10"})
+	conflictAs(t, "interest not waived", c.Do(http.MethodPost, manualDeliveryRemovalPath(interest.ID, interestID), map[string]any{"reason": "Feil"}),
+		"delivery_relied_on")
+	okAs(t, "the interest waived", payer.Do(http.MethodPost, waivePath(interest.ID), waive("claimed_in_error", waiver(interestLetter, "interest"))))
+	remove(interest.ID, interestID)
+
+	// The compensation relies on it until it is waived.
+	business := thousand(t, h)
+	businessID := record(business.ID)
+	compensation := plantSent(t, h, business.ID, sentFacts{1, "2026-10-01", "compensation", "", "360", "0"})
+	conflictAs(t, "the compensation not waived", c.Do(http.MethodPost, manualDeliveryRemovalPath(business.ID, businessID),
+		map[string]any{"reason": "Feil"}), "delivery_relied_on")
+	okAs(t, "the compensation waived", payer.Do(http.MethodPost, waivePath(business.ID), waive("claimed_in_error", waiver(compensation, "compensation"))))
+	remove(business.ID, businessID)
+
+	// A letter with its facts that is not sent yet relies on it as a sent one
+	// does: printed on paper, or being sent by e-mail (queued, facts written).
+	printed := thousand(t, h)
+	printedID := record(printed.ID)
+	batch := plantID(t, h, `INSERT INTO invoices.reminder_print_batches (post_on, created_at, created_by_user_id)
+		VALUES (DATE '2026-10-02', now(), gen_random_uuid()) RETURNING id`)
+	plantWithFacts(t, h, printed.ID, "printed", "paper", &batch)
+	conflictAs(t, "a printed fee letter", c.Do(http.MethodPost, manualDeliveryRemovalPath(printed.ID, printedID), map[string]any{"reason": "Feil"}),
+		"delivery_relied_on")
+	sending := thousand(t, h)
+	sendingID := record(sending.ID)
+	plantWithFacts(t, h, sending.ID, "queued", "email", nil)
+	conflictAs(t, "a fee letter being sent", c.Do(http.MethodPost, manualDeliveryRemovalPath(sending.ID, sendingID), map[string]any{"reason": "Feil"}),
+		"delivery_relied_on")
+
+	// A withdrawn letter claims nothing, even with its facts written.
+	withdrawn := thousand(t, h)
+	withdrawnID := record(withdrawn.ID)
+	letter := plantWithFacts(t, h, withdrawn.ID, "queued", "email", nil)
+	h.Exec(t, `UPDATE invoices.reminders SET status = 'withdrawn', withdrawn_at = now(), withdrawal_reason = 'invoice_settled'
+		WHERE id = $1`, letter)
+	remove(withdrawn.ID, withdrawnID)
+
+	if res := h.SignIn(t, "invoices:access", "invoices:payments").Do(http.MethodPost, manualDeliveryRemovalPath(printed.ID, printedID),
+		map[string]any{"reason": "Feil"}); res.Status != http.StatusForbidden {
+		t.Errorf("a removal without invoices:issue = %d, want 403", res.Status)
+	}
+
 	// Nothing sent: nothing relies on it.
 	plain := thousand(t, h)
 	remove(plain.ID, record(plain.ID))
+}
+
+// plantWithFacts plants a letter of invoice id claiming a fee of 35, its
+// facts written, in status on channel — printed in batch, or queued and
+// being sent — and answers its id.
+func plantWithFacts(t *testing.T, h *harness, id int64, status, channel string, batch *int64) int64 {
+	t.Helper()
+	return plantID(t, h, `
+		INSERT INTO invoices.reminders (invoice_id, run_id, print_batch_id, sequence, level, channel, language, created_at,
+		    created_by_user_id, status, sent_on, deadline, regime, principal_open, fee_kind, fee, charges_earlier, interest,
+		    interest_waived, interest_paid, total)
+		VALUES ($1, $2, $3, 1, 'reminder', $4, 'nb', now(), gen_random_uuid(), $5, DATE '2026-10-02', DATE '2026-10-16',
+		    'inkassolov_1988', 1000, 'reminder_fee', 35, 0, 0, 0, 0, 1035)
+		RETURNING id`, id, plantRun(t, h), batch, channel, status)
 }
 
 // The engine's delivery fact (D8; plan reading 34): deliveriesOf answers the

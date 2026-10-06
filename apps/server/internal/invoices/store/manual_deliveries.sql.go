@@ -13,6 +13,82 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const claimingLettersOf = `-- name: ClaimingLettersOf :many
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders
+WHERE invoice_id = $1 AND status IN ('sent', 'printed', 'queued') AND sent_on IS NOT NULL
+ORDER BY sequence, id
+`
+
+// ClaimingLettersOf is every letter of an invoice that carries its facts —
+// sent, printed, or being sent (queued with its facts written) — by
+// sequence: the letters whose charges a manual delivery's removal must not
+// leave without a delivery (plan reading 37, as the Task 7 review decided).
+// A withdrawn letter claims nothing, and a failed one has its facts cleared.
+func (q *Queries) ClaimingLettersOf(ctx context.Context, invoiceID int64) ([]InvoicesReminder, error) {
+	rows, err := q.db.Query(ctx, claimingLettersOf, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesReminder
+	for rows.Next() {
+		var i InvoicesReminder
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.RunID,
+			&i.PrintBatchID,
+			&i.Sequence,
+			&i.Level,
+			&i.AnnouncesCollection,
+			&i.Channel,
+			&i.Recipient,
+			&i.Language,
+			&i.CreatedAt,
+			&i.CreatedByUserID,
+			&i.SentOn,
+			&i.Deadline,
+			&i.Regime,
+			&i.PrincipalOpen,
+			&i.FeeKind,
+			&i.Fee,
+			&i.Compensation,
+			&i.ChargesEarlier,
+			&i.Interest,
+			&i.InterestWaived,
+			&i.InterestPaid,
+			&i.InterestFrom,
+			&i.InterestSegments,
+			&i.Inkassosats,
+			&i.Total,
+			&i.ChargeNotes,
+			&i.PdfObjectKey,
+			&i.PdfSha256,
+			&i.MessageID,
+			&i.SentAt,
+			&i.Status,
+			&i.HeldReason,
+			&i.Attempts,
+			&i.NextAttemptAt,
+			&i.FirstAttemptAt,
+			&i.LeaseID,
+			&i.LeaseUntil,
+			&i.LastError,
+			&i.FailedAt,
+			&i.WithdrawnAt,
+			&i.WithdrawnByUserID,
+			&i.WithdrawalReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getManualDelivery = `-- name: GetManualDelivery :one
 SELECT id, invoice_id, kind, delivered_on, note, recorded_by_user_id, recorded_at, removed_at, removed_by_user_id, removal_reason FROM invoices.manual_deliveries WHERE id = $1 AND invoice_id = $2
 `

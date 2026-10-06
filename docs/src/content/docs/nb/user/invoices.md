@@ -682,12 +682,13 @@ settes — foreløpig gjennom API-et; skjermbildene kommer med selve purringene
   med en merknad. Den som har `invoices:payments` setter den, for en kunde som har en
   faktura eller et utkast her. Når to kunder slås sammen, vinner den strengeste regelen.
 
-**Purregebyrer og leveringer registrert for hånd.** En utstedt faktura har nå også det
+**Purrekrav og leveringer registrert for hånd.** En utstedt faktura har nå også det
 purringene krever — purregebyr, kompensasjon og forsinkelsesrenter, holdt atskilt fra
 det fakturaen selv gjelder — med betalinger og ettergivelser av disse kravene, og
-leveringene som er registrert for hånd, som et gebyr krever når fakturaen ble overlevert
-eller sendt i posten i stedet for på e-post eller som EHF. Skjermbildene for dem kommer
-med purringene; til da finnes de i API-et ([gebyrer](/en/reference/invoices/#charges),
+leveringene som er registrert for hånd, som et krav krever når fakturaen ble overlevert
+eller sendt i posten i stedet for på e-post eller som EHF. En slik registrering kan ikke
+fjernes mens en purring — sendt, skrevet ut eller på vei — krever noe som hviler på den
+alene. Skjermbildene for dem kommer med purringene; til da finnes de i API-et ([purrekrav](/en/reference/invoices/#charges),
 [leveringsfaktumet](/en/reference/invoices/#the-delivery-fact)).
 
 ## Sende et dokument på e-post

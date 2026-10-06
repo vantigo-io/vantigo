@@ -421,6 +421,10 @@ func TestChargePayments_Removal(t *testing.T) {
 		t.Errorf("removedAt = %s (%v), want the clock's %s", *p.RemovedAt, err, h.Now())
 	}
 	conflictAs(t, "removed again", c.Do(http.MethodPost, chargePaymentRemovalPath(inv.ID, id), map[string]any{"reason": "Igjen"}), "payment_removed")
+	if res := h.SignIn(t, "invoices:access", "invoices:issue").Do(http.MethodPost, chargePaymentRemovalPath(other.ID, otherID),
+		map[string]any{"reason": "Feil"}); res.Status != http.StatusForbidden {
+		t.Errorf("a removal without invoices:payments = %d, want 403", res.Status)
+	}
 	chargesAre(t, "the other invoice", receivablesOf(t, h, other.ID), 35, 0, 35, 0, nil)
 }
 
