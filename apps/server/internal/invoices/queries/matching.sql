@@ -26,15 +26,17 @@ SELECT * FROM invoices.invoices WHERE number = @number AND status = 'issued';
 -- name: SoftKeyRegistered :one
 -- SoftKeyRegistered reports whether a line of another file on the same
 -- account, booking day, amount and KID has a live payment or charge payment
--- (D4 step 2, R4's soft key; ix_bank_transactions_soft): the same payment
--- read again from another notification. Read on the pool to classify, and
+-- (D4 step 2, R4's soft key; ix_bank_transactions_soft), or had one a
+-- reversal took back (its reversed event, D5): the same payment read again
+-- from another notification, never registered again by itself. Read on the pool to classify, and
 -- again under the invoice's lock before anything is registered.
 SELECT EXISTS (
     SELECT 1 FROM invoices.bank_transactions t
     WHERE t.account = @account AND t.booked_on = @booked_on AND t.amount = @amount AND t.kid = @kid::text
       AND t.kid IS NOT NULL AND t.bank_file_id <> @bank_file_id
       AND (EXISTS (SELECT 1 FROM invoices.payments p WHERE p.bank_transaction_id = t.id AND p.removed_at IS NULL)
-        OR EXISTS (SELECT 1 FROM invoices.charge_payments c WHERE c.bank_transaction_id = t.id AND c.removed_at IS NULL))
+        OR EXISTS (SELECT 1 FROM invoices.charge_payments c WHERE c.bank_transaction_id = t.id AND c.removed_at IS NULL)
+        OR EXISTS (SELECT 1 FROM invoices.bank_transaction_events e WHERE e.bank_transaction_id = t.id AND e.event = 'reversed'))
 ) AS registered;
 
 -- name: InsertImportedPayment :one

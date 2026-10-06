@@ -645,6 +645,9 @@ keeps no credit balance and makes no refund. A payment dismissed because its inv
 credited or already paid, or because it was more than was owed, stays unapplied too: the
 money is owed back, and the refund is made outside Vantigo. Once a reversal has taken a
 payment back, the line it came from is never applied or reopened again.
+Nor is the same payment in another file of the bank's, or a copy of the line: those are
+held back for a person, never registered by themselves. A reversal that named the wrong
+payment cannot be undone; register that payment again by hand.
 
 Click **Register payment** — offered while something is left to pay — and fill in:
 
