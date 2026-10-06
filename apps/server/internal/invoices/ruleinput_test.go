@@ -614,8 +614,10 @@ func TestRuleInput_AHandfulOfStatements(t *testing.T) {
 		return statements()
 	}
 	one, all := count(ids[:1]), count(ids)
-	if one != all || one > 12 {
-		t.Errorf("ruleInputs read %d statements for one invoice and %d for 200, want the same handful (at most 12)", one, all)
+	// Exactly 12: a read that escaped the counted snapshot to the pool would
+	// count fewer, and a per-invoice loop more.
+	if one != 12 || all != 12 {
+		t.Errorf("ruleInputs read %d statements for one invoice and %d for 200, want 12 for both", one, all)
 	}
 }
 
