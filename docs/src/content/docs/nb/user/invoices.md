@@ -662,6 +662,25 @@ En feil registrering redigeres aldri: klikk **Fjern** ved siden av den, oppgi en
 fakturaen, gjennomstreket med begrunnelsen. En fjerning kan ikke angres; registrer
 betalingen på nytt om den likevel var riktig.*
 
+## Purringer
+
+Purringer er på vei inn i Vantigo: brev om forfalte fakturaer, med gebyret,
+kompensasjonen og forsinkelsesrenten loven tillater. Tre ting de bygger på kan allerede
+settes — foreløpig gjennom API-et; skjermbildene kommer med selve purringene
+([purringer](/en/reference/invoices/#reminders)):
+
+- **Satser for inndriving**: forsinkelsesrenten, kompensasjonen fra næringsdrivende og
+  inkassosatsen, som daterte rader Vantigos utgivelser fyller inn. Den som har
+  `invoices:manage` kan legge til en sats som gjelder fra etter i dag, før en utgivelse
+  kommer, og slette en som ikke gjelder ennå og som ingen brev har brukt.
+- **Innstillinger for purring**: om purringer tilbys i det hele tatt, hvor lenge etter
+  forfall det første brevet kommer, fristen i hvert brev, gebyrene for privatpersoner og
+  for næringsdrivende, og dagen den nye inkassoloven trer i kraft, med gjennomgangen av
+  den (`invoices:manage`).
+- **En kundes purreregel**: normal, uten gebyrer eller ingen purringer i det hele tatt,
+  med en merknad. Den som har `invoices:payments` setter den, for en kunde som har en
+  faktura eller et utkast her. Når to kunder slås sammen, vinner den strengeste regelen.
+
 ## Sende et dokument på e-post
 
 Åpne en utstedt faktura eller kreditnota og klikk **Send**. Knappen krever
@@ -896,5 +915,5 @@ Ingen innebygd rolle har disse; en eier har alt
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending | `invoices:issue` |
-| Registrere en betaling eller fjerne en med begrunnelse | `invoices:payments` |
-| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene og kortet **Arbeid til fakturering** | `invoices:manage` |
+| Registrere en betaling eller fjerne en med begrunnelse; sette en kundes purreregel | `invoices:payments` |
+| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, satsene for inndriving og innstillingene for purring | `invoices:manage` |

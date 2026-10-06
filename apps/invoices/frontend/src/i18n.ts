@@ -418,6 +418,10 @@ export const invoicesCatalog = {
     "refusal.rate_period_not_latest": "Only the latest rate period can be removed.",
     "refusal.rate_period_last": "A VAT code always has a rate, so its only period cannot be removed.",
     "refusal.rate_period_in_use": "A document is issued on or after this period's start, so the period stays.",
+    "refusal.collection_rate_exists":
+      "A rate of this kind already takes effect on that day. Delete it first if it is wrong.",
+    "refusal.collection_rate_in_force":
+      "This rate can no longer be deleted: it came with a release, is already in force, or a letter has relied on it.",
     "refusal.credit_note_no_payments": "A payment is registered against an invoice, never a credit note.",
     "refusal.invoice_settled": "Nothing is left to pay on this invoice, so no payment can be registered.",
     "refusal.payment_exceeds_open":
@@ -1190,6 +1194,10 @@ export const invoicesCatalog = {
     "refusal.rate_period_not_latest": "Bare den siste satsperioden kan fjernes.",
     "refusal.rate_period_last": "En mva-kode har alltid en sats, så den eneste perioden kan ikke fjernes.",
     "refusal.rate_period_in_use": "Et dokument er utstedt på eller etter periodens start, så perioden blir stående.",
+    "refusal.collection_rate_exists":
+      "En sats av denne typen gjelder allerede fra den dagen. Slett den først om den er feil.",
+    "refusal.collection_rate_in_force":
+      "Denne satsen kan ikke lenger slettes: den kom med en utgivelse, gjelder allerede, eller et brev har brukt den.",
     "refusal.credit_note_no_payments": "En betaling registreres mot en faktura, aldri mot en kreditnota.",
     "refusal.invoice_settled": "Det er ingenting igjen å betale på denne fakturaen, så ingen betaling kan registreres.",
     "refusal.payment_exceeds_open":

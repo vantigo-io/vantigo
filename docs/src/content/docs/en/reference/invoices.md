@@ -102,6 +102,9 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.erased_customers` | The customers this module has anonymised, by id, with when: the marker a send and the delivery, payment and transmission triggers read. Never removed. |
 | `invoices.access_point_credentials` | One row (`id = 1`): the access point provider (`storecove`), its settings that are not secret (`settings_json`), the API key sealed by the secrets box, `rejected_at` once the provider refused the key, and `updated_at`. Kept off the settings row every issue reads `FOR SHARE`. |
 | `invoices.transmissions` | One EHF transmission of an issued document: the provider, the idempotency key, the sender's and receiver's Peppol ids, the document type and process, the submitted UBL's object key and SHA-256 and the PDF's SHA-256, the status (`queued`, `submitted`, `delivered`, `failed`, `unconfirmed`, `cancelled`), the provider's reference, the evidence's key and SHA-256, the attempt counters and the next attempt, the crash marker `submit_attempted_at`, the worker's lease, the last error, the receiver lookup it was queued under, the timestamps of each state, and the resolution of an `unconfirmed` row — a person's, with who and a required note, or the worker's own when the provider answers at last, with a note and no user (`ck_transmissions_resolution`). Every completion of a worker's claim names the status the claim saw, so a row the events worker moved meanwhile is left alone, never refused. Never deleted; only its state columns change, a failed or cancelled row not at all, and a delivered row only its lease, cadence and — once — its evidence. A trigger refuses one under a draft (`invoices: a transmission needs an issued document`) or for an anonymised customer (`invoices: the customer is anonymised`); `ux_transmissions_active` allows one queued, submitted, delivered or unconfirmed transmission per document. |
+| `invoices.collection_rates` | The statutory rates as dated rows ([Collection rates](#collection-rates)): the kind (`late_interest_percent`, `b2b_compensation_nok`, `inkassosats`), `valid_from` (1 January or 1 July for the two half-yearly kinds), the value, the regulation `source_ref`, who added it (NULL for a release's seed) and when, and `release_value` with `release_source_ref` — what a later release seeded over a user's row, both or neither. One row per kind and day. Append-only: a trigger refuses every change but the release's value set once, and the deletion of a seeded row. |
+| `invoices.reminder_settings` | One row (`id = 1`): [the reminder settings](#the-reminder-settings), the 2026 regime's day `inkassolov_2026_from`, the review `regime_reviewed_through` with who moved it and when, and the row's revision, who changed it and when. Never deleted. |
+| `invoices.customer_reminder_policies` | One row per customer with [a reminder policy](#a-customers-reminder-policy) other than the default — keyed by the opaque `customer_id`, the mode (`normal`, `no_charges`, `none`), the note and who set it when. No row is `normal`. |
 
 A document's state is not a column: `invoices.document_state(...)` derives it, see
 [Payments and the state of an invoice](#payments-and-the-state-of-an-invoice).
@@ -1916,6 +1919,178 @@ no matching yet, `matched` and `exceptions` are 0 and `pending` is every line th
 not a duplicate. `GET /meta` answers `capabilities.canImportBankFiles`,
 `invoices:payments`.
 
+## Reminders
+
+Phase 4 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md))
+chases what is owed: reminders (purringer) and the creditor's collection notice
+(inkassovarsel), with the reminder fee, the business compensation and late interest
+they may claim. This section grows with the phase. It begins with what every letter is
+judged against: the statutory rates as dated rows, the two collection-law regimes and
+their review, the reminder settings, and a customer's reminder policy. The letters
+themselves, and the engine that decides the next one, come later in the phase.
+
+### Collection rates
+
+`invoices.collection_rates` holds the three statutory figures a letter may need, each as
+dated rows: `late_interest_percent` — the forsinkelsesrente, percent a year, set per
+half-year (forsinkelsesrenteloven § 3); `b2b_compensation_nok` — the compensation a
+business debtor owes for the creditor's costs (§ 3a), set per half-year; and
+`inkassosats` — the collection rate the reminder fee is a twentieth of. **A row is in force from its `valid_from` until the next row of its kind.** The
+two half-yearly kinds start on 1 January or 1 July only (`ck_collection_rates_half_year`).
+
+The release seeds them, every value read on Lovdata:
+
+| `valid_from` | Late interest | Compensation | Regulation |
+| --- | --- | --- | --- |
+| 2024-01-01 | 12.50 | 470 | FOR-2023-12-14-2043 |
+| 2024-07-01 | 12.50 | 460 | FOR-2024-06-26-1320 |
+| 2025-01-01 | 12.50 | 470 | FOR-2024-12-19-3279 |
+| 2025-07-01 | 12.25 | 460 | FOR-2025-06-23-1321 |
+| 2026-01-01 | 12.00 | 460 | FOR-2025-12-18-2658 |
+| 2026-07-01 | 12.25 | 430 | FOR-2026-06-25-1372 |
+
+and the inkassosats 700 from 2019-01-01 (FOR-2018-12-20-2050) and 750 from 2026-01-01
+(FOR-2025-12-19-2709). A seeded row has no `created_by_user_id`.
+
+**Append-only.** A trigger refuses every UPDATE but one — `release_value` and
+`release_source_ref` set once from NULL, nothing else changed — and the DELETE of a
+seeded row. **A later release seeds through `invoices.seed_collection_rate(kind,
+valid_from, value, source_ref)`**, the function `00041` itself calls: a new day is
+inserted as a seeded row; a day a user already added keeps the user's value and gains
+the release's beside it, in `release_value` and `release_source_ref`, once, whether or
+not the two are equal; a seeded row is left as it is. So a release never fails on a row
+a user added first. While a row's `release_value` differs from its `value` (compared as
+numbers) the list warns **`collection_rate_differs_from_release`**: somebody typed a
+rate the regulation did not set, and should check it.
+
+**Reading the rates.** `GET /invoices/collection-rates` (`invoices:access`) answers every
+row by kind and date, with `seeded`, `createdBy`, `releaseValue` and `releaseSourceRef`,
+`inForce` — the row in force today, Oslo's day from the server's clock, which moves at
+Oslo midnight — and `usable`, false once a printed or sent letter dated on or after the
+row's `valid_from` and before the next row of its kind has relied on it, and the list's
+`warnings`. A paper letter is printed for a posting date up to seven days ahead, so a
+row not yet in force can already be used.
+
+**Adding a rate.** `POST /invoices/collection-rates` (`invoices:manage`) takes `kind`,
+`validFrom`, `value` and `sourceRef`, the regulation. A rate is added ahead of a release,
+so `validFrom` is after today (Oslo); a half-yearly kind starts on 1 January or 1 July;
+`value` has at most two decimals and is within its kind's bounds — late interest
+0.01–30, compensation 100–2 000, the inkassosats 100–5 000; `sourceRef` is 1–100
+characters. Each is a 400 on its field, all of them together, before the one 409:
+**`collection_rate_exists`**, a row of the kind on that day already (the unique key, so
+two adds racing each other cannot both land). 201 with the row.
+
+**Deleting a rate.** `DELETE /invoices/collection-rates/{id}` (`invoices:manage`)
+deletes a mistaken row only while nothing can have relied on it: a seeded row, a row in
+force or past (`valid_from` on or before today), and a row a printed or sent letter used
+are each **409 `collection_rate_in_force`**, the detail saying which. An unknown id is a
+404; a deletion a 204. **A deleted row a release had seeded over is replaced in the same
+transaction by a seeded row of the release's value and regulation**, so the half-year
+never goes empty and refuses every letter that needs it.
+
+**Outdated rates.** A letter needs the rate of every half-year it charges interest
+across, and the compensation of its own half-year — a row **starting on that
+half-year's first day**. A half-year with none — after the last row, between two rows,
+or before the first — is outdated: an older rate is never carried across it, and the
+letters that need it wait until a manager adds the row or a release seeds it
+(`collection_rates_outdated`, naming the kind and the half-year; the reminder run, the
+dispatch and the overdue list come later in the phase). The inkassosats is not
+half-yearly and needs only a row in force on the letter's date. A half-year before
+2024-H1 can be filled only by a release's seed.
+
+### The two regimes and the review
+
+The inkasso law of 2026 (LOV-2026-05-22-19) replaces the one of 1988 on a day the King
+has not yet set; it is signalled for 2027-01-01. `inkassolov_2026_from`, in the reminder
+settings, is that day once known. **A letter is judged under the regime of its own
+date**, and records it: before `inkassolov_2026_from`, or while it is NULL, the **1988
+regime** (inkassoloven 1988 and inkassoforskriften) — every rule of reminders, fees and
+the creditor's collection notice; on or after it, the **2026 regime** — no reminder fee on
+any letter (the creditor's own fee-bearing letters wait for the regulation under the new
+§ 19), no creditor's collection notice (under the new § 20 it is the collection agency's),
+and the last letter before a hand-off announces the agency; late interest and the
+compensation continue.
+
+**The review.** `regime_reviewed_through`, seeded 2026-12-31 — the last day before the
+signalled date — is the last day a letter carrying a fee, or a creditor's collection
+notice, may be made under the 1988 regime without anybody having looked again. A letter
+dated after it that would carry either waits (`collection_regime_unreviewed`); fee-free
+reminders continue. A manager clears it in the reminder settings by setting
+`inkassolov2026From` or by moving `regimeReviewedThrough` forward — at most a year after
+today — and the settings record who did it and when (`regimeReviewedBy`,
+`regimeReviewedAt`); a release may do either once the day is announced. Under a law whose
+day is unknown, the one failure this cannot allow is the creditor's own fee-bearing
+notice sent after the signalled day without anyone having looked.
+
+### The reminder settings
+
+`invoices.reminder_settings` is one row (`id = 1`), off the settings row every issue
+shares. `GET /invoices/settings/reminders` (`invoices:access`) reads it;
+`PUT /invoices/settings/reminders` (`invoices:manage`) replaces it:
+
+| Field | Rule | Default |
+| --- | --- | --- |
+| `enabled` | reminders offered at all | false |
+| `firstReminderDays` | the first letter's earliest day after the effective due date, 1–60 | 14 |
+| `deadlineDays` | every letter's deadline after it is sent, 14–60 (at least 14: inkassoloven § 9, inkassoforskriften § 1-3), moved to the next business day | 14 |
+| `graceDays` | days after a deadline before the next letter, 1–10 — a payment ordered on the deadline is on time and booked later (inkassoforskriften § 1-2) | 3 |
+| `remindersBeforeNotice` | reminders before the collection notice, 0–2 (a reminder is not required before a notice, FinKN 2023-845) | 1 |
+| `collectionNotice` | the creditor's collection notice offered (1988 regime only) | true |
+| `personCharge` | `fee` or `none` — a consumer never owes the compensation (forsinkelsesrenteloven § 4 d) | `fee` |
+| `businessCharge` | `fee`, `compensation` or `none` — never both: they offset each other (inkassoforskriften §§ 1-5, 2-6) | `fee` |
+| `lateInterest` | late interest claimed on letters | false |
+| `staleImportDays` | how old the last imported booking may be before a charging run needs confirmation, 1–30 | 3 |
+| `inkassolov2026From` | the 2026 regime's day, or null while unknown | null |
+| `regimeReviewedThrough` | the review, at most a year after today | 2026-12-31 |
+
+**Every field is required**, and null is a value only for `inkassolov2026From`: a body
+without a field, or with null for any other, is a 400 on it, so a client that predates a
+field cannot reset it by leaving it out. Each field out of its bounds is a 400 on it too,
+all of them in one answer. The answer also carries `regimeReviewedBy` and
+`regimeReviewedAt` — who last moved the review or set the 2026 regime's day, and when;
+absent and the migration's time until somebody does — and `revision`, `updatedAt` and
+`updatedBy`. One statement replaces the row when the body's `revision` is the stored one;
+a stale revision is a 409 without a code, naming both. **Changing the settings changes
+only letters made afterwards**: a letter records its facts when it is sent.
+
+### A customer's reminder policy
+
+`invoices.customer_reminder_policies` holds, per customer, whether they are reminded and
+charged: `normal` — letters as the settings make them; `no_charges` — letters without fee,
+compensation or interest; `none` — no letter at all (the invoice is still overdue, and
+says why). **No row is `normal`.** A row has its `note` (at most 500 characters) and who
+set it when.
+
+`GET /invoices/customers/{customerId}/reminder-policy` (`invoices:access`) answers the
+policy, `normal` with an empty note and neither `updatedAt` nor `updatedBy` when there is
+no row. `PUT` (`invoices:payments`) takes `mode` and `note` (trimmed): an unknown mode or
+a note over 500 characters is a 400 on its field. Then, in one transaction, the
+customer's documents are read **`FOR SHARE`, newest first** — the order of the merge's
+own lock and of every path that locks invoices alone — and under that lock the customer
+must have a document here, an issued one or a draft, and **must not be anonymised**;
+otherwise 404, so an anonymised person gets no fresh note. Only then is the policy row
+locked and written; **`normal` with an empty note deletes the row**. A PUT racing a merge
+of the customer either lands first, and the merge — waiting on the documents — moves its
+row, or waits on the merge's documents and, once the merge has committed, finds the
+customer has none left: 404. Without the share lock, a PUT that saw the documents before
+the merge committed would insert a row for the absorbed customer after the merge had
+looked: an orphan nobody could reach.
+
+**Why an invoices table**, not the customers module's billing profile: the profile
+carries where to send a reminder (`reminderEmail`, `reminderDelivery`) — contact data the
+customers module owns under its own permissions. Whether to remind and charge a debtor
+is a credit-control decision, under the sensitive `invoices:payments`, and no customers
+permission should exempt anyone from reminders. A policy for a customer group is not
+offered.
+
+**Merging and erasing.** A merge re-points the absorbed customer's row to the survivor;
+when both have one, **the stricter mode wins** — `none` over `no_charges` over `normal`
+— the notes are joined, the survivor's first, ` / ` between them and an empty one left
+out, cut to 500 characters, and the absorbed row is deleted; the merged row is recorded
+as the stricter row's author's, at the merge's time. A person's export carries the
+policy, and their anonymisation deletes it ([Retention and personal
+data](#retention-and-personal-data)).
+
 ## The journal
 
 `GET /invoices/journal?from&to` lists the issued documents with an issue date in the
@@ -2070,7 +2245,12 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   the absorbed customer, drafts and issued, reported as `invoices.invoices`. An issued
   document keeps its buyer snapshot — the id is not printed, the snapshot is — and its
   revision. Payments, deliveries and transmissions hang off the document by id and
-  carry no customer id, so they follow it and are not reported.
+  carry no customer id, so they follow it and are not reported. The customer's
+  reminder policy is keyed by customer and is re-pointed after the documents, both
+  rows locked by customer id ascending: moved when the survivor has none, merged into
+  the survivor's at the stricter mode with the notes joined when both have one
+  ([A customer's reminder policy](#a-customers-reminder-policy)), reported as
+  `invoices.customerReminderPolicies` — 1 when the absorbed customer had one, else 0.
 - **A person's export** (`contracts.CustomerPersonalData`) hands over every issued
   document and every draft, each with its lines, a structured `buyer` — the full
   snapshot: name, type, organisation number, foreign id, GLN, Peppol id, language and
@@ -2093,7 +2273,9 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   provider's reference. A draft has none of the three. Every document that carries a
   timesheet, issued or draft, carries `timesheet` — its rows as printed, each with its
   position, person label, date, hours, work type and description — since the customer
-  received it, or would; never a time entry's note.
+  received it, or would; never a time entry's note. The section carries the customer's
+  `reminderPolicy` — its mode, note and when it was set — when there is one; a customer
+  with only a policy here has a section with no documents.
 - **Anonymisation**, inside the customers module's transaction, in this order: it locks
   the person's documents `FOR UPDATE`, newest first — the merge holder's statement, the
   module's lock order — so a delivery insert, whose trigger takes the document `FOR
@@ -2102,7 +2284,8 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   them, live and removed; cancels every `queued` transmission of them that was never
   attempted (`submit_attempted_at` NULL), leased or not — a worker holding one stamps
   its marker only on a row still `queued`, so it finds the row cancelled and makes no
-  call; and deletes the drafts. It reports five kinds, in this order:
+  call; deletes the drafts; and deletes the customer's reminder policy. It reports six
+  kinds, in this order:
   - `invoices.drafts` — the drafts deleted, invoice and credit-note drafts alike, their
     line sources and timesheet rows with them by the cascade: a draft is not a sales
     document and has no retention basis, so GDPR art. 17 applies;
@@ -2126,7 +2309,10 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
     one: the UBL is the sales document under § 13 and carries the buyer snapshot, and
     the receiver's Peppol id is an organisation's or the snapshot's own. Its resolution
     note stays, the audit trail of a person's verdict, as a payment's removal reason
-    does. The insert trigger refuses any later transmission for the customer.
+    does. The insert trigger refuses any later transmission for the customer;
+  - `invoices.customerReminderPolicies` — the reminder policy deleted (0 or 1): staff's
+    decision and note about the person, which no retention rule keeps. A later PUT for
+    the anonymised customer is a 404.
 
   Run twice, it finds nothing and reports zeros, and the marker keeps its first time.
   The marker refuses every later send (`customer_anonymised`), blanks any delivery
@@ -2142,11 +2328,11 @@ No built-in role holds any of these; Owner has the wildcard.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats. |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings and a customer's reminder policy. |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one. |
-| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, and the format a bank account's files are imported in. |
-| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts. |
+| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
+| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; set a customer's reminder policy — whether, and with what charges, they are reminded. |
 
 `invoices:payments` is sensitive because a registration changes what the company says it
 is owed, and a wrong one is corrected only by a removal that stays on record.
@@ -2204,6 +2390,13 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `PUT /settings/access-point` | `invoices:manage` | 400 on `provider`, `legalEntityId` or `apiKey` (blank, too long, or omitted while none is stored); 409 `transmissions_active` on a provider switch; 503 `ehf_unavailable`, a kept key that cannot be opened |
 | `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
 | `POST /settings/access-point/verify` | `invoices:manage` | 409 `ehf_unavailable`, no credentials; 503 `ehf_unavailable`, a stored key that cannot be opened |
+| `GET /settings/reminders` | | |
+| `PUT /settings/reminders` | `invoices:manage` | 400 on the field (absent, null but for `inkassolov2026From`, the wrong type, out of its bounds, `regimeReviewedThrough` more than a year ahead); a stale revision (no code) |
+| `GET /collection-rates` | | |
+| `POST /collection-rates` | `invoices:manage` | 400 on the field (`kind`, `validFrom` not after today or off 1 January and 1 July for a half-yearly kind, `value` out of its bounds or past two decimals, `sourceRef`); 409 `collection_rate_exists` |
+| `DELETE /collection-rates/{id}` | `invoices:manage` | 404; 409 `collection_rate_in_force` (seeded, in force or past, or used by a printed or sent letter) |
+| `GET /customers/{customerId}/reminder-policy` | | |
+| `PUT /customers/{customerId}/reminder-policy` | `invoices:payments` | 400 on `mode` or `note`; 404 the customer has no document here, or is anonymised |
 | `GET /vat-codes` | | |
 | `POST /vat-codes` | `invoices:manage` | 400 on the field, a duplicate code on `code` |
 | `PUT /vat-codes/{id}` | `invoices:manage` | 404; 400; 409 `vat_code_in_use`, a stale revision |

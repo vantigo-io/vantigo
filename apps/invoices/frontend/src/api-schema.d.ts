@@ -94,6 +94,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/settings/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the reminder settings
+         * @description The reminder settings and the regime and its review (invoices payments and reminders design D6, D7). Every invoices:access holder may read them.
+         */
+        get: operations["getInvoicesSettingsReminders"];
+        /**
+         * Change the reminder settings
+         * @description Replaces the reminder settings (D7), every field required, and checks the revision in the same statement. Moving regimeReviewedThrough or setting inkassolov2026From records who and when (D6). Changing anything changes only letters made afterwards.
+         */
+        put: operations["putInvoicesSettingsReminders"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/collection-rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the collection rates
+         * @description Every collection rate by kind and date (D6), each with whether it is in force today (Oslo), whether a letter has used it, and the release's value over a user's row; warns collection_rate_differs_from_release while any row's release value differs from its value.
+         */
+        get: operations["getInvoicesCollectionRates"];
+        put?: never;
+        /**
+         * Add a collection rate
+         * @description Adds a rate ahead of a release (D6). Refused, in this order, with a 400 on the field — validFrom not after today, a half-yearly kind not on 1 January or 1 July, a value out of its kind's bounds or with more than two decimals, a sourceRef blank or too long — and with 409 collection_rate_exists when the kind already has a row on that day.
+         */
+        post: operations["postInvoicesCollectionRates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/collection-rates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a collection rate
+         * @description Deletes a user's rate that is not yet in force and that no printed or sent letter has used (D6, plan reading 6); a seeded row, a row in force or past, and a used row are 409 collection_rate_in_force. A deleted row a release had seeded over is replaced, in the same transaction, by a seeded row of the release's value and regulation, so its half-year never goes empty.
+         */
+        delete: operations["deleteInvoicesCollectionRatesById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/customers/{customerId}/reminder-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a customer's reminder policy
+         * @description The customer's reminder policy (D7); a customer without one is normal with an empty note.
+         */
+        get: operations["getInvoicesCustomersByCustomerIdReminderPolicy"];
+        /**
+         * Set a customer's reminder policy
+         * @description Sets the customer's reminder policy (D7). Under the customer's documents read FOR SHARE, newest first, and then the policy row (D18), the customer must have a document here — an issued one or a draft — and must not be anonymised, else 404; so a PUT racing a merge either lands first and moves with the merge, or finds the customer gone. normal with an empty note removes the policy.
+         */
+        put: operations["putInvoicesCustomersByCustomerIdReminderPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/vat-codes": {
         parameters: {
             query?: never;
@@ -995,6 +1087,132 @@ export interface components {
         /** @description What the provider answered the cheapest authenticated read (Storecove: the legal entity). result is ok (the key reaches the legal entity), unauthorized (the provider refused the key — 401 or 403 — which also flags it as rejected) or unreachable (anything else: the network, a timeout, a 5xx, a legal entity the key does not reach). */
         InvoicesAccessPointVerifyResponse: {
             result: string;
+        };
+        /** @description One statutory rate as a dated row (invoices payments and reminders design D6), in force from validFrom until the next row of its kind. seeded rows came with a release and have no createdBy; a user adds later ones ahead of a release. releaseValue and releaseSourceRef are what a later release seeded for this kind and date over a user's row, equal or not — while releaseValue differs from value the list warns collection_rate_differs_from_release. inForce is whether the row is the one in force today (Oslo). usable is false once a printed or sent letter dated on or after validFrom and before the next row of the kind has relied on it; a row in force, a used row and a seeded row cannot be deleted. */
+        InvoicesCollectionRate: {
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: uuid
+             * @description The user who added the row; absent on a seeded row.
+             */
+            createdBy?: string;
+            /** Format: int64 */
+            id: number;
+            inForce: boolean;
+            /**
+             * @description late_interest_percent (the forsinkelsesrente, percent a year, set per half-year), b2b_compensation_nok (the § 3a compensation, NOK, set per half-year) or inkassosats (NOK).
+             * @enum {string}
+             */
+            kind: "late_interest_percent" | "b2b_compensation_nok" | "inkassosats";
+            /** @description The regulation a release seeded over this user's row; absent when none did. */
+            releaseSourceRef?: string;
+            /**
+             * Format: double
+             * @description The value a release seeded over this user's row; absent when none did.
+             */
+            releaseValue?: number;
+            seeded: boolean;
+            /** @description The regulation the value comes from, such as FOR-2026-06-25-1372. */
+            sourceRef: string;
+            usable: boolean;
+            /** Format: date */
+            validFrom: string;
+            /** Format: double */
+            value: number;
+        };
+        /** @description Every collection rate by kind and date (D6), and the list's warnings — collection_rate_differs_from_release while any row's releaseValue differs from its value. */
+        InvoicesCollectionRateList: {
+            rates: components["schemas"]["InvoicesCollectionRate"][];
+            warnings: "collection_rate_differs_from_release"[];
+        };
+        /** @description POST /collection-rates' body (D6): a rate a user adds ahead of a release. validFrom is after today (Oslo); late_interest_percent and b2b_compensation_nok start on 1 January or 1 July; value has at most two decimals and is within its kind's bounds — late_interest_percent 0.01-30, b2b_compensation_nok 100-2000, inkassosats 100-5000; sourceRef is the regulation, 1-100 characters. Each is a 400 on its field; a row of the same kind and date is a 409 collection_rate_exists. */
+        InvoicesCollectionRateRequest: {
+            /** @enum {string} */
+            kind: "late_interest_percent" | "b2b_compensation_nok" | "inkassosats";
+            sourceRef: string;
+            /** Format: date */
+            validFrom: string;
+            /** Format: double */
+            value: number;
+        };
+        /** @description Whether a customer is reminded and charged (D7). normal (letters as the reminder settings make them), no_charges (letters without fee, compensation or interest) or none (no letter at all; the invoice is still listed overdue). A customer without a policy is normal with an empty note and neither updatedAt nor updatedBy. */
+        InvoicesReminderPolicy: {
+            /** Format: int32 */
+            customerId: number;
+            /** @enum {string} */
+            mode: "normal" | "no_charges" | "none";
+            note: string;
+            /** Format: date-time */
+            updatedAt?: string;
+            /** Format: uuid */
+            updatedBy?: string;
+        };
+        /** @description PUT /customers/{customerId}/reminder-policy's body (D7). mode is normal, no_charges or none; note is trimmed and at most 500 characters. normal with an empty note removes the policy: no policy is normal. */
+        InvoicesReminderPolicyRequest: {
+            /** @enum {string} */
+            mode: "normal" | "no_charges" | "none";
+            note: string;
+        };
+        /** @description The reminder settings (D7) and the regime and its review (D6). Changing them changes only letters made afterwards. inkassolov2026From is the day LOV-2026-05-22-19 enters into force, null while unknown; regimeReviewedThrough is the last day a fee-bearing letter or a collection notice is made under the 1988 regime without anyone having looked again, with who moved it — or set inkassolov2026From — last, and when (regimeReviewedBy is absent for the release's own seed). */
+        InvoicesReminderSettings: {
+            /** @enum {string} */
+            businessCharge: "fee" | "compensation" | "none";
+            collectionNotice: boolean;
+            /** Format: int32 */
+            deadlineDays: number;
+            enabled: boolean;
+            /** Format: int32 */
+            firstReminderDays: number;
+            /** Format: int32 */
+            graceDays: number;
+            /** Format: date */
+            inkassolov2026From: string | null;
+            lateInterest: boolean;
+            /** @enum {string} */
+            personCharge: "fee" | "none";
+            /** Format: date-time */
+            regimeReviewedAt: string;
+            /** Format: uuid */
+            regimeReviewedBy?: string;
+            /** Format: date */
+            regimeReviewedThrough: string;
+            /** Format: int32 */
+            remindersBeforeNotice: number;
+            /** Format: int32 */
+            revision: number;
+            /** Format: int32 */
+            staleImportDays: number;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string;
+        };
+        /** @description PUT /settings/reminders' body, a full replace (D7). Every field is required — a body without one is a 400 on it — and null is a value only for inkassolov2026From. enabled, collectionNotice and lateInterest are true or false; firstReminderDays 1-60; deadlineDays 14-60; graceDays 1-10; remindersBeforeNotice 0-2; staleImportDays 1-30; personCharge fee or none; businessCharge fee, compensation or none; regimeReviewedThrough at most a year after today (Oslo). revision is the one the caller read: a stale one is a 409 naming both. */
+        InvoicesReminderSettingsRequest: {
+            /** @enum {string} */
+            businessCharge: "fee" | "compensation" | "none";
+            collectionNotice: boolean;
+            /** Format: int32 */
+            deadlineDays: number;
+            enabled: boolean;
+            /** Format: int32 */
+            firstReminderDays: number;
+            /** Format: int32 */
+            graceDays: number;
+            /** Format: date */
+            inkassolov2026From: string | null;
+            lateInterest: boolean;
+            /** @enum {string} */
+            personCharge: "fee" | "none";
+            /** Format: date */
+            regimeReviewedThrough: string;
+            /** Format: int32 */
+            remindersBeforeNotice: number;
+            /** Format: int32 */
+            revision: number;
+            /** Format: int32 */
+            staleImportDays: number;
         };
         /** @description One VAT code with every rate period it has had (D3). inUse is true once any line, draft or issued, carries the code; from then on its category and SAF-T code cannot change (409 vat_code_in_use). */
         InvoicesVatCode: {
@@ -2316,6 +2534,356 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
                 };
+            };
+        };
+    };
+    getInvoicesSettingsReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesReminderSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putInvoicesSettingsReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesReminderSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesReminderSettings"];
+                };
+            };
+            /** @description Bad Request — a field is absent or did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — a stale revision (no code; the detail names both). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesCollectionRates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesCollectionRateList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoicesCollectionRates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesCollectionRateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesCollectionRate"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — collection_rate_exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    deleteInvoicesCollectionRatesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the rate is gone, or replaced by the release's. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no rate has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — collection_rate_in_force. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesCustomersByCustomerIdReminderPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesReminderPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putInvoicesCustomersByCustomerIdReminderPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesReminderPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesReminderPolicy"];
+                };
+            };
+            /** @description Bad Request — mode or note did not pass. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the customer has no document here, or is anonymised. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

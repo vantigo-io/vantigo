@@ -74,7 +74,9 @@ func TestCustomerReferences_RepointMovesDraftsAndIssuedDocuments(t *testing.T) {
 			t.Fatalf("RepointCustomer: %v", err)
 		}
 	})
-	if want := []contracts.RepointedReferences{{Kind: "invoices.invoices", Count: 2}}; !slices.Equal(moved, want) {
+	if want := []contracts.RepointedReferences{
+		{Kind: "invoices.invoices", Count: 2}, {Kind: "invoices.customerReminderPolicies", Count: 0},
+	}; !slices.Equal(moved, want) {
 		t.Errorf("moved = %+v, want %+v", moved, want)
 	}
 	after := getInvoice(t, h, issuedDoc.ID)
@@ -91,7 +93,9 @@ func TestCustomerReferences_RepointMovesDraftsAndIssuedDocuments(t *testing.T) {
 
 	inTx(t, h, true, func(tx pgx.Tx) {
 		same, err := holder.RepointCustomer(context.Background(), tx, customerPerson, customerPerson)
-		if err != nil || !slices.Equal(same, []contracts.RepointedReferences{{Kind: "invoices.invoices", Count: 0}}) {
+		if err != nil || !slices.Equal(same, []contracts.RepointedReferences{
+			{Kind: "invoices.invoices", Count: 0}, {Kind: "invoices.customerReminderPolicies", Count: 0},
+		}) {
 			t.Errorf("from == into = %+v, %v; want a zero", same, err)
 		}
 	})
@@ -254,7 +258,7 @@ func TestCustomerPersonalData_EraseDeletesDraftsAndKeepsDocuments(t *testing.T) 
 	if got, want := erase(true), []contracts.ErasedData{
 		{Kind: "invoices.drafts", Count: 3}, {Kind: "invoices.documents", Count: 0},
 		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
-		{Kind: "invoices.transmissions", Count: 0},
+		{Kind: "invoices.transmissions", Count: 0}, {Kind: "invoices.customerReminderPolicies", Count: 0},
 	}; !slices.Equal(got, want) {
 		t.Errorf("erased = %+v, want %+v", got, want)
 	}
@@ -270,7 +274,7 @@ func TestCustomerPersonalData_EraseDeletesDraftsAndKeepsDocuments(t *testing.T) 
 	if got, want := erase(true), []contracts.ErasedData{
 		{Kind: "invoices.drafts", Count: 0}, {Kind: "invoices.documents", Count: 0},
 		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
-		{Kind: "invoices.transmissions", Count: 0},
+		{Kind: "invoices.transmissions", Count: 0}, {Kind: "invoices.customerReminderPolicies", Count: 0},
 	}; !slices.Equal(got, want) {
 		t.Errorf("a second erase = %+v, want zeros", got)
 	}
@@ -360,7 +364,7 @@ func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFiveKinds(t *testin
 	if got, want := erase(), []contracts.ErasedData{
 		{Kind: "invoices.drafts", Count: 1}, {Kind: "invoices.documents", Count: 0},
 		{Kind: "invoices.payments", Count: 2}, {Kind: "invoices.deliveries", Count: 2},
-		{Kind: "invoices.transmissions", Count: 0},
+		{Kind: "invoices.transmissions", Count: 0}, {Kind: "invoices.customerReminderPolicies", Count: 0},
 	}; !slices.Equal(got, want) {
 		t.Errorf("erased = %+v, want %+v", got, want)
 	}
@@ -393,7 +397,7 @@ func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFiveKinds(t *testin
 	if got, want := erase(), []contracts.ErasedData{
 		{Kind: "invoices.drafts", Count: 0}, {Kind: "invoices.documents", Count: 0},
 		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
-		{Kind: "invoices.transmissions", Count: 0},
+		{Kind: "invoices.transmissions", Count: 0}, {Kind: "invoices.customerReminderPolicies", Count: 0},
 	}; !slices.Equal(got, want) {
 		t.Errorf("a second erase = %+v, want zeros", got)
 	}

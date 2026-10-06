@@ -21,6 +21,144 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for InvoicesCollectionRateKind.
+const (
+	InvoicesCollectionRateKindB2bCompensationNok  InvoicesCollectionRateKind = "b2b_compensation_nok"
+	InvoicesCollectionRateKindInkassosats         InvoicesCollectionRateKind = "inkassosats"
+	InvoicesCollectionRateKindLateInterestPercent InvoicesCollectionRateKind = "late_interest_percent"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesCollectionRateKind enum.
+func (e InvoicesCollectionRateKind) Valid() bool {
+	switch e {
+	case InvoicesCollectionRateKindB2bCompensationNok:
+		return true
+	case InvoicesCollectionRateKindInkassosats:
+		return true
+	case InvoicesCollectionRateKindLateInterestPercent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesCollectionRateListWarnings.
+const (
+	CollectionRateDiffersFromRelease InvoicesCollectionRateListWarnings = "collection_rate_differs_from_release"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesCollectionRateListWarnings enum.
+func (e InvoicesCollectionRateListWarnings) Valid() bool {
+	switch e {
+	case CollectionRateDiffersFromRelease:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesCollectionRateRequestKind.
+const (
+	InvoicesCollectionRateRequestKindB2bCompensationNok  InvoicesCollectionRateRequestKind = "b2b_compensation_nok"
+	InvoicesCollectionRateRequestKindInkassosats         InvoicesCollectionRateRequestKind = "inkassosats"
+	InvoicesCollectionRateRequestKindLateInterestPercent InvoicesCollectionRateRequestKind = "late_interest_percent"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesCollectionRateRequestKind enum.
+func (e InvoicesCollectionRateRequestKind) Valid() bool {
+	switch e {
+	case InvoicesCollectionRateRequestKindB2bCompensationNok:
+		return true
+	case InvoicesCollectionRateRequestKindInkassosats:
+		return true
+	case InvoicesCollectionRateRequestKindLateInterestPercent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesReminderPolicyMode.
+const (
+	InvoicesReminderPolicyModeNoCharges InvoicesReminderPolicyMode = "no_charges"
+	InvoicesReminderPolicyModeNone      InvoicesReminderPolicyMode = "none"
+	InvoicesReminderPolicyModeNormal    InvoicesReminderPolicyMode = "normal"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesReminderPolicyMode enum.
+func (e InvoicesReminderPolicyMode) Valid() bool {
+	switch e {
+	case InvoicesReminderPolicyModeNoCharges:
+		return true
+	case InvoicesReminderPolicyModeNone:
+		return true
+	case InvoicesReminderPolicyModeNormal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesReminderPolicyRequestMode.
+const (
+	InvoicesReminderPolicyRequestModeNoCharges InvoicesReminderPolicyRequestMode = "no_charges"
+	InvoicesReminderPolicyRequestModeNone      InvoicesReminderPolicyRequestMode = "none"
+	InvoicesReminderPolicyRequestModeNormal    InvoicesReminderPolicyRequestMode = "normal"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesReminderPolicyRequestMode enum.
+func (e InvoicesReminderPolicyRequestMode) Valid() bool {
+	switch e {
+	case InvoicesReminderPolicyRequestModeNoCharges:
+		return true
+	case InvoicesReminderPolicyRequestModeNone:
+		return true
+	case InvoicesReminderPolicyRequestModeNormal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesReminderSettingsBusinessCharge.
+const (
+	InvoicesReminderSettingsBusinessChargeCompensation InvoicesReminderSettingsBusinessCharge = "compensation"
+	InvoicesReminderSettingsBusinessChargeFee          InvoicesReminderSettingsBusinessCharge = "fee"
+	InvoicesReminderSettingsBusinessChargeNone         InvoicesReminderSettingsBusinessCharge = "none"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesReminderSettingsBusinessCharge enum.
+func (e InvoicesReminderSettingsBusinessCharge) Valid() bool {
+	switch e {
+	case InvoicesReminderSettingsBusinessChargeCompensation:
+		return true
+	case InvoicesReminderSettingsBusinessChargeFee:
+		return true
+	case InvoicesReminderSettingsBusinessChargeNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesReminderSettingsPersonCharge.
+const (
+	InvoicesReminderSettingsPersonChargeFee  InvoicesReminderSettingsPersonCharge = "fee"
+	InvoicesReminderSettingsPersonChargeNone InvoicesReminderSettingsPersonCharge = "none"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesReminderSettingsPersonCharge enum.
+func (e InvoicesReminderSettingsPersonCharge) Valid() bool {
+	switch e {
+	case InvoicesReminderSettingsPersonChargeFee:
+		return true
+	case InvoicesReminderSettingsPersonChargeNone:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvoicesSettingsResponseTimesheetPersonLabel.
 const (
 	Initials InvoicesSettingsResponseTimesheetPersonLabel = "initials"
@@ -203,6 +341,55 @@ type InvoicesBuyer struct {
 	// Type business or person.
 	Type string `json:"type"`
 }
+
+// InvoicesCollectionRate One statutory rate as a dated row (invoices payments and reminders design D6), in force from validFrom until the next row of its kind. seeded rows came with a release and have no createdBy; a user adds later ones ahead of a release. releaseValue and releaseSourceRef are what a later release seeded for this kind and date over a user's row, equal or not — while releaseValue differs from value the list warns collection_rate_differs_from_release. inForce is whether the row is the one in force today (Oslo). usable is false once a printed or sent letter dated on or after validFrom and before the next row of the kind has relied on it; a row in force, a used row and a seeded row cannot be deleted.
+type InvoicesCollectionRate struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CreatedBy The user who added the row; absent on a seeded row.
+	CreatedBy *openapi_types.UUID `json:"createdBy,omitempty"`
+	Id        int64               `json:"id"`
+	InForce   bool                `json:"inForce"`
+
+	// Kind late_interest_percent (the forsinkelsesrente, percent a year, set per half-year), b2b_compensation_nok (the § 3a compensation, NOK, set per half-year) or inkassosats (NOK).
+	Kind InvoicesCollectionRateKind `json:"kind"`
+
+	// ReleaseSourceRef The regulation a release seeded over this user's row; absent when none did.
+	ReleaseSourceRef *string `json:"releaseSourceRef,omitempty"`
+
+	// ReleaseValue The value a release seeded over this user's row; absent when none did.
+	ReleaseValue *float64 `json:"releaseValue,omitempty"`
+	Seeded       bool     `json:"seeded"`
+
+	// SourceRef The regulation the value comes from, such as FOR-2026-06-25-1372.
+	SourceRef string             `json:"sourceRef"`
+	Usable    bool               `json:"usable"`
+	ValidFrom openapi_types.Date `json:"validFrom"`
+	Value     float64            `json:"value"`
+}
+
+// InvoicesCollectionRateKind late_interest_percent (the forsinkelsesrente, percent a year, set per half-year), b2b_compensation_nok (the § 3a compensation, NOK, set per half-year) or inkassosats (NOK).
+type InvoicesCollectionRateKind string
+
+// InvoicesCollectionRateList Every collection rate by kind and date (D6), and the list's warnings — collection_rate_differs_from_release while any row's releaseValue differs from its value.
+type InvoicesCollectionRateList struct {
+	Rates    []InvoicesCollectionRate             `json:"rates"`
+	Warnings []InvoicesCollectionRateListWarnings `json:"warnings"`
+}
+
+// InvoicesCollectionRateListWarnings defines model for InvoicesCollectionRateList.Warnings.
+type InvoicesCollectionRateListWarnings string
+
+// InvoicesCollectionRateRequest POST /collection-rates' body (D6): a rate a user adds ahead of a release. validFrom is after today (Oslo); late_interest_percent and b2b_compensation_nok start on 1 January or 1 July; value has at most two decimals and is within its kind's bounds — late_interest_percent 0.01-30, b2b_compensation_nok 100-2000, inkassosats 100-5000; sourceRef is the regulation, 1-100 characters. Each is a 400 on its field; a row of the same kind and date is a 409 collection_rate_exists.
+type InvoicesCollectionRateRequest struct {
+	Kind      InvoicesCollectionRateRequestKind `json:"kind"`
+	SourceRef string                            `json:"sourceRef"`
+	ValidFrom openapi_types.Date                `json:"validFrom"`
+	Value     float64                           `json:"value"`
+}
+
+// InvoicesCollectionRateRequestKind defines model for InvoicesCollectionRateRequest.Kind.
+type InvoicesCollectionRateRequestKind string
 
 // InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 type InvoicesConflictProblem struct {
@@ -775,6 +962,71 @@ type InvoicesPaymentRequest struct {
 	Reference *string            `json:"reference,omitempty"`
 }
 
+// InvoicesReminderPolicy Whether a customer is reminded and charged (D7). normal (letters as the reminder settings make them), no_charges (letters without fee, compensation or interest) or none (no letter at all; the invoice is still listed overdue). A customer without a policy is normal with an empty note and neither updatedAt nor updatedBy.
+type InvoicesReminderPolicy struct {
+	CustomerId int32                      `json:"customerId"`
+	Mode       InvoicesReminderPolicyMode `json:"mode"`
+	Note       string                     `json:"note"`
+	UpdatedAt  *time.Time                 `json:"updatedAt,omitempty"`
+	UpdatedBy  *openapi_types.UUID        `json:"updatedBy,omitempty"`
+}
+
+// InvoicesReminderPolicyMode defines model for InvoicesReminderPolicy.Mode.
+type InvoicesReminderPolicyMode string
+
+// InvoicesReminderPolicyRequest PUT /customers/{customerId}/reminder-policy's body (D7). mode is normal, no_charges or none; note is trimmed and at most 500 characters. normal with an empty note removes the policy: no policy is normal.
+type InvoicesReminderPolicyRequest struct {
+	Mode InvoicesReminderPolicyRequestMode `json:"mode"`
+	Note string                            `json:"note"`
+}
+
+// InvoicesReminderPolicyRequestMode defines model for InvoicesReminderPolicyRequest.Mode.
+type InvoicesReminderPolicyRequestMode string
+
+// InvoicesReminderSettings The reminder settings (D7) and the regime and its review (D6). Changing them changes only letters made afterwards. inkassolov2026From is the day LOV-2026-05-22-19 enters into force, null while unknown; regimeReviewedThrough is the last day a fee-bearing letter or a collection notice is made under the 1988 regime without anyone having looked again, with who moved it — or set inkassolov2026From — last, and when (regimeReviewedBy is absent for the release's own seed).
+type InvoicesReminderSettings struct {
+	BusinessCharge        InvoicesReminderSettingsBusinessCharge `json:"businessCharge"`
+	CollectionNotice      bool                                   `json:"collectionNotice"`
+	DeadlineDays          int32                                  `json:"deadlineDays"`
+	Enabled               bool                                   `json:"enabled"`
+	FirstReminderDays     int32                                  `json:"firstReminderDays"`
+	GraceDays             int32                                  `json:"graceDays"`
+	Inkassolov2026From    *openapi_types.Date                    `json:"inkassolov2026From"`
+	LateInterest          bool                                   `json:"lateInterest"`
+	PersonCharge          InvoicesReminderSettingsPersonCharge   `json:"personCharge"`
+	RegimeReviewedAt      time.Time                              `json:"regimeReviewedAt"`
+	RegimeReviewedBy      *openapi_types.UUID                    `json:"regimeReviewedBy,omitempty"`
+	RegimeReviewedThrough openapi_types.Date                     `json:"regimeReviewedThrough"`
+	RemindersBeforeNotice int32                                  `json:"remindersBeforeNotice"`
+	Revision              int32                                  `json:"revision"`
+	StaleImportDays       int32                                  `json:"staleImportDays"`
+	UpdatedAt             time.Time                              `json:"updatedAt"`
+	UpdatedBy             *openapi_types.UUID                    `json:"updatedBy,omitempty"`
+}
+
+// InvoicesReminderSettingsBusinessCharge defines model for InvoicesReminderSettings.BusinessCharge.
+type InvoicesReminderSettingsBusinessCharge string
+
+// InvoicesReminderSettingsPersonCharge defines model for InvoicesReminderSettings.PersonCharge.
+type InvoicesReminderSettingsPersonCharge string
+
+// InvoicesReminderSettingsRequest PUT /settings/reminders' body, a full replace (D7). Every field is required — a body without one is a 400 on it — and null is a value only for inkassolov2026From. enabled, collectionNotice and lateInterest are true or false; firstReminderDays 1-60; deadlineDays 14-60; graceDays 1-10; remindersBeforeNotice 0-2; staleImportDays 1-30; personCharge fee or none; businessCharge fee, compensation or none; regimeReviewedThrough at most a year after today (Oslo). revision is the one the caller read: a stale one is a 409 naming both.
+type InvoicesReminderSettingsRequest struct {
+	BusinessCharge        json.RawMessage `json:"businessCharge"`
+	CollectionNotice      json.RawMessage `json:"collectionNotice"`
+	DeadlineDays          json.RawMessage `json:"deadlineDays"`
+	Enabled               json.RawMessage `json:"enabled"`
+	FirstReminderDays     json.RawMessage `json:"firstReminderDays"`
+	GraceDays             json.RawMessage `json:"graceDays"`
+	Inkassolov2026From    json.RawMessage `json:"inkassolov2026From"`
+	LateInterest          json.RawMessage `json:"lateInterest"`
+	PersonCharge          json.RawMessage `json:"personCharge"`
+	RegimeReviewedThrough json.RawMessage `json:"regimeReviewedThrough"`
+	RemindersBeforeNotice json.RawMessage `json:"remindersBeforeNotice"`
+	Revision              int32           `json:"revision"`
+	StaleImportDays       json.RawMessage `json:"staleImportDays"`
+}
+
 // InvoicesSeller The seller snapshot (D4), copied from the settings at issue.
 type InvoicesSeller struct {
 	AddressLine1         string `json:"addressLine1"`
@@ -1266,6 +1518,12 @@ type PutInvoicesBankAccountsByAccountFormatJSONRequestBody = InvoicesBankAccount
 // PostInvoicesBankFilesMultipartRequestBody defines body for PostInvoicesBankFiles for multipart/form-data ContentType.
 type PostInvoicesBankFilesMultipartRequestBody PostInvoicesBankFilesMultipartBody
 
+// PostInvoicesCollectionRatesJSONRequestBody defines body for PostInvoicesCollectionRates for application/json ContentType.
+type PostInvoicesCollectionRatesJSONRequestBody = InvoicesCollectionRateRequest
+
+// PutInvoicesCustomersByCustomerIdReminderPolicyJSONRequestBody defines body for PutInvoicesCustomersByCustomerIdReminderPolicy for application/json ContentType.
+type PutInvoicesCustomersByCustomerIdReminderPolicyJSONRequestBody = InvoicesReminderPolicyRequest
+
 // PostInvoicesFromWorkJSONRequestBody defines body for PostInvoicesFromWork for application/json ContentType.
 type PostInvoicesFromWorkJSONRequestBody = InvoicesFromWorkRequest
 
@@ -1274,6 +1532,9 @@ type PutInvoicesSettingsJSONRequestBody = InvoicesSettingsRequest
 
 // PutInvoicesSettingsAccessPointJSONRequestBody defines body for PutInvoicesSettingsAccessPoint for application/json ContentType.
 type PutInvoicesSettingsAccessPointJSONRequestBody = InvoicesAccessPointRequest
+
+// PutInvoicesSettingsRemindersJSONRequestBody defines body for PutInvoicesSettingsReminders for application/json ContentType.
+type PutInvoicesSettingsRemindersJSONRequestBody = InvoicesReminderSettingsRequest
 
 // PostInvoicesVatCodesJSONRequestBody defines body for PostInvoicesVatCodes for application/json ContentType.
 type PostInvoicesVatCodesJSONRequestBody = InvoicesVatCodeCreateRequest
@@ -1325,6 +1586,21 @@ type ServerInterface interface {
 	// GetInvoicesBankFilesById Get an imported bank file
 	// (GET /api/v1/invoices/bank-files/{id})
 	GetInvoicesBankFilesById(w http.ResponseWriter, r *http.Request, id int64)
+	// GetInvoicesCollectionRates List the collection rates
+	// (GET /api/v1/invoices/collection-rates)
+	GetInvoicesCollectionRates(w http.ResponseWriter, r *http.Request)
+	// PostInvoicesCollectionRates Add a collection rate
+	// (POST /api/v1/invoices/collection-rates)
+	PostInvoicesCollectionRates(w http.ResponseWriter, r *http.Request)
+	// DeleteInvoicesCollectionRatesById Delete a collection rate
+	// (DELETE /api/v1/invoices/collection-rates/{id})
+	DeleteInvoicesCollectionRatesById(w http.ResponseWriter, r *http.Request, id int64)
+	// GetInvoicesCustomersByCustomerIdReminderPolicy Get a customer's reminder policy
+	// (GET /api/v1/invoices/customers/{customerId}/reminder-policy)
+	GetInvoicesCustomersByCustomerIdReminderPolicy(w http.ResponseWriter, r *http.Request, customerId int32)
+	// PutInvoicesCustomersByCustomerIdReminderPolicy Set a customer's reminder policy
+	// (PUT /api/v1/invoices/customers/{customerId}/reminder-policy)
+	PutInvoicesCustomersByCustomerIdReminderPolicy(w http.ResponseWriter, r *http.Request, customerId int32)
 	// GetInvoicesExportCsv Export the issued documents as CSV
 	// (GET /api/v1/invoices/export.csv)
 	GetInvoicesExportCsv(w http.ResponseWriter, r *http.Request, params GetInvoicesExportCsvParams)
@@ -1355,6 +1631,12 @@ type ServerInterface interface {
 	// PostInvoicesSettingsAccessPointVerify Verify the access-point credentials
 	// (POST /api/v1/invoices/settings/access-point/verify)
 	PostInvoicesSettingsAccessPointVerify(w http.ResponseWriter, r *http.Request)
+	// GetInvoicesSettingsReminders Get the reminder settings
+	// (GET /api/v1/invoices/settings/reminders)
+	GetInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request)
+	// PutInvoicesSettingsReminders Change the reminder settings
+	// (PUT /api/v1/invoices/settings/reminders)
+	PutInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request)
 	// GetInvoicesStatsSummary Get the invoices dashboard summary
 	// (GET /api/v1/invoices/stats/summary)
 	GetInvoicesStatsSummary(w http.ResponseWriter, r *http.Request, params GetInvoicesStatsSummaryParams)
@@ -1722,6 +2004,112 @@ func (siw *ServerInterfaceWrapper) GetInvoicesBankFilesById(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// GetInvoicesCollectionRates operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesCollectionRates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesCollectionRates(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesCollectionRates operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesCollectionRates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesCollectionRates(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInvoicesCollectionRatesById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInvoicesCollectionRatesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInvoicesCollectionRatesById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesCustomersByCustomerIdReminderPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesCustomersByCustomerIdReminderPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "customerId" -------------
+	var customerId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "customerId", r.PathValue("customerId"), &customerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesCustomersByCustomerIdReminderPolicy(w, r, customerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInvoicesCustomersByCustomerIdReminderPolicy operation middleware
+func (siw *ServerInterfaceWrapper) PutInvoicesCustomersByCustomerIdReminderPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "customerId" -------------
+	var customerId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "customerId", r.PathValue("customerId"), &customerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInvoicesCustomersByCustomerIdReminderPolicy(w, r, customerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetInvoicesExportCsv operation middleware
 func (siw *ServerInterfaceWrapper) GetInvoicesExportCsv(w http.ResponseWriter, r *http.Request) {
 
@@ -1943,6 +2331,34 @@ func (siw *ServerInterfaceWrapper) PostInvoicesSettingsAccessPointVerify(w http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostInvoicesSettingsAccessPointVerify(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesSettingsReminders operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesSettingsReminders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInvoicesSettingsReminders operation middleware
+func (siw *ServerInterfaceWrapper) PutInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInvoicesSettingsReminders(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2725,6 +3141,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.GetInvoicesSettingsAccessPoint)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.PutInvoicesSettingsAccessPoint)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/settings/access-point/verify", wrapper.PostInvoicesSettingsAccessPointVerify)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/reminders", wrapper.GetInvoicesSettingsReminders)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/reminders", wrapper.PutInvoicesSettingsReminders)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/collection-rates", wrapper.GetInvoicesCollectionRates)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/collection-rates", wrapper.PostInvoicesCollectionRates)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/collection-rates/{id}", wrapper.DeleteInvoicesCollectionRatesById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/customers/{customerId}/reminder-policy", wrapper.GetInvoicesCustomersByCustomerIdReminderPolicy)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/customers/{customerId}/reminder-policy", wrapper.PutInvoicesCustomersByCustomerIdReminderPolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/vat-codes", wrapper.GetInvoicesVatCodes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/vat-codes", wrapper.PostInvoicesVatCodes)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/vat-codes/{id}", wrapper.PutInvoicesVatCodesById)
@@ -3235,6 +3658,322 @@ type GetInvoicesBankFilesById404Response struct {
 }
 
 func (response GetInvoicesBankFilesById404Response) VisitGetInvoicesBankFilesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInvoicesCollectionRatesRequestObject struct {
+}
+
+type GetInvoicesCollectionRatesResponseObject interface {
+	VisitGetInvoicesCollectionRatesResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesCollectionRates200JSONResponse InvoicesCollectionRateList
+
+func (response GetInvoicesCollectionRates200JSONResponse) VisitGetInvoicesCollectionRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesCollectionRates401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesCollectionRates401JSONResponse) VisitGetInvoicesCollectionRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesCollectionRates403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesCollectionRates403JSONResponse) VisitGetInvoicesCollectionRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesCollectionRatesRequestObject struct {
+	Body *PostInvoicesCollectionRatesJSONRequestBody
+}
+
+type PostInvoicesCollectionRatesResponseObject interface {
+	VisitPostInvoicesCollectionRatesResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesCollectionRates201JSONResponse InvoicesCollectionRate
+
+func (response PostInvoicesCollectionRates201JSONResponse) VisitPostInvoicesCollectionRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesCollectionRates400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesCollectionRates400ApplicationProblemPlusJSONResponse) VisitPostInvoicesCollectionRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesCollectionRates401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesCollectionRates401JSONResponse) VisitPostInvoicesCollectionRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesCollectionRates403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesCollectionRates403JSONResponse) VisitPostInvoicesCollectionRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesCollectionRates409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesCollectionRates409ApplicationProblemPlusJSONResponse) VisitPostInvoicesCollectionRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesCollectionRatesByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteInvoicesCollectionRatesByIdResponseObject interface {
+	VisitDeleteInvoicesCollectionRatesByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteInvoicesCollectionRatesById204Response struct {
+}
+
+func (response DeleteInvoicesCollectionRatesById204Response) VisitDeleteInvoicesCollectionRatesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInvoicesCollectionRatesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInvoicesCollectionRatesById401JSONResponse) VisitDeleteInvoicesCollectionRatesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesCollectionRatesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInvoicesCollectionRatesById403JSONResponse) VisitDeleteInvoicesCollectionRatesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesCollectionRatesById404Response struct {
+}
+
+func (response DeleteInvoicesCollectionRatesById404Response) VisitDeleteInvoicesCollectionRatesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteInvoicesCollectionRatesById409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response DeleteInvoicesCollectionRatesById409ApplicationProblemPlusJSONResponse) VisitDeleteInvoicesCollectionRatesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesCustomersByCustomerIdReminderPolicyRequestObject struct {
+	CustomerId int32 `json:"customerId"`
+}
+
+type GetInvoicesCustomersByCustomerIdReminderPolicyResponseObject interface {
+	VisitGetInvoicesCustomersByCustomerIdReminderPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesCustomersByCustomerIdReminderPolicy200JSONResponse InvoicesReminderPolicy
+
+func (response GetInvoicesCustomersByCustomerIdReminderPolicy200JSONResponse) VisitGetInvoicesCustomersByCustomerIdReminderPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesCustomersByCustomerIdReminderPolicy401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesCustomersByCustomerIdReminderPolicy401JSONResponse) VisitGetInvoicesCustomersByCustomerIdReminderPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesCustomersByCustomerIdReminderPolicy403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesCustomersByCustomerIdReminderPolicy403JSONResponse) VisitGetInvoicesCustomersByCustomerIdReminderPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesCustomersByCustomerIdReminderPolicyRequestObject struct {
+	CustomerId int32 `json:"customerId"`
+	Body       *PutInvoicesCustomersByCustomerIdReminderPolicyJSONRequestBody
+}
+
+type PutInvoicesCustomersByCustomerIdReminderPolicyResponseObject interface {
+	VisitPutInvoicesCustomersByCustomerIdReminderPolicyResponse(w http.ResponseWriter) error
+}
+
+type PutInvoicesCustomersByCustomerIdReminderPolicy200JSONResponse InvoicesReminderPolicy
+
+func (response PutInvoicesCustomersByCustomerIdReminderPolicy200JSONResponse) VisitPutInvoicesCustomersByCustomerIdReminderPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesCustomersByCustomerIdReminderPolicy400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutInvoicesCustomersByCustomerIdReminderPolicy400ApplicationProblemPlusJSONResponse) VisitPutInvoicesCustomersByCustomerIdReminderPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesCustomersByCustomerIdReminderPolicy401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesCustomersByCustomerIdReminderPolicy401JSONResponse) VisitPutInvoicesCustomersByCustomerIdReminderPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesCustomersByCustomerIdReminderPolicy403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesCustomersByCustomerIdReminderPolicy403JSONResponse) VisitPutInvoicesCustomersByCustomerIdReminderPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesCustomersByCustomerIdReminderPolicy404Response struct {
+}
+
+func (response PutInvoicesCustomersByCustomerIdReminderPolicy404Response) VisitPutInvoicesCustomersByCustomerIdReminderPolicyResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
 }
@@ -3920,6 +4659,133 @@ func (response PostInvoicesSettingsAccessPointVerify503ApplicationProblemPlusJSO
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsRemindersRequestObject struct {
+}
+
+type GetInvoicesSettingsRemindersResponseObject interface {
+	VisitGetInvoicesSettingsRemindersResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesSettingsReminders200JSONResponse InvoicesReminderSettings
+
+func (response GetInvoicesSettingsReminders200JSONResponse) VisitGetInvoicesSettingsRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsReminders401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesSettingsReminders401JSONResponse) VisitGetInvoicesSettingsRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsReminders403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesSettingsReminders403JSONResponse) VisitGetInvoicesSettingsRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsRemindersRequestObject struct {
+	Body *PutInvoicesSettingsRemindersJSONRequestBody
+}
+
+type PutInvoicesSettingsRemindersResponseObject interface {
+	VisitPutInvoicesSettingsRemindersResponse(w http.ResponseWriter) error
+}
+
+type PutInvoicesSettingsReminders200JSONResponse InvoicesReminderSettings
+
+func (response PutInvoicesSettingsReminders200JSONResponse) VisitPutInvoicesSettingsRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsReminders400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutInvoicesSettingsReminders400ApplicationProblemPlusJSONResponse) VisitPutInvoicesSettingsRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsReminders401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesSettingsReminders401JSONResponse) VisitPutInvoicesSettingsRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsReminders403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesSettingsReminders403JSONResponse) VisitPutInvoicesSettingsRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsReminders409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PutInvoicesSettingsReminders409ApplicationProblemPlusJSONResponse) VisitPutInvoicesSettingsRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -5817,6 +6683,21 @@ type StrictServerInterface interface {
 	// GetInvoicesBankFilesById Get an imported bank file
 	// (GET /api/v1/invoices/bank-files/{id})
 	GetInvoicesBankFilesById(ctx context.Context, request GetInvoicesBankFilesByIdRequestObject) (GetInvoicesBankFilesByIdResponseObject, error)
+	// GetInvoicesCollectionRates List the collection rates
+	// (GET /api/v1/invoices/collection-rates)
+	GetInvoicesCollectionRates(ctx context.Context, request GetInvoicesCollectionRatesRequestObject) (GetInvoicesCollectionRatesResponseObject, error)
+	// PostInvoicesCollectionRates Add a collection rate
+	// (POST /api/v1/invoices/collection-rates)
+	PostInvoicesCollectionRates(ctx context.Context, request PostInvoicesCollectionRatesRequestObject) (PostInvoicesCollectionRatesResponseObject, error)
+	// DeleteInvoicesCollectionRatesById Delete a collection rate
+	// (DELETE /api/v1/invoices/collection-rates/{id})
+	DeleteInvoicesCollectionRatesById(ctx context.Context, request DeleteInvoicesCollectionRatesByIdRequestObject) (DeleteInvoicesCollectionRatesByIdResponseObject, error)
+	// GetInvoicesCustomersByCustomerIdReminderPolicy Get a customer's reminder policy
+	// (GET /api/v1/invoices/customers/{customerId}/reminder-policy)
+	GetInvoicesCustomersByCustomerIdReminderPolicy(ctx context.Context, request GetInvoicesCustomersByCustomerIdReminderPolicyRequestObject) (GetInvoicesCustomersByCustomerIdReminderPolicyResponseObject, error)
+	// PutInvoicesCustomersByCustomerIdReminderPolicy Set a customer's reminder policy
+	// (PUT /api/v1/invoices/customers/{customerId}/reminder-policy)
+	PutInvoicesCustomersByCustomerIdReminderPolicy(ctx context.Context, request PutInvoicesCustomersByCustomerIdReminderPolicyRequestObject) (PutInvoicesCustomersByCustomerIdReminderPolicyResponseObject, error)
 	// GetInvoicesExportCsv Export the issued documents as CSV
 	// (GET /api/v1/invoices/export.csv)
 	GetInvoicesExportCsv(ctx context.Context, request GetInvoicesExportCsvRequestObject) (GetInvoicesExportCsvResponseObject, error)
@@ -5847,6 +6728,12 @@ type StrictServerInterface interface {
 	// PostInvoicesSettingsAccessPointVerify Verify the access-point credentials
 	// (POST /api/v1/invoices/settings/access-point/verify)
 	PostInvoicesSettingsAccessPointVerify(ctx context.Context, request PostInvoicesSettingsAccessPointVerifyRequestObject) (PostInvoicesSettingsAccessPointVerifyResponseObject, error)
+	// GetInvoicesSettingsReminders Get the reminder settings
+	// (GET /api/v1/invoices/settings/reminders)
+	GetInvoicesSettingsReminders(ctx context.Context, request GetInvoicesSettingsRemindersRequestObject) (GetInvoicesSettingsRemindersResponseObject, error)
+	// PutInvoicesSettingsReminders Change the reminder settings
+	// (PUT /api/v1/invoices/settings/reminders)
+	PutInvoicesSettingsReminders(ctx context.Context, request PutInvoicesSettingsRemindersRequestObject) (PutInvoicesSettingsRemindersResponseObject, error)
 	// GetInvoicesStatsSummary Get the invoices dashboard summary
 	// (GET /api/v1/invoices/stats/summary)
 	GetInvoicesStatsSummary(ctx context.Context, request GetInvoicesStatsSummaryRequestObject) (GetInvoicesStatsSummaryResponseObject, error)
@@ -6151,6 +7038,146 @@ func (sh *strictHandler) GetInvoicesBankFilesById(w http.ResponseWriter, r *http
 	}
 }
 
+// GetInvoicesCollectionRates operation middleware
+func (sh *strictHandler) GetInvoicesCollectionRates(w http.ResponseWriter, r *http.Request) {
+	var request GetInvoicesCollectionRatesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesCollectionRates(ctx, request.(GetInvoicesCollectionRatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesCollectionRates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesCollectionRatesResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesCollectionRatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesCollectionRates operation middleware
+func (sh *strictHandler) PostInvoicesCollectionRates(w http.ResponseWriter, r *http.Request) {
+	var request PostInvoicesCollectionRatesRequestObject
+
+	var body PostInvoicesCollectionRatesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesCollectionRates(ctx, request.(PostInvoicesCollectionRatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesCollectionRates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesCollectionRatesResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesCollectionRatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInvoicesCollectionRatesById operation middleware
+func (sh *strictHandler) DeleteInvoicesCollectionRatesById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteInvoicesCollectionRatesByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInvoicesCollectionRatesById(ctx, request.(DeleteInvoicesCollectionRatesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInvoicesCollectionRatesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInvoicesCollectionRatesByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteInvoicesCollectionRatesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesCustomersByCustomerIdReminderPolicy operation middleware
+func (sh *strictHandler) GetInvoicesCustomersByCustomerIdReminderPolicy(w http.ResponseWriter, r *http.Request, customerId int32) {
+	var request GetInvoicesCustomersByCustomerIdReminderPolicyRequestObject
+
+	request.CustomerId = customerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesCustomersByCustomerIdReminderPolicy(ctx, request.(GetInvoicesCustomersByCustomerIdReminderPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesCustomersByCustomerIdReminderPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesCustomersByCustomerIdReminderPolicyResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesCustomersByCustomerIdReminderPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInvoicesCustomersByCustomerIdReminderPolicy operation middleware
+func (sh *strictHandler) PutInvoicesCustomersByCustomerIdReminderPolicy(w http.ResponseWriter, r *http.Request, customerId int32) {
+	var request PutInvoicesCustomersByCustomerIdReminderPolicyRequestObject
+
+	request.CustomerId = customerId
+
+	var body PutInvoicesCustomersByCustomerIdReminderPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInvoicesCustomersByCustomerIdReminderPolicy(ctx, request.(PutInvoicesCustomersByCustomerIdReminderPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInvoicesCustomersByCustomerIdReminderPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInvoicesCustomersByCustomerIdReminderPolicyResponseObject); ok {
+		if err := validResponse.VisitPutInvoicesCustomersByCustomerIdReminderPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetInvoicesExportCsv operation middleware
 func (sh *strictHandler) GetInvoicesExportCsv(w http.ResponseWriter, r *http.Request, params GetInvoicesExportCsvParams) {
 	var request GetInvoicesExportCsvRequestObject
@@ -6409,6 +7436,61 @@ func (sh *strictHandler) PostInvoicesSettingsAccessPointVerify(w http.ResponseWr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostInvoicesSettingsAccessPointVerifyResponseObject); ok {
 		if err := validResponse.VisitPostInvoicesSettingsAccessPointVerifyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesSettingsReminders operation middleware
+func (sh *strictHandler) GetInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request) {
+	var request GetInvoicesSettingsRemindersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesSettingsReminders(ctx, request.(GetInvoicesSettingsRemindersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesSettingsReminders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesSettingsRemindersResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesSettingsRemindersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInvoicesSettingsReminders operation middleware
+func (sh *strictHandler) PutInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request) {
+	var request PutInvoicesSettingsRemindersRequestObject
+
+	var body PutInvoicesSettingsRemindersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInvoicesSettingsReminders(ctx, request.(PutInvoicesSettingsRemindersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInvoicesSettingsReminders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInvoicesSettingsRemindersResponseObject); ok {
+		if err := validResponse.VisitPutInvoicesSettingsRemindersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
