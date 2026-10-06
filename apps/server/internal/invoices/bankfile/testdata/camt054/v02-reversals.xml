@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.02">
+  <BkToCstmrDbtCdtNtfctn>
+    <GrpHdr>
+      <MsgId>NO20261006-000125</MsgId>
+      <CreDtTm>2026-10-06T18:30:00+02:00</CreDtTm>
+    </GrpHdr>
+    <Ntfctn>
+      <Id>20261006183000NOK8903</Id>
+      <CreDtTm>2026-10-06T18:30:00+02:00</CreDtTm>
+      <Acct>
+        <Id><Othr><Id>12345678903</Id><SchmeNm><Cd>BBAN</Cd></SchmeNm></Othr></Id>
+        <Ccy>NOK</Ccy>
+      </Acct>
+      <TxsSummry>
+        <TtlNtries><NbOfNtries>4</NbOfNtries><Sum>2094.50</Sum><TtlNetNtryAmt>1494.50</TtlNetNtryAmt><CdtDbtInd>DBIT</CdtDbtInd></TtlNtries>
+        <TtlCdtNtries><NbOfNtries>1</NbOfNtries><Sum>300.00</Sum></TtlCdtNtries>
+        <TtlDbtNtries><NbOfNtries>3</NbOfNtries><Sum>1794.50</Sum></TtlDbtNtries>
+      </TxsSummry>
+      <Ntry>
+        <NtryRef>2610063-1-1</NtryRef>
+        <Amt Ccy="NOK">1250.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <RvslInd>true</RvslInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-06</Dt></BookgDt>
+        <ValDt><Dt>2026-10-06</Dt></ValDt>
+        <BkTxCd>
+          <Domn><Cd>PMNT</Cd><Fmly><Cd>RCDT</Cd><SubFmlyCd>VCOM</SubFmlyCd></Fmly></Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><AcctSvcrRef>123456789</AcctSvcrRef></Refs>
+            <AmtDtls><TxAmt><Amt Ccy="NOK">1250.00</Amt></TxAmt></AmtDtls>
+            <RltdPties>
+              <Dbtr><Nm>Kunde AS</Nm></Dbtr>
+              <DbtrAcct><Id><Othr><Id>98765432109</Id></Othr></Id></DbtrAcct>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Tp><CdOrPrtry><Cd>SCOR</Cd></CdOrPrtry></Tp>
+                  <Ref>0010017</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+      <Ntry>
+        <NtryRef>2610063-1-2</NtryRef>
+        <Amt Ccy="NOK">499.50</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-06</Dt></BookgDt>
+        <BkTxCd>
+          <Domn><Cd>PMNT</Cd><Fmly><Cd>ICDT</Cd><SubFmlyCd>RRTN</SubFmlyCd></Fmly></Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><AcctSvcrRef>234567890</AcctSvcrRef></Refs>
+            <AmtDtls><TxAmt><Amt Ccy="NOK">499.50</Amt></TxAmt></AmtDtls>
+            <RmtInf>
+              <Ustrd>Tilbakeført: mottaker ukjent</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+      <Ntry>
+        <NtryRef>2610063-1-3</NtryRef>
+        <Amt Ccy="NOK">45.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-06</Dt></BookgDt>
+        <BkTxCd>
+          <Domn><Cd>ACMT</Cd><Fmly><Cd>MDOP</Cd><SubFmlyCd>CHRG</SubFmlyCd></Fmly></Domn>
+        </BkTxCd>
+        <AddtlNtryInf>Gebyr innbetalinger</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <NtryRef>2610063-1-4</NtryRef>
+        <Amt Ccy="NOK">300.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-06</Dt></BookgDt>
+        <BkTxCd>
+          <Domn><Cd>PMNT</Cd><Fmly><Cd>RCDT</Cd><SubFmlyCd>VCOM</SubFmlyCd></Fmly></Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><AcctSvcrRef>345678901</AcctSvcrRef></Refs>
+            <AmtDtls><TxAmt><Amt Ccy="NOK">300.00</Amt></TxAmt></AmtDtls>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Tp><CdOrPrtry><Cd>SCOR</Cd></CdOrPrtry></Tp>
+                  <Ref>0010058</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Ntfctn>
+  </BkToCstmrDbtCdtNtfctn>
+</Document>

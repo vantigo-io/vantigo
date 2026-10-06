@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.02">
+  <BkToCstmrDbtCdtNtfctn>
+    <GrpHdr>
+      <MsgId>NO20261006-000124</MsgId>
+      <CreDtTm>2026-10-06T18:00:00+02:00</CreDtTm>
+    </GrpHdr>
+    <Ntfctn>
+      <Id>20261006180000NOK8903</Id>
+      <CreDtTm>2026-10-06T18:00:00+02:00</CreDtTm>
+      <Acct>
+        <Id><Othr><Id>12345678903</Id><SchmeNm><Cd>BBAN</Cd></SchmeNm></Othr></Id>
+        <Ccy>NOK</Ccy>
+      </Acct>
+      <TxsSummry>
+        <TtlNtries><NbOfNtries>1</NbOfNtries><Sum>4747.50</Sum><TtlNetNtryAmt>4747.50</TtlNetNtryAmt><CdtDbtInd>CRDT</CdtDbtInd></TtlNtries>
+        <TtlCdtNtries><NbOfNtries>1</NbOfNtries><Sum>4747.50</Sum></TtlCdtNtries>
+        <TtlDbtNtries><NbOfNtries>0</NbOfNtries><Sum>0</Sum></TtlDbtNtries>
+      </TxsSummry>
+      <Ntry>
+        <NtryRef>2610062-1-1</NtryRef>
+        <Amt Ccy="NOK">4747.50</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-06</Dt></BookgDt>
+        <ValDt><Dt>2026-10-06</Dt></ValDt>
+        <AcctSvcrRef>90000002</AcctSvcrRef>
+        <BkTxCd>
+          <Domn><Cd>PMNT</Cd><Fmly><Cd>RCDT</Cd><SubFmlyCd>DMCT</SubFmlyCd></Fmly></Domn>
+          <Prtry><Cd>233</Cd><Issr>NETS</Issr></Prtry>
+        </BkTxCd>
+        <NtryDtls>
+          <Btch><NbOfTxs>3</NbOfTxs></Btch>
+          <TxDtls>
+            <Refs><AcctSvcrRef>223456781</AcctSvcrRef><EndToEndId>NOTPROVIDED</EndToEndId></Refs>
+            <AmtDtls><TxAmt><Amt Ccy="NOK">2000.00</Amt></TxAmt></AmtDtls>
+            <RltdPties>
+              <Dbtr><Nm>Kunde AS</Nm></Dbtr>
+              <DbtrAcct><Id><Othr><Id>98765432109</Id></Othr></Id></DbtrAcct>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Tp><CdOrPrtry><Cd>SCOR</Cd></CdOrPrtry></Tp>
+                  <Ref>0010041</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+          <TxDtls>
+            <Refs><AcctSvcrRef>223456782</AcctSvcrRef></Refs>
+            <AmtDtls><TxAmt><Amt Ccy="NOK">1500.00</Amt></TxAmt></AmtDtls>
+            <RltdPties>
+              <Dbtr><Nm>Snekker Hansen</Nm></Dbtr>
+              <DbtrAcct><Id><IBAN>NO9386011117947</IBAN></Id></DbtrAcct>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>Faktura 1005</Ustrd>
+              <Ustrd>  takk for  sist </Ustrd>
+            </RmtInf>
+          </TxDtls>
+          <TxDtls>
+            <Refs><AcctSvcrRef>223456783</AcctSvcrRef></Refs>
+            <AmtDtls><TxAmt><Amt Ccy="NOK">1247.5</Amt></TxAmt></AmtDtls>
+            <RltdPties>
+              <Dbtr><Nm>Vipps MobilePay AS</Nm></Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>Utb. 06.10 Vippsnr 123456</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Ntfctn>
+  </BkToCstmrDbtCdtNtfctn>
+</Document>

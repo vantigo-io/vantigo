@@ -98,7 +98,7 @@ func Parse(b []byte, today time.Time) (*File, error) {
 	case FormatOCR:
 		return ParseOCR(b, today)
 	default:
-		return nil, &Error{Where: "file", Message: "camt.054 files cannot be read yet"}
+		return ParseCamt054(b, today)
 	}
 }
 
