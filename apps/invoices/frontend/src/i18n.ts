@@ -488,6 +488,18 @@ export const invoicesCatalog = {
     "refusal.bank_import_stale":
       "The latest bank file is old, and letters of this run claim charges. Import the latest bank file, or confirm the run.",
     "refusal.too_many_overdue": "More than 5 000 invoices are overdue. Narrow the list by customer or by due date.",
+    "refusal.bank_transaction_not_open":
+      "This bank line is not in the queue as this needs it: it was matched or resolved, or someone dealt with it meanwhile. Reopen it first if it must be dealt with again.",
+    "refusal.bank_transaction_not_applicable":
+      "This cannot be done to this bank line: a reversal is handled, never applied or dismissed; a negative line is dismissed; only a duplicate is confirmed or kept.",
+    "refusal.bank_transaction_applied":
+      "Payments registered from this bank line still stand. Remove them first, then reopen the line.",
+    "refusal.reversal_payment_required":
+      "Name the payment the bank took back, or say in the note why no payment is removed.",
+    "refusal.allocation_not_an_invoice": "One of the allocations names a document that is not an issued invoice.",
+    "refusal.allocation_exceeds_transaction": "The allocations add up to more than is left of this bank line.",
+    "refusal.paid_before_issue":
+      "The bank booked this line before the invoice was issued, so it cannot be a payment of it.",
     "workRefusal.source_not_invoiceable":
       "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
     "workRefusal.source_changed":
@@ -1285,6 +1297,19 @@ export const invoicesCatalog = {
     "refusal.bank_import_stale":
       "Den siste bankfilen er gammel, og brev i denne kjøringen krever gebyr, kompensasjon eller renter. Importer den siste bankfilen, eller bekreft kjøringen.",
     "refusal.too_many_overdue": "Over 5 000 fakturaer har forfalt. Avgrens listen etter kunde eller forfallsdato.",
+    "refusal.bank_transaction_not_open":
+      "Denne banklinjen står ikke i køen slik dette krever: den er avstemt eller avklart, eller noen har behandlet den i mellomtiden. Gjenåpne den først hvis den må behandles på nytt.",
+    "refusal.bank_transaction_not_applicable":
+      "Dette kan ikke gjøres med denne banklinjen: en tilbakeføring håndteres og føres aldri eller avvises; en negativ linje avvises; bare et duplikat bekreftes eller beholdes.",
+    "refusal.bank_transaction_applied":
+      "Betalinger registrert fra denne banklinjen står fortsatt. Fjern dem først, og gjenåpne så linjen.",
+    "refusal.reversal_payment_required":
+      "Oppgi betalingen banken tok tilbake, eller skriv i notatet hvorfor ingen betaling fjernes.",
+    "refusal.allocation_not_an_invoice": "En av fordelingene viser til et dokument som ikke er en utstedt faktura.",
+    "refusal.allocation_exceeds_transaction":
+      "Fordelingene blir til sammen mer enn det som er igjen av denne banklinjen.",
+    "refusal.paid_before_issue":
+      "Banken bokførte denne linjen før fakturaen ble utstedt, så den kan ikke være en betaling av den.",
     "workRefusal.source_not_invoiceable":
       "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
     "workRefusal.source_changed":

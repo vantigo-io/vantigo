@@ -272,7 +272,12 @@ func TestMatch_Classify(t *testing.T) {
 	}
 	// A line queued after its KID named an invoice keeps it as the
 	// suggestion — a possible duplicate, by the cutover or the soft key, and
-	// an invoice on the other account; one whose KID named none keeps none.
+	// an invoice on the other account; one whose KID named none keeps none,
+	// unless the queue has one unambiguous suggestion for it (D5, plan
+	// reading 24): "Faktura 2" names invoice a by its number.
+	if a.Number == nil || *a.Number != 2 {
+		t.Fatalf("invoice a is numbered %v, want 2 — the no-KID line's text names it", a.Number)
+	}
 	for _, w := range []struct {
 		file      int64
 		ref, want string
@@ -282,7 +287,7 @@ func TestMatch_Classify(t *testing.T) {
 		{ocr.File.ID, "19", idKey(older.ID)},
 		{ocr.File.ID, "15", "-"},
 		{ocr.File.ID, "13", "-"},
-		{camt.File.ID, "NOKID", "-"},
+		{camt.File.ID, "NOKID", idKey(a.ID)},
 		{camt.File.ID, "REV", "-"},
 	} {
 		if got := suggestedOf(t, h, lineID(t, h, w.file, w.ref)); got != w.want {

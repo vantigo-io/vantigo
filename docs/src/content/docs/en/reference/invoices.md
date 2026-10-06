@@ -1118,7 +1118,8 @@ later source with no person; every payment of this release has one. An imported 
 is removed like any other, with a reason — how a refund made outside Vantigo is
 recorded — and the removal locks only the invoice and never touches the line: what a
 line has applied is derived from its live payments, so a line whose payments are all
-removed goes back to a person through the exception queue's reopen.
+removed goes back to a person through [the exception queue](#the-exception-queue)'s
+reopen.
 
 **Why a row never leaves.** A registration is kept as long as the document it is
 registered against — bokføringsloven § 13, five years after the end of the financial
@@ -1907,7 +1908,8 @@ D3). A person with `invoices:payments` uploads a file of incoming payments; the 
 checks it all or nothing, keeps the file, and stores each payment in it as a bank line.
 Once it has committed, every line it stored that is not a duplicate is **matched on its
 KID** ([Matching](#matching)): it becomes a payment against an invoice, or a case for a
-person. A line is `pending` only until matching reaches it.
+person in [the exception queue](#the-exception-queue). A line is `pending` only until
+matching reaches it.
 
 **Two formats.** `POST /invoices/bank-files` takes one multipart part named `file`, at
 most 10 MiB (the operation's own body limit, 10 MiB and 64 KiB for the framing). The
@@ -2138,6 +2140,131 @@ logged at warn with the file and the line, and the import's 201 (or `…/match`'
 reports what is left in `pending`. The file's rows, committed before matching began,
 stand. Matching reads no directory and calls nothing out of the module, so no call is
 made under its locks.
+
+### The exception queue
+
+A line matching did not register is a case for a person
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
+D5): an `exception` with its reason, or a `duplicate` row. Every queue operation needs
+`invoices:payments`, reads no directory and calls nothing out of the module.
+
+| Reason | What it is | What a person usually does |
+| --- | --- | --- |
+| `kid_invalid` | the KID fails `kid.Parse` or both check digits | apply by hand, or dismiss |
+| `kid_unknown` | no issued invoice carries exactly that KID — another system's, another agreement's | apply, or dismiss |
+| `invoice_credited` | the KID's invoice is credited in full | dismiss with a note: a refund is owed and made outside Vantigo |
+| `invoice_settled` | nothing is open on the KID's invoice, and the line is more than its charges | the same |
+| `exceeds_open` | more than the open amount and the charges outstanding | apply part to the invoice and its charges; the rest stays unapplied |
+| `no_kid` | no KID | apply to one or several invoices from the suggestions |
+| `negative_amount` | an OCR line with a minus sign | dismiss with a note |
+| `reversal` | a camt.054 reversal (`direction` `debit`) | handle it: remove the payment it reverses, or say why none |
+| `vipps_payout` | a Vipps payout | dismiss — not a customer payment |
+| `paid_before_issue` | booked before the KID's invoice was issued | apply after checking, or dismiss |
+| `account_mismatch` | paid into another account than the invoice printed | apply after checking, or dismiss |
+| `possible_duplicate` | the account's cutover, or the soft key — the same payment from another file | confirm it a duplicate, or apply it as a distinct payment |
+| `payment_removed` | a matched line whose payments were all removed, reopened | apply again, or dismiss |
+| (status `duplicate`) | the fingerprint's twin, kept as a row | confirm it, or treat it as distinct |
+
+**The list.** `GET /invoices/bank-transactions` pages every line — `status`, `reason`,
+`bankFileId`, the booking days `from` and `to` (inclusive) and `unapplied` filter it; an
+unknown status or reason, `from` after `to` or paging out of range is 400. The open lines —
+`pending`, `exception`, `duplicate` — come first, each group oldest booking day first,
+then by id; the total counts the filtered lines. Each line answers what the bank wrote,
+its file (`bankFile`: id, format, upload time), **`applied`** — every payment and charge
+payment that refers to it, removed ones included, with the invoice and its number — and
+**`unappliedAmount`**: its amount less its live payments and charge payments, and 0 for a
+reversal, a negative line, a `duplicate` row and a line resolved otherwise than
+`applied`, none of which is money waiting to be applied. `unapplied=true` keeps the
+`matched` and `resolved` lines with such a rest: a line applied in part, or matched and
+its payment since removed. **What is not applied stays visible** there — phase 4 keeps no
+customer credit balance and makes no refund. Each line also answers its `resolution`,
+`resolvedBy`, `resolvedAt` and `resolutionNote`, its `suggestedInvoiceId` and its
+**events**, the first first. `GET /invoices/bank-files/{id}` answers its lines with the
+same fields, but no suggestions.
+
+**Suggestions.** An exception queued `no_kid`, `kid_invalid`, `kid_unknown` or
+`payment_removed` — or `possible_duplicate` without a suggested invoice — carries the
+issued invoices it may pay, read when it is read and never registered by themselves (R4
+§3.5 j): an invoice whose **number** is a whole word of the line's text
+(`number_in_text`); one whose **open amount** equals the line's amount
+(`amount_equals_open`); the open invoices of the customers whose earlier payments from a
+bank line came from the line's **debtor account** (`debtor_account`) — at most ten of
+each, each invoice once under the first reason in that order, with its number, customer,
+buyer and open amount. When a line is queued — by matching, by treat-as-distinct or by a
+reopen — and has no invoice of its own, the one suggestion, if there is exactly one, is
+kept as its `suggestedInvoiceId`; a line whose KID named an invoice keeps that one. A
+`possible_duplicate` or `duplicate` line answers **`possibleDuplicateOf`**: the line it
+was kept as a duplicate of, or else the earliest `matched` or `resolved` line of another
+file with the same account, booking day, amount and KID, one with a live payment first —
+with that line's payments.
+
+**The actions.** Each judges its body, then the line on the pool, then runs **one READ
+COMMITTED transaction whose first lock is the line**, `FOR NO KEY UPDATE`, under which the
+line is judged again — a line another person dealt with meanwhile is refused as the pool
+would have refused it. The apply and the reversal then lock their invoices **`FOR
+UPDATE` in descending id** — the module's invariant; the other actions lock the line
+alone. Never an invoice and then a line. A refusal rolls the whole action back. Every
+action writes the line's event — what, the reason, the note, by the caller at the
+request's one clock read — and answers the line as it now stands.
+
+- **Apply** — `POST /invoices/bank-transactions/{id}/apply` `{allocations: [{invoiceId,
+  amount, chargesAmount?}], note?}`. In order: 400 on the fields — 1 to 20 allocations
+  (`allocations`), each invoice once (`allocations[n].invoiceId`), `amount` and
+  `chargesAmount` 0 or more with at most two decimals and **their sum above 0**, so a
+  line can pay the charges alone of a settled invoice (`allocations[n].amount`,
+  `…chargesAmount`), the note at most 500 characters; 404; 409
+  **`bank_transaction_not_open`** unless the line is an `exception`; 409
+  **`bank_transaction_not_applicable`** for a reversal or a negative line. Under the
+  locks, per invoice in descending id: 409 **`allocation_not_an_invoice`** unless it is
+  an issued invoice; 409 `payment_exceeds_open` when `amount` is more than its open
+  amount, with `invoiceId` and `openAmount`; 409 `charge_payment_exceeds_outstanding`
+  when `chargesAmount` is more than its charges outstanding, with `chargesOutstanding`;
+  409 **`paid_before_issue`** when the line was booked before the invoice's issue day;
+  then 409 **`allocation_exceeds_transaction`** when the allocations add up to more than
+  the line's amount less what its live payments and charge payments already apply. Each
+  allocation registers what a match does ([Matching](#matching)): a payment of `amount`
+  and a charge payment of `chargesAmount`, each when above 0, `source` the file's
+  format, the line, paid on its booking day, the KID as reference, by the caller — and
+  the deadline-met waiver of that invoice. The line becomes `resolved`, `applied`, its
+  reason kept, the note on it, with an `applied` event.
+- **Dismiss** — `POST …/{id}/dismiss` `{note}`, 1 to 500 characters (400 on `note`);
+  404; 409 `bank_transaction_not_open` unless the line is an `exception`; 409
+  `bank_transaction_not_applicable` for a reversal, which is handled instead. The line
+  becomes `resolved`, `not_customer_payment`, with a `dismissed` event.
+- **Handle a reversal** — `POST …/{id}/handle-reversal` `{note?, removePayments:
+  [{invoiceId, paymentId}], noPayment?}`. 400 on the fields — at most 20 payments, each
+  once, not both payments and `noPayment`, the note at most 500 characters; 404; 409
+  `bank_transaction_not_open` unless an `exception`; 409 `bank_transaction_not_applicable`
+  unless it is queued `reversal`; 409 **`reversal_payment_required`** when no payment is
+  named and `noPayment` with a note is not given. Under the line's lock the named
+  payments' invoices are locked in descending id, and each payment is removed by the
+  removal's own rules — 404 a payment that is not its invoice's, 409 `payment_removed`
+  one already removed — with the reason **"Reversed by the bank: line {lineRef}"**, by
+  the caller. The line becomes `resolved`, `reversal_handled`, with a `reversal_handled`
+  event. Nothing links a reversal to a payment by itself: the person names it.
+- **Confirm a duplicate** — `POST …/{id}/confirm-duplicate` `{note?}` (400 past 500
+  characters): a `duplicate` row, or an `exception` queued `possible_duplicate`, becomes
+  `resolved`, `duplicate_confirmed`, **its reason set to `possible_duplicate`** — so a
+  reopen lands on a reason — with a `duplicate_confirmed` event. 404; 409
+  `bank_transaction_not_open` for any other status; 409 `bank_transaction_not_applicable`
+  for an exception of another reason.
+- **Treat as distinct** — `POST …/{id}/treat-as-distinct`: a `duplicate` row becomes an
+  `exception` queued `possible_duplicate`, so it can be applied, with a
+  `treated_as_distinct` event. Its `duplicate_of_id` stays, and it stays out of
+  `ux_bank_transactions_fingerprint`: the same payment imported again is a duplicate of
+  the original live line. 404; 409 `bank_transaction_not_applicable` for an exception;
+  409 `bank_transaction_not_open` for any other status.
+- **Reopen** — `POST …/{id}/reopen`: a `resolved` line back to an `exception` with its
+  reason; a `matched` line whose payments and charge payments were all removed back to an
+  `exception` queued **`payment_removed`**. Its resolution, who, when and the note are
+  cleared on the line and kept in its events, with a `reopened` event. 404; 409
+  `bank_transaction_not_applicable` for a line that is `pending`, an `exception` or a
+  `duplicate`; 409 **`bank_transaction_applied`** while any live payment or charge
+  payment refers to it — remove them first. A reversal reopened finds its removed
+  payments still removed: a removal is never undone.
+
+A payment's removal never writes its line ([Payments](#payments-and-the-state-of-an-invoice)):
+a line matched or applied stays as it is until a person reopens it.
 
 ## Reminders
 
@@ -2974,6 +3101,13 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `GET /bank-files` | `invoices:payments` | 400 paging |
 | `GET /bank-files/{id}` | `invoices:payments` | 404 |
 | `POST /bank-files/{id}/match` | `invoices:payments` | 404 |
+| `GET /bank-transactions` | `invoices:payments` | 400 paging, an unknown `status` or `reason`, `from` after `to` |
+| `POST /bank-transactions/{id}/apply` | `invoices:payments` | 400 on `allocations`, `allocations[n].invoiceId`, `allocations[n].amount`, `allocations[n].chargesAmount` or `note`; 404; 409 `bank_transaction_not_open`, `bank_transaction_not_applicable`; then under the locks `allocation_not_an_invoice`, `payment_exceeds_open` (with `invoiceId`, `openAmount`), `charge_payment_exceeds_outstanding` (with `chargesOutstanding`), `paid_before_issue`, `allocation_exceeds_transaction` |
+| `POST /bank-transactions/{id}/dismiss` | `invoices:payments` | 400 on `note`; 404; 409 `bank_transaction_not_open`, `bank_transaction_not_applicable` |
+| `POST /bank-transactions/{id}/handle-reversal` | `invoices:payments` | 400 on `removePayments`, `removePayments[n].paymentId`, `noPayment` or `note`; 404; 409 `bank_transaction_not_open`, `bank_transaction_not_applicable`, `reversal_payment_required`; then under the locks 404 a payment not its invoice's, 409 `payment_removed` |
+| `POST /bank-transactions/{id}/confirm-duplicate` | `invoices:payments` | 400 on `note`; 404; 409 `bank_transaction_not_open`, `bank_transaction_not_applicable` |
+| `POST /bank-transactions/{id}/treat-as-distinct` | `invoices:payments` | 404; 409 `bank_transaction_not_applicable`, `bank_transaction_not_open` |
+| `POST /bank-transactions/{id}/reopen` | `invoices:payments` | 404; 409 `bank_transaction_not_applicable`, `bank_transaction_applied` |
 | `GET /bank-accounts` | `invoices:payments` | |
 | `PUT /bank-accounts/{account}/format` | `invoices:manage` | 400 on `format`; 404 an account never imported |
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |

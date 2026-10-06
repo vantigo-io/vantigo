@@ -130,3 +130,13 @@ format and cutover, and its latest file.
   larger than the payments of the day — cannot be written in the format's end record;
   whether Mastercard Payment Services can send one at all is **uncertain**. A negative
   line within an assignment is read and kept apart for a person.
+- **Payments kept for a person.** What matching could not place waits in the exception
+  queue, listed with `GET /api/v1/invoices/bank-transactions?status=exception` (until the
+  screen for it arrives), each with its reason and, where it lacks a KID's invoice,
+  suggestions. Someone with `invoices:payments` applies it to invoices, dismisses it with a
+  note, confirms a duplicate or keeps it as a payment of its own
+  ([the exception queue](/en/reference/invoices/#the-exception-queue)). A **reversal** —
+  the bank taking a payment back — is never undone by itself: handle it, naming the
+  payment it reverses, which is then removed, or saying why none is. After the switch of
+  an account's format, the payments held back by the cutover are confirmed as duplicates
+  there, or applied when they were not in the old format's files after all.

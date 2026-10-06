@@ -508,3 +508,14 @@ func SetRunItemAfterLock(hook func(ctx context.Context, invoiceID int64) error) 
 // LetterLanguage is letterLanguage: a letter's language from the buyer
 // snapshot's (plan reading 14).
 var LetterLanguage = letterLanguage
+
+// SetQueueAfterLineLock installs a hook every exception-queue action calls
+// inside its transaction right after it has locked the bank line, before
+// anything else, with the line's id, and answers the function that removes
+// it. An error it answers rolls the action back. A race test parks an apply
+// or a reversal there while another request goes on. A test using it does
+// not run in parallel: the hook is the package's.
+func SetQueueAfterLineLock(hook func(ctx context.Context, bankTransactionID int64) error) func() {
+	queueAfterLineLock = hook
+	return func() { queueAfterLineLock = nil }
+}

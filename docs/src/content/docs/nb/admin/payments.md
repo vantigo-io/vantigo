@@ -129,3 +129,15 @@ og overgangsdagen, og den siste filen.
   tilbakeføring større enn dagens innbetalinger — kan ikke skrives i formatets sluttpost;
   om Mastercard Payment Services i det hele tatt kan sende et slikt, er **usikkert**. En
   negativ linje i et oppdrag leses og holdes til side for en person.
+- **Innbetalinger som holdes tilbake for en person.** Det avstemmingen ikke kunne
+  plassere, venter i avvikskøen, listet med
+  `GET /api/v1/invoices/bank-transactions?status=exception` (til skjermbildet for den
+  kommer), hver med sin årsak og, der den mangler en KID-faktura, forslag. Noen med
+  `invoices:payments` fører den mot fakturaer, avviser den med et notat, bekrefter et
+  duplikat eller beholder den som en egen betaling
+  ([avvikskøen](/en/reference/invoices/#the-exception-queue)). En **tilbakeføring** — at
+  banken tar en innbetaling tilbake — rettes aldri opp av seg selv: håndter den ved å
+  oppgi betalingen den gjelder, som da fjernes, eller ved å skrive hvorfor ingen gjør det.
+  Etter at en kontos format er byttet, bekreftes innbetalingene som skjæringsdagen holdt
+  tilbake, som duplikater der, eller føres når de likevel ikke var med i det gamle
+  formatets filer.
