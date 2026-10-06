@@ -88,6 +88,7 @@ type queueLineJSON struct {
 		Kid        *string       `json:"kid"`
 		Status     string        `json:"status"`
 		Applied    []appliedJSON `json:"applied"`
+		Reversed   bool          `json:"reversed"`
 	} `json:"possibleDuplicateOf"`
 	Resolution     *string     `json:"resolution"`
 	ResolvedBy     *uuid.UUID  `json:"resolvedBy"`
@@ -1001,10 +1002,13 @@ func TestBankQueue_LockOrder(t *testing.T) {
 		kidEntry(5, 100, *a.Kid, "", "PAY-A"),
 		kidEntry(5, 100, *b.Kid, "", "PAY-B"),
 		reversalEntry(6, 200, "REV"),
+		noKidEntry(6, 9.99, "Takk", "SPARE"),
 	)
-	r2 := imported(t, c, camtFile("LOCKS-2", sellerAccount, kidEntry(5, 100, *a.Kid, "", "PAY-A")))
+	// Duplicates of a line no reversal touches: a duplicate of a reversed
+	// line is never treated as distinct.
+	r2 := imported(t, c, camtFile("LOCKS-2", sellerAccount, noKidEntry(6, 9.99, "Takk", "SPARE")))
 	dup := modtest.One[int64](t, h.Harness, `SELECT id FROM invoices.bank_transactions WHERE bank_file_id = $1`, r2.File.ID)
-	r3 := imported(t, c, camtFile("LOCKS-3", sellerAccount, kidEntry(5, 100, *a.Kid, "", "PAY-A")))
+	r3 := imported(t, c, camtFile("LOCKS-3", sellerAccount, noKidEntry(6, 9.99, "Takk", "SPARE")))
 	dup2 := modtest.One[int64](t, h.Harness, `SELECT id FROM invoices.bank_transactions WHERE bank_file_id = $1`, r3.File.ID)
 	pa, pb := paymentOf(t, h, ids["PAY-A"]), paymentOf(t, h, ids["PAY-B"])
 
@@ -1217,4 +1221,78 @@ func TestBankQueue_DismissedMoneyOwedBack(t *testing.T) {
 	if got, n := queueList(t, h, "unapplied=true"); !slices.Equal(lineIDsOf(got), owed) || n != 3 {
 		t.Errorf("?unapplied=true = %v (%d), want the three lines owed back", lineIDsOf(got), n)
 	}
+}
+
+// TestMatch_SoftKeySeesAReversedLine (the confirmation pass of Task 9's
+// review): a line a reversal took the payment back from still holds the
+// soft key, so another notification of the same payment — another MsgId and
+// AcctSvcrRef, so not a duplicate row — is queued possible_duplicate, never
+// matched: reversed money is not registered again by itself. Its twin shows
+// reversed, so a person sees why the twin's payment is gone; a genuine second
+// payment is possible, so it can still be applied.
+func TestMatch_SoftKeySeesAReversedLine(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	inv := kidInvoice(t, h)
+	toMatchDay(h)
+	c := importer(t, h)
+	_, ids := camtLines(t, h, c, "SOFT-REV-1", kidEntry(5, 400, *inv.Kid, "", "FIRST"), reversalEntry(6, 400, "REV"))
+	acted(t, c, ids["REV"], "handle-reversal", map[string]any{"removePayments": []map[string]any{
+		{"invoiceId": inv.ID, "paymentId": paymentOf(t, h, ids["FIRST"])}}})
+
+	again, ids2 := camtLines(t, h, c, "SOFT-REV-2", kidEntry(5, 400, *inv.Kid, "", "SECOND"))
+	if again.Matched != 0 || again.Duplicates != 0 {
+		t.Errorf("the other notification = %+v, want nothing matched and no duplicate row", again)
+	}
+	second := ids2["SECOND"]
+	if got := stateOf(t, h, second); got != "exception possible_duplicate" || len(paymentsFrom(t, h, second)) != 0 {
+		t.Fatalf("the other notification's line = %s with %v, want possible_duplicate and nothing registered", got, paymentsFrom(t, h, second))
+	}
+	if got := livePaymentsOf(t, h, inv.ID); len(got) != 0 {
+		t.Errorf("the invoice's payments = %v, want none — the reversed money is not registered again", got)
+	}
+	l := queueLine(t, h, second)
+	if d := l.PossibleDuplicateOf; d == nil || d.ID != ids["FIRST"] || !d.Reversed || len(d.Applied) != 1 || !d.Applied[0].Removed {
+		t.Errorf("its twin = %+v, want the reversed line %d, reversed, its payment removed", d, ids["FIRST"])
+	}
+	acted(t, c, second, "apply", applyBody(allocate(inv, 400)))
+}
+
+// TestBankQueue_ADuplicateOfAReversedLineIsNeverApplied (the confirmation
+// pass of Task 9's review): the same entry in a new envelope has the same
+// fingerprint and becomes a duplicate row of the line it repeats — the same
+// transaction. Once a reversal took that line's payment back, the row is
+// refused treat-as-distinct, and a row kept as distinct before the reversal
+// is refused apply, both 409 bank_transaction_reversed; confirming it a
+// duplicate still works.
+func TestBankQueue_ADuplicateOfAReversedLineIsNeverApplied(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	inv := kidInvoice(t, h)
+	toMatchDay(h)
+	c := importer(t, h)
+	_, ids := camtLines(t, h, c, "DUP-REV-1", kidEntry(5, 400, *inv.Kid, "", "FIRST"), reversalEntry(6, 400, "REV"))
+	duplicateRow := func(msgID string) int64 {
+		r := imported(t, c, camtFile(msgID, sellerAccount, kidEntry(5, 400, *inv.Kid, "", "FIRST")))
+		return modtest.One[int64](t, h.Harness, `SELECT id FROM invoices.bank_transactions WHERE bank_file_id = $1`, r.File.ID)
+	}
+	kept, row := duplicateRow("DUP-REV-2"), duplicateRow("DUP-REV-3")
+	acted(t, c, kept, "treat-as-distinct", nil) // before the reversal: allowed
+	acted(t, c, ids["REV"], "handle-reversal", map[string]any{"removePayments": []map[string]any{
+		{"invoiceId": inv.ID, "paymentId": paymentOf(t, h, ids["FIRST"])}}})
+
+	before := queueWrites(t, h)
+	queueRefused(t, "treat-as-distinct of the reversed line's duplicate", c.Do(http.MethodPost, queueActionPath(row, "treat-as-distinct"), nil), "bank_transaction_reversed")
+	queueRefused(t, "apply of the kept duplicate", c.Do(http.MethodPost, queueActionPath(kept, "apply"), applyBody(allocate(inv, 400))), "bank_transaction_reversed")
+	if after := queueWrites(t, h); after != before {
+		t.Errorf("the refusals wrote: %s, was %s", after, before)
+	}
+	if got := livePaymentsOf(t, h, inv.ID); len(got) != 0 {
+		t.Errorf("the invoice's payments = %v, want none", got)
+	}
+	if l := queueLine(t, h, row); l.PossibleDuplicateOf == nil || !l.PossibleDuplicateOf.Reversed {
+		t.Errorf("the duplicate row's twin = %+v, want it shown reversed", l.PossibleDuplicateOf)
+	}
+	acted(t, c, row, "confirm-duplicate", map[string]any{"note": "Samme transaksjon, tilbakeført"})
+	acted(t, c, kept, "confirm-duplicate", map[string]any{})
 }

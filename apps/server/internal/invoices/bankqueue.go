@@ -324,7 +324,7 @@ func bankTransactionsResponse(ctx context.Context, q *store.Queries, lines []sto
 	for _, f := range files {
 		fileByID[f.ID] = gen.InvoicesBankTransactionFile{Id: f.ID, Format: f.Format, UploadedAt: f.UploadedAt}
 	}
-	twins := map[int64]store.InvoicesBankTransaction{}
+	twins := map[int64]store.TwinsOfRow{}
 	appliedIDs := slices.Clone(ids)
 	if len(twinOf) > 0 {
 		rows, err := q.TwinsOf(ctx, twinOf)
@@ -332,7 +332,7 @@ func bankTransactionsResponse(ctx context.Context, q *store.Queries, lines []sto
 			return nil, fmt.Errorf("invoices: read the lines possible duplicates repeat: %w", err)
 		}
 		for _, r := range rows {
-			twins[r.LineID] = r.InvoicesBankTransaction
+			twins[r.LineID] = r
 			appliedIDs = append(appliedIDs, r.InvoicesBankTransaction.ID)
 		}
 	}
@@ -384,7 +384,8 @@ func bankTransactionsResponse(ctx context.Context, q *store.Queries, lines []sto
 		if ev := events[l.ID]; ev != nil {
 			tx.Events = ev
 		}
-		if twin, ok := twins[l.ID]; ok {
+		if row, ok := twins[l.ID]; ok {
+			twin := row.InvoicesBankTransaction
 			amount, err := floatFromNumeric(twin.Amount)
 			if err != nil {
 				return nil, err
@@ -395,7 +396,7 @@ func bankTransactionsResponse(ctx context.Context, q *store.Queries, lines []sto
 			}
 			tx.PossibleDuplicateOf = &gen.InvoicesBankTransactionTwin{
 				Id: twin.ID, BankFileId: twin.BankFileID, LineRef: twin.LineRef, BookedOn: wireDate(twin.BookedOn.Time),
-				Amount: amount, Kid: twin.Kid, Status: twin.Status, Applied: ws,
+				Amount: amount, Kid: twin.Kid, Status: twin.Status, Applied: ws, Reversed: row.TwinReversed,
 			}
 		}
 		if withSuggestions && l.Status == lineException && l.Reason != nil && suggestible(*l.Reason) &&
@@ -709,6 +710,9 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 	for _, a := range allocs {
 		ids = append(ids, a.invoiceID)
 	}
+	if refusal, err := duplicateOfReversed(ctx, txq, line, cannotApplyTitle); refusal != nil || err != nil {
+		return refusal, err
+	}
 	invs, err := lockInvoicesDescending(ctx, txq, ids)
 	if err != nil {
 		return nil, err
@@ -813,6 +817,27 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 		}
 	}
 	return nil, resolveLine(ctx, txq, line, resolutionApplied, deref(line.Reason), eventApplied, note, []string{lineException}, caller, now)
+}
+
+// duplicateOfReversed is bank_transaction_reversed for title when line was
+// kept as a duplicate of a line a reversal took a payment back from: an
+// identical fingerprint is the same transaction, whose money went back, so
+// it is never kept as distinct nor applied. A soft-key possible duplicate,
+// with no link, may be a genuine second payment and is not refused; its
+// twin shows reversed instead. Read under the line's lock, after it.
+func duplicateOfReversed(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction, title string) (*gen.InvoicesConflictProblem, error) {
+	if line.DuplicateOfID == nil {
+		return nil, nil
+	}
+	reversed, err := txq.LineReversed(ctx, *line.DuplicateOfID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read whether line %d was reversed: %w", *line.DuplicateOfID, err)
+	}
+	if !reversed {
+		return nil, nil
+	}
+	return ptr(conflict(codeBankTransactionReversed, title,
+		"This line repeats a bank line whose payment the bank reversed: it is the same transaction, and its money went back. Confirm it a duplicate.")), nil
 }
 
 // compareInt64 orders a before b by value.
@@ -1076,6 +1101,9 @@ func (s *server) PostInvoicesBankTransactionsByIdTreatAsDistinct(ctx context.Con
 	}
 	caller, now := callerID(ctx), s.deps.Clock()
 	refusal, err := s.queueAction(ctx, req.Id, judge, func(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction) (*gen.InvoicesConflictProblem, error) {
+		if refusal, err := duplicateOfReversed(ctx, txq, line, cannotKeepTitle); refusal != nil || err != nil {
+			return refusal, err
+		}
 		n, err := txq.TreatAsDistinct(ctx, store.TreatAsDistinctParams{SuggestedInvoiceID: suggested, ID: line.ID})
 		if err != nil {
 			return nil, fmt.Errorf("invoices: treat line %d as distinct: %w", line.ID, err)

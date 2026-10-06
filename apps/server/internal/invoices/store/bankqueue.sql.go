@@ -645,7 +645,9 @@ func (q *Queries) TreatAsDistinct(ctx context.Context, arg TreatAsDistinctParams
 }
 
 const twinsOf = `-- name: TwinsOf :many
-SELECT DISTINCT ON (l.id) l.id AS line_id, t.id, t.bank_file_id, t.line_ref, t.format, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on, t.amount, t.currency, t.kid, t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code, t.fingerprint, t.ordinal, t.duplicate_of_id, t.status, t.reason, t.suggested_invoice_id, t.resolution, t.resolved_by_user_id, t.resolved_at, t.resolution_note
+SELECT DISTINCT ON (l.id) l.id AS line_id, t.id, t.bank_file_id, t.line_ref, t.format, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on, t.amount, t.currency, t.kid, t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code, t.fingerprint, t.ordinal, t.duplicate_of_id, t.status, t.reason, t.suggested_invoice_id, t.resolution, t.resolved_by_user_id, t.resolved_at, t.resolution_note,
+       EXISTS (SELECT 1 FROM invoices.bank_transaction_events e
+               WHERE e.bank_transaction_id = t.id AND e.event = 'reversed') AS twin_reversed
 FROM invoices.bank_transactions l
 JOIN invoices.bank_transactions t
   ON t.id <> l.id
@@ -663,12 +665,14 @@ ORDER BY l.id,
 type TwinsOfRow struct {
 	LineID                  int64
 	InvoicesBankTransaction InvoicesBankTransaction
+	TwinReversed            bool
 }
 
 // TwinsOf is, per possible duplicate or duplicate line, the line it may
 // repeat (D5): the one it was kept as a duplicate of, or else the earliest
 // matched or resolved line of another file with the same account, booking
-// day, amount and KID — one with a live payment or charge payment first.
+// day, amount and KID — one with a live payment or charge payment first —
+// and whether a reversal took back a payment of it (its reversed event).
 func (q *Queries) TwinsOf(ctx context.Context, ids []int64) ([]TwinsOfRow, error) {
 	rows, err := q.db.Query(ctx, twinsOf, ids)
 	if err != nil {
@@ -708,6 +712,7 @@ func (q *Queries) TwinsOf(ctx context.Context, ids []int64) ([]TwinsOfRow, error
 			&i.InvoicesBankTransaction.ResolvedByUserID,
 			&i.InvoicesBankTransaction.ResolvedAt,
 			&i.InvoicesBankTransaction.ResolutionNote,
+			&i.TwinReversed,
 		); err != nil {
 			return nil, err
 		}

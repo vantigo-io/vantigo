@@ -660,6 +660,10 @@ er kreditert eller allerede betalt, eller fordi den var mer enn det som skyldtes
 som ikke ført: pengene skal tilbake, og tilbakebetalingen gjøres utenfor Vantigo. Når en
 tilbakeføring har tatt en betaling tilbake, føres eller gjenåpnes linjen den kom fra aldri
 igjen.
+Det gjelder også den samme innbetalingen i en annen fil fra banken, eller en kopi av
+linjen: de holdes tilbake for en person og registreres aldri av seg selv. En
+tilbakeføring som pekte på feil betaling, kan ikke angres; registrer den betalingen på nytt
+for hånd.
 
 Klikk **Registrer betaling** — tilbys mens noe er igjen å betale — og fyll ut:
 

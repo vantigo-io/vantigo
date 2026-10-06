@@ -2068,7 +2068,9 @@ line — status `exception`, its reason, and a `queued` event by the registering
 2. **A possible duplicate**: the account has a previous format, the line is in its
    current one and is booked on or before `cutover_through`; or the **soft key** — a line
    of **another file** on the same account, booking day, amount and KID has a live
-   payment or charge payment (`ix_bank_transactions_soft`) → `possible_duplicate`.
+   payment or charge payment, or had one a reversal took back
+   (`ix_bank_transactions_soft`) → `possible_duplicate`: reversed money is never
+   registered again by itself.
 3. No KID, and the text reads `Vippsnr` and a number → `vipps_payout`: a Vipps payout,
    never a customer's payment.
 4. No KID → `no_kid`.
@@ -2201,7 +2203,8 @@ kept as its `suggestedInvoiceId`; a line whose KID named an invoice keeps that o
 `possible_duplicate` or `duplicate` line answers **`possibleDuplicateOf`**: the line it
 was kept as a duplicate of, or else the earliest `matched` or `resolved` line of another
 file with the same account, booking day, amount and KID, one with a live payment first —
-with that line's payments. The suggestions are computed per line as the page is read — a
+with that line's payments and `reversed`, whether a reversal took a payment back from it,
+which is why its payment is gone. The suggestions are computed per line as the page is read — a
 few statements a line, on the queue's list and each action's answer only.
 
 **The actions.** Each judges its body, then the line on the pool, then runs **one READ
@@ -2221,7 +2224,9 @@ request's one clock read — and answers the line as it now stands.
   `…chargesAmount`), the note at most 500 characters; 404; 409
   **`bank_transaction_not_open`** unless the line is an `exception`; 409
   **`bank_transaction_not_applicable`** for a reversal or a negative line. Under the
-  locks, per invoice in descending id: 409 **`allocation_not_an_invoice`** unless it is
+  line's lock, 409 **`bank_transaction_reversed`** when the line was kept as a duplicate
+  of a line a reversal took a payment back from — the same transaction. Under the
+  invoices' locks, per invoice in descending id: 409 **`allocation_not_an_invoice`** unless it is
   an issued invoice; 409 `payment_exceeds_open` when `amount` is more than its open
   amount, with `invoiceId` and `openAmount`; 409 `charge_payment_exceeds_outstanding`
   when `chargesAmount` is more than its charges outstanding, with `chargesOutstanding`;
@@ -2252,7 +2257,11 @@ request's one clock read — and answers the line as it now stands.
   takes `FOR KEY SHARE` on that line, which its `FOR NO KEY UPDATE` lets through: no wait
   and no new lock order.) The reversal line becomes `resolved`, `reversal_handled`, with a
   `reversal_handled` event. Nothing links a reversal to a payment by itself: the person
-  names it.
+  names it. A reversal that named the wrong payment cannot be undone — a removal is never
+  undone, and the reversal line is resolved — so register that payment again by hand.
+  The reversed money stays out of reach elsewhere too: another notification of the same
+  payment is held back by the soft key, and a `duplicate` row of the reversed line is
+  refused treat-as-distinct and apply (below).
 - **Confirm a duplicate** — `POST …/{id}/confirm-duplicate` `{note?}` (400 past 500
   characters): a `duplicate` row, or an `exception` queued `possible_duplicate`, becomes
   `resolved`, `duplicate_confirmed`, **its reason set to `possible_duplicate`** — so a
@@ -2264,7 +2273,11 @@ request's one clock read — and answers the line as it now stands.
   `treated_as_distinct` event. Its `duplicate_of_id` stays, and it stays out of
   `ux_bank_transactions_fingerprint`: the same payment imported again is a duplicate of
   the original live line. 404; 409 `bank_transaction_not_applicable` for an exception;
-  409 `bank_transaction_not_open` for any other status.
+  409 `bank_transaction_not_open` for any other status; under the lock 409
+  **`bank_transaction_reversed`** when the line it duplicates had a payment taken back by
+  a reversal — an identical fingerprint is the same transaction, whose money went back;
+  confirm it a duplicate instead. A soft-key `possible_duplicate` is not refused: a
+  genuine second payment is possible, and its twin shows `reversed`.
 - **Reopen** — `POST …/{id}/reopen`: a `resolved` line back to an `exception` with its
   reason; a `matched` line whose payments and charge payments were all removed back to an
   `exception` queued **`payment_removed`**. Its resolution, who, when and the note are
@@ -3115,11 +3128,11 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `GET /bank-files/{id}` | `invoices:payments` | 404 |
 | `POST /bank-files/{id}/match` | `invoices:payments` | 404 |
 | `GET /bank-transactions` | `invoices:payments` | 400 paging, an unknown `status` or `reason`, `from` after `to` |
-| `POST /bank-transactions/{id}/apply` | `invoices:payments` | 400 on `allocations`, `allocations[n].invoiceId`, `allocations[n].amount`, `allocations[n].chargesAmount` or `note`; 404; 409 `bank_transaction_not_open`, `bank_transaction_not_applicable`; then under the locks `allocation_not_an_invoice`, `payment_exceeds_open` (with `invoiceId`, `openAmount`), `charge_payment_exceeds_outstanding` (with `chargesOutstanding`), `paid_before_issue`, `allocation_exceeds_transaction` |
+| `POST /bank-transactions/{id}/apply` | `invoices:payments` | 400 on `allocations`, `allocations[n].invoiceId`, `allocations[n].amount`, `allocations[n].chargesAmount` or `note`; 404; 409 `bank_transaction_not_open`, `bank_transaction_not_applicable`; then under the locks `bank_transaction_reversed`, `allocation_not_an_invoice`, `payment_exceeds_open` (with `invoiceId`, `openAmount`), `charge_payment_exceeds_outstanding` (with `chargesOutstanding`), `paid_before_issue`, `allocation_exceeds_transaction` |
 | `POST /bank-transactions/{id}/dismiss` | `invoices:payments` | 400 on `note`; 404; 409 `bank_transaction_not_open`, `bank_transaction_not_applicable` |
 | `POST /bank-transactions/{id}/handle-reversal` | `invoices:payments` | 400 on `removePayments`, `removePayments[n].paymentId`, `noPayment` or `note`; 404; 409 `bank_transaction_not_open`, `bank_transaction_not_applicable`, `reversal_payment_required`; then under the locks 404 a payment not its invoice's, 409 `payment_removed` |
 | `POST /bank-transactions/{id}/confirm-duplicate` | `invoices:payments` | 400 on `note`; 404; 409 `bank_transaction_not_open`, `bank_transaction_not_applicable` |
-| `POST /bank-transactions/{id}/treat-as-distinct` | `invoices:payments` | 404; 409 `bank_transaction_not_applicable`, `bank_transaction_not_open` |
+| `POST /bank-transactions/{id}/treat-as-distinct` | `invoices:payments` | 404; 409 `bank_transaction_not_applicable`, `bank_transaction_not_open`; then under the lock `bank_transaction_reversed` |
 | `POST /bank-transactions/{id}/reopen` | `invoices:payments` | 404; 409 `bank_transaction_not_applicable`, `bank_transaction_applied`, `bank_transaction_reversed` |
 | `GET /bank-accounts` | `invoices:payments` | |
 | `PUT /bank-accounts/{account}/format` | `invoices:manage` | 400 on `format`; 404 an account never imported |

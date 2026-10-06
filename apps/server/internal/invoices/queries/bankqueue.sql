@@ -116,8 +116,11 @@ ORDER BY bank_transaction_id, id;
 -- TwinsOf is, per possible duplicate or duplicate line, the line it may
 -- repeat (D5): the one it was kept as a duplicate of, or else the earliest
 -- matched or resolved line of another file with the same account, booking
--- day, amount and KID — one with a live payment or charge payment first.
-SELECT DISTINCT ON (l.id) l.id AS line_id, sqlc.embed(t)
+-- day, amount and KID — one with a live payment or charge payment first —
+-- and whether a reversal took back a payment of it (its reversed event).
+SELECT DISTINCT ON (l.id) l.id AS line_id, sqlc.embed(t),
+       EXISTS (SELECT 1 FROM invoices.bank_transaction_events e
+               WHERE e.bank_transaction_id = t.id AND e.event = 'reversed') AS twin_reversed
 FROM invoices.bank_transactions l
 JOIN invoices.bank_transactions t
   ON t.id <> l.id
