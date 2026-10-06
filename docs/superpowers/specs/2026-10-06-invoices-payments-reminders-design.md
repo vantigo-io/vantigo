@@ -684,7 +684,7 @@ order, no `40P01`.
 id bigint identity PK,
 kind varchar(30) CHECK (kind IN ('late_interest_percent','inkassosats','b2b_compensation_nok')),
 valid_from date NOT NULL, value numeric(10,2) NOT NULL CHECK (value > 0),
-release_value numeric(10,2),                 -- what a release seeded for this (kind, valid_from), when it differs from a user's row
+release_value numeric(10,2), release_source_ref varchar(100),  -- what a release seeded for this (kind, valid_from) over a user's row, equal or not
 source_ref varchar(100) NOT NULL,            -- the regulation, e.g. "FOR-2026-06-25-1372"
 created_by_user_id uuid, created_at timestamptz NOT NULL,   -- NULL for the seeded rows
 UNIQUE (kind, valid_from)
@@ -700,11 +700,12 @@ FOR-2025-12-18-2658), 12.25 (2026-07-01, FOR-2026-06-25-1372); `b2b_compensation
 
 **Append-only**: a trigger refuses every UPDATE but `release_value` set once from NULL,
 and a DELETE of a seeded row (`created_by_user_id IS NULL`). **A later release's seed**
-is `INSERT … ON CONFLICT (kind, valid_from) DO UPDATE SET release_value = EXCLUDED.value
-WHERE collection_rates.release_value IS NULL AND collection_rates.value <> EXCLUDED.value`
-— it never fails on a row a user added first (I12); the overdue list and the rates card
-warn `collection_rate_differs_from_release` while a user's value differs from the
-release's. The API adds the rest:
+is `INSERT … ON CONFLICT (kind, valid_from) DO UPDATE SET release_value = EXCLUDED.value,
+release_source_ref = EXCLUDED.source_ref WHERE collection_rates.release_value IS NULL AND
+collection_rates.created_by_user_id IS NOT NULL` — it never fails on a row a user added first
+(I12), records the release's value over a user's row whether or not it differs, and leaves
+a seeded row alone; the overdue list and the rates card warn
+`collection_rate_differs_from_release` while `release_value <> value`. The API adds the rest:
 
 - `GET /invoices/collection-rates` (`invoices:access`) — every row by kind and date, each
   with `inForce` today, `usable` (no letter has used it) and `releaseValue`.

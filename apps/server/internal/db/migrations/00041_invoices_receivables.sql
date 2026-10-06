@@ -12,13 +12,13 @@
 -- everywhere in this schema. No column is named with a word PostgreSQL
 -- reserves; a schema test pins it.
 
--- A row of a table that changes only by insert is refused whatever write the
--- trigger is attached to: the reminder settings row is never deleted.
+-- A row that is never deleted: attached BEFORE DELETE, it refuses every
+-- delete — the reminder settings row's.
 -- +goose StatementBegin
-CREATE FUNCTION invoices.refuse_row_change()
+CREATE FUNCTION invoices.refuse_row_delete()
 RETURNS trigger LANGUAGE plpgsql AS $function$
 BEGIN
-    RAISE EXCEPTION 'invoices: a row of % is never updated or deleted', TG_TABLE_NAME USING ERRCODE = 'P0001';
+    RAISE EXCEPTION 'invoices: a row of % is never deleted', TG_TABLE_NAME USING ERRCODE = 'P0001';
 END;
 $function$;
 -- +goose StatementEnd
@@ -84,6 +84,7 @@ CREATE TABLE invoices.bank_files (
     uploaded_at         timestamptz   NOT NULL,
     CONSTRAINT ck_bank_files_format CHECK (format IN ('ocr', 'camt054')),
     CONSTRAINT ck_bank_files_ignored_kinds CHECK (jsonb_typeof(ignored_kinds) = 'object'),
+    CONSTRAINT ck_bank_files_counts CHECK (transactions >= 0 AND ignored >= 0 AND duplicates >= 0),
     CONSTRAINT uq_bank_files_sha256 UNIQUE (sha256),
     CONSTRAINT uq_bank_files_identity UNIQUE (format, file_identity)
 );
@@ -143,7 +144,9 @@ CREATE TABLE invoices.bank_transactions (
     resolved_by_user_id  uuid,
     resolved_at          timestamptz,
     resolution_note      varchar(500)  NOT NULL DEFAULT '',
+    CONSTRAINT ck_bank_transactions_format CHECK (format IN ('ocr', 'camt054')),
     CONSTRAINT ck_bank_transactions_direction CHECK (direction IN ('credit', 'debit')),
+    CONSTRAINT ck_bank_transactions_ordinal CHECK (ordinal >= 1),
     CONSTRAINT ck_bank_transactions_amount CHECK (amount > 0),
     CONSTRAINT ck_bank_transactions_currency CHECK (currency = 'NOK'),
     CONSTRAINT ck_bank_transactions_status CHECK (status IN ('pending', 'matched', 'exception', 'resolved', 'duplicate')),
@@ -154,11 +157,13 @@ CREATE TABLE invoices.bank_transactions (
         'reversal_handled', 'duplicate_confirmed')),
     -- An exception has a reason (a resolved line keeps it); resolved is
     -- exactly a resolution with its time; a duplicate has its link, and the
-    -- link outlives the status.
+    -- link outlives the status — but a linked line is never pending or
+    -- matched: it reaches a payment only through the queue (D5).
     CONSTRAINT ck_bank_transactions_state CHECK (
         (status = 'exception') <= (reason IS NOT NULL)
         AND (status = 'resolved') = (resolution IS NOT NULL AND resolved_at IS NOT NULL)
-        AND (status = 'duplicate') <= (duplicate_of_id IS NOT NULL))
+        AND (status = 'duplicate') <= (duplicate_of_id IS NOT NULL)
+        AND (duplicate_of_id IS NULL OR status IN ('duplicate', 'exception', 'resolved')))
 );
 -- One live line per account and fingerprint: the import's single INSERT …
 -- ON CONFLICT DO NOTHING, ordered by fingerprint, waits on it (D3 step 7).
@@ -174,9 +179,10 @@ CREATE INDEX ix_bank_transactions_soft ON invoices.bank_transactions (account, b
 
 -- A line is never deleted. An UPDATE changes only its state columns — the
 -- row as jsonb less them never changes, so duplicate_of_id and any column
--- added later are frozen (NI2) — never returns it to pending, and never
--- clears a reason once set (a resolved line keeps it; I15). The erase blanks
--- resolution_note, a state column.
+-- added later are frozen (NI2) — never returns it to pending, makes it
+-- matched only from pending (the match, D4; the queue resolves, D5), and
+-- never clears a reason once set (a resolved line keeps it; I15). The erase
+-- blanks resolution_note, a state column.
 -- +goose StatementBegin
 CREATE FUNCTION invoices.refuse_bank_transaction_change()
 RETURNS trigger LANGUAGE plpgsql AS $function$
@@ -189,6 +195,9 @@ BEGIN
     END IF;
     IF NEW.status = 'pending' AND OLD.status <> 'pending' THEN
         RAISE EXCEPTION 'invoices: a bank transaction never returns to pending' USING ERRCODE = 'P0001';
+    END IF;
+    IF NEW.status = 'matched' AND OLD.status NOT IN ('pending', 'matched') THEN
+        RAISE EXCEPTION 'invoices: a bank transaction is matched only from pending' USING ERRCODE = 'P0001';
     END IF;
     IF OLD.reason IS NOT NULL AND NEW.reason IS NULL THEN
         RAISE EXCEPTION 'invoices: a bank transaction keeps its reason' USING ERRCODE = 'P0001';
@@ -213,7 +222,11 @@ CREATE TABLE invoices.bank_transaction_events (
     by_user_id          uuid         NOT NULL,
     at                  timestamptz  NOT NULL,
     CONSTRAINT ck_bank_transaction_events_event CHECK (event IN ('matched', 'queued', 'applied', 'dismissed',
-        'reversal_handled', 'reopened', 'duplicate_confirmed', 'treated_as_distinct'))
+        'reversal_handled', 'reopened', 'duplicate_confirmed', 'treated_as_distinct')),
+    -- The lines' reasons (ck_bank_transactions_reason).
+    CONSTRAINT ck_bank_transaction_events_reason CHECK (reason IS NULL OR reason IN ('kid_invalid', 'kid_unknown',
+        'invoice_credited', 'invoice_settled', 'exceeds_open', 'no_kid', 'negative_amount', 'reversal',
+        'vipps_payout', 'paid_before_issue', 'account_mismatch', 'possible_duplicate', 'payment_removed'))
 );
 -- A line's events, read with the line (D5).
 CREATE INDEX ix_bank_transaction_events_line ON invoices.bank_transaction_events (bank_transaction_id);
@@ -256,28 +269,32 @@ CREATE INDEX ix_payments_bank_transaction ON invoices.payments (bank_transaction
 
 -- The statutory rates as dated rows (D6): a row is in force from valid_from
 -- until the next row of its kind. The seeded rows have no user; a user adds
--- later ones ahead of a release. release_value is what a later release seeded
--- for a (kind, valid_from) a user had already added, when it differs.
+-- later ones ahead of a release. release_value and release_source_ref are
+-- what a later release seeded for a (kind, valid_from) a user had already
+-- added — recorded whether or not they differ; the warning compares them.
 CREATE TABLE invoices.collection_rates (
     id                 bigint        GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     kind               varchar(30)   NOT NULL,
     valid_from         date          NOT NULL,
     value              numeric(10,2) NOT NULL,
     release_value      numeric(10,2),
+    release_source_ref varchar(100),
     source_ref         varchar(100)  NOT NULL,
     created_by_user_id uuid,
     created_at         timestamptz   NOT NULL,
     CONSTRAINT ck_collection_rates_kind CHECK (kind IN ('late_interest_percent', 'inkassosats', 'b2b_compensation_nok')),
     CONSTRAINT ck_collection_rates_value CHECK (value > 0),
+    CONSTRAINT ck_collection_rates_release CHECK (release_value > 0
+        AND (release_value IS NULL) = (release_source_ref IS NULL)),
     -- The late interest rate and the compensation are set per half-year.
     CONSTRAINT ck_collection_rates_half_year CHECK (kind = 'inkassosats'
         OR (extract(day FROM valid_from) = 1 AND extract(month FROM valid_from) IN (1, 7))),
     CONSTRAINT uq_collection_rates_kind_valid_from UNIQUE (kind, valid_from)
 );
 
--- Append-only (D6): an UPDATE only of release_value from NULL, nothing else
--- changed; a DELETE only of a user's row (the API deletes only one not yet in
--- force or used).
+-- Append-only (D6): an UPDATE only of the release's value and regulation,
+-- set once from NULL, nothing else changed; a DELETE only of a user's row
+-- (the API deletes only one not yet in force or used).
 -- +goose StatementBegin
 CREATE FUNCTION invoices.refuse_collection_rate_change()
 RETURNS trigger LANGUAGE plpgsql AS $function$
@@ -289,7 +306,8 @@ BEGIN
         RAISE EXCEPTION 'invoices: a seeded collection rate is never deleted' USING ERRCODE = 'P0001';
     END IF;
     IF OLD.release_value IS NULL AND NEW.release_value IS NOT NULL
-       AND (to_jsonb(OLD) - 'release_value') = (to_jsonb(NEW) - 'release_value') THEN
+       AND (to_jsonb(OLD) - 'release_value' - 'release_source_ref')
+           = (to_jsonb(NEW) - 'release_value' - 'release_source_ref') THEN
         RETURN NEW;
     END IF;
     RAISE EXCEPTION 'invoices: a collection rate is append-only' USING ERRCODE = 'P0001';
@@ -304,15 +322,17 @@ CREATE TRIGGER tr_collection_rates_append_only
 -- The release's seed of one rate (D6, plan reading 4): this migration calls
 -- it for every seed, and every later release's migration calls it for its
 -- own, so it never fails on a row a user added first — the user's value is
--- kept, and a different release value is recorded beside it, once. Its
--- created_at is the calling migration's now().
+-- kept, and the release's value and regulation are recorded beside it, once,
+-- equal or not. A row already seeded is left as it is. Its created_at is the
+-- calling migration's now().
 -- +goose StatementBegin
 CREATE FUNCTION invoices.seed_collection_rate(p_kind text, p_valid_from date, p_value numeric, p_source_ref text)
 RETURNS void LANGUAGE sql AS $$
     INSERT INTO invoices.collection_rates (kind, valid_from, value, source_ref, created_by_user_id, created_at)
     VALUES (p_kind, p_valid_from, p_value, p_source_ref, NULL, now())
-    ON CONFLICT (kind, valid_from) DO UPDATE SET release_value = EXCLUDED.value
-    WHERE collection_rates.release_value IS NULL AND collection_rates.value <> EXCLUDED.value
+    ON CONFLICT (kind, valid_from) DO UPDATE
+        SET release_value = EXCLUDED.value, release_source_ref = EXCLUDED.source_ref
+    WHERE collection_rates.release_value IS NULL AND collection_rates.created_by_user_id IS NOT NULL
 $$;
 -- +goose StatementEnd
 
@@ -370,7 +390,7 @@ CREATE TABLE invoices.reminder_settings (
 
 CREATE TRIGGER tr_reminder_settings_kept
     BEFORE DELETE ON invoices.reminder_settings
-    FOR EACH ROW EXECUTE FUNCTION invoices.refuse_row_change();
+    FOR EACH ROW EXECUTE FUNCTION invoices.refuse_row_delete();
 
 INSERT INTO invoices.reminder_settings (id, regime_reviewed_through, regime_reviewed_at, updated_at)
 VALUES (1, DATE '2026-12-31', now(), now());
@@ -436,7 +456,8 @@ CREATE TABLE invoices.manual_deliveries (
 CREATE INDEX ix_manual_deliveries_invoice_live ON invoices.manual_deliveries (invoice_id) WHERE removed_at IS NULL;
 
 -- A manual delivery is refused a DELETE and every UPDATE but the removal,
--- once, and the erase's blanking of the note — refuse_payment_change's rule.
+-- once, and the erase's blanking of the note — refuse_payment_change's rule,
+-- which refuses a no-op too.
 -- +goose StatementBegin
 CREATE FUNCTION invoices.refuse_manual_delivery_change()
 RETURNS trigger LANGUAGE plpgsql AS $function$
@@ -446,8 +467,9 @@ BEGIN
            = (to_jsonb(NEW) - 'removed_at' - 'removed_by_user_id' - 'removal_reason' - 'note')
        AND (NEW.note = OLD.note OR NEW.note = '')
        AND ((OLD.removed_at IS NULL AND NEW.removed_at IS NOT NULL)
-            OR (OLD.removed_at, OLD.removed_by_user_id, OLD.removal_reason)
-               IS NOT DISTINCT FROM (NEW.removed_at, NEW.removed_by_user_id, NEW.removal_reason)) THEN
+            OR (NEW.note = ''
+                AND (OLD.removed_at, OLD.removed_by_user_id, OLD.removal_reason)
+                    IS NOT DISTINCT FROM (NEW.removed_at, NEW.removed_by_user_id, NEW.removal_reason))) THEN
         RETURN NEW;
     END IF;
     RAISE EXCEPTION 'invoices: a manual delivery is immutable' USING ERRCODE = 'P0001';
@@ -501,8 +523,9 @@ BEGIN
            = (to_jsonb(NEW) - 'removed_at' - 'removed_by_user_id' - 'removal_reason' - 'note')
        AND (NEW.note = OLD.note OR NEW.note = '')
        AND ((OLD.removed_at IS NULL AND NEW.removed_at IS NOT NULL)
-            OR (OLD.removed_at, OLD.removed_by_user_id, OLD.removal_reason)
-               IS NOT DISTINCT FROM (NEW.removed_at, NEW.removed_by_user_id, NEW.removal_reason)) THEN
+            OR (NEW.note = ''
+                AND (OLD.removed_at, OLD.removed_by_user_id, OLD.removal_reason)
+                    IS NOT DISTINCT FROM (NEW.removed_at, NEW.removed_by_user_id, NEW.removal_reason))) THEN
         RETURN NEW;
     END IF;
     RAISE EXCEPTION 'invoices: a charge payment is immutable' USING ERRCODE = 'P0001';
@@ -528,7 +551,8 @@ CREATE TABLE invoices.reminder_runs (
     letters                   integer,
     skipped                   integer,
     last_booked_on            date,
-    stale_import_acknowledged boolean     NOT NULL
+    stale_import_acknowledged boolean     NOT NULL,
+    CONSTRAINT ck_reminder_runs_counts CHECK (letters >= 0 AND skipped >= 0)
 );
 
 -- +goose StatementBegin
@@ -661,8 +685,21 @@ CREATE TABLE invoices.reminders (
             AND total IS NOT NULL AND print_batch_id IS NOT NULL))
         AND (status <> 'withdrawn' OR (withdrawn_at IS NOT NULL AND withdrawal_reason IS NOT NULL AND withdrawal_reason <> ''))
         AND (status <> 'failed' OR failed_at IS NOT NULL)),
+    -- The charge the facts name, and only it: a reminder fee in fee, the
+    -- compensation in compensation, neither on a fee-free letter.
+    CONSTRAINT ck_reminders_charges CHECK (
+        (fee_kind IS NULL OR ((fee_kind = 'reminder_fee') = (fee IS NOT NULL)
+            AND (fee_kind = 'compensation') = (compensation IS NOT NULL)))
+        AND fee > 0 AND compensation > 0),
+    -- Paper is printed, e-mail is dispatched: only a paper letter awaits
+    -- print, is printed or names a batch; only an e-mail is queued or failed.
+    CONSTRAINT ck_reminders_channel_status CHECK (
+        ((status IN ('awaiting_print', 'printed') OR print_batch_id IS NOT NULL) <= (channel = 'paper'))
+        AND ((status IN ('queued', 'failed')) <= (channel = 'email'))),
     -- The floor under two runs over one invoice.
-    CONSTRAINT uq_reminders_invoice_sequence UNIQUE (invoice_id, sequence)
+    CONSTRAINT uq_reminders_invoice_sequence UNIQUE (invoice_id, sequence),
+    -- A waiver names its letter with its invoice (charge_waivers).
+    CONSTRAINT uq_reminders_id_invoice UNIQUE (id, invoice_id)
 );
 -- What the worker claims.
 CREATE INDEX ix_reminders_due ON invoices.reminders (next_attempt_at) WHERE status = 'queued';
@@ -777,7 +814,10 @@ CREATE TABLE invoices.invoice_holds (
 CREATE UNIQUE INDEX ux_invoice_holds_live ON invoices.invoice_holds (invoice_id) WHERE lifted_at IS NULL;
 
 -- A hold is never deleted; an UPDATE is the lift, once, or the erase's
--- blanking of its notes.
+-- blanking of its notes. A lift of an anonymised customer's hold keeps no
+-- lift note: the invoice is held FOR UPDATE by the lift, so the marker read
+-- here sees an erase that committed before it (guard_child_of_issued_insert's
+-- rule for the insert's note).
 -- +goose StatementBegin
 CREATE FUNCTION invoices.refuse_hold_change()
 RETURNS trigger LANGUAGE plpgsql AS $function$
@@ -790,6 +830,11 @@ BEGIN
             OR ((OLD.lifted_at, OLD.lifted_by_user_id, OLD.charges_allowed)
                     IS NOT DISTINCT FROM (NEW.lifted_at, NEW.lifted_by_user_id, NEW.charges_allowed)
                 AND (NEW.lift_note IS NOT DISTINCT FROM OLD.lift_note OR NEW.lift_note = ''))) THEN
+        IF OLD.lifted_at IS NULL AND EXISTS (
+            SELECT 1 FROM invoices.invoices i JOIN invoices.erased_customers e ON e.customer_id = i.customer_id
+            WHERE i.id = NEW.invoice_id) THEN
+            NEW.lift_note := '';
+        END IF;
         RETURN NEW;
     END IF;
     RAISE EXCEPTION 'invoices: a hold is immutable' USING ERRCODE = 'P0001';
@@ -826,7 +871,7 @@ CREATE TABLE invoices.collection_handoffs (
 CREATE UNIQUE INDEX ux_collection_handoffs_live ON invoices.collection_handoffs (invoice_id) WHERE withdrawn_on IS NULL;
 
 -- A hand-off is never deleted; an UPDATE is the withdrawal, once, or the
--- erase's blanking of its note.
+-- erase's blanking of its note — never a no-op (refuse_payment_change's rule).
 -- +goose StatementBegin
 CREATE FUNCTION invoices.refuse_handoff_change()
 RETURNS trigger LANGUAGE plpgsql AS $function$
@@ -836,8 +881,9 @@ BEGIN
            = (to_jsonb(NEW) - 'withdrawn_on' - 'withdrawn_by_user_id' - 'withdrawal_reason' - 'note')
        AND (NEW.note = OLD.note OR NEW.note = '')
        AND ((OLD.withdrawn_on IS NULL AND NEW.withdrawn_on IS NOT NULL)
-            OR (OLD.withdrawn_on, OLD.withdrawn_by_user_id, OLD.withdrawal_reason)
-               IS NOT DISTINCT FROM (NEW.withdrawn_on, NEW.withdrawn_by_user_id, NEW.withdrawal_reason)) THEN
+            OR (NEW.note = ''
+                AND (OLD.withdrawn_on, OLD.withdrawn_by_user_id, OLD.withdrawal_reason)
+                    IS NOT DISTINCT FROM (NEW.withdrawn_on, NEW.withdrawn_by_user_id, NEW.withdrawal_reason))) THEN
         RETURN NEW;
     END IF;
     RAISE EXCEPTION 'invoices: a hand-off is immutable' USING ERRCODE = 'P0001';
@@ -859,7 +905,7 @@ CREATE TRIGGER tr_collection_handoffs_parent
 CREATE TABLE invoices.charge_waivers (
     id                bigint        GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     invoice_id        bigint        NOT NULL REFERENCES invoices.invoices (id) ON DELETE RESTRICT,
-    reminder_id       bigint        NOT NULL REFERENCES invoices.reminders (id) ON DELETE RESTRICT,
+    reminder_id       bigint        NOT NULL,
     kind              varchar(12)   NOT NULL,
     amount            numeric(14,2) NOT NULL,
     interest_through  date,
@@ -870,7 +916,10 @@ CREATE TABLE invoices.charge_waivers (
     CONSTRAINT ck_charge_waivers_kind CHECK (kind IN ('fee', 'compensation', 'interest')),
     CONSTRAINT ck_charge_waivers_amount CHECK (amount > 0),
     CONSTRAINT ck_charge_waivers_reason CHECK (reason IN ('objection_upheld', 'claimed_in_error', 'goodwill', 'deadline_met')),
-    CONSTRAINT ck_charge_waivers_interest_through CHECK ((kind = 'interest') = (interest_through IS NOT NULL))
+    CONSTRAINT ck_charge_waivers_interest_through CHECK ((kind = 'interest') = (interest_through IS NOT NULL)),
+    -- The letter is the same invoice's.
+    CONSTRAINT fk_charge_waivers_reminder FOREIGN KEY (reminder_id, invoice_id)
+        REFERENCES invoices.reminders (id, invoice_id) ON DELETE RESTRICT
 );
 CREATE UNIQUE INDEX ux_charge_waivers_letter_kind ON invoices.charge_waivers (reminder_id, kind)
     WHERE kind IN ('fee', 'compensation');
@@ -940,4 +989,4 @@ DROP FUNCTION invoices.refuse_bank_transaction_event_change();
 DROP FUNCTION invoices.refuse_bank_transaction_change();
 DROP FUNCTION invoices.refuse_bank_file_change();
 DROP FUNCTION invoices.refuse_bank_import_account_change();
-DROP FUNCTION invoices.refuse_row_change();
+DROP FUNCTION invoices.refuse_row_delete();

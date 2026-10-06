@@ -16,9 +16,11 @@ SELECT * FROM invoices.bank_transactions WHERE id = @id FOR NO KEY UPDATE;
 -- UpsertImportAccounts inserts a bank file's accounts not seen before, with
 -- the file's format — the account's first import sets it (D3 step 7.1) — in
 -- account order, so two first imports of overlapping files queue on the same
--- rows in the same order (I18). An account already there is left as it is.
+-- rows in the same order (I18). An account already there, or named twice,
+-- is left as it is. No DISTINCT: the ORDER BY alone sets the order, so a
+-- plan's hashing never reorders it.
 INSERT INTO invoices.bank_import_accounts (account, format, set_by_user_id, set_at)
-SELECT DISTINCT a, sqlc.arg(format)::text, sqlc.arg(set_by_user_id)::uuid, sqlc.arg(set_at)::timestamptz
+SELECT a, sqlc.arg(format)::text, sqlc.arg(set_by_user_id)::uuid, sqlc.arg(set_at)::timestamptz
 FROM unnest(sqlc.arg(accounts)::text[]) AS a
 ORDER BY 1
 ON CONFLICT (account) DO NOTHING;
