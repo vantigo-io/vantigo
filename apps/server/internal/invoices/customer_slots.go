@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
-	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
@@ -352,9 +351,9 @@ func decimalOf(n pgtype.Numeric, places int) (string, error) {
 // send landing midway cannot make the file disagree with itself.
 func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
 	var section any
-	err := db.WithTx(ctx, p.pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+	err := readTx(ctx, p.pool, func(ctx context.Context, q *store.Queries) error {
 		var err error
-		section, err = exportCustomerData(ctx, store.New(tx), customerID)
+		section, err = exportCustomerData(ctx, q, customerID)
 		return err
 	})
 	if err != nil {

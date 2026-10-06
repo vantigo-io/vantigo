@@ -119,6 +119,36 @@ func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, 
 	})
 }
 
+// openTxKey marks a context as inside one of this module's transactions —
+// a locked one or a read-only snapshot — for the tests' contract-call hook.
+type openTxKey struct{}
+
+// withReadTx runs fn in one REPEATABLE READ, read-only transaction on the
+// module's pool: one snapshot, no lock. fn gets a context marked as inside a
+// transaction and the queries bound to it. No call out of the module is made
+// inside fn either: a directory read takes a pool connection of its own, and
+// one asked for while this transaction holds a connection can starve a small
+// pool, so whatever fn needs from a directory is read before it.
+func (s *server) withReadTx(ctx context.Context, fn func(ctx context.Context, q *store.Queries) error) error {
+	return readTx(ctx, s.deps.Pool, fn)
+}
+
+// readTx is withReadTx on the pool on.
+func readTx(ctx context.Context, on db.TxBeginner, fn func(ctx context.Context, q *store.Queries) error) error {
+	open := context.WithValue(ctx, openTxKey{}, true)
+	return db.WithTx(open, on, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		return fn(open, store.New(tx))
+	})
+}
+
+// inOpenTx reports whether ctx is inside one of this module's transactions,
+// locked (withLockedTx) or read-only (withReadTx). Nothing in the module
+// branches on it; the tests' contract-call hook does.
+func inOpenTx(ctx context.Context) bool {
+	open, _ := ctx.Value(openTxKey{}).(bool)
+	return open || inLockedTx(ctx)
+}
+
 // callerID is the signed-in caller of one request. The router has already
 // authenticated every operation (invoices:access), so a handler always has one.
 func callerID(ctx context.Context) uuid.UUID {

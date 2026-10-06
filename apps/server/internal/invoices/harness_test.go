@@ -76,7 +76,7 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove}
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
-			t.Errorf("a call outside this module's own database was made from inside one of its locked transactions:\n%s",
+			t.Errorf("a call outside this module's own database was made from inside one of its transactions:\n%s",
 				strings.Join(calls, "\n"))
 		}
 		if calls := lockedContractCalls.txSince(beforeTx); len(calls) > 0 {
@@ -90,7 +90,8 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 // lockedContractCalls is the two kinds of call the lock rule forbids
 // (module-boundaries rule 10): a call out of the module — to a directory, a
 // billable read, the object store, the SMTP seam or a provider — made from
-// inside a transaction that holds locks (invoices.InLockedTx), and a holder's
+// inside any of the module's transactions (invoices.InOpenTx: one that holds
+// locks, or a read-only snapshot holding a pool connection), and a holder's
 // transaction-bound command (noteTxCommand) made from outside one. Every
 // harness checks both when its test ends. It is one recorder for the package
 // because the hook is a package-level one (TestMain); each harness checks only
@@ -106,14 +107,21 @@ type lockedCalls struct {
 }
 
 func (l *lockedCalls) note(ctx context.Context, method string, txBound bool) {
-	locked := invoices.InLockedTx(ctx)
-	if locked == txBound {
+	// A call out of the module is forbidden inside any of its transactions —
+	// a locked one, or a read-only snapshot, which holds a pool connection a
+	// directory's own read could starve for; a holder's command is required
+	// inside a locked one.
+	inside := invoices.InOpenTx(ctx)
+	if txBound {
+		inside = invoices.InLockedTx(ctx)
+	}
+	if inside == txBound {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	entry := method + "\n" + string(debug.Stack())
-	if locked {
+	if inside {
 		l.calls = append(l.calls, entry)
 		return
 	}

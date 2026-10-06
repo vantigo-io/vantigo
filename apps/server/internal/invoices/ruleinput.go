@@ -6,8 +6,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -41,9 +39,9 @@ import (
 // thousands. Exclude is zero.
 func (s *server) ruleInputs(ctx context.Context, on db.TxBeginner, ids []int64, L time.Time) (map[int64]reminderrules.Input, error) {
 	var out map[int64]reminderrules.Input
-	err := db.WithTx(ctx, on, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+	err := readTx(ctx, on, func(ctx context.Context, q *store.Queries) error {
 		var err error
-		out, err = s.readRuleInputs(ctx, store.New(tx), ids, L)
+		out, err = s.readRuleInputs(ctx, q, ids, L)
 		return err
 	})
 	if err != nil {

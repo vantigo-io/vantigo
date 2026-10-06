@@ -41,6 +41,16 @@ var (
 	NoteTxCommand    = noteTxCommand
 )
 
+// InOpenTx exposes inOpenTx to the external tests: whether a call is made
+// from inside any of this module's transactions, locked or a read-only
+// snapshot.
+var InOpenTx = inOpenTx
+
+// ReadTxContext marks ctx as withReadTx does, for the recorder's own test.
+func ReadTxContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, openTxKey{}, true)
+}
+
 // LockedContext marks ctx as withLockedTx does, for that same test.
 func LockedContext(ctx context.Context) context.Context {
 	return context.WithValue(ctx, lockedTxKey{}, true)
