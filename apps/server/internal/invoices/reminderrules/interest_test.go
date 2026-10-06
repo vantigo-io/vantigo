@@ -136,6 +136,47 @@ func TestReminderRules_Interest(t *testing.T) {
 		}(), total: "0"},
 		{name: "the last day of 2026", in: interestOn("2026-12-31"), total: "666.85", from: "2026-06-16",
 			segs: []seg{{"2026-06-16", "2026-06-30", "12.00", "10000"}, {"2026-07-01", "2026-12-31", "12.25", "10000"}}},
+		{
+			// Due on Maundy Thursday 2027: E is Tuesday 30 Mar, so 31 Mar–15 Apr, 16 days
+			// at 12.00 on 10 000 = 1 920 000 / 36 500.
+			name: "a due date on Maundy Thursday",
+			in: func() Input {
+				in := interestOn("2027-04-15")
+				in.Invoice.DueDate = day("2027-03-25")
+				in.Rates = append(seedRates(), Rate{ID: 99, Kind: KindLateInterest, ValidFrom: day("2027-01-01"), Value: rat("12.00")})
+				return in
+			}(),
+			total: "52.60", from: "2027-03-31",
+			segs: []seg{{"2027-03-31", "2027-04-15", "12.00", "10000"}},
+		},
+		{
+			// Due on 1 Jan 2027, a Friday: E is Monday 4 Jan; 5–15 Jan, 11 days.
+			name: "a due date on New Year's Day",
+			in: func() Input {
+				in := interestOn("2027-01-15")
+				in.Invoice.DueDate = day("2027-01-01")
+				in.Rates = append(seedRates(), Rate{ID: 99, Kind: KindLateInterest, ValidFrom: day("2027-01-01"), Value: rat("12.00")})
+				return in
+			}(),
+			total: "36.16", from: "2027-01-05",
+			segs: []seg{{"2027-01-05", "2027-01-15", "12.00", "10000"}},
+		},
+		{
+			// Due on 17 May 2028, a Wednesday: E is 18 May; 19–31 May, 13 days at
+			// the 2028-H1 row.
+			name: "a due date on 17 May",
+			in: func() Input {
+				in := interestOn("2028-05-31")
+				in.Invoice.DueDate = day("2028-05-17")
+				in.Rates = append(seedRates(),
+					Rate{ID: 99, Kind: KindLateInterest, ValidFrom: day("2027-01-01"), Value: rat("12.00")},
+					Rate{ID: 100, Kind: KindLateInterest, ValidFrom: day("2027-07-01"), Value: rat("12.00")},
+					Rate{ID: 101, Kind: KindLateInterest, ValidFrom: day("2028-01-01"), Value: rat("12.00")})
+				return in
+			}(),
+			total: "42.74", from: "2028-05-19",
+			segs: []seg{{"2028-05-19", "2028-05-31", "12.00", "10000"}},
+		},
 		{name: "on E itself, nothing", in: interestOn("2026-06-15"), total: "0"},
 		{name: "the first day", in: interestOn("2026-06-16"), total: "3.29", from: "2026-06-16",
 			segs: []seg{{"2026-06-16", "2026-06-16", "12.00", "10000"}}},

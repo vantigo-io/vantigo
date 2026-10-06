@@ -228,7 +228,7 @@ could not be built as written:
 | m13 | an apply could never pay charges alone | D5: `amount ≥ 0`, `chargesAmount ≥ 0`, their sum above 0 |
 | m14 | the cutover by file overshot on multi-account files | D3: the latest booking date of the account's own lines in the old format |
 
-Amended again at Task 4's review: D8 gains the deadline rule (at least 14 days, moved off a weekend or a Norwegian public holiday) and the charge note `fee_deadline_not_missed`; D9 says `charges_earlier` may be negative; D10's facts take the deadline from D8.
+Amended again at Task 4's review: D8 gains the deadline rule (at least 14 days, moved off a weekend or a Norwegian public holiday) and the charge note `fee_deadline_not_missed`; D9 says `charges_earlier` may be negative; D10's facts take the deadline from D8; and `E` moves off a public holiday as well as a weekend (D8, reading 8).
 
 ## Decisions
 
@@ -830,8 +830,10 @@ live hold and hand-off, the collection rates, and the day `L` it is asked about.
 clamped to that month's last day (31 August + 6 → 28 or 29 February; Go's `AddDate` would
 give 3 March). Every "six months" below uses it.
 
-**The effective due date** `E` is the due date, moved to the following Monday when it is a
-Saturday or a Sunday (R4 §2.7, the lenient reading; holidays are not moved — reading 8).
+**The effective due date** `E` is the due date, moved to the next business day when it is a
+Saturday, a Sunday or a Norwegian public holiday (R4 §2.7, the lenient reading; reading 8, as
+amended at Task 4's review — the same rule as the deadline's below, and it only ever delays a
+charge).
 
 **The delivery fact** (I4). An invoice not validly delivered does not fall due, and a
 varsel or fee on it is invalid (FinKN 2017-492, R4 §2.6). **A charge — a fee, the
@@ -881,8 +883,7 @@ is a `reminder` with `announces_collection` (D6).
 Norwegian public holiday (New Year's Day, Maundy Thursday, Good Friday, Easter Sunday and
 Monday, 1 May, 17 May, Ascension Day, Whit Sunday and Monday, Christmas Day, Boxing Day) —
 the debtor-favourable reading, since a payment order reaches no bank on such a day. `E`
-itself still moves only off a weekend (reading 8): the due date is the customer's contract,
-the deadline the creditor's own choice.
+moves by the same rule (reading 8).
 
 **A deadline met** (I5). A letter's deadline counts as met when the live payments
 **ordered** on or before it — `ordered_on` where the bank line has one, else `paid_on` —
@@ -2172,8 +2173,9 @@ Each an interpretation the user may overturn.
    is its own record.
 7. **The policy's home is Invoices**, under `invoices:payments`; a merge keeps the stricter
    mode; anonymisation deletes the row.
-8. **Weekend due dates move to Monday** for the engine; holidays do not; the state `overdue`
-   is unchanged.
+8. **Due dates on a weekend or a Norwegian public holiday move to the next business day**
+   for the engine (amended at Task 4's review: holidays too, as the letter's deadline does);
+   the state `overdue` is unchanged.
 9. **Fee or compensation is the installation's choice for business buyers**, never both;
    the compensation needs a business **with an organisation number** (or a foreign business
    id) on the snapshot — any other buyer is treated as a person — and is claimed once per
