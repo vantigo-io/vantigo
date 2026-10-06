@@ -39,7 +39,7 @@ const (
 // invoice's.
 var errNoSuchDelivery = errors.New("invoices: no such manual delivery on the invoice")
 
-// The kinds a delivery the engine reads comes from (QualifyingDeliveries).
+// The kinds a delivery the engine reads comes from (RuleDeliveries).
 const (
 	deliveryKindManual = "manual"
 	deliveryKindEmail  = "email"
@@ -51,9 +51,10 @@ const (
 // sent_at's Oslo day, a delivered EHF transmission by its delivered_at's, a
 // manual delivery not removed by its delivered_on (plan reading 34) — each a
 // UTC midnight, as businessDay answers. read with q, which holds the
-// invoice's lock, or a plain read.
+// invoice's lock, or a plain read. It is the rule-input loader's
+// RuleDeliveries for one invoice: one definition of a qualifying delivery.
 func deliveriesOf(ctx context.Context, q *store.Queries, invoiceID int64) ([]time.Time, error) {
-	rows, err := q.QualifyingDeliveries(ctx, invoiceID)
+	rows, err := q.RuleDeliveries(ctx, []int64{invoiceID})
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read document %d's deliveries: %w", invoiceID, err)
 	}
@@ -69,10 +70,9 @@ func deliveriesOf(ctx context.Context, q *store.Queries, invoiceID int64) ([]tim
 	return days, nil
 }
 
-// deliveryDay is one qualifying delivery's day (QualifyingDeliveries'
-// shape, and the rule-input loader's RuleDeliveries): a manual delivery's
-// delivered_on, an e-mail's or a delivered EHF transmission's at by its Oslo
-// day — a UTC midnight either way.
+// deliveryDay is one qualifying delivery's day (a RuleDeliveries row): a
+// manual delivery's delivered_on, an e-mail's or a delivered EHF
+// transmission's at by its Oslo day — a UTC midnight either way.
 func deliveryDay(invoiceID int64, kind string, at *time.Time, deliveredOn pgtype.Date) (time.Time, error) {
 	switch {
 	case kind == deliveryKindManual && deliveredOn.Valid:

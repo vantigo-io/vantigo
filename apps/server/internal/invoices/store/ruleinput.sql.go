@@ -111,10 +111,13 @@ type RuleDeliveriesRow struct {
 	DeliveredOn pgtype.Date
 }
 
-// RuleDeliveries is QualifyingDeliveries over many invoices (D8; plan reading
-// 34): each e-mail by when it was sent, each delivered EHF transmission by
-// when it was delivered — at, whose Oslo day the caller derives — and each
-// manual delivery not removed by its delivered_on.
+// RuleDeliveries is every live delivery of the invoices the engine's delivery
+// fact reads (D8; plan reading 34) — the one definition of a qualifying
+// delivery, which deliveriesOf reads too, for one invoice: each e-mail by
+// when it was sent, each delivered EHF transmission by when it was delivered
+// — at, whose Oslo day the caller derives, never this statement — and each
+// manual delivery not removed by its delivered_on. A failed, queued or
+// cancelled transmission and a removed manual record are not deliveries.
 func (q *Queries) RuleDeliveries(ctx context.Context, ids []int64) ([]RuleDeliveriesRow, error) {
 	rows, err := q.db.Query(ctx, ruleDeliveries, ids)
 	if err != nil {
@@ -207,7 +210,7 @@ func (q *Queries) RuleHolds(ctx context.Context, ids []int64) ([]RuleHoldsRow, e
 
 const ruleInvoices = `-- name: RuleInvoices :many
 
-SELECT id, customer_id, buyer_type, buyer_organisation_number, buyer_foreign_id, buyer_language,
+SELECT id, customer_id, buyer_type, buyer_organisation_number, buyer_foreign_id,
        issue_date, due_date, gross_total
 FROM invoices.invoices
 WHERE id = ANY($1::bigint[]) AND kind = 'invoice' AND status = 'issued'
@@ -220,7 +223,6 @@ type RuleInvoicesRow struct {
 	BuyerType               *string
 	BuyerOrganisationNumber *string
 	BuyerForeignID          *string
-	BuyerLanguage           *string
 	IssueDate               pgtype.Date
 	DueDate                 pgtype.Date
 	GrossTotal              pgtype.Numeric
@@ -233,7 +235,9 @@ type RuleInvoicesRow struct {
 // reminderrules.Input; no other code builds one (plan reading 2).
 // RuleInvoices is the issued invoices among ids with the snapshot the engine
 // reads: the buyer, the issue and due dates, the gross, and the customer
-// whose policy applies. A draft or a credit note is not one.
+// whose policy applies. A draft or a credit note is not one. The buyer's
+// language is not the engine's: the letter's dispatch reads it from the
+// invoice row it holds locked.
 func (q *Queries) RuleInvoices(ctx context.Context, ids []int64) ([]RuleInvoicesRow, error) {
 	rows, err := q.db.Query(ctx, ruleInvoices, ids)
 	if err != nil {
@@ -249,7 +253,6 @@ func (q *Queries) RuleInvoices(ctx context.Context, ids []int64) ([]RuleInvoices
 			&i.BuyerType,
 			&i.BuyerOrganisationNumber,
 			&i.BuyerForeignID,
-			&i.BuyerLanguage,
 			&i.IssueDate,
 			&i.DueDate,
 			&i.GrossTotal,
