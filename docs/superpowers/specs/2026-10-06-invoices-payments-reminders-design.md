@@ -565,9 +565,10 @@ caller), `registered_at` the request's one clock read; then the line becomes `ma
 with a `matched` event. **The allocation is principal first**, then charges (reading 6),
 recorded as two rows so it can be explained (new inkassolov § 16, R4 §2.7). Then, in the
 same transaction, **the deadline-met waiver** (D8, I5): when the line carries `ordered_on`
-and a sent letter's fee or compensation was claimed after an earlier letter's deadline that
-the payments ordered on or before it — this one included — turn out to have met, that fee
-is waived, `deadline_met` (D9). A handed-off or held invoice is matched like any other:
+and a sent letter's reminder fee was claimed after an earlier letter's deadline that the
+payments ordered on or before it — this one included — turn out to have met, that fee is
+waived, `deadline_met` (D9; the compensation is due from the due date, on no deadline, and is
+not waived — Task 4 review). A handed-off or held invoice is matched like any other:
 payments are always registered (D11).
 
 **Tests**: `TestKidParse` (MOD10 and MOD11 bodies, the `-`, leading zeros, letters, too
@@ -889,8 +890,9 @@ moves by the same rule (reading 8).
 **ordered** on or before it — `ordered_on` where the bank line has one, else `paid_on` —
 cover the principal open on the letter's `sent_on`. A met deadline allows no further
 letter on that sequence step: the next letter is judged as if the met letter's step had
-not been missed; and a fee claimed afterwards in reliance on the missed deadline is waived
-when the proof arrives (D4's `deadline_met`).
+not been missed; and a reminder fee claimed on a letter sent after an earlier letter's
+deadline that the payments ordered on or before it turn out to have met — a second fee or a
+first one after a fee-free letter — is waived when the proof arrives (D4's `deadline_met`).
 
 **The fee** on a letter (`fee_kind = reminder_fee`), all of R4 §2.11's rules:
 

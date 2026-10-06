@@ -194,9 +194,10 @@ func TestReminderRules_SecondFeeNeedsAMissedDeadline(t *testing.T) {
 	}
 }
 
-// D4's deadline_met waiver: the second fee of a chain relied on the first fee
-// letter's missed deadline; when the ledger shows that deadline met, the
-// second fee is named for waiving, unless it is waived already.
+// D4's deadline_met waiver: a reminder fee claimed on a letter sent after an
+// earlier letter's deadline that the payments ordered by it in fact met is
+// named for waiving — a second fee or a first one after a fee-free letter —
+// unless it is waived already; the compensation never.
 func TestReminderRules_ReliedOnMetDeadline(t *testing.T) {
 	t.Parallel()
 	first := sentLetter(1, 1, LevelReminder, "2026-07-01", 14, FeeReminder) // deadline 15 Jul
@@ -216,7 +217,11 @@ func TestReminderRules_ReliedOnMetDeadline(t *testing.T) {
 		{"a fee-free second letter", []Letter{first, sentLetter(2, 2, LevelReminder, "2026-07-20", 14, FeeNone)}, ordered, nil, nil},
 		{"a first fee relies on nothing", []Letter{first}, ordered, nil, nil},
 		{"a fee after the six-month reset", []Letter{first, sentLetter(2, 2, LevelReminder, "2027-01-02", 14, FeeReminder)},
-			[]Payment{{PaidOn: day("2027-01-05"), OrderedOn: dayp("2026-07-15"), Amount: rat("10000")}}, nil, nil},
+			[]Payment{{PaidOn: day("2027-01-05"), OrderedOn: dayp("2026-07-15"), Amount: rat("10000")}}, nil, []int64{2}},
+		{"a first fee after a fee-free letter met by its order date", []Letter{sentLetter(1, 1, LevelReminder, "2026-07-01", 14, FeeNone), second}, ordered, nil, []int64{2}},
+		{"a fee sent on the earlier deadline's own day", []Letter{first, sentLetter(2, 2, LevelReminder, "2026-07-15", 14, FeeReminder)}, ordered, nil, nil},
+		{"the compensation is not waived", []Letter{sentLetter(1, 1, LevelReminder, "2026-07-01", 14, FeeNone), sentLetter(2, 2, LevelReminder, "2026-07-20", 14, FeeCompensation)}, ordered, nil, nil},
+		{"both later fees", []Letter{first, second, sentLetter(3, 3, LevelNotice, "2026-08-10", 14, FeeReminder)}, ordered, nil, []int64{2, 3}},
 	} {
 		in := baseInput("2026-07-25")
 		in.Letters, in.Payments, in.Waivers = c.letters, c.payments, c.waivers

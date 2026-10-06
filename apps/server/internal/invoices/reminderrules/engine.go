@@ -160,7 +160,7 @@ type ChargePayment struct {
 // Input is everything D8 judges an invoice on, read under its lock (or on
 // the pool for the list), and the day L it is asked about.
 //
-// The contract (validate checks it in the tests): every day is UTC midnight of
+// The contract (Validate checks it in the tests): every day is UTC midnight of
 // an Oslo calendar day, as the module's businessDay gives it; every amount
 // but a Letter's is non-nil, and a nil one is a programming error the engine
 // panics on; a Letter's nil amounts read as zero; a customer without a
@@ -508,10 +508,11 @@ func deadlineOf(l Letter) time.Time {
 	return *l.SentOn
 }
 
-// validate is the Input contract (see Input): the amounts the engine reads
+// Validate is the Input contract (see Input): the amounts the engine reads
 // non-nil and every day at UTC midnight. The engine trusts its one caller,
-// the rule-input loader, and does not run it; the tests do, on every fixture.
-func validate(in Input) error {
+// the rule-input loader, and does not run it; the tests do — this package's on
+// every fixture, and the loader's (Task 7b) on what it reads.
+func Validate(in Input) error {
 	var problems []string
 	day := func(what string, d time.Time) {
 		if d.Location() != time.UTC || d.Hour() != 0 || d.Minute() != 0 || d.Second() != 0 || d.Nanosecond() != 0 {
