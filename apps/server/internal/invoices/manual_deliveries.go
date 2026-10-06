@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
@@ -58,17 +59,29 @@ func deliveriesOf(ctx context.Context, q *store.Queries, invoiceID int64) ([]tim
 	}
 	days := make([]time.Time, 0, len(rows))
 	for _, r := range rows {
-		switch {
-		case r.Kind == deliveryKindManual && r.DeliveredOn.Valid:
-			days = append(days, utcDay(r.DeliveredOn.Time))
-		case (r.Kind == deliveryKindEmail || r.Kind == deliveryKindEhf) && r.At != nil:
-			days = append(days, businessDay(*r.At))
-		default:
-			return nil, fmt.Errorf("invoices: document %d has a %s delivery without its day", invoiceID, r.Kind)
+		day, err := deliveryDay(invoiceID, r.Kind, r.At, r.DeliveredOn)
+		if err != nil {
+			return nil, err
 		}
+		days = append(days, day)
 	}
 	slices.SortFunc(days, time.Time.Compare)
 	return days, nil
+}
+
+// deliveryDay is one qualifying delivery's day (QualifyingDeliveries'
+// shape, and the rule-input loader's RuleDeliveries): a manual delivery's
+// delivered_on, an e-mail's or a delivered EHF transmission's at by its Oslo
+// day — a UTC midnight either way.
+func deliveryDay(invoiceID int64, kind string, at *time.Time, deliveredOn pgtype.Date) (time.Time, error) {
+	switch {
+	case kind == deliveryKindManual && deliveredOn.Valid:
+		return utcDay(deliveredOn.Time), nil
+	case (kind == deliveryKindEmail || kind == deliveryKindEhf) && at != nil:
+		return businessDay(*at), nil
+	default:
+		return time.Time{}, fmt.Errorf("invoices: document %d has a %s delivery without its day", invoiceID, kind)
+	}
 }
 
 // reliedOn is whether removing manual delivery d would take away the

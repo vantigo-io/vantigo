@@ -113,6 +113,25 @@ func letterOf(r store.InvoicesReminder) (reminderrules.Letter, error) {
 	return l, nil
 }
 
+// waiverOf is a stored waiver as the engine reads it (reminderrules.Waiver).
+func waiverOf(w store.InvoicesChargeWaiver) (reminderrules.Waiver, error) {
+	amount, err := ratFromNumeric(w.Amount)
+	if err != nil {
+		return reminderrules.Waiver{}, err
+	}
+	return reminderrules.Waiver{ID: w.ID, ReminderID: w.ReminderID, Kind: w.Kind, Amount: amount}, nil
+}
+
+// chargePaymentOf is a stored charge payment as the engine reads it
+// (reminderrules.ChargePayment); the caller passes the live ones only.
+func chargePaymentOf(p store.InvoicesChargePayment) (reminderrules.ChargePayment, error) {
+	amount, err := ratFromNumeric(p.Amount)
+	if err != nil {
+		return reminderrules.ChargePayment{}, err
+	}
+	return reminderrules.ChargePayment{ID: p.ID, PaidOn: utcDay(p.PaidOn.Time), Amount: amount}, nil
+}
+
 // chargesOf reads an invoice's sent letters, waivers and charge payments with
 // q — which holds the invoice's lock, or a plain read for a response — and
 // answers its charges through reminderrules.Charges: only sent letters claim,
@@ -137,21 +156,21 @@ func chargesOf(ctx context.Context, q *store.Queries, invoiceID int64) (reminder
 		rows.ruleLetters = append(rows.ruleLetters, l)
 	}
 	for _, w := range rows.waivers {
-		amount, err := ratFromNumeric(w.Amount)
+		rw, err := waiverOf(w)
 		if err != nil {
 			return reminderrules.ChargeState{}, rows, err
 		}
-		rows.ruleWaivers = append(rows.ruleWaivers, reminderrules.Waiver{ID: w.ID, ReminderID: w.ReminderID, Kind: w.Kind, Amount: amount})
+		rows.ruleWaivers = append(rows.ruleWaivers, rw)
 	}
 	for _, p := range rows.payments {
 		if p.RemovedAt != nil {
 			continue
 		}
-		amount, err := ratFromNumeric(p.Amount)
+		rp, err := chargePaymentOf(p)
 		if err != nil {
 			return reminderrules.ChargeState{}, rows, err
 		}
-		rows.livePayments = append(rows.livePayments, reminderrules.ChargePayment{ID: p.ID, PaidOn: utcDay(p.PaidOn.Time), Amount: amount})
+		rows.livePayments = append(rows.livePayments, rp)
 	}
 	return reminderrules.Charges(rows.ruleLetters, rows.ruleWaivers, rows.livePayments), rows, nil
 }
