@@ -34,25 +34,6 @@ UPDATE invoices.manual_deliveries
 SET removed_at = @removed_at::timestamptz, removed_by_user_id = @removed_by_user_id::uuid, removal_reason = @removal_reason::text
 WHERE id = @id AND invoice_id = @invoice_id AND removed_at IS NULL;
 
--- name: QualifyingDeliveries :many
--- QualifyingDeliveries is every live delivery of an invoice the engine's
--- delivery fact reads (D8; plan reading 34): each e-mail by when it was sent,
--- each delivered EHF transmission by when it was delivered — at, whose Oslo
--- day the caller derives, never this statement — and each manual delivery
--- not removed by its day, delivered_on. A failed, queued or cancelled
--- transmission and a removed manual record are not deliveries.
-SELECT 'manual'::text AS kind, NULL::timestamptz AS at, m.delivered_on AS delivered_on
-FROM invoices.manual_deliveries m
-WHERE m.invoice_id = @invoice_id AND m.removed_at IS NULL
-UNION ALL
-SELECT 'email'::text, d.sent_at, NULL::date
-FROM invoices.deliveries d
-WHERE d.invoice_id = @invoice_id
-UNION ALL
-SELECT 'ehf'::text, t.delivered_at, NULL::date
-FROM invoices.transmissions t
-WHERE t.invoice_id = @invoice_id AND t.status = 'delivered';
-
 -- name: ClaimingLettersOf :many
 -- ClaimingLettersOf is every letter of an invoice that carries its facts —
 -- sent, printed, or being sent (queued with its facts written) — by

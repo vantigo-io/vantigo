@@ -7,8 +7,10 @@
 -- name: RuleInvoices :many
 -- RuleInvoices is the issued invoices among ids with the snapshot the engine
 -- reads: the buyer, the issue and due dates, the gross, and the customer
--- whose policy applies. A draft or a credit note is not one.
-SELECT id, customer_id, buyer_type, buyer_organisation_number, buyer_foreign_id, buyer_language,
+-- whose policy applies. A draft or a credit note is not one. The buyer's
+-- language is not the engine's: the letter's dispatch reads it from the
+-- invoice row it holds locked.
+SELECT id, customer_id, buyer_type, buyer_organisation_number, buyer_foreign_id,
        issue_date, due_date, gross_total
 FROM invoices.invoices
 WHERE id = ANY(@ids::bigint[]) AND kind = 'invoice' AND status = 'issued'
@@ -33,10 +35,13 @@ WHERE p.invoice_id = ANY(@ids::bigint[]) AND p.removed_at IS NULL
 ORDER BY p.invoice_id, p.paid_on, p.id;
 
 -- name: RuleDeliveries :many
--- RuleDeliveries is QualifyingDeliveries over many invoices (D8; plan reading
--- 34): each e-mail by when it was sent, each delivered EHF transmission by
--- when it was delivered — at, whose Oslo day the caller derives — and each
--- manual delivery not removed by its delivered_on.
+-- RuleDeliveries is every live delivery of the invoices the engine's delivery
+-- fact reads (D8; plan reading 34) — the one definition of a qualifying
+-- delivery, which deliveriesOf reads too, for one invoice: each e-mail by
+-- when it was sent, each delivered EHF transmission by when it was delivered
+-- — at, whose Oslo day the caller derives, never this statement — and each
+-- manual delivery not removed by its delivered_on. A failed, queued or
+-- cancelled transmission and a removed manual record are not deliveries.
 SELECT m.invoice_id, 'manual'::text AS kind, NULL::timestamptz AS at, m.delivered_on AS delivered_on
 FROM invoices.manual_deliveries m
 WHERE m.invoice_id = ANY(@ids::bigint[]) AND m.removed_at IS NULL

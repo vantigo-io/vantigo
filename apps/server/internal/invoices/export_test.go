@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -379,10 +380,11 @@ func DeliveriesOf(ctx context.Context, db store.DBTX, invoiceID int64) ([]time.T
 	return deliveriesOf(ctx, store.New(db), invoiceID)
 }
 
-// countingDB is a store.DBTX that counts the statements it passes on.
+// countingDB is a store.DBTX that counts the statements it passes on, and
+// a db.TxBeginner whose transactions count theirs into the same total.
 type countingDB struct {
 	db store.DBTX
-	n  atomic.Int64
+	n  *atomic.Int64
 }
 
 func (c *countingDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
@@ -400,18 +402,59 @@ func (c *countingDB) QueryRow(ctx context.Context, sql string, args ...any) pgx.
 	return c.db.QueryRow(ctx, sql, args...)
 }
 
-// CountingDB wraps db so every Exec, Query and QueryRow is counted; the
-// function answers the count so far (Task 7b: the loader reads a handful of
-// statements for any number of invoices).
-func CountingDB(db store.DBTX) (store.DBTX, func() int) {
-	c := &countingDB{db: db}
+// BeginTx opens a transaction on the wrapped db, whose statements are
+// counted too; BEGIN and COMMIT are not statements the loader reads.
+func (c *countingDB) BeginTx(ctx context.Context, opts pgx.TxOptions) (pgx.Tx, error) {
+	on, ok := c.db.(db.TxBeginner)
+	if !ok {
+		return nil, fmt.Errorf("invoices: %T opens no transaction", c.db)
+	}
+	tx, err := on.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &countingTx{Tx: tx, n: c.n}, nil
+}
+
+// countingTx is a transaction whose Exec, Query and QueryRow are counted.
+type countingTx struct {
+	pgx.Tx
+	n *atomic.Int64
+}
+
+func (c *countingTx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	c.n.Add(1)
+	return c.Tx.Exec(ctx, sql, args...)
+}
+
+func (c *countingTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	c.n.Add(1)
+	return c.Tx.Query(ctx, sql, args...)
+}
+
+func (c *countingTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	c.n.Add(1)
+	return c.Tx.QueryRow(ctx, sql, args...)
+}
+
+// CountingDB wraps db so every Exec, Query and QueryRow is counted — on db
+// and in any transaction opened on it; the function answers the count so
+// far (Task 7b: the loader reads a handful of statements for any number of
+// invoices).
+func CountingDB(on store.DBTX) (store.DBTX, func() int) {
+	c := &countingDB{db: on, n: new(atomic.Int64)}
 	return c, func() int { return int(c.n.Load()) }
 }
 
-// RuleInputsForTest is ruleInputs over db: the rule-input loader's pool
-// read of every invoice among ids on day L (Task 7b).
-func RuleInputsForTest(ctx context.Context, h module.Deps, db store.DBTX, ids []int64, L time.Time) (map[int64]reminderrules.Input, error) {
-	return (&server{deps: h}).ruleInputs(ctx, store.New(db), ids, L)
+// RuleInputsForTest is ruleInputs on on — the pool, or CountingDB over it:
+// the rule-input loader's snapshot read of every invoice among ids on day L
+// (Task 7b).
+func RuleInputsForTest(ctx context.Context, h module.Deps, on store.DBTX, ids []int64, L time.Time) (map[int64]reminderrules.Input, error) {
+	beginner, ok := on.(db.TxBeginner)
+	if !ok {
+		return nil, fmt.Errorf("invoices: %T opens no transaction", on)
+	}
+	return (&server{deps: h}).ruleInputs(ctx, beginner, ids, L)
 }
 
 // RuleInputLockedForTest is ruleInputLocked inside tx: invoice id locked

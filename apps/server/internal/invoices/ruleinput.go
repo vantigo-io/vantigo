@@ -6,6 +6,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -14,23 +17,67 @@ import (
 // D8): every fact the reminder engine judges an invoice on, read from the
 // store and mapped onto reminderrules.Input — the engine's one door (plan
 // reading 2). No other code builds an Input: the overdue list, the run's
-// preview and the run read a whole list through ruleInputs, on the pool, in a
-// handful of statements whatever its length; the bank match's deadline-met
-// waiver, the hand-off's export, the letter's dispatch and the posted
-// re-judge read one invoice through ruleInputLocked, under its lock.
+// preview and the run read a whole list through ruleInputs, in one snapshot,
+// in a handful of statements whatever its length; the bank match's
+// deadline-met waiver, the hand-off's export, the letter's dispatch and the
+// posted re-judge read one invoice through ruleInputLocked, under its lock.
 //
 // The contract it keeps (reminderrules.Input; the tests run Validate on what
 // it reads): every day a UTC midnight of the Oslo calendar day — a date
 // column through utcDay, an instant through businessDay; every amount but a
 // letter's non-nil; no policy row is ModeNormal; Rates every row of every
 // kind; Payments, Credits and ChargePayments the live ones only.
+//
+// The buyer's language is not an input: the engine judges no letter by it,
+// and the letter's dispatch reads it from the invoice row it holds locked.
 
 // ruleInputs reads the engine's Input on day L for every issued invoice
-// among ids, with q — the pool for a list, or a transaction. An id that is
-// not an issued invoice (a draft, a credit note, none) is absent from the
-// answer. Each statement reads every invoice at once (ruleinput.sql), so the
-// count is the same for one invoice as for thousands. Exclude is zero.
-func (s *server) ruleInputs(ctx context.Context, q *store.Queries, ids []int64, L time.Time) (map[int64]reminderrules.Input, error) {
+// among ids, in one read-only REPEATABLE READ transaction opened on on (the
+// pool), so a whole list is judged on one snapshot — a payment committed
+// between two of its statements is seen by all of them or by none. An id
+// that is not an issued invoice (a draft, a credit note, none) is absent
+// from the answer. Each statement reads every invoice at once
+// (ruleinput.sql), so the count is the same for one invoice as for
+// thousands. Exclude is zero.
+func (s *server) ruleInputs(ctx context.Context, on db.TxBeginner, ids []int64, L time.Time) (map[int64]reminderrules.Input, error) {
+	var out map[int64]reminderrules.Input
+	err := db.WithTx(ctx, on, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		var err error
+		out, err = s.readRuleInputs(ctx, store.New(tx), ids, L)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ruleInputLocked reads the engine's Input for inv on day L with txq, whose
+// transaction holds inv FOR UPDATE (lockInvoice) — the caller takes the lock
+// first, so every figure read here is read after it, and a payment, a
+// letter, a waiver, a hold or a hand-off another transaction held the
+// invoice for has committed; what the caller's own transaction wrote before
+// is read too. exclude is the letter being dispatched or posted (zero for
+// none): it stays among the letters, and Input.Exclude names it so the
+// engine leaves it out of flight. An inv that is not an issued invoice is an
+// error: no caller judges one.
+func (s *server) ruleInputLocked(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, L time.Time, exclude int64) (reminderrules.Input, error) {
+	ins, err := s.readRuleInputs(ctx, txq, []int64{inv.ID}, L)
+	if err != nil {
+		return reminderrules.Input{}, err
+	}
+	in, ok := ins[inv.ID]
+	if !ok {
+		return reminderrules.Input{}, fmt.Errorf("invoices: document %d is not an issued invoice the rules judge", inv.ID)
+	}
+	in.Exclude = exclude
+	return in, nil
+}
+
+// readRuleInputs is both doors' read with q: the issued invoices among ids,
+// the settings and the rates, then every fact of every invoice, one
+// statement each.
+func (s *server) readRuleInputs(ctx context.Context, q *store.Queries, ids []int64, L time.Time) (map[int64]reminderrules.Input, error) {
 	out := map[int64]reminderrules.Input{}
 	if len(ids) == 0 {
 		return out, nil
@@ -54,7 +101,8 @@ func (s *server) ruleInputs(ctx context.Context, q *store.Queries, ids []int64, 
 	if err != nil {
 		return nil, err
 	}
-	ins := make(map[int64]*reminderrules.Input, len(invs))
+	ins := make(ruleInputSet, len(invs))
+	found := make([]int64, 0, len(invs))
 	for _, r := range invs {
 		gross, err := ratFromNumeric(r.GrossTotal)
 		if err != nil {
@@ -71,12 +119,8 @@ func (s *server) ruleInputs(ctx context.Context, q *store.Queries, ids []int64, 
 			Mode:     reminderrules.ModeNormal,
 			Rates:    rates,
 		}
+		found = append(found, r.ID)
 	}
-	found := make([]int64, 0, len(ins))
-	for id := range ins {
-		found = append(found, id)
-	}
-	slices.Sort(found)
 	if err := readRuleFacts(ctx, q, found, ins); err != nil {
 		return nil, err
 	}
@@ -87,20 +131,36 @@ func (s *server) ruleInputs(ctx context.Context, q *store.Queries, ids []int64, 
 	return out, nil
 }
 
+// ruleInputSet is the inputs being read, by invoice.
+type ruleInputSet map[int64]*reminderrules.Input
+
+// of is invoice id's input; a row of an invoice the set does not hold is an
+// error — every statement reads only the invoices RuleInvoices answered.
+func (ins ruleInputSet) of(id int64, what string) (*reminderrules.Input, error) {
+	in, ok := ins[id]
+	if !ok {
+		return nil, fmt.Errorf("invoices: %s of document %d, which the rules do not judge", what, id)
+	}
+	return in, nil
+}
+
 // readRuleFacts reads every invoice's credits, payments, deliveries, letters,
 // waivers, charge payments, holds, hand-offs and policy into ins, one
 // statement each.
-func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins map[int64]*reminderrules.Input) error {
+func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins ruleInputSet) error {
 	credits, err := q.RuleCredits(ctx, ids)
 	if err != nil {
 		return fmt.Errorf("invoices: read the credit notes: %w", err)
 	}
 	for _, r := range credits {
+		in, err := ins.of(r.InvoiceID, "a credit note")
+		if err != nil {
+			return err
+		}
 		gross, err := ratFromNumeric(r.GrossTotal)
 		if err != nil {
 			return fmt.Errorf("invoices: read a credit note of document %d: %w", r.InvoiceID, err)
 		}
-		in := ins[r.InvoiceID]
 		in.Credits = append(in.Credits, reminderrules.Credit{IssueDate: utcDay(r.IssueDate.Time), Gross: gross})
 	}
 
@@ -109,11 +169,14 @@ func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins map[i
 		return fmt.Errorf("invoices: read the payments: %w", err)
 	}
 	for _, r := range payments {
+		in, err := ins.of(r.InvoiceID, "a payment")
+		if err != nil {
+			return err
+		}
 		amount, err := ratFromNumeric(r.Amount)
 		if err != nil {
 			return fmt.Errorf("invoices: read a payment of document %d: %w", r.InvoiceID, err)
 		}
-		in := ins[r.InvoiceID]
 		in.Payments = append(in.Payments, reminderrules.Payment{PaidOn: utcDay(r.PaidOn.Time), OrderedOn: dayOrNil(r.OrderedOn), Amount: amount})
 	}
 
@@ -122,11 +185,14 @@ func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins map[i
 		return fmt.Errorf("invoices: read the deliveries: %w", err)
 	}
 	for _, r := range deliveries {
+		in, err := ins.of(r.InvoiceID, "a delivery")
+		if err != nil {
+			return err
+		}
 		day, err := deliveryDay(r.InvoiceID, r.Kind, r.At, r.DeliveredOn)
 		if err != nil {
 			return err
 		}
-		in := ins[r.InvoiceID]
 		in.Deliveries = append(in.Deliveries, day)
 	}
 
@@ -135,11 +201,14 @@ func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins map[i
 		return fmt.Errorf("invoices: read the letters: %w", err)
 	}
 	for _, r := range letters {
+		in, err := ins.of(r.InvoiceID, "a letter")
+		if err != nil {
+			return err
+		}
 		l, err := letterOf(r)
 		if err != nil {
 			return err
 		}
-		in := ins[r.InvoiceID]
 		in.Letters = append(in.Letters, l)
 	}
 
@@ -148,11 +217,14 @@ func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins map[i
 		return fmt.Errorf("invoices: read the waivers: %w", err)
 	}
 	for _, r := range waivers {
+		in, err := ins.of(r.InvoiceID, "a waiver")
+		if err != nil {
+			return err
+		}
 		w, err := waiverOf(r)
 		if err != nil {
 			return err
 		}
-		in := ins[r.InvoiceID]
 		in.Waivers = append(in.Waivers, w)
 	}
 
@@ -161,11 +233,14 @@ func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins map[i
 		return fmt.Errorf("invoices: read the charge payments: %w", err)
 	}
 	for _, r := range chargePayments {
+		in, err := ins.of(r.InvoiceID, "a charge payment")
+		if err != nil {
+			return err
+		}
 		p, err := chargePaymentOf(r)
 		if err != nil {
 			return err
 		}
-		in := ins[r.InvoiceID]
 		in.ChargePayments = append(in.ChargePayments, p)
 	}
 
@@ -174,7 +249,10 @@ func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins map[i
 		return fmt.Errorf("invoices: read the holds: %w", err)
 	}
 	for _, r := range holds {
-		in := ins[r.InvoiceID]
+		in, err := ins.of(r.InvoiceID, "a hold")
+		if err != nil {
+			return err
+		}
 		in.OnHold, in.ChargesBarred = r.OnHold, r.ChargesBarred
 	}
 
@@ -183,7 +261,11 @@ func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins map[i
 		return fmt.Errorf("invoices: read the hand-offs: %w", err)
 	}
 	for _, id := range handoffs {
-		ins[id].HandedOff = true
+		in, err := ins.of(id, "a hand-off")
+		if err != nil {
+			return err
+		}
+		in.HandedOff = true
 	}
 
 	policies, err := q.RulePolicies(ctx, ids)
@@ -191,28 +273,11 @@ func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins map[i
 		return fmt.Errorf("invoices: read the reminder policies: %w", err)
 	}
 	for _, r := range policies {
-		ins[r.InvoiceID].Mode = reminderrules.Mode(r.Mode)
+		in, err := ins.of(r.InvoiceID, "a reminder policy")
+		if err != nil {
+			return err
+		}
+		in.Mode = reminderrules.Mode(r.Mode)
 	}
 	return nil
-}
-
-// ruleInputLocked reads the engine's Input for inv on day L with txq, whose
-// transaction holds inv FOR UPDATE (lockInvoice) — the caller takes the lock
-// first, so every figure read here is read after it, and a payment, a
-// letter, a waiver, a hold or a hand-off another transaction held the
-// invoice for has committed. exclude is the letter being dispatched or
-// posted (zero for none): it stays among the letters, and Input.Exclude
-// names it so the engine leaves it out of flight. An inv that is not an
-// issued invoice is an error: no caller judges one.
-func (s *server) ruleInputLocked(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, L time.Time, exclude int64) (reminderrules.Input, error) {
-	ins, err := s.ruleInputs(ctx, txq, []int64{inv.ID}, L)
-	if err != nil {
-		return reminderrules.Input{}, err
-	}
-	in, ok := ins[inv.ID]
-	if !ok {
-		return reminderrules.Input{}, fmt.Errorf("invoices: document %d is not an issued invoice the rules judge", inv.ID)
-	}
-	in.Exclude = exclude
-	return in, nil
 }

@@ -3,6 +3,7 @@ package invoices_test
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math/big"
 	"slices"
 	"testing"
@@ -187,7 +188,7 @@ func plantChargePayment(t *testing.T, h *harness, id int64, paidOn, amount strin
 // fee and a queued one, a fee waiver, a live and a removed charge payment, a
 // lifted hold that barred charges and a live one, a hand-off, the customer's
 // policy, settings changed from their defaults and a rate added.
-func richInvoice(t *testing.T, h *harness) int64 {
+func richInvoice(t *testing.T, h *harness) invoiceJSON {
 	t.Helper()
 	inv := thousand(t, h)
 	issued(t, h, creditOf(t, h, inv.ID, map[int32]float64{1: 1}).ID)
@@ -216,26 +217,84 @@ func richInvoice(t *testing.T, h *harness) int64 {
 		VALUES ($1, 'no_charges', gen_random_uuid(), now())`, customerAcme)
 	h.Exec(t, `UPDATE invoices.reminder_settings SET enabled = true, grace_days = 5, inkassolov_2026_from = DATE '2027-01-01'`)
 	h.Exec(t, `SELECT invoices.seed_collection_rate('inkassosats', DATE '2030-01-01', 900, 'test')`)
-	return inv.ID
+	return inv
 }
 
-// The same invoice read both ways — on the pool with another invoice beside
+// wantInvoice is the engine's view of issued invoice inv as the API answered
+// it: its dates, its gross and its buyer snapshot, exactly.
+func wantInvoice(t *testing.T, inv invoiceJSON) reminderrules.Invoice {
+	t.Helper()
+	day := func(s *string) time.Time {
+		t.Helper()
+		if s == nil {
+			t.Fatalf("invoice %d has no date", inv.ID)
+		}
+		d, err := time.Parse(time.DateOnly, *s)
+		if err != nil {
+			t.Fatalf("invoice %d's date %q: %v", inv.ID, *s, err)
+		}
+		return d
+	}
+	text := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+	if inv.Buyer == nil {
+		t.Fatalf("invoice %d has no buyer", inv.ID)
+	}
+	return reminderrules.Invoice{
+		IssueDate: day(inv.IssueDate), DueDate: day(inv.DueDate), Gross: rat(fmt.Sprint(inv.GrossTotal)),
+		BuyerType: inv.Buyer.Type, BuyerOrganisationNumber: text(inv.Buyer.OrganisationNumber), BuyerForeignID: text(inv.Buyer.ForeignID),
+	}
+}
+
+// sameInvoice asserts the engine's invoice is want, field by field.
+func sameInvoice(t *testing.T, what string, got, want reminderrules.Invoice) {
+	t.Helper()
+	if !got.IssueDate.Equal(want.IssueDate) || !got.DueDate.Equal(want.DueDate) || got.Gross.Cmp(want.Gross) != 0 ||
+		got.BuyerType != want.BuyerType || got.BuyerOrganisationNumber != want.BuyerOrganisationNumber ||
+		got.BuyerForeignID != want.BuyerForeignID {
+		t.Errorf("%s = %+v, want %+v", what, got, want)
+	}
+}
+
+// The same invoice read both ways — on the pool with other invoices beside
 // it, and under its lock — gives the same Input, every field; each read
 // keeps the contract (reminderrules.Validate) and every day is a UTC
-// midnight. Every field is filled, so "the same" compares something.
+// midnight. Every field is filled, so "the same" compares something. The
+// invoice is the one issued — its dates, gross and buyer exactly — for a
+// Norwegian business, a person and a foreign business alike.
 func TestRuleInput_PoolAndLockedAgree(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
-	id := richInvoice(t, h)
+	rich := richInvoice(t, h)
+	id := rich.ID
 	other := thousand(t, h)
 	plantPayment(t, h, other.ID, "999", "2026-09-21")
+	person := issuedFor(t, h, customerPerson, line("Konsulenttime", 1, 500, vat25))
+	foreign := issuedFor(t, h, customerForeign, line("Konsulenttime", 1, 700, vat25))
+	if foreign.Buyer == nil || foreign.Buyer.ForeignID == nil || *foreign.Buyer.ForeignID == "" {
+		t.Fatalf("the foreign business's invoice = %+v, want its foreign id on the buyer", foreign.Buyer)
+	}
 
-	all, err := invoices.RuleInputsForTest(context.Background(), h.Deps(), h.Pool(), []int64{id, other.ID}, ruleL)
+	all, err := invoices.RuleInputsForTest(context.Background(), h.Deps(), h.Pool(), []int64{id, other.ID, person.ID, foreign.ID}, ruleL)
 	if err != nil {
 		t.Fatalf("ruleInputs: %v", err)
 	}
+	sameInvoice(t, "the business's invoice", all[id].Invoice, wantInvoice(t, rich))
+	sameInvoice(t, "the person's invoice", all[person.ID].Invoice, wantInvoice(t, person))
+	sameInvoice(t, "the foreign business's invoice", all[foreign.ID].Invoice, wantInvoice(t, foreign))
+	if b := all[person.ID].Invoice; b.BuyerType != "person" || b.BuyerOrganisationNumber != "" || b.BuyerForeignID != "" {
+		t.Errorf("the person's buyer = %+v, want a person without a legal id", b)
+	}
+	if b := all[id].Invoice; b.BuyerOrganisationNumber != "923609016" || b.DueDate.Equal(b.IssueDate) {
+		t.Errorf("the business's invoice = %+v, want its organisation number and a due date after its issue", b)
+	}
 	pool, locked := all[id], lockedInput(t, h, id, 0)
-	for what, in := range map[string]reminderrules.Input{"the pool": pool, "the lock": locked, "the other": all[other.ID]} {
+	for what, in := range map[string]reminderrules.Input{"the pool": pool, "the lock": locked, "the other": all[other.ID],
+		"the person's": all[person.ID], "the foreign business's": all[foreign.ID]} {
 		if err := reminderrules.Validate(in); err != nil {
 			t.Errorf("%s breaks the contract: %v", what, err)
 		}
@@ -250,9 +309,8 @@ func TestRuleInput_PoolAndLockedAgree(t *testing.T) {
 
 	in := pool
 	switch {
-	case !in.L.Equal(ruleL), !in.Invoice.IssueDate.Equal(ruleDay(time.September, 12)), in.Invoice.DueDate.IsZero(),
-		in.Invoice.Gross.Cmp(rat("1000")) != 0, in.Invoice.BuyerType == "":
-		t.Errorf("the invoice = %+v on %v, want 1000 issued 12 September with its buyer", in.Invoice, in.L)
+	case !in.L.Equal(ruleL):
+		t.Errorf("L = %v, want %v", in.L, ruleL)
 	case len(in.Credits) != 1, len(in.Payments) != 2, len(in.Deliveries) != 3, len(in.Letters) != 2,
 		len(in.Waivers) != 1, len(in.ChargePayments) != 1, len(in.Rates) == 0:
 		t.Errorf("the sets = %d credits, %d payments, %d deliveries, %d letters, %d waivers, %d charge payments, %d rates; "+
@@ -272,9 +330,13 @@ func TestRuleInput_PoolAndLockedAgree(t *testing.T) {
 
 // Each fact the engine reads changes the input when it comes: a credit note,
 // a payment and its line's ordered_on, each kind of delivery, a letter of
-// each status, a waiver, a charge payment — and a removed one goes again —
-// a live hold, a barring lift, a hand-off, the policy, the settings and the
-// rates. A loader that dropped any of them would leave the input as it was.
+// each status, a waiver, a charge payment, a live hold, a barring lift, a
+// hand-off, the policy, the settings and the rates. A loader that dropped
+// any of them would leave the input as it was. And what is not a fact leaves
+// it, or puts it back: a draft credit note, a failed or queued EHF
+// transmission, a removed payment, manual delivery or charge payment, a
+// withdrawn hand-off, a lift that allowed charges; a draft or a credit note
+// is not judged at all.
 func TestRuleInput_ReadsEveryFact(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
@@ -288,40 +350,57 @@ func TestRuleInput_ReadsEveryFact(t *testing.T) {
 	if len(prev.Rates) == 0 {
 		t.Fatalf("the seeded rates are not read")
 	}
-	var sent, chargePayment int64
+	var sent, chargePayment, creditNote int64
 	steps := []struct {
 		what  string
 		plant func()
 		check func(in reminderrules.Input) bool
+		same  bool // the input is as it was
 	}{
-		{"a credit note", func() { issued(t, h, creditOf(t, h, id, map[int32]float64{1: 1}).ID) },
+		{"a credit note", func() { creditNote = issued(t, h, creditOf(t, h, id, map[int32]float64{1: 1}).ID).ID },
 			func(in reminderrules.Input) bool {
 				return len(in.Credits) == 1 && in.Credits[0].Gross.Cmp(rat("100")) == 0 &&
 					in.Credits[0].IssueDate.Equal(ruleDay(time.September, 12))
-			}},
+			}, false},
+		{"a draft credit note", func() { creditOf(t, h, id, map[int32]float64{1: 2}) },
+			func(in reminderrules.Input) bool { return len(in.Credits) == 1 }, true},
 		{"a manual payment", func() { plantPayment(t, h, id, "200", "2026-09-20") },
 			func(in reminderrules.Input) bool {
 				return len(in.Payments) == 1 && in.Payments[0].OrderedOn == nil && in.Payments[0].Amount.Cmp(rat("200")) == 0 &&
 					in.Payments[0].PaidOn.Equal(ruleDay(time.September, 20))
-			}},
+			}, false},
 		{"a payment from a line with its ordered_on", func() { plantBankPayment(t, h, id, "2026-09-25", "2026-09-27", "100") },
 			func(in reminderrules.Input) bool {
 				return len(in.Payments) == 2 && in.Payments[1].OrderedOn != nil &&
 					in.Payments[1].OrderedOn.Equal(ruleDay(time.September, 25)) && in.Payments[1].PaidOn.Equal(ruleDay(time.September, 27))
-			}},
+			}, false},
+		{"the manual payment removed", func() {
+			h.Exec(t, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(), removal_reason = 'Feil'
+				WHERE invoice_id = $1 AND source = 'manual'`, id)
+		}, func(in reminderrules.Input) bool {
+			return len(in.Payments) == 1 && in.Payments[0].OrderedOn != nil && in.Payments[0].Amount.Cmp(rat("100")) == 0
+		}, false},
 		{"an e-mail", func() { plantEmail(t, h, id, time.Date(2026, 9, 12, 22, 30, 0, 0, time.UTC)) },
 			func(in reminderrules.Input) bool {
 				return slices.EqualFunc(in.Deliveries, []time.Time{ruleDay(time.September, 13)}, time.Time.Equal)
-			}},
+			}, false},
+		{"a failed EHF transmission", func() { plantEhf(t, h, id, "failed", time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC)) },
+			func(in reminderrules.Input) bool { return len(in.Deliveries) == 1 }, true},
 		{"a delivered EHF transmission", func() { plantEhf(t, h, id, "delivered", time.Date(2026, 9, 14, 23, 10, 0, 0, time.UTC)) },
 			func(in reminderrules.Input) bool {
 				return slices.EqualFunc(in.Deliveries, []time.Time{ruleDay(time.September, 13), ruleDay(time.September, 15)}, time.Time.Equal)
-			}},
+			}, false},
 		{"a manual delivery", func() { plantManualDelivery(t, h, id, "2026-09-14") },
 			func(in reminderrules.Input) bool {
 				return slices.EqualFunc(in.Deliveries,
 					[]time.Time{ruleDay(time.September, 13), ruleDay(time.September, 14), ruleDay(time.September, 15)}, time.Time.Equal)
-			}},
+			}, false},
+		{"the manual delivery removed", func() {
+			h.Exec(t, `UPDATE invoices.manual_deliveries SET removed_at = now(), removed_by_user_id = gen_random_uuid(),
+				removal_reason = 'Aldri levert' WHERE invoice_id = $1`, id)
+		}, func(in reminderrules.Input) bool {
+			return slices.EqualFunc(in.Deliveries, []time.Time{ruleDay(time.September, 13), ruleDay(time.September, 15)}, time.Time.Equal)
+		}, false},
 		{"a sent letter", func() { sent = plantSent(t, h, id, sentFacts{1, "2026-10-01", "reminder_fee", "35", "", "4.50"}) },
 			func(in reminderrules.Input) bool {
 				if len(in.Letters) != 1 {
@@ -332,45 +411,49 @@ func TestRuleInput_ReadsEveryFact(t *testing.T) {
 					l.SentOn != nil && l.SentOn.Equal(ruleDay(time.October, 1)) && l.Deadline != nil &&
 					l.FeeKind == reminderrules.FeeReminder && l.Fee.Cmp(rat("35")) == 0 && l.Interest.Cmp(rat("4.50")) == 0 &&
 					l.Compensation == nil
-			}},
+			}, false},
 		{"a waiver", func() {
 			h.Exec(t, `INSERT INTO invoices.charge_waivers (invoice_id, reminder_id, kind, amount, reason, waived_by_user_id, waived_at)
 				VALUES ($1, $2, 'fee', 35, 'goodwill', gen_random_uuid(), now())`, id, sent)
 		}, func(in reminderrules.Input) bool {
 			return len(in.Waivers) == 1 && in.Waivers[0].ReminderID == sent && in.Waivers[0].Kind == reminderrules.WaiverFee &&
 				in.Waivers[0].Amount.Cmp(rat("35")) == 0
-		}},
+		}, false},
 		{"a charge payment", func() { chargePayment = plantChargePayment(t, h, id, "2026-10-03", "2.25") },
 			func(in reminderrules.Input) bool {
 				return len(in.ChargePayments) == 1 && in.ChargePayments[0].ID == chargePayment &&
 					in.ChargePayments[0].Amount.Cmp(rat("2.25")) == 0 && in.ChargePayments[0].PaidOn.Equal(ruleDay(time.October, 3))
-			}},
+			}, false},
 		{"a second charge payment", func() { plantChargePayment(t, h, id, "2026-10-04", "1") },
-			func(in reminderrules.Input) bool { return len(in.ChargePayments) == 2 }},
+			func(in reminderrules.Input) bool { return len(in.ChargePayments) == 2 }, false},
 		{"the second charge payment removed", func() {
 			h.Exec(t, `UPDATE invoices.charge_payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(),
 				removal_reason = 'Feil' WHERE invoice_id = $1 AND id <> $2`, id, chargePayment)
 		}, func(in reminderrules.Input) bool {
 			return len(in.ChargePayments) == 1 && in.ChargePayments[0].ID == chargePayment
-		}},
-		{"a hold", func() {
-			h.Exec(t, `INSERT INTO invoices.invoice_holds (invoice_id, kind, note, placed_at, placed_by_user_id)
-				VALUES ($1, 'disputed', 'Bestrider', now(), gen_random_uuid())`, id)
-		}, func(in reminderrules.Input) bool { return in.OnHold && !in.ChargesBarred }},
-		{"a lift that bars charges", func() {
-			h.Exec(t, `UPDATE invoices.invoice_holds SET lifted_at = now(), lifted_by_user_id = gen_random_uuid(),
-				charges_allowed = false, lift_note = '' WHERE invoice_id = $1`, id)
-		}, func(in reminderrules.Input) bool { return !in.OnHold && in.ChargesBarred }},
+		}, false},
+		{"a hold", func() { hold(t, h, id) }, func(in reminderrules.Input) bool { return in.OnHold && !in.ChargesBarred }, false},
+		{"a lift that bars charges", func() { lift(t, h, id, false) },
+			func(in reminderrules.Input) bool { return !in.OnHold && in.ChargesBarred }, false},
+		{"another hold", func() { hold(t, h, id) }, func(in reminderrules.Input) bool { return in.OnHold && in.ChargesBarred }, false},
+		// D11: a barring lift bars charges for good — a later lift that
+		// allows them does not take the bar away.
+		{"a lift that allows charges", func() { lift(t, h, id, true) },
+			func(in reminderrules.Input) bool { return !in.OnHold && in.ChargesBarred }, false},
 		{"a hand-off", func() {
 			h.Exec(t, `INSERT INTO invoices.collection_handoffs (invoice_id, handed_on, agency, created_at, created_by_user_id)
 				VALUES ($1, DATE '2026-10-10', 'Inkasso AS', now(), gen_random_uuid())`, id)
-		}, func(in reminderrules.Input) bool { return in.HandedOff }},
+		}, func(in reminderrules.Input) bool { return in.HandedOff }, false},
+		{"the hand-off withdrawn", func() {
+			h.Exec(t, `UPDATE invoices.collection_handoffs SET withdrawn_on = DATE '2026-10-12', withdrawn_by_user_id = gen_random_uuid(),
+				withdrawal_reason = 'Betalt' WHERE invoice_id = $1`, id)
+		}, func(in reminderrules.Input) bool { return !in.HandedOff }, false},
 		{"the policy", func() {
 			h.Exec(t, `INSERT INTO invoices.customer_reminder_policies (customer_id, mode, updated_by_user_id, updated_at)
 				VALUES ($1, 'none', gen_random_uuid(), now())`, customerAcme)
-		}, func(in reminderrules.Input) bool { return in.Mode == reminderrules.ModeNone }},
+		}, func(in reminderrules.Input) bool { return in.Mode == reminderrules.ModeNone }, false},
 		{"the settings", func() { h.Exec(t, `UPDATE invoices.reminder_settings SET grace_days = 7`) },
-			func(in reminderrules.Input) bool { return in.Settings.GraceDays == 7 }},
+			func(in reminderrules.Input) bool { return in.Settings.GraceDays == 7 }, false},
 		{"the rates", func() {
 			h.Exec(t, `SELECT invoices.seed_collection_rate('inkassosats', DATE '2030-01-01', 900, 'test')`)
 		},
@@ -378,14 +461,14 @@ func TestRuleInput_ReadsEveryFact(t *testing.T) {
 				return len(in.Rates) == len(prev.Rates)+1 && slices.ContainsFunc(in.Rates, func(r reminderrules.Rate) bool {
 					return r.Kind == reminderrules.KindInkassosats && r.ValidFrom.Equal(time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC))
 				})
-			}},
+			}, false},
 	}
 	for _, s := range steps {
 		s.plant()
 		next := poolInput(t, h, id)
 		midnights(t, s.what, next)
-		if rendered(next) == rendered(prev) || !s.check(next) {
-			t.Errorf("after %s the input = %s\nwas %s", s.what, rendered(next), rendered(prev))
+		if (rendered(next) == rendered(prev)) != s.same || !s.check(next) {
+			t.Errorf("after %s (the input unchanged: %v) the input = %s\nwas %s", s.what, s.same, rendered(next), rendered(prev))
 		}
 		prev = next
 	}
@@ -403,6 +486,84 @@ func TestRuleInput_ReadsEveryFact(t *testing.T) {
 			t.Errorf("the printed letter = %+v, want its facts", last)
 		}
 		prev = next
+	}
+
+	// Another invoice: a queued EHF transmission is no delivery; a hold, a
+	// lift that allows charges and another hold never bar them.
+	second := thousand(t, h).ID
+	plantEhf(t, h, second, "queued", time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC))
+	for _, s := range []struct {
+		what                  string
+		plant                 func()
+		onHold, chargesBarred bool
+	}{
+		{"nothing", func() {}, false, false},
+		{"a hold", func() { hold(t, h, second) }, true, false},
+		{"a lift that allows charges", func() { lift(t, h, second, true) }, false, false},
+		{"another hold", func() { hold(t, h, second) }, true, false},
+	} {
+		s.plant()
+		in := poolInput(t, h, second)
+		if in.OnHold != s.onHold || in.ChargesBarred != s.chargesBarred || len(in.Deliveries) != 0 {
+			t.Errorf("the second invoice after %s = hold %v, barred %v, deliveries %v; want hold %v, barred %v, no delivery",
+				s.what, in.OnHold, in.ChargesBarred, in.Deliveries, s.onHold, s.chargesBarred)
+		}
+	}
+
+	// A draft and a credit note are not judged: absent from the pool's
+	// answer, and an error under the lock.
+	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25))).ID
+	got, err := invoices.RuleInputsForTest(context.Background(), h.Deps(), h.Pool(), []int64{draft, creditNote, id}, ruleL)
+	if err != nil {
+		t.Fatalf("ruleInputs: %v", err)
+	}
+	if _, ok := got[id]; len(got) != 1 || !ok {
+		t.Errorf("ruleInputs(a draft, a credit note, an invoice) = %d inputs %v, want the invoice's alone", len(got), slices.Collect(maps.Keys(got)))
+	}
+	tx, _ := rawTx(t, h)
+	if _, err := invoices.RuleInputLockedForTest(context.Background(), h.Deps(), tx, draft, ruleL, 0); err == nil {
+		t.Errorf("ruleInputLocked(a draft) answered an input, want an error")
+	}
+	_ = tx.Rollback(context.Background())
+}
+
+// hold places a dispute hold on invoice id, as the hold endpoint will.
+func hold(t *testing.T, h *harness, id int64) {
+	t.Helper()
+	h.Exec(t, `INSERT INTO invoices.invoice_holds (invoice_id, kind, note, placed_at, placed_by_user_id)
+		VALUES ($1, 'disputed', 'Bestrider', now(), gen_random_uuid())`, id)
+}
+
+// lift lifts invoice id's live hold, answering whether charges are allowed.
+func lift(t *testing.T, h *harness, id int64, chargesAllowed bool) {
+	t.Helper()
+	h.Exec(t, `UPDATE invoices.invoice_holds SET lifted_at = now(), lifted_by_user_id = gen_random_uuid(),
+		charges_allowed = $2, lift_note = '' WHERE invoice_id = $1 AND lifted_at IS NULL`, id, chargesAllowed)
+}
+
+// The read under the lock is the caller's own transaction's: a payment that
+// transaction registered before the read is in the input — which a read on
+// the pool, outside it, cannot see.
+func TestRuleInput_LockedReadsItsOwnTransaction(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	inv := thousand(t, h)
+	tx, _ := rawTx(t, h)
+	ctx := context.Background()
+	if _, err := tx.Exec(ctx, `INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, registered_by_user_id, registered_at)
+		VALUES ($1, DATE '2026-09-20', 250, 'NOK', gen_random_uuid(), now())`, inv.ID); err != nil {
+		t.Fatalf("a payment in the transaction: %v", err)
+	}
+	in, err := invoices.RuleInputLockedForTest(ctx, h.Deps(), tx, inv.ID, ruleL, 0)
+	_ = tx.Rollback(ctx)
+	if err != nil {
+		t.Fatalf("ruleInputLocked: %v", err)
+	}
+	if len(in.Payments) != 1 || in.Payments[0].Amount.Cmp(rat("250")) != 0 {
+		t.Errorf("the locked read's payments = %+v, want the 250 its transaction registered", in.Payments)
+	}
+	if pool := poolInput(t, h, inv.ID); len(pool.Payments) != 0 {
+		t.Errorf("the pool's payments = %+v, want none: the transaction rolled back", pool.Payments)
 	}
 }
 

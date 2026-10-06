@@ -209,52 +209,6 @@ func (q *Queries) ManualDeliveriesOf(ctx context.Context, invoiceID int64) ([]In
 	return items, nil
 }
 
-const qualifyingDeliveries = `-- name: QualifyingDeliveries :many
-SELECT 'manual'::text AS kind, NULL::timestamptz AS at, m.delivered_on AS delivered_on
-FROM invoices.manual_deliveries m
-WHERE m.invoice_id = $1 AND m.removed_at IS NULL
-UNION ALL
-SELECT 'email'::text, d.sent_at, NULL::date
-FROM invoices.deliveries d
-WHERE d.invoice_id = $1
-UNION ALL
-SELECT 'ehf'::text, t.delivered_at, NULL::date
-FROM invoices.transmissions t
-WHERE t.invoice_id = $1 AND t.status = 'delivered'
-`
-
-type QualifyingDeliveriesRow struct {
-	Kind        string
-	At          *time.Time
-	DeliveredOn pgtype.Date
-}
-
-// QualifyingDeliveries is every live delivery of an invoice the engine's
-// delivery fact reads (D8; plan reading 34): each e-mail by when it was sent,
-// each delivered EHF transmission by when it was delivered — at, whose Oslo
-// day the caller derives, never this statement — and each manual delivery
-// not removed by its day, delivered_on. A failed, queued or cancelled
-// transmission and a removed manual record are not deliveries.
-func (q *Queries) QualifyingDeliveries(ctx context.Context, invoiceID int64) ([]QualifyingDeliveriesRow, error) {
-	rows, err := q.db.Query(ctx, qualifyingDeliveries, invoiceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []QualifyingDeliveriesRow
-	for rows.Next() {
-		var i QualifyingDeliveriesRow
-		if err := rows.Scan(&i.Kind, &i.At, &i.DeliveredOn); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const removeManualDelivery = `-- name: RemoveManualDelivery :execrows
 UPDATE invoices.manual_deliveries
 SET removed_at = $1::timestamptz, removed_by_user_id = $2::uuid, removal_reason = $3::text
