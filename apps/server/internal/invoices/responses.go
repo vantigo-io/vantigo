@@ -400,6 +400,10 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			if err := s.withReminders(ctx, q, inv, today, &resp); err != nil {
 				return gen.InvoicesInvoiceResponse{}, err
 			}
+			// Its latest hold and hand-off, live or ended (D11).
+			if err := withHoldAndHandoff(ctx, q, inv.ID, &resp); err != nil {
+				return gen.InvoicesInvoiceResponse{}, err
+			}
 		}
 		return resp, creditLinks(ctx, q, inv, &resp, nil)
 	}

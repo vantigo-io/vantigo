@@ -483,6 +483,24 @@ func (e InvoicesLetterFactsRegime) Valid() bool {
 	}
 }
 
+// Defines values for InvoicesLetterLeftStatus.
+const (
+	InvoicesLetterLeftStatusPrinted InvoicesLetterLeftStatus = "printed"
+	InvoicesLetterLeftStatusQueued  InvoicesLetterLeftStatus = "queued"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesLetterLeftStatus enum.
+func (e InvoicesLetterLeftStatus) Valid() bool {
+	switch e {
+	case InvoicesLetterLeftStatusPrinted:
+		return true
+	case InvoicesLetterLeftStatusQueued:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvoicesManualDeliveryKind.
 const (
 	InvoicesManualDeliveryKindHandedOver InvoicesManualDeliveryKind = "handed_over"
@@ -1529,7 +1547,7 @@ type InvoicesCollectionRateRequest struct {
 // InvoicesCollectionRateRequestKind defines model for InvoicesCollectionRateRequest.Kind.
 type InvoicesCollectionRateRequestKind string
 
-// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
+// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 type InvoicesConflictProblem struct {
 	// AllowedIssueDates On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise.
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
@@ -1712,6 +1730,21 @@ type InvoicesHandoff struct {
 	WithdrawnOn      *openapi_types.Date `json:"withdrawnOn,omitempty"`
 }
 
+// InvoicesHandoffRequest POST /invoices/{id}/collection's body (invoices payments and reminders design D11): the hand-off to a collection agency, recorded after it was made outside Vantigo. handedOn is the day it was handed over — not after today (Oslo) and not before the invoice's issue date; agency the agency's name, 1-200 characters once trimmed; agencyReference its case number, at most 100; note at most 500 (absent is empty). acknowledgeNotDelivered confirms the hand-off of an invoice with no delivery on or before its due date, which is otherwise refused invoice_not_delivered (plan reading 10).
+type InvoicesHandoffRequest struct {
+	AcknowledgeNotDelivered *bool              `json:"acknowledgeNotDelivered,omitempty"`
+	Agency                  string             `json:"agency"`
+	AgencyReference         *string            `json:"agencyReference,omitempty"`
+	HandedOn                openapi_types.Date `json:"handedOn"`
+	Note                    *string            `json:"note,omitempty"`
+}
+
+// InvoicesHandoffWithdrawRequest POST /invoices/{id}/collection/withdraw's body (D11): withdrawnOn is the day the claim came back from the agency — not after today (Oslo) and not before the hand-off's handedOn; reason is why, 1-200 characters once trimmed.
+type InvoicesHandoffWithdrawRequest struct {
+	Reason      string             `json:"reason"`
+	WithdrawnOn openapi_types.Date `json:"withdrawnOn"`
+}
+
 // InvoicesHold An invoice's hold (D11), as read — disputed. While it is live — liftedAt absent — no letter is made; a lift with chargesAllowed false barred fees and the compensation for good.
 type InvoicesHold struct {
 	ChargesAllowed *bool               `json:"chargesAllowed,omitempty"`
@@ -1727,6 +1760,24 @@ type InvoicesHold struct {
 
 // InvoicesHoldKind defines model for InvoicesHold.Kind.
 type InvoicesHoldKind string
+
+// InvoicesHoldLiftRequest POST /invoices/{id}/hold/lift's body (D11). chargesAllowed answers whether the objection was obviously groundless: false (the form's default) means it had reasonable grounds (inkassoloven § 17 second paragraph; the new act's § 18), and every fee and compensation the invoice's sent letters claimed and no waiver released is waived objection_upheld, and fees and the compensation stay barred on the invoice for good; true waives nothing. chargesAllowed is required, true or false — a body without it is a 400 on it, never read as false; note is at most 500 characters (absent is empty).
+type InvoicesHoldLiftRequest struct {
+	ChargesAllowed json.RawMessage `json:"chargesAllowed"`
+	Note           *string         `json:"note,omitempty"`
+}
+
+// InvoicesHoldOrHandoffResult What a hold, its lift, a hand-off and its withdrawal answer (D11): the invoice, and lettersLeft — the letters of the invoice no withdrawal reaches, by sequence: each printed letter, left for the posting's re-judge because it may be in the post already, and any letter being sent (queued, its facts written, under a live lease), which becomes sent. A person pulls such a letter from the post, or withdraws it by hand once it can be withdrawn (plan reading 9).
+type InvoicesHoldOrHandoffResult struct {
+	// Invoice One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised.
+	Invoice     InvoicesInvoiceResponse `json:"invoice"`
+	LettersLeft []InvoicesLetterLeft    `json:"lettersLeft"`
+}
+
+// InvoicesHoldRequest POST /invoices/{id}/hold's body (D11): note is what the customer disputes, 1-500 characters once trimmed.
+type InvoicesHoldRequest struct {
+	Note string `json:"note"`
+}
 
 // InvoicesInterestSegment A run of days bearing late interest on one base at one rate (D8), both days counted; rate is percent a year.
 type InvoicesInterestSegment struct {
@@ -1794,7 +1845,7 @@ type InvoicesInvoiceRequest struct {
 	YourReference *string `json:"yourReference,omitempty"`
 }
 
-// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised.
+// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised.
 type InvoicesInvoiceResponse struct {
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
 
@@ -1834,11 +1885,17 @@ type InvoicesInvoiceResponse struct {
 	ExchangeRate     float64             `json:"exchangeRate"`
 	ExchangeRateDate *openapi_types.Date `json:"exchangeRateDate,omitempty"`
 	GrossTotal       float64             `json:"grossTotal"`
-	Id               int64               `json:"id"`
-	InternalNote     string              `json:"internalNote"`
-	IssueDate        *openapi_types.Date `json:"issueDate,omitempty"`
-	IssuedAt         *time.Time          `json:"issuedAt,omitempty"`
-	IssuedByUserId   *openapi_types.UUID `json:"issuedByUserId,omitempty"`
+
+	// Handoff An invoice's hand-off to a collection agency (D11), as read. While it is live — withdrawnOn absent — no letter is made and payments are still registered.
+	Handoff *InvoicesHandoff `json:"handoff,omitempty"`
+
+	// Hold An invoice's hold (D11), as read — disputed. While it is live — liftedAt absent — no letter is made; a lift with chargesAllowed false barred fees and the compensation for good.
+	Hold           *InvoicesHold       `json:"hold,omitempty"`
+	Id             int64               `json:"id"`
+	InternalNote   string              `json:"internalNote"`
+	IssueDate      *openapi_types.Date `json:"issueDate,omitempty"`
+	IssuedAt       *time.Time          `json:"issuedAt,omitempty"`
+	IssuedByUserId *openapi_types.UUID `json:"issuedByUserId,omitempty"`
 
 	// Kid An issued invoice's KID under the seller's bank agreement at issue (EHF and KID design D3) — the number zero-padded to the agreed length less one, then the check digit; a MOD11 check digit may be '-'. Absent without an agreement, on a draft and on a credit note.
 	Kid *string `json:"kid,omitempty"`
@@ -2035,6 +2092,16 @@ type InvoicesLetterFactsLevel string
 
 // InvoicesLetterFactsRegime defines model for InvoicesLetterFacts.Regime.
 type InvoicesLetterFactsRegime string
+
+// InvoicesLetterLeft A letter a hold, a lift, a hand-off or a withdrawal left alone (D11, plan reading 9): printed — with its print batch, left for the posting — or queued and being sent.
+type InvoicesLetterLeft struct {
+	PrintBatchId *int64                   `json:"printBatchId,omitempty"`
+	ReminderId   int64                    `json:"reminderId"`
+	Status       InvoicesLetterLeftStatus `json:"status"`
+}
+
+// InvoicesLetterLeftStatus defines model for InvoicesLetterLeft.Status.
+type InvoicesLetterLeftStatus string
 
 // InvoicesLine One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft. A deduction line (invoices work design D7) carries deductsInvoiceId, a quantity of -1 and a positive unitPrice, so its lineGross and lineNet are negative; a credit note's line crediting one carries it too, with a negative quantity. On a document that bills work (invoices work design D2) every line carries sources — [] for a line that bills none — and warnings, its own codes (line_differs_from_sources, source_changed, source_not_invoiceable); both absent on a document that bills no work.
 type InvoicesLine struct {
@@ -3024,6 +3091,18 @@ type GetInvoicesBankTransactionsParams struct {
 // GetInvoicesBankTransactionsParamsStatus defines parameters for GetInvoicesBankTransactions.
 type GetInvoicesBankTransactionsParamsStatus string
 
+// GetInvoicesCollectionExportCsvParams defines parameters for GetInvoicesCollectionExportCsv.
+type GetInvoicesCollectionExportCsvParams struct {
+	// HandedFrom The first hand-off day to include, with handedTo.
+	HandedFrom *openapi_types.Date `form:"handedFrom,omitempty" json:"handedFrom,omitempty"`
+
+	// HandedTo The last hand-off day to include, with handedFrom.
+	HandedTo *openapi_types.Date `form:"handedTo,omitempty" json:"handedTo,omitempty"`
+
+	// InvoiceId An issued invoice to include; repeat for each, at most 500.
+	InvoiceId *[]int64 `form:"invoiceId,omitempty" json:"invoiceId,omitempty"`
+}
+
 // GetInvoicesExportCsvParams defines parameters for GetInvoicesExportCsv.
 type GetInvoicesExportCsvParams struct {
 	// From The first issue date to include.
@@ -3141,6 +3220,18 @@ type PostInvoicesByIdChargePaymentsByChargePaymentIdRemoveJSONRequestBody = Invo
 // PostInvoicesByIdChargesWaiveJSONRequestBody defines body for PostInvoicesByIdChargesWaive for application/json ContentType.
 type PostInvoicesByIdChargesWaiveJSONRequestBody = InvoicesChargeWaiveRequest
 
+// PostInvoicesByIdCollectionJSONRequestBody defines body for PostInvoicesByIdCollection for application/json ContentType.
+type PostInvoicesByIdCollectionJSONRequestBody = InvoicesHandoffRequest
+
+// PostInvoicesByIdCollectionWithdrawJSONRequestBody defines body for PostInvoicesByIdCollectionWithdraw for application/json ContentType.
+type PostInvoicesByIdCollectionWithdrawJSONRequestBody = InvoicesHandoffWithdrawRequest
+
+// PostInvoicesByIdHoldJSONRequestBody defines body for PostInvoicesByIdHold for application/json ContentType.
+type PostInvoicesByIdHoldJSONRequestBody = InvoicesHoldRequest
+
+// PostInvoicesByIdHoldLiftJSONRequestBody defines body for PostInvoicesByIdHoldLift for application/json ContentType.
+type PostInvoicesByIdHoldLiftJSONRequestBody = InvoicesHoldLiftRequest
+
 // PostInvoicesByIdIssueJSONRequestBody defines body for PostInvoicesByIdIssue for application/json ContentType.
 type PostInvoicesByIdIssueJSONRequestBody = InvoicesIssueRequest
 
@@ -3209,6 +3300,9 @@ type ServerInterface interface {
 	// PostInvoicesBankTransactionsByIdTreatAsDistinct Treat a duplicate bank line as distinct
 	// (POST /api/v1/invoices/bank-transactions/{id}/treat-as-distinct)
 	PostInvoicesBankTransactionsByIdTreatAsDistinct(w http.ResponseWriter, r *http.Request, id int64)
+	// GetInvoicesCollectionExportCsv Export invoices for a collection agency as CSV
+	// (GET /api/v1/invoices/collection-export.csv)
+	GetInvoicesCollectionExportCsv(w http.ResponseWriter, r *http.Request, params GetInvoicesCollectionExportCsvParams)
 	// GetInvoicesCollectionRates List the collection rates
 	// (GET /api/v1/invoices/collection-rates)
 	GetInvoicesCollectionRates(w http.ResponseWriter, r *http.Request)
@@ -3311,12 +3405,24 @@ type ServerInterface interface {
 	// PostInvoicesByIdChargesWaive Waive reminder charges
 	// (POST /api/v1/invoices/{id}/charges/waive)
 	PostInvoicesByIdChargesWaive(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesByIdCollection Record the hand-off to collection
+	// (POST /api/v1/invoices/{id}/collection)
+	PostInvoicesByIdCollection(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesByIdCollectionWithdraw Withdraw the hand-off
+	// (POST /api/v1/invoices/{id}/collection/withdraw)
+	PostInvoicesByIdCollectionWithdraw(w http.ResponseWriter, r *http.Request, id int64)
 	// PostInvoicesByIdCredit Create a credit-note draft
 	// (POST /api/v1/invoices/{id}/credit)
 	PostInvoicesByIdCredit(w http.ResponseWriter, r *http.Request, id int64)
 	// GetInvoicesByIdDeductible List what earlier invoices have left to deduct
 	// (GET /api/v1/invoices/{id}/deductible)
 	GetInvoicesByIdDeductible(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesByIdHold Hold a disputed invoice
+	// (POST /api/v1/invoices/{id}/hold)
+	PostInvoicesByIdHold(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesByIdHoldLift Lift a hold
+	// (POST /api/v1/invoices/{id}/hold/lift)
+	PostInvoicesByIdHoldLift(w http.ResponseWriter, r *http.Request, id int64)
 	// PostInvoicesByIdIssue Issue a draft
 	// (POST /api/v1/invoices/{id}/issue)
 	PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Request, id int64)
@@ -3951,6 +4057,65 @@ func (siw *ServerInterfaceWrapper) PostInvoicesBankTransactionsByIdTreatAsDistin
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostInvoicesBankTransactionsByIdTreatAsDistinct(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesCollectionExportCsv operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesCollectionExportCsv(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetInvoicesCollectionExportCsvParams
+
+	// ------------- Optional query parameter "handedFrom" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "handedFrom", r.URL.Query(), &params.HandedFrom, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "handedFrom"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "handedFrom", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "handedTo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "handedTo", r.URL.Query(), &params.HandedTo, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "handedTo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "handedTo", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "invoiceId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "invoiceId", r.URL.Query(), &params.InvoiceId, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "invoiceId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invoiceId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesCollectionExportCsv(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4893,6 +5058,58 @@ func (siw *ServerInterfaceWrapper) PostInvoicesByIdChargesWaive(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// PostInvoicesByIdCollection operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesByIdCollection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesByIdCollection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesByIdCollectionWithdraw operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesByIdCollectionWithdraw(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesByIdCollectionWithdraw(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostInvoicesByIdCredit operation middleware
 func (siw *ServerInterfaceWrapper) PostInvoicesByIdCredit(w http.ResponseWriter, r *http.Request) {
 
@@ -4936,6 +5153,58 @@ func (siw *ServerInterfaceWrapper) GetInvoicesByIdDeductible(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetInvoicesByIdDeductible(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesByIdHold operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesByIdHold(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesByIdHold(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesByIdHoldLift operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesByIdHoldLift(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesByIdHoldLift(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5464,6 +5733,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/charges/waive", wrapper.PostInvoicesByIdChargesWaive)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/manual-deliveries", wrapper.PostInvoicesByIdManualDeliveries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/manual-deliveries/{deliveryId}/remove", wrapper.PostInvoicesByIdManualDeliveriesByDeliveryIdRemove)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/hold", wrapper.PostInvoicesByIdHold)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/hold/lift", wrapper.PostInvoicesByIdHoldLift)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/collection", wrapper.PostInvoicesByIdCollection)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/collection/withdraw", wrapper.PostInvoicesByIdCollectionWithdraw)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/send", wrapper.PostInvoicesByIdSend)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/send-ehf", wrapper.PostInvoicesByIdSendEhf)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/transmissions/{transmissionId}/cancel", wrapper.PostInvoicesByIdTransmissionsByTransmissionIdCancel)
@@ -5484,6 +5757,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/bank-accounts/{account}/format", wrapper.PutInvoicesBankAccountsByAccountFormat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/journal", wrapper.GetInvoicesJournal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/export.csv", wrapper.GetInvoicesExportCsv)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/collection-export.csv", wrapper.GetInvoicesCollectionExportCsv)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/stats/summary", wrapper.GetInvoicesStatsSummary)
 
 	return m
@@ -6577,6 +6851,76 @@ func (response PostInvoicesBankTransactionsByIdTreatAsDistinct409ApplicationProb
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesCollectionExportCsvRequestObject struct {
+	Params GetInvoicesCollectionExportCsvParams
+}
+
+type GetInvoicesCollectionExportCsvResponseObject interface {
+	VisitGetInvoicesCollectionExportCsvResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesCollectionExportCsv200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetInvoicesCollectionExportCsv200TextcsvResponse) VisitGetInvoicesCollectionExportCsvResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetInvoicesCollectionExportCsv400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetInvoicesCollectionExportCsv400ApplicationProblemPlusJSONResponse) VisitGetInvoicesCollectionExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesCollectionExportCsv401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesCollectionExportCsv401JSONResponse) VisitGetInvoicesCollectionExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesCollectionExportCsv403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesCollectionExportCsv403JSONResponse) VisitGetInvoicesCollectionExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -8984,6 +9328,180 @@ func (response PostInvoicesByIdChargesWaive409ApplicationProblemPlusJSONResponse
 	return err
 }
 
+type PostInvoicesByIdCollectionRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesByIdCollectionJSONRequestBody
+}
+
+type PostInvoicesByIdCollectionResponseObject interface {
+	VisitPostInvoicesByIdCollectionResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesByIdCollection200JSONResponse InvoicesHoldOrHandoffResult
+
+func (response PostInvoicesByIdCollection200JSONResponse) VisitPostInvoicesByIdCollectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCollection400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesByIdCollection400ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdCollectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCollection401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdCollection401JSONResponse) VisitPostInvoicesByIdCollectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCollection403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdCollection403JSONResponse) VisitPostInvoicesByIdCollectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCollection404Response struct {
+}
+
+func (response PostInvoicesByIdCollection404Response) VisitPostInvoicesByIdCollectionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesByIdCollection409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdCollection409ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdCollectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCollectionWithdrawRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesByIdCollectionWithdrawJSONRequestBody
+}
+
+type PostInvoicesByIdCollectionWithdrawResponseObject interface {
+	VisitPostInvoicesByIdCollectionWithdrawResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesByIdCollectionWithdraw200JSONResponse InvoicesHoldOrHandoffResult
+
+func (response PostInvoicesByIdCollectionWithdraw200JSONResponse) VisitPostInvoicesByIdCollectionWithdrawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCollectionWithdraw400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesByIdCollectionWithdraw400ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdCollectionWithdrawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCollectionWithdraw401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdCollectionWithdraw401JSONResponse) VisitPostInvoicesByIdCollectionWithdrawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCollectionWithdraw403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdCollectionWithdraw403JSONResponse) VisitPostInvoicesByIdCollectionWithdrawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCollectionWithdraw404Response struct {
+}
+
+func (response PostInvoicesByIdCollectionWithdraw404Response) VisitPostInvoicesByIdCollectionWithdrawResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesByIdCollectionWithdraw409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdCollectionWithdraw409ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdCollectionWithdrawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostInvoicesByIdCreditRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -9117,6 +9635,180 @@ func (response GetInvoicesByIdDeductible404Response) VisitGetInvoicesByIdDeducti
 type GetInvoicesByIdDeductible409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
 
 func (response GetInvoicesByIdDeductible409ApplicationProblemPlusJSONResponse) VisitGetInvoicesByIdDeductibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdHoldRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesByIdHoldJSONRequestBody
+}
+
+type PostInvoicesByIdHoldResponseObject interface {
+	VisitPostInvoicesByIdHoldResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesByIdHold200JSONResponse InvoicesHoldOrHandoffResult
+
+func (response PostInvoicesByIdHold200JSONResponse) VisitPostInvoicesByIdHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdHold400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesByIdHold400ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdHold401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdHold401JSONResponse) VisitPostInvoicesByIdHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdHold403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdHold403JSONResponse) VisitPostInvoicesByIdHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdHold404Response struct {
+}
+
+func (response PostInvoicesByIdHold404Response) VisitPostInvoicesByIdHoldResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesByIdHold409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdHold409ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdHoldLiftRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesByIdHoldLiftJSONRequestBody
+}
+
+type PostInvoicesByIdHoldLiftResponseObject interface {
+	VisitPostInvoicesByIdHoldLiftResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesByIdHoldLift200JSONResponse InvoicesHoldOrHandoffResult
+
+func (response PostInvoicesByIdHoldLift200JSONResponse) VisitPostInvoicesByIdHoldLiftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdHoldLift400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesByIdHoldLift400ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdHoldLiftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdHoldLift401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdHoldLift401JSONResponse) VisitPostInvoicesByIdHoldLiftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdHoldLift403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdHoldLift403JSONResponse) VisitPostInvoicesByIdHoldLiftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdHoldLift404Response struct {
+}
+
+func (response PostInvoicesByIdHoldLift404Response) VisitPostInvoicesByIdHoldLiftResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesByIdHoldLift409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdHoldLift409ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdHoldLiftResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -10355,6 +11047,9 @@ type StrictServerInterface interface {
 	// PostInvoicesBankTransactionsByIdTreatAsDistinct Treat a duplicate bank line as distinct
 	// (POST /api/v1/invoices/bank-transactions/{id}/treat-as-distinct)
 	PostInvoicesBankTransactionsByIdTreatAsDistinct(ctx context.Context, request PostInvoicesBankTransactionsByIdTreatAsDistinctRequestObject) (PostInvoicesBankTransactionsByIdTreatAsDistinctResponseObject, error)
+	// GetInvoicesCollectionExportCsv Export invoices for a collection agency as CSV
+	// (GET /api/v1/invoices/collection-export.csv)
+	GetInvoicesCollectionExportCsv(ctx context.Context, request GetInvoicesCollectionExportCsvRequestObject) (GetInvoicesCollectionExportCsvResponseObject, error)
 	// GetInvoicesCollectionRates List the collection rates
 	// (GET /api/v1/invoices/collection-rates)
 	GetInvoicesCollectionRates(ctx context.Context, request GetInvoicesCollectionRatesRequestObject) (GetInvoicesCollectionRatesResponseObject, error)
@@ -10457,12 +11152,24 @@ type StrictServerInterface interface {
 	// PostInvoicesByIdChargesWaive Waive reminder charges
 	// (POST /api/v1/invoices/{id}/charges/waive)
 	PostInvoicesByIdChargesWaive(ctx context.Context, request PostInvoicesByIdChargesWaiveRequestObject) (PostInvoicesByIdChargesWaiveResponseObject, error)
+	// PostInvoicesByIdCollection Record the hand-off to collection
+	// (POST /api/v1/invoices/{id}/collection)
+	PostInvoicesByIdCollection(ctx context.Context, request PostInvoicesByIdCollectionRequestObject) (PostInvoicesByIdCollectionResponseObject, error)
+	// PostInvoicesByIdCollectionWithdraw Withdraw the hand-off
+	// (POST /api/v1/invoices/{id}/collection/withdraw)
+	PostInvoicesByIdCollectionWithdraw(ctx context.Context, request PostInvoicesByIdCollectionWithdrawRequestObject) (PostInvoicesByIdCollectionWithdrawResponseObject, error)
 	// PostInvoicesByIdCredit Create a credit-note draft
 	// (POST /api/v1/invoices/{id}/credit)
 	PostInvoicesByIdCredit(ctx context.Context, request PostInvoicesByIdCreditRequestObject) (PostInvoicesByIdCreditResponseObject, error)
 	// GetInvoicesByIdDeductible List what earlier invoices have left to deduct
 	// (GET /api/v1/invoices/{id}/deductible)
 	GetInvoicesByIdDeductible(ctx context.Context, request GetInvoicesByIdDeductibleRequestObject) (GetInvoicesByIdDeductibleResponseObject, error)
+	// PostInvoicesByIdHold Hold a disputed invoice
+	// (POST /api/v1/invoices/{id}/hold)
+	PostInvoicesByIdHold(ctx context.Context, request PostInvoicesByIdHoldRequestObject) (PostInvoicesByIdHoldResponseObject, error)
+	// PostInvoicesByIdHoldLift Lift a hold
+	// (POST /api/v1/invoices/{id}/hold/lift)
+	PostInvoicesByIdHoldLift(ctx context.Context, request PostInvoicesByIdHoldLiftRequestObject) (PostInvoicesByIdHoldLiftResponseObject, error)
 	// PostInvoicesByIdIssue Issue a draft
 	// (POST /api/v1/invoices/{id}/issue)
 	PostInvoicesByIdIssue(ctx context.Context, request PostInvoicesByIdIssueRequestObject) (PostInvoicesByIdIssueResponseObject, error)
@@ -10966,6 +11673,32 @@ func (sh *strictHandler) PostInvoicesBankTransactionsByIdTreatAsDistinct(w http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostInvoicesBankTransactionsByIdTreatAsDistinctResponseObject); ok {
 		if err := validResponse.VisitPostInvoicesBankTransactionsByIdTreatAsDistinctResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesCollectionExportCsv operation middleware
+func (sh *strictHandler) GetInvoicesCollectionExportCsv(w http.ResponseWriter, r *http.Request, params GetInvoicesCollectionExportCsvParams) {
+	var request GetInvoicesCollectionExportCsvRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesCollectionExportCsv(ctx, request.(GetInvoicesCollectionExportCsvRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesCollectionExportCsv")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesCollectionExportCsvResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesCollectionExportCsvResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -11927,6 +12660,72 @@ func (sh *strictHandler) PostInvoicesByIdChargesWaive(w http.ResponseWriter, r *
 	}
 }
 
+// PostInvoicesByIdCollection operation middleware
+func (sh *strictHandler) PostInvoicesByIdCollection(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesByIdCollectionRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesByIdCollectionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesByIdCollection(ctx, request.(PostInvoicesByIdCollectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesByIdCollection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesByIdCollectionResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesByIdCollectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesByIdCollectionWithdraw operation middleware
+func (sh *strictHandler) PostInvoicesByIdCollectionWithdraw(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesByIdCollectionWithdrawRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesByIdCollectionWithdrawJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesByIdCollectionWithdraw(ctx, request.(PostInvoicesByIdCollectionWithdrawRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesByIdCollectionWithdraw")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesByIdCollectionWithdrawResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesByIdCollectionWithdrawResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostInvoicesByIdCredit operation middleware
 func (sh *strictHandler) PostInvoicesByIdCredit(w http.ResponseWriter, r *http.Request, id int64) {
 	var request PostInvoicesByIdCreditRequestObject
@@ -11972,6 +12771,72 @@ func (sh *strictHandler) GetInvoicesByIdDeductible(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetInvoicesByIdDeductibleResponseObject); ok {
 		if err := validResponse.VisitGetInvoicesByIdDeductibleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesByIdHold operation middleware
+func (sh *strictHandler) PostInvoicesByIdHold(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesByIdHoldRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesByIdHoldJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesByIdHold(ctx, request.(PostInvoicesByIdHoldRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesByIdHold")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesByIdHoldResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesByIdHoldResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesByIdHoldLift operation middleware
+func (sh *strictHandler) PostInvoicesByIdHoldLift(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesByIdHoldLiftRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesByIdHoldLiftJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesByIdHoldLift(ctx, request.(PostInvoicesByIdHoldLiftRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesByIdHoldLift")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesByIdHoldLiftResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesByIdHoldLiftResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

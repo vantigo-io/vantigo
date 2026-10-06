@@ -110,6 +110,8 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.customer_reminder_policies` | One row per customer with [a reminder policy](#a-customers-reminder-policy) other than the default — keyed by the opaque `customer_id`, the mode (`normal`, `no_charges`, `none`), the note and who set it when. No row is `normal`. |
 | `invoices.reminder_runs` | One reminder run ([Runs](#runs)): the day, who made it and when, the bank data's `last_booked_on` and `stale_import_acknowledged`, and `letters` and `skipped`, set together once at its end from NULL. Never deleted or changed but by that one write. |
 | `invoices.reminders` | One letter of a run: the invoice, the run, its `sequence` on the invoice (unique per invoice), the level (`reminder` or `collection_notice`), `announces_collection`, the channel (`email` or `paper`), the recipient (`''` for paper and once the customer is anonymised), the language, who made it and when, the status (`queued`, `awaiting_print`, `printed`, `sent`, `withdrawn`, `failed`), and the facts written when it is sent or printed — `sent_on`, the deadline, the regime, the amounts and the charge notes. Created without facts; never deleted. |
+| `invoices.invoice_holds` | An invoice marked disputed ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)): the invoice, `kind` (`disputed`), the note, who placed it and when, and — once lifted — when, by whom, the lift's note and `charges_allowed`, the answer to whether the objection was groundless; the lift's three facts together (`ck_invoice_holds_lift`). One live hold per invoice (`ux_invoice_holds_live`). Never deleted; an update is the lift, once, or the erase's blanking of the notes — and the lift of an anonymised customer's hold keeps no note. |
+| `invoices.collection_handoffs` | An invoice's hand-off to a collection agency ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)): the invoice, `handed_on`, the agency, its reference, a note, who recorded it and when, and — once withdrawn — `withdrawn_on`, by whom and why, together (`ck_collection_handoffs_withdrawal`). One live hand-off per invoice (`ux_collection_handoffs_live`). Never deleted; an update is the withdrawal, once, or the erase's blanking of the note. |
 
 A document's state is not a column: `invoices.document_state(...)` derives it, see
 [Payments and the state of an invoice](#payments-and-the-state-of-an-invoice).
@@ -2782,6 +2784,132 @@ skipped are answered by the run itself only; its row keeps their count.
 status, by sequence, its facts once it has them — and `nextAction`; a letter's
 `recipient` is answered only to a caller holding `invoices:payments`.
 
+## Holds and the hand-off to collection
+
+An invoice the customer disputes is put **on hold**, and one a collection agency has
+taken over is **handed off**. Both stop the letters; neither stops the money. Each is
+recorded under the invoice's lock and read by the reminder engine
+([The rules](#the-rules)): a live hold makes the next action `blocked` with `on_hold`; a
+live hand-off makes it `none` with `handed_off`.
+
+**The hold.** `POST /invoices/{id}/hold` `{note}` (`invoices:access` and
+`invoices:payments`) marks an issued invoice disputed — `kind` `disputed`, the note (1 to
+500 characters) saying what the customer disputes, who placed it and when. Refused in
+order: 400 on `note`; 404; 409 **`credit_note_no_reminders`** for a credit note, a draft
+one included, and **`invoice_draft`** for a draft; then one transaction locks the invoice
+and, after that lock, refuses **`invoice_on_hold`** while a hold is live (one live hold per
+invoice, `ux_invoice_holds_live` beneath). In the same transaction every letter of the
+invoice still in flight — `queued`, `awaiting_print` or `failed` — is withdrawn with the
+reason `on_hold` and no user. Two letters are left alone and named in the answer's
+`lettersLeft` (`reminderId`, `status`, `printBatchId`), by sequence:
+
+- a **printed** letter, which may be in the post already: it is left for the posting's
+  re-judge, which sends it with its charges waived `claimed_in_error` when the invoice is
+  held by then, and a person can pull it from the batch and withdraw it by hand;
+- a letter **being sent** — `queued`, its facts written, under a lease still live
+  (`lease_until` after the request's clock reading): it is mailed outside any lock and
+  becomes `sent`; a lift that bars charges waives its fee afterwards.
+
+While the hold is live no run makes a letter for the invoice, its late interest keeps
+running, and it still takes payments, manual or from a bank file
+([Matching](#matching)).
+
+**The lift.** `POST /invoices/{id}/hold/lift` `{chargesAllowed, note}` lifts the live hold,
+once, and records the answer to the question the law asks: was the objection **obviously
+groundless**? `chargesAllowed` is required — a body without it is a 400 on it, never read
+as `false` — and the note holds at most 500 characters. One transaction locks the invoice
+(404 for none) and refuses **`invoice_not_on_hold`** when no hold is live.
+
+- `chargesAllowed: false` — the form's default — means the objection had reasonable
+  grounds. A creditor may then claim no costs for the period of the dispute (inkassoloven
+  § 17 second paragraph; the 2026 act's § 18), so **every fee and compensation the
+  invoice's sent letters claimed, and no waiver released yet, is waived** in the same
+  transaction — reason `objection_upheld`, the lift's note as the waivers' note, one
+  waiver per letter and kind, a fee waived before (goodwill, say) skipped — and fees and
+  the compensation are **barred on the invoice for good**: the engine reads a lifted hold
+  with `charges_allowed = false` and gives every later letter no fee and no compensation,
+  with the charge note `charges_barred`. A printed letter is not sent, so it claimed
+  nothing yet; the posting judges it.
+- `chargesAllowed: true` — the objection was groundless — waives nothing.
+
+**Late interest is not a cost**: the lift never waives it, and it keeps running on the
+invoice whatever the answer.
+
+**The hand-off.** `POST /invoices/{id}/collection` `{handedOn, agency, agencyReference?,
+note?, acknowledgeNotDelivered?}` (`invoices:access` and `invoices:payments`) records that
+the claim was handed to a collection agency — done outside Vantigo, recorded here.
+Refused in order:
+
+1. 400 on the fields: `handedOn` missing or after today (Oslo); `agency` blank or over
+   200 characters; `agencyReference` over 100; `note` over 500;
+2. 404; 409 `credit_note_no_reminders`, `invoice_draft`;
+3. 400 on `handedOn` before the invoice's issue date;
+4. under the invoice's lock: 409 **`invoice_settled`** when nothing of the principal is
+   open; 409 **`invoice_handed_off`** while a hand-off is live (one per invoice,
+   `ux_collection_handoffs_live`); 409 **`invoice_not_delivered`** when no delivery — an
+   e-mail, a delivered EHF transmission or a manual delivery
+   ([The delivery fact](#the-delivery-fact)) — is on or before the due date, unless
+   `acknowledgeNotDelivered` is `true`. An invoice not validly delivered may not have
+   fallen due (FinKN 2017-492), so the refusal's detail asks for a manual delivery first
+   when the invoice was in fact delivered; when it was not, the acknowledgement records
+   what was done regardless — refusing the record would only keep Vantigo writing to a
+   debtor whose claim sits with an agency.
+
+The hand-off is then inserted and the letters in flight are withdrawn `handed_off`, as a
+hold withdraws them, the printed letters and any being sent named in `lettersLeft`. While
+the hand-off is live no letter is made, and **payments are still registered** — the
+creditor still owns the claim (inkassoloven § 2) — and a payment received directly must be
+reported to the agency. `POST /invoices/{id}/collection/withdraw` `{withdrawnOn, reason}`
+ends it: 400 on `withdrawnOn` (missing or after today) or `reason` (1 to 200 characters);
+then under the invoice's lock 404, 409 **`invoice_not_handed_off`** when none is live, and
+400 on a `withdrawnOn` before the hand-off's `handedOn`. The row keeps who withdrew it, the
+day and why, and the engine judges the invoice again.
+
+Each of the four answers `{invoice, lettersLeft}`: the document — which carries `hold` and
+`handoff`, its latest of each, live or ended, absent when there was none — and the letters
+no withdrawal reached. A lift and a withdrawal withdraw nothing; their `lettersLeft` names
+the printed letters and any being sent all the same. **The lock order** (D18): the
+invoice, then the letters withdrawn — reported to the lock-order seam by id — and, on a
+barring lift, the waivers inserted; a lift and a withdrawal lock the invoice alone. A
+withdrawal by the module records no user and writes the reason as a code (`on_hold`,
+`handed_off`; the erase writes `customer_anonymised` the same way), where a person's
+withdrawal writes their own words.
+
+**The collection file.** `GET /invoices/collection-export.csv` (`invoices:access` and
+`invoices:payments`) is what an agency is sent: one row per invoice, either the invoices
+with a live hand-off whose `handedOn` is from `handedFrom` to `handedTo` (both, together),
+or the issued invoices named by `invoiceId`, repeated, 1 to 500 — exactly one of the two.
+400 for neither or both, one date alone, `handedFrom` after `handedTo`, more than 500 ids
+or one that is not an issued invoice, and past 500 rows — never a file cut short. Rows in
+invoice number order. The file is the module's CSV form ([The CSV export](#the-csv-export):
+UTF-8 with a byte order mark, semicolons, the decimal comma, YYYY-MM-DD, CRLF, RFC 4180
+quoting, the formula guard on the text columns only), `text/csv`, served as
+`invoices-collection-<today>.csv` with `Cache-Control: private, no-store`. Its columns,
+fixed and English, in this order — **the principal apart from the charges, and what was
+waived out of what is claimed**:
+
+| Column | Holds |
+| --- | --- |
+| `Invoice number`, `Issue date`, `Due date` | The invoice's. |
+| `Delivery` | The delivery of what was sold: its day, or the period as `from/to`. |
+| `Delivered` | The first recorded delivery of the invoice, its kind and day: `handed_over`, `posted`, `email` or `ehf`, then the date. |
+| `KID` | The invoice's KID, or empty. |
+| `Customer number`, `Debtor`, `Debtor type`, `Org no`, `Foreign id`, `Address line 1`, `Address line 2`, `Postal code`, `City`, `Country` | The buyer snapshot written at issue. No national identity number is held, so none is exported. |
+| `E-mail` | The customer's reminder address, read from the customer directory before any query; empty when the read fails, which is logged at warn. |
+| `Gross`, `Credited`, `Paid`, `Principal open` | The principal: the gross, what the issued credit notes credited, the live payments, and what is open of it. |
+| `Payments` | Each live payment as `day amount`, joined by ` \| `. |
+| `Fees claimed`, `Compensation claimed` | What the sent letters claimed, net of waivers. |
+| `Charges waived` | Every waiver's total — fees, compensation and interest. |
+| `Interest rate`, `Interest from`, `Interest to`, `Interest accrued` | The late interest as a letter today would claim it: the rate in force today, the first day it accrued, today, and the amount less what was waived of it. Empty but for `Interest to` and `0,00` when no interest applies yet; the rate and the amount empty when a rate the period needs is missing. |
+| `Charges paid` | The live charge payments. |
+| `Letters` | Each sent letter as `day level`, joined by ` \| `. |
+| `Notice sent`, `Notice deadline` | The latest sent collection notice's day and deadline. |
+| `Disputed` | `yes` while a hold is live, else `no`. |
+| `Handed on`, `Agency`, `Agency reference` | The live hand-off's, empty without one. |
+
+Every figure is the reminder engine's, read through the rule-input loader on one snapshot
+of the pool, with no lock and one clock reading.
+
 ## The journal
 
 `GET /invoices/journal?from&to` lists the issued documents with an issue date in the
@@ -3019,11 +3147,11 @@ No built-in role holds any of these; Owner has the wildcard.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings and a customer's reminder policy; the overdue list, and an issued invoice's letters and next action. |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off. |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)). |
 | `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
-| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), and see the address each letter goes to. |
+| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), and see the address each letter goes to; hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)). |
 
 `invoices:payments` is sensitive because a registration changes what the company says it
 is owed, and a wrong one is corrected only by a removal that stays on record.
@@ -3118,6 +3246,10 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /{id}/charges/waive` | `invoices:payments` | 400 on `waivers`, `reason` or `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; 404 a letter not the document's; 409 `charge_not_claimed` |
 | `POST /{id}/manual-deliveries` | `invoices:issue` | 404; 409 `credit_note_no_reminders`, `invoice_draft`; 400 on `kind`, `deliveredOn` or `note` |
 | `POST /{id}/manual-deliveries/{deliveryId}/remove` | `invoices:issue` | 400 on `reason`; 404 the document, or a delivery not its own; 409 `delivery_removed`, `delivery_relied_on` |
+| `POST /{id}/hold` | `invoices:payments` | 400 on `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; then under the lock 409 `invoice_on_hold` |
+| `POST /{id}/hold/lift` | `invoices:payments` | 400 on `chargesAllowed` (absent or not a boolean) or `note`; 404; 409 `invoice_not_on_hold` |
+| `POST /{id}/collection` | `invoices:payments` | 400 on `handedOn` (missing or after today), `agency`, `agencyReference` or `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; 400 on `handedOn` before the issue date; then under the lock 409 `invoice_settled`, `invoice_handed_off`, `invoice_not_delivered` (unless `acknowledgeNotDelivered`) |
+| `POST /{id}/collection/withdraw` | `invoices:payments` | 400 on `withdrawnOn` (missing or after today) or `reason`; 404; 409 `invoice_not_handed_off`; 400 on `withdrawnOn` before the hand-off's `handedOn` |
 | `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable`; 500 a directory that fails, a missing or altered stored object, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |
 | `POST /{id}/send-ehf` | `invoices:issue` | 429 `rate_limited`; 503 `ehf_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`, `no_peppol_id`, `buyer_reference_missing`, `ehf_already_sent`; 503 `storage_unavailable`; 500 a missing or altered stored PDF, a render that fails or breaks an invariant; 409 `ehf_invalid` (with `rules`); 502 `peppol_lookup_failed`; 409 `peppol_not_receivable` (with `peppolRegistered`, `peppolCanReceive`); 500 a missing or altered reused UBL; 503 `storage_unavailable`; then under the lock 409 `customer_anonymised`, 503 `ehf_unavailable` when the credentials vanished, 409 `ehf_already_sent` |
 | `POST /{id}/transmissions/{transmissionId}/cancel` | `invoices:issue` | 404 the document, or a transmission not its own; 409 `transmission_not_cancellable` |
@@ -3138,6 +3270,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `PUT /bank-accounts/{account}/format` | `invoices:manage` | 400 on `format`; 404 an account never imported |
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |
 | `GET /export.csv` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, more than 5000 rows |
+| `GET /collection-export.csv` | `invoices:payments` | 400 neither or both of `handedFrom`/`handedTo` and `invoiceId`, one date alone, `handedFrom` after `handedTo`, more than 500 `invoiceId`s or one that is not an issued invoice, more than 500 rows |
 | `GET /stats/summary` | | 400 `from` after `to` |
 
 ## What comes next

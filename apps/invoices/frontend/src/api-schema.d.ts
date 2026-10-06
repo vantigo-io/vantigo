@@ -666,6 +666,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{id}/hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hold a disputed invoice
+         * @description Marks an issued invoice disputed (invoices payments and reminders design D11): no letter is made for it while the hold is live, its late interest keeps running, and it still takes payments and bank imports. The body is judged first (400 on note); then 404; 409 credit_note_no_reminders, invoice_draft; then one transaction locks the invoice and, after that lock, refuses invoice_on_hold when a hold is live, records the hold and withdraws every letter of the invoice still in flight — queued, awaiting print or failed — with the reason on_hold and no user. A printed letter is left for the posting's re-judge, and a letter being sent (queued, its facts written, under a live lease) is left to become sent; both are named in lettersLeft (plan readings 9, 45). The lock order is the invoice, then its letters (D18).
+         */
+        post: operations["postInvoicesByIdHold"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/hold/lift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lift a hold
+         * @description Lifts an invoice's live hold (D11) with the answer to whether the objection was obviously groundless. The body is judged first (400 on chargesAllowed or note); then one transaction locks the invoice (404 for none) and, after that lock, refuses invoice_not_on_hold when no hold is live; lifts it; and with chargesAllowed false waives, in the same transaction, every fee and compensation the invoice's sent letters claimed that no waiver released yet — objection_upheld, the lift's note as the waivers' note (inkassoloven § 17 second paragraph; the new act's § 18) — and fees and the compensation stay barred on the invoice for good; with true nothing is waived. Late interest is not a cost: it is never waived by the lift and keeps running. lettersLeft names the printed letters and any being sent. The lock order is the invoice, then the waivers inserted (D18).
+         */
+        post: operations["postInvoicesByIdHoldLift"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/collection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the hand-off to collection
+         * @description Records an issued invoice's hand-off to a collection agency (D11), made outside Vantigo: no letter is made for it while the hand-off is live, and a payment the creditor receives is still registered — the claim is still the creditor's (inkassoloven § 2) — and must be reported to the agency. Refused in order: 400 on agency, agencyReference, note or handedOn after today (Oslo); 404; 409 credit_note_no_reminders, invoice_draft; 400 on handedOn before the issue date; then one transaction locks the invoice and, after that lock, refuses invoice_settled (nothing of the principal is open), invoice_handed_off (a hand-off is live), and invoice_not_delivered when no delivery — an e-mail, a delivered EHF transmission or a manual delivery — is on or before the due date, unless acknowledgeNotDelivered is true (the detail says to record a manual delivery first if it was in fact delivered); records the hand-off and withdraws the letters in flight with the reason handed_off, as a hold does — printed letters and any being sent named in lettersLeft. The lock order is the invoice, then its letters (D18).
+         */
+        post: operations["postInvoicesByIdCollection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/collection/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw the hand-off
+         * @description Withdraws an invoice's live hand-off (D11): the claim is back with the creditor, and the reminder engine judges the invoice again. The body is judged first (400 on reason, or withdrawnOn after today, Oslo); then one transaction locks the invoice (404 for none) and, after that lock, refuses invoice_not_handed_off when no hand-off is live, and 400 on withdrawnOn before the hand-off's handedOn; then withdraws it. lettersLeft names the printed letters and any being sent. The lock order is the invoice alone (D18).
+         */
+        post: operations["postInvoicesByIdCollectionWithdraw"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/{id}/send": {
         parameters: {
             query?: never;
@@ -1050,6 +1130,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/collection-export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export invoices for a collection agency as CSV
+         * @description The collection agency's file (invoices payments and reminders design D11): one row per invoice, either the invoices with a live hand-off whose handedOn is from handedFrom to handedTo (both required together), or the issued invoices named by invoiceId (repeatable, 1-500) — exactly one of the two selections; 400 otherwise, for an invoiceId that is not an issued invoice, or past 500 rows, never cut short. The module's CSV form (GET /invoices/export.csv): UTF-8 with a byte order mark, semicolons, the decimal comma, YYYY-MM-DD, CRLF after every row, RFC 4180 quoting, and the formula guard on the text columns only. The header row is Invoice number;Issue date;Due date;Delivery;Delivered;KID;Customer number;Debtor;Debtor type;Org no;Foreign id;Address line 1;Address line 2;Postal code;City;Country;E-mail;Gross;Credited;Paid;Principal open;Payments;Fees claimed;Compensation claimed;Charges waived;Interest rate;Interest from;Interest to;Interest accrued;Charges paid;Letters;Notice sent;Notice deadline;Disputed;Handed on;Agency;Agency reference — the principal apart from the charges: Fees claimed and Compensation claimed are the sent letters' net of waivers, Charges waived every waiver's total, Interest accrued the late interest to today (Interest to) less what was waived, at the rate in force today from Interest from, and Charges paid the live charge payments. Delivered is the first recorded delivery, its kind and day; Debtor and the address the buyer snapshot's; E-mail the customer's reminder address, read from the customer directory before any query (empty when the read fails, logged at warn); Payments and Letters compact lists; Disputed yes while a hold is live. No national identity number is held.
+         */
+        get: operations["getInvoicesCollectionExportCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/stats/summary": {
         parameters: {
             query?: never;
@@ -1158,7 +1258,7 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -1570,6 +1670,21 @@ export interface components {
             /** Format: date */
             withdrawnOn?: string;
         };
+        /** @description POST /invoices/{id}/collection's body (invoices payments and reminders design D11): the hand-off to a collection agency, recorded after it was made outside Vantigo. handedOn is the day it was handed over — not after today (Oslo) and not before the invoice's issue date; agency the agency's name, 1-200 characters once trimmed; agencyReference its case number, at most 100; note at most 500 (absent is empty). acknowledgeNotDelivered confirms the hand-off of an invoice with no delivery on or before its due date, which is otherwise refused invoice_not_delivered (plan reading 10). */
+        InvoicesHandoffRequest: {
+            acknowledgeNotDelivered?: boolean;
+            agency: string;
+            agencyReference?: string;
+            /** Format: date */
+            handedOn: string;
+            note?: string;
+        };
+        /** @description POST /invoices/{id}/collection/withdraw's body (D11): withdrawnOn is the day the claim came back from the agency — not after today (Oslo) and not before the hand-off's handedOn; reason is why, 1-200 characters once trimmed. */
+        InvoicesHandoffWithdrawRequest: {
+            reason: string;
+            /** Format: date */
+            withdrawnOn: string;
+        };
         /** @description An invoice's hold (D11), as read — disputed. While it is live — liftedAt absent — no letter is made; a lift with chargesAllowed false barred fees and the compensation for good. */
         InvoicesHold: {
             chargesAllowed?: boolean;
@@ -1587,6 +1702,20 @@ export interface components {
             placedAt: string;
             /** Format: uuid */
             placedBy: string;
+        };
+        /** @description POST /invoices/{id}/hold/lift's body (D11). chargesAllowed answers whether the objection was obviously groundless: false (the form's default) means it had reasonable grounds (inkassoloven § 17 second paragraph; the new act's § 18), and every fee and compensation the invoice's sent letters claimed and no waiver released is waived objection_upheld, and fees and the compensation stay barred on the invoice for good; true waives nothing. chargesAllowed is required, true or false — a body without it is a 400 on it, never read as false; note is at most 500 characters (absent is empty). */
+        InvoicesHoldLiftRequest: {
+            chargesAllowed: boolean;
+            note?: string;
+        };
+        /** @description What a hold, its lift, a hand-off and its withdrawal answer (D11): the invoice, and lettersLeft — the letters of the invoice no withdrawal reaches, by sequence: each printed letter, left for the posting's re-judge because it may be in the post already, and any letter being sent (queued, its facts written, under a live lease), which becomes sent. A person pulls such a letter from the post, or withdraws it by hand once it can be withdrawn (plan reading 9). */
+        InvoicesHoldOrHandoffResult: {
+            invoice: components["schemas"]["InvoicesInvoiceResponse"];
+            lettersLeft: components["schemas"]["InvoicesLetterLeft"][];
+        };
+        /** @description POST /invoices/{id}/hold's body (D11): note is what the customer disputes, 1-500 characters once trimmed. */
+        InvoicesHoldRequest: {
+            note: string;
         };
         /** @description A run of days bearing late interest on one base at one rate (D8), both days counted; rate is percent a year. */
         InvoicesInterestSegment: {
@@ -1647,6 +1776,15 @@ export interface components {
             regime: "inkassolov_1988" | "inkassolov_2026";
             /** Format: double */
             total: number;
+        };
+        /** @description A letter a hold, a lift, a hand-off or a withdrawal left alone (D11, plan reading 9): printed — with its print batch, left for the posting — or queued and being sent. */
+        InvoicesLetterLeft: {
+            /** Format: int64 */
+            printBatchId?: number;
+            /** Format: int64 */
+            reminderId: number;
+            /** @enum {string} */
+            status: "printed" | "queued";
         };
         /** @description What the reminder engine says to do next with an issued invoice today (D8): action reminder or collection_notice (a letter, due from earliestOn; letter is how it would go today when earliestOn is today or earlier), hand_off (suggested, never automatic; from earliestOn), blocked or waiting (with reasons; waiting until earliestOn), or none (the principal settled, or handed off). reasons: on_hold, handed_off, policy_none, reminders_disabled, letter_pending (a letter is on its way), waiting (the last letter's deadline and grace not yet passed), not_delivered (no delivery on or before the due date, so no collection notice or hand-off), collection_rates_outdated (with outdated naming the rate and half-year) and collection_regime_unreviewed. chargeNotes say why a letter claims less than it might: not_delivered, charges_barred, fee_cap_reached, fee_before_14_days and fee_deadline_not_missed. */
         InvoicesNextAction: {
@@ -2321,7 +2459,7 @@ export interface components {
             timesheet?: boolean;
             yourReference?: string;
         };
-        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
+        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
         InvoicesInvoiceResponse: {
             allowedIssueDates?: string[];
             buyer?: components["schemas"]["InvoicesBuyer"];
@@ -2358,6 +2496,8 @@ export interface components {
             exchangeRateDate?: string;
             /** Format: double */
             grossTotal: number;
+            handoff?: components["schemas"]["InvoicesHandoff"];
+            hold?: components["schemas"]["InvoicesHold"];
             /** Format: int64 */
             id: number;
             internalNote: string;
@@ -5556,6 +5696,282 @@ export interface operations {
             };
         };
     };
+    postInvoicesByIdHold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesHoldRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice on hold and the letters left. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesHoldOrHandoffResult"];
+                };
+            };
+            /** @description Bad Request — note empty or over 500 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — credit_note_no_reminders, invoice_draft or invoice_on_hold. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdHoldLift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesHoldLiftRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice with its hold lifted and the letters left. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesHoldOrHandoffResult"];
+                };
+            };
+            /** @description Bad Request — chargesAllowed absent, or a note over 500 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — invoice_not_on_hold. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesHandoffRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice handed off and the letters left. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesHoldOrHandoffResult"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — credit_note_no_reminders, invoice_draft, invoice_settled, invoice_handed_off or invoice_not_delivered. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdCollectionWithdraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesHandoffWithdrawRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice with its hand-off withdrawn. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesHoldOrHandoffResult"];
+                };
+            };
+            /** @description Bad Request — reason empty or over 200 characters, or withdrawnOn after today or before the hand-off''s handedOn. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — invoice_not_handed_off. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
     postInvoicesByIdSend: {
         parameters: {
             query?: never;
@@ -6782,6 +7198,60 @@ export interface operations {
                 };
             };
             /** @description Bad Request — from or to missing or not a calendar date, from after to, or more than 5000 rows, which asks for a narrower period. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getInvoicesCollectionExportCsv: {
+        parameters: {
+            query?: {
+                /** @description The first hand-off day to include, with handedTo. */
+                handedFrom?: string;
+                /** @description The last hand-off day to include, with handedFrom. */
+                handedTo?: string;
+                /** @description An issued invoice to include; repeat for each, at most 500. */
+                invoiceId?: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named invoices-collection-<today>.csv (YYYY-MM-DD), and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — neither selection or both, one hand-off date without the other or handedFrom after handedTo, more than 500 invoiceIds or one that is not an issued invoice, or more than 500 rows. */
             400: {
                 headers: {
                     [name: string]: unknown;
