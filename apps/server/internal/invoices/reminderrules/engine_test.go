@@ -552,7 +552,7 @@ func TestReminderRules_ReviewAndRates(t *testing.T) {
 	}
 }
 
-// The Input contract: every fixture keeps it, and validate names a nil
+// The Input contract: every fixture keeps it, and Validate names a nil
 // amount and a day that is not a UTC midnight. A Letter's nil amounts read
 // as zero.
 func TestReminderRules_InputContract(t *testing.T) {
@@ -565,7 +565,7 @@ func TestReminderRules_InputContract(t *testing.T) {
 	full.ChargePayments = []ChargePayment{chargePayment(1, "2026-04-20", "12")}
 	full.Settings.Inkassolov2026From = dayp("2027-01-01")
 	for name, in := range map[string]Input{"baseInput": baseInput("2026-07-15"), "halfKroneADay": halfKroneADay("2026-05-07"), "every list": full} {
-		if err := validate(in); err != nil {
+		if err := Validate(in); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -588,8 +588,8 @@ func TestReminderRules_InputContract(t *testing.T) {
 		in.ChargePayments, in.Waivers = slices.Clone(full.ChargePayments), slices.Clone(full.Waivers)
 		in.Deliveries = slices.Clone(full.Deliveries)
 		breakIt(&in)
-		if validate(in) == nil {
-			t.Errorf("%s: validate accepts it", name)
+		if Validate(in) == nil {
+			t.Errorf("%s: Validate accepts it", name)
 		}
 	}
 	// A letter without facts: its nil amounts are zero, nothing panics.
