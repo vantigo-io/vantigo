@@ -2101,14 +2101,16 @@ explained (inkassoloven § 16). The line becomes `matched`, with a `matched` eve
 invoice on hold or handed off to collection is matched like any other: a payment is
 always registered.
 
-**The deadline-met waiver.** In the same transaction, when the line carries an ordering
-day (`ordered_on`, OCR's alone), the invoice's facts are read again under its lock — the
-new payment among them — and every sent letter whose **reminder fee** was claimed after
-an earlier letter's deadline that the payments ordered on or before it in fact met has
-that fee waived **`deadline_met`** by the registering user (`ReliedOnMetDeadline`,
-[Waivers](#charges)). The compensation is never waived so: it is due from the due date,
-on no deadline. A camt.054 line has no ordering day and waives nothing; its booking day
-is what the rules judge.
+**The deadline-met waiver.** In the same transaction, after every match, the invoice's
+facts are read again under its lock — the new payment among them — and every sent letter
+whose **reminder fee** was claimed after an earlier letter's deadline that the payments
+in fact met has that fee waived **`deadline_met`** by the registering user
+(`ReliedOnMetDeadline`, [Waivers](#charges)). A payment meets a deadline by its ordering
+day where the bank gives one (`ordered_on`, OCR's alone), else by its booking day — so a
+camt.054 payment booked within an earlier letter's deadline, but imported after the next
+fee letter went out, has that fee waived too. A payment ordered or booked after the
+deadline waives nothing. The compensation is never waived so: it is due from the due
+date, on no deadline.
 
 **Possible duplicates.** Two genuine payments of one day, amount and KID in one file are
 both registered — the soft key looks only at other files, and the fingerprint's ordinal
@@ -2119,8 +2121,9 @@ and a camt.054 file of the same payment never both register it: the cutover hold
 the second on the pool, and two files of one format are caught by the soft key under the
 lock.
 
-**Stopping early.** Matching stops at the first error — the database's — or when the
-request ends: the line in hand rolls back and stays `pending` with the rest, the stop is
+**Stopping early.** Matching stops at the first error — the database's, or a line whose
+KID names an invoice in another currency than NOK, which a NOK line cannot pay and no
+reason of the queue names yet, so the match fails closed — or when the request ends: the line in hand rolls back and stays `pending` with the rest, the stop is
 logged at warn with the file and the line, and the import's 201 (or `…/match`'s 200)
 reports what is left in `pending`. The file's rows, committed before matching began,
 stand. Matching reads no directory and calls nothing out of the module, so no call is

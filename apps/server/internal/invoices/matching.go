@@ -25,9 +25,9 @@ import (
 // and every figure read after both. A match registers a payment of up to
 // the open amount and a charge payment of the rest, principal first, paid on
 // the line's booking day and registered by the uploader or the caller of
-// …/match; then, in the same transaction, a reminder fee the payment's
-// ordering day shows was claimed after a deadline that was in fact met is
-// waived deadline_met. Matching reads no directory and calls nothing out of
+// …/match; then, in the same transaction, a reminder fee the payment — by
+// its ordering day, or its booking day without one — shows was claimed after
+// a deadline that was in fact met is waived deadline_met. Matching reads no directory and calls nothing out of
 // the module.
 
 // The reasons a line is queued for (D4, D5; ck_bank_transactions_reason).
@@ -152,8 +152,10 @@ func (s *server) matchFile(ctx context.Context, fileID int64, caller uuid.UUID, 
 
 // classify is D4's steps 1–7 on the pool, in order: the reason the line is
 // queued for, or "" and the invoice it is a candidate for. invoiceID is also
-// the invoice the KID named when the line is queued account_mismatch. acct
-// is the line's account (its zero value when it has no row).
+// the invoice the KID named when the line is queued possible_duplicate or
+// account_mismatch — the suggestion it is queued with — and 0 when the KID
+// named none. acct is the line's account (its zero value when it has no
+// row).
 func (s *server) classify(ctx context.Context, q *store.Queries, line store.InvoicesBankTransaction, acct store.InvoicesBankImportAccount) (reason string, invoiceID int64, err error) {
 	// 1. A reversal or a negative line is never a payment.
 	switch {
@@ -164,18 +166,21 @@ func (s *server) classify(ctx context.Context, q *store.Queries, line store.Invo
 	}
 	// 2. What the other format may already have registered: a line of the
 	// account's new format booked on or before its cutover, or the soft key.
-	if acct.PreviousFormat != nil && line.Format == acct.Format && acct.CutoverThrough.Valid &&
-		!line.BookedOn.Time.After(acct.CutoverThrough.Time) {
-		return reasonPossibleDuplicate, 0, nil
-	}
-	if line.Kid != nil {
-		dup, err := softKeyRegistered(ctx, q, line)
-		if err != nil {
+	// Held back with the invoice its KID names, when it names one, as the
+	// suggestion — as a possible duplicate seen under the lock is.
+	dup := acct.PreviousFormat != nil && line.Format == acct.Format && acct.CutoverThrough.Valid &&
+		!line.BookedOn.Time.After(acct.CutoverThrough.Time)
+	if !dup && line.Kid != nil {
+		if dup, err = softKeyRegistered(ctx, q, line); err != nil {
 			return "", 0, err
 		}
-		if dup {
-			return reasonPossibleDuplicate, 0, nil
+	}
+	if dup {
+		inv, _, err := invoiceOfKid(ctx, q, line)
+		if err != nil || inv == nil {
+			return reasonPossibleDuplicate, 0, err
 		}
+		return reasonPossibleDuplicate, inv.ID, nil
 	}
 	// 3. A Vipps payout carries no KID: the invoices were settled at capture.
 	if line.Kid == nil && vippsPayout.MatchString(line.RemittanceText) {
@@ -185,35 +190,50 @@ func (s *server) classify(ctx context.Context, q *store.Queries, line store.Invo
 	if line.Kid == nil {
 		return reasonNoKid, 0, nil
 	}
-	// 5. A KID whose check character verifies under neither algorithm.
-	body, number, fits, ok := kid.Parse(*line.Kid)
-	if !ok {
-		return reasonKidInvalid, 0, nil
-	}
-	check := (*line.Kid)[len(*line.Kid)-1]
-	if check != kid.CheckMod10(body) && check != kid.CheckMod11(body) {
-		return reasonKidInvalid, 0, nil
-	}
-	// 6. The issued document of that number, carrying exactly this KID under
-	// the algorithm it was issued with; a credit note carries none.
-	if !fits {
-		return reasonKidUnknown, 0, nil
-	}
-	inv, err := q.InvoiceForKid(ctx, &number)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return reasonKidUnknown, 0, nil
-	}
-	if err != nil {
-		return "", 0, fmt.Errorf("invoices: read the document numbered %d: %w", number, err)
-	}
-	if inv.Kid == nil || *inv.Kid != *line.Kid || inv.KidAlgorithm == nil || !kid.Verify(*inv.Kid, *inv.KidAlgorithm, number) {
-		return reasonKidUnknown, 0, nil
+	// 5 and 6. A KID that is not valid, or that no issued invoice carries.
+	inv, reason, err := invoiceOfKid(ctx, q, line)
+	if err != nil || inv == nil {
+		return reason, 0, err
 	}
 	// 7. Paid into another account than the invoice printed.
 	if inv.SellerBankAccount == nil || *inv.SellerBankAccount != line.Account {
 		return reasonAccountMismatch, inv.ID, nil
 	}
 	return "", inv.ID, nil
+}
+
+// invoiceOfKid is D4's steps 5 and 6 for a line with a KID: the issued
+// invoice it names, or nil and why not — kid_invalid when kid.Parse fails or
+// the check character verifies under neither MOD10 nor MOD11, kid_unknown
+// when the body exceeds int64 or no issued document of that number carries
+// exactly this KID under the algorithm it was issued with (a credit note
+// carries none). A line without a KID names none.
+func invoiceOfKid(ctx context.Context, q *store.Queries, line store.InvoicesBankTransaction) (*store.InvoicesInvoice, string, error) {
+	if line.Kid == nil {
+		return nil, reasonNoKid, nil
+	}
+	body, number, fits, ok := kid.Parse(*line.Kid)
+	if !ok {
+		return nil, reasonKidInvalid, nil
+	}
+	check := (*line.Kid)[len(*line.Kid)-1]
+	if check != kid.CheckMod10(body) && check != kid.CheckMod11(body) {
+		return nil, reasonKidInvalid, nil
+	}
+	if !fits {
+		return nil, reasonKidUnknown, nil
+	}
+	inv, err := q.InvoiceForKid(ctx, &number)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, reasonKidUnknown, nil
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("invoices: read the document numbered %d: %w", number, err)
+	}
+	if inv.Kid == nil || *inv.Kid != *line.Kid || inv.KidAlgorithm == nil || !kid.Verify(*inv.Kid, *inv.KidAlgorithm, number) {
+		return nil, reasonKidUnknown, nil
+	}
+	return &inv, "", nil
 }
 
 // softKeyRegistered reports whether a line of another file has the same
@@ -274,8 +294,7 @@ func queueLine(ctx context.Context, txq *store.Queries, lineID int64, reason str
 // outstanding (chargesOf); then D4's table in order. A queued outcome writes
 // the reason and its event in the same transaction; a match registers the
 // payment and the charge payment, marks the line matched with its event,
-// and waives what the payment's ordering day shows was claimed after a met
-// deadline.
+// and waives what the payment shows was claimed after a met deadline.
 func (s *server) matchLine(ctx context.Context, lineID, invoiceID int64, caller uuid.UUID, now time.Time) (outcome string, err error) {
 	outcome = outcomeNone
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
@@ -311,16 +330,14 @@ func (s *server) matchLine(ctx context.Context, lineID, invoiceID int64, caller 
 		if err := registerMatch(ctx, txq, line, inv, principal, charges, caller, now); err != nil {
 			return err
 		}
-		// Only an ordering day can show a deadline met that the booking day
-		// missed: an OCR line's, never a camt.054 line's (reading 32).
-		if line.OrderedOn.Valid {
-			in, err := s.ruleInputLocked(ctx, txq, inv, businessDay(now), 0)
-			if err != nil {
-				return err
-			}
-			if err := waiveDeadlineMet(ctx, txq, inv.ID, in, line, caller, now); err != nil {
-				return err
-			}
+		// Every matched line: a payment meets a deadline by its ordering
+		// day where the bank gives one, else by its booking day (reading 32).
+		in, err := s.ruleInputLocked(ctx, txq, inv, businessDay(now), 0)
+		if err != nil {
+			return err
+		}
+		if err := waiveDeadlineMet(ctx, txq, inv.ID, in, line, caller, now); err != nil {
+			return err
 		}
 		outcome = outcomeMatched
 		return nil
@@ -386,6 +403,14 @@ func judgeMatch(ctx context.Context, txq *store.Queries, line store.InvoicesBank
 // file's format, the line, paid on its booking day, its reference the KID,
 // by caller at now — and the line matched with its event.
 func registerMatch(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction, inv store.InvoicesInvoice, principal, charges *big.Rat, caller uuid.UUID, now time.Time) error {
+	// Fail closed: a bank line is NOK (ck_bank_transactions_currency), and
+	// its amount was judged against the invoice's figures as if they were
+	// too. An invoice in another currency cannot be paid by it, and no
+	// reason of the queue says so yet: the error rolls the line back, leaves
+	// it pending, and stops matching with a warning naming it.
+	if inv.Currency != "NOK" {
+		return fmt.Errorf("invoices: line %d is in NOK and its KID names document %d in %s", line.ID, inv.ID, inv.Currency)
+	}
 	reference := ""
 	if line.Kid != nil {
 		reference = *line.Kid
@@ -435,9 +460,11 @@ func registerMatch(ctx context.Context, txq *store.Queries, line store.InvoicesB
 // this one included — are all in it; every sent letter whose reminder fee
 // was claimed after an earlier letter's deadline those payments met
 // (reminderrules.ReliedOnMetDeadline) has that fee waived deadline_met, by
-// and at. The caller calls it only for a line with an ordering day — an OCR
-// line's (reading 32); a camt.054 line waives nothing, its booking day being
-// what the rules already judge. The compensation is never waived here.
+// and at. A payment meets a deadline by its ordering day where the line has
+// one (OCR's), else by its booking day, its paid_on (reminderrules.DeadlineMet
+// falls back to it; reading 32), so a camt.054 payment booked within a
+// deadline waives as an OCR one ordered within it does. The compensation is
+// never waived here.
 func waiveDeadlineMet(ctx context.Context, txq *store.Queries, invoiceID int64, in reminderrules.Input, line store.InvoicesBankTransaction, by uuid.UUID, at time.Time) error {
 	ids := reminderrules.ReliedOnMetDeadline(in)
 	if len(ids) == 0 {
@@ -448,7 +475,7 @@ func waiveDeadlineMet(ctx context.Context, txq *store.Queries, invoiceID int64, 
 		ws = append(ws, waiverRequest{reminderID: id, kind: reminderrules.WaiverFee})
 	}
 	problem, err := waiveCharges(ctx, txq, invoiceID, ws, waiverDeadlineMet,
-		fmt.Sprintf("The payment of bank line %s was ordered by the deadline.", line.LineRef), by, at)
+		fmt.Sprintf("The payment of bank line %s met the deadline.", line.LineRef), by, at)
 	if err != nil {
 		return err
 	}

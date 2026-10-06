@@ -574,10 +574,10 @@ A payment and a charge payment registered here are `source` the file's format,
 caller), `registered_at` the request's one clock read; then the line becomes `matched`
 with a `matched` event. **The allocation is principal first**, then charges (reading 6),
 recorded as two rows so it can be explained (new inkassolov § 16, R4 §2.7). Then, in the
-same transaction, **the deadline-met waiver** (D8, I5): when the line carries `ordered_on`
-and a sent letter's reminder fee was claimed after an earlier letter's deadline that the
-payments ordered on or before it — this one included — turn out to have met, that fee is
-waived, `deadline_met` (D9; the compensation is due from the due date, on no deadline, and is
+same transaction, **the deadline-met waiver** (D8, I5): when a sent letter's reminder fee
+was claimed after an earlier letter's deadline that the payments ordered on or before it —
+this one included; a payment without `ordered_on`, a camt line's, by its booking day
+(Task 8 review) — turn out to have met, that fee is waived, `deadline_met` (D9; the compensation is due from the due date, on no deadline, and is
 not waived — Task 4 review). A handed-off or held invoice is matched like any other:
 payments are always registered (D11).
 

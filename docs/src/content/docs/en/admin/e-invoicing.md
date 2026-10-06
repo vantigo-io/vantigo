@@ -229,7 +229,7 @@ store.
 
 ## The KID agreement with the bank
 
-A KID is the reference on a payment that lets the bank, and later Vantigo, match it to
+A KID is the reference on a payment that lets the bank, and Vantigo's bank-file import, match it to
 one invoice. Ask your bank for a **KID agreement (OCR giro)** on the account in the
 seller record; the bank registers a **length** and a **check digit method** for it, and
 rejects or flags a payment whose KID does not fit them.
