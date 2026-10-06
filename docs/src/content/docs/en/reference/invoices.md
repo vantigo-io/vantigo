@@ -97,7 +97,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.bank_import_accounts` | One row per receiving account a bank file was imported for: the `format` its files come in (`ocr` or `camt054`), set by its first import, and — once a manager changed it — the `previous_format` with `cutover_through`, the latest booking day of the account's own lines in it; who set it and when. Never deleted; an update changes only those columns ([Bank files](#bank-files-and-the-exception-queue)). |
 | `invoices.bank_files` | One imported bank file: its format, the SHA-256 of its bytes and its own identity (each unique), the object key it is stored under, its size, the accounts it names, the first and last booking day of its lines, how many transactions it brought, how many of them were `duplicates` (set once by the import, from `NULL`), how many lines were `ignored` and `ignored_kinds` by kind, who uploaded it and when. Never deleted or changed but by that one write. |
 | `invoices.bank_transactions` | One line of a bank file as the bank wrote it — the line reference, the format, the receiving account, the direction, `negative`, the booking, value and ordering days, the amount (above 0, NOK), the KID, the remittance text, the debtor's name and account, the archive reference, the bank's code — its `fingerprint` and `ordinal`, `duplicate_of_id` when it repeats a live line, and its state: `status` (`pending`, `matched`, `exception`, `resolved` or `duplicate`), the `reason` it was queued for, the suggested invoice and the resolution. One live line per account and fingerprint (`ux_bank_transactions_fingerprint`). Never deleted; only the state columns change, never back to `pending`, and a reason once set stays. |
-| `invoices.bank_transaction_events` | What happened to a line, by whom and when — matched, queued and the queue's actions — with a reason and a note. Insert-only, but for its note blanked by an erase. |
+| `invoices.bank_transaction_events` | What happened to a line, by whom and when — matched, queued, the queue's actions, and `reversed` on a line whose payment a reversal took back — with a reason and a note. Insert-only, but for its note blanked by an erase. |
 | `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient (`''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
 | `invoices.manual_deliveries` | A delivery recorded by hand ([The delivery fact](#the-delivery-fact)): the invoice, `kind` (`handed_over` or `posted`), `delivered_on`, a note (`''` once the customer is anonymised), who recorded it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
 | `invoices.charge_payments` | Money received against an invoice's charges, never its principal ([Charges](#charges)): the day, the amount and the currency (the invoice's), `source` (`manual`, `ocr` or `camt054`) and the bank line of one taken from a bank file (`ck_charge_payments_origin`: a line exactly when the source is not `manual`), the reference, a note (blanked as the payments' is), who registered it and when, and the removal. Never deleted; never changed but by the removal, once, and that blanking. |
@@ -1119,7 +1119,8 @@ is removed like any other, with a reason — how a refund made outside Vantigo i
 recorded — and the removal locks only the invoice and never touches the line: what a
 line has applied is derived from its live payments, so a line whose payments are all
 removed goes back to a person through [the exception queue](#the-exception-queue)'s
-reopen.
+reopen — unless a reversal removed one, which marks the line so its money is never
+applied again.
 
 **Why a row never leaves.** A registration is kept as long as the document it is
 registered against — bokføringsloven § 13, five years after the end of the financial
@@ -2173,10 +2174,13 @@ then by id; the total counts the filtered lines. Each line answers what the bank
 its file (`bankFile`: id, format, upload time), **`applied`** — every payment and charge
 payment that refers to it, removed ones included, with the invoice and its number — and
 **`unappliedAmount`**: its amount less its live payments and charge payments, and 0 for a
-reversal, a negative line, a `duplicate` row and a line resolved otherwise than
-`applied`, none of which is money waiting to be applied. `unapplied=true` keeps the
-`matched` and `resolved` lines with such a rest: a line applied in part, or matched and
-its payment since removed. **What is not applied stays visible** there — phase 4 keeps no
+reversal, a negative line, a `duplicate` row, a line a reversal took a payment back from
+(below), and a line resolved otherwise than `applied` — none of which is money waiting to
+be applied — except a line **dismissed after it was queued `invoice_credited`,
+`invoice_settled` or `exceeds_open`**: that money is owed back to the payer, refunded
+outside Vantigo, so its whole amount stays unapplied. `unapplied=true` keeps the
+`matched` and `resolved` lines with such a rest: a line applied in part, a line matched
+and its payment since removed, and a line dismissed as money owed back. **What is not applied stays visible** there — phase 4 keeps no
 customer credit balance and makes no refund. Each line also answers its `resolution`,
 `resolvedBy`, `resolvedAt` and `resolutionNote`, its `suggestedInvoiceId` and its
 **events**, the first first. `GET /invoices/bank-files/{id}` answers its lines with the
@@ -2188,7 +2192,8 @@ issued invoices it may pay, read when it is read and never registered by themsel
 §3.5 j): an invoice whose **number** is a whole word of the line's text
 (`number_in_text`); one whose **open amount** equals the line's amount
 (`amount_equals_open`); the open invoices of the customers whose earlier payments from a
-bank line came from the line's **debtor account** (`debtor_account`) — at most ten of
+bank line — one booked on or before this one, never the line itself — came from the
+line's **debtor account** (`debtor_account`) — at most ten of
 each, each invoice once under the first reason in that order, with its number, customer,
 buyer and open amount. When a line is queued — by matching, by treat-as-distinct or by a
 reopen — and has no invoice of its own, the one suggestion, if there is exactly one, is
@@ -2196,7 +2201,8 @@ kept as its `suggestedInvoiceId`; a line whose KID named an invoice keeps that o
 `possible_duplicate` or `duplicate` line answers **`possibleDuplicateOf`**: the line it
 was kept as a duplicate of, or else the earliest `matched` or `resolved` line of another
 file with the same account, booking day, amount and KID, one with a live payment first —
-with that line's payments.
+with that line's payments. The suggestions are computed per line as the page is read — a
+few statements a line, on the queue's list and each action's answer only.
 
 **The actions.** Each judges its body, then the line on the pool, then runs **one READ
 COMMITTED transaction whose first lock is the line**, `FOR NO KEY UPDATE`, under which the
@@ -2240,8 +2246,13 @@ request's one clock read — and answers the line as it now stands.
   payments' invoices are locked in descending id, and each payment is removed by the
   removal's own rules — 404 a payment that is not its invoice's, 409 `payment_removed`
   one already removed — with the reason **"Reversed by the bank: line {lineRef}"**, by
-  the caller. The line becomes `resolved`, `reversal_handled`, with a `reversal_handled`
-  event. Nothing links a reversal to a payment by itself: the person names it.
+  the caller, and **the line each removed payment came from gets a `reversed` event**
+  with that reason as its note — its money went back, so it is **never applied again**:
+  no unapplied rest, out of `unapplied=true`, and never reopened. (The event's foreign key
+  takes `FOR KEY SHARE` on that line, which its `FOR NO KEY UPDATE` lets through: no wait
+  and no new lock order.) The reversal line becomes `resolved`, `reversal_handled`, with a
+  `reversal_handled` event. Nothing links a reversal to a payment by itself: the person
+  names it.
 - **Confirm a duplicate** — `POST …/{id}/confirm-duplicate` `{note?}` (400 past 500
   characters): a `duplicate` row, or an `exception` queued `possible_duplicate`, becomes
   `resolved`, `duplicate_confirmed`, **its reason set to `possible_duplicate`** — so a
@@ -2260,7 +2271,9 @@ request's one clock read — and answers the line as it now stands.
   cleared on the line and kept in its events, with a `reopened` event. 404; 409
   `bank_transaction_not_applicable` for a line that is `pending`, an `exception` or a
   `duplicate`; 409 **`bank_transaction_applied`** while any live payment or charge
-  payment refers to it — remove them first. A reversal reopened finds its removed
+  payment refers to it — remove them first; 409 **`bank_transaction_reversed`** when a
+  reversal took back one of its payments. A payment removed by its own removal — a refund
+  recorded by hand — does not block the reopen; only a reversal does. A reversal reopened finds its removed
   payments still removed: a removal is never undone.
 
 A payment's removal never writes its line ([Payments](#payments-and-the-state-of-an-invoice)):
@@ -3107,7 +3120,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /bank-transactions/{id}/handle-reversal` | `invoices:payments` | 400 on `removePayments`, `removePayments[n].paymentId`, `noPayment` or `note`; 404; 409 `bank_transaction_not_open`, `bank_transaction_not_applicable`, `reversal_payment_required`; then under the locks 404 a payment not its invoice's, 409 `payment_removed` |
 | `POST /bank-transactions/{id}/confirm-duplicate` | `invoices:payments` | 400 on `note`; 404; 409 `bank_transaction_not_open`, `bank_transaction_not_applicable` |
 | `POST /bank-transactions/{id}/treat-as-distinct` | `invoices:payments` | 404; 409 `bank_transaction_not_applicable`, `bank_transaction_not_open` |
-| `POST /bank-transactions/{id}/reopen` | `invoices:payments` | 404; 409 `bank_transaction_not_applicable`, `bank_transaction_applied` |
+| `POST /bank-transactions/{id}/reopen` | `invoices:payments` | 404; 409 `bank_transaction_not_applicable`, `bank_transaction_applied`, `bank_transaction_reversed` |
 | `GET /bank-accounts` | `invoices:payments` | |
 | `PUT /bank-accounts/{account}/format` | `invoices:manage` | 400 on `format`; 404 an account never imported |
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |

@@ -494,6 +494,8 @@ export const invoicesCatalog = {
       "This cannot be done to this bank line: a reversal is handled, never applied or dismissed; a negative line is dismissed; only a duplicate is confirmed or kept.",
     "refusal.bank_transaction_applied":
       "Payments registered from this bank line still stand. Remove them first, then reopen the line.",
+    "refusal.bank_transaction_reversed":
+      "The bank reversed a payment of this bank line: the money went back, so the line is never applied again.",
     "refusal.reversal_payment_required":
       "Name the payment the bank took back, or say in the note why no payment is removed.",
     "refusal.allocation_not_an_invoice": "One of the allocations names a document that is not an issued invoice.",
@@ -1303,6 +1305,8 @@ export const invoicesCatalog = {
       "Dette kan ikke gjøres med denne banklinjen: en tilbakeføring håndteres og føres aldri eller avvises; en negativ linje avvises; bare et duplikat bekreftes eller beholdes.",
     "refusal.bank_transaction_applied":
       "Betalinger registrert fra denne banklinjen står fortsatt. Fjern dem først, og gjenåpne så linjen.",
+    "refusal.bank_transaction_reversed":
+      "Banken tilbakeførte en betaling fra denne banklinjen: pengene gikk tilbake, så linjen føres aldri på nytt.",
     "refusal.reversal_payment_required":
       "Oppgi betalingen banken tok tilbake, eller skriv i notatet hvorfor ingen betaling fjernes.",
     "refusal.allocation_not_an_invoice": "En av fordelingene viser til et dokument som ikke er en utstedt faktura.",

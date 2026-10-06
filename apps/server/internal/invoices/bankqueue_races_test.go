@@ -148,3 +148,43 @@ func TestBankQueue_ReversalRacesApply(t *testing.T) {
 		t.Errorf("Postgres broke %d deadlock(s)", after-before)
 	}
 }
+
+// TestBankQueue_TwoAppliesOfOneLine: two applies of one line, both judged
+// on the pool while it is an exception. A parks after the line's lock; B is
+// proved waiting on that lock (pg_blocking_pids). Released, A applies and
+// commits; B takes the lock, judges the line again — resolved now — and is
+// refused bank_transaction_not_open, rolled back. One set of payments, no
+// deadlock.
+func TestBankQueue_TwoAppliesOfOneLine(t *testing.T) {
+	h, _ := matchHarness(t, modtest.WithPoolMaxConns(2))
+	inv := kidInvoice(t, h)
+	toMatchDay(h)
+	c := importer(t, h)
+	_, ids := camtLines(t, h, c, "TWICE-APPLY", noKidEntry(6, 300, "Innbetaling", "ONE"))
+	line := ids["ONE"]
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+	hook, parked := parkEach()
+	restore := invoices.SetQueueAfterLineLock(hook)
+	defer restore()
+
+	aDone := startAction(c, line, "apply", applyBody(allocate(inv, 300)))
+	a := waitParked(t, "apply A", parked)
+	aPID := idleInTransaction(t, probeConn)
+	bDone := startAction(c, line, "apply", applyBody(allocate(inv, 300)))
+	bPID := newWaiter(t, probeConn)
+	if got := blockersOf(t, probeConn, bPID); !slices.Equal(got, []uint32{aPID}) {
+		t.Errorf("apply B waits on %v, want apply A %d", got, aPID)
+	}
+	close(a.release)
+	finished(t, "apply A", aDone, http.StatusOK)
+	b := waitParked(t, "apply B", parked)
+	close(b.release)
+	queueRefused(t, "apply B", finished(t, "apply B", bDone, http.StatusConflict), "bank_transaction_not_open")
+	if got := paymentsFrom(t, h, line); !slices.Equal(got, []string{paid(inv, "300.00", "camt054", "2026-10-06", "")}) {
+		t.Errorf("the line's payments = %v, want apply A's alone", got)
+	}
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("Postgres broke %d deadlock(s)", after-before)
+	}
+}
