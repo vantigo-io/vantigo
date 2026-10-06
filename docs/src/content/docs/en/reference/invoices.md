@@ -1199,8 +1199,8 @@ sent). So a surplus that was `refundDue` against the first letter is absorbed by
 interest a later letter claims on the same invoice. That is the same invoice's charges
 meeting each other, not a set-off against another invoice, which phase 4 does not do.
 
-**The block.** An issued invoice answers `charges` — `claimed` (the formula's first two
-lines), `waived` (every waiver's amount), `paid` (the live charge payments),
+**The block.** An issued invoice answers `charges` — `claimed` (the sent letters' fees
+and compensation and the latest one's cumulative interest, before waivers), `waived` (every waiver's amount), `paid` (the live charge payments),
 `outstanding` (never below zero) and `refundDue` only above zero — with `chargePayments`
 (every one, removed ones included with their removal, in the order the money arrived)
 and `waivers` (the first first). A draft and a credit note answer none of them: a credit
@@ -2232,12 +2232,15 @@ with their removal, the earliest first.
 **Its removal.** `POST /invoices/{id}/manual-deliveries/{deliveryId}/remove`
 (`invoices:issue`) takes a `reason` (1 to 200 characters, judged first), locks the
 invoice and reads the record after the lock: another document's is a 404, one removed
-already 409 **`delivery_removed`**. While a sent letter of the invoice carries a fee or the
-compensation not waived, or interest beyond what was waived, and no other delivery on or
-before the due date would remain, the record is relied on: 409
-**`delivery_relied_on`**. A mistaken record is corrected by waiving those charges
-`claimed_in_error` and removing it after; an e-mail or another record on or before the
-due date lets it go at once, and a record dated after the due date is never relied on.
+already 409 **`delivery_removed`**. While a letter of the invoice that carries its facts
+and is not withdrawn — sent, printed for the post, or being sent by e-mail — carries a
+fee or the compensation not waived, or interest beyond what was waived, and no other
+delivery on or before the due date would remain, the record is relied on: 409
+**`delivery_relied_on`**. A printed or in-flight letter counts as a sent one does, since
+its charges are on paper or on their way. A mistaken record is corrected by waiving those
+charges `claimed_in_error` once the letter is sent, and removing it after; an e-mail or
+another record on or before the due date lets it go at once, and a record dated after
+the due date is never relied on.
 The row is kept and counts for nothing. `tr_manual_deliveries_immutable` refuses a DELETE
 and every UPDATE but the removal, once, and the erase's blanking of the note;
 `tr_manual_deliveries_parent` reads the invoice `FOR SHARE`, refuses a row under anything

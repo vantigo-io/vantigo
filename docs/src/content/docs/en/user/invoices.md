@@ -671,8 +671,9 @@ be set — through the API for now; the screens come with the reminders themselv
 what its reminders claim — reminder fees, the compensation and late interest, kept apart
 from what the invoice itself is for — with the payments and waivers of those charges,
 and the deliveries recorded by hand that a charge needs when the invoice was handed over
-or posted rather than e-mailed or sent as EHF. Their screens come with reminders; until
-then they are in the API ([charges](/en/reference/invoices/#charges),
+or posted rather than e-mailed or sent as EHF. Such a record cannot be removed while a
+reminder — sent, printed or on its way — claims a charge that rests on it alone. Their
+screens come with reminders; until then they are in the API ([charges](/en/reference/invoices/#charges),
 [the delivery fact](/en/reference/invoices/#the-delivery-fact)).
 
 ## Sending a document by e-mail

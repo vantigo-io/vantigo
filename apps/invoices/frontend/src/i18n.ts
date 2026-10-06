@@ -479,7 +479,7 @@ export const invoicesCatalog = {
     "refusal.credit_note_no_reminders": "A credit note is never reminded of, so it has no charges or deliveries.",
     "refusal.delivery_removed": "This delivery record is already removed.",
     "refusal.delivery_relied_on":
-      "A sent reminder claims a charge that rests on this delivery, and no other delivery by the due date remains. Waive those charges as claimed in error first.",
+      "A reminder claims a charge that rests on this delivery, and no other delivery by the due date remains. Waive those charges as claimed in error first.",
     "workRefusal.source_not_invoiceable":
       "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
     "workRefusal.source_changed":
@@ -1268,7 +1268,7 @@ export const invoicesCatalog = {
     "refusal.credit_note_no_reminders": "En kreditnota purres aldri, så den har verken purrekrav eller leveringer.",
     "refusal.delivery_removed": "Denne leveringen er allerede fjernet.",
     "refusal.delivery_relied_on":
-      "En sendt purring krever noe som hviler på denne leveringen, og ingen annen levering innen forfall står igjen. Ettergi først de kravene som krevd ved en feil.",
+      "En purring krever noe som hviler på denne leveringen, og ingen annen levering innen forfall står igjen. Ettergi først kravene med begrunnelsen «krevd ved en feil».",
     "workRefusal.source_not_invoiceable":
       "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
     "workRefusal.source_changed":
