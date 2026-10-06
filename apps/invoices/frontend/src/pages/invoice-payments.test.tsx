@@ -198,6 +198,85 @@ describe("the payments card", () => {
     expect(within(card).queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument();
   });
 
+  // Where each payment came from (invoices payments and reminders design D2):
+  // by hand, or a line of an OCR giro or camt.054 file, named and linked to the
+  // Payments area for a caller who may open it. A bank line's payment may have
+  // no registering person on the wire, and the card never needs one.
+  it("PaymentsCard_ShowsTheSource", async () => {
+    const fromTheBank = () => {
+      const doc = partlyPaid();
+      const [removed, manual] = doc.payments ?? [];
+      return partlyPaid({
+        payments: [
+          removed,
+          manual,
+          {
+            id: 1003,
+            paidOn: "2026-09-11",
+            amount: 10,
+            currency: "NOK",
+            source: "ocr",
+            bankTransactionId: 3001,
+            reference: "0010017",
+            note: "",
+            registeredAt: "2026-09-12T08:00:00Z",
+          },
+          {
+            id: 1004,
+            paidOn: "2026-09-11",
+            amount: 5,
+            currency: "NOK",
+            source: "camt054",
+            bankTransactionId: 3002,
+            reference: "0010017",
+            note: "",
+            registeredAt: "2026-09-12T08:00:00Z",
+          },
+        ],
+      });
+    };
+    server(fromTheBank);
+    renderRoute("/invoices/1001");
+
+    await screen.findByTestId("payments-card");
+    expect(within(screen.getByTestId("payment-source-1002")).getByText("By hand")).toBeInTheDocument();
+    expect(within(screen.getByTestId("payment-source-1002")).queryByRole("link")).not.toBeInTheDocument();
+    const ocr = screen.getByTestId("payment-source-1003");
+    expect(within(ocr).getByText("OCR giro")).toBeInTheDocument();
+    expect(within(ocr).getByRole("link", { name: "Bank line 3001" })).toHaveAttribute("href", "/invoices/payments");
+    const camt = screen.getByTestId("payment-source-1004");
+    expect(within(camt).getByText("camt.054")).toBeInTheDocument();
+    expect(within(camt).getByRole("link", { name: "Bank line 3002" })).toBeInTheDocument();
+  });
+
+  it("names a bank line without a link for a reader who cannot open the Payments area", async () => {
+    server(
+      () =>
+        partlyPaid({
+          payments: [
+            {
+              id: 1003,
+              paidOn: "2026-09-11",
+              amount: 10,
+              currency: "NOK",
+              source: "ocr",
+              bankTransactionId: 3001,
+              reference: "0010017",
+              note: "",
+              registeredAt: "2026-09-12T08:00:00Z",
+            },
+          ],
+        }),
+      {},
+      { canRegisterPayments: false },
+    );
+    renderRoute("/invoices/1001");
+
+    const source = await screen.findByTestId("payment-source-1003");
+    expect(within(source).getByText("Bank line 3001")).toBeInTheDocument();
+    expect(within(source).queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it("is not on a credit note, which takes no payments", async () => {
     server(() =>
       issued({

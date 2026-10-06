@@ -1,5 +1,6 @@
 import "./i18n";
 
+export * from "./api/bank";
 export * from "./api/customers";
 export * from "./api/deductible";
 export * from "./api/invoices";
@@ -19,7 +20,9 @@ export * from "./lib/format";
 export * from "./lib/money";
 export * from "./lib/routes";
 export { IssueModal, type IssueModalProps } from "./pages/-issue-modal";
+export { BankFilePage, type BankFilePageProps } from "./pages/bank-file";
 export { InvoicePage, type InvoicePageProps } from "./pages/invoice";
 export { InvoicesPage, type InvoicesPageProps } from "./pages/invoices";
 export { JournalPage } from "./pages/journal";
+export { PaymentsPage, type PaymentsPageProps } from "./pages/payments";
 export { SettingsPage } from "./pages/settings";

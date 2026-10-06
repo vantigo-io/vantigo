@@ -1,10 +1,13 @@
-import { Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { Anchor, Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
+import { useNavigate } from "@tanstack/react-router";
+import { appUrl } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { InvoiceDocument } from "../api/invoices";
 import type { InvoicePayment } from "../api/payments";
 import "../i18n";
 import { useInvoiceFormat } from "../lib/format";
+import { PAYMENTS_ROUTE_PATH } from "../lib/routes";
 import { RegisterPaymentModal } from "../pages/-register-payment-modal";
 import { RemovePaymentModal } from "../pages/-remove-payment-modal";
 
@@ -23,13 +26,17 @@ const settled = new Set(["paid", "credited"]);
 /**
  * An issued invoice's payments (D2, D10): each registration with the day the
  * money arrived, the amount, the reference, the note and when it was
- * registered; a removed one struck through with its reason, since the record
- * is the point. "Register payment" is offered to a caller with
+ * registered, and where it came from — by hand, or a line of an OCR giro or
+ * camt.054 file, named, and linked to the Payments area for a caller who may
+ * open it (invoices payments and reminders design D2, D22); a removed one
+ * struck through with its reason, since the record is the point. Who
+ * registered a payment is not shown: a bank line's may have no person. "Register payment" is offered to a caller with
  * `invoices:payments` while something is left to pay, and "Remove" on each
  * live registration.
  */
 export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps) => {
   const { t, money, date, dateTime } = useInvoiceFormat();
+  const navigate = useNavigate() as (options: unknown) => void;
   const [registering, setRegistering] = useState(false);
   const [removing, setRemoving] = useState<InvoicePayment | null>(null);
   const payments = invoice.payments ?? [];
@@ -49,12 +56,13 @@ export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps)
             {t("noPayments")}
           </Text>
         ) : (
-          <Table.ScrollContainer minWidth={560}>
+          <Table.ScrollContainer minWidth={640}>
             <Table>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t("paidOn")}</Table.Th>
                   <Table.Th ta="right">{t("paymentAmount")}</Table.Th>
+                  <Table.Th>{t("paymentSource")}</Table.Th>
                   <Table.Th>{t("paymentReference")}</Table.Th>
                   <Table.Th>{t("note")}</Table.Th>
                   <Table.Th>{t("registeredAt")}</Table.Th>
@@ -71,6 +79,29 @@ export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps)
                       <Table.Td style={struck}>{date(p.paidOn)}</Table.Td>
                       <Table.Td ta="right" style={struck}>
                         {money(p.amount, p.currency)}
+                      </Table.Td>
+                      <Table.Td data-testid={`payment-source-${p.id}`}>
+                        <Text size="sm" style={struck}>
+                          {t(`paymentSource.${p.source}`)}
+                        </Text>
+                        {p.bankTransactionId !== undefined &&
+                          (canRegister ? (
+                            <Anchor
+                              size="xs"
+                              href={appUrl(PAYMENTS_ROUTE_PATH)}
+                              onClick={(event) => {
+                                if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                                event.preventDefault();
+                                navigate({ to: PAYMENTS_ROUTE_PATH });
+                              }}
+                            >
+                              {t("paymentBankLine", { id: p.bankTransactionId })}
+                            </Anchor>
+                          ) : (
+                            <Text size="xs" c="dimmed">
+                              {t("paymentBankLine", { id: p.bankTransactionId })}
+                            </Text>
+                          ))}
                       </Table.Td>
                       <Table.Td style={struck}>{p.reference}</Table.Td>
                       <Table.Td>

@@ -28,6 +28,18 @@ describe("the invoices route tree", () => {
     expect(ids).not.toContain("/invoices/$invoiceId");
   });
 
+  // The Payments area and a bank file's page are static segments beside a
+  // document's id as well.
+  it.each([
+    ["/invoices/payments", "/invoices/payments/"],
+    ["/invoices/payments/files/1001", "/invoices/payments/files/$bankFileId"],
+  ])("matches %s on the Payments route, not a document's", (path, routeId) => {
+    const ids = matchedRouteIds(path);
+
+    expect(ids).toContain(routeId);
+    expect(ids).not.toContain("/invoices/$invoiceId");
+  });
+
   it("still matches a document id on the dynamic route", () => {
     expect(matchedRouteIds("/invoices/1001")).toContain("/invoices/$invoiceId");
   });

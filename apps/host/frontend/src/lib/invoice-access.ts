@@ -9,8 +9,9 @@ import { enabledModuleKeys } from "./enabled-modules";
  * What the Invoices pages need from the host's session: whether the caller
  * may search customers — the buyer picker reads the customers module's list,
  * which needs `customers:view` (invoices foundation design D1) — whether it
- * may make a draft (`invoices:create`, the customer page's Invoices tab), and
- * the name a new draft's "Vår ref." is prefilled with. Both queries share the
+ * may make a draft (`invoices:create`, the customer page's Invoices tab), the
+ * name a new draft's "Vår ref." is prefilled with, and the caller's id, so the
+ * Payments area says "you" of an import or an event of theirs. Both queries share the
  * root layout's keys, so they read its cache rather than refetching.
  */
 export const useInvoiceAccess = () => {
@@ -30,6 +31,7 @@ export const useInvoiceAccess = () => {
       hasPermissions(authorization.data?.permissions, ["invoices:access"]) &&
       hasPermissions(authorization.data?.permissions, ["invoices:create"]),
     userDisplayName: session.data?.user.displayName,
+    userId: session.data?.user.id,
   };
 };
 

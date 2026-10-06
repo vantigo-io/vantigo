@@ -13,8 +13,11 @@ import {
 import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import "../i18n";
-import { INVOICE_ROUTE_PATH } from "../lib/routes";
+import { BANK_FILE_ROUTE_PATH, INVOICE_ROUTE_PATH, PAYMENTS_ROUTE_PATH } from "../lib/routes";
 import { InvoicesPage } from "../pages/invoices";
+import { PaymentsPage } from "../pages/payments";
+import { BankFileRoute } from "./bank-file-route";
+import { CURRENT_USER_ID } from "./fixtures";
 import { InvoiceRoute } from "./invoice-route";
 
 /**
@@ -34,6 +37,16 @@ const makeRouteTree = (canViewCustomers: boolean) => {
       getParentRoute: () => rootRoute,
       path: INVOICE_ROUTE_PATH,
       component: () => <InvoiceRoute canViewCustomers={canViewCustomers} />,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: PAYMENTS_ROUTE_PATH,
+      component: () => <PaymentsPage currentUserId={CURRENT_USER_ID} />,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: BANK_FILE_ROUTE_PATH,
+      component: BankFileRoute,
     }),
   ]);
 };

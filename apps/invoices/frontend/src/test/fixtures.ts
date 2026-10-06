@@ -1001,6 +1001,79 @@ export const bankTransaction = (overrides: Partial<BankTransaction> = {}): BankT
   ...overrides,
 });
 
+/** The signed-in user the page tests mount the Payments area for: the uploader of the fixtures' files. */
+export const CURRENT_USER_ID = "7d0d6b5e-1d3a-4c4e-9f8e-2b9a0c1d2e3f";
+
+/** Someone else, who uploaded an earlier file. */
+export const OTHER_USER_ID = "0b6e4c1a-5f7d-4d8e-9a3b-2c1d0e9f8a7b";
+
+type BankFile = components["schemas"]["InvoicesBankFile"];
+type BankImportResult = components["schemas"]["InvoicesBankImportResult"];
+type BankAccount = components["schemas"]["InvoicesBankAccount"];
+
+/**
+ * One imported camt.054 file as GET /bank-files sends it — a wire literal:
+ * uploaded by the signed-in user at 08:00 on 12 September, four payments to
+ * one account, three matched and one queued, nothing pending or ignored.
+ */
+export const bankFile = (overrides: Partial<BankFile> = {}): BankFile => ({
+  id: 1001,
+  format: "camt054",
+  sha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  accounts: ["86011117947"],
+  firstBookedOn: "2026-09-10",
+  lastBookedOn: "2026-09-11",
+  transactions: 4,
+  duplicates: 0,
+  ignored: 0,
+  ignoredKinds: { debit: 0, notBooked: 0, cardInformation: 0, zeroAmount: 0 },
+  pending: 0,
+  exceptions: 1,
+  matched: 3,
+  uploadedAt: "2026-09-12T08:00:00Z",
+  uploadedBy: CURRENT_USER_ID,
+  ...overrides,
+});
+
+/** POST /bank-files' 201 for that file: three matched for 3 750, one queued for 1 250. */
+export const bankImportResult = (overrides: Partial<BankImportResult> = {}): BankImportResult => ({
+  file: bankFile(),
+  transactions: 4,
+  matched: 3,
+  matchedAmount: 3750,
+  exceptions: 1,
+  exceptionsAmount: 1250,
+  duplicates: 0,
+  ignored: { debit: 0, notBooked: 0, cardInformation: 0, zeroAmount: 0 },
+  pending: 0,
+  ...overrides,
+});
+
+/** One account as GET /bank-accounts sends it: camt.054 since its first file, no earlier format. */
+export const bankAccount = (overrides: Partial<BankAccount> = {}): BankAccount => ({
+  account: "86011117947",
+  format: "camt054",
+  setAt: "2026-09-12T08:00:00Z",
+  setBy: CURRENT_USER_ID,
+  lastFileId: 1001,
+  lastUploadedAt: "2026-09-12T08:00:00Z",
+  lastBookedOn: "2026-09-11",
+  ...overrides,
+});
+
+/** One page of the codebase's paging around `data`. */
+export const pageOf = <T>(data: T[]) => ({
+  data,
+  pagination: {
+    page: 1,
+    pageSize: 25,
+    totalCount: data.length,
+    totalPages: data.length > 0 ? 1 : 0,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  },
+});
+
 /** A month's journal: numbers 1000 to 1002, a credit note signed negative. */
 export const journal = (overrides: Partial<InvoiceJournal> = {}): InvoiceJournal => ({
   data: [

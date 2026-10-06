@@ -7,12 +7,14 @@ sources:
   - apps/invoices/frontend
   - apps/host/frontend/src/routes/customers/-customer-invoices-tab.tsx
   - apps/host/frontend/src/lib/invoice-access.ts
+  - apps/host/frontend/src/routes/invoices
 ---
 
 The Invoices app issues the sales documents of your bookkeeping: a draft becomes a
 numbered invoice or credit note the moment it is issued, gets a PDF, and from then on
-never changes. The app has three areas in its sidebar: **Invoices**, **Invoice
-journal** and **Invoice settings**. Every amount is in NOK in this phase. An invoice is
+never changes. The app has four areas in its sidebar: **Invoices**, **Invoice
+journal**, **Payments** — the bank's files and the exception queue, shown only with
+`invoices:payments` — and **Invoice settings**. Every amount is in NOK in this phase. An invoice is
 handed over as a PDF — by download or by e-mail — or as an EHF e-invoice over the Peppol
 network, once your installation is set up for it
 ([what the law asks](/en/reference/invoices/#the-law-in-one-page)).
@@ -633,10 +635,9 @@ the file as the one who registered it. Every payment records where it came from:
 registered by hand, or taken from a line of an OCR giro or camt.054 file. A payment
 matching cannot place — no KID, a KID no invoice carries, more than is left to pay, or
 one that may repeat a payment already registered — is kept for a person and not
-registered. Someone with `invoices:payments` deals with it through the exception queue,
-until its screen arrives through the API
-([the exception queue](/en/reference/invoices/#the-exception-queue)): apply it to one or
-more invoices and their reminder charges, with suggestions — an invoice whose number is in
+registered. Someone with `invoices:payments` deals with it in the exception queue on the
+**Payments** page ([importing payments from the bank](#importing-payments-from-the-bank),
+[the exception queue](#the-exception-queue)): apply it to one or more invoices and their reminder charges, with suggestions — an invoice whose number is in
 the payment's text, one whose open amount it equals, one of the customer who paid from the
 same account before; dismiss it as not a customer payment, with a note; for a reversal,
 remove the payment the bank took back; confirm a duplicate or keep it as a payment of its
@@ -657,7 +658,9 @@ Click **Register payment** — offered while something is left to pay — and fi
   An overpayment is refused, with the open amount named.
 - **Reference** (the bank's or the payer's) and **Note**, both optional.
 
-Click **Register**. The table lists each payment's **Paid on**, **Amount**,
+Click **Register**. The table lists each payment's **Paid on**, **Amount**, its
+**Source** — **By hand**, **OCR giro** or **camt.054**, a bank's payment naming its
+**Bank line**, linked to **Payments** for someone with `invoices:payments` — its
 **Reference**, **Note** and when it was **Registered**, and the totals gain **Paid** and
 **Open** — the total less what is credited and paid. A payment of exactly the open
 amount makes the invoice **Paid**; a smaller one makes it **Partially paid**, or leaves
@@ -668,6 +671,142 @@ A wrong registration is never edited: click **Remove** beside it, give a **Reaso
 the dialog **Remove the payment**, and confirm. *The payment stays on the invoice,
 struck through with the reason. A removal cannot be undone; register the payment again
 if it was right after all.*
+
+## Importing payments from the bank
+
+Open **Payments** in the sidebar. It is shown only to someone with `invoices:payments`
+(a reader with `invoices:access` alone does not see it), and it has four parts:
+**Import a bank file**, **Bank accounts**, **Imported files** and **The exception
+queue**.
+
+**Where the files come from.** The bank gives you OCR giro files under an OCR/KID
+agreement, or camt.054 notifications of incoming payments; download them from the online
+bank ([Payments from the bank](/en/admin/payments/) says which agreement and where). Never
+edit a file by hand.
+
+**Import a file.** Under **Import a bank file**, choose the file in **Bank file** and click
+**Import**. The whole file is checked first, and nothing of it is imported if any of it is
+wrong. The page then says why, under *The bank file was not imported*: the file is not an
+OCR giro or camt.054 file, is too large or breaks its own rules (with where in the file);
+an account it names is neither your **Bank account** nor one an issued invoice printed;
+the account's files are imported in the other format; or there is no document store to
+keep the file in. A file imported before is refused too, naming the earlier import — its
+file number, when it was uploaded and by whom — with a link, **Open file**, to it.
+
+**What the result says.** After an import, **The import's result** counts the file's
+**Payments in the file**: those **Matched to invoices**, with the amount registered as
+payments; those **In the exception queue**, with the amount waiting there; those
+**Already imported, kept as duplicates** — payments an earlier or overlapping file had
+brought; those **Not yet matched**; and those **Ignored**, by kind — card information in
+an OCR file, debits that are not reversals, entries not booked, amounts of zero. Each
+matched payment is registered against its invoice — the open amount first, any reminder
+charges with the rest — on the day the bank booked it, with the KID as its reference and
+you as the one who registered it. **Open the file** shows the file's own page, with every
+payment it brought.
+
+**Match the rest.** Matching runs right after the import, one payment at a time. If it
+stops early, the file stays imported and some of its payments are **Not yet matched**:
+click **Match the rest** — in the result, on the file's row under **Imported files**, or
+on the file's page — and you are the one registering them.
+
+**Imported files** lists every file, newest first: its format, when and by whom it was
+uploaded, the booking days it covers, and its payments counted — matched, in the queue,
+duplicates and not yet matched.
+
+**The format of each account.** **Bank accounts** lists every account a file was imported
+for: its format — **OCR giro** or **camt.054**, set by the account's first file — its latest
+file and latest booking day, and, after a change, the earlier format with its cutover. A
+file of the other format for an account is refused. To switch an account — say from OCR
+giro to camt.054 — someone with `invoices:manage` clicks **Change the format** beside it,
+chooses the **New format** and clicks **Change the format**. The dialog explains the
+**cutover** first: Vantigo records the latest booking day of the account's payments in the
+old format, and holds back a payment of the new format booked on or before that day as a
+possible duplicate, since the old format may already have brought it in. Make the change
+once the last file in the old format is imported. Without `invoices:manage` the formats
+are shown, and the page says that changing one needs it.
+
+**A genuine second payment that looks like a repeat.** A payment is held back as **A
+possible duplicate**, and not registered, when a payment from **another file** to the
+same account, booked on the same day, of the same amount and with the same KID is
+already registered — because that is what one payment looks like in two of the bank's
+files: an intraday and an end-of-day notification, or an OCR giro and a camt.054 file of
+the same day. So a customer who really does pay the same amount twice on one day with
+the same KID, the two payments arriving in different files, has the second one queued.
+Check the account statement; if both payments are real, find the line in the exception
+queue and **Apply** it — to the invoice, its reminder charges or another invoice — as you
+would any other payment. Two such payments in the same file are both registered.
+
+## The exception queue
+
+**The exception queue**, at the foot of **Payments**, holds the payments matching could
+not place, and the duplicates — what waits for a person. It opens on **In the queue**;
+filter it by **Status**, **Reason** and **File**, or tick **Only payments with an
+unapplied rest** to see the payments applied in part, matched and since removed, or
+dismissed as money owed back. Each line shows the day the bank booked it, its KID or else
+its text, the debtor and their account, the amount, what is applied — each payment linked
+to its invoice, a removed one struck through — what is unapplied, and its state and reason.
+**Details** shows what happened to the line, each step with when and by whom, the
+invoices it may pay, and, for a possible duplicate, the line it may repeat: that line's
+file, booking day and payments, and whether the bank reversed a payment of it.
+
+Each reason in plain words, and what to do:
+
+| Reason | What it means | What to do |
+| --- | --- | --- |
+| **The KID is not valid** | the KID's check digit is wrong | **Apply** it by hand, or dismiss it |
+| **No invoice has this KID** | another system's or another agreement's KID | **Apply** it, or dismiss it |
+| **The invoice is credited** | the KID's invoice is credited in full | **Not a customer payment**, with a note: the money is owed back, and refunded outside Vantigo |
+| **Nothing is left to pay** | the invoice is paid, and the payment is more than its reminder charges | the same |
+| **More than is owed** | more than the open amount and the charges | **Apply** what is owed to the invoice and its charges; the rest stays unapplied |
+| **No KID** | the payment carries no KID | **Apply** it to one or more invoices from the suggestions |
+| **A negative amount** | an OCR line with a minus sign | **Not a customer payment**, with a note |
+| **A reversal** | the bank took a payment back | **Handle reversal** |
+| **A Vipps payout** | a payout from Vipps, not a customer's payment | **Not a customer payment** |
+| **Paid before the invoice was issued** | booked before the KID's invoice was issued | **Apply** it after checking, or dismiss it |
+| **Paid into another account** | not into the account the invoice printed | **Apply** it after checking, or dismiss it |
+| **A possible duplicate** | the account's cutover, or the same payment already registered from another file | **Confirm duplicate**, or **Apply** it as a payment of its own |
+| **Its payment was removed** | a matched payment whose registrations were all removed, reopened | **Apply** it again, or dismiss it |
+| status **Duplicate** | an earlier or overlapping file brought the same line | **Confirm duplicate**, or **Treat as distinct** |
+
+**Apply.** The dialog **Apply line …** opens with the invoices the payment may pay — the
+one its KID named, and the suggestions: an invoice whose number is in the payment's text,
+one whose open amount is the payment's amount, an open invoice of a customer who paid from
+the same account before — filled in order, each with up to its open amount, until the
+payment runs out. Add another with **Add an invoice by its number**, or remove one. For
+each invoice enter the **Principal** and the **Charges** — the reminder charges — it pays;
+a payment can pay the charges alone of an invoice that is already paid. The total below
+says how much is applied and how much stays unapplied, and allocations that add up to more
+than is left of the payment are refused in the dialog before anything is sent. Click
+**Apply**. A refusal is said in words and nothing is applied: an amount over an invoice's
+open amount names the invoice and that amount, a charge payment over the charges
+outstanding names what is outstanding, and an invoice issued after the bank booked the
+payment cannot be paid by it. What is not applied stays visible on the line: Vantigo keeps
+no credit balance and makes no refund.
+
+**Not a customer payment.** For a Vipps payout, a payment refunded outside Vantigo or
+another system's KID: say what it is, or what was done about it, in the **Note**, and
+click **Dismiss**.
+
+**Handle reversal.** The dialog offers the payments the reversal may take back — those
+registered from bank lines of the same account and amount, booked on or before it. Tick
+the one it reverses, or choose **No payment is removed; the note says why** and write the
+note, then click **Handle the reversal**. Each chosen payment is removed with the reason
+"Reversed by the bank", and the line it came from is never applied again. Without a
+payment or a note the reversal is refused, in words. A reversal that names the wrong
+payment cannot be undone: register that payment again by hand.
+
+**Duplicates.** **Confirm duplicate**, with an optional note, keeps the line and registers
+nothing. **Treat as distinct** makes a duplicate row a payment of its own, back in the
+queue as a possible duplicate, ready to **Apply**; it is refused when the bank reversed a
+payment of the line it repeats, since that money went back.
+
+**Reopen.** A resolved line — or a matched one whose payments were all removed — goes back
+to the queue with **Reopen**, with its reason. It is refused while a payment registered from
+the line still stands (remove it on the invoice first), and for a line the bank reversed a
+payment of.
+
+Every action is checked again as it is made: a line someone else dealt with meanwhile is
+refused, in words, and nothing changes.
 
 ## Reminders
 
@@ -974,5 +1113,5 @@ No built-in role holds these; an Owner holds everything
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission | `invoices:issue` |
-| Register a payment or remove one with a reason; set a customer's reminder policy; preview and make reminder runs; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file | `invoices:payments` |
-| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings | `invoices:manage` |
+| Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file | `invoices:payments` |
+| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings; change a bank account's file format under **Payments** | `invoices:manage` |
