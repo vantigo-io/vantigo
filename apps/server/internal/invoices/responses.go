@@ -387,6 +387,11 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			if err := settle(ctx, q, inv, today, &resp); err != nil {
 				return gen.InvoicesInvoiceResponse{}, err
 			}
+			// Its charges, apart from the principal, and its manual
+			// deliveries (invoices payments and reminders design D8, D9).
+			if err := withCharges(ctx, q, inv, &resp); err != nil {
+				return gen.InvoicesInvoiceResponse{}, err
+			}
 		}
 		return resp, creditLinks(ctx, q, inv, &resp, nil)
 	}

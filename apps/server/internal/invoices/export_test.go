@@ -367,3 +367,11 @@ func EngineSettingsForTest(ctx context.Context, db store.DBTX) (reminderrules.Se
 	rates, err := ratesOf(rows)
 	return settings, rates, err
 }
+
+// DeliveriesOf is deliveriesOf over db (Task 7): the Oslo days of an
+// invoice's live deliveries — each e-mail, each delivered EHF transmission
+// and each manual delivery not removed — as the engine's delivery fact reads
+// them.
+func DeliveriesOf(ctx context.Context, db store.DBTX, invoiceID int64) ([]time.Time, error) {
+	return deliveriesOf(ctx, store.New(db), invoiceID)
+}

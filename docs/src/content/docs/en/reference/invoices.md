@@ -99,6 +99,9 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.bank_transactions` | One line of a bank file as the bank wrote it — the line reference, the format, the receiving account, the direction, `negative`, the booking, value and ordering days, the amount (above 0, NOK), the KID, the remittance text, the debtor's name and account, the archive reference, the bank's code — its `fingerprint` and `ordinal`, `duplicate_of_id` when it repeats a live line, and its state: `status` (`pending`, `matched`, `exception`, `resolved` or `duplicate`), the `reason` it was queued for, the suggested invoice and the resolution. One live line per account and fingerprint (`ux_bank_transactions_fingerprint`). Never deleted; only the state columns change, never back to `pending`, and a reason once set stays. |
 | `invoices.bank_transaction_events` | What happened to a line, by whom and when — matched, queued and the queue's actions — with a reason and a note. Insert-only, but for its note blanked by an erase. |
 | `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient (`''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
+| `invoices.manual_deliveries` | A delivery recorded by hand ([The delivery fact](#the-delivery-fact)): the invoice, `kind` (`handed_over` or `posted`), `delivered_on`, a note (`''` once the customer is anonymised), who recorded it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
+| `invoices.charge_payments` | Money received against an invoice's charges, never its principal ([Charges](#charges)): the day, the amount and the currency (the invoice's), `source` (`manual`, `ocr` or `camt054`) and the bank line of one taken from a bank file (`ck_charge_payments_origin`: a line exactly when the source is not `manual`), the reference, a note (blanked as the payments' is), who registered it and when, and the removal. Never deleted; never changed but by the removal, once, and that blanking. |
+| `invoices.charge_waivers` | A charge a sent letter claimed, released ([Charges](#charges)): the invoice, the letter (`reminder_id`, the same invoice's by a composite foreign key), `kind` (`fee`, `compensation` or `interest`), the amount, `interest_through` (interest only: the letter's sent day), the reason (`objection_upheld`, `claimed_in_error`, `goodwill` or `deadline_met`), a note, who and when. One fee or compensation waiver per letter (`ux_charge_waivers_letter_kind`); interest waivers may follow one another. Insert-only; the erase blanks the note. |
 | `invoices.erased_customers` | The customers this module has anonymised, by id, with when: the marker a send and the delivery, payment and transmission triggers read. Never removed. |
 | `invoices.access_point_credentials` | One row (`id = 1`): the access point provider (`storecove`), its settings that are not secret (`settings_json`), the API key sealed by the secrets box, `rejected_at` once the provider refused the key, and `updated_at`. Kept off the settings row every issue reads `FOR SHARE`. |
 | `invoices.transmissions` | One EHF transmission of an issued document: the provider, the idempotency key, the sender's and receiver's Peppol ids, the document type and process, the submitted UBL's object key and SHA-256 and the PDF's SHA-256, the status (`queued`, `submitted`, `delivered`, `failed`, `unconfirmed`, `cancelled`), the provider's reference, the evidence's key and SHA-256, the attempt counters and the next attempt, the crash marker `submit_attempted_at`, the worker's lease, the last error, the receiver lookup it was queued under, the timestamps of each state, and the resolution of an `unconfirmed` row — a person's, with who and a required note, or the worker's own when the provider answers at last, with a note and no user (`ck_transmissions_resolution`). Every completion of a worker's claim names the status the claim saw, so a row the events worker moved meanwhile is left alone, never refused. Never deleted; only its state columns change, a failed or cancelled row not at all, and a delivered row only its lease, cadence and — once — its evidence. A trigger refuses one under a draft (`invoices: a transmission needs an issued document`) or for an anonymised customer (`invoices: the customer is anonymised`); `ux_transmissions_active` allows one queued, submitted, delivered or unconfirmed transmission per document. |
@@ -1156,6 +1159,110 @@ the other filters, and only an issued invoice can match it. Each list item answe
 `state` and, on an issued invoice, `openAmount`. The list's order is unchanged: there is
 no sort by state.
 
+## Charges
+
+Phase 4 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
+D9) adds what a reminder claims beside the invoice — a reminder fee or the compensation,
+and late interest — and keeps it apart from the invoice's own amount.
+
+**Not principal.** Fees and interest are never folded into the principal
+(Finanstilsynet's letter of 2020): the open amount, the state and the payments
+([Payments and the state of an invoice](#payments-and-the-state-of-an-invoice)) stay
+principal-only, and nothing here changes them. What a letter claims lives on the letter,
+written when it is sent: its `fee` (the reminder fee, `fee_kind = reminder_fee`) or its
+`compensation` (the § 3a compensation, `fee_kind = compensation`), never both, and its
+`interest`, the cumulative late interest from the day after the due date to the letter's
+date. **Only a sent letter claims**: one still queued, awaiting print, printed or failed
+claims nothing yet, a withdrawn one never.
+
+**What is outstanding.** An invoice's charges outstanding are
+
+```text
+  Σ fee + Σ compensation over its sent letters − their waivers
++ the latest sent letter's cumulative interest − Σ interest waivers
+− Σ its live charge payments
+```
+
+— the same terms a letter's own total states, so the letter and the invoice never
+disagree. The formula is `reminderrules.Charges`, one pure function, which the
+document and every charges write call. Below zero — a charge paid, then waived — the
+invoice answers **`refundDue`**, what is owed back, and nothing is outstanding; the
+refund is made outside Vantigo.
+
+**Allocation within charges.** A charge payment pays the fees and the compensation
+first, the oldest letter first, each net of its waivers, then interest — at most the
+latest sent letter's interest less the interest waivers, so no payment is ever counted
+as interest twice — and what is left is `refundDue`. The allocation is **recomputed over
+every live charge payment** whenever it is read, and **each letter freezes the figures it
+printed** (its `charges_earlier`, `interest_paid` and total, as they stood when it was
+sent). So a surplus that was `refundDue` against the first letter is absorbed by the
+interest a later letter claims on the same invoice. That is the same invoice's charges
+meeting each other, not a set-off against another invoice, which phase 4 does not do.
+
+**The block.** An issued invoice answers `charges` — `claimed` (the formula's first two
+lines), `waived` (every waiver's amount), `paid` (the live charge payments),
+`outstanding` (never below zero) and `refundDue` only above zero — with `chargePayments`
+(every one, removed ones included with their removal, in the order the money arrived)
+and `waivers` (the first first). A draft and a credit note answer none of them: a credit
+note is never reminded of.
+
+**Charge payments.** `POST /invoices/{id}/charge-payments` (`invoices:payments`)
+registers money received against the charges: a payment's fields and rules
+([Payments](#payments-and-the-state-of-an-invoice)) — 404; 409 `credit_note_no_payments`
+for a credit note, draft or issued, and `invoice_draft` for an invoice draft, judged
+before the body; 400 on `paidOn` (from the issue date to today, Oslo), `amount` (above 0,
+two decimals, the document bound), `reference` or `note`. Then one transaction locks the
+invoice `FOR UPDATE` — the only row it locks — reads the sent letters, the waivers and
+the live charge payments after the lock and refuses 409 **`no_charges_outstanding`** when
+nothing is outstanding (no letter sent, everything waived or paid, or a refund due) and
+409 **`charge_payment_exceeds_outstanding`** above what is, its problem carrying
+**`chargesOutstanding`**. The currency is the invoice's. A charge payment registered by
+hand is `source = manual`; `ocr` and `camt054` name the bank line it was taken from
+(`bank_transaction_id`, `ck_charge_payments_origin`). `POST
+/invoices/{id}/charge-payments/{chargePaymentId}/remove` takes a `reason` and removes one
+as a payment is removed: the reason judged first (400), the invoice locked, then the
+charge payment read — another document's is a 404, one removed already 409
+`payment_removed`. A removal of a charge payment taken from a bank line writes nothing to
+the line. `tr_charge_payments_immutable` refuses a DELETE and every UPDATE but the removal,
+once, and the erase's blanking of the note; `tr_charge_payments_parent` refuses a row
+under anything but an issued invoice and blanks the note of an anonymised customer's.
+
+**Waivers and their reasons.** `POST /invoices/{id}/charges/waive`
+(`invoices:payments`) takes `{waivers: [{reminderId, kind}], reason, note}` — one to 50
+waivers, `kind` `fee`, `compensation` or `interest`, `reason` **`objection_upheld`** (the
+debtor's objection was right), **`claimed_in_error`** or **`goodwill`**, and a note of at
+most 500 characters; anything else is a 400. The fourth reason, **`deadline_met`**, is reserved
+for the bank match (a fee claimed after a deadline the payments in fact met) and is never
+taken from a person. 404; 409 `credit_note_no_reminders`, `invoice_draft`. Then, under the
+invoice's lock, each waiver is judged in order against what the earlier ones left, and
+one refusal writes none of them:
+
+- a letter that is not the invoice's is a 404;
+- **a fee or the compensation is waived whole** — whatever was paid of it, which then
+  becomes a refund due — once per letter (`ux_charge_waivers_letter_kind`); it is 409
+  **`charge_not_claimed`** when the letter was not sent, claimed no such charge, or it is
+  waived already;
+- **interest is waived as an amount**: the interest the latest sent letter claimed less
+  every earlier interest waiver and the charge payments allocated to interest — what is
+  claimed and unpaid, nothing accrued since. It names the latest sent letter, and the
+  waiver records that letter's sent day as `interest_through`. An earlier letter, or no
+  interest left unpaid, is `charge_not_claimed`. Interest waivers may follow one another:
+  20 claimed and 12 paid waives 8; a later letter claiming 33 waives 33 − 8 − 12 = 13.
+
+A waived charge leaves the charges outstanding and every later letter's
+`charges_earlier`; the letters themselves are history and keep what they said. A waiver is never removed or changed
+(`tr_charge_waivers_immutable`; the erase blanks its note), its letter is the same
+invoice's (the composite foreign key onto `(id, invoice_id)` of the reminders), and
+`tr_charge_waivers_parent` refuses one under anything but an issued invoice.
+
+**VAT and bookkeeping.** A statutory fee and late interest are outside the VAT base
+(merverdiavgiftsloven § 4-1 (2) b and c); the § 3a compensation very likely too — that
+reading is **unconfirmed**. A reminder takes no number from the invoice series and is not
+treated as a salgsdokument — also **unconfirmed** as a statement, an inference from
+bokføringsforskriften § 5-1-1. The sent letter and its row are the documentation of the
+claim, and a waiver the documentation of its release (bokføringsloven § 10). Charges are
+not exported in phase 4.
+
 ## The PDF
 
 **The currency is on the page** (§ 5-1-1 nr. 6): the line amounts' header reads
@@ -2096,6 +2203,46 @@ as the stricter row's author's, at the merge's time. A person's export carries t
 policy, and their anonymisation deletes it ([Retention and personal
 data](#retention-and-personal-data)).
 
+### The delivery fact
+
+An invoice that was not validly delivered does not fall due, and a reminder fee on it is
+invalid (Finansklagenemnda, FinKN 2017-492). **A charge — a fee, the compensation or
+interest — needs a recorded delivery on or before the due date**, and a delivery after
+the due date counts as none. Three kinds count, each by its day in Oslo:
+
+- an **e-mail** that handed the invoice over (`invoices.deliveries`), by the Oslo day of
+  its `sent_at` — 23:30 in Oslo on the due date counts, 00:30 the day after does not;
+- an **EHF transmission** `delivered`, by the Oslo day of its `delivered_at`; a queued,
+  failed, unconfirmed or cancelled one is not a delivery;
+- a **manual delivery** not removed, by its `delivered_on`.
+
+Without one, the invoice is not due: the reminder engine offers only fee-free reminders,
+at most `max(reminders_before_notice, 1)` of them, and blocks the collection notice and
+the hand-off `not_delivered` until a delivery is recorded.
+
+**A manual delivery** records an invoice handed over or posted, for an invoice that went
+on paper or by hand. `POST /invoices/{id}/manual-deliveries` (`invoices:issue`) takes
+`{kind, deliveredOn, note?}`: 404; 409 `credit_note_no_reminders` for a credit note,
+draft or issued, and `invoice_draft` for an invoice draft; 400 on `kind` (`handed_over`
+or `posted`), `deliveredOn` (from the issue date to today, Oslo) and `note` (at most 500
+characters, trimmed). One transaction locks the invoice and inserts the record with who
+and when. An issued invoice answers `manualDeliveries`, every one, removed ones included
+with their removal, the earliest first.
+
+**Its removal.** `POST /invoices/{id}/manual-deliveries/{deliveryId}/remove`
+(`invoices:issue`) takes a `reason` (1 to 200 characters, judged first), locks the
+invoice and reads the record after the lock: another document's is a 404, one removed
+already 409 **`delivery_removed`**. While a sent letter of the invoice carries a fee or the
+compensation not waived, or interest beyond what was waived, and no other delivery on or
+before the due date would remain, the record is relied on: 409
+**`delivery_relied_on`**. A mistaken record is corrected by waiving those charges
+`claimed_in_error` and removing it after; an e-mail or another record on or before the
+due date lets it go at once, and a record dated after the due date is never relied on.
+The row is kept and counts for nothing. `tr_manual_deliveries_immutable` refuses a DELETE
+and every UPDATE but the removal, once, and the erase's blanking of the note;
+`tr_manual_deliveries_parent` reads the invoice `FOR SHARE`, refuses a row under anything
+but an issued invoice, and blanks the note of an anonymised customer's.
+
 ## The journal
 
 `GET /invoices/journal?from&to` lists the issued documents with an issue date in the
@@ -2333,11 +2480,11 @@ No built-in role holds any of these; Owner has the wildcard.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings and a customer's reminder policy. |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings and a customer's reminder policy. |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
-| `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one. |
+| `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)). |
 | `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
-| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; set a customer's reminder policy — whether, and with what charges, they are reminded. |
+| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)). |
 
 `invoices:payments` is sensitive because a registration changes what the company says it
 is owed, and a wrong one is corrected only by a removal that stays on record.
@@ -2421,6 +2568,11 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `GET /{id}/deductible` | `invoices:create` | 404; 409 `invoice_issued`, `credit_note_deducts_nothing` |
 | `POST /{id}/payments` | `invoices:payments` | 400 a body that does not decode; 404; 409 `credit_note_no_payments`, `invoice_draft`; 400 on the field; 409 `invoice_settled`, `payment_exceeds_open` (with `openAmount`) |
 | `POST /{id}/payments/{paymentId}/remove` | `invoices:payments` | 400 on `reason`; 404 the document, or a payment not its own; 409 `payment_removed` |
+| `POST /{id}/charge-payments` | `invoices:payments` | 400 a body that does not decode; 404; 409 `credit_note_no_payments`, `invoice_draft`; 400 on the field; 409 `no_charges_outstanding`, `charge_payment_exceeds_outstanding` (with `chargesOutstanding`) |
+| `POST /{id}/charge-payments/{chargePaymentId}/remove` | `invoices:payments` | 400 on `reason`; 404 the document, or a charge payment not its own; 409 `payment_removed` |
+| `POST /{id}/charges/waive` | `invoices:payments` | 400 on `waivers`, `reason` or `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; 404 a letter not the document's; 409 `charge_not_claimed` |
+| `POST /{id}/manual-deliveries` | `invoices:issue` | 404; 409 `credit_note_no_reminders`, `invoice_draft`; 400 on `kind`, `deliveredOn` or `note` |
+| `POST /{id}/manual-deliveries/{deliveryId}/remove` | `invoices:issue` | 400 on `reason`; 404 the document, or a delivery not its own; 409 `delivery_removed`, `delivery_relied_on` |
 | `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable`; 500 a directory that fails, a missing or altered stored object, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |
 | `POST /{id}/send-ehf` | `invoices:issue` | 429 `rate_limited`; 503 `ehf_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`, `no_peppol_id`, `buyer_reference_missing`, `ehf_already_sent`; 503 `storage_unavailable`; 500 a missing or altered stored PDF, a render that fails or breaks an invariant; 409 `ehf_invalid` (with `rules`); 502 `peppol_lookup_failed`; 409 `peppol_not_receivable` (with `peppolRegistered`, `peppolCanReceive`); 500 a missing or altered reused UBL; 503 `storage_unavailable`; then under the lock 409 `customer_anonymised`, 503 `ehf_unavailable` when the credentials vanished, 409 `ehf_already_sent` |
 | `POST /{id}/transmissions/{transmissionId}/cancel` | `invoices:issue` | 404 the document, or a transmission not its own; 409 `transmission_not_cancellable` |

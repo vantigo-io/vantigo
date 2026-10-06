@@ -470,6 +470,16 @@ export const invoicesCatalog = {
     "refusal.bank_file_duplicate": "This bank file was imported before. Nothing was imported again.",
     "refusal.bank_import_format_mismatch":
       "This account's bank files are imported in the other format. Nothing was imported; a manager can change the account's format.",
+    "refusal.no_charges_outstanding":
+      "No reminder charge is outstanding on this invoice: none was claimed, or every charge is waived or paid.",
+    "refusal.charge_payment_exceeds_outstanding":
+      "The payment is more than the reminder charges outstanding. An overpayment cannot be registered.",
+    "refusal.charge_not_claimed":
+      "That charge cannot be waived: the reminder did not claim it, it is waived already, or no interest is left unpaid.",
+    "refusal.credit_note_no_reminders": "A credit note is never reminded of, so it has no charges or deliveries.",
+    "refusal.delivery_removed": "This delivery record is already removed.",
+    "refusal.delivery_relied_on":
+      "A sent reminder claims a charge that rests on this delivery, and no other delivery by the due date remains. Waive those charges as claimed in error first.",
     "workRefusal.source_not_invoiceable":
       "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
     "workRefusal.source_changed":
@@ -1249,6 +1259,16 @@ export const invoicesCatalog = {
     "refusal.bank_file_duplicate": "Denne bankfilen er importert før. Ingenting ble importert på nytt.",
     "refusal.bank_import_format_mismatch":
       "Bankfilene til denne kontoen importeres i det andre formatet. Ingenting ble importert; en administrator kan endre kontoens format.",
+    "refusal.no_charges_outstanding":
+      "Ingen purrekrav står ute på denne fakturaen: ingen er krevd, eller alle er ettergitt eller betalt.",
+    "refusal.charge_payment_exceeds_outstanding":
+      "Betalingen er større enn purrekravene som står ute. En overbetaling kan ikke registreres.",
+    "refusal.charge_not_claimed":
+      "Det kravet kan ikke ettergis: purringen krevde det ikke, det er allerede ettergitt, eller ingen renter står ubetalt.",
+    "refusal.credit_note_no_reminders": "En kreditnota purres aldri, så den har verken purrekrav eller leveringer.",
+    "refusal.delivery_removed": "Denne leveringen er allerede fjernet.",
+    "refusal.delivery_relied_on":
+      "En sendt purring krever noe som hviler på denne leveringen, og ingen annen levering innen forfall står igjen. Ettergi først de kravene som krevd ved en feil.",
     "workRefusal.source_not_invoiceable":
       "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
     "workRefusal.source_changed":
