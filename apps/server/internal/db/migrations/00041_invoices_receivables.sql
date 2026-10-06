@@ -212,7 +212,8 @@ CREATE TRIGGER tr_bank_transactions_immutable
     FOR EACH ROW EXECUTE FUNCTION invoices.refuse_bank_transaction_change();
 
 -- What happened to a line, by whom and when (D5): written by every match,
--- queueing and queue action.
+-- queueing and queue action — and reversed on a line whose payment a
+-- reversal took back, which then never applies its money again.
 CREATE TABLE invoices.bank_transaction_events (
     id                  bigint       GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     bank_transaction_id bigint       NOT NULL REFERENCES invoices.bank_transactions (id) ON DELETE RESTRICT,
@@ -222,7 +223,7 @@ CREATE TABLE invoices.bank_transaction_events (
     by_user_id          uuid         NOT NULL,
     at                  timestamptz  NOT NULL,
     CONSTRAINT ck_bank_transaction_events_event CHECK (event IN ('matched', 'queued', 'applied', 'dismissed',
-        'reversal_handled', 'reopened', 'duplicate_confirmed', 'treated_as_distinct')),
+        'reversal_handled', 'reopened', 'duplicate_confirmed', 'treated_as_distinct', 'reversed')),
     -- The lines' reasons (ck_bank_transactions_reason).
     CONSTRAINT ck_bank_transaction_events_reason CHECK (reason IS NULL OR reason IN ('kid_invalid', 'kid_unknown',
         'invoice_credited', 'invoice_settled', 'exceeds_open', 'no_kid', 'negative_amount', 'reversal',
