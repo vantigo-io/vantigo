@@ -721,6 +721,24 @@ grace at 3 days or more when your bank files are camt.054.
 due before a day, as the overdue list can — and must be, when more than 5 000 invoices are
 overdue.
 
+**Disputed invoices and the hand-off to a collection agency.** Someone with
+`invoices:payments` can put an invoice the customer disputes on hold: no reminder goes
+while it is held, the late interest keeps running, and payments are still registered.
+When the hold is lifted, Vantigo asks whether the objection was obviously groundless; if
+it was not, every reminder fee and compensation already claimed on the invoice is waived
+and none is claimed on it again. An invoice handed to a collection agency is recorded the
+same way — with the day, the agency and its case number — and Vantigo then sends it no
+more letters; a payment you receive directly is still registered, and you tell the agency
+about it. Vantigo refuses to record the hand-off of an invoice it has no delivery of by
+the due date until you confirm it; if the invoice was in fact delivered, record the
+delivery first. Holding or handing off an invoice withdraws its letters that have not gone
+yet, but not a printed letter, which may already be in the post, nor one being e-mailed at
+that moment: those are named so you can pull them. The collection file — one row per
+invoice, the amount owed apart from the fees and interest, and what was waived in a column
+of its own — is exported for the agency. The screens come with the invoice page's
+reminder cards; until then this is in the API
+([holds and the hand-off](/en/reference/invoices/#holds-and-the-hand-off-to-collection)).
+
 ## Sending a document by e-mail
 
 Open an issued invoice or credit note and click **Send**. The button needs
@@ -956,5 +974,5 @@ No built-in role holds these; an Owner holds everything
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission | `invoices:issue` |
-| Register a payment or remove one with a reason; set a customer's reminder policy; preview and make reminder runs | `invoices:payments` |
+| Register a payment or remove one with a reason; set a customer's reminder policy; preview and make reminder runs; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file | `invoices:payments` |
 | Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings | `invoices:manage` |

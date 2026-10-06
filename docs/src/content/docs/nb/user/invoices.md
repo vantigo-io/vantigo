@@ -738,6 +738,25 @@ aldri ettergis: hold karenstiden på 3 dager eller mer når bankfilene dine er c
 fakturaer med forfall før en dag, slik forfallslisten kan — og må avgrenses når over 5 000
 fakturaer har forfalt.
 
+**Omtvistede fakturaer og overlevering til inkasso.** Den som har `invoices:payments`, kan
+sette en faktura kunden bestrider, på vent: ingen purring sendes mens den står på vent,
+forsinkelsesrenten løper videre, og betalinger registreres fortsatt. Når ventingen
+oppheves, spør Vantigo om innsigelsen var åpenbart grunnløs; var den ikke det, ettergis
+alle purregebyrer og all kompensasjon som allerede er krevd på fakturaen, og ingen kreves
+på den igjen. En faktura som er overlevert til et inkassoselskap, registreres på samme
+måte — med dagen, inkassoselskapet og saksnummeret — og Vantigo sender den da ikke flere
+brev; en betaling du mottar direkte, registreres fortsatt, og du gir inkassoselskapet
+beskjed om den. Vantigo nekter å registrere overleveringen av en faktura den ikke har noen
+levering av innen forfall, før du bekrefter den; ble fakturaen faktisk levert, registrerer
+du leveringen først. Å sette en faktura på vent eller overlevere den trekker tilbake
+brevene som ikke er sendt ennå, men ikke et utskrevet brev, som kan være i posten
+allerede, og heller ikke et som sendes på e-post i samme øyeblikk: de navngis, så du kan
+stanse dem. Inkassofilen — én rad per faktura, det skyldige beløpet holdt atskilt fra
+gebyrer og renter, og det som er ettergitt, i en egen kolonne — eksporteres til
+inkassoselskapet. Skjermbildene kommer med purrekortene på fakturasiden; til da finnes
+dette i API-et
+([vent og overlevering](/en/reference/invoices/#holds-and-the-hand-off-to-collection)).
+
 ## Sende et dokument på e-post
 
 Åpne en utstedt faktura eller kreditnota og klikk **Send**. Knappen krever
@@ -972,5 +991,5 @@ Ingen innebygd rolle har disse; en eier har alt
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending | `invoices:issue` |
-| Registrere en betaling eller fjerne en med begrunnelse; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer | `invoices:payments` |
+| Registrere en betaling eller fjerne en med begrunnelse; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer; sette en faktura på vent og oppheve ventingen, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen | `invoices:payments` |
 | Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, satsene for inndriving og innstillingene for purring | `invoices:manage` |

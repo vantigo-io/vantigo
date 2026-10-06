@@ -431,6 +431,7 @@ export const issued = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocumen
     // No letter, and reminders are off in the settings.
     reminders: [],
     nextAction: { action: "blocked", reasons: ["reminders_disabled"], chargeNotes: [] },
+    // Never held or handed off: hold and handoff are absent.
     sendDefaults: { recipient: "faktura@acme.no", warnings: ["buyer_norwegian_business"] },
     ehf: { status: "not_sent", canSend: false, blockedBy: "ehf_unavailable", transmissions: [] },
     revision: 4,
@@ -577,6 +578,7 @@ export const partlyPaid = (overrides: Partial<InvoiceDocument> = {}): InvoiceDoc
   manualDeliveries: [],
   reminders: [],
   nextAction: { action: "blocked", reasons: ["reminders_disabled"], chargeNotes: [] },
+  // Never held or handed off: hold and handoff are absent.
   sendDefaults: { recipient: "faktura@acme.no", preference: "email", warnings: ["buyer_norwegian_business"] },
   // Sent as EHF once too: delivered, so another send is blocked.
   ehf: {

@@ -502,6 +502,13 @@ export const invoicesCatalog = {
     "refusal.allocation_exceeds_transaction": "The allocations add up to more than is left of this bank line.",
     "refusal.paid_before_issue":
       "The bank booked this line before the invoice was issued, so it cannot be a payment of it.",
+    "refusal.invoice_on_hold": "This invoice is on hold already. Lift that hold before placing another.",
+    "refusal.invoice_not_on_hold": "This invoice is not on hold, so there is no hold to lift.",
+    "refusal.invoice_handed_off":
+      "This invoice is handed off to a collection agency already. Withdraw that hand-off before recording another.",
+    "refusal.invoice_not_handed_off": "This invoice is not handed off, so there is no hand-off to withdraw.",
+    "refusal.invoice_not_delivered":
+      "No delivery of this invoice is recorded by its due date. If it was delivered, record the delivery first; otherwise confirm the hand-off.",
     "workRefusal.source_not_invoiceable":
       "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
     "workRefusal.source_changed":
@@ -1314,6 +1321,15 @@ export const invoicesCatalog = {
       "Fordelingene blir til sammen mer enn det som er igjen av denne banklinjen.",
     "refusal.paid_before_issue":
       "Banken bokførte denne linjen før fakturaen ble utstedt, så den kan ikke være en betaling av den.",
+    "refusal.invoice_on_hold":
+      "Denne fakturaen står allerede på vent. Opphev den ventingen før du setter den på vent igjen.",
+    "refusal.invoice_not_on_hold": "Denne fakturaen står ikke på vent, så det er ingen venting å oppheve.",
+    "refusal.invoice_handed_off":
+      "Denne fakturaen er allerede overlevert til et inkassoselskap. Trekk den overleveringen tilbake før du registrerer en ny.",
+    "refusal.invoice_not_handed_off":
+      "Denne fakturaen er ikke overlevert, så det er ingen overlevering å trekke tilbake.",
+    "refusal.invoice_not_delivered":
+      "Ingen levering av denne fakturaen er registrert innen forfall. Ble den levert, registrerer du leveringen først; ellers bekrefter du overleveringen.",
     "workRefusal.source_not_invoiceable":
       "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
     "workRefusal.source_changed":
