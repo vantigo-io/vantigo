@@ -1717,6 +1717,13 @@ func TestChildrenOfIssued_Triggers(t *testing.T) {
 		}
 	}
 
+	// The erase blanking an unlifted hold's note leaves its lift note NULL:
+	// only a lift writes it.
+	f.mustExec("the erase blanks the unlifted hold's note", `UPDATE invoices.invoice_holds SET note = '' WHERE id = $1`, erasedHold)
+	if got := f.text(`SELECT coalesce(lift_note, 'NULL') FROM invoices.invoice_holds WHERE id = $1`, erasedHold); got != "NULL" {
+		t.Errorf("an unlifted hold's lift note after the erase = %q, want NULL", got)
+	}
+
 	// The lift of an anonymised customer's hold keeps no lift note; any
 	// other lift keeps its own.
 	f.mustExec("lift the erased customer's hold", `UPDATE invoices.invoice_holds SET lifted_at = now(),
