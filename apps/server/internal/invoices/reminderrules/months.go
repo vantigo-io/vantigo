@@ -66,3 +66,59 @@ func halfYearName(d time.Time) string {
 	}
 	return fmt.Sprintf("%d-H%d", d.Year(), half)
 }
+
+// LetterDeadline is the deadline a letter sent on sentOn states (D8, Task 4
+// review): deadlineDays after it, never fewer than 14 (INKL § 9, INKF § 1-3),
+// moved to the next business day when it falls on a Saturday, a Sunday or a
+// Norwegian public holiday — the debtor-favourable reading, since a payment
+// order cannot reach a bank on such a day. E itself moves only off a weekend
+// (the spec's reading 8): the due date is the customer's contract, the
+// deadline is the creditor's own choice.
+func LetterDeadline(sentOn time.Time, deadlineDays int) time.Time {
+	return nextBusinessDay(addDays(sentOn, max(deadlineDays, 14)))
+}
+
+// nextBusinessDay is d, or the first day after it that is neither a weekend
+// day nor a Norwegian public holiday.
+func nextBusinessDay(d time.Time) time.Time {
+	for d.Weekday() == time.Saturday || d.Weekday() == time.Sunday || publicHoliday(d) {
+		d = addDays(d, 1)
+	}
+	return d
+}
+
+// publicHoliday is a Norwegian public holiday (lov om helligdager og
+// helligdagsfred § 2, lov om 1. og 17. mai som høgtidsdager): New Year's Day,
+// Maundy Thursday, Good Friday, Easter Sunday and Monday, 1 May, 17 May,
+// Ascension Day, Whit Sunday and Monday, Christmas Day and Boxing Day.
+func publicHoliday(d time.Time) bool {
+	switch m, day := d.Month(), d.Day(); {
+	case m == time.January && day == 1,
+		m == time.May && (day == 1 || day == 17),
+		m == time.December && (day == 25 || day == 26):
+		return true
+	}
+	easter := easterSunday(d.Year())
+	for _, offset := range []int{-3, -2, 0, 1, 39, 49, 50} {
+		if d.Equal(addDays(easter, offset)) {
+			return true
+		}
+	}
+	return false
+}
+
+// easterSunday is the Gregorian Easter Sunday of year (the anonymous
+// Gregorian algorithm), as UTC midnight.
+func easterSunday(year int) time.Time {
+	a, b, c := year%19, year/100, year%100
+	d, e := b/4, b%4
+	f := (b + 8) / 25
+	g := (b - f + 1) / 3
+	h := (19*a + b - d - g + 15) % 30
+	i, k := c/4, c%4
+	l := (32 + 2*e + 2*i - h - k) % 7
+	m := (a + 11*h + 22*l) / 451
+	month := (h + l - 7*m + 114) / 31
+	day := (h+l-7*m+114)%31 + 1
+	return time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+}

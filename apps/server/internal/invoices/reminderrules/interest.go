@@ -23,8 +23,9 @@ type Segment struct {
 // note lowers its own day, a payment the day after its paid_on), at the rate
 // in force on d, actual/365; the segments split at every rate row, credit
 // note and payment, and the sum is rounded to the øre once. Interest is never
-// on fees or the compensation. outdated names a half-year of the period
-// without its rate row, and then the total is zero.
+// on fees or the compensation. outdated names a half-year of the period —
+// to L, or to the day before the principal first reaches zero — without its
+// rate row, and then the total is zero.
 func Interest(in Input) (total *big.Rat, from *time.Time, segs []Segment, outdated *OutdatedRate) {
 	r := interest(in)
 	return r.total, r.from, r.segs, r.outdated
@@ -52,9 +53,6 @@ func interest(in Input) interestResult {
 	if in.L.Before(start) {
 		return res
 	}
-	if res.outdated = Outdated(in.Rates, KindLateInterest, start, in.L); res.outdated != nil {
-		return res
-	}
 	// Each day the base or the rate may change starts a segment.
 	cuts := []time.Time{start}
 	cut := func(d time.Time) {
@@ -76,6 +74,23 @@ func interest(in Input) interestResult {
 	slices.SortFunc(cuts, func(a, b time.Time) int { return a.Compare(b) })
 	cuts = slices.CompactFunc(cuts, func(a, b time.Time) bool { return a.Equal(b) })
 
+	// The open principal only falls, so the period needing rates ends the day
+	// before it first reaches zero: an invoice settled in a half-year whose
+	// successor has no row yet is never outdated.
+	end := in.L
+	for _, c := range cuts {
+		if openOn(in, c).Sign() <= 0 {
+			end = addDays(c, -1)
+			break
+		}
+	}
+	if end.Before(start) {
+		return res
+	}
+	if res.outdated = Outdated(in.Rates, KindLateInterest, start, end); res.outdated != nil {
+		return res
+	}
+
 	sum := new(big.Rat)
 	for i, from := range cuts {
 		to := in.L
@@ -91,7 +106,7 @@ func interest(in Input) interestResult {
 		amount.Mul(amount, new(big.Rat).SetInt64(daysFrom(from, to)))
 		amount.Quo(amount, big.NewRat(36500, 1))
 		sum.Add(sum, amount)
-		res.segs = append(res.segs, Segment{From: from, To: to, Rate: rate.Value, Base: base})
+		res.segs = append(res.segs, Segment{From: from, To: to, Rate: new(big.Rat).Set(rate.Value), Base: base})
 		if !slices.Contains(res.rateIDs, rate.ID) {
 			res.rateIDs = append(res.rateIDs, rate.ID)
 		}

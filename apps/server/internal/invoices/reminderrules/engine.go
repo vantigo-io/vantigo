@@ -1,8 +1,10 @@
 package reminderrules
 
 import (
+	"fmt"
 	"math/big"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -84,9 +86,13 @@ const (
 	NoteChargesBarred   = "charges_barred"
 	NoteFeeCapReached   = "fee_cap_reached"
 	NoteFeeBefore14Days = "fee_before_14_days"
+	// NoteFeeDeadlineNotMissed is R10: no second fee unless the previous fee
+	// letter's deadline of at least 14 days passed unmet.
+	NoteFeeDeadlineNotMissed = "fee_deadline_not_missed"
 )
 
 // Settings is invoices.reminder_settings as the engine needs it (D6, D7).
+// RegimeReviewedThrough and Inkassolov2026From are days (UTC midnight).
 type Settings struct {
 	Enabled                                                                            bool
 	FirstReminderDays, DeadlineDays, GraceDays, RemindersBeforeNotice, StaleImportDays int
@@ -96,32 +102,35 @@ type Settings struct {
 	RegimeReviewedThrough                                                              time.Time
 }
 
-// Invoice is the issued invoice's snapshot: its dates, gross and buyer.
+// Invoice is the issued invoice's snapshot: its dates (UTC midnight), its
+// gross (non-nil) and its buyer.
 type Invoice struct {
 	IssueDate, DueDate                                 time.Time
 	Gross                                              *big.Rat
 	BuyerType, BuyerOrganisationNumber, BuyerForeignID string // "" for NULL
 }
 
-// Credit is a credit note issued against the invoice.
+// Credit is a credit note issued against the invoice; Gross is non-nil.
 type Credit struct {
 	IssueDate time.Time
 	Gross     *big.Rat
 }
 
 // Payment is a live payment of the principal; OrderedOn is its bank line's
-// order date, when the file carries one.
+// order date, when the file carries one. Amount is non-nil.
 type Payment struct {
 	PaidOn    time.Time
 	OrderedOn *time.Time
 	Amount    *big.Rat
 }
 
-// Reservation is a live payment reservation (4C fills it; PR 1 always empty).
+// Reservation is a live payment reservation (4C fills it; PR 1 always empty);
+// Amount is non-nil.
 type Reservation struct{ Amount *big.Rat }
 
 // Letter is one of the invoice's reminders: in flight without facts, or sent
-// with the facts written at its sending.
+// with the facts written at its sending. Its amounts may be nil (a letter
+// without facts): every nil amount reads as zero.
 type Letter struct {
 	ID                                         int64
 	Sequence                                   int
@@ -133,14 +142,15 @@ type Letter struct {
 	Fee, Compensation, Interest, PrincipalOpen *big.Rat
 }
 
-// Waiver is a charge waiver of a letter's fee, compensation or interest.
+// Waiver is a charge waiver of a letter's fee, compensation or interest;
+// Amount is non-nil.
 type Waiver struct {
 	ID, ReminderID int64
 	Kind           string // WaiverFee, WaiverCompensation, WaiverInterest
 	Amount         *big.Rat
 }
 
-// ChargePayment is a live payment of charges.
+// ChargePayment is a live payment of charges; Amount is non-nil.
 type ChargePayment struct {
 	ID     int64
 	PaidOn time.Time
@@ -148,8 +158,14 @@ type ChargePayment struct {
 }
 
 // Input is everything D8 judges an invoice on, read under its lock (or on
-// the pool for the list), and the day L it is asked about. Every day is UTC
-// midnight of an Oslo calendar day.
+// the pool for the list), and the day L it is asked about.
+//
+// The contract (validate checks it in the tests): every day is UTC midnight of
+// an Oslo calendar day, as the module's businessDay gives it; every amount
+// but a Letter's is non-nil, and a nil one is a programming error the engine
+// panics on; a Letter's nil amounts read as zero; a customer without a
+// policy row is ModeNormal; Rates is every row of every kind; Payments,
+// Credits and ChargePayments are the live ones only.
 type Input struct {
 	L              time.Time
 	Invoice        Invoice
@@ -179,6 +195,8 @@ type LetterFacts struct {
 	// D9's figures: Total = PrincipalOpen + ChargesEarlier + Fee + Compensation
 	// + Interest − InterestWaived − InterestPaid (the interest part never below
 	// zero).
+	// ChargesEarlier may be negative: a credit from charge payments beyond the
+	// earlier charges, which pays this letter's own fee or compensation.
 	PrincipalOpen, Fee, Compensation, ChargesEarlier, Interest, InterestWaived, InterestPaid, Total *big.Rat
 	Inkassosats                                                                                     *big.Rat // the rate the fee was computed from; nil without a fee
 	InterestFrom                                                                                    *time.Time
@@ -293,7 +311,7 @@ func letter(in Input, sent []Letter, level Level, earliest time.Time) Outcome {
 	f := &LetterFacts{
 		Level: level, AnnouncesCollection: announcesCollection, Regime: regime, FeeKind: FeeNone,
 		PrincipalOpen: principalOpen(in), Fee: new(big.Rat), Compensation: new(big.Rat),
-		Deadline: addDays(in.L, in.Settings.DeadlineDays),
+		Deadline: LetterDeadline(in.L, in.Settings.DeadlineDays),
 	}
 	var notes []string
 	var outdated *OutdatedRate
@@ -303,13 +321,13 @@ func letter(in Input, sent []Letter, level Level, earliest time.Time) Outcome {
 	case charge.compensation:
 		outdated = Outdated(in.Rates, KindCompensation, in.L, in.L)
 		if rate, ok := RateOn(in.Rates, KindCompensation, in.L); ok && outdated == nil {
-			f.FeeKind, f.Compensation = FeeCompensation, rate.Value
+			f.FeeKind, f.Compensation = FeeCompensation, new(big.Rat).Set(rate.Value)
 			f.RateIDs = append(f.RateIDs, rate.ID)
 		}
 	case charge.fee:
 		outdated = Outdated(in.Rates, KindInkassosats, in.L, in.L)
 		if rate, ok := RateOn(in.Rates, KindInkassosats, in.L); ok && outdated == nil {
-			f.FeeKind, f.Fee, f.Inkassosats = FeeReminder, ReminderFee(rate.Value), rate.Value
+			f.FeeKind, f.Fee, f.Inkassosats = FeeReminder, ReminderFee(rate.Value), new(big.Rat).Set(rate.Value)
 			f.RateIDs = append(f.RateIDs, rate.ID)
 		}
 	}
@@ -340,12 +358,16 @@ func letter(in Input, sent []Letter, level Level, earliest time.Time) Outcome {
 	withThis := append(slices.Clone(sent), Letter{
 		ID: -1, Sequence: highestSequence(sent) + 1, Status: StatusSent, SentOn: &in.L, Interest: f.Interest,
 	})
-	perLetter, interestPaid, _ := Allocate(withThis, in.Waivers, in.ChargePayments)
+	perLetter, interestPaid, surplus := Allocate(withThis, in.Waivers, in.ChargePayments)
 	f.ChargesEarlier = new(big.Rat)
 	for _, l := range sent {
 		f.ChargesEarlier.Add(f.ChargesEarlier, chargeNet(l, in.Waivers))
 		f.ChargesEarlier.Sub(f.ChargesEarlier, perLetter[l.ID])
 	}
+	// What was paid beyond every earlier charge pays this letter's own fee or
+	// compensation: charges_earlier goes below zero, a credit, so the total
+	// is what Charges will say once the letter is sent.
+	f.ChargesEarlier.Sub(f.ChargesEarlier, minRat(surplus, new(big.Rat).Add(f.Fee, f.Compensation)))
 	f.InterestWaived, f.InterestPaid = interestWaived(in.Waivers), interestPaid
 	f.Total = new(big.Rat).Add(f.PrincipalOpen, f.ChargesEarlier)
 	f.Total.Add(f.Total, f.Fee).Add(f.Total, f.Compensation)
@@ -376,13 +398,10 @@ func judgeCharge(in Input, sent []Letter, regime Regime, delivered bool) chargeJ
 	}
 	inv := in.Invoice
 	business := inv.BuyerType == BuyerBusiness && (inv.BuyerOrganisationNumber != "" || inv.BuyerForeignID != "")
-	claimed := func(kind FeeKind) bool {
-		return slices.ContainsFunc(sent, func(l Letter) bool { return l.FeeKind == kind })
-	}
 	switch {
 	case business && in.Settings.BusinessCharge == ChargeCompensation:
 		// R5/R6: once per invoice, on its first letter, never beside a fee.
-		if len(sent) > 0 || claimed(FeeReminder) {
+		if len(sent) > 0 {
 			return j
 		}
 		if in.ChargesBarred {
@@ -391,7 +410,7 @@ func judgeCharge(in Input, sent []Letter, regime Regime, delivered bool) chargeJ
 		}
 		j.compensation = true
 	case business && in.Settings.BusinessCharge == ChargeFee, !business && in.Settings.PersonCharge == ChargeFee:
-		if regime != Regime1988 || claimed(FeeCompensation) {
+		if regime != Regime1988 || slices.ContainsFunc(sent, func(l Letter) bool { return l.FeeKind == FeeCompensation }) {
 			return j // R20; R6
 		}
 		E := EffectiveDue(inv.DueDate)
@@ -403,7 +422,7 @@ func judgeCharge(in Input, sent []Letter, regime Regime, delivered bool) chargeJ
 		case count >= 2:
 			j.notes = []string{NoteFeeCapReached} // R9, R11
 		case count == 1 && !missedDeadline(in, sent):
-			// R10: no second fee without a missed deadline of at least 14 days.
+			j.notes = []string{NoteFeeDeadlineNotMissed} // R10
 		default:
 			j.fee = true
 		}
@@ -487,4 +506,69 @@ func deadlineOf(l Letter) time.Time {
 		return *l.Deadline
 	}
 	return *l.SentOn
+}
+
+// validate is the Input contract (see Input): the amounts the engine reads
+// non-nil and every day at UTC midnight. The engine trusts its one caller,
+// the rule-input loader, and does not run it; the tests do, on every fixture.
+func validate(in Input) error {
+	var problems []string
+	day := func(what string, d time.Time) {
+		if d.Location() != time.UTC || d.Hour() != 0 || d.Minute() != 0 || d.Second() != 0 || d.Nanosecond() != 0 {
+			problems = append(problems, what+" is not a UTC midnight")
+		}
+	}
+	amount := func(what string, v *big.Rat) {
+		if v == nil {
+			problems = append(problems, what+" is nil")
+		}
+	}
+	day("L", in.L)
+	day("the issue date", in.Invoice.IssueDate)
+	day("the due date", in.Invoice.DueDate)
+	amount("the gross", in.Invoice.Gross)
+	day("regime_reviewed_through", in.Settings.RegimeReviewedThrough)
+	if in.Settings.Inkassolov2026From != nil {
+		day("inkassolov_2026_from", *in.Settings.Inkassolov2026From)
+	}
+	for _, c := range in.Credits {
+		day("a credit note's date", c.IssueDate)
+		amount("a credit note's gross", c.Gross)
+	}
+	for _, p := range in.Payments {
+		day("a payment's paid_on", p.PaidOn)
+		if p.OrderedOn != nil {
+			day("a payment's ordered_on", *p.OrderedOn)
+		}
+		amount("a payment's amount", p.Amount)
+	}
+	for _, r := range in.Reservations {
+		amount("a reservation's amount", r.Amount)
+	}
+	for _, d := range in.Deliveries {
+		day("a delivery", d)
+	}
+	for _, l := range in.Letters {
+		if l.SentOn != nil {
+			day("a letter's sent_on", *l.SentOn)
+		}
+		if l.Deadline != nil {
+			day("a letter's deadline", *l.Deadline)
+		}
+	}
+	for _, w := range in.Waivers {
+		amount("a waiver's amount", w.Amount)
+	}
+	for _, p := range in.ChargePayments {
+		day("a charge payment's paid_on", p.PaidOn)
+		amount("a charge payment's amount", p.Amount)
+	}
+	for _, r := range in.Rates {
+		day("a rate's valid_from", r.ValidFrom)
+		amount("a rate's value", r.Value)
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("reminderrules: the input breaks its contract: %s", strings.Join(problems, "; "))
+	}
+	return nil
 }

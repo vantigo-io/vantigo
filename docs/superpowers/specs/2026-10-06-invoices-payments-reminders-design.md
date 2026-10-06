@@ -228,6 +228,8 @@ could not be built as written:
 | m13 | an apply could never pay charges alone | D5: `amount ≥ 0`, `chargesAmount ≥ 0`, their sum above 0 |
 | m14 | the cutover by file overshot on multi-account files | D3: the latest booking date of the account's own lines in the old format |
 
+Amended again at Task 4's review: D8 gains the deadline rule (at least 14 days, moved off a weekend or a Norwegian public holiday) and the charge note `fee_deadline_not_missed`; D9 says `charges_earlier` may be negative; D10's facts take the deadline from D8.
+
 ## Decisions
 
 ### D1 — Scope, phasing, authority and the switches
@@ -761,7 +763,7 @@ issue shares:
 | --- | --- | --- |
 | `enabled` | reminders offered at all | false |
 | `first_reminder_days` | the first letter's earliest day after the effective due date (D8), 1–60 | 14 |
-| `deadline_days` | every letter's deadline after its sending, 14–60 (≥ 14: INKL § 9, INKF § 1-3) | 14 |
+| `deadline_days` | every letter's deadline after its sending, 14–60 (≥ 14: INKL § 9, INKF § 1-3), moved to the next business day by D8's deadline rule | 14 |
 | `grace_days` | days after a deadline before the next letter, **1**–10 (a payment ordered on the deadline day is on time and is booked later, INKF § 1-2 third paragraph, R4 §2.7) | 3 |
 | `reminders_before_notice` | reminders before the inkassovarsel, 0–2 (a purring is not required before a varsel, FinKN 2023-845) | 1 |
 | `collection_notice` | the creditor's inkassovarsel offered (1988 regime only) | true |
@@ -874,6 +876,14 @@ most `max(reminders_before_notice, 1)` of them — and the `collection_notice` a
 A letter whose day `L` is in the 2026 regime and whose level would be `collection_notice`
 is a `reminder` with `announces_collection` (D6).
 
+**The deadline** (Task 4 review). A letter's deadline is `max(deadline_days, 14)` days after its
+`sent_on`, moved to the next business day when it falls on a Saturday, a Sunday or a
+Norwegian public holiday (New Year's Day, Maundy Thursday, Good Friday, Easter Sunday and
+Monday, 1 May, 17 May, Ascension Day, Whit Sunday and Monday, Christmas Day, Boxing Day) —
+the debtor-favourable reading, since a payment order reaches no bank on such a day. `E`
+itself still moves only off a weekend (reading 8): the due date is the customer's contract,
+the deadline the creditor's own choice.
+
 **A deadline met** (I5). A letter's deadline counts as met when the live payments
 **ordered** on or before it — `ordered_on` where the bank line has one, else `paid_on` —
 cover the principal open on the letter's `sent_on`. A met deadline allows no further
@@ -897,7 +907,8 @@ when the proof arrives (D4's `deadline_met`).
   consecutive fee letters (`next.sent_on > addMonthsClamped(prev.sent_on, 6)`); a fee is
   allowed only while that count is **below 2**;
 - a second fee only when the previous fee letter's deadline was at least 14 days after its
-  `sent_on`, has passed by `L` and was **not met** (R10 — and above);
+  `sent_on`, has passed by `L` and was **not met** (R10 — and above), else the note
+  `fee_deadline_not_missed`;
 - the amount: the inkassosats in force on `L`, ÷ 20, **rounded to the nearest krone, .50
   up** (R8; 750 → 38).
 
@@ -945,7 +956,8 @@ from-date and the cumulative amount (D10).
 **The outcome** carries the action, its earliest date, the blocking reasons (`on_hold`,
 `handed_off`, `policy_none`, `reminders_disabled`, `letter_pending`, `waiting`,
 `not_delivered`, `collection_rates_outdated`, `collection_regime_unreviewed`), the charge
-notes (`not_delivered`, `charges_barred`, `fee_cap_reached`, `fee_before_14_days`), and for a
+notes (`not_delivered`, `charges_barred`, `fee_cap_reached`, `fee_before_14_days`,
+`fee_deadline_not_missed`), and for a
 letter its `level`, `announces_collection`, `regime`, `fee_kind`, fee, compensation,
 interest with its segments `[{from, to, rate, base}]`, and the rate rows used.
 
@@ -1004,7 +1016,10 @@ compensation first, oldest letter first, then interest. So each letter can state
 counting anything twice (B2):
 
 - `charges_earlier` — **the earlier letters' fees and compensation, less their waivers and
-  the charge payments allocated to them; never interest**;
+  the charge payments allocated to them; never interest** — and it may be negative (Task 4
+  review): a credit from charge payments beyond the earlier charges, which pays this letter's
+  own fee or compensation first, so the total is what the charges outstanding say once the
+  letter is sent;
 - `interest` — **the cumulative interest to this letter's date, from the day after `E`**,
   the one interest figure the letter shows;
 - `interest_waived` — Σ interest waivers so far (amounts);
@@ -1149,7 +1164,8 @@ LOCKED` pick (`inv/queries/transmissions.sql:56-73`'s shape), then:
    action or level, or the invoice settled, held, handed off, its customer `none` or
    anonymised → `withdrawn` with the reason (`settled`, `on_hold`, `handed_off`,
    `policy_none`, `customer_anonymised`, `action_changed`). Otherwise the facts are written —
-   `sent_on = L`, `deadline = L + deadline_days`, the amounts. Commit.
+   `sent_on = L`, the deadline by D8's rule (`max(deadline_days, 14)` on, off a weekend or a
+   public holiday), the amounts. Commit.
 2. Render the letter's PDF from the row (`inv/reminderpdf.go`, the invoice PDF's maroto
    layout and fonts) and store it once at `reminders/<invoiceId>/<reminderId>-<sentOn>.pdf`
    — outside any lock; a store failure reschedules.

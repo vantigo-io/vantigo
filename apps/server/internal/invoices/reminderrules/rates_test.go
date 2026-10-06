@@ -104,6 +104,8 @@ func TestReminderRules_OutdatedRates(t *testing.T) {
 		{"after the last row", rates, KindLateInterest, "2026-12-01", "2027-01-10", &OutdatedRate{KindLateInterest, "2027-H1"}},
 		{"a gap between rows", gap, KindLateInterest, "2026-06-01", "2027-02-01", &OutdatedRate{KindLateInterest, "2026-H2"}},
 		{"before the first row", rates, KindLateInterest, "2023-11-01", "2024-02-01", &OutdatedRate{KindLateInterest, "2023-H2"}},
+		{"exactly on 1 January", rates, KindLateInterest, "2026-12-01", "2027-01-01", &OutdatedRate{KindLateInterest, "2027-H1"}},
+		{"through 31 December", rates, KindLateInterest, "2026-12-01", "2026-12-31", nil},
 		{"the compensation's own half-year", rates, KindCompensation, "2027-01-10", "2027-01-10", &OutdatedRate{KindCompensation, "2027-H1"}},
 		{"the compensation in force", rates, KindCompensation, "2026-12-31", "2026-12-31", nil},
 		{"the inkassosats needs only a row", rates, KindInkassosats, "2031-01-10", "2031-01-10", nil},
