@@ -126,6 +126,17 @@ func (s *server) matchFile(ctx context.Context, fileID int64, caller uuid.UUID, 
 		}
 		var outcome string
 		if reason != "" {
+			// A line whose KID named no invoice keeps the one unambiguous
+			// suggestion, when there is one (D5, plan reading 24).
+			if invoiceID == 0 && suggestible(reason) {
+				_, one, err := suggestionsFor(ctx, q, line)
+				if err != nil {
+					return stopped(line.ID, err)
+				}
+				if one != nil {
+					invoiceID = *one
+				}
+			}
 			outcome, err = s.queueOnPool(ctx, line, reason, invoiceID, caller, now)
 		} else {
 			outcome, err = s.matchLine(ctx, line.ID, invoiceID, caller, now)
@@ -154,7 +165,7 @@ func (s *server) matchFile(ctx context.Context, fileID int64, caller uuid.UUID, 
 // queued for, or "" and the invoice it is a candidate for. invoiceID is also
 // the invoice the KID named when the line is queued possible_duplicate or
 // account_mismatch — the suggestion it is queued with — and 0 when the KID
-// named none. acct is the line's account (its zero value when it has no
+// named none (matchFile then keeps the one unambiguous suggestion, D5). acct is the line's account (its zero value when it has no
 // row).
 func (s *server) classify(ctx context.Context, q *store.Queries, line store.InvoicesBankTransaction, acct store.InvoicesBankImportAccount) (reason string, invoiceID int64, err error) {
 	// 1. A reversal or a negative line is never a payment.

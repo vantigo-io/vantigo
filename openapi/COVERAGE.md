@@ -244,7 +244,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-## invoices (56 uncovered)
+## invoices (63 uncovered)
 
 - `DELETE /api/v1/invoices/collection-rates/{id}` (deleteInvoicesCollectionRatesById)
 - `DELETE /api/v1/invoices/settings/access-point` (deleteInvoicesSettingsAccessPoint)
@@ -253,6 +253,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/invoices/bank-accounts` (getInvoicesBankAccounts)
 - `GET /api/v1/invoices/bank-files/{id}` (getInvoicesBankFilesById)
 - `GET /api/v1/invoices/bank-files` (getInvoicesBankFiles)
+- `GET /api/v1/invoices/bank-transactions` (getInvoicesBankTransactions)
 - `GET /api/v1/invoices/collection-rates` (getInvoicesCollectionRates)
 - `GET /api/v1/invoices/customers/{customerId}/reminder-policy` (getInvoicesCustomersByCustomerIdReminderPolicy)
 - `GET /api/v1/invoices/export.csv` (getInvoicesExportCsv)
@@ -275,6 +276,12 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/invoices` (getInvoices)
 - `POST /api/v1/invoices/bank-files/{id}/match` (postInvoicesBankFilesByIdMatch)
 - `POST /api/v1/invoices/bank-files` (postInvoicesBankFiles)
+- `POST /api/v1/invoices/bank-transactions/{id}/apply` (postInvoicesBankTransactionsByIdApply)
+- `POST /api/v1/invoices/bank-transactions/{id}/confirm-duplicate` (postInvoicesBankTransactionsByIdConfirmDuplicate)
+- `POST /api/v1/invoices/bank-transactions/{id}/dismiss` (postInvoicesBankTransactionsByIdDismiss)
+- `POST /api/v1/invoices/bank-transactions/{id}/handle-reversal` (postInvoicesBankTransactionsByIdHandleReversal)
+- `POST /api/v1/invoices/bank-transactions/{id}/reopen` (postInvoicesBankTransactionsByIdReopen)
+- `POST /api/v1/invoices/bank-transactions/{id}/treat-as-distinct` (postInvoicesBankTransactionsByIdTreatAsDistinct)
 - `POST /api/v1/invoices/collection-rates` (postInvoicesCollectionRates)
 - `POST /api/v1/invoices/from-work` (postInvoicesFromWork)
 - `POST /api/v1/invoices/reminder-runs` (postInvoicesReminderRuns)
@@ -303,4 +310,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-Total: 274 of 409 operations have no recorded exchange.
+Total: 281 of 416 operations have no recorded exchange.

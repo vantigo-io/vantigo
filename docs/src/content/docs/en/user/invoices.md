@@ -633,7 +633,15 @@ the file as the one who registered it. Every payment records where it came from:
 registered by hand, or taken from a line of an OCR giro or camt.054 file. A payment
 matching cannot place — no KID, a KID no invoice carries, more than is left to pay, or
 one that may repeat a payment already registered — is kept for a person and not
-registered.
+registered. Someone with `invoices:payments` deals with it through the exception queue,
+until its screen arrives through the API
+([the exception queue](/en/reference/invoices/#the-exception-queue)): apply it to one or
+more invoices and their reminder charges, with suggestions — an invoice whose number is in
+the payment's text, one whose open amount it equals, one of the customer who paid from the
+same account before; dismiss it as not a customer payment, with a note; for a reversal,
+remove the payment the bank took back; confirm a duplicate or keep it as a payment of its
+own; or reopen it. What a payment leaves unapplied stays visible on its line — Vantigo
+keeps no credit balance and makes no refund.
 
 Click **Register payment** — offered while something is left to pay — and fill in:
 

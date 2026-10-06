@@ -21,6 +21,183 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for InvoicesBankTransactionResolution.
+const (
+	InvoicesBankTransactionResolutionApplied            InvoicesBankTransactionResolution = "applied"
+	InvoicesBankTransactionResolutionDuplicateConfirmed InvoicesBankTransactionResolution = "duplicate_confirmed"
+	InvoicesBankTransactionResolutionNotCustomerPayment InvoicesBankTransactionResolution = "not_customer_payment"
+	InvoicesBankTransactionResolutionReversalHandled    InvoicesBankTransactionResolution = "reversal_handled"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesBankTransactionResolution enum.
+func (e InvoicesBankTransactionResolution) Valid() bool {
+	switch e {
+	case InvoicesBankTransactionResolutionApplied:
+		return true
+	case InvoicesBankTransactionResolutionDuplicateConfirmed:
+		return true
+	case InvoicesBankTransactionResolutionNotCustomerPayment:
+		return true
+	case InvoicesBankTransactionResolutionReversalHandled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesBankTransactionStatus.
+const (
+	InvoicesBankTransactionStatusDuplicate InvoicesBankTransactionStatus = "duplicate"
+	InvoicesBankTransactionStatusException InvoicesBankTransactionStatus = "exception"
+	InvoicesBankTransactionStatusMatched   InvoicesBankTransactionStatus = "matched"
+	InvoicesBankTransactionStatusPending   InvoicesBankTransactionStatus = "pending"
+	InvoicesBankTransactionStatusResolved  InvoicesBankTransactionStatus = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesBankTransactionStatus enum.
+func (e InvoicesBankTransactionStatus) Valid() bool {
+	switch e {
+	case InvoicesBankTransactionStatusDuplicate:
+		return true
+	case InvoicesBankTransactionStatusException:
+		return true
+	case InvoicesBankTransactionStatusMatched:
+		return true
+	case InvoicesBankTransactionStatusPending:
+		return true
+	case InvoicesBankTransactionStatusResolved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesBankTransactionAppliedKind.
+const (
+	ChargePayment InvoicesBankTransactionAppliedKind = "charge_payment"
+	Payment       InvoicesBankTransactionAppliedKind = "payment"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesBankTransactionAppliedKind enum.
+func (e InvoicesBankTransactionAppliedKind) Valid() bool {
+	switch e {
+	case ChargePayment:
+		return true
+	case Payment:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesBankTransactionEventEvent.
+const (
+	InvoicesBankTransactionEventEventApplied            InvoicesBankTransactionEventEvent = "applied"
+	InvoicesBankTransactionEventEventDismissed          InvoicesBankTransactionEventEvent = "dismissed"
+	InvoicesBankTransactionEventEventDuplicateConfirmed InvoicesBankTransactionEventEvent = "duplicate_confirmed"
+	InvoicesBankTransactionEventEventMatched            InvoicesBankTransactionEventEvent = "matched"
+	InvoicesBankTransactionEventEventQueued             InvoicesBankTransactionEventEvent = "queued"
+	InvoicesBankTransactionEventEventReopened           InvoicesBankTransactionEventEvent = "reopened"
+	InvoicesBankTransactionEventEventReversalHandled    InvoicesBankTransactionEventEvent = "reversal_handled"
+	InvoicesBankTransactionEventEventTreatedAsDistinct  InvoicesBankTransactionEventEvent = "treated_as_distinct"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesBankTransactionEventEvent enum.
+func (e InvoicesBankTransactionEventEvent) Valid() bool {
+	switch e {
+	case InvoicesBankTransactionEventEventApplied:
+		return true
+	case InvoicesBankTransactionEventEventDismissed:
+		return true
+	case InvoicesBankTransactionEventEventDuplicateConfirmed:
+		return true
+	case InvoicesBankTransactionEventEventMatched:
+		return true
+	case InvoicesBankTransactionEventEventQueued:
+		return true
+	case InvoicesBankTransactionEventEventReopened:
+		return true
+	case InvoicesBankTransactionEventEventReversalHandled:
+		return true
+	case InvoicesBankTransactionEventEventTreatedAsDistinct:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesBankTransactionReason.
+const (
+	AccountMismatch   InvoicesBankTransactionReason = "account_mismatch"
+	ExceedsOpen       InvoicesBankTransactionReason = "exceeds_open"
+	InvoiceCredited   InvoicesBankTransactionReason = "invoice_credited"
+	InvoiceSettled    InvoicesBankTransactionReason = "invoice_settled"
+	KidInvalid        InvoicesBankTransactionReason = "kid_invalid"
+	KidUnknown        InvoicesBankTransactionReason = "kid_unknown"
+	NegativeAmount    InvoicesBankTransactionReason = "negative_amount"
+	NoKid             InvoicesBankTransactionReason = "no_kid"
+	PaidBeforeIssue   InvoicesBankTransactionReason = "paid_before_issue"
+	PaymentRemoved    InvoicesBankTransactionReason = "payment_removed"
+	PossibleDuplicate InvoicesBankTransactionReason = "possible_duplicate"
+	Reversal          InvoicesBankTransactionReason = "reversal"
+	VippsPayout       InvoicesBankTransactionReason = "vipps_payout"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesBankTransactionReason enum.
+func (e InvoicesBankTransactionReason) Valid() bool {
+	switch e {
+	case AccountMismatch:
+		return true
+	case ExceedsOpen:
+		return true
+	case InvoiceCredited:
+		return true
+	case InvoiceSettled:
+		return true
+	case KidInvalid:
+		return true
+	case KidUnknown:
+		return true
+	case NegativeAmount:
+		return true
+	case NoKid:
+		return true
+	case PaidBeforeIssue:
+		return true
+	case PaymentRemoved:
+		return true
+	case PossibleDuplicate:
+		return true
+	case Reversal:
+		return true
+	case VippsPayout:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesBankTransactionSuggestionWhy.
+const (
+	AmountEqualsOpen InvoicesBankTransactionSuggestionWhy = "amount_equals_open"
+	DebtorAccount    InvoicesBankTransactionSuggestionWhy = "debtor_account"
+	NumberInText     InvoicesBankTransactionSuggestionWhy = "number_in_text"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesBankTransactionSuggestionWhy enum.
+func (e InvoicesBankTransactionSuggestionWhy) Valid() bool {
+	switch e {
+	case AmountEqualsOpen:
+		return true
+	case DebtorAccount:
+		return true
+	case NumberInText:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvoicesChargePaymentSource.
 const (
 	InvoicesChargePaymentSourceCamt054 InvoicesChargePaymentSource = "camt054"
@@ -873,6 +1050,33 @@ func (e InvoicesTransmissionResolutionOutcome) Valid() bool {
 	}
 }
 
+// Defines values for GetInvoicesBankTransactionsParamsStatus.
+const (
+	GetInvoicesBankTransactionsParamsStatusDuplicate GetInvoicesBankTransactionsParamsStatus = "duplicate"
+	GetInvoicesBankTransactionsParamsStatusException GetInvoicesBankTransactionsParamsStatus = "exception"
+	GetInvoicesBankTransactionsParamsStatusMatched   GetInvoicesBankTransactionsParamsStatus = "matched"
+	GetInvoicesBankTransactionsParamsStatusPending   GetInvoicesBankTransactionsParamsStatus = "pending"
+	GetInvoicesBankTransactionsParamsStatusResolved  GetInvoicesBankTransactionsParamsStatus = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the GetInvoicesBankTransactionsParamsStatus enum.
+func (e GetInvoicesBankTransactionsParamsStatus) Valid() bool {
+	switch e {
+	case GetInvoicesBankTransactionsParamsStatusDuplicate:
+		return true
+	case GetInvoicesBankTransactionsParamsStatusException:
+		return true
+	case GetInvoicesBankTransactionsParamsStatusMatched:
+		return true
+	case GetInvoicesBankTransactionsParamsStatusPending:
+		return true
+	case GetInvoicesBankTransactionsParamsStatusResolved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetInvoicesOverdueParamsAction.
 const (
 	GetInvoicesOverdueParamsActionBlocked          GetInvoicesOverdueParamsAction = "blocked"
@@ -933,6 +1137,13 @@ type InvoicesAccessPointResponse struct {
 // InvoicesAccessPointVerifyResponse What the provider answered the cheapest authenticated read (Storecove: the legal entity). result is ok (the key reaches the legal entity), unauthorized (the provider refused the key — 401 or 403 — which also flags it as rejected) or unreachable (anything else: the network, a timeout, a 5xx, a legal entity the key does not reach).
 type InvoicesAccessPointVerifyResponse struct {
 	Result string `json:"result"`
+}
+
+// InvoicesAllocation One part of a bank line applied from the exception queue (invoices payments and reminders design D5): invoiceId, an issued invoice; amount, what the line pays of its principal (0 or more, at most the open amount); chargesAmount, what it pays of its reminder charges (0 or more, at most what is outstanding; absent is 0). Two decimals each; their sum is above 0, so a line can pay the charges alone of a settled invoice.
+type InvoicesAllocation struct {
+	Amount        float64  `json:"amount"`
+	ChargesAmount *float64 `json:"chargesAmount,omitempty"`
+	InvoiceId     int64    `json:"invoiceId"`
 }
 
 // InvoicesBankAccount One receiving account a bank file was imported for (invoices payments and reminders design D3). format is the format its files come in — ocr or camt054 — set by its first import and changed only by PUT /invoices/bank-accounts/{account}/format; previousFormat and cutoverThrough are what the last change kept: the old format and the latest booking day of the account's own lines in it, absent when the account has none (matching then holds back what the old format may already have registered, D4). lastFileId and lastUploadedAt are the latest file naming the account; lastBookedOn the latest booking day of any of its lines.
@@ -1020,25 +1231,144 @@ type InvoicesBankImportResult struct {
 	Transactions  int32               `json:"transactions"`
 }
 
-// InvoicesBankTransaction One line of a bank file (D3), as the bank wrote it: lineRef (OCR assignment/transaction, camt.054 notification/entry/transaction), the receiving account, direction (credit, or debit for a reversal), negative (an OCR line with a minus sign), the booking, value and ordering days (orderedOn is OCR's alone), the amount, the KID as written (absent without one), the remittance text, the debtor's name and account, the bank's archive reference; and its state — status pending, matched, exception, resolved or duplicate, the reason it was queued, and duplicateOfId, the line it duplicates.
+// InvoicesBankTransaction One line of a bank file (D3), as the bank wrote it: lineRef (OCR assignment/transaction, camt.054 notification/entry/transaction), the receiving account, direction (credit, or debit for a reversal), negative (an OCR line with a minus sign), the booking, value and ordering days (orderedOn is OCR's alone), the amount, the KID as written (absent without one), the remittance text, the debtor's name and account, the bank's archive reference; bankFile, the file it came in; and its state in matching and the exception queue (D4, D5) — status pending, matched, exception, resolved or duplicate; the reason it was queued (a resolved line keeps it); duplicateOfId, the line it duplicates; suggestedInvoiceId, the invoice its KID named or the one unambiguous suggestion when it was queued; applied, every payment and charge payment that refers to it, removed ones included; unappliedAmount, the amount less what its live payments and charge payments apply — 0 for a reversal, a negative line, a duplicate row and a line resolved otherwise than applied, since none of them is money waiting to be applied; resolution, resolvedBy, resolvedAt and resolutionNote while it is resolved; and events, what happened to it, the first first. On the exception queue's list, an exception queued no_kid, kid_invalid, kid_unknown or payment_removed — or possible_duplicate without a suggested invoice — carries suggestions, and a possible_duplicate or duplicate line possibleDuplicateOf, the line it may repeat with that line's payments; a file's detail carries possibleDuplicateOf but no suggestions.
 type InvoicesBankTransaction struct {
-	Account        string              `json:"account"`
-	Amount         float64             `json:"amount"`
-	ArchiveRef     string              `json:"archiveRef"`
-	BookedOn       openapi_types.Date  `json:"bookedOn"`
-	DebtorAccount  string              `json:"debtorAccount"`
-	DebtorName     string              `json:"debtorName"`
-	Direction      string              `json:"direction"`
-	DuplicateOfId  *int64              `json:"duplicateOfId,omitempty"`
-	Id             int64               `json:"id"`
-	Kid            *string             `json:"kid,omitempty"`
-	LineRef        string              `json:"lineRef"`
-	Negative       bool                `json:"negative"`
-	OrderedOn      *openapi_types.Date `json:"orderedOn,omitempty"`
-	Reason         *string             `json:"reason,omitempty"`
-	RemittanceText string              `json:"remittanceText"`
-	Status         string              `json:"status"`
-	ValueOn        *openapi_types.Date `json:"valueOn,omitempty"`
+	Account    string                           `json:"account"`
+	Amount     float64                          `json:"amount"`
+	Applied    []InvoicesBankTransactionApplied `json:"applied"`
+	ArchiveRef string                           `json:"archiveRef"`
+
+	// BankFile The bank file a line came in — its id, format (ocr or camt054) and when it was uploaded.
+	BankFile      InvoicesBankTransactionFile    `json:"bankFile"`
+	BookedOn      openapi_types.Date             `json:"bookedOn"`
+	DebtorAccount string                         `json:"debtorAccount"`
+	DebtorName    string                         `json:"debtorName"`
+	Direction     string                         `json:"direction"`
+	DuplicateOfId *int64                         `json:"duplicateOfId,omitempty"`
+	Events        []InvoicesBankTransactionEvent `json:"events"`
+	Id            int64                          `json:"id"`
+	Kid           *string                        `json:"kid,omitempty"`
+	LineRef       string                         `json:"lineRef"`
+	Negative      bool                           `json:"negative"`
+	OrderedOn     *openapi_types.Date            `json:"orderedOn,omitempty"`
+
+	// PossibleDuplicateOf The line a possible duplicate may repeat (D5): the line it was kept as a duplicate of, or else the earliest matched or resolved line of another file with the same account, booking day, amount and KID, one with a live payment first — its id, file, lineRef, booking day, amount, KID, status and its payments and charge payments.
+	PossibleDuplicateOf *InvoicesBankTransactionTwin `json:"possibleDuplicateOf,omitempty"`
+
+	// Reason Why a line was queued (D4, D5): kid_invalid, kid_unknown, invoice_credited, invoice_settled, exceeds_open, no_kid, negative_amount, reversal, vipps_payout, paid_before_issue, account_mismatch, possible_duplicate or payment_removed (a matched line whose payments were all removed, reopened).
+	Reason         *InvoicesBankTransactionReason `json:"reason,omitempty"`
+	RemittanceText string                         `json:"remittanceText"`
+
+	// Resolution How a resolved line was resolved — applied (to invoices), not_customer_payment (dismissed), reversal_handled or duplicate_confirmed. Absent unless the line is resolved.
+	Resolution *InvoicesBankTransactionResolution `json:"resolution,omitempty"`
+
+	// ResolutionNote The note given when the line was resolved; empty when none was, and once it is reopened.
+	ResolutionNote     string                               `json:"resolutionNote"`
+	ResolvedAt         *time.Time                           `json:"resolvedAt,omitempty"`
+	ResolvedBy         *openapi_types.UUID                  `json:"resolvedBy,omitempty"`
+	Status             InvoicesBankTransactionStatus        `json:"status"`
+	SuggestedInvoiceId *int64                               `json:"suggestedInvoiceId,omitempty"`
+	Suggestions        *[]InvoicesBankTransactionSuggestion `json:"suggestions,omitempty"`
+	UnappliedAmount    float64                              `json:"unappliedAmount"`
+	ValueOn            *openapi_types.Date                  `json:"valueOn,omitempty"`
+}
+
+// InvoicesBankTransactionResolution How a resolved line was resolved — applied (to invoices), not_customer_payment (dismissed), reversal_handled or duplicate_confirmed. Absent unless the line is resolved.
+type InvoicesBankTransactionResolution string
+
+// InvoicesBankTransactionStatus defines model for InvoicesBankTransaction.Status.
+type InvoicesBankTransactionStatus string
+
+// InvoicesBankTransactionApplied A payment or a charge payment that refers to a bank line (D4, D5): kind payment or charge_payment, its id, its invoice and that invoice's number, the amount, and whether it has been removed (a removed one applies nothing).
+type InvoicesBankTransactionApplied struct {
+	Amount    float64                            `json:"amount"`
+	Id        int64                              `json:"id"`
+	InvoiceId int64                              `json:"invoiceId"`
+	Kind      InvoicesBankTransactionAppliedKind `json:"kind"`
+	Number    *int64                             `json:"number,omitempty"`
+	Removed   bool                               `json:"removed"`
+}
+
+// InvoicesBankTransactionAppliedKind defines model for InvoicesBankTransactionApplied.Kind.
+type InvoicesBankTransactionAppliedKind string
+
+// InvoicesBankTransactionApplyRequest POST /invoices/bank-transactions/{id}/apply's body (D5) — 1 to 20 allocations, each invoice once, and an optional note of at most 500 characters kept on the line and its event.
+type InvoicesBankTransactionApplyRequest struct {
+	Allocations []InvoicesAllocation `json:"allocations"`
+	Note        *string              `json:"note,omitempty"`
+}
+
+// InvoicesBankTransactionDismissRequest POST /invoices/bank-transactions/{id}/dismiss's body (D5) — why the line is not a customer payment, or what was done about it outside Vantigo, 1 to 500 characters.
+type InvoicesBankTransactionDismissRequest struct {
+	Note string `json:"note"`
+}
+
+// InvoicesBankTransactionEvent What happened to a bank line (D5): event matched, queued, applied, dismissed, reversal_handled, reopened, duplicate_confirmed or treated_as_distinct; the reason the line had or was given (absent on a match); the note given with it; who and when. Events are never changed; they keep a resolution a reopen cleared from the line.
+type InvoicesBankTransactionEvent struct {
+	At    time.Time                         `json:"at"`
+	By    openapi_types.UUID                `json:"by"`
+	Event InvoicesBankTransactionEventEvent `json:"event"`
+	Id    int64                             `json:"id"`
+	Note  string                            `json:"note"`
+
+	// Reason Why a line was queued (D4, D5): kid_invalid, kid_unknown, invoice_credited, invoice_settled, exceeds_open, no_kid, negative_amount, reversal, vipps_payout, paid_before_issue, account_mismatch, possible_duplicate or payment_removed (a matched line whose payments were all removed, reopened).
+	Reason *InvoicesBankTransactionReason `json:"reason,omitempty"`
+}
+
+// InvoicesBankTransactionEventEvent defines model for InvoicesBankTransactionEvent.Event.
+type InvoicesBankTransactionEventEvent string
+
+// InvoicesBankTransactionFile The bank file a line came in — its id, format (ocr or camt054) and when it was uploaded.
+type InvoicesBankTransactionFile struct {
+	Format     string    `json:"format"`
+	Id         int64     `json:"id"`
+	UploadedAt time.Time `json:"uploadedAt"`
+}
+
+// InvoicesBankTransactionNoteRequest POST /invoices/bank-transactions/{id}/confirm-duplicate's body (D5) — an optional note of at most 500 characters.
+type InvoicesBankTransactionNoteRequest struct {
+	Note *string `json:"note,omitempty"`
+}
+
+// InvoicesBankTransactionReason Why a line was queued (D4, D5): kid_invalid, kid_unknown, invoice_credited, invoice_settled, exceeds_open, no_kid, negative_amount, reversal, vipps_payout, paid_before_issue, account_mismatch, possible_duplicate or payment_removed (a matched line whose payments were all removed, reopened).
+type InvoicesBankTransactionReason string
+
+// InvoicesBankTransactionReversalPayment A payment a reversal takes back — the invoice and its payment's id.
+type InvoicesBankTransactionReversalPayment struct {
+	InvoiceId int64 `json:"invoiceId"`
+	PaymentId int64 `json:"paymentId"`
+}
+
+// InvoicesBankTransactionReversalRequest POST /invoices/bank-transactions/{id}/handle-reversal's body (D5): removePayments, the payments the reversal takes back (at most 20, each once), each removed with the reason "Reversed by the bank: line {lineRef}"; or noPayment true and a note saying why none is removed. The note, at most 500 characters, is kept on the line and its event either way.
+type InvoicesBankTransactionReversalRequest struct {
+	NoPayment      *bool                                     `json:"noPayment,omitempty"`
+	Note           *string                                   `json:"note,omitempty"`
+	RemovePayments *[]InvoicesBankTransactionReversalPayment `json:"removePayments,omitempty"`
+}
+
+// InvoicesBankTransactionSuggestion An issued invoice a queued line may pay (D5), read when the line is read, never registered by itself: why is number_in_text (the invoice's number is a whole word of the line's text), amount_equals_open (its open amount equals the line's amount) or debtor_account (its customer's earlier payments came from the line's debtor account, and it is open). One entry per invoice, under the first reason in that order.
+type InvoicesBankTransactionSuggestion struct {
+	BuyerName  string                               `json:"buyerName"`
+	CustomerId int32                                `json:"customerId"`
+	InvoiceId  int64                                `json:"invoiceId"`
+	Number     int64                                `json:"number"`
+	OpenAmount float64                              `json:"openAmount"`
+	Why        InvoicesBankTransactionSuggestionWhy `json:"why"`
+}
+
+// InvoicesBankTransactionSuggestionWhy defines model for InvoicesBankTransactionSuggestion.Why.
+type InvoicesBankTransactionSuggestionWhy string
+
+// InvoicesBankTransactionTwin The line a possible duplicate may repeat (D5): the line it was kept as a duplicate of, or else the earliest matched or resolved line of another file with the same account, booking day, amount and KID, one with a live payment first — its id, file, lineRef, booking day, amount, KID, status and its payments and charge payments.
+type InvoicesBankTransactionTwin struct {
+	Amount     float64                          `json:"amount"`
+	Applied    []InvoicesBankTransactionApplied `json:"applied"`
+	BankFileId int64                            `json:"bankFileId"`
+	BookedOn   openapi_types.Date               `json:"bookedOn"`
+	Id         int64                            `json:"id"`
+	Kid        *string                          `json:"kid,omitempty"`
+	LineRef    string                           `json:"lineRef"`
+	Status     string                           `json:"status"`
 }
 
 // InvoicesBuyer The buyer snapshot (D4), written at issue from the customer's billing profile and printed from, never re-read. A credit note carries its original's.
@@ -1195,7 +1525,7 @@ type InvoicesCollectionRateRequest struct {
 // InvoicesCollectionRateRequestKind defines model for InvoicesCollectionRateRequest.Kind.
 type InvoicesCollectionRateRequestKind string
 
-// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
+// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 type InvoicesConflictProblem struct {
 	// AllowedIssueDates On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise.
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
@@ -2628,6 +2958,12 @@ type PaginatedResponseOfInvoicesBankFile struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
+// PaginatedResponseOfInvoicesBankTransaction defines model for PaginatedResponseOfInvoicesBankTransaction.
+type PaginatedResponseOfInvoicesBankTransaction struct {
+	Data       []InvoicesBankTransaction       `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
 // PaginatedResponseOfInvoicesInvoiceListItem defines model for PaginatedResponseOfInvoicesInvoiceListItem.
 type PaginatedResponseOfInvoicesInvoiceListItem struct {
 	Data       []InvoicesInvoiceListItem       `json:"data"`
@@ -2668,6 +3004,21 @@ type GetInvoicesBankFilesParams struct {
 type PostInvoicesBankFilesMultipartBody struct {
 	File openapi_types.File `json:"file"`
 }
+
+// GetInvoicesBankTransactionsParams defines parameters for GetInvoicesBankTransactions.
+type GetInvoicesBankTransactionsParams struct {
+	Status     *GetInvoicesBankTransactionsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Reason     *InvoicesBankTransactionReason           `form:"reason,omitempty" json:"reason,omitempty"`
+	BankFileId *int64                                   `form:"bankFileId,omitempty" json:"bankFileId,omitempty"`
+	Unapplied  *bool                                    `form:"unapplied,omitempty" json:"unapplied,omitempty"`
+	From       *openapi_types.Date                      `form:"from,omitempty" json:"from,omitempty"`
+	To         *openapi_types.Date                      `form:"to,omitempty" json:"to,omitempty"`
+	Page       *int32                                   `form:"page,omitempty" json:"page,omitempty"`
+	PageSize   *int32                                   `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// GetInvoicesBankTransactionsParamsStatus defines parameters for GetInvoicesBankTransactions.
+type GetInvoicesBankTransactionsParamsStatus string
 
 // GetInvoicesExportCsvParams defines parameters for GetInvoicesExportCsv.
 type GetInvoicesExportCsvParams struct {
@@ -2731,6 +3082,18 @@ type PutInvoicesBankAccountsByAccountFormatJSONRequestBody = InvoicesBankAccount
 
 // PostInvoicesBankFilesMultipartRequestBody defines body for PostInvoicesBankFiles for multipart/form-data ContentType.
 type PostInvoicesBankFilesMultipartRequestBody PostInvoicesBankFilesMultipartBody
+
+// PostInvoicesBankTransactionsByIdApplyJSONRequestBody defines body for PostInvoicesBankTransactionsByIdApply for application/json ContentType.
+type PostInvoicesBankTransactionsByIdApplyJSONRequestBody = InvoicesBankTransactionApplyRequest
+
+// PostInvoicesBankTransactionsByIdConfirmDuplicateJSONRequestBody defines body for PostInvoicesBankTransactionsByIdConfirmDuplicate for application/json ContentType.
+type PostInvoicesBankTransactionsByIdConfirmDuplicateJSONRequestBody = InvoicesBankTransactionNoteRequest
+
+// PostInvoicesBankTransactionsByIdDismissJSONRequestBody defines body for PostInvoicesBankTransactionsByIdDismiss for application/json ContentType.
+type PostInvoicesBankTransactionsByIdDismissJSONRequestBody = InvoicesBankTransactionDismissRequest
+
+// PostInvoicesBankTransactionsByIdHandleReversalJSONRequestBody defines body for PostInvoicesBankTransactionsByIdHandleReversal for application/json ContentType.
+type PostInvoicesBankTransactionsByIdHandleReversalJSONRequestBody = InvoicesBankTransactionReversalRequest
 
 // PostInvoicesCollectionRatesJSONRequestBody defines body for PostInvoicesCollectionRates for application/json ContentType.
 type PostInvoicesCollectionRatesJSONRequestBody = InvoicesCollectionRateRequest
@@ -2821,6 +3184,27 @@ type ServerInterface interface {
 	// PostInvoicesBankFilesByIdMatch Match a bank file's pending lines
 	// (POST /api/v1/invoices/bank-files/{id}/match)
 	PostInvoicesBankFilesByIdMatch(w http.ResponseWriter, r *http.Request, id int64)
+	// GetInvoicesBankTransactions List the bank lines and the exception queue
+	// (GET /api/v1/invoices/bank-transactions)
+	GetInvoicesBankTransactions(w http.ResponseWriter, r *http.Request, params GetInvoicesBankTransactionsParams)
+	// PostInvoicesBankTransactionsByIdApply Apply a bank line to invoices
+	// (POST /api/v1/invoices/bank-transactions/{id}/apply)
+	PostInvoicesBankTransactionsByIdApply(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesBankTransactionsByIdConfirmDuplicate Confirm a bank line a duplicate
+	// (POST /api/v1/invoices/bank-transactions/{id}/confirm-duplicate)
+	PostInvoicesBankTransactionsByIdConfirmDuplicate(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesBankTransactionsByIdDismiss Dismiss a bank line as not a customer payment
+	// (POST /api/v1/invoices/bank-transactions/{id}/dismiss)
+	PostInvoicesBankTransactionsByIdDismiss(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesBankTransactionsByIdHandleReversal Handle a reversed bank line
+	// (POST /api/v1/invoices/bank-transactions/{id}/handle-reversal)
+	PostInvoicesBankTransactionsByIdHandleReversal(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesBankTransactionsByIdReopen Reopen a bank line
+	// (POST /api/v1/invoices/bank-transactions/{id}/reopen)
+	PostInvoicesBankTransactionsByIdReopen(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesBankTransactionsByIdTreatAsDistinct Treat a duplicate bank line as distinct
+	// (POST /api/v1/invoices/bank-transactions/{id}/treat-as-distinct)
+	PostInvoicesBankTransactionsByIdTreatAsDistinct(w http.ResponseWriter, r *http.Request, id int64)
 	// GetInvoicesCollectionRates List the collection rates
 	// (GET /api/v1/invoices/collection-rates)
 	GetInvoicesCollectionRates(w http.ResponseWriter, r *http.Request)
@@ -3283,6 +3667,286 @@ func (siw *ServerInterfaceWrapper) PostInvoicesBankFilesByIdMatch(w http.Respons
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostInvoicesBankFilesByIdMatch(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesBankTransactions operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesBankTransactions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetInvoicesBankTransactionsParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "reason" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "reason", r.URL.Query(), &params.Reason, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "reason"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reason", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "bankFileId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "bankFileId", r.URL.Query(), &params.BankFileId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "bankFileId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bankFileId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "unapplied" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unapplied", r.URL.Query(), &params.Unapplied, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unapplied"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unapplied", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesBankTransactions(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesBankTransactionsByIdApply operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesBankTransactionsByIdApply(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesBankTransactionsByIdApply(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesBankTransactionsByIdConfirmDuplicate operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesBankTransactionsByIdConfirmDuplicate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesBankTransactionsByIdConfirmDuplicate(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesBankTransactionsByIdDismiss operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesBankTransactionsByIdDismiss(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesBankTransactionsByIdDismiss(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesBankTransactionsByIdHandleReversal operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesBankTransactionsByIdHandleReversal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesBankTransactionsByIdHandleReversal(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesBankTransactionsByIdReopen operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesBankTransactionsByIdReopen(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesBankTransactionsByIdReopen(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesBankTransactionsByIdTreatAsDistinct operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesBankTransactionsByIdTreatAsDistinct(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesBankTransactionsByIdTreatAsDistinct(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4805,6 +5469,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/bank-files", wrapper.PostInvoicesBankFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/bank-files/{id}", wrapper.GetInvoicesBankFilesById)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/bank-files/{id}/match", wrapper.PostInvoicesBankFilesByIdMatch)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/bank-transactions", wrapper.GetInvoicesBankTransactions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/bank-transactions/{id}/apply", wrapper.PostInvoicesBankTransactionsByIdApply)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/bank-transactions/{id}/dismiss", wrapper.PostInvoicesBankTransactionsByIdDismiss)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/bank-transactions/{id}/handle-reversal", wrapper.PostInvoicesBankTransactionsByIdHandleReversal)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/bank-transactions/{id}/confirm-duplicate", wrapper.PostInvoicesBankTransactionsByIdConfirmDuplicate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/bank-transactions/{id}/treat-as-distinct", wrapper.PostInvoicesBankTransactionsByIdTreatAsDistinct)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/bank-transactions/{id}/reopen", wrapper.PostInvoicesBankTransactionsByIdReopen)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/bank-accounts", wrapper.GetInvoicesBankAccounts)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/bank-accounts/{account}/format", wrapper.PutInvoicesBankAccountsByAccountFormat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/journal", wrapper.GetInvoicesJournal)
@@ -5348,6 +6019,562 @@ type PostInvoicesBankFilesByIdMatch404Response struct {
 func (response PostInvoicesBankFilesByIdMatch404Response) VisitPostInvoicesBankFilesByIdMatchResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetInvoicesBankTransactionsRequestObject struct {
+	Params GetInvoicesBankTransactionsParams
+}
+
+type GetInvoicesBankTransactionsResponseObject interface {
+	VisitGetInvoicesBankTransactionsResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesBankTransactions200JSONResponse PaginatedResponseOfInvoicesBankTransaction
+
+func (response GetInvoicesBankTransactions200JSONResponse) VisitGetInvoicesBankTransactionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesBankTransactions400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetInvoicesBankTransactions400ApplicationProblemPlusJSONResponse) VisitGetInvoicesBankTransactionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesBankTransactions401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesBankTransactions401JSONResponse) VisitGetInvoicesBankTransactionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesBankTransactions403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesBankTransactions403JSONResponse) VisitGetInvoicesBankTransactionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdApplyRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesBankTransactionsByIdApplyJSONRequestBody
+}
+
+type PostInvoicesBankTransactionsByIdApplyResponseObject interface {
+	VisitPostInvoicesBankTransactionsByIdApplyResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesBankTransactionsByIdApply200JSONResponse InvoicesBankTransaction
+
+func (response PostInvoicesBankTransactionsByIdApply200JSONResponse) VisitPostInvoicesBankTransactionsByIdApplyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdApply400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesBankTransactionsByIdApply400ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankTransactionsByIdApplyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdApply401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdApply401JSONResponse) VisitPostInvoicesBankTransactionsByIdApplyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdApply403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdApply403JSONResponse) VisitPostInvoicesBankTransactionsByIdApplyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdApply404Response struct {
+}
+
+func (response PostInvoicesBankTransactionsByIdApply404Response) VisitPostInvoicesBankTransactionsByIdApplyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesBankTransactionsByIdApply409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesBankTransactionsByIdApply409ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankTransactionsByIdApplyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdConfirmDuplicateRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesBankTransactionsByIdConfirmDuplicateJSONRequestBody
+}
+
+type PostInvoicesBankTransactionsByIdConfirmDuplicateResponseObject interface {
+	VisitPostInvoicesBankTransactionsByIdConfirmDuplicateResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesBankTransactionsByIdConfirmDuplicate200JSONResponse InvoicesBankTransaction
+
+func (response PostInvoicesBankTransactionsByIdConfirmDuplicate200JSONResponse) VisitPostInvoicesBankTransactionsByIdConfirmDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdConfirmDuplicate400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesBankTransactionsByIdConfirmDuplicate400ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankTransactionsByIdConfirmDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdConfirmDuplicate401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdConfirmDuplicate401JSONResponse) VisitPostInvoicesBankTransactionsByIdConfirmDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdConfirmDuplicate403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdConfirmDuplicate403JSONResponse) VisitPostInvoicesBankTransactionsByIdConfirmDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdConfirmDuplicate404Response struct {
+}
+
+func (response PostInvoicesBankTransactionsByIdConfirmDuplicate404Response) VisitPostInvoicesBankTransactionsByIdConfirmDuplicateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesBankTransactionsByIdConfirmDuplicate409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesBankTransactionsByIdConfirmDuplicate409ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankTransactionsByIdConfirmDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdDismissRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesBankTransactionsByIdDismissJSONRequestBody
+}
+
+type PostInvoicesBankTransactionsByIdDismissResponseObject interface {
+	VisitPostInvoicesBankTransactionsByIdDismissResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesBankTransactionsByIdDismiss200JSONResponse InvoicesBankTransaction
+
+func (response PostInvoicesBankTransactionsByIdDismiss200JSONResponse) VisitPostInvoicesBankTransactionsByIdDismissResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdDismiss400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesBankTransactionsByIdDismiss400ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankTransactionsByIdDismissResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdDismiss401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdDismiss401JSONResponse) VisitPostInvoicesBankTransactionsByIdDismissResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdDismiss403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdDismiss403JSONResponse) VisitPostInvoicesBankTransactionsByIdDismissResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdDismiss404Response struct {
+}
+
+func (response PostInvoicesBankTransactionsByIdDismiss404Response) VisitPostInvoicesBankTransactionsByIdDismissResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesBankTransactionsByIdDismiss409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesBankTransactionsByIdDismiss409ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankTransactionsByIdDismissResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdHandleReversalRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesBankTransactionsByIdHandleReversalJSONRequestBody
+}
+
+type PostInvoicesBankTransactionsByIdHandleReversalResponseObject interface {
+	VisitPostInvoicesBankTransactionsByIdHandleReversalResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesBankTransactionsByIdHandleReversal200JSONResponse InvoicesBankTransaction
+
+func (response PostInvoicesBankTransactionsByIdHandleReversal200JSONResponse) VisitPostInvoicesBankTransactionsByIdHandleReversalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdHandleReversal400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesBankTransactionsByIdHandleReversal400ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankTransactionsByIdHandleReversalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdHandleReversal401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdHandleReversal401JSONResponse) VisitPostInvoicesBankTransactionsByIdHandleReversalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdHandleReversal403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdHandleReversal403JSONResponse) VisitPostInvoicesBankTransactionsByIdHandleReversalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdHandleReversal404Response struct {
+}
+
+func (response PostInvoicesBankTransactionsByIdHandleReversal404Response) VisitPostInvoicesBankTransactionsByIdHandleReversalResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesBankTransactionsByIdHandleReversal409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesBankTransactionsByIdHandleReversal409ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankTransactionsByIdHandleReversalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdReopenRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostInvoicesBankTransactionsByIdReopenResponseObject interface {
+	VisitPostInvoicesBankTransactionsByIdReopenResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesBankTransactionsByIdReopen200JSONResponse InvoicesBankTransaction
+
+func (response PostInvoicesBankTransactionsByIdReopen200JSONResponse) VisitPostInvoicesBankTransactionsByIdReopenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdReopen401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdReopen401JSONResponse) VisitPostInvoicesBankTransactionsByIdReopenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdReopen403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdReopen403JSONResponse) VisitPostInvoicesBankTransactionsByIdReopenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdReopen404Response struct {
+}
+
+func (response PostInvoicesBankTransactionsByIdReopen404Response) VisitPostInvoicesBankTransactionsByIdReopenResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesBankTransactionsByIdReopen409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesBankTransactionsByIdReopen409ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankTransactionsByIdReopenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdTreatAsDistinctRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostInvoicesBankTransactionsByIdTreatAsDistinctResponseObject interface {
+	VisitPostInvoicesBankTransactionsByIdTreatAsDistinctResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesBankTransactionsByIdTreatAsDistinct200JSONResponse InvoicesBankTransaction
+
+func (response PostInvoicesBankTransactionsByIdTreatAsDistinct200JSONResponse) VisitPostInvoicesBankTransactionsByIdTreatAsDistinctResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdTreatAsDistinct401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdTreatAsDistinct401JSONResponse) VisitPostInvoicesBankTransactionsByIdTreatAsDistinctResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdTreatAsDistinct403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankTransactionsByIdTreatAsDistinct403JSONResponse) VisitPostInvoicesBankTransactionsByIdTreatAsDistinctResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankTransactionsByIdTreatAsDistinct404Response struct {
+}
+
+func (response PostInvoicesBankTransactionsByIdTreatAsDistinct404Response) VisitPostInvoicesBankTransactionsByIdTreatAsDistinctResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesBankTransactionsByIdTreatAsDistinct409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesBankTransactionsByIdTreatAsDistinct409ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankTransactionsByIdTreatAsDistinctResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetInvoicesCollectionRatesRequestObject struct {
@@ -9103,6 +10330,27 @@ type StrictServerInterface interface {
 	// PostInvoicesBankFilesByIdMatch Match a bank file's pending lines
 	// (POST /api/v1/invoices/bank-files/{id}/match)
 	PostInvoicesBankFilesByIdMatch(ctx context.Context, request PostInvoicesBankFilesByIdMatchRequestObject) (PostInvoicesBankFilesByIdMatchResponseObject, error)
+	// GetInvoicesBankTransactions List the bank lines and the exception queue
+	// (GET /api/v1/invoices/bank-transactions)
+	GetInvoicesBankTransactions(ctx context.Context, request GetInvoicesBankTransactionsRequestObject) (GetInvoicesBankTransactionsResponseObject, error)
+	// PostInvoicesBankTransactionsByIdApply Apply a bank line to invoices
+	// (POST /api/v1/invoices/bank-transactions/{id}/apply)
+	PostInvoicesBankTransactionsByIdApply(ctx context.Context, request PostInvoicesBankTransactionsByIdApplyRequestObject) (PostInvoicesBankTransactionsByIdApplyResponseObject, error)
+	// PostInvoicesBankTransactionsByIdConfirmDuplicate Confirm a bank line a duplicate
+	// (POST /api/v1/invoices/bank-transactions/{id}/confirm-duplicate)
+	PostInvoicesBankTransactionsByIdConfirmDuplicate(ctx context.Context, request PostInvoicesBankTransactionsByIdConfirmDuplicateRequestObject) (PostInvoicesBankTransactionsByIdConfirmDuplicateResponseObject, error)
+	// PostInvoicesBankTransactionsByIdDismiss Dismiss a bank line as not a customer payment
+	// (POST /api/v1/invoices/bank-transactions/{id}/dismiss)
+	PostInvoicesBankTransactionsByIdDismiss(ctx context.Context, request PostInvoicesBankTransactionsByIdDismissRequestObject) (PostInvoicesBankTransactionsByIdDismissResponseObject, error)
+	// PostInvoicesBankTransactionsByIdHandleReversal Handle a reversed bank line
+	// (POST /api/v1/invoices/bank-transactions/{id}/handle-reversal)
+	PostInvoicesBankTransactionsByIdHandleReversal(ctx context.Context, request PostInvoicesBankTransactionsByIdHandleReversalRequestObject) (PostInvoicesBankTransactionsByIdHandleReversalResponseObject, error)
+	// PostInvoicesBankTransactionsByIdReopen Reopen a bank line
+	// (POST /api/v1/invoices/bank-transactions/{id}/reopen)
+	PostInvoicesBankTransactionsByIdReopen(ctx context.Context, request PostInvoicesBankTransactionsByIdReopenRequestObject) (PostInvoicesBankTransactionsByIdReopenResponseObject, error)
+	// PostInvoicesBankTransactionsByIdTreatAsDistinct Treat a duplicate bank line as distinct
+	// (POST /api/v1/invoices/bank-transactions/{id}/treat-as-distinct)
+	PostInvoicesBankTransactionsByIdTreatAsDistinct(ctx context.Context, request PostInvoicesBankTransactionsByIdTreatAsDistinctRequestObject) (PostInvoicesBankTransactionsByIdTreatAsDistinctResponseObject, error)
 	// GetInvoicesCollectionRates List the collection rates
 	// (GET /api/v1/invoices/collection-rates)
 	GetInvoicesCollectionRates(ctx context.Context, request GetInvoicesCollectionRatesRequestObject) (GetInvoicesCollectionRatesResponseObject, error)
@@ -9504,6 +10752,216 @@ func (sh *strictHandler) PostInvoicesBankFilesByIdMatch(w http.ResponseWriter, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostInvoicesBankFilesByIdMatchResponseObject); ok {
 		if err := validResponse.VisitPostInvoicesBankFilesByIdMatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesBankTransactions operation middleware
+func (sh *strictHandler) GetInvoicesBankTransactions(w http.ResponseWriter, r *http.Request, params GetInvoicesBankTransactionsParams) {
+	var request GetInvoicesBankTransactionsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesBankTransactions(ctx, request.(GetInvoicesBankTransactionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesBankTransactions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesBankTransactionsResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesBankTransactionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesBankTransactionsByIdApply operation middleware
+func (sh *strictHandler) PostInvoicesBankTransactionsByIdApply(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesBankTransactionsByIdApplyRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesBankTransactionsByIdApplyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesBankTransactionsByIdApply(ctx, request.(PostInvoicesBankTransactionsByIdApplyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesBankTransactionsByIdApply")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesBankTransactionsByIdApplyResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesBankTransactionsByIdApplyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesBankTransactionsByIdConfirmDuplicate operation middleware
+func (sh *strictHandler) PostInvoicesBankTransactionsByIdConfirmDuplicate(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesBankTransactionsByIdConfirmDuplicateRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesBankTransactionsByIdConfirmDuplicateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesBankTransactionsByIdConfirmDuplicate(ctx, request.(PostInvoicesBankTransactionsByIdConfirmDuplicateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesBankTransactionsByIdConfirmDuplicate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesBankTransactionsByIdConfirmDuplicateResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesBankTransactionsByIdConfirmDuplicateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesBankTransactionsByIdDismiss operation middleware
+func (sh *strictHandler) PostInvoicesBankTransactionsByIdDismiss(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesBankTransactionsByIdDismissRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesBankTransactionsByIdDismissJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesBankTransactionsByIdDismiss(ctx, request.(PostInvoicesBankTransactionsByIdDismissRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesBankTransactionsByIdDismiss")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesBankTransactionsByIdDismissResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesBankTransactionsByIdDismissResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesBankTransactionsByIdHandleReversal operation middleware
+func (sh *strictHandler) PostInvoicesBankTransactionsByIdHandleReversal(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesBankTransactionsByIdHandleReversalRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesBankTransactionsByIdHandleReversalJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesBankTransactionsByIdHandleReversal(ctx, request.(PostInvoicesBankTransactionsByIdHandleReversalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesBankTransactionsByIdHandleReversal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesBankTransactionsByIdHandleReversalResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesBankTransactionsByIdHandleReversalResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesBankTransactionsByIdReopen operation middleware
+func (sh *strictHandler) PostInvoicesBankTransactionsByIdReopen(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesBankTransactionsByIdReopenRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesBankTransactionsByIdReopen(ctx, request.(PostInvoicesBankTransactionsByIdReopenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesBankTransactionsByIdReopen")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesBankTransactionsByIdReopenResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesBankTransactionsByIdReopenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesBankTransactionsByIdTreatAsDistinct operation middleware
+func (sh *strictHandler) PostInvoicesBankTransactionsByIdTreatAsDistinct(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesBankTransactionsByIdTreatAsDistinctRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesBankTransactionsByIdTreatAsDistinct(ctx, request.(PostInvoicesBankTransactionsByIdTreatAsDistinctRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesBankTransactionsByIdTreatAsDistinct")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesBankTransactionsByIdTreatAsDistinctResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesBankTransactionsByIdTreatAsDistinctResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

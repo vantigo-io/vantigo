@@ -647,7 +647,15 @@ som den som registrerte den. Hver betaling viser hvor den kom fra: registrert fo
 eller hentet fra en linje i en OCR-giro- eller camt.054-fil. En innbetaling avstemmingen
 ikke kan plassere — uten KID, med en KID ingen faktura har, mer enn det som gjenstår å
 betale, eller en som kan gjenta en betaling som alt er registrert — holdes tilbake for en
-person og registreres ikke.
+person og registreres ikke. Noen med `invoices:payments` behandler den gjennom
+avvikskøen, inntil skjermbildet for den kommer, gjennom API-et
+([avvikskøen](/en/reference/invoices/#the-exception-queue)): før den mot én eller flere
+fakturaer og purrekravene deres, med forslag — en faktura hvis nummer står i
+innbetalingens tekst, en hvis utestående beløp den er lik, en for kunden som har betalt fra
+samme konto før; avvis den som ikke en kundebetaling, med et notat; for en tilbakeføring,
+fjern betalingen banken tok tilbake; bekreft et duplikat eller behold den som en egen
+betaling; eller gjenåpne den. Det en innbetaling ikke blir ført mot, står synlig på linjen
+— Vantigo fører ingen kreditsaldo og gjør ingen tilbakebetaling.
 
 Klikk **Registrer betaling** — tilbys mens noe er igjen å betale — og fyll ut:
 

@@ -492,13 +492,9 @@ func (s *server) GetInvoicesBankFilesById(ctx context.Context, req gen.GetInvoic
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read bank file %d's lines: %w", req.Id, err)
 	}
-	txs := make([]gen.InvoicesBankTransaction, 0, len(lines))
-	for _, l := range lines {
-		tx, err := bankTransactionResponse(l)
-		if err != nil {
-			return nil, err
-		}
-		txs = append(txs, tx)
+	txs, err := bankTransactionsResponse(ctx, q, lines, false)
+	if err != nil {
+		return nil, err
 	}
 	return gen.GetInvoicesBankFilesById200JSONResponse(gen.InvoicesBankFileDetail{File: file, Transactions: txs}), nil
 }
@@ -547,17 +543,25 @@ func bankFileResponse(f store.InvoicesBankFile, pending, exceptions, matched int
 	}, nil
 }
 
-// bankTransactionResponse is one line on the wire.
+// bankTransactionResponse is one line on the wire as it stands, without
+// what bankTransactionsResponse reads beside it (bankqueue.go): its file,
+// what is applied from it, its rest, its twin, its suggestions, its events.
 func bankTransactionResponse(l store.InvoicesBankTransaction) (gen.InvoicesBankTransaction, error) {
 	amount, err := floatFromNumeric(l.Amount)
 	if err != nil {
 		return gen.InvoicesBankTransaction{}, err
 	}
+	var resolution *gen.InvoicesBankTransactionResolution
+	if l.Resolution != nil {
+		resolution = ptr(gen.InvoicesBankTransactionResolution(*l.Resolution))
+	}
 	return gen.InvoicesBankTransaction{
 		Id: l.ID, LineRef: l.LineRef, Account: l.Account, Direction: l.Direction, Negative: l.Negative,
 		BookedOn: wireDate(l.BookedOn.Time), ValueOn: wireDateOf(l.ValueOn), OrderedOn: wireDateOf(l.OrderedOn),
 		Amount: amount, Kid: l.Kid, RemittanceText: l.RemittanceText, DebtorName: l.DebtorName,
-		DebtorAccount: l.DebtorAccount, ArchiveRef: l.ArchiveRef, Status: l.Status, Reason: l.Reason,
-		DuplicateOfId: l.DuplicateOfID,
+		DebtorAccount: l.DebtorAccount, ArchiveRef: l.ArchiveRef, Status: gen.InvoicesBankTransactionStatus(l.Status),
+		Reason: reasonWire(l.Reason), DuplicateOfId: l.DuplicateOfID, SuggestedInvoiceId: l.SuggestedInvoiceID,
+		Resolution: resolution, ResolvedBy: l.ResolvedByUserID, ResolvedAt: l.ResolvedAt, ResolutionNote: l.ResolutionNote,
+		Applied: []gen.InvoicesBankTransactionApplied{}, Events: []gen.InvoicesBankTransactionEvent{},
 	}, nil
 }

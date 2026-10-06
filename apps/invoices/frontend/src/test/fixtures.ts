@@ -950,6 +950,55 @@ export const reminderPolicy = (overrides: Partial<ReminderPolicy> = {}): Reminde
   ...overrides,
 });
 
+type BankTransaction = components["schemas"]["InvoicesBankTransaction"];
+
+/**
+ * One line of the exception queue as GET /bank-transactions sends it: a camt.054
+ * payment without a KID, queued no_kid, nothing applied, its whole amount
+ * unapplied, the one suggestion kept, and its queued event.
+ */
+export const bankTransaction = (overrides: Partial<BankTransaction> = {}): BankTransaction => ({
+  id: 1001,
+  lineRef: "NTF-0617/1/1",
+  account: "86011117947",
+  direction: "credit",
+  negative: false,
+  bookedOn: "2026-09-11",
+  amount: 1250,
+  remittanceText: "Faktura 1001",
+  debtorName: "Acme AS",
+  debtorAccount: "15032080119",
+  archiveRef: "SVC-0617-1",
+  bankFile: { id: 1001, format: "camt054", uploadedAt: "2026-09-12T08:00:00Z" },
+  status: "exception",
+  reason: "no_kid",
+  suggestedInvoiceId: 1001,
+  applied: [],
+  unappliedAmount: 1250,
+  suggestions: [
+    {
+      invoiceId: 1001,
+      number: 1001,
+      customerId: 2001,
+      buyerName: "Acme AS",
+      openAmount: 1250,
+      why: "number_in_text",
+    },
+  ],
+  resolutionNote: "",
+  events: [
+    {
+      id: 1001,
+      event: "queued",
+      reason: "no_kid",
+      note: "",
+      by: "7d0d6b5e-1d3a-4c4e-9f8e-2b9a0c1d2e3f",
+      at: "2026-09-12T08:00:00Z",
+    },
+  ],
+  ...overrides,
+});
+
 /** A month's journal: numbers 1000 to 1002, a credit note signed negative. */
 export const journal = (overrides: Partial<InvoiceJournal> = {}): InvoiceJournal => ({
   data: [
