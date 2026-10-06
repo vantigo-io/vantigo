@@ -421,6 +421,11 @@ export const issued = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocumen
     openAmount: 124.99,
     payments: [],
     deliveries: [],
+    // Phase 4's receivables: no letter sent, so nothing claimed.
+    charges: { claimed: 0, waived: 0, paid: 0, outstanding: 0 },
+    chargePayments: [],
+    waivers: [],
+    manualDeliveries: [],
     sendDefaults: { recipient: "faktura@acme.no", warnings: ["buyer_norwegian_business"] },
     ehf: { status: "not_sent", canSend: false, blockedBy: "ehf_unavailable", transmissions: [] },
     revision: 4,
@@ -558,6 +563,11 @@ export const partlyPaid = (overrides: Partial<InvoiceDocument> = {}): InvoiceDoc
       subject: "Faktura 1000 fra Kraft-Verket AS",
     },
   ],
+  // Phase 4's receivables: e-mailed before its due date, no reminder sent.
+  charges: { claimed: 0, waived: 0, paid: 0, outstanding: 0 },
+  chargePayments: [],
+  waivers: [],
+  manualDeliveries: [],
   sendDefaults: { recipient: "faktura@acme.no", preference: "email", warnings: ["buyer_norwegian_business"] },
   // Sent as EHF once too: delivered, so another send is blocked.
   ehf: {

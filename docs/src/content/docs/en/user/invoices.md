@@ -667,6 +667,14 @@ be set — through the API for now; the screens come with the reminders themselv
   note. Someone with `invoices:payments` sets it, for a customer with an invoice or a
   draft here. When two customers are merged the stricter policy wins.
 
+**Reminder charges and deliveries recorded by hand.** An issued invoice now also carries
+what its reminders claim — reminder fees, the compensation and late interest, kept apart
+from what the invoice itself is for — with the payments and waivers of those charges,
+and the deliveries recorded by hand that a charge needs when the invoice was handed over
+or posted rather than e-mailed or sent as EHF. Their screens come with reminders; until
+then they are in the API ([charges](/en/reference/invoices/#charges),
+[the delivery fact](/en/reference/invoices/#the-delivery-fact)).
+
 ## Sending a document by e-mail
 
 Open an issued invoice or credit note and click **Send**. The button needs

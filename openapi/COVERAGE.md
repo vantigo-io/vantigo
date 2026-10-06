@@ -244,7 +244,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-## invoices (46 uncovered)
+## invoices (51 uncovered)
 
 - `DELETE /api/v1/invoices/collection-rates/{id}` (deleteInvoicesCollectionRatesById)
 - `DELETE /api/v1/invoices/settings/access-point` (deleteInvoicesSettingsAccessPoint)
@@ -276,8 +276,13 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/invoices/settings/access-point/verify` (postInvoicesSettingsAccessPointVerify)
 - `POST /api/v1/invoices/vat-codes/{id}/rates` (postInvoicesVatCodesByIdRates)
 - `POST /api/v1/invoices/vat-codes` (postInvoicesVatCodes)
+- `POST /api/v1/invoices/{id}/charge-payments/{chargePaymentId}/remove` (postInvoicesByIdChargePaymentsByChargePaymentIdRemove)
+- `POST /api/v1/invoices/{id}/charge-payments` (postInvoicesByIdChargePayments)
+- `POST /api/v1/invoices/{id}/charges/waive` (postInvoicesByIdChargesWaive)
 - `POST /api/v1/invoices/{id}/credit` (postInvoicesByIdCredit)
 - `POST /api/v1/invoices/{id}/issue` (postInvoicesByIdIssue)
+- `POST /api/v1/invoices/{id}/manual-deliveries/{deliveryId}/remove` (postInvoicesByIdManualDeliveriesByDeliveryIdRemove)
+- `POST /api/v1/invoices/{id}/manual-deliveries` (postInvoicesByIdManualDeliveries)
 - `POST /api/v1/invoices/{id}/payments/{paymentId}/remove` (postInvoicesByIdPaymentsByPaymentIdRemove)
 - `POST /api/v1/invoices/{id}/payments` (postInvoicesByIdPayments)
 - `POST /api/v1/invoices/{id}/send-ehf` (postInvoicesByIdSendEhf)
@@ -293,4 +298,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-Total: 264 of 399 operations have no recorded exchange.
+Total: 269 of 404 operations have no recorded exchange.

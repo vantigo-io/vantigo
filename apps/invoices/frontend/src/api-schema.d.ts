@@ -502,6 +502,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{id}/charge-payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a charge payment
+         * @description Registers money received against an issued invoice's charges — the fees, the compensation and the interest its sent reminders claimed — never its principal (invoices payments and reminders design D9). The payment's rules first (D2): 404; 409 credit_note_no_payments, invoice_draft; 400 on the field. Then one transaction locks the invoice — the only row it locks — and reads its sent letters, waivers and live charge payments under that lock: nothing outstanding is 409 no_charges_outstanding, an amount above what is outstanding 409 charge_payment_exceeds_outstanding (with chargesOutstanding). The open amount and the state never change. The response is the document with its charges and charge payments.
+         */
+        post: operations["postInvoicesByIdChargePayments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/charge-payments/{chargePaymentId}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove a charge payment
+         * @description Removes a charge payment with a reason (D9), as a payment is removed (D2): the reason is judged before anything is read; then one transaction locks the invoice first and reads the charge payment after that lock, so two removals of one give one 200 and one payment_removed. A charge payment taken from a bank line is removed the same way, and the line is not written. The row is kept and counts for nothing. The response is the document.
+         */
+        post: operations["postInvoicesByIdChargePaymentsByChargePaymentIdRemove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/charges/waive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Waive reminder charges
+         * @description Releases charges an issued invoice's sent reminders claimed (D9). The body is judged first (400 on waivers, reason or note); then 404; 409 credit_note_no_reminders, invoice_draft; then one transaction locks the invoice — the only row it locks — reads its sent letters, waivers and live charge payments under that lock, and judges each waiver in order against what the earlier ones left: a letter that is not the invoice's is 404; a fee or the compensation is waived whole, and is charge_not_claimed when the letter is not sent, claimed no such charge or it is waived already; interest names the latest sent letter and waives an amount — the interest it claimed less every earlier interest waiver and the charge payments allocated to interest — and is charge_not_claimed on an earlier letter or when no interest is left unpaid. One refusal writes none of them. A waived charge that was paid becomes a refund due. The response is the document with its charges and waivers.
+         */
+        post: operations["postInvoicesByIdChargesWaive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/manual-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a manual delivery
+         * @description Records that an issued invoice was handed over or posted (D8): an invoice not validly delivered does not fall due (FinKN 2017-492), and a reminder may claim a fee, the compensation or interest only with a delivery — an e-mail, a delivered EHF transmission or this record — on or before the due date. 404; 409 credit_note_no_reminders, invoice_draft; 400 on kind, deliveredOn (on or after the issue date, not after today, Oslo) or note; then one transaction locks the invoice and inserts the record. The response is the document with its manual deliveries.
+         */
+        post: operations["postInvoicesByIdManualDeliveries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/manual-deliveries/{deliveryId}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove a manual delivery
+         * @description Removes a manual delivery with a reason (D8), as a payment is removed: the reason is judged before anything is read; then one transaction locks the invoice first and reads the record after that lock. A record that is not the invoice's is 404; one removed already is delivery_removed; while a sent letter of the invoice carries a fee, the compensation or interest not waived and no other delivery on or before the due date would remain, the record is relied on — delivery_relied_on; a mistaken record is then corrected by waiving those charges claimed_in_error and removing it after. The row is kept and counts for nothing. The response is the document.
+         */
+        post: operations["postInvoicesByIdManualDeliveriesByDeliveryIdRemove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/{id}/send": {
         parameters: {
             query?: never;
@@ -830,7 +930,7 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -1542,10 +1642,13 @@ export interface components {
             timesheet?: boolean;
             yourReference?: string;
         };
-        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
+        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9). Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
         InvoicesInvoiceResponse: {
             allowedIssueDates?: string[];
             buyer?: components["schemas"]["InvoicesBuyer"];
+            /** @description On an issued invoice, every payment of its charges (invoices payments and reminders design D9), removed ones included with their removal, in the order the money arrived. */
+            chargePayments?: components["schemas"]["InvoicesChargePayment"][];
+            charges?: components["schemas"]["InvoicesCharges"];
             /** Format: date-time */
             createdAt: string;
             creditNotes?: components["schemas"]["InvoicesCreditNoteRef"][];
@@ -1592,6 +1695,8 @@ export interface components {
             /** @description invoice or credit_note. */
             kind: string;
             lines: components["schemas"]["InvoicesLine"][];
+            /** @description On an issued invoice, every delivery recorded by hand (invoices payments and reminders design D8), removed ones included with their removal, the earliest first. */
+            manualDeliveries?: components["schemas"]["InvoicesManualDelivery"][];
             /** Format: double */
             netTotal: number;
             note: string;
@@ -1651,6 +1756,8 @@ export interface components {
             vatTotal: number;
             /** Format: double */
             vatTotalNok: number;
+            /** @description On an issued invoice, every charge waiver (invoices payments and reminders design D9), the first first. */
+            waivers?: components["schemas"]["InvoicesChargeWaiver"][];
             warnings: string[];
             yourReference: string;
         };
@@ -1785,7 +1892,7 @@ export interface components {
             /** Format: uuid */
             removedByUserId?: string;
         };
-        /** @description POST /invoices/{id}/payments/{paymentId}/remove's body (D2). reason is why the registration is removed: 1-200 characters once trimmed. A removal is never undone; a mistake is registered again. */
+        /** @description POST /invoices/{id}/payments/{paymentId}/remove's body (D2). reason is why the registration is removed: 1-200 characters once trimmed. A removal is never undone; a mistake is registered again. The same body removes a charge payment and a manual delivery (invoices payments and reminders design D8, D9). */
         InvoicesPaymentRemovalRequest: {
             reason: string;
         };
@@ -1797,6 +1904,118 @@ export interface components {
             /** Format: date */
             paidOn: string;
             reference?: string;
+        };
+        /** @description One payment of an issued invoice's charges — the fees, the compensation and the interest its reminders claimed — never of its principal (invoices payments and reminders design D9). source is manual for one registered by hand, ocr or camt054 for one taken from a bank line, which bankTransactionId then names. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing. */
+        InvoicesChargePayment: {
+            /** Format: double */
+            amount: number;
+            /**
+             * Format: int64
+             * @description The bank line the payment was taken from; absent for one registered by hand.
+             */
+            bankTransactionId?: number;
+            currency: string;
+            /** Format: int64 */
+            id: number;
+            note: string;
+            /** Format: date */
+            paidOn: string;
+            reference: string;
+            /** Format: date-time */
+            registeredAt: string;
+            /** Format: uuid */
+            registeredByUserId: string;
+            removalReason?: string;
+            /** Format: date-time */
+            removedAt?: string;
+            /** Format: uuid */
+            removedByUserId?: string;
+            /**
+             * @description manual, ocr or camt054.
+             * @enum {string}
+             */
+            source: "manual" | "ocr" | "camt054";
+        };
+        /** @description POST /invoices/{id}/charge-payments' body (D9), a payment's fields and rules (D2): paidOn on or after the invoice's issue date and not after today (Oslo); amount greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its charges outstanding (409 charge_payment_exceeds_outstanding); reference at most 100 characters and note at most 500, both trimmed; absent is empty. */
+        InvoicesChargePaymentRequest: {
+            /** Format: double */
+            amount: number;
+            note?: string;
+            /** Format: date */
+            paidOn: string;
+            reference?: string;
+        };
+        /** @description POST /invoices/{id}/charges/waive's body (D9): the charges to release, each a letter and a kind — fee or compensation, the letter's whole charge; interest, what the latest sent letter claimed less every earlier interest waiver and the charge payments allocated to interest, so it names the latest sent letter — at least 1 and at most 50, judged in order; reason objection_upheld, claimed_in_error or goodwill (deadline_met is the bank match's own); note at most 500 characters, trimmed, absent is empty. */
+        InvoicesChargeWaiveRequest: {
+            note?: string;
+            /** @enum {string} */
+            reason: "objection_upheld" | "claimed_in_error" | "goodwill";
+            waivers: {
+                /** @enum {string} */
+                kind: "fee" | "compensation" | "interest";
+                /** Format: int64 */
+                reminderId: number;
+            }[];
+        };
+        /** @description One charge released (D9): a sent letter's fee or compensation whole, or an amount of the interest the latest sent letter claimed — interestThrough is then that letter's sent day. A waiver is never removed or changed. reason is objection_upheld, claimed_in_error, goodwill or deadline_met (the bank match's, when the payments ordered by a missed deadline in fact met it). */
+        InvoicesChargeWaiver: {
+            /** Format: double */
+            amount: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: date */
+            interestThrough?: string;
+            /** @enum {string} */
+            kind: "fee" | "compensation" | "interest";
+            note: string;
+            /** @enum {string} */
+            reason: "objection_upheld" | "claimed_in_error" | "goodwill" | "deadline_met";
+            /** Format: int64 */
+            reminderId: number;
+            /** Format: date-time */
+            waivedAt: string;
+            /** Format: uuid */
+            waivedBy: string;
+        };
+        /** @description An issued invoice's charges (D9), apart from its principal: claimed is the fees and compensation its sent letters claimed plus the latest sent letter's cumulative interest; waived what its waivers released; paid what its live charge payments paid; outstanding what is left, never below zero. refundDue is present only when the charge payments exceed every charge less its waivers — a charge paid, then waived — and is what is owed back, outside Vantigo. */
+        InvoicesCharges: {
+            /** Format: double */
+            claimed: number;
+            /** Format: double */
+            outstanding: number;
+            /** Format: double */
+            paid: number;
+            /** Format: double */
+            refundDue?: number;
+            /** Format: double */
+            waived: number;
+        };
+        /** @description A delivery recorded by hand (invoices payments and reminders design D8): the invoice handed_over or posted on deliveredOn. A charge needs a live delivery — this, an e-mail or a delivered EHF transmission — on or before the due date. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing. */
+        InvoicesManualDelivery: {
+            /** Format: date */
+            deliveredOn: string;
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            kind: "handed_over" | "posted";
+            note: string;
+            /** Format: date-time */
+            recordedAt: string;
+            /** Format: uuid */
+            recordedByUserId: string;
+            removalReason?: string;
+            /** Format: date-time */
+            removedAt?: string;
+            /** Format: uuid */
+            removedByUserId?: string;
+        };
+        /** @description POST /invoices/{id}/manual-deliveries' body (D8): kind handed_over or posted; deliveredOn on or after the invoice's issue date and not after today (Oslo); note at most 500 characters, trimmed, absent is empty. */
+        InvoicesManualDeliveryRequest: {
+            /** Format: date */
+            deliveredOn: string;
+            /** @enum {string} */
+            kind: "handed_over" | "posted";
+            note?: string;
         };
         /** @description What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the Oslo business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read. */
         InvoicesSendDefaults: {
@@ -4054,6 +4273,353 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — payment_removed (the registration is already removed). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdChargePayments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesChargePaymentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice with the charge payment registered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — credit_note_no_payments, invoice_draft, no_charges_outstanding or charge_payment_exceeds_outstanding (with chargesOutstanding). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdChargePaymentsByChargePaymentIdRemove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                chargePaymentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesPaymentRemovalRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice with the charge payment removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — the reason is empty or over 200 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id, or the charge payment is not that document's. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — payment_removed (the charge payment is already removed). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdChargesWaive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesChargeWaiveRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice with the charges waived. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — waivers empty, over 50 or with an unknown kind, an unknown reason, or a note over 500 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id, or a waiver names a letter that is not that document's. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — credit_note_no_reminders, invoice_draft or charge_not_claimed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdManualDeliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesManualDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice with the delivery recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — credit_note_no_reminders or invoice_draft. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdManualDeliveriesByDeliveryIdRemove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                deliveryId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesPaymentRemovalRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice with the delivery removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — the reason is empty or over 200 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id, or the delivery is not that document's. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — delivery_removed or delivery_relied_on. */
             409: {
                 headers: {
                     [name: string]: unknown;
