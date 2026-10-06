@@ -1973,7 +1973,9 @@ row not yet in force can already be used.
 
 **Adding a rate.** `POST /invoices/collection-rates` (`invoices:manage`) takes `kind`,
 `validFrom`, `value` and `sourceRef`, the regulation. A rate is added ahead of a release,
-so `validFrom` is after today (Oslo); a half-yearly kind starts on 1 January or 1 July;
+so `validFrom` is after today (Oslo), and after the date of the latest printed or sent
+letter — a paper letter is printed for a posting date ahead of today, and a new row must
+never contradict a letter already printed or posted; a half-yearly kind starts on 1 January or 1 July;
 `value` has at most two decimals and is within its kind's bounds — late interest
 0.01–30, compensation 100–2 000, the inkassosats 100–5 000; `sourceRef` is 1–100
 characters. Each is a 400 on its field, all of them together, before the one 409:
@@ -1981,7 +1983,9 @@ characters. Each is a 400 on its field, all of them together, before the one 409
 two adds racing each other cannot both land). 201 with the row.
 
 **Deleting a rate.** `DELETE /invoices/collection-rates/{id}` (`invoices:manage`)
-deletes a mistaken row only while nothing can have relied on it: a seeded row, a row in
+deletes a mistaken row only while nothing can have relied on it. It locks the row `FOR
+UPDATE` first and judges after the lock, so a print batch that holds the rates its
+letters rely on until it commits is waited for, and its letters seen. A seeded row, a row in
 force or past (`valid_from` on or before today), and a row a printed or sent letter used
 are each **409 `collection_rate_in_force`**, the detail saying which. An unknown id is a
 404; a deletion a 204. **A deleted row a release had seeded over is replaced in the same
@@ -2046,7 +2050,8 @@ shares. `GET /invoices/settings/reminders` (`invoices:access`) reads it;
 **Every field is required**, and null is a value only for `inkassolov2026From`: a body
 without a field, or with null for any other, is a 400 on it, so a client that predates a
 field cannot reset it by leaving it out. Each field out of its bounds is a 400 on it too,
-all of them in one answer. The answer also carries `regimeReviewedBy` and
+all of them in one answer — `revision` included: a body without it is a 400 on
+`revision`. The answer also carries `regimeReviewedBy` and
 `regimeReviewedAt` — who last moved the review or set the 2026 regime's day, and when;
 absent and the migration's time until somebody does — and `revision`, `updatedAt` and
 `updatedBy`. One statement replaces the row when the body's `revision` is the stored one;
@@ -2391,9 +2396,9 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
 | `POST /settings/access-point/verify` | `invoices:manage` | 409 `ehf_unavailable`, no credentials; 503 `ehf_unavailable`, a stored key that cannot be opened |
 | `GET /settings/reminders` | | |
-| `PUT /settings/reminders` | `invoices:manage` | 400 on the field (absent, null but for `inkassolov2026From`, the wrong type, out of its bounds, `regimeReviewedThrough` more than a year ahead); a stale revision (no code) |
+| `PUT /settings/reminders` | `invoices:manage` | 400 on the field (`revision` too; absent, null but for `inkassolov2026From`, the wrong type, out of its bounds, `regimeReviewedThrough` more than a year ahead); a stale revision (no code) |
 | `GET /collection-rates` | | |
-| `POST /collection-rates` | `invoices:manage` | 400 on the field (`kind`, `validFrom` not after today or off 1 January and 1 July for a half-yearly kind, `value` out of its bounds or past two decimals, `sourceRef`); 409 `collection_rate_exists` |
+| `POST /collection-rates` | `invoices:manage` | 400 on the field (`kind`, `validFrom` not after today, not after the latest printed or sent letter, or off 1 January and 1 July for a half-yearly kind, `value` out of its bounds or past two decimals, `sourceRef`); 409 `collection_rate_exists` |
 | `DELETE /collection-rates/{id}` | `invoices:manage` | 404; 409 `collection_rate_in_force` (seeded, in force or past, or used by a printed or sent letter) |
 | `GET /customers/{customerId}/reminder-policy` | | |
 | `PUT /customers/{customerId}/reminder-policy` | `invoices:payments` | 400 on `mode` or `note`; 404 the customer has no document here, or is anonymised |

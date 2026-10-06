@@ -671,7 +671,8 @@ settes — foreløpig gjennom API-et; skjermbildene kommer med selve purringene
 
 - **Satser for inndriving**: forsinkelsesrenten, kompensasjonen fra næringsdrivende og
   inkassosatsen, som daterte rader Vantigos utgivelser fyller inn. Den som har
-  `invoices:manage` kan legge til en sats som gjelder fra etter i dag, før en utgivelse
+  `invoices:manage` kan legge til en sats som gjelder fra etter i dag — og etter datoen
+  på det siste utskrevne eller sendte brevet — før en utgivelse
   kommer, og slette en som ikke gjelder ennå og som ingen brev har brukt.
 - **Innstillinger for purring**: om purringer tilbys i det hele tatt, hvor lenge etter
   forfall det første brevet kommer, fristen i hvert brev, gebyrene for privatpersoner og

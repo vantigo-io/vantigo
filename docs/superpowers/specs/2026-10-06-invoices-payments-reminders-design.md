@@ -230,6 +230,13 @@ could not be built as written:
 
 Amended again at Task 4's review: D8 gains the deadline rule (at least 14 days, moved off a weekend or a Norwegian public holiday) and the charge note `fee_deadline_not_missed`; D9 says `charges_earlier` may be negative; D10's facts take the deadline from D8; and `E` moves off a public holiday as well as a weekend (D8, reading 8).
 
+Amended again at Task 6's review: D6's add refuses a `validFrom` on or before the latest
+printed or sent letter's `sent_on` (400 on `validFrom`), so a new row never contradicts a
+letter already printed or posted, and its `DELETE` locks the rate row `FOR UPDATE` before
+it judges whether a letter used it; D7 and D19 report the policy as
+`invoices.customerReminderPolicies` — a report kind is "<module>.<what>" in the API's
+camelCase (`contracts.ErasedData`, `contracts.RepointedReferences`).
+
 ## Decisions
 
 ### D1 — Scope, phasing, authority and the switches
@@ -713,11 +720,14 @@ a seeded row alone; the overdue list and the rates card warn
 - `GET /invoices/collection-rates` (`invoices:access`) — every row by kind and date, each
   with `inForce` today, `usable` (no letter has used it) and `releaseValue`.
 - `POST /invoices/collection-rates` (`invoices:access+invoices:manage`) `{kind, validFrom,
-  value, sourceRef}` — `validFrom` after today (Oslo), else 400; the half-yearly kinds on
+  value, sourceRef}` — `validFrom` after today (Oslo) and after the `sent_on` of the latest
+  printed or sent letter (a new row never contradicts a letter already printed or posted),
+  else 400; the half-yearly kinds on
   1 January or 1 July, else 400; bounds — interest 0.01–30, compensation 100–2 000,
   inkassosats 100–5 000 (400); a duplicate → 409 `collection_rate_exists`. 201.
-- `DELETE /invoices/collection-rates/{id}` (`invoices:manage`) — only while `validFrom` is
-  after today and the row is not seeded: 409 `collection_rate_in_force`. 204; 404. **A
+- `DELETE /invoices/collection-rates/{id}` (`invoices:manage`) — the row locked `FOR UPDATE`
+  first, then only while `validFrom` is after today, the row is not seeded and no printed
+  or sent letter used it: 409 `collection_rate_in_force`. 204; 404. **A
   deleted user row whose `release_value` is set is replaced in the same transaction by a
   seeded row of the release's value** (`created_by_user_id` NULL), so the half-year never
   goes empty and refuses every interest letter (m6).
@@ -809,7 +819,7 @@ permission should exempt a debtor from reminders. Group defaults are out of scop
 `LockCustomerDocuments`, `:54-68`): `from`'s row moves to `into` when `into` has none; when
 both have one, **the stricter mode wins** (`none` > `no_charges` > `normal`; reading 7)
 and the notes are joined `into` first, ` / `, cut to 500; `from`'s row is deleted;
-reported as `invoices.customer_reminder_policies`. Lock order: the documents first (as
+reported as `invoices.customerReminderPolicies`. Lock order: the documents first (as
 today), then the policy rows by customer id ascending. **Export**: `reminderPolicy {mode,
 note, updatedAt}`. **Erase**: the row is deleted.
 
@@ -1960,7 +1970,7 @@ in D3–D17 runs on a pool of `MaxConns = 2` with each raw lock-holding transact
   policy row deleted. Reported, after today's five kinds: `invoices.reminders`,
   `invoices.charge_payments`, `invoices.charge_waivers`, `invoices.manual_deliveries`,
   `invoices.invoice_holds`, `invoices.collection_handoffs`, `invoices.bank_transactions`
-  (notes), `invoices.pay_links` (revoked), `invoices.customer_reminder_policies` (deleted).
+  (notes), `invoices.pay_links` (revoked), `invoices.customerReminderPolicies` (deleted).
   **Kept**: the sent letters (the documentation of the claim, and the bad-debt VAT relief's
   evidence — FMVA § 4-7-1, R4 §2.9), charge payments, waivers, deliveries, hand-offs,
   attempts, and the bank files and transactions with their payer data — the bank's record of

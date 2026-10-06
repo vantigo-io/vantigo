@@ -114,6 +114,7 @@ func TestReminderSettings_DefaultsBoundsRevisionPermission(t *testing.T) {
 		{"staleImportDays", absent}, {"staleImportDays", 0}, {"staleImportDays", 31},
 		{"inkassolov2026From", absent}, {"inkassolov2026From", "1. januar"},
 		{"regimeReviewedThrough", absent}, {"regimeReviewedThrough", nil}, {"regimeReviewedThrough", "2027-09-13"},
+		{"revision", absent}, {"revision", nil}, {"revision", "1"},
 	} {
 		res := manager(t, h).Do(http.MethodPut, reminderSettingsPath, with(base, c.field, c.value))
 		if res.Status != http.StatusBadRequest {

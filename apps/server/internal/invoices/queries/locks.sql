@@ -69,6 +69,13 @@ WHERE customer_id = ANY(sqlc.arg(customer_ids)::integer[])
 ORDER BY customer_id
 FOR UPDATE;
 
+-- name: LockCollectionRate :one
+-- LockCollectionRate takes a collection rate FOR UPDATE: the DELETE's first
+-- lock, before it judges whether a letter used the row (D6), so a print
+-- batch holding it FOR KEY SHARE while it prints a letter relying on it is
+-- waited for, and its letter seen.
+SELECT * FROM invoices.collection_rates WHERE id = @id FOR UPDATE;
+
 -- name: LockInvoicesDescending :many
 -- LockInvoicesDescending takes several invoices FOR UPDATE in descending id,
 -- the module's invariant (R/invoices.md's lock order): the queue's apply and

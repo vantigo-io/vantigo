@@ -49,6 +49,12 @@ INSERT INTO invoices.collection_rates (kind, valid_from, value, source_ref, crea
 VALUES (@kind, @valid_from, @value, @source_ref, NULL, @now)
 RETURNING *;
 
+-- name: LatestLetterDay :one
+-- LatestLetterDay is the sent_on of the latest letter with facts — printed
+-- or sent — or NULL: a new rate takes effect after it (D6, the Task 6
+-- review's M2), so it never contradicts a letter already printed or posted.
+SELECT max(sent_on)::date AS day FROM invoices.reminders WHERE status IN ('printed', 'sent');
+
 -- name: RatesFor :many
 -- RatesFor is every row of the three kinds, for the reminder engine
 -- (reminderrules.Rate, by way of ratesOf).

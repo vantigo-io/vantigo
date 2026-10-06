@@ -141,7 +141,7 @@ func parseReminderSettings(body gen.InvoicesReminderSettingsRequest, today time.
 			p.RegimeReviewedThrough = pgDate(day)
 		}
 	}
-	p.Revision = body.Revision
+	decode("revision", body.Revision, &p.Revision, "revision is the whole number the settings were read at")
 	return p, errs
 }
 

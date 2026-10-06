@@ -115,6 +115,17 @@ func lockPrintBatch(ctx context.Context, txq *store.Queries, id int64) (store.In
 	return batch, nil
 }
 
+// lockCollectionRate takes one collection rate FOR UPDATE, reported
+// "collection_rate" (the DELETE, D6).
+func lockCollectionRate(ctx context.Context, txq *store.Queries, id int64) (store.InvoicesCollectionRate, error) {
+	row, err := txq.LockCollectionRate(ctx, id)
+	if err != nil {
+		return row, err
+	}
+	noteLock(ctx, "collection_rate", strconv.FormatInt(id, 10))
+	return row, nil
+}
+
 // shareCustomerDocuments reads one customer's documents FOR SHARE, newest
 // first, each reported "document" (D7's policy PUT, plan reading 11).
 func shareCustomerDocuments(ctx context.Context, txq *store.Queries, customerID int32) error {
