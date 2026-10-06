@@ -5,6 +5,7 @@ sidebar:
   order: 41
 sources:
   - apps/server/internal/storage
+  - apps/server/internal/invoices/bankimport.go
 ---
 Objektlagring er applikasjonsporten Kommunikasjon mellomlagrer og serverer vedlegg
 gjennom. Moduler snakker aldri med en leverandør-SDK: de får et `ObjectStore` avgrenset
@@ -106,7 +107,13 @@ ble overlevert, `documents/<id>/<number>-<sha256>.xml` (`application/xml`), lagr
 gang etter hashen når dokumentet sendes; og, når aksesspunktet bekrefter leveringen,
 kvitteringen `documents/<id>/<number>-<transmission>-receipt.json` og kopien det leverte
 `documents/<id>/<number>-<transmission>-delivered.xml`
-([E-faktura](/nb/admin/e-invoicing/#objektene-som-skrives)). Et avgrenset lager
+([E-faktura](/nb/admin/e-invoicing/#objektene-som-skrives)). En importert bankfil
+oppbevares slik den ble lastet opp, under `bank-files/<sha256>.ocr` (en OCR-giro-fil) eller
+`bank-files/<sha256>.xml` (en camt.054-fil) — med hashen av innholdet som nøkkel, lagret
+én gang før importens transaksjon og aldri slettet eller overskrevet, siden den er
+dokumentasjonen for innbetalingene som bokføres fra den (bokføringsloven § 10); en import
+som feiler etter å ha lagret den, etterlater et objekt som neste import av de samme
+bytene bruker igjen ([Innbetalinger fra banken](/nb/admin/payments/)). Et avgrenset lager
 avviser en relativ nøkkel som er lik omfanget sitt eller allerede begynner med
 `{scope}/`: kallere sender bare relative nøkler og må aldri bygge prefikset selv.
 

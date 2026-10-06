@@ -19,6 +19,7 @@ const server = (options: { canCreate?: boolean; totalPages?: number } = {}) =>
         meta({
           capabilities: {
             canCreate: options.canCreate ?? true,
+            canImportBankFiles: true,
             canIssue: true,
             canManage: false,
             canRegisterPayments: true,

@@ -634,8 +634,13 @@ sluttoppgjøret først
 
 ## Registrere betalinger
 
-Vantigo leser ikke bankfiler: mottatte penger registreres for hånd, på den utstedte
-fakturaens side under **Betalinger**. Hver registrering krever `invoices:payments`.
+Mottatte penger registreres for hånd, på den utstedte fakturaens side under
+**Betalinger**. Hver registrering krever `invoices:payments`. Vantigo kan også ta inn
+bankens egne filer med innbetalinger — OCR-giro og camt.054, importert av noen med
+`invoices:payments` ([bankfiler](/en/reference/invoices/#bank-files-and-the-exception-queue);
+bankavtalen og nedlastingen står i [Innbetalinger fra banken](/nb/admin/payments/)). En
+importert fil oppbevares og innbetalingene i den lagres, men de registreres ennå ikke mot
+fakturaene dine: inntil det kommer, fortsetter du å registrere betalinger for hånd.
 
 Klikk **Registrer betaling** — tilbys mens noe er igjen å betale — og fyll ut:
 

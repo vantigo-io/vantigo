@@ -328,3 +328,13 @@ func LockForTest(ctx context.Context, tx pgx.Tx, what string, keys ...string) er
 	}
 	return err
 }
+
+// SetBankImportAfterInsert installs a hook a bank import calls inside its
+// transaction after every insert and before the commit, with the file's id;
+// an error it answers rolls the import back. It answers the function that
+// removes it. A race test holds one import there while it starts another. A
+// test using it does not run in parallel: the hook is the package's.
+func SetBankImportAfterInsert(hook func(ctx context.Context, bankFileID int64) error) func() {
+	bankImportAfterInsert = hook
+	return func() { bankImportAfterInsert = nil }
+}

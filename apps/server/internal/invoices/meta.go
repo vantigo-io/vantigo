@@ -74,6 +74,7 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 		},
 		Capabilities: gen.InvoicesMetaCapabilities{
 			CanCreate:           s.has(ctx, "invoices:create"),
+			CanImportBankFiles:  s.has(ctx, "invoices:payments"),
 			CanIssue:            canIssue,
 			CanManage:           s.has(ctx, "invoices:manage"),
 			CanRegisterPayments: s.has(ctx, "invoices:payments"),

@@ -7,8 +7,8 @@ import type { components } from "../api-schema";
 
 /**
  * GET /meta as the server sends it — a wire literal: a complete seller, mail
- * available, the caller may create, issue, register payments and send, and
- * today is 2026-09-12 in Oslo.
+ * available, the caller may create, issue, register payments, import bank
+ * files and send, and today is 2026-09-12 in Oslo.
  */
 export const meta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta => ({
   currency: "NOK",
@@ -37,6 +37,7 @@ export const meta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta => ({
   ],
   capabilities: {
     canCreate: true,
+    canImportBankFiles: true,
     canIssue: true,
     canManage: false,
     canRegisterPayments: true,

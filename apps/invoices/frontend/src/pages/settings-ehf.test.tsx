@@ -13,6 +13,7 @@ import { SettingsPage } from "./settings";
 /** The caller the page is for: meta's `canManage` (EHF and KID design D1: the e-invoicing settings are manage's). */
 const manager = {
   canCreate: true,
+  canImportBankFiles: false,
   canIssue: true,
   canManage: true,
   canRegisterPayments: false,
