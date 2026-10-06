@@ -648,6 +648,25 @@ the dialog **Remove the payment**, and confirm. *The payment stays on the invoic
 struck through with the reason. A removal cannot be undone; register the payment again
 if it was right after all.*
 
+## Reminders
+
+Reminders are on their way to Vantigo: letters for overdue invoices, with the fee, the
+compensation and the late interest the law allows. Three things they rest on can already
+be set — through the API for now; the screens come with the reminders themselves
+([reminders](/en/reference/invoices/#reminders)):
+
+- **Collection rates**: the statutory late interest rate, the business compensation and
+  the inkassosats, as dated rows that Vantigo's releases fill in. Someone with
+  `invoices:manage` can add a rate that takes effect after today, ahead of a release,
+  and delete one that is not yet in force and that no letter has used.
+- **Reminder settings**: whether reminders are offered at all, how long after the due
+  date the first letter comes, each letter's deadline, the charges for people and for
+  businesses, and the day the new inkasso law takes effect, with its review
+  (`invoices:manage`).
+- **A customer's reminder policy**: normal, no charges, or no reminders at all, with a
+  note. Someone with `invoices:payments` sets it, for a customer with an invoice or a
+  draft here. When two customers are merged the stricter policy wins.
+
 ## Sending a document by e-mail
 
 Open an issued invoice or credit note and click **Send**. The button needs
@@ -883,5 +902,5 @@ No built-in role holds these; an Owner holds everything
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission | `invoices:issue` |
-| Register a payment or remove one with a reason | `invoices:payments` |
-| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes and the card **Work to invoice** | `invoices:manage` |
+| Register a payment or remove one with a reason; set a customer's reminder policy | `invoices:payments` |
+| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings | `invoices:manage` |

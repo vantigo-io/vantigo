@@ -849,6 +849,88 @@ export const accessPoint = (overrides: Partial<AccessPointResponse> = {}): Acces
   ...overrides,
 });
 
+type CollectionRateList = components["schemas"]["InvoicesCollectionRateList"];
+type CollectionRate = components["schemas"]["InvoicesCollectionRate"];
+
+/** One seeded rate as the server sends it: the 2026-H2 late interest, in force on 2026-09-12. */
+const seededRate = (overrides: Partial<CollectionRate>): CollectionRate => ({
+  id: 1006,
+  kind: "late_interest_percent",
+  validFrom: "2026-07-01",
+  value: 12.25,
+  sourceRef: "FOR-2026-06-25-1372",
+  seeded: true,
+  inForce: false,
+  usable: true,
+  createdAt: "2026-10-06T08:00:00Z",
+  ...overrides,
+});
+
+/**
+ * GET /collection-rates as the server sends it on 2026-09-12: the late interest of 2026,
+ * the inkassosats in force, and a user's 2027-H1 rate a release seeded over with
+ * another value — so the list warns.
+ */
+export const collectionRates = (overrides: Partial<CollectionRateList> = {}): CollectionRateList => ({
+  rates: [
+    seededRate({
+      id: 1013,
+      kind: "inkassosats",
+      validFrom: "2026-01-01",
+      value: 750,
+      sourceRef: "FOR-2025-12-19-2709",
+      inForce: true,
+    }),
+    seededRate({ id: 1005, validFrom: "2026-01-01", value: 12, sourceRef: "FOR-2025-12-18-2658", usable: false }),
+    seededRate({ id: 1006, inForce: true }),
+    seededRate({
+      id: 1015,
+      validFrom: "2027-01-01",
+      value: 12.5,
+      sourceRef: "FOR-2026-12-18-9999",
+      seeded: false,
+      createdBy: "7d0d6b5e-1d3a-4c4e-9f8e-2b9a0c1d2e3f",
+      createdAt: "2026-09-12T10:00:00Z",
+      releaseValue: 12.75,
+      releaseSourceRef: "FOR-2026-12-18-2222",
+    }),
+  ],
+  warnings: ["collection_rate_differs_from_release"],
+  ...overrides,
+});
+
+type ReminderSettings = components["schemas"]["InvoicesReminderSettings"];
+
+/** GET /settings/reminders as the migration seeds them: off, the review through 2026-12-31 and nobody's. */
+export const reminderSettings = (overrides: Partial<ReminderSettings> = {}): ReminderSettings => ({
+  enabled: false,
+  firstReminderDays: 14,
+  deadlineDays: 14,
+  graceDays: 3,
+  remindersBeforeNotice: 1,
+  collectionNotice: true,
+  personCharge: "fee",
+  businessCharge: "fee",
+  lateInterest: false,
+  staleImportDays: 3,
+  inkassolov2026From: null,
+  regimeReviewedThrough: "2026-12-31",
+  regimeReviewedAt: "2026-10-06T08:00:00Z",
+  revision: 1,
+  updatedAt: "2026-10-06T08:00:00Z",
+  ...overrides,
+});
+
+type ReminderPolicy = components["schemas"]["InvoicesReminderPolicy"];
+
+/** GET /customers/{customerId}/reminder-policy for a customer with none: normal, no note, nobody's. */
+export const reminderPolicy = (overrides: Partial<ReminderPolicy> = {}): ReminderPolicy => ({
+  customerId: 2001,
+  mode: "normal",
+  note: "",
+  ...overrides,
+});
+
 /** A month's journal: numbers 1000 to 1002, a credit note signed negative. */
 export const journal = (overrides: Partial<InvoiceJournal> = {}): InvoiceJournal => ({
   data: [

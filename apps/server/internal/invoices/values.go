@@ -37,6 +37,15 @@ func businessDay(t time.Time) time.Time {
 // pgDate stores a date as the date column wants it.
 func pgDate(d time.Time) pgtype.Date { return pgtype.Date{Time: d, Valid: true} }
 
+// pgDateOf is a nullable date column's value as the UTC midnight every date
+// here is compared at, nil when NULL.
+func pgDateOf(d pgtype.Date) *time.Time {
+	if !d.Valid {
+		return nil
+	}
+	return ptr(utcDay(d.Time))
+}
+
 // wireDate is a date as the contract carries one.
 func wireDate(d time.Time) openapi_types.Date { return openapi_types.Date{Time: d} }
 

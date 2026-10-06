@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
 
@@ -337,4 +338,32 @@ func LockForTest(ctx context.Context, tx pgx.Tx, what string, keys ...string) er
 func SetBankImportAfterInsert(hook func(ctx context.Context, bankFileID int64) error) func() {
 	bankImportAfterInsert = hook
 	return func() { bankImportAfterInsert = nil }
+}
+
+// SetPolicyAfterLock installs a hook a reminder policy's PUT calls inside its
+// transaction right after it has locked the policy row — after the
+// customer's documents and the row, before the write — with the customer's
+// id, and answers the function that removes it. An error rolls the PUT back.
+// A race test parks a PUT there while a merge starts. A test using it does
+// not run in parallel: the hook is the package's.
+func SetPolicyAfterLock(hook func(ctx context.Context, customerID int32) error) func() {
+	policyAfterLock = hook
+	return func() { policyAfterLock = nil }
+}
+
+// EngineSettingsForTest is what the reminder engine is handed of the
+// settings and the rates — reminderSettings and ratesOf over RatesFor — read
+// on db, for the test that pins the mapping.
+func EngineSettingsForTest(ctx context.Context, db store.DBTX) (reminderrules.Settings, []reminderrules.Rate, error) {
+	q := store.New(db)
+	settings, _, err := (&server{}).reminderSettings(ctx, q)
+	if err != nil {
+		return reminderrules.Settings{}, nil, err
+	}
+	rows, err := q.RatesFor(ctx)
+	if err != nil {
+		return reminderrules.Settings{}, nil, err
+	}
+	rates, err := ratesOf(rows)
+	return settings, rates, err
 }

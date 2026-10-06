@@ -2,6 +2,7 @@ package invoices
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -29,6 +30,10 @@ const (
 	kindInvoicesPayments      = "invoices.payments"
 	kindInvoicesDeliveries    = "invoices.deliveries"
 	kindInvoicesTransmissions = "invoices.transmissions"
+	// kindInvoicesReminderPolicies is the customers' reminder policies
+	// (invoices payments and reminders design D7): the one row keyed by
+	// customer, re-pointed by a merge and deleted by an erase.
+	kindInvoicesReminderPolicies = "invoices.customerReminderPolicies"
 )
 
 // customerReferenceHolder is this module's contracts.CustomerReferenceHolder:
@@ -48,12 +53,18 @@ func newCustomerReferenceHolder(d module.Deps) contracts.CustomerReferenceHolder
 }
 
 // RepointCustomer moves every document of from to into, inside the caller's
-// transaction. from == into writes nothing and reports zero. It locks the
+// transaction. from == into writes nothing and reports zeros. It locks the
 // documents newest first before it writes them: the order a credit note's
 // issue takes them in (LockCustomerDocuments), so the two never deadlock.
+// Then the reminder policies (invoices payments and reminders design D7,
+// D18): both rows by customer id ascending, after the documents — the order
+// a policy PUT takes, documents first — and from's row moved, or merged into
+// into's at the stricter mode with the notes joined (repointPolicy).
 func (h *customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, from, into int32) ([]contracts.RepointedReferences, error) {
 	if from == into {
-		return []contracts.RepointedReferences{{Kind: kindInvoicesInvoices, Count: 0}}, nil
+		return []contracts.RepointedReferences{
+			{Kind: kindInvoicesInvoices, Count: 0}, {Kind: kindInvoicesReminderPolicies, Count: 0},
+		}, nil
 	}
 	q := store.New(tx)
 	if err := q.LockCustomerDocuments(ctx, store.LockCustomerDocumentsParams{FromCustomerID: from, IntoCustomerID: into}); err != nil {
@@ -65,7 +76,13 @@ func (h *customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx
 	if err != nil {
 		return nil, fmt.Errorf("invoices: re-point customer %d's documents to %d: %w", from, into, err)
 	}
-	return []contracts.RepointedReferences{{Kind: kindInvoicesInvoices, Count: n}}, nil
+	policies, err := repointPolicy(ctx, q, from, into, h.clock())
+	if err != nil {
+		return nil, err
+	}
+	return []contracts.RepointedReferences{
+		{Kind: kindInvoicesInvoices, Count: n}, {Kind: kindInvoicesReminderPolicies, Count: policies},
+	}, nil
 }
 
 // customerPersonalData is this module's contracts.CustomerPersonalData: what
@@ -90,6 +107,18 @@ func newCustomerPersonalData(d module.Deps) contracts.CustomerPersonalData {
 type invoicesSection struct {
 	Documents []exportedDocument `json:"documents"`
 	Drafts    []exportedDocument `json:"drafts"`
+	// ReminderPolicy is the customer's reminder policy (invoices payments and
+	// reminders design D7, D19) — staff's decision and note about them —
+	// absent when there is none.
+	ReminderPolicy *exportedReminderPolicy `json:"reminderPolicy,omitempty"`
+}
+
+// exportedReminderPolicy is a customer's reminder policy as the export
+// writes it: the mode, the note and when it was set.
+type exportedReminderPolicy struct {
+	Mode      string    `json:"mode"`
+	Note      string    `json:"note"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 type exportedDocument struct {
@@ -308,14 +337,17 @@ func decimalOf(n pgtype.Numeric, places int) (string, error) {
 	return r.FloatString(places), nil
 }
 
-// ExportCustomerData answers nil for a customer with no document. Otherwise
-// every issued document and every draft, with the buyer snapshot, the place
+// ExportCustomerData answers nil for a customer with nothing here — no
+// document and no reminder policy. Otherwise every issued document and every
+// draft, with the buyer snapshot, the place
 // of delivery and the internal note: the customers export treats
 // staff-written notes as data held about the person. An issued document
 // carries its payments, removed ones with their removal, its deliveries
 // (payments and delivery design D6) and its EHF transmissions (EHF and KID
 // design D12); every document its project's code as snapshotted (invoices
-// work design D9) and its timesheet as printed (D5). Every read is in one REPEATABLE READ, READ ONLY transaction,
+// work design D9) and its timesheet as printed (D5); and the section the
+// customer's reminder policy (invoices payments and reminders design D7,
+// D19). Every read is in one REPEATABLE READ, READ ONLY transaction,
 // as the customers module reads its own part of the export: a payment or a
 // send landing midway cannot make the file disagree with itself.
 func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
@@ -338,7 +370,15 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read customer %d's documents: %w", customerID, err)
 	}
-	if len(docs) == 0 {
+	var policy *exportedReminderPolicy
+	switch row, err := q.GetPolicy(ctx, customerID); {
+	case errors.Is(err, pgx.ErrNoRows):
+	case err != nil:
+		return nil, fmt.Errorf("invoices: read customer %d's reminder policy: %w", customerID, err)
+	default:
+		policy = &exportedReminderPolicy{Mode: row.Mode, Note: row.Note, UpdatedAt: row.UpdatedAt.UTC()}
+	}
+	if len(docs) == 0 && policy == nil {
 		return nil, nil
 	}
 	ids := make([]int64, 0, len(docs))
@@ -411,7 +451,7 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 	for _, d := range docs {
 		byID[d.ID] = d
 	}
-	section := invoicesSection{Documents: []exportedDocument{}, Drafts: []exportedDocument{}}
+	section := invoicesSection{Documents: []exportedDocument{}, Drafts: []exportedDocument{}, ReminderPolicy: policy}
 	for _, d := range docs {
 		e := exportedDocument{
 			Number: d.Number, Kind: d.Kind, IssueDate: dateText(d.IssueDate), DeliveryDate: dateText(d.DeliveryDate),
@@ -480,9 +520,12 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 // after its wait and which refuses any later send; blanks every delivery's
 // recipient; blanks every payment's note, live and removed; cancels every
 // queued EHF transmission of theirs that was never attempted, leased or not
-// (EHF and KID design D12); and deletes the drafts — their line sources and
+// (EHF and KID design D12); deletes the drafts — their line sources and
 // timesheet rows with them, by the cascade (invoices work design D2, D5),
-// while an issued document's timesheet stays with it. A draft is
+// while an issued document's timesheet stays with it; and deletes the
+// customer's reminder policy (invoices payments and reminders design D7,
+// D19) — staff's decision and note about the person, which no retention rule
+// keeps, reported as invoices.customerReminderPolicies. A draft is
 // not a salgsdokument, so it has no retention basis and GDPR art. 17
 // applies; an issued document, its buyer snapshot and its payments are
 // bookkeeping material kept under bokføringsloven § 13 — five years after
@@ -529,11 +572,16 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	if err != nil {
 		return nil, fmt.Errorf("invoices: erase customer %d's drafts: %w", customerID, err)
 	}
+	policies, err := q.DeletePolicy(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: delete customer %d's reminder policy: %w", customerID, err)
+	}
 	return []contracts.ErasedData{
 		{Kind: kindInvoicesDrafts, Count: drafts},
 		{Kind: kindInvoicesDocuments, Count: 0},
 		{Kind: kindInvoicesPayments, Count: notes},
 		{Kind: kindInvoicesDeliveries, Count: blanked},
 		{Kind: kindInvoicesTransmissions, Count: cancelled},
+		{Kind: kindInvoicesReminderPolicies, Count: policies},
 	}, nil
 }
