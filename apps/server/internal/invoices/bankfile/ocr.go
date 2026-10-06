@@ -213,6 +213,7 @@ func (p *ocrParser) transmission() error {
 
 	var count, records int64 = 0, 2
 	var sum int64
+	assignments := 0
 	for {
 		if p.atEnd() {
 			return &Error{Where: "file", Message: "The file ends before the transmission's end (NY000089)"}
@@ -228,8 +229,12 @@ func (p *ocrParser) transmission() error {
 				return err
 			}
 			count, records, sum = count+n, records+r, sum+s
+			assignments++
 			continue
 		case "89":
+			if assignments == 0 {
+				return p.fail("a transmission with no assignments")
+			}
 			if err := p.totals(rec, "transmission", count, records, sum); err != nil {
 				return err
 			}

@@ -37,10 +37,23 @@ const (
 // seen, the payments in the order given; every count, sum and date of the
 // end records computed. A type 18 or 20 is added to the sums whatever its
 // sign, as the specification has it. Each record ends in "\n".
+//
+// OCR panics on what it cannot write: a field longer than its place (a
+// transmission number past 7 characters, an account past 11, a KID past
+// 25, an archive reference past 9, a debtor account past 11, an amount past
+// 17 digits), a negative amount, a type outside 10–21, or an assignment or
+// a transmission whose net sum is negative. A broken file is made by
+// corrupting a well-formed one, never by the builder.
 func OCR(transmission string, payments ...OCRPayment) []byte {
 	var accounts []string
 	byAccount := map[string][]OCRPayment{}
 	for _, p := range payments {
+		if p.Type < 10 || p.Type > 21 {
+			panic(fmt.Sprintf("bankfiletest.OCR: transaction type %d is not one of OCR giro's, 10–21", p.Type))
+		}
+		if p.AmountMinor < 0 {
+			panic(fmt.Sprintf("bankfiletest.OCR: a negative amount, %d; a negative line is Negative with a positive amount", p.AmountMinor))
+		}
 		if _, seen := byAccount[p.Account]; !seen {
 			accounts = append(accounts, p.Account)
 		}
@@ -48,7 +61,13 @@ func OCR(transmission string, payments ...OCRPayment) []byte {
 	}
 
 	var b strings.Builder
-	line := func(s string) { b.WriteString(s); b.WriteByte('\n') }
+	line := func(s string) {
+		if len(s) != 80 {
+			panic(fmt.Sprintf("bankfiletest.OCR: a field does not fit its place; the record would be %d bytes: %q", len(s), s))
+		}
+		b.WriteString(s)
+		b.WriteByte('\n')
+	}
 	line("NY000010" + ocrSender + fmt.Sprintf("%07s", transmission) + ocrRecipient + zeros(49))
 
 	var fileTxs, fileRecords int
@@ -90,6 +109,9 @@ func OCR(transmission string, payments ...OCRPayment) []byte {
 			if i == 0 || p.Settled.After(last) {
 				last = p.Settled
 			}
+		}
+		if sum < 0 {
+			panic(fmt.Sprintf("bankfiletest.OCR: account %s's assignment sums to %d øre; an end record cannot carry a negative sum", account, sum))
 		}
 		n := len(byAccount[account])
 		line("NY090088" + fmt.Sprintf("%08d%08d%017d", n, records, sum) + ddmmyy(last) + ddmmyy(first) + ddmmyy(last) + zeros(21))
