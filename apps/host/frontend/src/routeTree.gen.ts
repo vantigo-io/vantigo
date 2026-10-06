@@ -77,6 +77,7 @@ import { Route as CustomersContactsContactIdRouteImport } from './routes/custome
 import { Route as EnergyMeteringPointsIndexRouteImport } from './routes/energy/metering-points/index'
 import { Route as EnergyMeteringPointsMeteringPointIdRouteImport } from './routes/energy/metering-points/$meteringPointId'
 import { Route as ExpensesClaimsClaimIdRouteImport } from './routes/expenses/claims.$claimId'
+import { Route as InvoicesPaymentsIndexRouteImport } from './routes/invoices/payments.index'
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId.index'
 import { Route as ProjectsProjectIdBillingRouteImport } from './routes/projects/$projectId.billing'
 import { Route as ProjectsProjectIdEconomyRouteImport } from './routes/projects/$projectId.economy'
@@ -85,6 +86,7 @@ import { Route as ProjectsProjectIdInvoicingRouteImport } from './routes/project
 import { Route as ProjectsProjectIdPeopleRouteImport } from './routes/projects/$projectId.people'
 import { Route as ProjectsProjectIdTasksRouteImport } from './routes/projects/$projectId.tasks'
 import { Route as ProjectsProjectIdTimeRouteImport } from './routes/projects/$projectId.time'
+import { Route as InvoicesPaymentsFilesBankFileIdRouteImport } from './routes/invoices/payments.files.$bankFileId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -434,6 +436,11 @@ const ExpensesClaimsClaimIdRoute = ExpensesClaimsClaimIdRouteImport.update({
   path: '/claims/$claimId',
   getParentRoute: () => ExpensesRoute,
 } as any)
+const InvoicesPaymentsIndexRoute = InvoicesPaymentsIndexRouteImport.update({
+  id: '/payments/',
+  path: '/payments/',
+  getParentRoute: () => InvoicesRoute,
+} as any)
 const ProjectsProjectIdIndexRoute = ProjectsProjectIdIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -478,6 +485,12 @@ const ProjectsProjectIdTimeRoute = ProjectsProjectIdTimeRouteImport.update({
   path: '/time',
   getParentRoute: () => ProjectsProjectIdRoute,
 } as any)
+const InvoicesPaymentsFilesBankFileIdRoute =
+  InvoicesPaymentsFilesBankFileIdRouteImport.update({
+    id: '/payments/files/$bankFileId',
+    path: '/payments/files/$bankFileId',
+    getParentRoute: () => InvoicesRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -555,7 +568,9 @@ export interface FileRoutesByFullPath {
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
+  '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -620,7 +635,9 @@ export interface FileRoutesByTo {
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts': typeof CustomersContactsIndexRoute
   '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
+  '/invoices/payments': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
+  '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -699,7 +716,9 @@ export interface FileRoutesById {
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
+  '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -779,7 +798,9 @@ export interface FileRouteTypes {
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/energy/metering-points/'
+    | '/invoices/payments/'
     | '/projects/$projectId/'
+    | '/invoices/payments/files/$bankFileId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -844,7 +865,9 @@ export interface FileRouteTypes {
     | '/customers/$customerId'
     | '/customers/contacts'
     | '/energy/metering-points'
+    | '/invoices/payments'
     | '/projects/$projectId'
+    | '/invoices/payments/files/$bankFileId'
   id:
     | '__root__'
     | '/'
@@ -922,7 +945,9 @@ export interface FileRouteTypes {
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/energy/metering-points/'
+    | '/invoices/payments/'
     | '/projects/$projectId/'
+    | '/invoices/payments/files/$bankFileId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1427,6 +1452,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExpensesClaimsClaimIdRouteImport
       parentRoute: typeof ExpensesRoute
     }
+    '/invoices/payments/': {
+      id: '/invoices/payments/'
+      path: '/payments'
+      fullPath: '/invoices/payments/'
+      preLoaderRoute: typeof InvoicesPaymentsIndexRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
     '/projects/$projectId/': {
       id: '/projects/$projectId/'
       path: '/'
@@ -1482,6 +1514,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectId/time'
       preLoaderRoute: typeof ProjectsProjectIdTimeRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
+    }
+    '/invoices/payments/files/$bankFileId': {
+      id: '/invoices/payments/files/$bankFileId'
+      path: '/payments/files/$bankFileId'
+      fullPath: '/invoices/payments/files/$bankFileId'
+      preLoaderRoute: typeof InvoicesPaymentsFilesBankFileIdRouteImport
+      parentRoute: typeof InvoicesRoute
     }
   }
 }
@@ -1592,6 +1631,8 @@ interface InvoicesRouteChildren {
   InvoicesJournalRoute: typeof InvoicesJournalRoute
   InvoicesSettingsRoute: typeof InvoicesSettingsRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
+  InvoicesPaymentsIndexRoute: typeof InvoicesPaymentsIndexRoute
+  InvoicesPaymentsFilesBankFileIdRoute: typeof InvoicesPaymentsFilesBankFileIdRoute
 }
 
 const InvoicesRouteChildren: InvoicesRouteChildren = {
@@ -1599,6 +1640,8 @@ const InvoicesRouteChildren: InvoicesRouteChildren = {
   InvoicesJournalRoute: InvoicesJournalRoute,
   InvoicesSettingsRoute: InvoicesSettingsRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,
+  InvoicesPaymentsIndexRoute: InvoicesPaymentsIndexRoute,
+  InvoicesPaymentsFilesBankFileIdRoute: InvoicesPaymentsFilesBankFileIdRoute,
 }
 
 const InvoicesRouteWithChildren = InvoicesRoute._addFileChildren(

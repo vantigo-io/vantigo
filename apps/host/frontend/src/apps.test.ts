@@ -71,6 +71,7 @@ describe("the app registry", () => {
       "/expenses/settings",
       "/invoices",
       "/invoices/journal",
+      "/invoices/payments",
       "/invoices/settings",
       "/communications/inbox",
       "/communications/channels",
@@ -185,19 +186,41 @@ describe("the app registry", () => {
     ]);
   });
 
-  // Invoices is three destinations: the list and the journal for anyone who
-  // reads invoices, the settings for invoices:manage (invoices foundation
-  // design D12).
-  it("gives Invoices the list, the journal and the settings", () => {
+  // Invoices is four destinations: the list and the journal for anyone who
+  // reads invoices, Payments for invoices:payments (invoices payments and
+  // reminders design D22), the settings for invoices:manage (invoices
+  // foundation design D12).
+  it("gives Invoices the list, the journal, Payments and the settings", () => {
     const invoices = appForKey("invoices");
     expect(invoices).toMatchObject({ module: "invoices", label: "navigation.invoices", home: "/invoices" });
-    expect(invoices.requiredPermissions).toEqual(["invoices:access", "invoices:manage"]);
+    expect(invoices.requiredPermissions).toEqual(["invoices:access", "invoices:payments", "invoices:manage"]);
     const items = invoices.navSections.flatMap((section) => section.items);
     expect(items.map((item) => [item.label, item.to, item.requiredPermissions])).toEqual([
       ["navigation.invoices", "/invoices", ["invoices:access"]],
       ["navigation.invoiceJournal", "/invoices/journal", ["invoices:access"]],
+      ["navigation.invoicePayments", "/invoices/payments", ["invoices:payments"]],
       ["navigation.invoiceSettings", "/invoices/settings", ["invoices:manage"]],
     ]);
+  });
+
+  // hasPermissions is any-of: the Payments entry names invoices:payments
+  // alone, so a reader who holds invoices:access only never sees an entry
+  // whose every request would be a 403.
+  it("Nav_PaymentsBehindItsPermission", () => {
+    const paths = (permissions: string[]) =>
+      appNavSections(appForKey("invoices"), allModules, {
+        permissions,
+        isOwner: false,
+        canManageAuthorization: false,
+        enabledModules: allModules,
+      }).flatMap((section) => section.items.map((item) => item.to));
+    expect(paths(["invoices:access"])).toEqual(["/invoices", "/invoices/journal"]);
+    expect(paths(["invoices:access", "invoices:payments"])).toEqual([
+      "/invoices",
+      "/invoices/journal",
+      "/invoices/payments",
+    ]);
+    expect(paths(["invoices:access", "invoices:manage"])).not.toContain("/invoices/payments");
   });
 
   it("shows the Expenses tile for expenses:access, hides it without, and mutes it when the module is off", () => {

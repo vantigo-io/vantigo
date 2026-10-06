@@ -4,6 +4,7 @@ import {
   IconBolt,
   IconBook,
   IconBriefcase,
+  IconBuildingBank,
   IconCashBanknote,
   IconCategory,
   IconChecklist,
@@ -250,6 +251,16 @@ export const apps: readonly AppDefinition[] = [
       to: "/invoices/journal",
       icon: IconBook,
       requiredPermissions: ["invoices:access"],
+    },
+    {
+      // The bank files and the exception queue (invoices payments and
+      // reminders design D22): invoices:payments alone — hasPermissions is
+      // any-of, so listing invoices:access too would offer it to every
+      // reader, who would then meet 403s.
+      label: "navigation.invoicePayments",
+      to: "/invoices/payments",
+      icon: IconBuildingBank,
+      requiredPermissions: ["invoices:payments"],
     },
     {
       label: "navigation.invoiceSettings",

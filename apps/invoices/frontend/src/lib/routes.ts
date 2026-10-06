@@ -14,3 +14,19 @@ export const invoiceLinkOptions = (invoiceId: number) => ({
 
 /** The same path as a plain URL, for a link's href. */
 export const invoiceHref = (invoiceId: number): string => INVOICE_ROUTE_PATH.replace("$invoiceId", String(invoiceId));
+
+/** The Payments area: the upload, the accounts, the files and the exception queue (D22). */
+export const PAYMENTS_ROUTE_PATH = "/invoices/payments";
+
+/** One imported bank file's result, under the Payments area. */
+export const BANK_FILE_ROUTE_PATH = "/invoices/payments/files/$bankFileId";
+
+/** What `navigate` and `Link` take to reach one bank file. */
+export const bankFileLinkOptions = (bankFileId: number) => ({
+  to: BANK_FILE_ROUTE_PATH,
+  params: { bankFileId: String(bankFileId) },
+});
+
+/** The same path as a plain URL, for a link's href. */
+export const bankFileHref = (bankFileId: number): string =>
+  BANK_FILE_ROUTE_PATH.replace("$bankFileId", String(bankFileId));

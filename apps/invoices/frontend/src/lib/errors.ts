@@ -24,8 +24,11 @@ export const refusalProblem = (error: unknown): Record<string, unknown> =>
  * the reader's language, never the server's English detail — with what the
  * refusal names put into the words: the dates an issue may take
  * (`{{dates}}`, each written by `date`), the line (`{{line}}`), the
- * customer a merged one went into (`{{mergedInto}}`) and the open amount a
- * payment exceeded (`{{openAmount}}`, written by `money`). The rate limiter's
+ * customer a merged one went into (`{{mergedInto}}`), the open amount a
+ * payment exceeded (`{{openAmount}}`, written by `money`), the charges
+ * outstanding a charge payment exceeded (`{{chargesOutstanding}}`, written by
+ * `money`) and the earlier import a bank file repeats (`{{bankFileId}}`,
+ * `{{uploadedAt}}` written by `instant`, `{{uploadedBy}}`). The rate limiter's
  * `rate_limited` (its 429, not a problem document) is worded by
  * `refusal.rateLimited`. A validation error says
  * its first field's message; anything else, the error's own — a code this
@@ -38,6 +41,7 @@ export const refusalMessage = (
   t: Translate,
   date: (day: string) => string = (d) => d,
   money: (amount: number) => string = (amount) => String(amount),
+  instant: (at: string) => string = (at) => at,
 ): string => {
   const code = refusalCode(error);
   const key = code === "rate_limited" ? "refusal.rateLimited" : `refusal.${code}`;
@@ -49,6 +53,10 @@ export const refusalMessage = (
       line: problem.linePosition ?? "",
       mergedInto: problem.mergedInto ?? "",
       openAmount: typeof problem.openAmount === "number" ? money(problem.openAmount) : "",
+      chargesOutstanding: typeof problem.chargesOutstanding === "number" ? money(problem.chargesOutstanding) : "",
+      bankFileId: problem.bankFileId ?? "",
+      uploadedAt: typeof problem.uploadedAt === "string" ? instant(problem.uploadedAt) : "",
+      uploadedBy: problem.uploadedBy ?? "",
     });
   }
   if (error instanceof ApiValidationError) {
@@ -85,7 +93,8 @@ export const refusalWords = (code: string, t: Translate): string =>
  * the catalog's `fieldInvalid.<field>` — a line's `lines[2].quantity` by
  * `fieldInvalid.line.quantity`, and a field of another request than the
  * draft's under its `scope`, a payment's `note` by `fieldInvalid.payment.note`
- * — a wizard's `sources[3]` by `fieldInvalid.fromWork.sources` — and by the
+ * — a wizard's `sources[3]` by `fieldInvalid.fromWork.sources`, an apply's
+ * `allocations[1].amount` by `fieldInvalid.apply.allocation.amount` — and by the
  * server's own sentence only where
  * the catalog has no words for the field. Each field's
  * catalog sentence covers every rule the server checks on it, so it says what
@@ -100,7 +109,10 @@ export const fieldRefusals = (
   const onInputs: Record<string, string> = {};
   const elsewhere: string[] = [];
   for (const [field, message] of Object.entries(error.fieldErrors)) {
-    const named = field.replace(/^lines\[\d+\]\./, "line.").replace(/^sources\[\d+\]$/, "sources");
+    const named = field
+      .replace(/^lines\[\d+\]\./, "line.")
+      .replace(/^allocations\[\d+\]\./, "allocation.")
+      .replace(/^sources\[\d+\]$/, "sources");
     const key = `fieldInvalid.${scope ? `${scope}.` : ""}${named}`;
     const words = key in invoicesCatalog.en ? t(key) : message;
     if (hasInput(field)) onInputs[field] = words;

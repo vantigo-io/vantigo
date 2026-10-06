@@ -7,12 +7,14 @@ sources:
   - apps/invoices/frontend
   - apps/host/frontend/src/routes/customers/-customer-invoices-tab.tsx
   - apps/host/frontend/src/lib/invoice-access.ts
+  - apps/host/frontend/src/routes/invoices
 ---
 
 Fakturaer-appen utsteder salgsdokumentene i bokføringen din: et utkast blir en
 nummerert faktura eller kreditnota i det øyeblikket det utstedes, får en PDF, og endres
-aldri etter det. Appen har tre områder i sidemenyen: **Fakturaer**, **Fakturajournal**
-og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
+aldri etter det. Appen har fire områder i sidemenyen: **Fakturaer**, **Fakturajournal**,
+**Innbetalinger** — bankens filer og avvikskøen, vist bare med `invoices:payments` — og
+**Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
 PDF — ved nedlasting eller på e-post — eller som EHF-faktura i Peppol-nettverket, når
 installasjonen er satt opp for det
 ([det loven krever](/en/reference/invoices/#the-law-in-one-page)).
@@ -647,10 +649,9 @@ som den som registrerte den. Hver betaling viser hvor den kom fra: registrert fo
 eller hentet fra en linje i en OCR-giro- eller camt.054-fil. En innbetaling avstemmingen
 ikke kan plassere — uten KID, med en KID ingen faktura har, mer enn det som gjenstår å
 betale, eller en som kan gjenta en betaling som alt er registrert — holdes tilbake for en
-person og registreres ikke. Noen med `invoices:payments` behandler den gjennom
-avvikskøen, inntil skjermbildet for den kommer, gjennom API-et
-([avvikskøen](/en/reference/invoices/#the-exception-queue)): før den mot én eller flere
-fakturaer og purrekravene deres, med forslag — en faktura hvis nummer står i
+person og registreres ikke. Noen med `invoices:payments` behandler den i avvikskøen på
+siden **Innbetalinger** ([importere innbetalinger fra banken](#importere-innbetalinger-fra-banken),
+[avvikskøen](#avvikskøen)): før den mot én eller flere fakturaer og purrekravene deres, med forslag — en faktura hvis nummer står i
 innbetalingens tekst, en hvis utestående beløp den er lik, en for kunden som har betalt fra
 samme konto før; avvis den som ikke en kundebetaling, med et notat; for en tilbakeføring,
 fjern betalingen banken tok tilbake; bekreft et duplikat eller behold den som en egen
@@ -673,8 +674,10 @@ Klikk **Registrer betaling** — tilbys mens noe er igjen å betale — og fyll 
   En overbetaling avvises, med utestående beløp nevnt.
 - **Referanse** (bankens eller betalerens) og **Merknad**, begge valgfrie.
 
-Klikk **Registrer**. Tabellen lister hver betalings **Betalingsdato**, **Beløp**,
-**Referanse**, **Merknad** og når den ble **Registrert**, og summene får **Betalt** og
+Klikk **Registrer**. Tabellen lister hver betalings **Betalingsdato**, **Beløp**, dens
+**Kilde** — **Manuelt**, **OCR giro** eller **camt.054**, der en betaling fra banken
+viser sin **Banklinje**, lenket til **Innbetalinger** for den som har `invoices:payments` —
+dens **Referanse**, **Merknad** og når den ble **Registrert**, og summene får **Betalt** og
 **Utestående** — summen minus det som er kreditert og betalt. En betaling på hele det
 utestående gjør fakturaen **Betalt**; en mindre gjør den **Delvis betalt**, eller lar den
 stå som **Forfalt** etter forfall. En kreditnota tar ingen betaling
@@ -684,6 +687,143 @@ En feil registrering redigeres aldri: klikk **Fjern** ved siden av den, oppgi en
 **Begrunnelse** i dialogen **Fjern betalingen**, og bekreft. *Betalingen blir stående på
 fakturaen, gjennomstreket med begrunnelsen. En fjerning kan ikke angres; registrer
 betalingen på nytt om den likevel var riktig.*
+
+## Importere innbetalinger fra banken
+
+Åpne **Innbetalinger** i sidemenyen. Den vises bare for den som har `invoices:payments`
+(en leser med bare `invoices:access` ser den ikke), og den har fire deler: **Importer en
+bankfil**, **Bankkontoer**, **Importerte filer** og **Avvikskøen**.
+
+**Hvor filene kommer fra.** Banken gir deg OCR giro-filer under en OCR/KID-avtale, eller
+camt.054-meldinger om innbetalinger; last dem ned fra nettbanken
+([Innbetalinger fra banken](/nb/admin/payments/) forteller hvilken avtale og hvor). Rediger
+aldri en fil for hånd.
+
+**Importer en fil.** Under **Importer en bankfil** velger du filen i **Bankfil** og klikker
+**Importer**. Hele filen kontrolleres først, og ingenting av den importeres hvis noe av den
+er feil. Siden sier da hvorfor, under *Bankfilen ble ikke importert*: filen er ikke en OCR
+giro- eller camt.054-fil, er for stor eller bryter sine egne regler (med hvor i filen); en
+konto den nevner, er verken din **Bankkonto** eller en som en utstedt faktura har skrevet
+ut; kontoens filer importeres i det andre formatet; eller det finnes ikke noe
+dokumentlager å oppbevare filen i. En fil som er importert før, avvises også, med den
+tidligere importen nevnt — filnummeret, når den ble lastet opp og av hvem — og en lenke,
+**Åpne fil**, til den.
+
+**Hva resultatet sier.** Etter en import teller **Resultatet av importen** filens
+**Betalinger i filen**: de som er **Avstemt mot fakturaer**, med beløpet som er registrert
+som betalinger; de som er **I avvikskøen**, med beløpet som venter der; de som er
+**Importert før, beholdt som duplikater** — betalinger en tidligere eller overlappende fil
+hadde brakt inn; de som er **Ikke avstemt ennå**; og de som er **Oversett**, etter
+slag — kortinformasjon i en OCR-fil, belastninger som ikke er tilbakeføringer, poster som
+ikke er bokført, beløp på null. Hver avstemte betaling registreres mot fakturaen sin —
+utestående beløp først, eventuelle purrekrav med resten — med dagen banken bokførte den,
+KID-en som referanse og deg som den som registrerte den. **Åpne filen** viser filens egen
+side, med hver betaling den brakte inn.
+
+**Avstem resten.** Avstemmingen kjører rett etter importen, én betaling om gangen.
+Stopper den tidlig, står filen likevel importert, og noen av betalingene er **Ikke avstemt
+ennå**: klikk **Avstem resten** — i resultatet, på filens rad under **Importerte filer**,
+eller på filens side — og du er den som registrerer dem.
+
+**Importerte filer** lister hver fil, nyeste først: formatet, når og av hvem den ble lastet
+opp, bokføringsdagene den dekker, og betalingene talt opp — avstemt, i køen, duplikater og
+ikke avstemt ennå.
+
+**Formatet for hver konto.** **Bankkontoer** lister hver konto det er importert en fil
+for: formatet — **OCR giro** eller **camt.054**, satt av kontoens første fil — siste fil og
+siste bokføringsdag, og etter en endring det tidligere formatet med skjæringsdagen. En fil
+i det andre formatet for en konto avvises. For å bytte en konto — for eksempel fra OCR giro
+til camt.054 — klikker noen med `invoices:manage` på **Endre formatet** ved siden av den,
+velger **Nytt format** og klikker **Endre formatet**. Dialogen forklarer
+**skjæringsdagen** først: Vantigo registrerer den siste bokføringsdagen for kontoens
+betalinger i det gamle formatet, og holder tilbake en betaling i det nye formatet bokført
+den dagen eller tidligere som mulig duplikat, fordi det gamle formatet kan ha brakt den inn
+allerede. Gjør endringen når den siste filen i det gamle formatet er importert. Uten
+`invoices:manage` vises formatene, og siden sier at det trengs for å endre et.
+
+**En ekte andre betaling som ser ut som en gjentakelse.** En betaling holdes tilbake som
+**Et mulig duplikat**, og registreres ikke, når en betaling fra **en annen fil** til samme
+konto, bokført samme dag, med samme beløp og samme KID, allerede er registrert — fordi det
+er slik én betaling ser ut i to av bankens filer: en melding i løpet av dagen og en ved
+dagens slutt, eller en OCR giro- og en camt.054-fil fra samme dag. En kunde som virkelig
+betaler samme beløp to ganger samme dag med samme KID, og der de to betalingene kommer i
+hver sin fil, får derfor den andre lagt i køen. Sjekk kontoutskriften; er begge
+betalingene ekte, finner du linjen i avvikskøen og klikker **Før** — mot fakturaen,
+purrekravene eller en annen faktura — som for en hvilken som helst annen betaling. To
+slike betalinger i samme fil registreres begge.
+
+## Avvikskøen
+
+**Avvikskøen**, nederst på **Innbetalinger**, har betalingene avstemmingen ikke kunne
+plassere, og duplikatene — det som venter på en person. Den åpner på **I køen**; filtrer
+den på **Status**, **Årsak** og **Fil**, eller kryss av for **Bare betalinger med en rest
+som ikke er ført** for å se betalinger som er ført delvis, avstemt og senere fjernet, eller
+avvist som penger som skal tilbake. Hver linje viser dagen banken bokførte den, KID-en
+eller ellers teksten, betaleren og kontoen deres, beløpet, det som er ført — hver betaling
+lenket til fakturaen sin, en fjernet en gjennomstreket — det som ikke er ført, og tilstand
+og årsak. **Detaljer** viser hva som har skjedd med linjen, hvert steg med når og av hvem,
+fakturaene den kan betale, og for et mulig duplikat linjen den kan gjenta: den linjens fil,
+bokføringsdag og betalinger, og om banken tilbakeførte en betaling fra den.
+
+Hver årsak med vanlige ord, og hva du gjør:
+
+| Årsak | Hva den betyr | Hva du gjør |
+| --- | --- | --- |
+| **KID-en er ikke gyldig** | KID-ens kontrollsiffer er feil | **Før** den for hånd, eller avvis den |
+| **Ingen faktura har denne KID-en** | et annet systems eller en annen avtales KID | **Før** den, eller avvis den |
+| **Fakturaen er kreditert** | KID-ens faktura er kreditert i sin helhet | **Ikke en kundebetaling**, med en merknad: pengene skal tilbake, og betales tilbake utenfor Vantigo |
+| **Ingenting er igjen å betale** | fakturaen er betalt, og betalingen er mer enn purrekravene | det samme |
+| **Mer enn det som skyldes** | mer enn utestående beløp og purrekravene | **Før** det som skyldes mot fakturaen og purrekravene; resten blir stående som ikke ført |
+| **Ingen KID** | betalingen har ingen KID | **Før** den mot én eller flere fakturaer fra forslagene |
+| **Et negativt beløp** | en OCR-linje med minustegn | **Ikke en kundebetaling**, med en merknad |
+| **En tilbakeføring** | banken tok en betaling tilbake | **Behandle tilbakeføring** |
+| **En Vipps-utbetaling** | en utbetaling fra Vipps, ikke en kundes betaling | **Ikke en kundebetaling** |
+| **Betalt før fakturaen ble utstedt** | bokført før KID-ens faktura ble utstedt | **Før** den etter å ha sjekket, eller avvis den |
+| **Betalt til en annen konto** | ikke til kontoen fakturaen viste | **Før** den etter å ha sjekket, eller avvis den |
+| **Et mulig duplikat** | kontoens skjæringsdag, eller samme betaling allerede registrert fra en annen fil | **Bekreft duplikat**, eller **Før** den som en egen betaling |
+| **Betalingen ble fjernet** | en avstemt betaling der alle registreringene ble fjernet, gjenåpnet | **Før** den på nytt, eller avvis den |
+| status **Duplikat** | en tidligere eller overlappende fil brakte samme linje | **Bekreft duplikat**, eller **Behold som egen betaling** |
+
+**Før.** Dialogen **Før linje …** åpner med fakturaene betalingen kan betale — den KID-en
+pekte på, og forslagene: en faktura hvis nummer står i betalingens tekst, en hvis
+utestående beløp er betalingens beløp, en åpen faktura for en kunde som har betalt fra samme
+konto før — fylt ut i rekkefølge, hver med inntil utestående beløp, til betalingen er
+brukt opp. Legg til en annen med **Legg til en faktura etter nummer**, eller fjern en. For
+hver faktura fyller du inn **Hovedstol** og **Purrekrav** den betaler; en betaling kan
+betale bare purrekravene på en faktura som allerede er betalt. Summen under sier hvor mye
+som føres og hvor mye som blir stående som ikke ført, og fordelinger som til sammen er mer
+enn det som er igjen av betalingen, avvises i dialogen før noe sendes. Klikk **Før**. En
+avvisning sies med ord, og ingenting føres: et beløp over en fakturas utestående beløp
+nevner fakturaen og det beløpet, en betaling av purrekrav over det som står ute nevner det
+som står ute, og en faktura utstedt etter at banken bokførte betalingen, kan ikke betales
+av den. Det som ikke føres, blir stående synlig på linjen: Vantigo fører ingen kundesaldo
+og betaler ikke tilbake.
+
+**Ikke en kundebetaling.** For en Vipps-utbetaling, en betaling tilbakebetalt utenfor
+Vantigo eller et annet systems KID: si hva den er, eller hva som ble gjort med den, i
+**Merknad**, og klikk **Avvis**.
+
+**Behandle tilbakeføring.** Dialogen tilbyr betalingene tilbakeføringen kan ta tilbake —
+de som er registrert fra banklinjer med samme konto og beløp, bokført samme dag eller
+tidligere. Kryss av for den den tilbakefører, eller velg **Ingen betaling fjernes;
+merknaden sier hvorfor** og skriv merknaden, og klikk **Behandle tilbakeføringen**. Hver
+valgt betaling fjernes med begrunnelsen «Reversed by the bank», og linjen den kom fra,
+føres aldri igjen. Uten en betaling eller en merknad avvises tilbakeføringen, med ord. En
+tilbakeføring som peker på feil betaling, kan ikke angres: registrer den betalingen på
+nytt for hånd.
+
+**Duplikater.** **Bekreft duplikat**, med en valgfri merknad, beholder linjen og
+registrerer ingenting. **Behold som egen betaling** gjør en duplikatrad til en egen
+betaling, tilbake i køen som et mulig duplikat, klar til å **Føre**; det avvises når banken
+tilbakeførte en betaling fra linjen den gjentar, fordi de pengene gikk tilbake.
+
+**Gjenåpne.** En behandlet linje — eller en avstemt der alle betalingene ble fjernet — går
+tilbake til køen med **Gjenåpne**, med sin årsak. Det avvises så lenge en betaling
+registrert fra linjen fortsatt står (fjern den på fakturaen først), og for en linje banken
+tilbakeførte en betaling fra.
+
+Hver handling kontrolleres på nytt idet den gjøres: en linje noen andre har behandlet i
+mellomtiden, avvises, med ord, og ingenting endres.
 
 ## Purringer
 
@@ -991,5 +1131,5 @@ Ingen innebygd rolle har disse; en eier har alt
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending | `invoices:issue` |
-| Registrere en betaling eller fjerne en med begrunnelse; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer; sette en faktura på vent og oppheve ventingen, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen | `invoices:payments` |
-| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, satsene for inndriving og innstillingene for purring | `invoices:manage` |
+| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer; sette en faktura på vent og oppheve ventingen, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen | `invoices:payments` |
+| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, satsene for inndriving og innstillingene for purring; endre en bankkontos filformat under **Innbetalinger** | `invoices:manage` |

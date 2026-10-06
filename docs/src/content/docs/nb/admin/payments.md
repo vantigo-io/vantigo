@@ -82,17 +82,17 @@ konto, bestemmer det**: en OCR-giro-fil gjør kontoen til `ocr`, en camt.054-fil
 importeres.
 
 For å bytte format på en konto — for eksempel fra OCR til camt.054 når du tar avtalen for
-alle innbetalinger — endrer noen med `invoices:manage` kontoens format
-(`PUT /api/v1/invoices/bank-accounts/{account}/format`, til skjermbildet for det kommer i
-denne versjonen). Vantigo registrerer da **overgangsdagen**: den siste bokføringsdagen for
+alle innbetalinger — endrer noen med `invoices:manage` kontoens format: i
+**Fakturaer** → **Innbetalinger**, under **Bankkontoer**, **Endre formatet** ved siden av
+kontoen (eller `PUT /api/v1/invoices/bank-accounts/{account}/format`). Vantigo registrerer da **overgangsdagen**: den siste bokføringsdagen for
 kontoens innbetalinger lest i det gamle formatet. Avstemmingen holder da tilbake en
 innbetaling i det nye formatet som er bokført på eller før overgangsdagen, som et mulig
 duplikat, og overlater den til en person, fordi det gamle formatet kan ha tatt den inn allerede. Bytt når den siste filen i
 det gamle formatet er importert, og start det nye formatets filer fra dagen etter. Bytte
 av bank er en ny konto, med sitt eget format.
 
-`GET /api/v1/invoices/bank-accounts` lister hver konto med formatet, det forrige formatet
-og overgangsdagen, og den siste filen.
+**Bankkontoer** på samme side — eller `GET /api/v1/invoices/bank-accounts` — lister hver
+konto med formatet, det forrige formatet og overgangsdagen, og den siste filen.
 
 ## Før du importerer
 
@@ -123,16 +123,16 @@ og overgangsdagen, og den siste filen.
   innbetaling om gangen; stopper den tidlig — en databasefeil, eller at opplastingens
   forespørsel avsluttes — står filen likevel importert, importens svar teller resten som
   `pending`, og stoppet logges som en advarsel med filen og innbetalingen. Noen med
-  `invoices:payments` avstemmer resten med `POST /api/v1/invoices/bank-files/{id}/match`
-  (til skjermbildet for det kommer), og er da den som registrerer dem.
+  `invoices:payments` avstemmer resten med **Avstem resten** på filen under
+  **Innbetalinger** (eller `POST /api/v1/invoices/bank-files/{id}/match`), og er da den som
+  registrerer dem.
 - **Et negativt oppdrag.** Et OCR-oppdrag der innbetalingene summerer seg under null — en
   tilbakeføring større enn dagens innbetalinger — kan ikke skrives i formatets sluttpost;
   om Mastercard Payment Services i det hele tatt kan sende et slikt, er **usikkert**. En
   negativ linje i et oppdrag leses og holdes til side for en person.
 - **Innbetalinger som holdes tilbake for en person.** Det avstemmingen ikke kunne
-  plassere, venter i avvikskøen, listet med
-  `GET /api/v1/invoices/bank-transactions?status=exception` (til skjermbildet for den
-  kommer), hver med sin årsak og, der den mangler en KID-faktura, forslag. Noen med
+  plassere, venter i avvikskøen, nederst på **Innbetalinger** (eller
+  `GET /api/v1/invoices/bank-transactions?status=exception`), hver med sin årsak og, der den mangler en KID-faktura, forslag. Noen med
   `invoices:payments` fører den mot fakturaer, avviser den med et notat, bekrefter et
   duplikat eller beholder den som en egen betaling
   ([avvikskøen](/en/reference/invoices/#the-exception-queue)). En **tilbakeføring** — at

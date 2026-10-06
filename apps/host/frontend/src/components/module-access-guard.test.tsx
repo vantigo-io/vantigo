@@ -169,6 +169,19 @@ describe("ModuleAccessGuard", () => {
     expect(screen.getByText("Allowed content")).toBeInTheDocument();
   });
 
+  // Payments is the bank files and the exception queue, every request of
+  // which needs invoices:payments: a reader with invoices:access alone meets
+  // the access-denied page, never a page of 403s (invoices payments and
+  // reminders design D22). A file's own page falls under the same entry.
+  it.each(["/invoices/payments", "/invoices/payments/files/1001"])("PaymentsRoute_GuardedByPayments %s", (pathname) => {
+    renderGuardFor(pathname, ["invoices:access"]);
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+
+    cleanup();
+    renderGuardFor(pathname, ["invoices:payments"]);
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
   // Expenses' approval queue is Time's own seam again: the sidebar entry is
   // for expenses:approve holders, but a project manager approves their own
   // project's expenses through their role alone and reaches the queue from the

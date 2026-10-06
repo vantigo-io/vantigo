@@ -84,17 +84,17 @@ later file of the other format for that account is refused with
 imported.
 
 To switch an account — say from OCR to camt.054 when you take the agreement for all
-incoming payments — someone with `invoices:manage` changes the account's format
-(`PUT /api/v1/invoices/bank-accounts/{account}/format`, until the screen for it arrives
-in this release). Vantigo then records the **cutover**: the latest booking day of that
+incoming payments — someone with `invoices:manage` changes the account's format: in
+**Invoices** → **Payments**, under **Bank accounts**, **Change the format** beside the
+account (or `PUT /api/v1/invoices/bank-accounts/{account}/format`). Vantigo then records the **cutover**: the latest booking day of that
 account's payments read in the old format. Matching then holds back a payment of the new
 format booked on or before the cutover as a possible duplicate, left for a person,
 because the old format may already have brought it in. Make the switch once the last old-format file is
 imported, and start the new format's files from the day after. A change of bank is a new
 account, with its own format.
 
-`GET /api/v1/invoices/bank-accounts` lists every account with its format, the previous
-format and cutover, and its latest file.
+**Bank accounts** on the same page — or `GET /api/v1/invoices/bank-accounts` — lists every
+account with its format, the previous format and cutover, and its latest file.
 
 ## Before you import
 
@@ -124,15 +124,15 @@ format and cutover, and its latest file.
   time; if it stops early — a database error, or the upload's request ending — the file
   stays imported, the import's answer counts the rest as `pending`, and the stop is
   logged at warn with the file and the payment. Someone with `invoices:payments` matches
-  the rest with `POST /api/v1/invoices/bank-files/{id}/match` (until the screen for it
-  arrives), and is then the one registering them.
+  the rest with **Match the rest** on the file in **Payments** (or
+  `POST /api/v1/invoices/bank-files/{id}/match`), and is then the one registering them.
 - **A negative assignment.** An OCR assignment whose payments net below zero — a reversal
   larger than the payments of the day — cannot be written in the format's end record;
   whether Mastercard Payment Services can send one at all is **uncertain**. A negative
   line within an assignment is read and kept apart for a person.
 - **Payments kept for a person.** What matching could not place waits in the exception
-  queue, listed with `GET /api/v1/invoices/bank-transactions?status=exception` (until the
-  screen for it arrives), each with its reason and, where it lacks a KID's invoice,
+  queue, at the foot of **Payments** (or `GET /api/v1/invoices/bank-transactions?status=exception`),
+  each with its reason and, where it lacks a KID's invoice,
   suggestions. Someone with `invoices:payments` applies it to invoices, dismisses it with a
   note, confirms a duplicate or keeps it as a payment of its own
   ([the exception queue](/en/reference/invoices/#the-exception-queue)). A **reversal** —
