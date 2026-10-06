@@ -33,9 +33,10 @@ import (
 // store, and written in one transaction — the accounts first, in account
 // order, then the file row and every line in one insert ordered by
 // fingerprint, a line an earlier or overlapping file already brought kept as
-// a duplicate row linked to it — and the files' reads. Matching the lines to
-// invoices (D4) is matching.go's; until it runs on an import, every live line
-// stays pending.
+// a duplicate row linked to it — and the files' reads. Once the import has
+// committed, its lines are matched to invoices (D4, matching.go), each in a
+// transaction of its own, the uploader registering the payments; a line
+// matching did not reach stays pending for POST …/match.
 
 // The upload's limits: the file itself (bankfile.MaxBytes, 10 MiB), and the
 // request around it, which leaves room for the multipart framing — the
@@ -72,7 +73,7 @@ var bankImportAfterInsert func(ctx context.Context, bankFileID int64) error
 
 // importResult is what one import did (D3 step 9): the file row, its lines
 // and what became of them. matched, exceptions and their amounts are
-// matching's (D4); until it runs, every live line is pending.
+// matching's (D4); pending is what matching left, when it stopped early.
 type importResult struct {
 	file                                                   store.InvoicesBankFile
 	transactions, matched, exceptions, duplicates, pending int
@@ -167,7 +168,10 @@ func earlierImport(ctx context.Context, q *store.Queries, sha string, f *bankfil
 // D3's steps in order, with one clock read: the part; the format and the
 // file's own rules (bankfile.Parse); every account the seller's; the file
 // not imported before; its bytes stored once, outside any transaction; then
-// one transaction — the accounts, the file row, the lines, the duplicates.
+// one transaction — the accounts, the file row, the lines, the duplicates;
+// then, once it has committed, matching (D4) over its lines, the uploader
+// registering. A stop in matching is logged and leaves the rest pending; the
+// import itself stands.
 func (s *server) PostInvoicesBankFiles(ctx context.Context, req gen.PostInvoicesBankFilesRequestObject) (gen.PostInvoicesBankFilesResponseObject, error) {
 	now := s.deps.Clock()
 	today := businessDay(now)
@@ -229,6 +233,12 @@ func (s *server) PostInvoicesBankFiles(ctx context.Context, req gen.PostInvoices
 	if refusal != nil {
 		return refusal, nil
 	}
+	// The stop, when matching stops early, is logged by matchFile; what it
+	// did not reach stays pending, and the 201 says so.
+	counts, _ := s.matchFile(ctx, result.file.ID, by, now)
+	result.matched, result.matchedAmount = counts.matched, counts.matchedAmount
+	result.exceptions, result.exceptionsAmount = counts.exceptions, counts.exceptionsAmount
+	result.pending -= counts.done
 	body201, err := importResultResponse(result)
 	if err != nil {
 		return nil, err

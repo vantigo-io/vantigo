@@ -179,7 +179,9 @@ func sellerResponse(inv store.InvoicesInvoice) *gen.InvoicesSeller {
 // paid, what is open (gross − credited − paid, which a credit note after a
 // payment takes below zero), the refund due only then, its state through the
 // Go mirror with today the Oslo business day, and every payment, removed ones
-// included with their removal (D2). Every figure is exact until the wire.
+// included with their removal (D2), each with its source and the bank line a
+// match or the queue took it from (payments and reminders design D2). Every
+// figure is exact until the wire.
 func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, today time.Time, resp *gen.InvoicesInvoiceResponse) error {
 	credited, left, err := uncredited(ctx, q, inv)
 	if err != nil {
@@ -220,7 +222,8 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 		}
 		payments = append(payments, gen.InvoicesPayment{
 			Id: p.ID, PaidOn: wireDate(p.PaidOn.Time), Amount: floatFromRat(amount, 2), Currency: p.Currency,
-			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: *p.RegisteredByUserID,
+			Source: gen.InvoicesPaymentSource(p.Source), BankTransactionId: p.BankTransactionID,
+			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: p.RegisteredByUserID,
 			RemovedAt: p.RemovedAt, RemovedByUserId: p.RemovedByUserID, RemovalReason: p.RemovalReason,
 		})
 	}

@@ -639,8 +639,15 @@ Mottatte penger registreres for hånd, på den utstedte fakturaens side under
 bankens egne filer med innbetalinger — OCR-giro og camt.054, importert av noen med
 `invoices:payments` ([bankfiler](/en/reference/invoices/#bank-files-and-the-exception-queue);
 bankavtalen og nedlastingen står i [Innbetalinger fra banken](/nb/admin/payments/)). En
-importert fil oppbevares og innbetalingene i den lagres, men de registreres ennå ikke mot
-fakturaene dine: inntil det kommer, fortsetter du å registrere betalinger for hånd.
+importert fils innbetalinger avstemmes mot fakturaene dine på KID: en innbetaling som
+bærer KID-en til en utstedt faktura, betalt til kontoen den fakturaen viste, registreres
+mot den — utestående beløp først, eventuelle purregebyrer og renter med resten — med dagen
+banken bokførte den som betalingsdato, KID-en som referanse og den som importerte filen
+som den som registrerte den. Hver betaling viser hvor den kom fra: registrert for hånd,
+eller hentet fra en linje i en OCR-giro- eller camt.054-fil. En innbetaling avstemmingen
+ikke kan plassere — uten KID, med en KID ingen faktura har, mer enn det som gjenstår å
+betale, eller en som kan gjenta en betaling som alt er registrert — holdes tilbake for en
+person og registreres ikke.
 
 Klikk **Registrer betaling** — tilbys mens noe er igjen å betale — og fyll ut:
 

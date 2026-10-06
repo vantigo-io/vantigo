@@ -580,7 +580,8 @@ func TestBankFile_FormatChangeSetsCutover(t *testing.T) {
 }
 
 // TestBankFile_Fingerprint: lines are recognised by their fingerprint (D3):
-// two identical payments in one file are both kept; the same file again
+// two identical payments in one file are both kept — and both matched, here
+// queued, since no invoice of this installation carries a KID; the same file again
 // under a new transmission number makes every line a duplicate row naming
 // its original; a file overlapping another makes the shared lines duplicates
 // and keeps the rest live.
@@ -591,13 +592,13 @@ func TestBankFile_Fingerprint(t *testing.T) {
 
 	identical := ocrFixture(t, "identical-lines.ocr")
 	first := imported(t, c, identical)
-	if first.Transactions != 2 || first.Duplicates != 0 || first.Pending != 2 {
-		t.Errorf("identical-lines = %+v, want two lines, both live and pending", first)
+	if first.Transactions != 2 || first.Duplicates != 0 || first.Exceptions != 2 || first.Pending != 0 {
+		t.Errorf("identical-lines = %+v, want two lines, both live and queued", first)
 	}
 	originals := bankDetail(t, h, first.File.ID).Transactions
 	for _, l := range originals {
-		if l.Status != "pending" || l.DuplicateOfID != nil {
-			t.Errorf("line %s = %s duplicate of %v, want a live pending line", l.LineRef, l.Status, l.DuplicateOfID)
+		if l.Status != "exception" || l.DuplicateOfID != nil {
+			t.Errorf("line %s = %s duplicate of %v, want a live line, queued", l.LineRef, l.Status, l.DuplicateOfID)
 		}
 	}
 
@@ -630,7 +631,7 @@ func TestBankFile_Fingerprint(t *testing.T) {
 
 	a := imported(t, c, ocrFixture(t, "overlap-a.ocr"))
 	b := imported(t, c, ocrFixture(t, "overlap-b.ocr"))
-	if a.Duplicates != 0 || b.Transactions != 3 || b.Duplicates != 2 || b.Pending != 1 {
+	if a.Duplicates != 0 || b.Transactions != 3 || b.Duplicates != 2 || b.Exceptions != 1 || b.Pending != 0 {
 		t.Errorf("overlap-a = %+v, overlap-b = %+v, want b's two shared lines duplicates and its third live", a, b)
 	}
 	aLines := map[string]int64{}
@@ -642,7 +643,7 @@ func TestBankFile_Fingerprint(t *testing.T) {
 		switch {
 		case l.Status == "duplicate" && l.DuplicateOfID != nil && *l.DuplicateOfID == aLines[l.LineRef]:
 			dup++
-		case l.Status == "pending" && l.DuplicateOfID == nil:
+		case l.Status == "exception" && l.DuplicateOfID == nil:
 			live++
 		default:
 			t.Errorf("overlap-b's line %s = %s duplicate of %v", l.LineRef, l.Status, l.DuplicateOfID)
@@ -769,7 +770,8 @@ func mapsEqual(a, b map[string]int) bool {
 }
 
 // TestBankFile_ListAndDetail: the files newest first and paged, each with
-// its lines counted by status; one file with every line as the bank wrote
+// its lines counted by status — queued, here, since no invoice of this
+// installation carries a KID; one file with every line as the bank wrote
 // it, duplicates included, in the order stored (by fingerprint); 404 for an unknown file, 400
 // for paging out of range, 403 without invoices:payments.
 func TestBankFile_ListAndDetail(t *testing.T) {
@@ -812,8 +814,8 @@ func TestBankFile_ListAndDetail(t *testing.T) {
 	}
 	res = c.Do(http.MethodGet, bankFilesPath+"?page=2&pageSize=2", nil)
 	res.JSON(&page)
-	if len(page.Data) != 1 || page.Data[0].ID != ids[0] || page.Data[0].Pending != 3 {
-		t.Errorf("page 2 = %+v, want the oldest file, three lines pending", page.Data)
+	if len(page.Data) != 1 || page.Data[0].ID != ids[0] || page.Data[0].Exceptions != 3 || page.Data[0].Pending != 0 {
+		t.Errorf("page 2 = %+v, want the oldest file, three lines queued", page.Data)
 	}
 	if res := c.Do(http.MethodGet, bankFilesPath+"?pageSize=101", nil); res.Status != http.StatusBadRequest {
 		t.Errorf("pageSize=101 = %d, want 400", res.Status)
@@ -844,7 +846,7 @@ func TestBankFile_ListAndDetail(t *testing.T) {
 		if l.LineRef != w.LineRef || l.Account != w.Account || l.Direction != "credit" || l.Negative != w.Negative ||
 			l.BookedOn != w.BookedOn.Format("2006-01-02") || l.Amount != float64(w.AmountMinor)/100 || !equalPtr(l.Kid, wantKid) ||
 			l.RemittanceText != w.RemittanceText || l.DebtorAccount != w.DebtorAccount || l.ArchiveRef != w.ArchiveRef ||
-			l.Status != "pending" || l.Reason != nil || l.DuplicateOfID != nil {
+			l.Status != "exception" || l.Reason == nil || l.DuplicateOfID != nil {
 			t.Errorf("line %d = %+v, want %+v", i, l, w)
 		}
 	}

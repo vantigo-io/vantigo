@@ -12,8 +12,9 @@ sources:
 Vantigo leser bankens egen oversikt over pengene som kom inn på selgerens konto: en fil
 med innbetalinger, lastet ned fra nettbanken og importert i Fakturaer av noen med
 `invoices:payments`. Hver innbetaling i den bærer KID-en som står på fakturaen, og det er
-slik en innbetaling vil finne fakturaen sin når avstemmingen kommer; inntil da oppbevares
-en importert innbetaling uten å bli registrert mot en faktura ennå. Denne siden er driftssiden: avtalen du ber
+slik en innbetaling finner fakturaen sin: rett etter importen registreres hver innbetaling
+som bærer KID-en til en utstedt faktura, betalt til kontoen den fakturaen viste, mot den,
+av den som importerte filen; resten holdes tilbake for en person. Denne siden er driftssiden: avtalen du ber
 banken om, hvor filene ligger, formatet hver konto importeres i, og hva som kan gå galt.
 Reglene for importen står i
 [referansen](/en/reference/invoices/#bank-files-and-the-exception-queue).
@@ -84,9 +85,9 @@ For å bytte format på en konto — for eksempel fra OCR til camt.054 når du t
 alle innbetalinger — endrer noen med `invoices:manage` kontoens format
 (`PUT /api/v1/invoices/bank-accounts/{account}/format`, til skjermbildet for det kommer i
 denne versjonen). Vantigo registrerer da **overgangsdagen**: den siste bokføringsdagen for
-kontoens innbetalinger lest i det gamle formatet. Når avstemmingen kommer, vil en
-innbetaling i det nye formatet som er bokført på eller før overgangsdagen, holdes tilbake
-fra den og overlates til en person, fordi det gamle formatet kan ha tatt den inn allerede. Bytt når den siste filen i
+kontoens innbetalinger lest i det gamle formatet. Avstemmingen holder da tilbake en
+innbetaling i det nye formatet som er bokført på eller før overgangsdagen, som et mulig
+duplikat, og overlater den til en person, fordi det gamle formatet kan ha tatt den inn allerede. Bytt når den siste filen i
 det gamle formatet er importert, og start det nye formatets filer fra dagen etter. Bytte
 av bank er en ny konto, med sitt eget format.
 
@@ -118,6 +119,12 @@ og overgangsdagen, og den siste filen.
   betalte uten, eller med en KID banken avviste, er ikke med. Uten tvungen KID ser du etter
   slike innbetalinger på kontoutskriften, eller importerer camt.054 i stedet.
   Kortbetalinger (OCR-filens kortinformasjon) telles og hoppes over.
+- **Innbetalinger som står igjen.** Avstemmingen kjører rett etter importen, én
+  innbetaling om gangen; stopper den tidlig — en databasefeil, eller at opplastingens
+  forespørsel avsluttes — står filen likevel importert, importens svar teller resten som
+  `pending`, og stoppet logges som en advarsel med filen og innbetalingen. Noen med
+  `invoices:payments` avstemmer resten med `POST /api/v1/invoices/bank-files/{id}/match`
+  (til skjermbildet for det kommer), og er da den som registrerer dem.
 - **Et negativt oppdrag.** Et OCR-oppdrag der innbetalingene summerer seg under null — en
   tilbakeføring større enn dagens innbetalinger — kan ikke skrives i formatets sluttpost;
   om Mastercard Payment Services i det hele tatt kan sende et slikt, er **usikkert**. En

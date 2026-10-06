@@ -24,7 +24,7 @@ turned the work other modules record — hours, expenses, billing milestones —
 lines, marked invoiced in their own modules by the issue and released by the credit
 note that returns them ([Invoicing work](#invoicing-work)). Vantigo stays a sub-ledger: there is
 no general ledger and nothing is posted — a payment here is a registration, not a
-posting, and nothing is matched to a bank file.
+posting, made by hand or from a bank file's line matched on its KID ([Matching](#matching)).
 
 > **The e-invoicing duties.** Invoicing the public sector has required EHF since 2019
 > (FOR-2019-04-01-444), and invoicing Norwegian businesses requires an e-invoice from
@@ -93,7 +93,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.line_releases` | A credit note's release of an original line's source: the credit note, its line and the source, a source released once. Frozen with the credit note at its issue. |
 | `invoices.timesheet_rows` | The timesheet as printed, a snapshot: the position, the time entry, the person's label, the date, the hours, the work type and the description — never the entry's note. Written whole while the document's `timesheet` flag is on, pruned by every save to the hours the draft still holds ([The timesheet](#the-timesheet)); frozen with its document at issue, deleted with a deleted draft. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
-| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
+| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), `source` (`manual`, `ocr` or `camt054`) and the bank line of one a match took from a bank file (`ck_payments_origin`: a line exactly when the source is not `manual`, and a registering user either way), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
 | `invoices.bank_import_accounts` | One row per receiving account a bank file was imported for: the `format` its files come in (`ocr` or `camt054`), set by its first import, and — once a manager changed it — the `previous_format` with `cutover_through`, the latest booking day of the account's own lines in it; who set it and when. Never deleted; an update changes only those columns ([Bank files](#bank-files-and-the-exception-queue)). |
 | `invoices.bank_files` | One imported bank file: its format, the SHA-256 of its bytes and its own identity (each unique), the object key it is stored under, its size, the accounts it names, the first and last booking day of its lines, how many transactions it brought, how many of them were `duplicates` (set once by the import, from `NULL`), how many lines were `ignored` and `ignored_kinds` by kind, who uploaded it and when. Never deleted or changed but by that one write. |
 | `invoices.bank_transactions` | One line of a bank file as the bank wrote it — the line reference, the format, the receiving account, the direction, `negative`, the booking, value and ordering days, the amount (above 0, NOK), the KID, the remittance text, the debtor's name and account, the archive reference, the bank's code — its `fingerprint` and `ordinal`, `duplicate_of_id` when it repeats a live line, and its state: `status` (`pending`, `matched`, `exception`, `resolved` or `duplicate`), the `reason` it was queued for, the suggested invoice and the resolution. One live line per account and fingerprint (`ux_bank_transactions_fingerprint`). Never deleted; only the state columns change, never back to `pending`, and a reason once set stays. |
@@ -1107,6 +1107,17 @@ removed ones included with their removal, in the order the money arrived. A remo
 never undone, and a payment is never edited: a mistake is removed with a reason and the
 payment registered again.
 
+**Where a payment came from.** Every payment answers `source` — `manual` for one
+registered here, `ocr` or `camt054` for one a bank line was matched or applied to
+([Matching](#matching)), with `bankTransactionId` naming the line — and
+`registeredByUserId`, the person who registered it: the caller here, the uploader or the
+caller of `…/match` for a match. The wire makes `registeredByUserId` optional, for a
+later source with no person; every payment of this release has one. An imported payment
+is removed like any other, with a reason — how a refund made outside Vantigo is
+recorded — and the removal locks only the invoice and never touches the line: what a
+line has applied is derived from its live payments, so a line whose payments are all
+removed goes back to a person through the exception queue's reopen.
+
 **Why a row never leaves.** A registration is kept as long as the document it is
 registered against — bokføringsloven § 13, five years after the end of the financial
 year, as this module reads it for the document. That reading is **unconfirmed**, as the
@@ -1884,9 +1895,9 @@ Phase 4 reads the bank's own record of the money that arrived
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
 D3). A person with `invoices:payments` uploads a file of incoming payments; the import
 checks it all or nothing, keeps the file, and stores each payment in it as a bank line.
-**Until matching runs on an import, every line it stores that is not a duplicate is
-`pending`** — a line will become a payment against an invoice, or a case for a person,
-only through matching, which is not part of this release yet.
+Once it has committed, every line it stored that is not a duplicate is **matched on its
+KID** ([Matching](#matching)): it becomes a payment against an invoice, or a case for a
+person. A line is `pending` only until matching reaches it.
 
 **Two formats.** `POST /invoices/bank-files` takes one multipart part named `file`, at
 most 10 MiB (the operation's own body limit, 10 MiB and 64 KiB for the framing). The
@@ -2010,8 +2021,9 @@ lock. The same format answers the account unchanged; another keeps the old one a
 `previous_format` with **`cutover_through` the latest booking day of the account's own
 lines in the old format** — never a file's `last_booked_on`, which a file naming two
 accounts can push past this one's — or `NULL` when it has none, and sets the new one. An
-account never imported is 404. Once matching arrives, it will hold back a line of the new
-format booked on or before the cutover, which the old format may already have registered. A change of bank
+account never imported is 404. Matching then holds back a line of the new format booked
+on or before the cutover as `possible_duplicate`, since the old format may already have
+registered it. A change of bank
 is a new account and gets its own row.
 
 **The reads.** `GET /invoices/bank-files` (`invoices:payments`) pages the files newest
@@ -2021,10 +2033,98 @@ first, each with its lines counted by status — `pending`, `exceptions`, `match
 the file brought, duplicates included, in the order they were stored: its live lines
 first, then its duplicates, each in fingerprint order.
 The import's 201 answers the file, `transactions`, `matched` and `matchedAmount`,
-`exceptions` and `exceptionsAmount`, `duplicates`, `ignored` by kind and `pending`; with
-no matching yet, `matched` and `exceptions` are 0 and `pending` is every line that is
-not a duplicate. `GET /meta` answers `capabilities.canImportBankFiles`,
+`exceptions` and `exceptionsAmount`, `duplicates`, `ignored` by kind and `pending` — 0
+unless matching stopped early. `GET /meta` answers `capabilities.canImportBankFiles`,
 `invoices:payments`.
+
+### Matching
+
+Once the import's transaction has committed, every line it stored that is not a
+duplicate is matched, one at a time in the order stored, the **uploader registering**
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
+D4). `POST /invoices/bank-files/{id}/match` (`invoices:payments`) does the same over a
+file's `pending` lines, **its caller registering** — what finishes a file whose matching
+stopped early. It is 404 for no such file, and otherwise 200 with the file as it now
+stands, `matched` and `matchedAmount`, `exceptions` and `exceptionsAmount` of what that
+request did, and the `pending` left; run again, it finds nothing to do.
+
+**Classification**, read on the pool, in order; the first step that applies queues the
+line — status `exception`, its reason, and a `queued` event by the registering user:
+
+1. A reversal (`direction` `debit`) → `reversal`; a negative line → `negative_amount`.
+2. **A possible duplicate**: the account has a previous format, the line is in its
+   current one and is booked on or before `cutover_through`; or the **soft key** — a line
+   of **another file** on the same account, booking day, amount and KID has a live
+   payment or charge payment (`ix_bank_transactions_soft`) → `possible_duplicate`.
+3. No KID, and the text reads `Vippsnr` and a number → `vipps_payout`: a Vipps payout,
+   never a customer's payment.
+4. No KID → `no_kid`.
+5. The KID is not 2–25 characters, digits but for a last digit or MOD11's `-`
+   (`kid.Parse`), or its check character verifies under neither MOD10 nor MOD11 →
+   `kid_invalid`.
+6. Its digits exceed `int64` (another agreement's 25-digit KID), or no issued document
+   has that number with **exactly** this KID, verified under the algorithm it was issued
+   with → `kid_unknown`. The KID is found by its number (`ux_invoices_number`); there is no
+   index on the KID, and a credit note has none.
+7. The invoice printed another account (`seller_bank_account`) than the line's →
+   `account_mismatch`.
+
+Otherwise the line is a candidate for that invoice. A line queued after its KID named an
+invoice keeps that invoice as its `suggested_invoice_id`. Queueing is only from
+`pending`: a line another run of matching took meanwhile is left as it is.
+
+**Under the lock.** A candidate is matched in **one READ COMMITTED transaction of its
+own**: the line `FOR NO KEY UPDATE` — still `pending`, else there is nothing to do — then
+the invoice `FOR UPDATE`, and nothing else (the line, then its invoice; never an invoice
+and then a line). Every figure is read after both: **the soft key again first**, so the
+other notification of the same payment, matched while this one waited, is seen and the
+line queued `possible_duplicate`; then the open amount (gross − credited − live
+payments) and the charges outstanding ([Charges](#charges)). The first row that holds
+decides:
+
+| Judged | Result |
+| --- | --- |
+| credited > 0 and credited ≥ gross | queued `invoice_credited` |
+| booked before the invoice's issue day | queued `paid_before_issue` |
+| open > 0 and amount ≤ open | a payment of the amount |
+| open > 0 and amount ≤ open + charges | a payment of the open amount and a charge payment of the rest |
+| open ≤ 0 and amount ≤ charges | a charge payment of the amount |
+| open ≤ 0 and amount > charges | queued `invoice_settled` |
+| amount > open + charges | queued `exceeds_open` |
+
+**What a match registers.** The payment and the charge payment carry `source` the file's
+format (`ocr`, `camt054`), `bank_transaction_id` the line, `paid_on` the **booking day**
+— OCR's settlement date, camt.054's `BookgDt`, never the ordering day or the clock —
+`reference` the KID, and the registering user at the request's one clock read. **The
+principal is paid first, then the charges**, as two rows, so the allocation can be
+explained (inkassoloven § 16). The line becomes `matched`, with a `matched` event. An
+invoice on hold or handed off to collection is matched like any other: a payment is
+always registered.
+
+**The deadline-met waiver.** In the same transaction, when the line carries an ordering
+day (`ordered_on`, OCR's alone), the invoice's facts are read again under its lock — the
+new payment among them — and every sent letter whose **reminder fee** was claimed after
+an earlier letter's deadline that the payments ordered on or before it in fact met has
+that fee waived **`deadline_met`** by the registering user (`ReliedOnMetDeadline`,
+[Waivers](#charges)). The compensation is never waived so: it is due from the due date,
+on no deadline. A camt.054 line has no ordering day and waives nothing; its booking day
+is what the rules judge.
+
+**Possible duplicates.** Two genuine payments of one day, amount and KID in one file are
+both registered — the soft key looks only at other files, and the fingerprint's ordinal
+keeps them two lines. The same payment in another file — the intraday and the end-of-day
+notification of it, or a genuine second payment with another reference — is held back as
+`possible_duplicate`: kept, not registered, for a person to confirm or apply. An OCR file
+and a camt.054 file of the same payment never both register it: the cutover holds back
+the second on the pool, and two files of one format are caught by the soft key under the
+lock.
+
+**Stopping early.** Matching stops at the first error — the database's — or when the
+request ends: the line in hand rolls back and stays `pending` with the rest, the stop is
+logged at warn with the file and the line, and the import's 201 (or `…/match`'s 200)
+reports what is left in `pending`. The file's rows, committed before matching began,
+stand. Matching reads no directory and calls nothing out of the module, so no call is
+made under its locks.
 
 ## Reminders
 
@@ -2584,6 +2684,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /bank-files` | `invoices:payments` | 400 on `file` (the part, the format, the file's own rules); 409 `bank_account_unknown`, `bank_file_duplicate` (with `bankFileId`, `uploadedAt`, `uploadedBy`); 503 `storage_unavailable`; then under the accounts' lock 409 `bank_import_format_mismatch`, `bank_file_duplicate` |
 | `GET /bank-files` | `invoices:payments` | 400 paging |
 | `GET /bank-files/{id}` | `invoices:payments` | 404 |
+| `POST /bank-files/{id}/match` | `invoices:payments` | 404 |
 | `GET /bank-accounts` | `invoices:payments` | |
 | `PUT /bank-accounts/{account}/format` | `invoices:manage` | 400 on `format`; 404 an account never imported |
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |

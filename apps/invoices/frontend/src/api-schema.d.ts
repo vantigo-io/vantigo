@@ -717,7 +717,7 @@ export interface paths {
         put?: never;
         /**
          * Import a bank file
-         * @description Imports an OCR giro or camt.054 (.001.02 or .001.08) file of incoming payments (invoices payments and reminders design D3), all or nothing, in order: the one multipart part named file, at most 10 MiB; its format detected; the file parsed and checked against its own control totals, every booking day on or before today in Oslo and not before 2000, at most 5 000 transactions, every booked amount in NOK; every account it names the seller's bank account or one an issued document printed (409 bank_account_unknown); the same bytes or the same file identity imported before (409 bank_file_duplicate, naming the earlier import); the bytes stored once in the object store under bank-files/<sha256>.<ocr|xml>, outside any transaction (503 storage_unavailable without one); then one transaction — the file's accounts first, in account order, the first import of an account setting its format, a file of the other format refused (409 bank_import_format_mismatch); the file row; every line in one insert ordered by fingerprint, a line an earlier or overlapping file already brought kept as a duplicate row linked to it. Every line that is not a duplicate is left pending for matching.
+         * @description Imports an OCR giro or camt.054 (.001.02 or .001.08) file of incoming payments (invoices payments and reminders design D3), all or nothing, in order: the one multipart part named file, at most 10 MiB; its format detected; the file parsed and checked against its own control totals, every booking day on or before today in Oslo and not before 2000, at most 5 000 transactions, every booked amount in NOK; every account it names the seller's bank account or one an issued document printed (409 bank_account_unknown); the same bytes or the same file identity imported before (409 bank_file_duplicate, naming the earlier import); the bytes stored once in the object store under bank-files/<sha256>.<ocr|xml>, outside any transaction (503 storage_unavailable without one); then one transaction — the file's accounts first, in account order, the first import of an account setting its format, a file of the other format refused (409 bank_import_format_mismatch); the file row; every line in one insert ordered by fingerprint, a line an earlier or overlapping file already brought kept as a duplicate row linked to it. Once that commits, every line that is not a duplicate is matched on its KID (D4), each in a transaction of its own, the uploader registering the payments; a line matching stops on before it ends is left pending.
          */
         post: operations["postInvoicesBankFiles"];
         delete?: never;
@@ -740,6 +740,26 @@ export interface paths {
         get: operations["getInvoicesBankFilesById"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/bank-files/{id}/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Match a bank file's pending lines
+         * @description Matches the file's pending lines on their KID (invoices payments and reminders design D3, D4), the caller registering the payments — what finishes a file whose import stopped matching early. Each line is classified on the pool first, in order — a reversal, a negative amount, a possible duplicate (the account's cutover, or the same account, booking day, amount and KID already paid from another file), a Vipps payout, no KID, a KID that is not valid, a KID no issued invoice carries, an invoice on another account — and queued with that reason; otherwise it is matched in one transaction of its own: the line, then its invoice, locked, and every figure read after them — the same payment seen again under the lock is queued possible_duplicate; a credited invoice, a payment booked before the issue day, a settled invoice and more than is open and its charges outstanding are queued; otherwise a payment of up to the open amount and a charge payment of the rest, the line matched, and a reminder fee claimed after a deadline the payment's ordering day met waived deadline_met. A line already matched or queued is left as it is. Matching stops at the first error or when the request ends; what is left stays pending.
+         */
+        post: operations["postInvoicesBankFilesByIdMatch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1447,7 +1467,7 @@ export interface components {
             /** Format: int32 */
             zeroAmount: number;
         };
-        /** @description POST /invoices/bank-files' 201 (D3 step 9): the file row; transactions, the lines it brought; matched and matchedAmount, the lines registered as payments; exceptions and exceptionsAmount, the lines queued; duplicates, the lines an earlier or overlapping file had already brought; ignored, by kind; pending, the lines not yet matched. Until matching runs on an import, every line that is not a duplicate is pending. */
+        /** @description POST /invoices/bank-files' 201 (D3 step 9): the file row; transactions, the lines it brought; matched and matchedAmount, the lines registered as payments; exceptions and exceptionsAmount, the lines queued; duplicates, the lines an earlier or overlapping file had already brought; ignored, by kind; pending, the lines not yet matched — 0 unless matching stopped early (an error, or the request ended), when POST /invoices/bank-files/{id}/match finishes them. On POST /invoices/bank-files/{id}/match, matched and exceptions count what that request matched and queued, and pending what is still left. */
         InvoicesBankImportResult: {
             /** Format: int32 */
             duplicates: number;
@@ -1871,10 +1891,15 @@ export interface components {
             /** @description Only on a credit-note draft (D8): the work its issue would release — the invoiced sources of every original line the draft returns in full, its last return at the line's own price and discount; [] when it returns no line in full. A line credited in part or at a lower price releases nothing. */
             wouldRelease?: components["schemas"]["InvoicesSourceRef"][];
         };
-        /** @description One payment registered against an issued invoice (D2). A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing. */
+        /** @description One payment registered against an issued invoice (D2; invoices payments and reminders design D2, D4). source is manual for one registered by hand, ocr or camt054 for one a bank line was matched to, which bankTransactionId then names — registered by the person who uploaded the file or asked for the rest to be matched, paid on the line's booking day, its reference the KID. registeredByUserId is the person who registered it; it is optional on the wire, for a later source with no person. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing. */
         InvoicesPayment: {
             /** Format: double */
             amount: number;
+            /**
+             * Format: int64
+             * @description The bank line the payment was matched or applied from; absent for one registered by hand.
+             */
+            bankTransactionId?: number;
             currency: string;
             /** Format: int64 */
             id: number;
@@ -1885,12 +1910,17 @@ export interface components {
             /** Format: date-time */
             registeredAt: string;
             /** Format: uuid */
-            registeredByUserId: string;
+            registeredByUserId?: string;
             removalReason?: string;
             /** Format: date-time */
             removedAt?: string;
             /** Format: uuid */
             removedByUserId?: string;
+            /**
+             * @description manual, ocr or camt054.
+             * @enum {string}
+             */
+            source: "manual" | "ocr" | "camt054";
         };
         /** @description POST /invoices/{id}/payments/{paymentId}/remove's body (D2). reason is why the registration is removed: 1-200 characters once trimmed. A removal is never undone; a mistake is registered again. The same body removes a charge payment and a manual delivery (invoices payments and reminders design D8, D9). */
         InvoicesPaymentRemovalRequest: {
@@ -5162,6 +5192,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoicesBankFileDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no bank file has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postInvoicesBankFilesByIdMatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the file as it now stands, and what this request matched and queued. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBankImportResult"];
                 };
             };
             /** @description Unauthorized */

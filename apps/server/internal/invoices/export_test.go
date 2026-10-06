@@ -468,3 +468,27 @@ func RuleInputLockedForTest(ctx context.Context, h module.Deps, tx pgx.Tx, id in
 	}
 	return (&server{deps: h}).ruleInputLocked(ctx, txq, inv, L, exclude)
 }
+
+// SetMatchAfterLineLock installs a hook a bank line's match calls inside its
+// transaction right after it has locked the line, before the invoice, with
+// the line's id, and answers the function that removes it. An error it
+// answers rolls the line's match back and stops the file's matching there,
+// the line left pending. A race test parks a match there; another test stops
+// matching early with it. A test using it does not run in parallel: the hook
+// is the package's.
+func SetMatchAfterLineLock(hook func(ctx context.Context, bankTransactionID int64) error) func() {
+	matchAfterLineLock = hook
+	return func() { matchAfterLineLock = nil }
+}
+
+// SetMatchAfterInvoiceLock installs a hook a bank line's match calls inside
+// its transaction right after it has locked the line's invoice, before any
+// figure is read, with the line's id, and answers the function that removes
+// it. An error it answers rolls the line's match back and stops the file's
+// matching there. A race test parks a match there while a manual payment
+// waits. A test using it does not run in parallel: the hook is the
+// package's.
+func SetMatchAfterInvoiceLock(hook func(ctx context.Context, bankTransactionID int64) error) func() {
+	matchAfterInvoiceLock = hook
+	return func() { matchAfterInvoiceLock = nil }
+}
