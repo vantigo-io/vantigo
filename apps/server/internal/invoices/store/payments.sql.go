@@ -14,7 +14,7 @@ import (
 )
 
 const getPayment = `-- name: GetPayment :one
-SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason FROM invoices.payments WHERE id = $1 AND invoice_id = $2
+SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id FROM invoices.payments WHERE id = $1 AND invoice_id = $2
 `
 
 type GetPaymentParams struct {
@@ -40,6 +40,8 @@ func (q *Queries) GetPayment(ctx context.Context, arg GetPaymentParams) (Invoice
 		&i.RemovedAt,
 		&i.RemovedByUserID,
 		&i.RemovalReason,
+		&i.Source,
+		&i.BankTransactionID,
 	)
 	return i, err
 }
@@ -50,7 +52,7 @@ INSERT INTO invoices.payments (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8::timestamptz
 )
-RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason
+RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id
 `
 
 type InsertPaymentParams struct {
@@ -60,7 +62,7 @@ type InsertPaymentParams struct {
 	Currency           string
 	Reference          string
 	Note               string
-	RegisteredByUserID uuid.UUID
+	RegisteredByUserID *uuid.UUID
 	RegisteredAt       time.Time
 }
 
@@ -92,6 +94,8 @@ func (q *Queries) InsertPayment(ctx context.Context, arg InsertPaymentParams) (I
 		&i.RemovedAt,
 		&i.RemovedByUserID,
 		&i.RemovalReason,
+		&i.Source,
+		&i.BankTransactionID,
 	)
 	return i, err
 }
@@ -111,7 +115,7 @@ func (q *Queries) LivePaymentsSum(ctx context.Context, invoiceID int64) (pgtype.
 }
 
 const paymentsOf = `-- name: PaymentsOf :many
-SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason FROM invoices.payments
+SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id FROM invoices.payments
 WHERE invoice_id = $1
 ORDER BY paid_on, id
 `
@@ -140,6 +144,8 @@ func (q *Queries) PaymentsOf(ctx context.Context, invoiceID int64) ([]InvoicesPa
 			&i.RemovedAt,
 			&i.RemovedByUserID,
 			&i.RemovalReason,
+			&i.Source,
+			&i.BankTransactionID,
 		); err != nil {
 			return nil, err
 		}

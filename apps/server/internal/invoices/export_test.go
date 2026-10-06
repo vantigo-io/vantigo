@@ -2,9 +2,12 @@ package invoices
 
 import (
 	"context"
+	"fmt"
 	"math/big"
+	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -233,4 +236,95 @@ func RePullNote(ctx context.Context, db store.DBTX, language string, kinds []str
 		refs = append(refs, sourceRef{kind: contracts.WorkSourceKind(kinds[i]), id: id})
 	}
 	return rePullNote(ctx, store.New(db), language, refs)
+}
+
+// SetLockTaken installs the lock-order seam (locks.go): every lock a new
+// path takes through locks.go's helpers is reported to hook, in order, with
+// what it locked and the row's key. It answers the function that removes it.
+// A test using it does not run in parallel: the seam is the package's.
+func SetLockTaken(hook func(ctx context.Context, what, key string)) func() {
+	lockTaken = hook
+	return func() { lockTaken = nil }
+}
+
+// LockForTest takes the lock of the helper named what (lockInvoice,
+// lockInvoicesDescending, lockBankTransaction, lockImportAccounts,
+// lockImportAccount, lockReminder, lockPrintBatch, shareCustomerDocuments or
+// lockPolicies) on tx — the caller's transaction, on a connection of the
+// caller's own, never one of the harness's pool — with keys as the helper
+// takes them: ids in decimal, accounts as their eleven digits, customer ids.
+// lockImportAccounts sets an account it inserts to ocr.
+func LockForTest(ctx context.Context, tx pgx.Tx, what string, keys ...string) error {
+	txq := store.New(tx)
+	ints := func(bits int) ([]int64, error) {
+		ids := make([]int64, 0, len(keys))
+		for _, k := range keys {
+			id, err := strconv.ParseInt(k, 10, bits)
+			if err != nil {
+				return nil, fmt.Errorf("invoices: %s key %q: %w", what, k, err)
+			}
+			ids = append(ids, id)
+		}
+		return ids, nil
+	}
+	one := func(bits int) (int64, error) {
+		if len(keys) != 1 {
+			return 0, fmt.Errorf("invoices: %s takes one key, got %d", what, len(keys))
+		}
+		ids, err := ints(bits)
+		if err != nil {
+			return 0, err
+		}
+		return ids[0], nil
+	}
+	var err error
+	switch what {
+	case "lockInvoice", "lockBankTransaction", "lockReminder", "lockPrintBatch":
+		var id int64
+		if id, err = one(64); err != nil {
+			return err
+		}
+		switch what {
+		case "lockInvoice":
+			_, err = lockInvoice(ctx, txq, id)
+		case "lockBankTransaction":
+			_, err = lockBankTransaction(ctx, txq, id)
+		case "lockReminder":
+			_, err = lockReminder(ctx, txq, id)
+		default:
+			_, err = lockPrintBatch(ctx, txq, id)
+		}
+	case "lockInvoicesDescending":
+		var ids []int64
+		if ids, err = ints(64); err != nil {
+			return err
+		}
+		_, err = lockInvoicesDescending(ctx, txq, ids)
+	case "lockImportAccounts":
+		_, err = lockImportAccounts(ctx, txq, keys, "ocr", uuid.Nil, time.Date(2026, 10, 6, 8, 0, 0, 0, time.UTC))
+	case "lockImportAccount":
+		if len(keys) != 1 {
+			return fmt.Errorf("invoices: %s takes one key, got %d", what, len(keys))
+		}
+		_, err = lockImportAccount(ctx, txq, keys[0])
+	case "shareCustomerDocuments":
+		var id int64
+		if id, err = one(32); err != nil {
+			return err
+		}
+		err = shareCustomerDocuments(ctx, txq, int32(id))
+	case "lockPolicies":
+		var ids []int64
+		if ids, err = ints(32); err != nil {
+			return err
+		}
+		customers := make([]int32, 0, len(ids))
+		for _, id := range ids {
+			customers = append(customers, int32(id))
+		}
+		err = lockPolicies(ctx, txq, customers)
+	default:
+		return fmt.Errorf("invoices: no lock helper %q", what)
+	}
+	return err
 }

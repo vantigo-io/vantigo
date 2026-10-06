@@ -10,6 +10,7 @@ sql:
       - ../db/migrations/00035_invoices_payments_delivery.sql
       - ../db/migrations/00036_invoices_ehf_kid.sql
       - ../db/migrations/00040_invoices_work.sql
+      - ../db/migrations/00041_invoices_receivables.sql
     queries: queries
     gen:
       go:
