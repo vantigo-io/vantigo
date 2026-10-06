@@ -664,7 +664,9 @@ In order:
 first line holding it), `sourceKind` and `sourceId` — and rolls the whole issue back: the
 number, and everything any holder wrote. A holder that fails in any other way is a 500,
 rolled back the same way. A source refused is still held by the draft: refresh the work
-([Refresh](#the-link-and-its-states)) or edit the line, and issue again.
+([Refresh](#the-link-and-its-states)) or edit the line, and issue again. The contract's
+`InvoicesConflictProblem` schema has one `description` for every 409 `code` across the
+module; it lists only the codes the server answers today.
 
 ### Release on credit
 
