@@ -197,3 +197,47 @@ func TestLetterFigures_TwoLettersWithInterestAndAChargePayment(t *testing.T) {
 		}
 	}
 }
+
+// Task 4 review, B1: charge payments beyond the earlier charges — a fee paid
+// then waived, or paid over — pay the new letter's own fee, so
+// charges_earlier goes below zero (a credit) and the letter's total is the
+// principal plus what Charges says once it is sent.
+func TestLetterFigures_ChargeCreditPaysThisLettersFee(t *testing.T) {
+	t.Parallel()
+	first := sentLetter(1, 1, LevelReminder, "2026-07-01", 14, FeeReminder) // fee 38, deadline 15 Jul
+	waived := []Waiver{{ID: 1, ReminderID: 1, Kind: WaiverFee, Amount: rat("38")}}
+	for _, c := range []struct {
+		name           string
+		paid           string
+		waivers        []Waiver
+		refundBefore   string
+		earlier, total string
+		outstanding    string
+		refundAfter    string
+	}{
+		{"the fee paid, then waived", "38", waived, "38", "-38", "10000", "0", "0"},
+		{"50 paid against the fee of 38", "50", nil, "12", "-12", "10026", "26", "0"},
+		{"100 paid against the fee of 38", "100", nil, "62", "-38", "10000", "0", "24"},
+	} {
+		payments := []ChargePayment{chargePayment(1, "2026-07-05", c.paid)}
+		eqRat(t, c.name+": refund due before letter 2", Charges([]Letter{first}, c.waivers, payments).RefundDue, c.refundBefore)
+
+		in := baseInput("2026-07-20")
+		in.Settings.RemindersBeforeNotice = 2
+		in.Letters, in.Waivers, in.ChargePayments = []Letter{first}, c.waivers, payments
+		out := Next(in)
+		if out.Letter == nil || out.Letter.FeeKind != FeeReminder {
+			t.Fatalf("%s: %s %v, want a fee letter", c.name, out.Action, out.Reasons)
+		}
+		eqRat(t, c.name+": charges earlier", out.Letter.ChargesEarlier, c.earlier)
+		eqRat(t, c.name+": total", out.Letter.Total, c.total)
+
+		second := sentLetter(2, 2, LevelReminder, "2026-07-20", 14, FeeReminder)
+		after := Charges([]Letter{first, second}, c.waivers, payments)
+		eqRat(t, c.name+": outstanding after letter 2", after.Outstanding, c.outstanding)
+		eqRat(t, c.name+": refund due after letter 2", after.RefundDue, c.refundAfter)
+		if sum := new(big.Rat).Add(out.Letter.PrincipalOpen, after.Outstanding); sum.Cmp(out.Letter.Total) != 0 {
+			t.Errorf("%s: principal + outstanding = %s, the letter's total %s", c.name, sum.FloatString(2), out.Letter.Total.FloatString(2))
+		}
+	}
+}

@@ -150,6 +150,11 @@ func TestReminderRules_Compensation(t *testing.T) {
 			in.Letters = []Letter{sentLetter(1, 1, LevelReminder, "2026-06-30", 14, FeeCompensation)}
 			return in
 		}(), FeeNone, ""},
+		{"from the due date, before E + 14", func() Input {
+			in := business("2026-06-16")
+			in.Settings.FirstReminderDays = 1
+			return in
+		}(), FeeCompensation, "460"},
 		{"never for a person", func() Input {
 			in := business("2026-07-01")
 			in.Invoice.BuyerType = "person"
@@ -450,6 +455,14 @@ func TestReminderRules_TheSequence(t *testing.T) {
 		t.Errorf("2026, n=0, announced: %s, want hand_off", out.Action)
 	}
 
+	// 2026, n = 0 with the notice off: the creditor's notice is no setting of
+	// the 2026 regime, and its first letter announces the hand-off.
+	in = baseInput("2026-06-29")
+	in.Settings.Inkassolov2026From, in.Settings.RemindersBeforeNotice, in.Settings.CollectionNotice = &from, 0, false
+	if out = Next(in); out.Action != ActionReminder || out.Letter == nil || !out.Letter.AnnouncesCollection {
+		t.Errorf("2026, n=0, notice off: %s %+v, want a reminder announcing the hand-off", out.Action, out.Letter)
+	}
+
 	// The regime switch, judged on the letter's own day.
 	for _, c := range []struct {
 		from  string
@@ -536,5 +549,86 @@ func TestReminderRules_ReviewAndRates(t *testing.T) {
 	in.Settings.BusinessCharge = ChargeNone
 	if out := Next(in); out.Letter == nil {
 		t.Errorf("a fee-free letter in 2027: %s %v, want it", out.Action, out.Reasons)
+	}
+}
+
+// The Input contract: every fixture keeps it, and validate names a nil
+// amount and a day that is not a UTC midnight. A Letter's nil amounts read
+// as zero.
+func TestReminderRules_InputContract(t *testing.T) {
+	t.Parallel()
+	full := halfKroneADay("2026-05-07")
+	full.Letters = []Letter{withInterest(sentLetter(1, 1, LevelReminder, "2026-04-11", 14, FeeReminder), "20")}
+	full.Credits = []Credit{{IssueDate: day("2026-04-01"), Gross: rat("100")}}
+	full.Payments = []Payment{{PaidOn: day("2026-04-02"), OrderedOn: dayp("2026-04-01"), Amount: rat("100")}}
+	full.Waivers = []Waiver{{ID: 1, ReminderID: 1, Kind: WaiverInterest, Amount: rat("8")}}
+	full.ChargePayments = []ChargePayment{chargePayment(1, "2026-04-20", "12")}
+	full.Settings.Inkassolov2026From = dayp("2027-01-01")
+	for name, in := range map[string]Input{"baseInput": baseInput("2026-07-15"), "halfKroneADay": halfKroneADay("2026-05-07"), "every list": full} {
+		if err := validate(in); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	oslo, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, breakIt := range map[string]func(*Input){
+		"a nil gross":                 func(in *Input) { in.Invoice.Gross = nil },
+		"L with a time of day":        func(in *Input) { in.L = in.L.Add(2 * time.Hour) },
+		"L in Oslo":                   func(in *Input) { in.L = time.Date(2026, 5, 7, 0, 0, 0, 0, oslo) },
+		"a nil payment amount":        func(in *Input) { in.Payments[0].Amount = nil },
+		"a nil rate":                  func(in *Input) { in.Rates[0].Value = nil },
+		"a nil charge payment amount": func(in *Input) { in.ChargePayments[0].Amount = nil },
+		"a nil waiver amount":         func(in *Input) { in.Waivers[0].Amount = nil },
+		"a delivery with a time":      func(in *Input) { in.Deliveries[0] = in.Deliveries[0].Add(time.Minute) },
+	} {
+		in := full
+		in.Payments, in.Rates = slices.Clone(full.Payments), slices.Clone(full.Rates)
+		in.ChargePayments, in.Waivers = slices.Clone(full.ChargePayments), slices.Clone(full.Waivers)
+		in.Deliveries = slices.Clone(full.Deliveries)
+		breakIt(&in)
+		if validate(in) == nil {
+			t.Errorf("%s: validate accepts it", name)
+		}
+	}
+	// A letter without facts: its nil amounts are zero, nothing panics.
+	bare := Letter{ID: 1, Sequence: 1, Level: LevelReminder, Status: StatusSent, SentOn: dayp("2026-04-11"), Deadline: dayp("2026-04-25")}
+	in := halfKroneADay("2026-05-07")
+	in.Letters = []Letter{bare}
+	if out := Next(in); out.Letter == nil {
+		t.Errorf("after a letter without facts: %s %v", out.Action, out.Reasons)
+	}
+	eqRat(t, "charges of a letter without facts", Charges([]Letter{bare}, nil, nil).Outstanding, "0")
+}
+
+// The facts are the caller's to keep and change: a letter's rate figures are
+// copies, never the rate rows' own values.
+func TestReminderRules_FactsDoNotAliasTheRates(t *testing.T) {
+	t.Parallel()
+	rates := seedRates()
+	in := baseInput("2026-07-15")
+	in.Settings.LateInterest, in.Rates = true, rates
+	out := Next(in)
+	if out.Letter == nil || out.Letter.Inkassosats == nil || len(out.Letter.Segments) == 0 {
+		t.Fatalf("a fee letter with interest: %s %v", out.Action, out.Reasons)
+	}
+	out.Letter.Inkassosats.SetInt64(1)
+	out.Letter.Segments[0].Rate.SetInt64(1)
+
+	in = baseInput("2026-07-01")
+	in.Invoice.BuyerType, in.Invoice.BuyerOrganisationNumber = BuyerBusiness, "923456783"
+	in.Settings.BusinessCharge, in.Rates = ChargeCompensation, rates
+	if out := Next(in); out.Letter == nil || out.Letter.FeeKind != FeeCompensation {
+		t.Fatalf("a compensation letter: %s %v", out.Action, out.Reasons)
+	} else {
+		out.Letter.Compensation.SetInt64(1)
+	}
+	for _, c := range []struct {
+		kind, on, want string
+	}{{KindInkassosats, "2026-07-15", "750"}, {KindLateInterest, "2026-06-16", "12.00"}, {KindCompensation, "2026-07-01", "430"}} {
+		if r, _ := RateOn(rates, c.kind, day(c.on)); r.Value.Cmp(rat(c.want)) != 0 {
+			t.Errorf("the %s row in force on %s became %s", c.kind, c.on, r.Value.FloatString(2))
+		}
 	}
 }

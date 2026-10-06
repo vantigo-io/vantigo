@@ -180,5 +180,87 @@ func TestReminderRules_SecondFeeNeedsAMissedDeadline(t *testing.T) {
 		if out.Letter == nil || (out.Letter.FeeKind == FeeReminder) != c.fee {
 			t.Errorf("%s: letter %+v, want fee=%v", c.name, out.Letter, c.fee)
 		}
+		if refused := slices.Equal(out.ChargeNotes, []string{NoteFeeDeadlineNotMissed}); refused == c.fee {
+			t.Errorf("%s: notes %v, want fee_deadline_not_missed=%v", c.name, out.ChargeNotes, !c.fee)
+		}
+	}
+}
+
+// D4's deadline_met waiver: the second fee of a chain relied on the first fee
+// letter's missed deadline; when the ledger shows that deadline met, the
+// second fee is named for waiving, unless it is waived already.
+func TestReminderRules_ReliedOnMetDeadline(t *testing.T) {
+	t.Parallel()
+	first := sentLetter(1, 1, LevelReminder, "2026-07-01", 14, FeeReminder) // deadline 15 Jul
+	second := sentLetter(2, 2, LevelReminder, "2026-07-20", 14, FeeReminder)
+	ordered := []Payment{{PaidOn: day("2026-07-22"), OrderedOn: dayp("2026-07-15"), Amount: rat("10000")}}
+	booked := []Payment{{PaidOn: day("2026-07-22"), Amount: rat("10000")}}
+	for _, c := range []struct {
+		name     string
+		letters  []Letter
+		payments []Payment
+		waivers  []Waiver
+		want     []int64
+	}{
+		{"ordered on the deadline", []Letter{first, second}, ordered, nil, []int64{2}},
+		{"booked after it, no order date", []Letter{first, second}, booked, nil, nil},
+		{"the fee already waived", []Letter{second, first}, ordered, []Waiver{{ID: 1, ReminderID: 2, Kind: WaiverFee, Amount: rat("38")}}, nil},
+		{"a fee-free second letter", []Letter{first, sentLetter(2, 2, LevelReminder, "2026-07-20", 14, FeeNone)}, ordered, nil, nil},
+		{"a first fee relies on nothing", []Letter{first}, ordered, nil, nil},
+		{"a fee after the six-month reset", []Letter{first, sentLetter(2, 2, LevelReminder, "2027-01-02", 14, FeeReminder)},
+			[]Payment{{PaidOn: day("2027-01-05"), OrderedOn: dayp("2026-07-15"), Amount: rat("10000")}}, nil, nil},
+	} {
+		in := baseInput("2026-07-25")
+		in.Letters, in.Payments, in.Waivers = c.letters, c.payments, c.waivers
+		if got := ReliedOnMetDeadline(in); !slices.Equal(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// The letter's deadline (Task 4 review): deadline_days after it, never fewer
+// than 14, moved off a Saturday, a Sunday or a Norwegian public holiday.
+func TestReminderRules_LetterDeadline(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		sent string
+		days int
+		want string
+	}{
+		{"2026-06-29", 14, "2026-07-13"},
+		{"2026-06-29", 21, "2026-07-20"},
+		{"2026-06-29", 10, "2026-07-13"}, // never fewer than 14
+		{"2026-07-04", 14, "2026-07-20"}, // Saturday 18 Jul → Monday
+		{"2026-07-05", 14, "2026-07-20"}, // Sunday 19 Jul → Monday
+		{"2027-05-03", 14, "2027-05-18"}, // 17 May 2027, also Whit Monday
+		{"2028-05-03", 14, "2028-05-18"}, // 17 May 2028, a Wednesday
+		{"2027-03-11", 14, "2027-03-30"}, // Maundy Thursday, Good Friday, the weekend, Easter Monday
+		{"2026-12-11", 14, "2026-12-28"}, // Christmas Day, Boxing Day, Sunday
+		{"2026-12-18", 14, "2027-01-04"}, // New Year's Day, the weekend
+		{"2026-04-30", 14, "2026-05-15"}, // Ascension Day 14 May 2026
+		{"2026-05-11", 14, "2026-05-26"}, // Whit Monday 25 May 2026
+		{"2026-04-17", 14, "2026-05-04"}, // 1 May, a Friday, then the weekend
+		{"2026-12-10", 14, "2026-12-24"}, // Christmas Eve is not a public holiday
+	} {
+		if got := LetterDeadline(day(c.sent), c.days); !got.Equal(day(c.want)) {
+			t.Errorf("LetterDeadline(%s, %d) = %s, want %s", c.sent, c.days, got.Format(time.DateOnly), c.want)
+		}
+	}
+	for year, want := range map[int]string{2024: "2024-03-31", 2025: "2025-04-20", 2026: "2026-04-05", 2027: "2027-03-28", 2028: "2028-04-16"} {
+		if got := easterSunday(year); !got.Equal(day(want)) {
+			t.Errorf("Easter %d = %s, want %s", year, got.Format(time.DateOnly), want)
+		}
+	}
+	// Through Next: the facts carry it.
+	for _, c := range []struct {
+		l    string
+		days int
+		want string
+	}{{"2026-06-29", 21, "2026-07-20"}, {"2026-07-04", 14, "2026-07-20"}} {
+		in := baseInput(c.l)
+		in.Settings.DeadlineDays = c.days
+		if out := Next(in); out.Letter == nil || !out.Letter.Deadline.Equal(day(c.want)) {
+			t.Errorf("a letter on %s with %d days: %+v, want the deadline %s", c.l, c.days, out.Letter, c.want)
+		}
 	}
 }

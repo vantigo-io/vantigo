@@ -105,6 +105,37 @@ func TestReminderRules_Interest(t *testing.T) {
 			total: "99.66", from: "2026-06-16",
 			segs: []seg{{"2026-06-16", "2026-06-30", "12.00", "10000"}, {"2026-07-01", "2026-07-15", "12.25", "10000"}},
 		},
+		{
+			// 15 × 12.00 + 4 × 12.25 on 10 000 = 22 900 / 365; from 5 Jul the base is
+			// below zero and bears nothing, never a negative interest.
+			name: "over-credited",
+			in: func() Input {
+				in := interestOn("2026-07-15")
+				in.Credits = []Credit{{IssueDate: day("2026-07-05"), Gross: rat("12000")}}
+				return in
+			}(),
+			total: "62.74", from: "2026-06-16",
+			segs: []seg{{"2026-06-16", "2026-06-30", "12.00", "10000"}, {"2026-07-01", "2026-07-04", "12.25", "10000"}},
+		},
+		{
+			// Settled in 2026-H2 and asked about in 2027-H1, which has no row: the
+			// days after the settlement need no rate.
+			name: "settled before a half-year without its row",
+			in: func() Input {
+				in := interestOn("2027-01-10")
+				in.Payments = []Payment{{PaidOn: day("2026-07-05"), Amount: rat("10000")}}
+				return in
+			}(),
+			total: "66.10", from: "2026-06-16",
+			segs: []seg{{"2026-06-16", "2026-06-30", "12.00", "10000"}, {"2026-07-01", "2026-07-05", "12.25", "10000"}},
+		},
+		{name: "settled before it began", in: func() Input {
+			in := interestOn("2027-01-10")
+			in.Payments = []Payment{{PaidOn: day("2026-06-14"), Amount: rat("10000")}}
+			return in
+		}(), total: "0"},
+		{name: "the last day of 2026", in: interestOn("2026-12-31"), total: "666.85", from: "2026-06-16",
+			segs: []seg{{"2026-06-16", "2026-06-30", "12.00", "10000"}, {"2026-07-01", "2026-12-31", "12.25", "10000"}}},
 		{name: "on E itself, nothing", in: interestOn("2026-06-15"), total: "0"},
 		{name: "the first day", in: interestOn("2026-06-16"), total: "3.29", from: "2026-06-16",
 			segs: []seg{{"2026-06-16", "2026-06-16", "12.00", "10000"}}},
@@ -144,6 +175,10 @@ func TestReminderRules_Interest(t *testing.T) {
 		}
 	}
 
+	// Exactly on 1 January the new half-year is needed.
+	if _, _, _, outdated := Interest(interestOn("2027-01-01")); outdated == nil || *outdated != (OutdatedRate{KindLateInterest, "2027-H1"}) {
+		t.Errorf("on 1 Jan 2027: outdated %+v, want late_interest_percent 2027-H1", outdated)
+	}
 	// A half-year without its row answers outdated, never a stale rate.
 	in := interestOn("2027-01-10")
 	if _, _, _, outdated := Interest(in); outdated == nil || *outdated != (OutdatedRate{KindLateInterest, "2027-H1"}) {

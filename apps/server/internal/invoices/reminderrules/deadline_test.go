@@ -28,6 +28,8 @@ func TestReminderRules_DeadlineMet(t *testing.T) {
 		}, nil, true},
 		{"a credit note within the deadline and the rest paid", []Payment{{PaidOn: day("2026-07-12"), Amount: rat("6000")}},
 			[]Credit{{IssueDate: day("2026-07-05"), Gross: rat("4000")}}, true},
+		{"a credit note after the deadline", []Payment{{PaidOn: day("2026-07-12"), Amount: rat("6000")}},
+			[]Credit{{IssueDate: day("2026-07-16"), Gross: rat("4000")}}, false},
 		{"nothing paid", nil, nil, false},
 	} {
 		in := baseInput("2026-07-25")
