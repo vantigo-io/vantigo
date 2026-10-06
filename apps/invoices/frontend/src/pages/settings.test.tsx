@@ -18,6 +18,7 @@ const manager = {
   canIssue: true,
   canManage: true,
   canRegisterPayments: false,
+  canRunReminders: false,
   canSend: false,
   canSendEhf: false,
 };

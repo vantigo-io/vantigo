@@ -108,6 +108,8 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.collection_rates` | The statutory rates as dated rows ([Collection rates](#collection-rates)): the kind (`late_interest_percent`, `b2b_compensation_nok`, `inkassosats`), `valid_from` (1 January or 1 July for the two half-yearly kinds), the value, the regulation `source_ref`, who added it (NULL for a release's seed) and when, and `release_value` with `release_source_ref` — what a later release seeded over a user's row, both or neither. One row per kind and day. Append-only: a trigger refuses every change but the release's value set once, and the deletion of a seeded row. |
 | `invoices.reminder_settings` | One row (`id = 1`): [the reminder settings](#the-reminder-settings), the 2026 regime's day `inkassolov_2026_from`, the review `regime_reviewed_through` with who moved it and when, and the row's revision, who changed it and when. Never deleted. |
 | `invoices.customer_reminder_policies` | One row per customer with [a reminder policy](#a-customers-reminder-policy) other than the default — keyed by the opaque `customer_id`, the mode (`normal`, `no_charges`, `none`), the note and who set it when. No row is `normal`. |
+| `invoices.reminder_runs` | One reminder run ([Runs](#runs)): the day, who made it and when, the bank data's `last_booked_on` and `stale_import_acknowledged`, and `letters` and `skipped`, set together once at its end from NULL. Never deleted or changed but by that one write. |
+| `invoices.reminders` | One letter of a run: the invoice, the run, its `sequence` on the invoice (unique per invoice), the level (`reminder` or `collection_notice`), `announces_collection`, the channel (`email` or `paper`), the recipient (`''` for paper and once the customer is anonymised), the language, who made it and when, the status (`queued`, `awaiting_print`, `printed`, `sent`, `withdrawn`, `failed`), and the facts written when it is sent or printed — `sent_on`, the deadline, the regime, the amounts and the charge notes. Created without facts; never deleted. |
 
 A document's state is not a column: `invoices.document_state(...)` derives it, see
 [Payments and the state of an invoice](#payments-and-the-state-of-an-invoice).
@@ -1170,6 +1172,11 @@ the other filters, and only an issued invoice can match it. Each list item answe
 `state` and, on an issued invoice, `openAmount`. The list's order is unchanged: there is
 no sort by state.
 
+**What comes next.** An issued invoice also answers `nextAction`, what the reminder engine
+says to do with it today — a reminder or the collection notice with the letter as it
+would go, a suggested hand-off, or why it waits or is blocked ([The rules](#the-rules)) —
+and `reminders`, its letters ([Runs](#runs)). A paid invoice answers `none`.
+
 ## Charges
 
 Phase 4 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
@@ -1212,7 +1219,10 @@ meeting each other, not a set-off against another invoice, which phase 4 does no
 
 **The block.** An issued invoice answers `charges` — `claimed` (the sent letters' fees
 and compensation and the latest one's cumulative interest, before waivers), `waived` (every waiver's amount), `paid` (the live charge payments),
-`outstanding` (never below zero) and `refundDue` only above zero — with `chargePayments`
+`outstanding` (never below zero), `refundDue` only above zero and `interestToday` — the
+late interest accrued to today as a letter sent today would claim it, cumulative and before
+waivers and what is paid of it, present only when interest applies and the rates cover the
+period ([The rules](#the-rules)) — with `chargePayments`
 (every one, removed ones included with their removal, in the order the money arrived)
 and `waivers` (the first first). A draft and a credit note answer none of them: a credit
 note is never reminded of.
@@ -2136,8 +2146,10 @@ chases what is owed: reminders (purringer) and the creditor's collection notice
 (inkassovarsel), with the reminder fee, the business compensation and late interest
 they may claim. This section grows with the phase. It begins with what every letter is
 judged against: the statutory rates as dated rows, the two collection-law regimes and
-their review, the reminder settings, and a customer's reminder policy. The letters
-themselves, and the engine that decides the next one, come later in the phase.
+their review, the reminder settings, and a customer's reminder policy; then the engine
+that decides the next letter ([The rules](#the-rules)), the overdue list it judges
+([The overdue list](#the-overdue-list)) and the runs that make the letters
+([Runs](#runs)). Sending and printing the letters come later in the phase.
 
 ### Collection rates
 
@@ -2348,6 +2360,268 @@ The row is kept and counts for nothing. `tr_manual_deliveries_immutable` refuses
 and every UPDATE but the removal, once, and the erase's blanking of the note;
 `tr_manual_deliveries_parent` reads the invoice `FOR SHARE`, refuses a row under anything
 but an issued invoice, and blanks the note of an anonymised customer's.
+
+### The rules
+
+**One engine.** What to do next with an issued invoice is one pure function,
+`reminderrules.Next` (the package `internal/invoices/reminderrules`, which reads no store
+and no clock — a test holds it to that). The overdue list, the run's preview, each item of
+a run and, later in the phase, the letter's dispatch and the posting of paper all call it,
+so they never disagree. Its input is read by the rule-input loader alone — on the pool in
+a handful of statements for a whole list, whatever its length, or after the invoice's
+lock for one — and is:
+
+- the invoice's own snapshot: the buyer's type, organisation number and foreign id, the
+  issue date, the due date and the gross — never a fresh read of the customer;
+- the principal's history: each issued credit note's day and gross, each live payment's
+  `paid_on`, amount and — when an OCR giro line brought it — the day the payer ordered it
+  (`ordered_on`; a camt.054 line carries none), and the live reservations (none until
+  the payments port);
+- the deliveries ([The delivery fact](#the-delivery-fact));
+- every letter: the sent ones with the facts written at their sending, and those in
+  flight — `queued`, `awaiting_print`, `printed` or `failed` — without; the waivers and the
+  live charge payments ([Charges](#charges));
+- the reminder settings, the customer's policy, a live hold, whether a lifted hold barred
+  charges, a live hand-off, every collection rate;
+- the day `L` it is asked about: today in Oslo, one clock read per request.
+
+**Days.** Months are added clamped to the month's end — 31 August plus six months is
+28 February, or the 29th in a leap year, where a naive addition would give 3 March.
+**`E`, the effective due date,** is the due date moved to the next business day when it
+falls on a Saturday, a Sunday or a Norwegian public holiday (New Year's Day, Maundy
+Thursday, Good Friday, Easter Sunday and Monday, 1 May, 17 May, Ascension Day, Whit Sunday
+and Monday, Christmas Day, Boxing Day). **A letter's deadline** is
+`max(deadline_days, 14)` days after it is sent, moved off such a day the same way. Both
+only ever delay a charge: a payment order reaches no bank on a holiday.
+
+**The next action**, the first that applies:
+
+1. nothing of the principal is open → `none` (charges may still be outstanding);
+2. a live hand-off → `none`, `handed_off`;
+3. a live hold → `blocked`, `on_hold`;
+4. the customer's policy `none` → `blocked`, `policy_none`; reminders off → `blocked`,
+   `reminders_disabled`;
+5. a letter in flight → `blocked`, `letter_pending` (the dispatch, judging the letter it
+   sends, leaves that one out);
+6. no letter sent → a `reminder`, from `E + first_reminder_days` — or, when
+   `reminders_before_notice` is 0, the `collection_notice` (under the 1988 regime, when it
+   is offered) or a reminder announcing the hand-off (under the 2026 regime);
+7. the last letter's deadline plus `grace_days` not yet passed → `waiting`, until the day
+   after;
+8. fewer letters sent than `reminders_before_notice` → a `reminder`;
+9. under the 1988 regime, the `collection_notice` when it is offered and none was sent;
+   under the 2026 regime, one more reminder that announces the hand-off
+   (`announcesCollection`) when none did;
+10. otherwise → `hand_off`: suggested, never automatic.
+
+**Without a delivery** on or before the due date only fee-free reminders go, at most
+`max(reminders_before_notice, 1)` of them, and whatever would follow is `blocked`,
+`not_delivered`, from the day it would have come. Under the 2026 regime a letter that
+would be the collection notice is a reminder announcing the hand-off.
+
+**A deadline met.** A letter's deadline counts as met when the live payments ordered on or
+before it — `ordered_on` where the bank line has one, else `paid_on`, which is never
+earlier — cover what was open of the principal when it was sent; a credit note issued by
+the deadline lowers what had to be paid. A reminder fee claimed on a letter sent after an
+earlier letter's deadline that the payments in fact met — a second fee, or a first one
+after a fee-free letter — is waived `deadline_met` when the proof arrives (the bank match).
+A camt.054 line carries no order day, so a payment it brings is judged by its booking
+day: the default `grace_days` of 3 covers a payment ordered on the deadline and booked
+after a long weekend.
+
+**The reminder fee** (`fee_kind = reminder_fee`) is claimed only when every one of these
+holds:
+
+- the 1988 regime on `L`, and the review not lapsed ([The two regimes and the
+  review](#the-two-regimes-and-the-review)) — the 2026 regime takes no fee (R20);
+- a delivery on or before the due date;
+- `L` at least `E + 14` days (R7, inkassoforskriften § 1-2) — a letter before that goes
+  without a fee, `fee_before_14_days`;
+- the charge setting for the buyer — `personCharge` or `businessCharge` — is `fee`, the
+  policy is `normal`, and no lifted hold barred charges (R16), else `charges_barred`;
+- **the two-fee cap with its six-month reset** (R9, R11, inkassoforskriften § 1-3): from the
+  latest sent fee letter — a waived fee still counts, it was claimed — count back through
+  the earlier fee letters, stopping at the first gap of more than six months between two of
+  them; when `L` is more than six months after the latest the count is 0. The six months end
+  on the anniversary, so the fee is allowed from the day after it. A fee is allowed while the
+  count is below 2, else `fee_cap_reached`;
+- a second fee only when the previous fee letter's deadline was at least 14 days after its
+  sending, has passed by `L` and was not met (R10), else `fee_deadline_not_missed`;
+- under `compensation` for a business, never (R6).
+
+The amount is the inkassosats in force on `L`, ÷ 20, rounded to the krone with .50 up
+(R8): 750 → 38, 725 → 36, 770 → 39. The reset, pinned:
+
+| Fee letters sent | `L` | Count | Fee |
+| --- | --- | --- | --- |
+| 1 Jan, 1 Feb | 2 Jul | 2 (a one-month gap) | refused |
+| 1 Jan, 1 Feb | 1 Aug | 2 (the anniversary is still inside) | refused |
+| 1 Jan, 1 Feb | 2 Aug | 0 (`L` is past 1 Feb + 6 months) | allowed |
+| 31 Aug | 28 Feb (not a leap year) | 1 | allowed |
+| 15 Aug, 31 Aug | 1 Mar (not a leap year) | 0 (31 Aug + 6 months is 28 Feb) | allowed |
+| 31 Aug, 15 Sep | 15 Mar | 2 | refused |
+| 31 Aug, 15 Sep | 16 Mar | 0 | allowed |
+| 1 Jan, 2 Jul, 15 Jul | 1 Aug | 2 (2 Jul to 1 Jan is more than six months: the chain stops) | refused |
+| 1 Jan, 2 Jul | 3 Jul | 1 (the chain stops at the gap) | allowed |
+| 1 Jan, 1 Jul | 2 Jul | 2 (exactly six months does not break the chain) | refused |
+
+**The compensation** (`fee_kind = compensation`; forsinkelsesrenteloven § 3a, R5) is
+claimed for a business with an organisation number — `buyerType` `business` and an
+organisation number or foreign id on the snapshot; any other buyer is treated as a person
+and never owes it (§ 4 d, R17) — when `businessCharge` is `compensation`, the policy is
+`normal`, the invoice was delivered on or before its due date and no lifted hold barred
+charges: once per invoice, on its first letter, the NOK figure in force on `L`. Under
+`compensation` no reminder fee is ever claimed on that invoice (R6). It is claimed under
+either regime.
+
+**Late interest** (forsinkelsesrenteloven §§ 2–3, R1–R3), when `lateInterest` is on, the
+policy is `normal` and the invoice was delivered on or before its due date: **simple**
+interest on the principal, always cumulative from the day after `E` to `L` — a waiver of
+interest is an amount beside it, never a new start. Each day `d` bears
+`open(d) × rate(d) / 100 / 365`, where `open(d)` is the gross less the credit notes issued
+on or before `d` and the live payments paid before `d` — a credit note lowers the
+principal from its own day, a payment from the day after — and `rate(d)` is the row in
+force on `d`. The segments split at every rate change, credit note and payment; the sum
+is rounded to øre once, the half away from zero. Interest is never charged on fees or the
+compensation. Pinned: 10 000 due Monday 15 June 2026, asked on 15 July, with 4 000
+credited on 5 July → 84.89; with 4 000 paid on 5 July instead → 86.23.
+
+**A missing rate refuses.** A letter needing a half-yearly rate — the late interest for
+each half-year of its interest period, the compensation for its own — for a half-year
+without a row starting on its first day (a gap, or after the last row, or before the
+first) is `blocked`, `collection_rates_outdated`, naming the kind and the half-year; the
+inkassosats only needs a row in force on `L`. An old rate is never carried across a
+missing half-year. A letter that would carry a fee or be the collection notice past the
+review under the 1988 regime is `blocked`, `collection_regime_unreviewed`.
+
+**The outcome** is the action, its earliest day, the reasons it is blocked or waits
+(`on_hold`, `handed_off`, `policy_none`, `reminders_disabled`, `letter_pending`, `waiting`,
+`not_delivered`, `collection_rates_outdated` with the missing rate, and
+`collection_regime_unreviewed`), and for a letter due on `L` its facts: the level,
+whether it announces the hand-off, the regime, the charge it claims, the amounts apart —
+the principal open, `chargesEarlier` (the earlier letters' fees and compensation not
+waived or paid; below zero when charge payments beyond them pay this letter's own
+charge), this letter's fee or compensation, the cumulative interest with its from-day and
+segments, what of it is waived and paid — the total, and the deadline; and its **charge
+notes**, why it claims less than it might:
+
+| Note | Why |
+| --- | --- |
+| `not_delivered` | no delivery on or before the due date: nothing is due yet |
+| `charges_barred` | a lifted hold barred fees and the compensation for good |
+| `fee_cap_reached` | two fees within six months already |
+| `fee_before_14_days` | the letter comes before `E + 14` |
+| `fee_deadline_not_missed` | the previous fee letter's deadline was met, too short, or not yet passed |
+
+The rules and their sources (the research, §2.11): R1–R3 forsinkelsesrenteloven §§ 2–3
+(interest from the due date, the half-yearly rate on each day, simple, apart from the
+principal); R5–R6 § 3a and inkassoforskriften §§ 1-5, 2-6 (the compensation, never beside
+a fee); R7–R11 inkassoforskriften §§ 1-2, 1-3 (14 days, 1/20 of the inkassosats, two fees,
+a missed deadline, the six-month reset); R12 inkassoloven § 9 (the notice's deadline of at
+least 14 days); R16 inkassoloven § 17 (no costs on a claim with a reasonable objection);
+R17 § 4 d (a consumer never owes the compensation); R20 the 2026 inkassoloven §§ 2, 19, 20.
+The creditor's own betalingsoppfordring (3/20) is not offered.
+
+### The overdue list
+
+`GET /invoices/overdue` (`invoices:access`) lists the issued invoices whose state is
+`overdue` today — and, with `charges=outstanding`, also the `paid` ones whose sent
+letters claimed charges still outstanding — the oldest due date first. `customerId` and
+`dueBefore` (a due date before that day) narrow the set; past **5 000** invoices it is
+409 **`too_many_overdue`**, asking for one of them. **The whole set is judged before it is
+paged** (M7): read on the pool through the rule-input loader in a handful of statements,
+no lock, the engine run on each invoice, then the `action` filter (`reminder`,
+`collection_notice`, `hand_off`, `blocked`, `waiting`) and then the page (`page`,
+`pageSize`, 25 by default and at most 100) — so a page of blocked invoices is the blocked
+ones', and `total` counts the set after the filter.
+
+Each item: the invoice (`invoiceId`, `number`, `customerId`, `buyerName`, `buyerType`,
+`issueDate`, `dueDate`); `daysOverdue`, counted from `E` and never below zero;
+`principalOpen`; `charges`, the block of [Charges](#charges) with `interestToday`, and
+`interestToday` beside it; `delivered` — on or before the due date; `lastLetter`, the
+latest letter not withdrawn, with its status and, once printed or sent, its day and
+deadline; `nextAction` — the action, `earliestOn`, `reasons`, `chargeNotes`, `outdated`
+naming a missing rate, and `letter`, the letter as it would go today, when it is due; a
+live `hold` and `handoff`; and `policyMode`, the customer's policy.
+
+The answer carries the bank data's **`freshness`** — `lastBookedOn`, the latest booking day
+of any imported file, absent when none was ever imported; `stale` when that is more than
+`staleImportDays` before today, and always without a file; `ocrAccounts`, the accounts
+imported as OCR giro — and the **warnings** that apply: `collection_rates_outdated`
+(reminders on and a rate the settings use — the late interest, the compensation, the
+inkassosats — has no row for today's half-year, or a listed letter is blocked by a missing
+one), `collection_regime_unreviewed` (reminders on, today under the 1988 regime past the
+review with a fee or the notice in use, or a listed letter blocked by it),
+`collection_rate_differs_from_release` (a release seeded another value over a rate a
+manager added), `bank_data_stale` and `ocr_without_kid_payments` — a payment without a KID
+never reaches an OCR giro file, so it must be registered by hand before a run. One clock
+read per request.
+
+### Runs
+
+`POST /invoices/reminder-runs` (`invoices:access` and `invoices:payments`) previews a run
+or makes one.
+
+**The preview** (`dryRun: true`) judges the overdue set as the list does — the same
+function on the same figures, so the two agree — and answers every invoice whose next
+action is a `reminder` or a `collection_notice` due today or earlier, each with its letter
+as it would go today, its **channel and recipient**, their warnings and its charge notes;
+the invoices `blocked` or `waiting`, with their next action and reasons; the bank data's
+freshness and the list's warnings. Past 5 000 overdue invoices it is 409
+`too_many_overdue`. It writes nothing and takes no lock. **The channel** comes from the
+customer's billing profile, read through the directory once per customer: `paper` when
+`reminderDelivery` says paper; otherwise e-mail to `reminderEmail` — paper with
+**`reminder_email_missing`** when there is no address, paper with **`mail_unavailable`**
+when this installation cannot send e-mail (`MAIL_DRIVER` is not `smtp`).
+
+**The run** (`dryRun: false`) takes `items` — 1 to 500, each an invoice once with the
+`action` its preview showed — and `acknowledgeStaleImport`. Refused in order:
+
+1. 400 on `items`: none, more than 500, an invoice twice, an action other than `reminder`
+   or `collection_notice`, an id that is not an issued invoice;
+2. 409 **`reminders_disabled`** — reminders are off in the settings;
+3. judged on the pool before anything is written, every item with the engine:
+   409 **`collection_rates_outdated`** when an item's letter needs a rate a half-year
+   lacks, the problem naming the `kind` and the `halfYear`; then 409
+   **`collection_regime_unreviewed`** when an item would carry a fee or be the collection
+   notice past the review under the 1988 regime; then 409 **`bank_import_stale`** when the
+   bank data is stale, an item would claim a fee, the compensation or interest, and
+   `acknowledgeStaleImport` is not `true` — with `lastBookedOn` once a file was ever
+   imported. Letters without charges are never held back by stale bank data: what the bank
+   has not yet told Vantigo can make a fee wrong, not a reminder.
+
+A refusal writes nothing. Then the items' billing profiles are read — once per customer,
+before any lock — and the `invoices.reminder_runs` row is written: the day, the caller,
+the bank data's `last_booked_on` and `stale_import_acknowledged`. **Each item is one
+transaction**: the invoice `FOR UPDATE` and every figure read after it, so a payment, a
+hold or another run that held the invoice first has committed by then; an anonymised
+customer is skipped **`customer_anonymised`**; the engine judges the invoice again on
+today, and an action other than the item's — paid meanwhile, another letter now in
+flight, held, newly outdated or unreviewed — is skipped **`action_changed`**. Otherwise the
+letter is inserted with the next sequence of the invoice: its level and whether it
+announces the hand-off, the channel and recipient, the language (the buyer snapshot's when
+it is English, Norwegian otherwise), the run and the caller — `queued` for e-mail, due for
+the worker at once, or `awaiting_print` for paper. **A letter is created without its
+facts**: its day, deadline, regime and amounts are written when it is sent, by e-mail, or
+printed for a posting day, because its deadline runs from its sending (inkassoloven § 9)
+and its fee is judged on its own date (inkassoforskriften § 1-2). At the end the run's
+`letters` and `skipped` are set, once; a run that stopped half-way keeps neither, and its
+letters say what it made. 201 with the run, the letters made and the items skipped with
+their reasons.
+
+**Two runs over one invoice** serialise on its lock: the second sees the first's letter in
+flight and skips it `action_changed`, and `UNIQUE (invoice_id, sequence)` is the floor
+beneath. **The lock order** of an item is the invoice alone, then the letter inserted; the
+directory is never read under it.
+
+`GET /invoices/reminder-runs` (`invoices:access` and `invoices:payments`) lists the runs,
+newest first, paged; `GET /invoices/reminder-runs/{id}` answers one run and its letters
+with their current status, in the order it made them (404 for none). The items a run
+skipped are answered by the run itself only; its row keeps their count.
+
+**An invoice's letters.** An issued invoice answers `reminders` — every letter, any
+status, by sequence, its facts once it has them — and `nextAction`; a letter's
+`recipient` is answered only to a caller holding `invoices:payments`.
 
 ## The journal
 
@@ -2586,11 +2860,11 @@ No built-in role holds any of these; Owner has the wildcard.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings and a customer's reminder policy. |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings and a customer's reminder policy; the overdue list, and an issued invoice's letters and next action. |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)). |
 | `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
-| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)). |
+| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), and see the address each letter goes to. |
 
 `invoices:payments` is sensitive because a registration changes what the company says it
 is owed, and a wrong one is corrected only by a removal that stays on record.
@@ -2601,7 +2875,9 @@ each send's time and subject but not its address. Sending also needs an installa
 that can send — `MAIL_DRIVER=smtp` and the `SMTP_*` configuration
 ([email delivery](/en/admin/authentication/#email-delivery)). `GET /meta` answers
 `mailAvailable`, `capabilities.canSend` — `invoices:issue` and `mailAvailable` — and
-`capabilities.canRegisterPayments`, so no client re-derives either rule.
+`capabilities.canRegisterPayments`, so no client re-derives either rule. It answers
+`remindersEnabled`, the reminder settings' switch, and `capabilities.canRunReminders`,
+`invoices:payments`.
 
 **Sending as EHF is under `invoices:issue` too** ([Sending as EHF](#sending-as-ehf)),
 and needs an installation that can: `GET /meta` answers `ehfAvailable` — `INVOICES_EHF_ENABLED` on, the Peppol lookup
@@ -2654,6 +2930,10 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /collection-rates` | `invoices:manage` | 400 on the field (`kind`, `validFrom` not after today, not after the latest printed or sent letter, or off 1 January and 1 July for a half-yearly kind, `value` out of its bounds or past two decimals, `sourceRef`); 409 `collection_rate_exists` |
 | `DELETE /collection-rates/{id}` | `invoices:manage` | 404; 409 `collection_rate_in_force` (seeded, in force or past, or used by a printed or sent letter) |
 | `GET /customers/{customerId}/reminder-policy` | | |
+| `GET /overdue` | | 400 paging; 409 `too_many_overdue` |
+| `POST /reminder-runs` | `invoices:payments` | the preview: 409 `too_many_overdue`; the run: 400 on `items`; 409 `reminders_disabled`, `collection_rates_outdated` (with `kind`, `halfYear`), `collection_regime_unreviewed`, `bank_import_stale` (with `lastBookedOn`) |
+| `GET /reminder-runs` | `invoices:payments` | 400 paging |
+| `GET /reminder-runs/{id}` | `invoices:payments` | 404 |
 | `PUT /customers/{customerId}/reminder-policy` | `invoices:payments` | 400 on `mode` or `note`; 404 the customer has no document here, or is anonymised |
 | `GET /vat-codes` | | |
 | `POST /vat-codes` | `invoices:manage` | 400 on the field, a duplicate code on `code` |

@@ -492,3 +492,19 @@ func SetMatchAfterInvoiceLock(hook func(ctx context.Context, bankTransactionID i
 	matchAfterInvoiceLock = hook
 	return func() { matchAfterInvoiceLock = nil }
 }
+
+// SetRunItemAfterLock installs a hook a reminder run calls inside each
+// item's transaction right after it has locked the invoice — before the
+// anonymisation marker, the engine and the letter — with the invoice's id,
+// and answers the function that removes it. An error rolls the item back and
+// ends the run. A race test parks an item there while a payment or another
+// run waits on the invoice. A test using it does not run in parallel: the
+// hook is the package's.
+func SetRunItemAfterLock(hook func(ctx context.Context, invoiceID int64) error) func() {
+	runItemAfterLock = hook
+	return func() { runItemAfterLock = nil }
+}
+
+// LetterLanguage is letterLanguage: a letter's language from the buyer
+// snapshot's (plan reading 14).
+var LetterLanguage = letterLanguage

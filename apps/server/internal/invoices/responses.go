@@ -395,6 +395,11 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			if err := withCharges(ctx, q, inv, &resp); err != nil {
 				return gen.InvoicesInvoiceResponse{}, err
 			}
+			// Its letters, the interest accrued today and what the
+			// reminder engine says to do next (D8, D10, D12).
+			if err := s.withReminders(ctx, q, inv, today, &resp); err != nil {
+				return gen.InvoicesInvoiceResponse{}, err
+			}
 		}
 		return resp, creditLinks(ctx, q, inv, &resp, nil)
 	}

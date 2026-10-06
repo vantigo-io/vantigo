@@ -244,7 +244,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-## invoices (52 uncovered)
+## invoices (56 uncovered)
 
 - `DELETE /api/v1/invoices/collection-rates/{id}` (deleteInvoicesCollectionRatesById)
 - `DELETE /api/v1/invoices/settings/access-point` (deleteInvoicesSettingsAccessPoint)
@@ -258,6 +258,9 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/invoices/export.csv` (getInvoicesExportCsv)
 - `GET /api/v1/invoices/journal` (getInvoicesJournal)
 - `GET /api/v1/invoices/meta` (getInvoicesMeta)
+- `GET /api/v1/invoices/overdue` (getInvoicesOverdue)
+- `GET /api/v1/invoices/reminder-runs/{id}` (getInvoicesReminderRunsById)
+- `GET /api/v1/invoices/reminder-runs` (getInvoicesReminderRuns)
 - `GET /api/v1/invoices/settings/access-point` (getInvoicesSettingsAccessPoint)
 - `GET /api/v1/invoices/settings/reminders` (getInvoicesSettingsReminders)
 - `GET /api/v1/invoices/settings` (getInvoicesSettings)
@@ -274,6 +277,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/invoices/bank-files` (postInvoicesBankFiles)
 - `POST /api/v1/invoices/collection-rates` (postInvoicesCollectionRates)
 - `POST /api/v1/invoices/from-work` (postInvoicesFromWork)
+- `POST /api/v1/invoices/reminder-runs` (postInvoicesReminderRuns)
 - `POST /api/v1/invoices/settings/access-point/verify` (postInvoicesSettingsAccessPointVerify)
 - `POST /api/v1/invoices/vat-codes/{id}/rates` (postInvoicesVatCodesByIdRates)
 - `POST /api/v1/invoices/vat-codes` (postInvoicesVatCodes)
@@ -299,4 +303,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-Total: 270 of 405 operations have no recorded exchange.
+Total: 274 of 409 operations have no recorded exchange.
