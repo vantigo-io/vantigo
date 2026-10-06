@@ -80,8 +80,11 @@ func (s *server) PutInvoicesBankAccountsByAccountFormat(ctx context.Context, req
 		return nil, err
 	}
 	rows, err := store.New(s.deps.Pool).ListImportAccounts(ctx, &req.Account)
-	if err != nil || len(rows) != 1 {
-		return nil, fmt.Errorf("invoices: re-read bank import account %s: %d rows, %w", req.Account, len(rows), err)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: re-read bank import account %s: %w", req.Account, err)
+	}
+	if len(rows) != 1 {
+		return nil, fmt.Errorf("invoices: re-read bank import account %s: %d rows, want one", req.Account, len(rows))
 	}
 	return gen.PutInvoicesBankAccountsByAccountFormat200JSONResponse(bankAccountResponse(rows[0])), nil
 }

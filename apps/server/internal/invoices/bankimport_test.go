@@ -356,6 +356,11 @@ func TestBankFile_Upload400s(t *testing.T) {
 	if msg := fileRefusalOf(t, "not a bank file", upload(t, c, []byte("Dato;Beløp\n06.10.2026;1250,00\n"))); msg != "file: Not an OCR giro or camt.054 file" {
 		t.Errorf("not a bank file: %q", msg)
 	}
+	res := c.Do(http.MethodPost, bankFilesPath, nil, modtest.RawBody("text/plain", good),
+		modtest.SkipContract("a body that is not multipart is off-contract by construction"))
+	if res.Status != http.StatusBadRequest || len(problemOf(t, res).Errors["file"]) != 0 {
+		t.Errorf("a body that is not multipart = %d %s, want the bare 400 of the decoder", res.Status, res.Body)
+	}
 
 	// Each parser refusal is the 400, its words bankfile's own — the place,
 	// then what is wrong there.
@@ -608,6 +613,18 @@ func TestBankFile_Fingerprint(t *testing.T) {
 	for _, l := range bankDetail(t, h, again.File.ID).Transactions {
 		if l.Status != "duplicate" || l.DuplicateOfID == nil || *l.DuplicateOfID != byRef[l.LineRef] {
 			t.Errorf("line %s = %s duplicate of %v, want a duplicate of %d", l.LineRef, l.Status, l.DuplicateOfID, byRef[l.LineRef])
+		}
+	}
+
+	// A third copy repeats the original, never one of its duplicates: only a
+	// live line is ever named.
+	third := imported(t, c, bytes.Replace(identical, []byte("NY000010000080800000128"), []byte("NY000010000080800000132"), 1))
+	if third.Duplicates != 2 {
+		t.Errorf("the same lines under transmission 132 = %+v, want both duplicates", third)
+	}
+	for _, l := range bankDetail(t, h, third.File.ID).Transactions {
+		if l.Status != "duplicate" || l.DuplicateOfID == nil || *l.DuplicateOfID != byRef[l.LineRef] {
+			t.Errorf("the third copy's line %s = %s duplicate of %v, want a duplicate of the original %d", l.LineRef, l.Status, l.DuplicateOfID, byRef[l.LineRef])
 		}
 	}
 

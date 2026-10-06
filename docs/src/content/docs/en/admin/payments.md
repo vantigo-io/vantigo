@@ -12,7 +12,8 @@ sources:
 Vantigo reads the bank's own record of the money that arrived on the seller's account: a
 file of incoming payments, downloaded from the online bank and imported in Invoices by
 someone with `invoices:payments`. Each payment in it carries the KID printed on the
-invoice, which is how a payment finds its invoice. This page is the operator's side: the
+invoice, which is how a payment will find its invoice once matching arrives; until then
+an imported payment is kept, not yet registered against an invoice. This page is the operator's side: the
 agreement to ask the bank for, where the files are, the format each account is imported
 in, and what can go wrong. The rules of the import are in
 [the reference](/en/reference/invoices/#bank-files-and-the-exception-queue).
@@ -84,9 +85,9 @@ To switch an account — say from OCR to camt.054 when you take the agreement fo
 incoming payments — someone with `invoices:manage` changes the account's format
 (`PUT /api/v1/invoices/bank-accounts/{account}/format`, until the screen for it arrives
 in this release). Vantigo then records the **cutover**: the latest booking day of that
-account's payments read in the old format. A payment of the new format booked on or
-before the cutover is held back from matching and left for a person, because the old
-format may already have brought it in. Make the switch once the last old-format file is
+account's payments read in the old format. Once matching arrives, a payment of the new
+format booked on or before the cutover will be held back from it and left for a person,
+because the old format may already have brought it in. Make the switch once the last old-format file is
 imported, and start the new format's files from the day after. A change of bank is a new
 account, with its own format.
 

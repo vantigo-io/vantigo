@@ -1774,9 +1774,9 @@ Phase 4 reads the bank's own record of the money that arrived
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
 D3). A person with `invoices:payments` uploads a file of incoming payments; the import
 checks it all or nothing, keeps the file, and stores each payment in it as a bank line.
-**Until matching runs on an import, every line it stores is `pending`** — a line becomes
-a payment against an invoice, or a case for a person, only through matching, which is
-not part of this release yet.
+**Until matching runs on an import, every line it stores that is not a duplicate is
+`pending`** — a line will become a payment against an invoice, or a case for a person,
+only through matching, which is not part of this release yet.
 
 **Two formats.** `POST /invoices/bank-files` takes one multipart part named `file`, at
 most 10 MiB (the operation's own body limit, 10 MiB and 64 KiB for the framing). The
@@ -1900,15 +1900,16 @@ lock. The same format answers the account unchanged; another keeps the old one a
 `previous_format` with **`cutover_through` the latest booking day of the account's own
 lines in the old format** — never a file's `last_booked_on`, which a file naming two
 accounts can push past this one's — or `NULL` when it has none, and sets the new one. An
-account never imported is 404. Matching holds back a line of the new format booked on or
-before the cutover, which the old format may already have registered. A change of bank
+account never imported is 404. Once matching arrives, it will hold back a line of the new
+format booked on or before the cutover, which the old format may already have registered. A change of bank
 is a new account and gets its own row.
 
 **The reads.** `GET /invoices/bank-files` (`invoices:payments`) pages the files newest
 first, each with its lines counted by status — `pending`, `exceptions`, `matched` — and
 `duplicates`, `ignored` and `ignoredKinds` (`debit`, `notBooked`, `cardInformation`,
 `zeroAmount`). `GET /invoices/bank-files/{id}` answers `{file, transactions}`, every line
-the file brought, duplicates included, in the order they were stored (by fingerprint).
+the file brought, duplicates included, in the order they were stored: its live lines
+first, then its duplicates, each in fingerprint order.
 The import's 201 answers the file, `transactions`, `matched` and `matchedAmount`,
 `exceptions` and `exceptionsAmount`, `duplicates`, `ignored` by kind and `pending`; with
 no matching yet, `matched` and `exceptions` are 0 and `pending` is every line that is
