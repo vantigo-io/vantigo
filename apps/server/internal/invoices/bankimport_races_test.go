@@ -284,3 +284,123 @@ func TestBankImport_SameFileTwiceRace(t *testing.T) {
 		t.Errorf("Postgres broke %d deadlock(s)", after-before)
 	}
 }
+
+// startFormatPut changes account's format to format on its own goroutine
+// under a 30-second deadline.
+func startFormatPut(c *modtest.Client, account, format string) <-chan raceRequest {
+	done := make(chan raceRequest, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		done <- raceRequest{c.Do(http.MethodPut, bankAccountsPath+"/"+account+"/format", map[string]any{"format": format}, modtest.Context(ctx))}
+	}()
+	return done
+}
+
+// TestBankImport_FormatChangeRacesImport: an import and a format change of
+// its account serialise on the account's row (D3, D18) — the import holds it
+// FOR SHARE, the change FOR UPDATE. A change started while an import is
+// parked after its inserts waits on it, and its cutover is the parked file's
+// booking day, read after the lock; an import started while a writer holds
+// the row waits, then judges the format the writer committed and refuses the
+// file, writing nothing; and the change holds the row FOR UPDATE.
+func TestBankImport_FormatChangeRacesImport(t *testing.T) {
+	t.Run("a change waits for an import", func(t *testing.T) {
+		h := raceHarness(t)
+		toBankDay(t, h)
+		c := importer(t, h)
+		manager := h.SignIn(t, "invoices:access", "invoices:manage")
+		imported(t, c, bankfiletest.OCR("1", giro(sellerAccount, 2, 100, "0010058", "9")))
+		probeConn := ownConn(t, h)
+		before := deadlocks(t, probeConn)
+		parked, release := parkFirstImport(t)
+
+		doneImport := startImport(t, c, bankfiletest.OCR("2", giro(sellerAccount, 6, 125000, "0010017", "1")))
+		select {
+		case <-parked:
+		case <-time.After(20 * time.Second):
+			t.Fatal("the import never reached its seam")
+		}
+		importPID := idleInTransaction(t, probeConn)
+		donePut := startFormatPut(manager, sellerAccount, "camt054")
+		putPID := newWaiter(t, probeConn)
+		if got := blockersOf(t, probeConn, putPID); !slices.Equal(got, []uint32{importPID}) {
+			t.Errorf("the format change waits on %v, want the import %d", got, importPID)
+		}
+		close(release)
+
+		finished(t, "the import", doneImport, http.StatusCreated)
+		var changed bankAccountJSON
+		finished(t, "the format change", donePut, http.StatusOK).JSON(&changed)
+		if changed.CutoverThrough == nil || *changed.CutoverThrough != "2026-10-06" {
+			t.Errorf("the cutover = %v, want 2026-10-06, the parked file's booking day", changed.CutoverThrough)
+		}
+		if after := deadlocks(t, probeConn); after != before {
+			t.Errorf("Postgres broke %d deadlock(s)", after-before)
+		}
+	})
+
+	t.Run("an import waits for a change", func(t *testing.T) {
+		h := raceHarness(t)
+		toBankDay(t, h)
+		c := importer(t, h)
+		imported(t, c, bankfiletest.OCR("1", giro(sellerAccount, 2, 100, "0010058", "9")))
+		before := written(t, h)
+		probeConn := ownConn(t, h)
+		deadlocksBefore := deadlocks(t, probeConn)
+
+		writer := holdRow(t, h, `UPDATE invoices.bank_import_accounts SET format = 'camt054' WHERE account = $1`, sellerAccount)
+		done := startImport(t, c, bankfiletest.OCR("2", giro(sellerAccount, 6, 125000, "0010017", "1")))
+		pid := newWaiter(t, probeConn)
+		if got := blockersOf(t, probeConn, pid); !slices.Equal(got, []uint32{writer.pid}) {
+			t.Errorf("the import waits on %v, want the writer %d", got, writer.pid)
+		}
+		writer.release(t)
+
+		var p duplicateJSON
+		finished(t, "the import", done, http.StatusConflict).JSON(&p)
+		if p.Code != "bank_import_format_mismatch" {
+			t.Errorf("the import = %+v, want bank_import_format_mismatch", p)
+		}
+		if got := written(t, h); got != before {
+			t.Errorf("files, lines, accounts = %v after the refusal, want %v", got, before)
+		}
+		if after := deadlocks(t, probeConn); after != deadlocksBefore {
+			t.Errorf("Postgres broke %d deadlock(s)", after-deadlocksBefore)
+		}
+	})
+
+	t.Run("a change holds the row FOR UPDATE", func(t *testing.T) {
+		h := raceHarness(t)
+		toBankDay(t, h)
+		imported(t, importer(t, h), bankfiletest.OCR("1", giro(sellerAccount, 2, 100, "0010058", "9")))
+		manager := h.SignIn(t, "invoices:access", "invoices:manage")
+		probeConn := ownConn(t, h)
+
+		locked, release := make(chan struct{}), make(chan struct{})
+		var once atomic.Bool
+		restore := invoices.SetLockTaken(func(_ context.Context, what, _ string) {
+			if what != "account" || once.Swap(true) {
+				return
+			}
+			close(locked)
+			select {
+			case <-release:
+			case <-time.After(30 * time.Second):
+			}
+		})
+		defer restore()
+
+		done := startFormatPut(manager, sellerAccount, "camt054")
+		select {
+		case <-locked:
+		case <-time.After(20 * time.Second):
+			t.Fatal("the format change never took its lock")
+		}
+		if mode := heldMode(t, probeConn, "invoices.bank_import_accounts", "account = $1", sellerAccount); mode != modeUpdate {
+			t.Errorf("the format change holds the account %q, want FOR UPDATE", mode)
+		}
+		close(release)
+		finished(t, "the format change", done, http.StatusOK)
+	})
+}

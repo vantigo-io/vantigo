@@ -12,7 +12,8 @@ sources:
 Vantigo leser bankens egen oversikt over pengene som kom inn på selgerens konto: en fil
 med innbetalinger, lastet ned fra nettbanken og importert i Fakturaer av noen med
 `invoices:payments`. Hver innbetaling i den bærer KID-en som står på fakturaen, og det er
-slik en innbetaling finner fakturaen sin. Denne siden er driftssiden: avtalen du ber
+slik en innbetaling vil finne fakturaen sin når avstemmingen kommer; inntil da oppbevares
+en importert innbetaling uten å bli registrert mot en faktura ennå. Denne siden er driftssiden: avtalen du ber
 banken om, hvor filene ligger, formatet hver konto importeres i, og hva som kan gå galt.
 Reglene for importen står i
 [referansen](/en/reference/invoices/#bank-files-and-the-exception-queue).
@@ -83,9 +84,9 @@ For å bytte format på en konto — for eksempel fra OCR til camt.054 når du t
 alle innbetalinger — endrer noen med `invoices:manage` kontoens format
 (`PUT /api/v1/invoices/bank-accounts/{account}/format`, til skjermbildet for det kommer i
 denne versjonen). Vantigo registrerer da **overgangsdagen**: den siste bokføringsdagen for
-kontoens innbetalinger lest i det gamle formatet. En innbetaling i det nye formatet som er
-bokført på eller før overgangsdagen, holdes tilbake fra avstemmingen og overlates til en
-person, fordi det gamle formatet kan ha tatt den inn allerede. Bytt når den siste filen i
+kontoens innbetalinger lest i det gamle formatet. Når avstemmingen kommer, vil en
+innbetaling i det nye formatet som er bokført på eller før overgangsdagen, holdes tilbake
+fra den og overlates til en person, fordi det gamle formatet kan ha tatt den inn allerede. Bytt når den siste filen i
 det gamle formatet er importert, og start det nye formatets filer fra dagen etter. Bytte
 av bank er en ny konto, med sitt eget format.
 
