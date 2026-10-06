@@ -21,7 +21,10 @@ WHERE (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
   AND (sqlc.narg(to_on)::date IS NULL OR t.booked_on <= sqlc.narg(to_on)::date)
   AND (NOT @unapplied::boolean
        OR (t.status IN ('matched', 'resolved') AND t.direction = 'credit' AND NOT t.negative
-           AND coalesce(t.resolution, 'applied') = 'applied' AND t.amount > a.applied));
+           AND (coalesce(t.resolution, 'applied') = 'applied'
+                OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open')))
+           AND NOT EXISTS (SELECT 1 FROM invoices.bank_transaction_events e WHERE e.bank_transaction_id = t.id AND e.event = 'reversed')
+           AND t.amount > a.applied));
 
 -- name: ListBankTransactions :many
 -- ListBankTransactions is a page of the bank lines (D5), each with what its
@@ -29,7 +32,9 @@ WHERE (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
 -- exception, duplicate — first, each group oldest booking day first, then by
 -- id. unapplied keeps the matched and resolved credit lines with a rest —
 -- a line resolved otherwise than applied, a reversal and a negative line are
--- not money waiting to be applied.
+-- not money waiting to be applied, but a line dismissed after it was queued
+-- invoice_credited, invoice_settled or exceeds_open is money owed back; a
+-- line whose payment a reversal took back is never money to apply again.
 SELECT sqlc.embed(t)
 FROM invoices.bank_transactions t
 CROSS JOIN LATERAL (
@@ -44,7 +49,10 @@ WHERE (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
   AND (sqlc.narg(to_on)::date IS NULL OR t.booked_on <= sqlc.narg(to_on)::date)
   AND (NOT @unapplied::boolean
        OR (t.status IN ('matched', 'resolved') AND t.direction = 'credit' AND NOT t.negative
-           AND coalesce(t.resolution, 'applied') = 'applied' AND t.amount > a.applied))
+           AND (coalesce(t.resolution, 'applied') = 'applied'
+                OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open')))
+           AND NOT EXISTS (SELECT 1 FROM invoices.bank_transaction_events e WHERE e.bank_transaction_id = t.id AND e.event = 'reversed')
+           AND t.amount > a.applied))
 ORDER BY (t.status IN ('pending', 'exception', 'duplicate')) DESC, t.booked_on, t.id
 LIMIT sqlc.arg(page_size)::integer OFFSET sqlc.arg(page_offset)::integer;
 
@@ -88,6 +96,15 @@ FROM (
     UNION ALL
     SELECT c.amount FROM invoices.charge_payments c WHERE c.bank_transaction_id = sqlc.arg(line_id)::bigint AND c.removed_at IS NULL
 ) live;
+
+-- name: LineReversed :one
+-- LineReversed reports whether a reversal took back a payment of the line
+-- (its reversed event, D5): its money is never applied again, so it is not
+-- reopened.
+SELECT EXISTS (
+    SELECT 1 FROM invoices.bank_transaction_events
+    WHERE bank_transaction_id = @line_id AND event = 'reversed'
+) AS reversed;
 
 -- name: EventsOf :many
 -- EventsOf is what happened to the lines, per line the first first.
@@ -157,9 +174,9 @@ LIMIT 10;
 
 -- name: InvoicesOfDebtorAccount :many
 -- InvoicesOfDebtorAccount is the open issued invoices of the customers whose
--- earlier payments from a bank line came from debtor_account — a
--- suggestion's debtor_account (D5) — the first ten by id. The line itself is
--- left out.
+-- earlier payments from a bank line came from debtor_account — a line
+-- booked on or before booked_on, never the line itself — a suggestion's
+-- debtor_account (D5), the first ten by id.
 SELECT i.id, i.number::bigint AS number, i.customer_id, i.buyer_name, o.open_amount
 FROM invoices.invoices i
 LEFT JOIN LATERAL (
@@ -178,7 +195,8 @@ WHERE i.kind = 'invoice' AND i.status = 'issued' AND o.open_amount > 0
       SELECT paid.customer_id FROM invoices.payments p
       JOIN invoices.bank_transactions t ON t.id = p.bank_transaction_id
       JOIN invoices.invoices paid ON paid.id = p.invoice_id
-      WHERE t.debtor_account = @debtor_account::text AND t.id <> @line_id AND p.removed_at IS NULL)
+      WHERE t.debtor_account = @debtor_account::text AND t.id <> @line_id AND t.booked_on <= @booked_on::date
+        AND p.removed_at IS NULL)
 ORDER BY i.id
 LIMIT 10;
 

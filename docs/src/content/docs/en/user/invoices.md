@@ -641,7 +641,10 @@ the payment's text, one whose open amount it equals, one of the customer who pai
 same account before; dismiss it as not a customer payment, with a note; for a reversal,
 remove the payment the bank took back; confirm a duplicate or keep it as a payment of its
 own; or reopen it. What a payment leaves unapplied stays visible on its line — Vantigo
-keeps no credit balance and makes no refund.
+keeps no credit balance and makes no refund. A payment dismissed because its invoice was
+credited or already paid, or because it was more than was owed, stays unapplied too: the
+money is owed back, and the refund is made outside Vantigo. Once a reversal has taken a
+payment back, the line it came from is never applied or reopened again.
 
 Click **Register payment** — offered while something is left to pay — and fill in:
 

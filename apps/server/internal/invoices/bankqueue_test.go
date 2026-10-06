@@ -372,6 +372,7 @@ func TestBankQueue_Suggestions(t *testing.T) {
 		noKidEntry(6, 123.45, fmt.Sprintf("Faktura %d, takk", *a.Number), "NUMBER"),
 		noKidEntry(6, 1000, "Takk", "AMOUNT"),
 		bankfiletest.CamtEntry{BookedOn: oct(6), Txs: []bankfiletest.CamtTx{{AmountMinor: 3333, Ustrd: "Bok", DebtorAccount: debtor, AcctSvcrRef: "DEBTOR"}}},
+		bankfiletest.CamtEntry{BookedOn: oct(4), Txs: []bankfiletest.CamtTx{{AmountMinor: 3334, Ustrd: "Bok", DebtorAccount: debtor, AcctSvcrRef: "DEBTOR-EARLY"}}},
 		noKidEntry(6, 1000, fmt.Sprintf("Faktura nr. %d", *b.Number), "BOTH"),
 		noKidEntry(6, 5.55, fmt.Sprintf("Ordre %d0", *a.Number), "NONE"),
 	)
@@ -386,6 +387,9 @@ func TestBankQueue_Suggestions(t *testing.T) {
 		{"NUMBER", []suggestionJSON{sugg(a, 1000, "number_in_text")}, idKey(a.ID)},
 		{"AMOUNT", []suggestionJSON{sugg(first, 1000, "amount_equals_open"), sugg(a, 1000, "amount_equals_open"), sugg(b, 1000, "amount_equals_open")}, "-"},
 		{"DEBTOR", []suggestionJSON{sugg(p, 75, "debtor_account")}, idKey(p.ID)},
+		// Booked before the debtor's earlier payment: that payment is no
+		// earlier history of this line, so it suggests nothing.
+		{"DEBTOR-EARLY", []suggestionJSON{}, "-"},
 		{"BOTH", []suggestionJSON{sugg(b, 1000, "number_in_text"), sugg(first, 1000, "amount_equals_open"), sugg(a, 1000, "amount_equals_open")}, "-"},
 		{"NONE", []suggestionJSON{}, "-"},
 	} {
@@ -836,12 +840,19 @@ func TestBankQueue_ConfirmAndTreatAsDistinct(t *testing.T) {
 		t.Error("the payment imported again is not a duplicate of the original line")
 	}
 	queueRefused(t, "treat it again", c.Do(http.MethodPost, queueActionPath(kept, "treat-as-distinct"), nil), "bank_transaction_not_applicable")
+	if got, live := paymentsFrom(t, h, kept), livePaymentsOf(t, h, inv.ID); len(got) != 0 || len(live) != 1 {
+		t.Errorf("after treat-as-distinct the row's payments = %v and the invoice's %v, want none from it before the apply", got, live)
+	}
 	acted(t, c, kept, "apply", applyBody(allocate(inv, 100)))
 	if got := livePaymentsOf(t, h, inv.ID); len(got) != 2 {
 		t.Errorf("the invoice's payments = %v, want the original's and the kept row's", got)
 	}
 
+	livesBefore := livePaymentsOf(t, h, inv.ID)
 	conf := acted(t, c, confirmed, "confirm-duplicate", map[string]any{"note": "Samme betaling"})
+	if got, live := paymentsFrom(t, h, confirmed), livePaymentsOf(t, h, inv.ID); len(got) != 0 || !slices.Equal(live, livesBefore) {
+		t.Errorf("after confirm-duplicate the row's payments = %v and the invoice's %v, want none from it and %v unchanged", got, live, livesBefore)
+	}
 	if conf.Status != "resolved" || *conf.Resolution != "duplicate_confirmed" || conf.Reason == nil || *conf.Reason != "possible_duplicate" || conf.ResolutionNote != "Samme betaling" {
 		t.Errorf("the confirmed row = %s %v %v %q, want resolved, duplicate_confirmed, possible_duplicate, the note", conf.Status, conf.Resolution, conf.Reason, conf.ResolutionNote)
 	}
@@ -1044,5 +1055,166 @@ func TestBankQueue_NoCallUnderALock(t *testing.T) {
 	acted(t, c, ids["DISMISS"], "reopen", nil)
 	if calls := contractCalls.by(user); len(calls) != 0 {
 		t.Errorf("the queue called %v, want nothing out of the module", calls)
+	}
+}
+
+// TestBankQueue_ApplyRunsTheDeadlineMetWaiver: an apply registers what a
+// match does, the deadline-met waiver included (D4's last paragraph, D9).
+// Five invoices, each with letter 1 (its deadline 29 September) and letter 2
+// (a fee of 35, sent 1 October); on the fifth, letter 1 claimed the
+// compensation. A no-KID line ordered (OCR) or booked (camt.054) within
+// letter 1's deadline, applied from the queue, has letter 2's fee waived
+// deadline_met by the caller at the request's time — the compensation never;
+// a line ordered or booked after the deadline waives nothing.
+func TestBankQueue_ApplyRunsTheDeadlineMetWaiver(t *testing.T) {
+	t.Parallel()
+	h, onTime := matchHarness(t)
+	lateCamt, ocr, lateOCR, comp := kidInvoice(t, h), kidInvoice(t, h), kidInvoice(t, h), kidInvoice(t, h)
+	letters := map[int64]int64{}
+	for _, inv := range []invoiceJSON{onTime, lateCamt, ocr, lateOCR} {
+		plantSent(t, h, inv.ID, sentFacts{1, "2026-09-15", "none", "", "", "0"}) // deadline 2026-09-29
+		letters[inv.ID] = plantSent(t, h, inv.ID, sentFacts{2, "2026-10-01", "reminder_fee", "35", "", "0"})
+	}
+	plantSent(t, h, comp.ID, sentFacts{1, "2026-09-15", "compensation", "", "360", "0"})
+	letters[comp.ID] = plantSent(t, h, comp.ID, sentFacts{2, "2026-10-01", "reminder_fee", "35", "", "0"})
+	toMatchDay(h)
+	c, user := h.SignInUser(t, "invoices:access", "invoices:payments")
+	sep := func(d int) time.Time { return time.Date(2026, 9, d, 0, 0, 0, 0, time.UTC) }
+	o := imported(t, c, bankfiletest.OCR("1",
+		bankfiletest.OCRPayment{Type: 13, Account: sellerAccount, Settled: oct(2), Ordered: sep(28), AmountMinor: 100000, ArchiveRef: "1"},
+		bankfiletest.OCRPayment{Type: 13, Account: sellerAccount, Settled: oct(2), Ordered: sep(30), AmountMinor: 100000, ArchiveRef: "2"}))
+	entry := func(day int, ref string) bankfiletest.CamtEntry {
+		return bankfiletest.CamtEntry{BookedOn: sep(day), Txs: []bankfiletest.CamtTx{{AmountMinor: 100000, Ustrd: "Betaling", AcctSvcrRef: ref}}}
+	}
+	k := imported(t, c, camtFile("WAIVE-1", olderAccount, entry(28, "C1"), entry(30, "C2"), entry(28, "C3")))
+	for _, a := range []struct {
+		file int64
+		ref  string
+		inv  invoiceJSON
+	}{
+		{o.File.ID, "1", ocr}, {o.File.ID, "2", lateOCR}, {k.File.ID, "C1", onTime}, {k.File.ID, "C2", lateCamt}, {k.File.ID, "C3", comp},
+	} {
+		id := lineID(t, h, a.file, a.ref)
+		if got := stateOf(t, h, id); got != "exception no_kid" {
+			t.Fatalf("line %s = %s, want no_kid", a.ref, got)
+		}
+		acted(t, c, id, "apply", applyBody(allocate(a.inv, 1000)))
+	}
+	for _, w := range []struct {
+		what   string
+		inv    invoiceJSON
+		waived bool
+	}{
+		{"the OCR line ordered within the deadline", ocr, true},
+		{"the camt.054 line booked within the deadline", onTime, true},
+		{"the OCR line ordered after the deadline", lateOCR, false},
+		{"the camt.054 line booked after the deadline", lateCamt, false},
+		{"the line within the deadline of a compensation letter", comp, true},
+	} {
+		got := texts(t, h, `SELECT concat_ws(' ', reminder_id, kind, amount, reason, waived_by_user_id, (waived_at = $2)::text)
+			FROM invoices.charge_waivers WHERE invoice_id = $1`, w.inv.ID, h.Now())
+		var want []string
+		if w.waived {
+			want = []string{fmt.Sprintf("%d fee 35.00 deadline_met %s true", letters[w.inv.ID], user)}
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: waivers %v, want %v", w.what, got, want)
+		}
+	}
+	chargesAre(t, "the compensation invoice", receivablesOf(t, h, comp.ID), 395, 35, 0, 360, nil)
+	chargesAre(t, "the late OCR invoice", receivablesOf(t, h, lateOCR.ID), 35, 0, 0, 35, nil)
+}
+
+// TestBankQueue_ReversedMoneyIsNeverAppliedAgain (the coordinator's decision
+// at Task 9's review): a reversal that removes a payment marks the line it
+// came from reversed — an event by the caller, its note naming the reversal
+// — and that line, matched or applied from the queue, then has no unapplied
+// rest, is out of unapplied=true, and is refused reopen
+// bank_transaction_reversed. A refund recorded by an ordinary removal is
+// unchanged: its line shows its rest and reopens as payment_removed.
+func TestBankQueue_ReversedMoneyIsNeverAppliedAgain(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	a, b, refunded := kidInvoice(t, h), kidInvoice(t, h), kidInvoice(t, h)
+	toMatchDay(h)
+	c, user := h.SignInUser(t, "invoices:access", "invoices:payments")
+	_, ids := camtLines(t, h, c, "REVERSED-1",
+		kidEntry(4, 400, *a.Kid, "", "MATCHED"),
+		noKidEntry(4, 250, "Innbetaling", "APPLIED"),
+		kidEntry(4, 300, *refunded.Kid, "", "REFUNDED"),
+		reversalEntry(6, 650, "REV"),
+	)
+	acted(t, c, ids["APPLIED"], "apply", applyBody(allocate(b, 250)))
+	rev := acted(t, c, ids["REV"], "handle-reversal", map[string]any{"removePayments": []map[string]any{
+		{"invoiceId": a.ID, "paymentId": paymentOf(t, h, ids["MATCHED"])},
+		{"invoiceId": b.ID, "paymentId": paymentOf(t, h, ids["APPLIED"])},
+	}})
+	if res := payer(t, h).Do(http.MethodPost, removalPath(refunded.ID, paymentOf(t, h, ids["REFUNDED"])), map[string]any{"reason": "Tilbakebetalt kunden"}); res.Status != http.StatusOK {
+		t.Fatalf("the refund's removal = %d %s", res.Status, res.Body)
+	}
+
+	for _, ref := range []string{"MATCHED", "APPLIED"} {
+		l := queueLine(t, h, ids[ref])
+		last := l.Events[len(l.Events)-1]
+		if last.Event != "reversed" || last.Note != "Reversed by the bank: line "+rev.LineRef || last.By != user || !last.At.Equal(h.Now()) {
+			t.Errorf("line %s's last event = %+v, want reversed by the caller naming the reversal", ref, last)
+		}
+		if l.UnappliedAmount != 0 {
+			t.Errorf("line %s's unapplied amount = %v, want 0 — the money went back", ref, l.UnappliedAmount)
+		}
+		queueRefused(t, "reopen line "+ref, c.Do(http.MethodPost, queueActionPath(ids[ref], "reopen"), nil), "bank_transaction_reversed")
+	}
+	if got, _ := queueList(t, h, "unapplied=true"); !slices.Equal(lineIDsOf(got), []int64{ids["REFUNDED"]}) {
+		t.Errorf("?unapplied=true = %v, want the refunded line alone", lineIDsOf(got))
+	}
+	if l := queueLine(t, h, ids["REFUNDED"]); l.UnappliedAmount != 300 {
+		t.Errorf("the refunded line's unapplied amount = %v, want 300", l.UnappliedAmount)
+	}
+	if l := acted(t, c, ids["REFUNDED"], "reopen", nil); l.Reason == nil || *l.Reason != "payment_removed" {
+		t.Errorf("the refunded line reopened = %v, want payment_removed", l.Reason)
+	}
+}
+
+// TestBankQueue_DismissedMoneyOwedBack (the coordinator's decision at Task
+// 9's review): a line dismissed after it was queued invoice_credited,
+// invoice_settled or exceeds_open is money owed back to the payer — a
+// refund made outside Vantigo — so its whole amount stays unapplied and it
+// shows under unapplied=true; any other dismissal leaves nothing unapplied.
+func TestBankQueue_DismissedMoneyOwedBack(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	credited, settled, over := kidInvoice(t, h), kidInvoice(t, h), kidInvoice(t, h)
+	issued(t, h, creditDraft(t, h, credited.ID).ID)
+	registered(t, h, settled.ID, pay(1000, "2026-09-12"))
+	toMatchDay(h)
+	c := importer(t, h)
+	_, ids := camtLines(t, h, c, "OWED-1",
+		kidEntry(6, 100, *credited.Kid, "", "CREDITED"),
+		kidEntry(6, 200, *settled.Kid, "", "SETTLED"),
+		kidEntry(6, 1300, *over.Kid, "", "OVER"),
+		noKidEntry(6, 400, "Renter", "NOKID"),
+	)
+	want := map[string]struct {
+		state     string
+		unapplied float64
+	}{
+		"CREDITED": {"exception invoice_credited", 100},
+		"SETTLED":  {"exception invoice_settled", 200},
+		"OVER":     {"exception exceeds_open", 1300},
+		"NOKID":    {"exception no_kid", 0},
+	}
+	for ref, w := range want {
+		if got := stateOf(t, h, ids[ref]); got != w.state {
+			t.Fatalf("line %s = %s, want %s", ref, got, w.state)
+		}
+		l := acted(t, c, ids[ref], "dismiss", map[string]any{"note": "Tilbakebetales utenfor Vantigo"})
+		if l.UnappliedAmount != w.unapplied {
+			t.Errorf("line %s dismissed: unapplied %v, want %v", ref, l.UnappliedAmount, w.unapplied)
+		}
+	}
+	owed := []int64{ids["CREDITED"], ids["SETTLED"], ids["OVER"]}
+	slices.Sort(owed) // one booking day: by id, which follows the fingerprint
+	if got, n := queueList(t, h, "unapplied=true"); !slices.Equal(lineIDsOf(got), owed) || n != 3 {
+		t.Errorf("?unapplied=true = %v (%d), want the three lines owed back", lineIDsOf(got), n)
 	}
 }

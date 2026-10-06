@@ -42,6 +42,7 @@ const (
 	codeAllocationNotAnInvoice       = "allocation_not_an_invoice"
 	codeAllocationExceedsTransaction = "allocation_exceeds_transaction"
 	codePaidBeforeIssue              = "paid_before_issue"
+	codeBankTransactionReversed      = "bank_transaction_reversed"
 
 	cannotApplyTitle          = "The bank line cannot be applied"
 	cannotDismissTitle        = "The bank line cannot be dismissed"
@@ -80,6 +81,9 @@ const (
 	eventReopened           = "reopened"
 	eventDuplicateConfirmed = "duplicate_confirmed"
 	eventTreatedAsDistinct  = "treated_as_distinct"
+	// eventReversed is written on the line whose payment a reversal took
+	// back: its money is never applied again.
+	eventReversed = "reversed"
 )
 
 // reasonPaymentRemoved is a matched line's reason once it is reopened with
@@ -130,7 +134,8 @@ func suggestible(reason string) bool {
 // and never registered by itself: those whose number is a whole word of
 // its text (number_in_text), whose open amount equals its amount
 // (amount_equals_open), and the open ones of the customers whose earlier
-// payments from a bank line came from its debtor account (debtor_account) —
+// payments from a bank line — one booked on or before it — came from its
+// debtor account (debtor_account) —
 // each invoice once, under the first reason in that order. The id answered
 // is the one suggestion when there is exactly one, else nil: what a line
 // queued keeps as its suggested invoice (plan reading 24).
@@ -175,7 +180,9 @@ func suggestionsFor(ctx context.Context, q *store.Queries, line store.InvoicesBa
 	}
 	add(whyAmountEqualsOpen, fs)
 	if line.DebtorAccount != "" {
-		rows, err := q.InvoicesOfDebtorAccount(ctx, store.InvoicesOfDebtorAccountParams{DebtorAccount: line.DebtorAccount, LineID: line.ID})
+		rows, err := q.InvoicesOfDebtorAccount(ctx, store.InvoicesOfDebtorAccountParams{
+			DebtorAccount: line.DebtorAccount, LineID: line.ID, BookedOn: line.BookedOn,
+		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("invoices: suggest by line %d's debtor account: %w", line.ID, err)
 		}
@@ -243,15 +250,32 @@ func appliedWire(r store.AppliedToTransactionsRow) (gen.InvoicesBankTransactionA
 	}, nil
 }
 
+// owedBack reports whether a line dismissed after it was queued for reason
+// is money owed back to the payer — a credited or settled invoice, or more
+// than was open — and so stays unapplied (the coordinator's decision at Task
+// 9's review): a refund is made outside Vantigo.
+func owedBack(reason *string) bool {
+	if reason == nil {
+		return false
+	}
+	switch *reason {
+	case reasonInvoiceCredited, reasonInvoiceSettled, reasonExceedsOpen:
+		return true
+	}
+	return false
+}
+
 // unappliedOf is what of line its live payments and charge payments leave
 // (D5): its amount less them, and 0 for what is not money waiting to be
-// applied — a reversal, a negative line, a duplicate row, and a line
-// resolved otherwise than applied (ListBankTransactions' unapplied filter,
-// word for word).
-func unappliedOf(line store.InvoicesBankTransaction, applied []store.AppliedToTransactionsRow) (*big.Rat, error) {
+// applied — a reversal, a negative line, a duplicate row, a line resolved
+// otherwise than applied unless it was dismissed as money owed back, and a
+// line whose payment a reversal took back (reversed) — ListBankTransactions'
+// unapplied filter, word for word.
+func unappliedOf(line store.InvoicesBankTransaction, applied []store.AppliedToTransactionsRow, reversed bool) (*big.Rat, error) {
 	switch {
-	case line.Direction != "credit", line.Negative, line.Status == lineDuplicate,
-		line.Resolution != nil && *line.Resolution != resolutionApplied:
+	case line.Direction != "credit", line.Negative, line.Status == lineDuplicate, reversed,
+		line.Resolution != nil && *line.Resolution != resolutionApplied &&
+			(*line.Resolution != resolutionNotCustomerPayment || !owedBack(line.Reason)):
 		return new(big.Rat), nil
 	}
 	rest, err := ratFromNumeric(line.Amount)
@@ -351,7 +375,8 @@ func bankTransactionsResponse(ctx context.Context, q *store.Queries, lines []sto
 		if tx.Applied, err = appliedWires(l.ID); err != nil {
 			return nil, err
 		}
-		rest, err := unappliedOf(l, applied[l.ID])
+		reversed := slices.ContainsFunc(events[l.ID], func(e gen.InvoicesBankTransactionEvent) bool { return e.Event == eventReversed })
+		rest, err := unappliedOf(l, applied[l.ID], reversed)
 		if err != nil {
 			return nil, err
 		}
@@ -938,6 +963,7 @@ func (s *server) PostInvoicesBankTransactionsByIdHandleReversal(ctx context.Cont
 			return compareInt64(a.PaymentId, b.PaymentId)
 		})
 		reason := "Reversed by the bank: line " + line.LineRef
+		var reversedLines []int64
 		for _, p := range ordered {
 			payment, err := txq.GetPayment(ctx, store.GetPaymentParams{ID: p.PaymentId, InvoiceID: p.InvoiceId})
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -958,6 +984,18 @@ func (s *server) PostInvoicesBankTransactionsByIdHandleReversal(ctx context.Cont
 			}
 			if n != 1 {
 				return nil, fmt.Errorf("invoices: remove payment %d of %d: %d rows, want 1", payment.ID, payment.InvoiceID, n)
+			}
+			if payment.BankTransactionID != nil && !slices.Contains(reversedLines, *payment.BankTransactionID) {
+				reversedLines = append(reversedLines, *payment.BankTransactionID)
+			}
+		}
+		// The line each payment came from is marked reversed, so its money
+		// is never applied again (no unapplied rest, never reopened). The
+		// event's foreign key takes FOR KEY SHARE on that line, which its
+		// FOR NO KEY UPDATE lets through: no wait, no new lock order.
+		for _, id := range reversedLines {
+			if err := lineEvent(ctx, txq, id, eventReversed, nil, reason, caller, now); err != nil {
+				return nil, err
 			}
 		}
 		return nil, resolveLine(ctx, txq, line, resolutionReversalHandled, reasonReversal, eventReversalHandled, note, []string{lineException}, caller, now)
@@ -1098,6 +1136,14 @@ func (s *server) PostInvoicesBankTransactionsByIdReopen(ctx context.Context, req
 		if live.Live > 0 {
 			return ptr(conflict(codeBankTransactionApplied, cannotReopenTitle, fmt.Sprintf(
 				"%d payment(s) or charge payment(s) registered from this bank line still stand. Remove them first; then reopen it.", live.Live))), nil
+		}
+		reversed, err := txq.LineReversed(ctx, line.ID)
+		if err != nil {
+			return nil, fmt.Errorf("invoices: read whether line %d was reversed: %w", line.ID, err)
+		}
+		if reversed {
+			return ptr(conflict(codeBankTransactionReversed, cannotReopenTitle,
+				"The bank reversed a payment of this line: its money went back, so it is never applied again.")), nil
 		}
 		reason := reopenReason(line)
 		n, err := txq.ReopenTransaction(ctx, store.ReopenTransactionParams{Reason: reason, SuggestedInvoiceID: suggested, ID: line.ID})

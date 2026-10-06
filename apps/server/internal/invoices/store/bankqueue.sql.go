@@ -116,7 +116,10 @@ WHERE ($1::text IS NULL OR t.status = $1::text)
   AND ($5::date IS NULL OR t.booked_on <= $5::date)
   AND (NOT $6::boolean
        OR (t.status IN ('matched', 'resolved') AND t.direction = 'credit' AND NOT t.negative
-           AND coalesce(t.resolution, 'applied') = 'applied' AND t.amount > a.applied))
+           AND (coalesce(t.resolution, 'applied') = 'applied'
+                OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open')))
+           AND NOT EXISTS (SELECT 1 FROM invoices.bank_transaction_events e WHERE e.bank_transaction_id = t.id AND e.event = 'reversed')
+           AND t.amount > a.applied))
 `
 
 type CountBankTransactionsParams struct {
@@ -300,7 +303,8 @@ WHERE i.kind = 'invoice' AND i.status = 'issued' AND o.open_amount > 0
       SELECT paid.customer_id FROM invoices.payments p
       JOIN invoices.bank_transactions t ON t.id = p.bank_transaction_id
       JOIN invoices.invoices paid ON paid.id = p.invoice_id
-      WHERE t.debtor_account = $1::text AND t.id <> $2 AND p.removed_at IS NULL)
+      WHERE t.debtor_account = $1::text AND t.id <> $2 AND t.booked_on <= $3::date
+        AND p.removed_at IS NULL)
 ORDER BY i.id
 LIMIT 10
 `
@@ -308,6 +312,7 @@ LIMIT 10
 type InvoicesOfDebtorAccountParams struct {
 	DebtorAccount string
 	LineID        int64
+	BookedOn      pgtype.Date
 }
 
 type InvoicesOfDebtorAccountRow struct {
@@ -319,11 +324,11 @@ type InvoicesOfDebtorAccountRow struct {
 }
 
 // InvoicesOfDebtorAccount is the open issued invoices of the customers whose
-// earlier payments from a bank line came from debtor_account — a
-// suggestion's debtor_account (D5) — the first ten by id. The line itself is
-// left out.
+// earlier payments from a bank line came from debtor_account — a line
+// booked on or before booked_on, never the line itself — a suggestion's
+// debtor_account (D5), the first ten by id.
 func (q *Queries) InvoicesOfDebtorAccount(ctx context.Context, arg InvoicesOfDebtorAccountParams) ([]InvoicesOfDebtorAccountRow, error) {
-	rows, err := q.db.Query(ctx, invoicesOfDebtorAccount, arg.DebtorAccount, arg.LineID)
+	rows, err := q.db.Query(ctx, invoicesOfDebtorAccount, arg.DebtorAccount, arg.LineID, arg.BookedOn)
 	if err != nil {
 		return nil, err
 	}
@@ -404,6 +409,23 @@ func (q *Queries) InvoicesOpenEqual(ctx context.Context, amount pgtype.Numeric) 
 	return items, nil
 }
 
+const lineReversed = `-- name: LineReversed :one
+SELECT EXISTS (
+    SELECT 1 FROM invoices.bank_transaction_events
+    WHERE bank_transaction_id = $1 AND event = 'reversed'
+) AS reversed
+`
+
+// LineReversed reports whether a reversal took back a payment of the line
+// (its reversed event, D5): its money is never applied again, so it is not
+// reopened.
+func (q *Queries) LineReversed(ctx context.Context, lineID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, lineReversed, lineID)
+	var reversed bool
+	err := row.Scan(&reversed)
+	return reversed, err
+}
+
 const listBankTransactions = `-- name: ListBankTransactions :many
 SELECT t.id, t.bank_file_id, t.line_ref, t.format, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on, t.amount, t.currency, t.kid, t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code, t.fingerprint, t.ordinal, t.duplicate_of_id, t.status, t.reason, t.suggested_invoice_id, t.resolution, t.resolved_by_user_id, t.resolved_at, t.resolution_note
 FROM invoices.bank_transactions t
@@ -419,7 +441,10 @@ WHERE ($1::text IS NULL OR t.status = $1::text)
   AND ($5::date IS NULL OR t.booked_on <= $5::date)
   AND (NOT $6::boolean
        OR (t.status IN ('matched', 'resolved') AND t.direction = 'credit' AND NOT t.negative
-           AND coalesce(t.resolution, 'applied') = 'applied' AND t.amount > a.applied))
+           AND (coalesce(t.resolution, 'applied') = 'applied'
+                OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open')))
+           AND NOT EXISTS (SELECT 1 FROM invoices.bank_transaction_events e WHERE e.bank_transaction_id = t.id AND e.event = 'reversed')
+           AND t.amount > a.applied))
 ORDER BY (t.status IN ('pending', 'exception', 'duplicate')) DESC, t.booked_on, t.id
 LIMIT $8::integer OFFSET $7::integer
 `
@@ -444,7 +469,9 @@ type ListBankTransactionsRow struct {
 // exception, duplicate — first, each group oldest booking day first, then by
 // id. unapplied keeps the matched and resolved credit lines with a rest —
 // a line resolved otherwise than applied, a reversal and a negative line are
-// not money waiting to be applied.
+// not money waiting to be applied, but a line dismissed after it was queued
+// invoice_credited, invoice_settled or exceeds_open is money owed back; a
+// line whose payment a reversal took back is never money to apply again.
 func (q *Queries) ListBankTransactions(ctx context.Context, arg ListBankTransactionsParams) ([]ListBankTransactionsRow, error) {
 	rows, err := q.db.Query(ctx, listBankTransactions,
 		arg.Status,

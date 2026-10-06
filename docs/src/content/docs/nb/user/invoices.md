@@ -655,7 +655,11 @@ innbetalingens tekst, en hvis utestående beløp den er lik, en for kunden som h
 samme konto før; avvis den som ikke en kundebetaling, med et notat; for en tilbakeføring,
 fjern betalingen banken tok tilbake; bekreft et duplikat eller behold den som en egen
 betaling; eller gjenåpne den. Det en innbetaling ikke blir ført mot, står synlig på linjen
-— Vantigo fører ingen kreditsaldo og gjør ingen tilbakebetaling.
+— Vantigo fører ingen kreditsaldo og gjør ingen tilbakebetaling. En innbetaling som avvises fordi fakturaen
+er kreditert eller allerede betalt, eller fordi den var mer enn det som skyldtes, står også
+som ikke ført: pengene skal tilbake, og tilbakebetalingen gjøres utenfor Vantigo. Når en
+tilbakeføring har tatt en betaling tilbake, føres eller gjenåpnes linjen den kom fra aldri
+igjen.
 
 Klikk **Registrer betaling** — tilbys mens noe er igjen å betale — og fyll ut:
 
