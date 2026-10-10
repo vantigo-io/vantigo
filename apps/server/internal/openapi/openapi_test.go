@@ -221,6 +221,7 @@ var KnownServeMuxConflicts = []string{
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/tasks",
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/timeline",
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/work-types",
+	"POST /api/v1/invoices/reminders/{id}/withdraw ⟷ POST /api/v1/invoices/{id}/collection/withdraw",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/anonymisation",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/billing-profile",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/contact-info",
