@@ -244,7 +244,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-## invoices (68 uncovered)
+## invoices (72 uncovered)
 
 - `DELETE /api/v1/invoices/collection-rates/{id}` (deleteInvoicesCollectionRatesById)
 - `DELETE /api/v1/invoices/settings/access-point` (deleteInvoicesSettingsAccessPoint)
@@ -263,6 +263,8 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/invoices/overdue` (getInvoicesOverdue)
 - `GET /api/v1/invoices/reminder-runs/{id}` (getInvoicesReminderRunsById)
 - `GET /api/v1/invoices/reminder-runs` (getInvoicesReminderRuns)
+- `GET /api/v1/invoices/reminders/{id}/pdf` (getInvoicesRemindersByIdPdf)
+- `GET /api/v1/invoices/reminders` (getInvoicesReminders)
 - `GET /api/v1/invoices/settings/access-point` (getInvoicesSettingsAccessPoint)
 - `GET /api/v1/invoices/settings/reminders` (getInvoicesSettingsReminders)
 - `GET /api/v1/invoices/settings` (getInvoicesSettings)
@@ -286,6 +288,8 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/invoices/collection-rates` (postInvoicesCollectionRates)
 - `POST /api/v1/invoices/from-work` (postInvoicesFromWork)
 - `POST /api/v1/invoices/reminder-runs` (postInvoicesReminderRuns)
+- `POST /api/v1/invoices/reminders/{id}/retry` (postInvoicesRemindersByIdRetry)
+- `POST /api/v1/invoices/reminders/{id}/withdraw` (postInvoicesRemindersByIdWithdraw)
 - `POST /api/v1/invoices/settings/access-point/verify` (postInvoicesSettingsAccessPointVerify)
 - `POST /api/v1/invoices/vat-codes/{id}/rates` (postInvoicesVatCodesByIdRates)
 - `POST /api/v1/invoices/vat-codes` (postInvoicesVatCodes)
@@ -315,4 +319,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-Total: 286 of 421 operations have no recorded exchange.
+Total: 290 of 425 operations have no recorded exchange.

@@ -286,6 +286,42 @@ func sameAddress(a, b pdfParty) bool {
 		norm(a.postalCode) == norm(b.postalCode) && norm(a.city) == norm(b.city) && norm(a.country) == norm(b.country)
 }
 
+// sellerLines are the seller as a document prints it: name, address, the
+// organisation number followed by MVA when VAT-registered,
+// Foretaksregisteret when registered there (§ 5-1-2), and the e-mail. Only a
+// preview of an incomplete seller lacks the number, and then prints no bare
+// label. A reminder letter prints the same block.
+func sellerLines(p pdfParty, l pdfLabels) []string {
+	out := partyLines(p)
+	if p.organisationNumber != "" {
+		orgLine := l.orgNumber + " " + organisationNumber(p.organisationNumber)
+		if p.vatRegistered {
+			orgLine += " MVA"
+		}
+		out = append(out, orgLine)
+	}
+	if p.foretaksregisteret {
+		out = append(out, "Foretaksregisteret")
+	}
+	if p.email != "" {
+		out = append(out, p.email)
+	}
+	return out
+}
+
+// buyerLines are the buyer as a document prints it: name, address, and the
+// organisation number or the foreign id.
+func buyerLines(p pdfParty, l pdfLabels) []string {
+	out := partyLines(p)
+	switch {
+	case p.organisationNumber != "":
+		out = append(out, l.orgNumber+" "+organisationNumber(p.organisationNumber))
+	case p.foreignID != "":
+		out = append(out, l.foreignID+" "+p.foreignID)
+	}
+	return out
+}
+
 // buildPDFModel is D7's layout as words.
 func buildPDFModel(d pdfDocument) pdfModel {
 	lang := d.language
@@ -301,33 +337,7 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		m.watermark = l.watermark
 	}
 
-	// The seller: name, address, the organisation number followed by MVA
-	// when VAT-registered, Foretaksregisteret when registered there (§ 5-1-2).
-	// Only a preview of an incomplete seller lacks the number, and then
-	// prints no bare label.
-	m.seller = partyLines(d.seller)
-	if d.seller.organisationNumber != "" {
-		orgLine := l.orgNumber + " " + organisationNumber(d.seller.organisationNumber)
-		if d.seller.vatRegistered {
-			orgLine += " MVA"
-		}
-		m.seller = append(m.seller, orgLine)
-	}
-	if d.seller.foretaksregisteret {
-		m.seller = append(m.seller, "Foretaksregisteret")
-	}
-	if d.seller.email != "" {
-		m.seller = append(m.seller, d.seller.email)
-	}
-
-	// The buyer: name, address, and the organisation number or the foreign id.
-	m.buyer = partyLines(d.buyer)
-	switch {
-	case d.buyer.organisationNumber != "":
-		m.buyer = append(m.buyer, l.orgNumber+" "+organisationNumber(d.buyer.organisationNumber))
-	case d.buyer.foreignID != "":
-		m.buyer = append(m.buyer, l.foreignID+" "+d.buyer.foreignID)
-	}
+	m.seller, m.buyer = sellerLines(d.seller, l), buyerLines(d.buyer, l)
 
 	// The meta block.
 	if d.number != nil {

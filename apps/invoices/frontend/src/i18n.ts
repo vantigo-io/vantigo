@@ -510,6 +510,10 @@ export const invoicesCatalog = {
     "refusal.invoice_not_handed_off": "This invoice is not handed off, so there is no hand-off to withdraw.",
     "refusal.invoice_not_delivered":
       "No delivery of this invoice is recorded by its due date. If it was delivered, record the delivery first; otherwise confirm the hand-off.",
+    "refusal.reminder_not_withdrawable":
+      "This letter can no longer be withdrawn: it is sent, withdrawn already, or being sent by e-mail right now.",
+    "refusal.reminder_not_failed": "Only a letter that failed is sent again.",
+    "refusal.reminder_not_sent": "This letter is neither printed nor sent, so it has no PDF yet.",
     "workRefusal.source_not_invoiceable":
       "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
     "workRefusal.source_changed":
@@ -1557,6 +1561,10 @@ export const invoicesCatalog = {
       "Denne fakturaen er ikke overlevert, så det er ingen overlevering å trekke tilbake.",
     "refusal.invoice_not_delivered":
       "Ingen levering av denne fakturaen er registrert innen forfall. Ble den levert, registrerer du leveringen først; ellers bekrefter du overleveringen.",
+    "refusal.reminder_not_withdrawable":
+      "Dette brevet kan ikke lenger trekkes tilbake: det er sendt, allerede trukket tilbake, eller sendes på e-post akkurat nå.",
+    "refusal.reminder_not_failed": "Bare et brev som feilet, sendes på nytt.",
+    "refusal.reminder_not_sent": "Dette brevet er verken skrevet ut eller sendt, så det har ingen PDF ennå.",
     "workRefusal.source_not_invoiceable":
       "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
     "workRefusal.source_changed":

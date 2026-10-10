@@ -903,6 +903,19 @@ inkassoselskapet. Skjermbildene kommer med purrekortene på fakturasiden; til da
 dette i API-et
 ([vent og overlevering](/en/reference/invoices/#holds-and-the-hand-off-to-collection)).
 
+**Slik sendes et brev på e-post.** Vantigo sender brevene som går på e-post selv, i
+bakgrunnen, ett om gangen. Hvert brev vurderes på nytt den dagen det går: datoen, fristen
+— minst 14 dager fram — gebyret og renten er den dagens, ikke kjøringens; en faktura som er
+betalt, satt på vent eller overlevert i mellomtiden, får ikke brevet, og brevet trekkes
+tilbake med årsaken. Brevet er en PDF, vedlagt en kort e-post på kundens språk, og svar går
+til e-postadressen i fakturainnstillingene. Et brev som mangler satser eller en gjennomgått regelordning,
+venter, og går når de er på plass. Et brev e-postserveren fortsetter å avvise, feiler etter
+48 timer; det kan da sendes på nytt eller trekkes tilbake, og et brev som ikke er sendt
+ennå, kan trekkes tilbake med en begrunnelse — men ikke mens det sendes på e-post. PDF-en
+til et utskrevet eller sendt brev kan lastes ned. Skjermbildene kommer med purrekortene på
+fakturasiden; til da finnes dette i API-et ([brev](/en/reference/invoices/#letters),
+[arbeideren](/en/reference/invoices/#the-worker)).
+
 ## Sende et dokument på e-post
 
 Åpne en utstedt faktura eller kreditnota og klikk **Send**. Knappen krever
