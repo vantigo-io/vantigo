@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { jsonResponse, path, refusal } from "../test/api";
-import { pendingResponse, readsOf, requestTo, documentServer as server } from "../test/document-server";
+import { NO_BODY, pendingResponse, readsOf, requestTo, documentServer as server } from "../test/document-server";
 import {
   attemptedTransmission,
   draft,
@@ -107,7 +107,7 @@ describe("the Send as EHF dialog", () => {
     expect(within(dialog).getByText(/the Peppol network is asked whether the receiver accepts/)).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Send as EHF" }));
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Send as EHF" })).toBeDisabled());
-    expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/send-ehf")).toEqual({});
+    expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/send-ehf")).toBe(NO_BODY);
     const reads = readsOf(fetchMock, "/api/v1/invoices/1001");
     pending.answer(jsonResponse(200, ehfDocument("queued")));
     expect(await screen.findByText("Queued for sending as EHF")).toBeInTheDocument();

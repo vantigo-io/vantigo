@@ -9,8 +9,11 @@ export interface BankServerOptions {
   answers?: Record<string, Answer>;
   /** meta's capabilities over the fixture's. */
   capabilities?: Partial<ReturnType<typeof meta>["capabilities"]>;
-  /** The queue's answer to every GET /bank-transactions, given its query. */
-  lines?: (query: URLSearchParams) => BankTransaction[];
+  /**
+   * The answer to every GET /bank-transactions, given its query: the lines
+   * (one page of them), a whole page with its own paging, or a response.
+   */
+  lines?: (query: URLSearchParams) => BankTransaction[] | ReturnType<typeof pageOf<BankTransaction>> | Response;
 }
 
 /**
@@ -36,8 +39,11 @@ export const bankServer = ({ answers = {}, capabilities = {}, lines }: BankServe
         return jsonResponse(200, pageOf([bankFile()]));
       case "/api/v1/invoices/bank-files/1001":
         return jsonResponse(200, { file: bankFile(), transactions: [bankTransaction()] });
-      case "/api/v1/invoices/bank-transactions":
-        return jsonResponse(200, pageOf(lines ? lines(new URLSearchParams(search)) : [bankTransaction()]));
+      case "/api/v1/invoices/bank-transactions": {
+        const answer = lines ? lines(new URLSearchParams(search)) : [bankTransaction()];
+        if (answer instanceof Response) return answer;
+        return jsonResponse(200, Array.isArray(answer) ? pageOf(answer) : answer);
+      }
       default:
         return new Response(null, { status: 404 });
     }

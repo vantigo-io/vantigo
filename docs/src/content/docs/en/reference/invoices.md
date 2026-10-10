@@ -2171,8 +2171,11 @@ D5): an `exception` with its reason, or a `duplicate` row. Every queue operation
 | (status `duplicate`) | the fingerprint's twin, kept as a row | confirm it, or treat it as distinct |
 
 **The list.** `GET /invoices/bank-transactions` pages every line — `status`, `reason`,
-`bankFileId`, the booking days `from` and `to` (inclusive) and `unapplied` filter it; an
-unknown status or reason, `from` after `to` or paging out of range is 400. The open lines —
+`bankFileId`, the receiving `account` (its 11 digits), the `amount` (compared by value,
+which is how the screen finds the payments a reversal may take back), the booking days
+`from` and `to` (inclusive) and `unapplied` filter it; an unknown status or reason, `from`
+after `to`, an account that is not 11 digits, an amount that is not above 0 with at most
+two decimals, or paging out of range is 400. The open lines —
 `pending`, `exception`, `duplicate` — come first, each group oldest booking day first,
 then by id; the total counts the filtered lines. Each line answers what the bank wrote,
 its file (`bankFile`: id, format, upload time), **`applied`** — every payment and charge

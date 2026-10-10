@@ -199,7 +199,8 @@ describe("the Payments area", () => {
 
     expect(await screen.findByText("Matched 2, queued 0; 0 not yet matched.")).toBeInTheDocument();
     const result = await screen.findByTestId("import-result");
-    expect(within(result).getByText(/NOK\s?2,500\.00 registered as payments\./)).toBeInTheDocument();
+    // The amount is what this request matched, said so — not the file's.
+    expect(within(result).getByText(/^NOK\s?2,500\.00 registered as payments by this matching\.$/)).toBeInTheDocument();
     expect(
       fetchMock.actualCalls.filter(
         ([url, init]) => path(url) === "/api/v1/invoices/bank-files/1002/match" && init?.method === "POST",
@@ -230,19 +231,38 @@ describe("the Payments area", () => {
     expect(screen.getByRole("link", { name: /Back to Payments/ })).toHaveAttribute("href", "/invoices/payments");
   });
 
-  it("filters the queue by unapplied rest, letting the status filter go", async () => {
+  it("filters the queue by unapplied rest, letting the status filter go, and by any file, not only the first page's", async () => {
     const queries: string[] = [];
+    const filePage = (page: number) => ({
+      ...pageOf([bankFile({ id: page === 1 ? 1001 : 900 })]),
+      pagination: {
+        page,
+        pageSize: 100,
+        totalCount: 2,
+        totalPages: 2,
+        hasNextPage: page === 1,
+        hasPreviousPage: page === 2,
+      },
+    });
     bankServer({
       lines: (query) => {
         queries.push(query.toString());
         return [];
       },
+      answers: {
+        "GET /api/v1/invoices/bank-files?page=1&pageSize=100": jsonResponse(200, filePage(1)),
+        "GET /api/v1/invoices/bank-files?page=2&pageSize=100": jsonResponse(200, filePage(2)),
+      },
     });
     renderRoute("/invoices/payments");
 
     expect(await screen.findByText("No payment matches.")).toBeInTheDocument();
+    expect(screen.getByText("Duplicates are listed under the status Duplicate.")).toBeInTheDocument();
+    await userEvent.click(within(screen.getByTestId("bank-queue")).getByRole("combobox", { name: "File" }));
+    await userEvent.click(await screen.findByRole("option", { name: "File 900" }));
+    await waitFor(() => expect(queries).toContain("status=exception&bankFileId=900&page=1"));
     expect(queries[0]).toBe("status=exception&page=1");
     await userEvent.click(screen.getByRole("checkbox", { name: "Only payments with an unapplied rest" }));
-    await waitFor(() => expect(queries).toContain("unapplied=true&page=1"));
+    await waitFor(() => expect(queries).toContain("bankFileId=900&unapplied=true&page=1"));
   });
 });

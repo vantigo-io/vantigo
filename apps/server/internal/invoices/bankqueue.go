@@ -109,6 +109,9 @@ const (
 // invoice's number (D5's number_in_text); 18 digits always fit an int64.
 var digitRun = regexp.MustCompile(`\b\d{1,18}\b`)
 
+// elevenDigits is a Norwegian account number as a bank line stores it.
+var elevenDigits = regexp.MustCompile(`^\d{11}$`)
+
 // queueAfterLineLock, when a test sets it (export_test.go's
 // SetQueueAfterLineLock), runs inside every queue action's transaction right
 // after the line is locked, before anything else, with the line's id; an
@@ -448,12 +451,28 @@ func (s *server) GetInvoicesBankTransactions(ctx context.Context, req gen.GetInv
 	if p.From != nil && p.To != nil && p.From.After(p.To.Time) {
 		errs = append(errs, "from is on or before to.")
 	}
+	if p.Account != nil && !elevenDigits.MatchString(*p.Account) {
+		errs = append(errs, "account is the receiving account's 11 digits.")
+	}
+	var amountFilter pgtype.Numeric
+	if p.Amount != nil {
+		// Compared by value: the exact decimal the number was written as.
+		amt, msg := amount("amount", *p.Amount, 2, zero, true, maxGrossTotal)
+		if msg != "" {
+			errs = append(errs, msg+".")
+		} else if n, err := numericFromRat(amt, 2); err == nil {
+			amountFilter = n
+		} else {
+			return nil, fmt.Errorf("invoices: the amount filter: %w", err)
+		}
+	}
 	if len(errs) > 0 {
 		return gen.GetInvoicesBankTransactions400ApplicationProblemPlusJSONResponse(apicommon.Problem(invalidQueryTitle, strings.Join(errs, " "))), nil
 	}
 	page, pageSize := pageParams(p.Page, p.PageSize)
 	filter := store.ListBankTransactionsParams{
-		BankFileID: p.BankFileId, Unapplied: p.Unapplied != nil && *p.Unapplied,
+		BankFileID: p.BankFileId, Account: p.Account, Amount: amountFilter,
+		Unapplied:  p.Unapplied != nil && *p.Unapplied,
 		PageOffset: (page - 1) * pageSize, PageSize: pageSize,
 	}
 	if p.Status != nil {
@@ -471,7 +490,7 @@ func (s *server) GetInvoicesBankTransactions(ctx context.Context, req gen.GetInv
 	q := store.New(s.deps.Pool)
 	total, err := q.CountBankTransactions(ctx, store.CountBankTransactionsParams{
 		Status: filter.Status, Reason: filter.Reason, BankFileID: filter.BankFileID, FromOn: filter.FromOn, ToOn: filter.ToOn,
-		Unapplied: filter.Unapplied,
+		Account: filter.Account, Amount: filter.Amount, Unapplied: filter.Unapplied,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("invoices: count the bank lines: %w", err)

@@ -19,6 +19,8 @@ WHERE (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
   AND (sqlc.narg(bank_file_id)::bigint IS NULL OR t.bank_file_id = sqlc.narg(bank_file_id)::bigint)
   AND (sqlc.narg(from_on)::date IS NULL OR t.booked_on >= sqlc.narg(from_on)::date)
   AND (sqlc.narg(to_on)::date IS NULL OR t.booked_on <= sqlc.narg(to_on)::date)
+  AND (sqlc.narg(account)::text IS NULL OR t.account = sqlc.narg(account)::text)
+  AND (sqlc.narg(amount)::numeric IS NULL OR t.amount = sqlc.narg(amount)::numeric)
   AND (NOT @unapplied::boolean
        OR (t.status IN ('matched', 'resolved') AND t.direction = 'credit' AND NOT t.negative
            AND (coalesce(t.resolution, 'applied') = 'applied'
@@ -30,8 +32,10 @@ WHERE (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
 -- ListBankTransactions is a page of the bank lines (D5), each with what its
 -- live payments and charge payments apply: the open lines — pending,
 -- exception, duplicate — first, each group oldest booking day first, then by
--- id. unapplied keeps the matched and resolved credit lines with a rest —
--- a line resolved otherwise than applied, a reversal and a negative line are
+-- id. account and amount keep the lines of one receiving account and one
+-- amount, compared by value — what a reversal's candidates are read by.
+-- unapplied keeps the matched and resolved credit lines with a rest — a line
+-- resolved otherwise than applied, a reversal and a negative line are
 -- not money waiting to be applied, but a line dismissed after it was queued
 -- invoice_credited, invoice_settled or exceeds_open is money owed back; a
 -- line whose payment a reversal took back is never money to apply again.
@@ -47,6 +51,8 @@ WHERE (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
   AND (sqlc.narg(bank_file_id)::bigint IS NULL OR t.bank_file_id = sqlc.narg(bank_file_id)::bigint)
   AND (sqlc.narg(from_on)::date IS NULL OR t.booked_on >= sqlc.narg(from_on)::date)
   AND (sqlc.narg(to_on)::date IS NULL OR t.booked_on <= sqlc.narg(to_on)::date)
+  AND (sqlc.narg(account)::text IS NULL OR t.account = sqlc.narg(account)::text)
+  AND (sqlc.narg(amount)::numeric IS NULL OR t.amount = sqlc.narg(amount)::numeric)
   AND (NOT @unapplied::boolean
        OR (t.status IN ('matched', 'resolved') AND t.direction = 'credit' AND NOT t.negative
            AND (coalesce(t.resolution, 'applied') = 'applied'

@@ -28,10 +28,19 @@ export const documentServer = (
     return new Response(null, { status: 404 });
   });
 
-/** The body a write sent, found by its method and URL — never "the last fetch". */
+/** What `requestTo` answers for a request sent without a body — never mistaken for `{}`. */
+export const NO_BODY = Symbol("no body");
+
+/**
+ * The body a write sent, found by its method and URL — never "the last
+ * fetch": its parsed JSON, `NO_BODY` when it sent none, undefined when no such
+ * request was made.
+ */
 export const requestTo = (fetchMock: StubbedFetch, method: string, url: string) => {
   const call = fetchMock.actualCalls.find(([u, init]) => path(u) === url && (init?.method ?? "GET") === method);
-  return call ? JSON.parse(String(call[1]?.body ?? "{}")) : undefined;
+  if (!call) return undefined;
+  const body = call[1]?.body;
+  return body === undefined || body === null ? NO_BODY : JSON.parse(String(body));
 };
 
 /** How many times `url` was read (GET), so a test can tell the page read a document again after a write. */
