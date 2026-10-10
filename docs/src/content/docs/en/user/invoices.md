@@ -742,7 +742,8 @@ would any other payment. Two such payments in the same file are both registered.
 **The exception queue**, at the foot of **Payments**, holds the payments matching could
 not place, and the duplicates — what waits for a person. It opens on **In the queue**;
 the duplicates are under the status **Duplicate**. Filter it by **Status**, **Reason**
-and **File** (type to find a file), or tick **Only payments with an
+and **File** (type to find a file; it offers the latest 500 files and says so when there
+are more), or tick **Only payments with an
 unapplied rest** to see the payments applied in part, matched and since removed, or
 dismissed as money owed back. Each line shows the day the bank booked it, its KID or else
 its text, the debtor and their account, the amount, what is applied — each payment linked
@@ -792,8 +793,9 @@ click **Dismiss**.
 
 **Handle reversal.** The dialog offers the payments the reversal may take back — those
 registered from bank lines of the same account and amount, booked on or before it; it
-reads the first 500 such lines of each kind and says so when there are more, and says so
-when they could not be read, rather than that there are none. Tick
+reads the latest 500 such lines of each kind and says so when there are more — an older
+payment is then not offered — and says so when they could not be read, rather than that
+there are none. Tick
 the one it reverses, or choose **No payment is removed; the note says why** and write the
 note, then click **Handle the reversal**. Each chosen payment is removed with the reason
 "Reversed by the bank", and the line it came from is never applied again. Without a

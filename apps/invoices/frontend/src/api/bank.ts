@@ -103,9 +103,9 @@ export const bankFileChoicesQueryOptions = () =>
 
 /**
  * The bank lines a reversal may have taken a payment back from: the matched
- * and the resolved lines of its account and amount, booked on or before it —
- * read whole, up to MAX_PAGES pages of 100 per status, `truncated` when more
- * were left.
+ * and the resolved lines of its account and amount, booked on or before it,
+ * newest first — a reversal takes back a recent payment — up to MAX_PAGES
+ * pages of 100 per status, `truncated` when older ones were left.
  */
 export const reversalLinesQueryOptions = (reversal: BankTransaction) =>
   queryOptions({
@@ -119,6 +119,7 @@ export const reversalLinesQueryOptions = (reversal: BankTransaction) =>
               account: reversal.account,
               amount: Math.abs(reversal.amount),
               to: reversal.bookedOn,
+              order: "newest",
               page,
               pageSize: 100,
             })}`,

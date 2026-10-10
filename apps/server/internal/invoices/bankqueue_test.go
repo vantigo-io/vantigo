@@ -255,7 +255,7 @@ func queueWrites(t *testing.T, h *harness) string {
 
 // TestBankQueue_List: every filter — status, reason, bankFileId, the account,
 // the amount by value, the booking days from and to, unapplied — the open lines first, oldest booking day
-// first, then the rest; paging after the filter; unapplied=true lists the
+// first, then the rest, or with order=newest every line newest first; paging after the filter; unapplied=true lists the
 // matched and resolved lines with a rest (a matched line whose payment was
 // removed, a line applied in part) and never a dismissed one; each line's
 // file, what is applied from it and its rest; and the 400s.
@@ -337,6 +337,13 @@ func TestBankQueue_List(t *testing.T) {
 		{"amount=50&status=matched", []int64{}},
 		{"pageSize=2&page=2", []int64{ids["NOKID-4"], ids["PAID"]}},
 		{"pageSize=2&page=3", []int64{ids2["OVER"]}},
+		// order=newest: every line newest booking day first, the open ones not
+		// put first — a reversal's latest candidates on the first page.
+		{"order=newest", []int64{ids["REV-7"], ids2["OVER"], ids["PAID"], ids["NOKID-4"], ids["NOKID-3"]}},
+		{"order=queue", []int64{ids["NOKID-3"], ids["REV-7"], ids["NOKID-4"], ids["PAID"], ids2["OVER"]}},
+		{"order=newest&status=resolved&to=2026-10-06", []int64{ids2["OVER"], ids["NOKID-4"]}},
+		{"pageSize=2&page=1&order=newest", []int64{ids["REV-7"], ids2["OVER"]}},
+		{"pageSize=2&page=2&order=newest", []int64{ids["PAID"], ids["NOKID-4"]}},
 	} {
 		got, n := queueList(t, h, w.query)
 		if !slices.Equal(lineIDsOf(got), w.want) {
@@ -352,7 +359,7 @@ func TestBankQueue_List(t *testing.T) {
 	}
 	for _, q := range []string{
 		"status=open", "reason=lost", "from=2026-10-05&to=2026-10-04", "pageSize=101",
-		"account=1234", "account=8601111794x", "amount=0", "amount=-50", "amount=7.777",
+		"account=1234", "account=8601111794x", "amount=0", "amount=-50", "amount=7.777", "order=oldest",
 	} {
 		if res := importer(t, h).Do(http.MethodGet, queuePath+"?"+q, nil); res.Status != http.StatusBadRequest {
 			t.Errorf("?%s = %d %s, want 400", q, res.Status, res.Body)

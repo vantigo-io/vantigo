@@ -322,9 +322,9 @@ describe("BankTransactionTable", () => {
     // Read by the account, the amount and the day, every page of both statuses.
     expect(asked).toEqual(
       expect.arrayContaining([
-        "status=matched&account=86011117947&amount=1250&to=2026-09-12&page=1&pageSize=100",
-        "status=matched&account=86011117947&amount=1250&to=2026-09-12&page=2&pageSize=100",
-        "status=resolved&account=86011117947&amount=1250&to=2026-09-12&page=1&pageSize=100",
+        "status=matched&account=86011117947&amount=1250&to=2026-09-12&order=newest&page=1&pageSize=100",
+        "status=matched&account=86011117947&amount=1250&to=2026-09-12&order=newest&page=2&pageSize=100",
+        "status=resolved&account=86011117947&amount=1250&to=2026-09-12&order=newest&page=1&pageSize=100",
       ]),
     );
     expect(within(dialog).getByText(/cannot be undone; register that payment again by hand/)).toBeInTheDocument();
@@ -352,6 +352,117 @@ describe("BankTransactionTable", () => {
       .filter(([url]) => String(url).endsWith("/handle-reversal"))
       .map(([, init]) => JSON.parse(String(init?.body)));
     expect(bodies.slice(1)).toEqual([{ noPayment: true }, { noPayment: true, note: "Betalt tilbake utenfor Vantigo" }]);
+  });
+
+  /**
+   * A server of `count` matched lines of the reversal's account and amount,
+   * booked before it oldest first, that honours `order` and pages by 100: the
+   * last — the newest — is the line `newest` says, every other one's payment
+   * removed. Records every query.
+   */
+  const manyLines = (count: number, newest: BankTransaction | null) => {
+    const asked: string[] = [];
+    const lines = Array.from({ length: count }, (_, i) =>
+      i === count - 1 && newest
+        ? newest
+        : bankTransaction({
+            id: 10_000 + i,
+            lineRef: `O/${i}`,
+            status: "matched",
+            reason: undefined,
+            amount: 1250,
+            bookedOn: "2026-01-02",
+            unappliedAmount: 1250,
+            suggestions: undefined,
+            applied: [{ kind: "payment", id: 20_000 + i, invoiceId: 1001, number: 1000, amount: 1250, removed: true }],
+          }),
+    );
+    bankServer({
+      lines: (query) => {
+        asked.push(query.toString());
+        if (query.get("status") !== "matched") return [];
+        const ordered = query.get("order") === "newest" ? [...lines].reverse() : lines;
+        const page = Number(query.get("page"));
+        return {
+          data: ordered.slice((page - 1) * 100, page * 100),
+          pagination: {
+            page,
+            pageSize: 100,
+            totalCount: count,
+            totalPages: Math.ceil(count / 100),
+            hasNextPage: page * 100 < count,
+            hasPreviousPage: page > 1,
+          },
+        };
+      },
+    });
+    return asked;
+  };
+
+  const reversalLine = () =>
+    bankTransaction({
+      id: 3001,
+      lineRef: "R/1",
+      direction: "debit",
+      reason: "reversal",
+      amount: 1250,
+      bookedOn: "2026-09-12",
+      unappliedAmount: 0,
+      suggestions: undefined,
+    });
+
+  it("ReversalDialog_ReadsTheNewestLinesUpToTheCap", async () => {
+    // 600 lines of the same account and amount: every page full up to the cap.
+    // The payment it reverses is the newest, so it is among those read.
+    const asked = manyLines(
+      600,
+      bankTransaction({
+        id: 901,
+        lineRef: "M/901",
+        status: "matched",
+        reason: undefined,
+        amount: 1250,
+        bookedOn: "2026-09-10",
+        unappliedAmount: 0,
+        suggestions: undefined,
+        applied: [{ kind: "payment", id: 7001, invoiceId: 1001, number: 1000, amount: 1250, removed: false }],
+      }),
+    );
+    await table([reversalLine()]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Handle reversal: line R/1" }));
+    const dialog = await screen.findByRole("dialog", { name: "Handle the reversal on line R/1" });
+    expect(
+      await within(dialog).findByRole("checkbox", {
+        name: /^Invoice 1000: NOK\s?1,250\.00, from line M\/901 booked Sep 10, 2026$/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "Only the latest 500 bank lines of this account and amount were read, so an older payment is not offered.",
+      ),
+    ).toBeInTheDocument();
+    // Five pages of the matched lines, newest first, and no sixth.
+    const matchedPages = asked.filter((q) => q.startsWith("status=matched"));
+    expect(matchedPages).toHaveLength(5);
+    expect(matchedPages.every((q) => q.includes("order=newest"))).toBe(true);
+  });
+
+  it("ReversalDialog_SaysTheCapRatherThanNoPayment", async () => {
+    // Every line read has its payment removed, and older ones were left unread:
+    // that is said, never that there is no payment.
+    manyLines(600, null);
+    await table([reversalLine()]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Handle reversal: line R/1" }));
+    const dialog = await screen.findByRole("dialog", { name: "Handle the reversal on line R/1" });
+    expect(
+      await within(dialog).findByText(
+        "Only the latest 500 bank lines of this account and amount were read, so an older payment is not offered.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/^No payment from a bank line/)).not.toBeInTheDocument();
+    expect(within(dialog).queryAllByRole("checkbox")).toHaveLength(0);
   });
 
   it("ReversalDialog_SaysAFailedReadRatherThanNoPayment", async () => {

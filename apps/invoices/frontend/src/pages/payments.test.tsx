@@ -265,4 +265,27 @@ describe("the Payments area", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: "Only payments with an unapplied rest" }));
     await waitFor(() => expect(queries).toContain("bankFileId=900&unapplied=true&page=1"));
   });
+
+  it("says the File filter offers only the latest files when there are more", async () => {
+    // Every page of files full, up to the cap: the filter says it stopped.
+    const answers: Record<string, () => Response> = {};
+    for (let page = 1; page <= 5; page++) {
+      answers[`GET /api/v1/invoices/bank-files?page=${page}&pageSize=100`] = () =>
+        jsonResponse(200, {
+          ...pageOf([bankFile({ id: 2000 - page })]),
+          pagination: {
+            page,
+            pageSize: 100,
+            totalCount: 600,
+            totalPages: 6,
+            hasNextPage: true,
+            hasPreviousPage: page > 1,
+          },
+        });
+    }
+    bankServer({ lines: () => [], answers });
+    renderRoute("/invoices/payments");
+
+    expect(await screen.findByText("Only the latest 500 files are offered.")).toBeInTheDocument();
+  });
 });

@@ -466,6 +466,9 @@ func (s *server) GetInvoicesBankTransactions(ctx context.Context, req gen.GetInv
 			return nil, fmt.Errorf("invoices: the amount filter: %w", err)
 		}
 	}
+	if p.Order != nil && !p.Order.Valid() {
+		errs = append(errs, "order is queue or newest.")
+	}
 	if len(errs) > 0 {
 		return gen.GetInvoicesBankTransactions400ApplicationProblemPlusJSONResponse(apicommon.Problem(invalidQueryTitle, strings.Join(errs, " "))), nil
 	}
@@ -473,6 +476,7 @@ func (s *server) GetInvoicesBankTransactions(ctx context.Context, req gen.GetInv
 	filter := store.ListBankTransactionsParams{
 		BankFileID: p.BankFileId, Account: p.Account, Amount: amountFilter,
 		Unapplied:  p.Unapplied != nil && *p.Unapplied,
+		Newest:     p.Order != nil && *p.Order == gen.Newest,
 		PageOffset: (page - 1) * pageSize, PageSize: pageSize,
 	}
 	if p.Status != nil {

@@ -758,7 +758,8 @@ slike betalinger i samme fil registreres begge.
 **Avvikskøen**, nederst på **Innbetalinger**, har betalingene avstemmingen ikke kunne
 plassere, og duplikatene — det som venter på en person. Den åpner på **I køen**;
 duplikatene står under statusen **Duplikat**. Filtrer den på **Status**, **Årsak** og
-**Fil** (skriv for å finne en fil), eller kryss av for **Bare betalinger med en rest
+**Fil** (skriv for å finne en fil; den tilbyr de siste 500 filene og sier fra når det er
+flere), eller kryss av for **Bare betalinger med en rest
 som ikke er ført** for å se betalinger som er ført delvis, avstemt og senere fjernet, eller
 avvist som penger som skal tilbake. Hver linje viser dagen banken bokførte den, KID-en
 eller ellers teksten, betaleren og kontoen deres, beløpet, det som er ført — hver betaling
@@ -808,8 +809,9 @@ Vantigo eller et annet systems KID: si hva den er, eller hva som ble gjort med d
 
 **Behandle tilbakeføring.** Dialogen tilbyr betalingene tilbakeføringen kan ta tilbake —
 de som er registrert fra banklinjer med samme konto og beløp, bokført samme dag eller
-tidligere; den leser de første 500 slike linjene av hvert slag og sier fra når det er
-flere, og sier fra når de ikke kunne leses, i stedet for at det ikke finnes noen. Kryss av for den den tilbakefører, eller velg **Ingen betaling fjernes;
+tidligere; den leser de siste 500 slike linjene av hvert slag og sier fra når det er
+flere — en eldre betaling tilbys da ikke — og sier fra når de ikke kunne leses, i stedet
+for at det ikke finnes noen. Kryss av for den den tilbakefører, eller velg **Ingen betaling fjernes;
 merknaden sier hvorfor** og skriv merknaden, og klikk **Behandle tilbakeføringen**. Hver
 valgt betaling fjernes med begrunnelsen «Reversed by the bank», og linjen den kom fra,
 føres aldri igjen. Uten en betaling eller en merknad avvises tilbakeføringen, med ord. En

@@ -126,9 +126,16 @@ export const ReversalDialog = ({ line, currency, onClose }: ReversalDialogProps)
                   {refusalMessage(lines.error, t, date, amount, dateTime)}
                 </Alert>
               ) : candidates.length === 0 ? (
-                <Text size="sm" c="dimmed" pl="xl">
-                  {t("bank.reversal.noCandidates")}
-                </Text>
+                // Older lines were left unread: never "no payment", only that they were.
+                lines.data.truncated ? (
+                  <Text size="sm" c="orange" pl="xl">
+                    {t("bank.reversal.truncated", { count: MAX_PAGES * 100 })}
+                  </Text>
+                ) : (
+                  <Text size="sm" c="dimmed" pl="xl">
+                    {t("bank.reversal.noCandidates")}
+                  </Text>
+                )
               ) : (
                 <Stack gap={4} pl="xl">
                   {candidates.map((c) => (
