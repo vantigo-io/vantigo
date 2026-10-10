@@ -157,6 +157,10 @@ letters under a 60-second lease and never send one twice on purpose.
   name, with replies to the e-mail in **Invoice settings**. Without mail (`MAIL_DRIVER`
   not `smtp`), a reminder run makes **every letter a paper letter**, with the warning
   `mail_unavailable`, and nothing is e-mailed.
+- **Paper letters need no worker and no mail.** A person prints them in a batch for the
+  day they will be posted and confirms the posting; the batch stores each letter's PDF
+  through the same object store, the same way
+  ([paper and posting](/en/reference/invoices/#paper-and-posting)).
 - **It needs an object store.** Each letter's PDF is stored once, before it is mailed,
   under `reminders/` ([Object storage](/en/admin/object-storage/)); a store that cannot
   be written is a failed attempt.

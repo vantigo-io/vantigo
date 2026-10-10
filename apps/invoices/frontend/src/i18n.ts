@@ -514,6 +514,13 @@ export const invoicesCatalog = {
       "This letter can no longer be withdrawn: it is sent, withdrawn already, or being sent by e-mail right now.",
     "refusal.reminder_not_failed": "Only a letter that failed is sent again.",
     "refusal.reminder_not_sent": "This letter is neither printed nor sent, so it has no PDF yet.",
+    "refusal.reminder_not_awaiting_print":
+      "A letter you chose is no longer awaiting print: it was withdrawn or printed in another batch. Read the letters again and choose.",
+    "refusal.reminder_posted_early":
+      "This batch was printed for a later day, and its fees and deadlines were judged for that day. Reprint it for the day it is posted.",
+    "refusal.reminder_posted_late":
+      "This batch was printed for an earlier day; posted now, its letters would give less time than they say. Reprint it for the day it is posted.",
+    "refusal.print_batch_closed": "This batch is posted or reprinted already, and stays so.",
     "workRefusal.source_not_invoiceable":
       "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
     "workRefusal.source_changed":
@@ -1565,6 +1572,13 @@ export const invoicesCatalog = {
       "Dette brevet kan ikke lenger trekkes tilbake: det er sendt, allerede trukket tilbake, eller sendes på e-post akkurat nå.",
     "refusal.reminder_not_failed": "Bare et brev som feilet, sendes på nytt.",
     "refusal.reminder_not_sent": "Dette brevet er verken skrevet ut eller sendt, så det har ingen PDF ennå.",
+    "refusal.reminder_not_awaiting_print":
+      "Et brev du valgte, venter ikke lenger på utskrift: det er trukket tilbake eller skrevet ut i en annen bunke. Les brevene på nytt og velg.",
+    "refusal.reminder_posted_early":
+      "Denne bunken ble skrevet ut for en senere dag, og gebyrene og fristene ble vurdert for den dagen. Skriv den ut på nytt for dagen den postlegges.",
+    "refusal.reminder_posted_late":
+      "Denne bunken ble skrevet ut for en tidligere dag; postlagt nå ville brevene gi kortere frist enn de sier. Skriv den ut på nytt for dagen den postlegges.",
+    "refusal.print_batch_closed": "Denne bunken er allerede postlagt eller skrevet ut på nytt, og forblir det.",
     "workRefusal.source_not_invoiceable":
       "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
     "workRefusal.source_changed":

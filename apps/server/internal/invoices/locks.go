@@ -126,6 +126,23 @@ func lockCollectionRate(ctx context.Context, txq *store.Queries, id int64) (stor
 	return row, nil
 }
 
+// shareCollectionRates reads FOR KEY SHARE the collection rates a letter
+// dated day relies on — of each kind, the row in force on day, the rows
+// DeleteInvoicesCollectionRatesById judges "used" — each reported
+// "collection_rate" in id order (a print batch's letter, D6, plan reading
+// 6). A DELETE takes its row FOR UPDATE, which waits for this share until
+// the letter's transaction commits, and then sees the letter printed.
+func shareCollectionRates(ctx context.Context, txq *store.Queries, day time.Time) error {
+	ids, err := txq.ShareCollectionRatesInForce(ctx, pgDate(day))
+	if err != nil {
+		return fmt.Errorf("invoices: share the collection rates in force on %s: %w", day.Format(time.DateOnly), err)
+	}
+	for _, id := range ids {
+		noteLock(ctx, "collection_rate", strconv.FormatInt(id, 10))
+	}
+	return nil
+}
+
 // shareCustomerDocuments reads one customer's documents FOR SHARE, newest
 // first, each reported "document" (D7's policy PUT, plan reading 11).
 func shareCustomerDocuments(ctx context.Context, txq *store.Queries, customerID int32) error {

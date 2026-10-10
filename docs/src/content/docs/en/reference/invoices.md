@@ -110,6 +110,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.customer_reminder_policies` | One row per customer with [a reminder policy](#a-customers-reminder-policy) other than the default — keyed by the opaque `customer_id`, the mode (`normal`, `no_charges`, `none`), the note and who set it when. No row is `normal`. |
 | `invoices.reminder_runs` | One reminder run ([Runs](#runs)): the day, who made it and when, the bank data's `last_booked_on` and `stale_import_acknowledged`, and `letters` and `skipped`, set together once at its end from NULL. Never deleted or changed but by that one write. |
 | `invoices.reminders` | One letter of a run ([Letters](#letters)): the invoice, the run, its `sequence` on the invoice (unique per invoice), the level (`reminder` or `collection_notice`), `announces_collection`, the channel (`email` or `paper`), the recipient (`''` for paper and once the customer is anonymised), the language, who made it and when, the status (`queued`, `awaiting_print`, `printed`, `sent`, `withdrawn`, `failed`), and the facts written when it is sent or printed — `sent_on`, the deadline, the regime, the amounts, the interest segments and the charge notes — with its PDF's key and hash; the worker's columns — `message_id` (set once, while queued), `attempts`, `next_attempt_at`, `first_attempt_at`, the lease (`lease_id`, `lease_until`), `last_error`, `held_reason` (`collection_rates_outdated` or `collection_regime_unreviewed`), `failed_at` — and the withdrawal's. Created without facts; never deleted; its facts change only while it is not sent or withdrawn. |
+| `invoices.reminder_print_batches` | One print batch of paper letters ([Paper and posting](#paper-and-posting)): `post_on`, the day its letters' facts were judged for and the only day it may be confirmed posted, who made it and when, and either the posting — `posted_on`, `posted_by_user_id`, `posted_at`, set together once — or `reprinted_at`, set once; never both. Never deleted or changed but by those writes. |
 | `invoices.invoice_holds` | An invoice marked disputed ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)): the invoice, `kind` (`disputed`), the note, who placed it and when, and — once lifted — when, by whom, the lift's note and `charges_allowed`, the answer to whether the objection was groundless; the lift's three facts together (`ck_invoice_holds_lift`). One live hold per invoice (`ux_invoice_holds_live`). Never deleted; an update is the lift, once, or the erase's blanking of the notes — and the lift of an anonymised customer's hold keeps no note. |
 | `invoices.collection_handoffs` | An invoice's hand-off to a collection agency ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)): the invoice, `handed_on`, the agency, its reference, a note, who recorded it and when, and — once withdrawn — `withdrawn_on`, by whom and why, together (`ck_collection_handoffs_withdrawal`). One live hand-off per invoice (`ux_collection_handoffs_live`). Never deleted; an update is the withdrawal, once, or the erase's blanking of the note. |
 
@@ -2970,6 +2971,113 @@ invoice's snapshots, so a row renders the same bytes every time (its creation da
 The English letter says the same in English. The words are pinned by text goldens of
 each level in both languages ([`testdata/reminders`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/invoices/testdata/reminders)).
 
+### Paper and posting
+
+**A paper letter is sent when it is posted, and only on the day it bears.** A run makes a
+paper letter `awaiting_print`, without facts. A person prints letters for the day they
+will go in the post — a **print batch** — and each letter is judged again for that day
+and given that day's facts; when the person confirms the batch was posted that day, its
+letters are `sent`. Posted on any other day, the batch is reprinted and its letters
+printed again for the right one. Every fact on a letter — R7's 14 days, R10's passed
+deadline, the six-month reset, the inkassosats, the regime and its review, the deadline
+itself — is judged for its posting day: posted earlier, a letter would carry a fee judged
+for a later day; posted later, it would give the debtor less time than it says
+(inkassoloven § 9, inkassoforskriften § 1-2). A printed letter is in flight
+([The rules](#the-rules)): no run writes to its invoice, and it counts for no fee, until
+it is posted or reprinted.
+
+**`invoices.reminder_print_batches`** is one batch: `post_on`, who made it and when, and
+either the posting — `posted_on`, `posted_by_user_id` and `posted_at`, set together once
+— or the reprint, `reprinted_at`, set once; never both, and never anything else.
+
+**Printing.** `POST /invoices/reminder-print-batches` `{reminderIds, postOn}`
+(`invoices:access` and `invoices:payments`):
+
+- `reminderIds` names 1 to 200 letters, each once and each a letter; `postOn` is today or
+  one of the next 7 days (Oslo) — each a 400 on its field. Without an object store, 503
+  `storage_unavailable`. Then every letter is read on the pool: one that is not
+  `awaiting_print` is 409 **`reminder_not_awaiting_print`**, naming it. Nothing is
+  written before these.
+- The batch row is inserted, and then **each letter in its own transaction: its invoice
+  `FOR UPDATE`, then the letter `FOR NO KEY UPDATE`, then the collection rates in force on
+  `postOn` `FOR KEY SHARE`** — of each kind the row a letter dated `postOn` relies on, the
+  rows [deleting a rate](#collection-rates) judges "used". The rate's `DELETE` takes its
+  row `FOR UPDATE` first, so it waits for the letter's transaction and then sees the
+  letter printed, and is refused; or it deleted the row before, and the letter is judged
+  without it. The letter is then judged on `L = postOn`, with itself left out of the
+  letters in flight, as the worker's first step judges an e-mail letter
+  ([The worker](#the-worker)):
+  - a letter no longer `awaiting_print` under its lock — withdrawn meanwhile, or printed
+    by another batch naming it — is **left out** as it is, `not_awaiting_print`;
+  - one that on `postOn` needs a rate with no row for a half-year, or would carry a fee or
+    be a collection notice past the regime review, is **left out and stays
+    `awaiting_print`**, with `collection_rates_outdated` (naming the kind and the
+    half-year) or `collection_regime_unreviewed` — as a run refuses and the worker waits;
+  - one the engine no longer gives on `postOn` — the principal settled, the invoice held
+    or handed off, the customer's policy `none` or the customer anonymised, another action
+    or level — is **withdrawn** with that reason and no user, and left out;
+  - every other gets its facts — `sent_on` is `postOn`, the deadline runs from it, the
+    fee or compensation, the interest to that day — and is **`printed`** in the batch.
+- After the last letter, outside any transaction, each printed letter's PDF is rendered
+  from its row and stored once under its hash's key, `reminders/<invoiceId>/<reminderId>-<postOn>-<sha256>.pdf`,
+  and recorded on the letter while it is still printed in the batch. A store that fails
+  is logged; the letter stays printed, and the batch's PDF is rendered from the rows
+  anyway.
+- 201 with the batch and its letters, `pdfUrl` — its combined PDF — and `leftOut`, each
+  letter left out with its invoice and reason.
+
+**The combined PDF.** `GET /invoices/reminder-print-batches/{id}/pdf` (`invoices:access`
+and `invoices:payments`) renders the batch's **`printed` and `sent`** letters — never one
+withdrawn since printing — from their rows, in id order, each starting on a page of its
+own, read in one snapshot and rendered after it: the same pages as often as it is asked
+for, `paper-letters-<id>-<postOn>.pdf`, `Cache-Control: private, no-store`. 404 for no
+batch, or one with no printed or sent letter (reprinted, or every letter withdrawn or
+left out).
+
+**Confirming the posting.** `POST /invoices/reminder-print-batches/{id}/posted`
+`{postedOn}` (`invoices:access` and `invoices:payments`): a `postedOn` after today is a
+400 — no day to come is posted. Then **the batch `FOR NO KEY UPDATE`** (the key-share
+locks its letters' foreign keys take on it never conflict with that), **its letters'
+invoices `FOR UPDATE` in descending id, then each letter**: a batch posted or reprinted
+already is 409 **`print_batch_closed`**; `postedOn` before `postOn` 409
+**`reminder_posted_early`**, after it 409 **`reminder_posted_late`** — reprint the batch.
+On `postOn` itself, **the re-judge**: each `printed` letter is judged on `postOn` again,
+left out of the letters in flight, becomes **`sent`** with `sent_at` the confirmation's
+time, and keeps the facts and the PDF it was printed with — it is in the post already.
+A letter withdrawn by hand since printing is **skipped**, never sent, and listed. A letter
+whose invoice was **settled, put on hold, handed off or its customer anonymised** since
+printing (holds, hand-offs and the erase leave printed letters to the posting), whose
+customer's policy became `none`, whose charges **a lift barred**, or whose re-judged
+outcome **no longer carries the fee or compensation it printed**, has that fee and
+compensation **waived `claimed_in_error`** ([Charges](#charges)) in the same
+transaction, after it is marked sent — a waiver names a sent letter — in the name of
+the person confirming. 200 with the batch, `skipped` and `waived` — each waiver's letter,
+invoice, kinds and reason (`settled`, `on_hold`, `handed_off`, `policy_none`,
+`customer_anonymised`, `charges_barred` or `action_changed`). 404 for no batch.
+
+**Reprinting.** `POST /invoices/reminder-print-batches/{id}/reprint` (`invoices:access`
+and `invoices:payments`): **the batch `FOR NO KEY UPDATE`, then every printed letter of
+it**, which goes back to `awaiting_print` with every fact, its batch and its PDF key
+cleared — a later batch prints it again for its own day, under a new key (the old object
+stays). Letters withdrawn since printing keep naming the batch. A batch posted or
+reprinted already is 409 **`print_batch_closed`**: a batch is reprinted at most once, and
+a posted one never. 200 with the batch; 404 for no batch. **The reprint locks no
+invoice**, the one path that writes a letter without its invoice's lock, and it cannot
+cycle: the reprint never waits on an invoice, so a cycle would need a path holding a
+printed letter of the batch while it waits on something the reprint holds — and none
+does. The worker claims only queued letters; a hold, a hand-off and the erase hold the
+invoice and write only the letters in flight (`queued`, `awaiting_print`, `failed`),
+whose `UPDATE` passes a printed row without waiting on it; a print batch's letter,
+holding its invoice, waits on the letter and on nothing after it; a person's withdrawal
+holds the letter alone; and the posting takes the batch first, so it and a reprint
+queue on the batch row.
+
+**The list.** `GET /invoices/reminder-print-batches` (`invoices:access` and
+`invoices:payments`) answers the batches newest first, each with its letters, paged (25
+by default, at most 100): `posted=true` the posted ones, `posted=false` the open ones —
+neither posted nor reprinted, which the paper page lists to post — absent, all. 400 on
+paging.
+
 ## Holds and the hand-off to collection
 
 An invoice the customer disputes is put **on hold**, and one a collection agency has
@@ -3420,6 +3528,11 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `GET /reminders/{id}/pdf` | | 404; 409 `reminder_not_sent`; 500 a missing or altered stored object; 503 `storage_unavailable` |
 | `POST /reminders/{id}/withdraw` | `invoices:payments` | 400 on `reason`; 404; then under the letter's lock 409 `reminder_not_withdrawable` (sent, withdrawn, or being sent) |
 | `POST /reminders/{id}/retry` | `invoices:payments` | 404; then under the letter's lock 409 `reminder_not_failed` |
+| `GET /reminder-print-batches` | `invoices:payments` | 400 paging |
+| `POST /reminder-print-batches` | `invoices:payments` | 400 on `reminderIds` (none, over 200, one twice, an unknown id) or `postOn` (before today, more than 7 days on); 503 `storage_unavailable`; 409 `reminder_not_awaiting_print` (naming the letter) — all before anything is written |
+| `GET /reminder-print-batches/{id}/pdf` | `invoices:payments` | 404 no batch, or none of its letters printed or sent |
+| `POST /reminder-print-batches/{id}/posted` | `invoices:payments` | 400 `postedOn` after today; 404; then under the batch's lock 409 `print_batch_closed`, `reminder_posted_early`, `reminder_posted_late` |
+| `POST /reminder-print-batches/{id}/reprint` | `invoices:payments` | 404; then under the batch's lock 409 `print_batch_closed` |
 | `PUT /customers/{customerId}/reminder-policy` | `invoices:payments` | 400 on `mode` or `note`; 404 the customer has no document here, or is anonymised |
 | `GET /vat-codes` | | |
 | `POST /vat-codes` | `invoices:manage` | 400 on the field, a duplicate code on `code` |

@@ -157,6 +157,10 @@ under en lås på 60 sekunder og sender aldri et brev to ganger med vilje.
   under selgerens navn, med svar til e-postadressen i **Fakturainnstillinger**. Uten
   e-post (`MAIL_DRIVER` er ikke `smtp`) gjør en purrekjøring **hvert brev til et
   papirbrev**, med varselet `mail_unavailable`, og ingenting sendes på e-post.
+- **Papirbrev trenger verken jobben eller e-post.** En person skriver dem ut i en bunke
+  for dagen de skal postlegges, og bekrefter postleggingen; bunken lagrer PDF-en til hvert
+  brev i det samme objektlageret, på samme måte
+  ([papir og postlegging](/en/reference/invoices/#paper-and-posting)).
 - **Den trenger et objektlager.** PDF-en til hvert brev lagres én gang, før det sendes,
   under `reminders/` ([Objektlagring](/nb/admin/object-storage/)); et lager som ikke kan
   skrives til, gir et mislykket forsøk.

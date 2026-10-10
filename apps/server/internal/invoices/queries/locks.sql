@@ -76,6 +76,21 @@ FOR UPDATE;
 -- waited for, and its letter seen.
 SELECT * FROM invoices.collection_rates WHERE id = @id FOR UPDATE;
 
+-- name: ShareCollectionRatesInForce :many
+-- ShareCollectionRatesInForce reads FOR KEY SHARE, in id order, the rows a
+-- letter dated @day relies on as the DELETE judges "used" (rates.sql's
+-- GetCollectionRate, plan reading 6): of each kind, the row in force on that
+-- day. A print batch takes it in each letter's transaction before it judges
+-- the letter, so a DELETE — which takes its row FOR UPDATE first — either
+-- waits for the letter and then sees it printed, or deleted the row before
+-- the batch read the rates, which then judge without it.
+SELECT r.id FROM invoices.collection_rates r
+WHERE r.valid_from <= @day::date
+  AND NOT EXISTS (SELECT 1 FROM invoices.collection_rates n
+      WHERE n.kind = r.kind AND n.valid_from > r.valid_from AND n.valid_from <= @day::date)
+ORDER BY r.id
+FOR KEY SHARE OF r;
+
 -- name: LockInvoicesDescending :many
 -- LockInvoicesDescending takes several invoices FOR UPDATE in descending id,
 -- the module's invariant (R/invoices.md's lock order): the queue's apply and
