@@ -10,7 +10,8 @@ import { enabledModuleKeys } from "./enabled-modules";
  * may search customers — the buyer picker reads the customers module's list,
  * which needs `customers:view` (invoices foundation design D1) — whether it
  * may make a draft (`invoices:create`, the customer page's Invoices tab), the
- * name a new draft's "Vår ref." is prefilled with, and the caller's id, so the
+ * name a new draft's "Vår ref." is prefilled with, whether it may change a
+ * customer's reminder policy (`invoices:payments`), and the caller's id, so the
  * Payments area says "you" of an import or an event of theirs. Both queries share the
  * root layout's keys, so they read its cache rather than refetching.
  */
@@ -30,6 +31,11 @@ export const useInvoiceAccess = () => {
     canCreateInvoices:
       hasPermissions(authorization.data?.permissions, ["invoices:access"]) &&
       hasPermissions(authorization.data?.permissions, ["invoices:create"]),
+    // The reminder policy is read with invoices:access and changed with
+    // invoices:payments (invoices payments and reminders design D7).
+    canChangeReminderPolicy:
+      hasPermissions(authorization.data?.permissions, ["invoices:access"]) &&
+      hasPermissions(authorization.data?.permissions, ["invoices:payments"]),
     userDisplayName: session.data?.user.displayName,
     userId: session.data?.user.id,
   };

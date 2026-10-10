@@ -30,13 +30,22 @@ vi.mock("@vantigo/invoices-ui", () => ({
     customerId,
     canCreate,
     userDisplayName,
+    canChangeReminderPolicy,
+    currentUserId,
   }: {
     customerId: number;
     canCreate: boolean;
     userDisplayName?: string;
+    canChangeReminderPolicy?: boolean;
+    currentUserId?: string;
   }) => (
     <div>
-      customer {customerId} canCreate {String(canCreate)} as {userDisplayName ?? "nobody"}
+      <div>
+        customer {customerId} canCreate {String(canCreate)} as {userDisplayName ?? "nobody"}
+      </div>
+      <div>
+        policy changeable {String(canChangeReminderPolicy)} by {currentUserId ?? "nobody"}
+      </div>
     </div>
   ),
   UninvoicedWorkPanel: ({ customerId, canInvoice }: { customerId: number; canInvoice?: boolean }) => (
@@ -89,6 +98,17 @@ describe("the customer page's invoices tab", () => {
   it("offers a new invoice on an active customer with invoices:create and customers:view, as the signed-in user", () => {
     renderTab(creator);
     expect(screen.getByText("customer 42 canCreate true as Kari Nordmann")).toBeInTheDocument();
+  });
+
+  // The reminder policy is read with invoices:access and changed with
+  // invoices:payments (invoices payments and reminders design D7).
+  it("lets a caller with invoices:payments change the customer's reminder policy, as the signed-in user", () => {
+    renderTab(["invoices:access", "invoices:payments"]);
+    expect(screen.getByText("policy changeable true by user-1")).toBeInTheDocument();
+
+    cleanup();
+    renderTab(creator);
+    expect(screen.getByText("policy changeable false by user-1")).toBeInTheDocument();
   });
 
   it("offers no new invoice without invoices:create or without customers:view", () => {

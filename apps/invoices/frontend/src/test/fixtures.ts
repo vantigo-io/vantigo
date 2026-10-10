@@ -1232,3 +1232,157 @@ export const ehfState = (status: EhfStatus, overrides: Partial<EhfState> = {}): 
 /** Document 1001 (invoice number 1000), issued, with its `ehf` block in `status`. */
 export const ehfDocument = (status: EhfStatus, ehf: Partial<EhfState> = {}, overrides: Partial<InvoiceDocument> = {}) =>
   issued({ ehf: ehfState(status, ehf), ...overrides });
+
+type Reminder = components["schemas"]["InvoicesReminder"];
+
+/**
+ * A reminder letter of invoice 1001 as the server sends it — a wire literal:
+ * letter 1, e-mailed and sent on 15 October with its facts, a fee of 35 and
+ * interest of 1.20 on the 74.99 open, deadline 29 October.
+ */
+export const reminderLetter = (overrides: Partial<Reminder> = {}): Reminder => ({
+  id: 3001,
+  invoiceId: 1001,
+  runId: 11,
+  sequence: 1,
+  level: "reminder",
+  announcesCollection: false,
+  channel: "email",
+  recipient: "purring@acme.no",
+  language: "nb",
+  status: "sent",
+  attempts: 1,
+  createdAt: "2026-10-15T07:00:00Z",
+  createdBy: CURRENT_USER_ID,
+  sentOn: "2026-10-15",
+  sentAt: "2026-10-15T07:01:00Z",
+  deadline: "2026-10-29",
+  regime: "inkassolov_1988",
+  principalOpen: 74.99,
+  feeKind: "reminder_fee",
+  fee: 35,
+  compensation: 0,
+  chargesEarlier: 0,
+  interest: 1.2,
+  interestWaived: 0,
+  interestPaid: 0,
+  interestFrom: "2026-10-02",
+  interestSegments: [{ from: "2026-10-02", to: "2026-10-15", base: 74.99, rate: 12.25 }],
+  total: 111.19,
+  ...overrides,
+});
+
+/**
+ * Invoice 1000, overdue and reminded — a wire literal: letter 1 sent with a
+ * fee of 35 and interest of 1.20; letter 2 printed in batch 7; letter 3
+ * queued and held for an outdated rate; letter 4 failed; letter 5 withdrawn by
+ * Vantigo when the invoice was settled meanwhile; letter 6 withdrawn by
+ * another user with their reason. Charges: 36.20 claimed, 10 paid, 26.20
+ * outstanding, interest of 2.10 accrued today. Delivered by e-mail; one
+ * delivery handed over and recorded by hand, one posted and removed.
+ */
+export const reminded = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument =>
+  partlyPaid({
+    state: "overdue",
+    reminders: [
+      reminderLetter(),
+      reminderLetter({
+        id: 3002,
+        sequence: 2,
+        channel: "paper",
+        recipient: "",
+        status: "printed",
+        printBatchId: 7,
+        sentOn: "2026-11-02",
+        sentAt: undefined,
+        deadline: "2026-11-16",
+        fee: 35,
+        interest: 1.8,
+        total: 146.79,
+      }),
+      reminderLetter({
+        id: 3003,
+        sequence: 3,
+        status: "queued",
+        heldReason: "collection_rates_outdated",
+        sentOn: undefined,
+        sentAt: undefined,
+        deadline: undefined,
+        fee: undefined,
+        interest: undefined,
+        total: undefined,
+      }),
+      reminderLetter({
+        id: 3004,
+        sequence: 4,
+        status: "failed",
+        attempts: 12,
+        lastError: "550 mailbox unavailable",
+        failedAt: "2026-11-05T07:00:00Z",
+        sentOn: undefined,
+        sentAt: undefined,
+        deadline: undefined,
+        total: undefined,
+      }),
+      reminderLetter({
+        id: 3005,
+        sequence: 5,
+        status: "withdrawn",
+        withdrawnAt: "2026-11-06T07:00:00Z",
+        withdrawalReason: "settled",
+        sentOn: undefined,
+        sentAt: undefined,
+        total: undefined,
+      }),
+      reminderLetter({
+        id: 3006,
+        sequence: 6,
+        level: "collection_notice",
+        status: "withdrawn",
+        withdrawnAt: "2026-11-07T07:00:00Z",
+        withdrawnBy: OTHER_USER_ID,
+        withdrawalReason: "Kunden ringte",
+        sentOn: undefined,
+        sentAt: undefined,
+        total: undefined,
+      }),
+    ],
+    charges: { claimed: 36.2, waived: 0, paid: 10, outstanding: 26.2, interestToday: 2.1 },
+    chargePayments: [
+      {
+        id: 4001,
+        paidOn: "2026-10-20",
+        amount: 10,
+        currency: "NOK",
+        source: "manual",
+        reference: "Gebyr del 1",
+        note: "",
+        registeredAt: "2026-10-20T08:00:00Z",
+        registeredByUserId: CURRENT_USER_ID,
+      },
+    ],
+    waivers: [],
+    manualDeliveries: [
+      {
+        id: 5001,
+        kind: "handed_over",
+        deliveredOn: "2026-09-01",
+        note: "Levert i resepsjonen",
+        recordedAt: "2026-09-01T12:00:00Z",
+        recordedByUserId: CURRENT_USER_ID,
+      },
+      {
+        id: 5002,
+        kind: "posted",
+        deliveredOn: "2026-09-02",
+        note: "",
+        recordedAt: "2026-09-02T12:00:00Z",
+        recordedByUserId: OTHER_USER_ID,
+        removedAt: "2026-09-03T12:00:00Z",
+        removedByUserId: OTHER_USER_ID,
+        removalReason: "Feil faktura",
+      },
+    ],
+    nextAction: { action: "blocked", reasons: ["letter_pending"], chargeNotes: [] },
+    ...overrides,
+  });

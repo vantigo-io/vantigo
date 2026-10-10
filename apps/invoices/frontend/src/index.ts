@@ -25,4 +25,4 @@ export { InvoicePage, type InvoicePageProps } from "./pages/invoice";
 export { InvoicesPage, type InvoicesPageProps } from "./pages/invoices";
 export { JournalPage } from "./pages/journal";
 export { PaymentsPage, type PaymentsPageProps } from "./pages/payments";
-export { SettingsPage } from "./pages/settings";
+export { SettingsPage, type SettingsPageProps } from "./pages/settings";

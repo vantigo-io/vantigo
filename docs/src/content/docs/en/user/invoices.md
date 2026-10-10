@@ -817,40 +817,37 @@ refused, in words, and nothing changes.
 
 ## Reminders
 
-Reminders are on their way to Vantigo: letters for overdue invoices, with the fee, the
-compensation and the late interest the law allows. Three things they rest on can already
-be set — through the API for now; the screens come with the reminders themselves
-([reminders](/en/reference/invoices/#reminders)):
+Vantigo sends reminders for overdue invoices: letters with the fee, the compensation and
+the late interest the law allows, by e-mail or on paper
+([reminders](/en/reference/invoices/#reminders)). What they claim is kept apart from what
+the invoice itself is for, and every figure in a letter is fixed on the day it is sent.
 
-- **Collection rates**: the statutory late interest rate, the business compensation and
-  the inkassosats, as dated rows that Vantigo's releases fill in. Someone with
-  `invoices:manage` can add a rate that takes effect after today — and after the date of
-  the latest printed or sent letter — ahead of a release, and delete one that is not yet in force and that no letter has used.
-- **Reminder settings**: whether reminders are offered at all, how long after the due
-  date the first letter comes, each letter's deadline, the charges for people and for
-  businesses, and the day the new inkasso law takes effect, with its review
-  (`invoices:manage`).
-- **A customer's reminder policy**: normal, no charges, or no reminders at all, with a
-  note. Someone with `invoices:payments` sets it, for a customer with an invoice or a
-  draft here. When two customers are merged the stricter policy wins.
+**An invoice's letters.** An issued invoice's page has a **Reminders** card. At its top it
+says what comes next, as Vantigo judges it today: *Next: a reminder*, *Next: a debt
+collection notice* or *Next: hand the invoice to a collection agency* — a suggestion;
+Vantigo never does it itself — from a day, with the letter as it would go today: its total,
+its deadline, its fee, compensation and interest. Or it says why no letter goes — the
+invoice is on hold, handed off, the customer is not to be reminded, reminders are switched
+off, a letter is on its way, the last letter's deadline has not passed, no delivery by the
+due date is recorded, a collection rate is missing for a half-year, or the regime is not
+reviewed — and why a letter claims less than it might, such as *No fee: fewer than 14 days
+have passed since the last letter.* Below it, each letter by its number: a **Reminder**,
+a reminder announcing the hand-off to collection, or a **Debt collection notice**; how it
+goes (**E-mail**, with the address, or **Paper**); its status — **Queued**, **Awaiting
+print**, **Printed, not confirmed posted** (with its print batch), **Sent**, **Failed** or
+**Withdrawn** — with why a queued letter waits, why a failed one failed, and why and by whom
+one was withdrawn; its date, deadline and total. A printed or sent letter's **PDF** is
+downloaded beside it by anyone who can read the invoice. Someone with `invoices:payments`
+can **Withdraw** a letter not yet sent, with a reason — a printed one may already be in the
+post, so pull it first; one being e-mailed at that moment is refused — and **Send again** a
+failed one.
 
-**Reminder charges and deliveries recorded by hand.** An issued invoice now also carries
-what its reminders claim — reminder fees, the compensation and late interest, kept apart
-from what the invoice itself is for — with the payments and waivers of those charges,
-and the deliveries recorded by hand that a charge needs when the invoice was handed over
-or posted rather than e-mailed or sent as EHF. Such a record cannot be removed while a
-reminder — sent, printed or on its way — claims a charge that rests on it alone. Their
-screens come with reminders; until then they are in the API ([charges](/en/reference/invoices/#charges),
-[the delivery fact](/en/reference/invoices/#the-delivery-fact)).
-
-**The overdue list and reminder runs.** Vantigo now judges every overdue invoice: what
-comes next — a reminder, a debt collection notice, a suggested hand-off to a collection
-agency, or why it waits or is blocked — with the letter as it would go today, its fee,
-compensation, interest and deadline, and whether the bank data is recent enough to trust.
-Someone with `invoices:payments` previews a run and then makes it: the letters are
+**The overdue list and reminder runs.** Vantigo judges every overdue invoice: what comes
+next, with the letter as it would go today, and whether the bank data is recent enough to
+trust. Someone with `invoices:payments` previews a run and then makes it: the letters are
 created, by e-mail to the customer's reminder address or on paper, and their figures are
-fixed when they are sent. An invoice shows its letters and what comes next. The screens
-come with the letters' sending; until then the list and the runs are in the API
+fixed when they are sent. The Overdue screens come with the list and the paper letters;
+until then the list and the runs are in the API
 ([the overdue list](/en/reference/invoices/#the-overdue-list),
 [runs](/en/reference/invoices/#runs)).
 
@@ -867,24 +864,6 @@ grace at 3 days or more when your bank files are camt.054.
 due before a day, as the overdue list can — and must be, when more than 5 000 invoices are
 overdue.
 
-**Disputed invoices and the hand-off to a collection agency.** Someone with
-`invoices:payments` can put an invoice the customer disputes on hold: no reminder goes
-while it is held, the late interest keeps running, and payments are still registered.
-When the hold is lifted, Vantigo asks whether the objection was obviously groundless; if
-it was not, every reminder fee and compensation already claimed on the invoice is waived
-and none is claimed on it again. An invoice handed to a collection agency is recorded the
-same way — with the day, the agency and its case number — and Vantigo then sends it no
-more letters; a payment you receive directly is still registered, and you tell the agency
-about it. Vantigo refuses to record the hand-off of an invoice it has no delivery of by
-the due date until you confirm it; if the invoice was in fact delivered, record the
-delivery first. Holding or handing off an invoice withdraws its letters that have not gone
-yet, but not a printed letter, which may already be in the post, nor one being e-mailed at
-that moment: those are named so you can pull them. The collection file — one row per
-invoice, the amount owed apart from the fees and interest, and what was waived in a column
-of its own — is exported for the agency. The screens come with the invoice page's
-reminder cards; until then this is in the API
-([holds and the hand-off](/en/reference/invoices/#holds-and-the-hand-off-to-collection)).
-
 **How a letter by e-mail is sent.** Vantigo sends the e-mailed letters itself, in the
 background, one at a time. Each is judged again on the day it goes: its date, its deadline
 — at least 14 days on — its fee and its interest are that day's, not the run's, and a
@@ -893,11 +872,8 @@ paid, put on hold or handed off meanwhile gets no letter, and the letter is with
 the reason. The letter is a PDF, attached to a short e-mail in the customer's language,
 with replies going to your invoicing e-mail. A letter whose rates or regime review are
 missing waits, and goes once they are in place. A letter the mail server keeps refusing
-fails after 48 hours; it can then be sent again or withdrawn, and any letter not yet sent
-can be withdrawn, with your reason — but not while it is being e-mailed. A printed or sent
-letter's PDF can be downloaded. The screens come with the invoice page's reminder cards;
-until then this is in the API ([letters](/en/reference/invoices/#letters),
-[the worker](/en/reference/invoices/#the-worker)).
+fails after 48 hours; it can then be sent again or withdrawn from the **Reminders** card
+([letters](/en/reference/invoices/#letters), [the worker](/en/reference/invoices/#the-worker)).
 
 **Letters on paper.** A paper letter goes when it is posted. Someone with
 `invoices:payments` prints the letters awaiting print for the day they will be posted —
@@ -912,6 +888,130 @@ again for the day it goes. A batch confirmed posted, or reprinted, while it is s
 printed keeps the letters already printed in it; the rest are named and wait for another
 batch. The screens come with the Overdue area; until then this is in
 the API ([paper and posting](/en/reference/invoices/#paper-and-posting)).
+
+### Charges
+
+The invoice page's **Reminder charges** card shows what the letters claim, apart from the
+invoice's own open amount: **Claimed** — the fees and the compensation the sent letters
+claimed, and the latest letter's interest — **Waived**, **Paid** and **Outstanding**, and
+**Charges owed back** when a charge was paid and then waived (the refund is made outside
+Vantigo). When late interest is on, it also says the interest accrued to today — a figure
+only; a letter claims it. Below, every charge payment, a removed one struck through with its
+reason, and every waiver ([charges](/en/reference/invoices/#charges)).
+
+Someone with `invoices:payments` clicks **Register a charge payment** while charges are
+outstanding: **Paid on** (today, on or after the issue date and not after today) and
+**Amount** — prefilled with the charges outstanding, and never more: an overpayment is
+refused with the outstanding named — with a **Reference** and a **Note**. A charge payment
+pays the fees and the compensation first, the oldest letter first, then the interest. A
+wrong one is removed with a reason, as a payment is. A payment of the invoice itself is
+registered on the **Payments** card; a bank payment that covers both is split in the
+exception queue.
+
+### Waiving a charge
+
+Click **Waive** on the **Reminder charges** card (`invoices:payments`) and tick what to
+release: the fee or the compensation of a sent letter — the letter's whole charge — or the
+interest the latest letter claimed, which is waived as an amount: what it claimed and is
+still unpaid, nothing accrued since. Choose the **Reason** — *The objection was upheld*,
+*Claimed in error* or *Goodwill* — and add a note. A waiver is never removed. The waivers
+list each charge with its letter, the amount, the reason and who waived it and when; an
+interest waiver names the day its letter claimed the interest through, and a waiver the
+bank match made says *Paid by the deadline after all*. A charge that is not claimed, or is
+waived already, is refused in words. The letters themselves are history and keep what they
+said.
+
+### Recording a delivery
+
+A reminder may claim a fee, compensation or interest only on an invoice delivered by its due
+date: by e-mail, as EHF, or recorded by hand. When you handed the invoice over or posted it,
+click **Record a delivery** on the card **Sent by e-mail** (`invoices:issue`), choose **Handed
+over** or **Posted**, the day — from the issue date to today — and a note, and click
+**Record**. The card lists the records under **Recorded by hand**, with who recorded each. A
+mistaken record is removed with a reason and stays, struck through; Vantigo refuses the
+removal while a reminder's charge rests on that delivery alone — waive those charges as
+*Claimed in error* first ([the delivery fact](/en/reference/invoices/#the-delivery-fact)).
+Without a delivery by the due date, only fee-free reminders go, and neither a debt
+collection notice nor the hand-off.
+
+### A disputed invoice
+
+When the customer disputes an invoice, someone with `invoices:payments` clicks **Put on
+hold** on the **Dispute** card and says what is disputed. While it is held no reminder goes,
+the late interest keeps running, and payments are still registered. Letters not yet gone
+are withdrawn; a printed letter — it may be in the post — and one being e-mailed at that
+moment are not, and the page names them under **Letters that were not withdrawn**, each
+printed one with **Withdraw** once you have pulled it.
+
+**Lift the hold** asks *Was the objection obviously groundless?* The answer starts at
+**No — it had reasonable grounds**: every fee and compensation claimed on the invoice is
+then waived (the objection upheld), and none is claimed on it again — the card says so
+afterwards. Only **Yes — it was obviously groundless** keeps the charges. Late interest is
+not a cost and runs on either way
+([holds](/en/reference/invoices/#holds-and-the-hand-off-to-collection)).
+
+### Handing an invoice to collection
+
+Vantigo does not send claims to a collection agency; it records that you did. On the
+**Collection** card (`invoices:payments`), **Export for the agency** downloads this
+invoice's collection file — the amount owed apart from the fees and interest, and what was
+waived in a column of its own. Then click **Hand off to collection** and give the day it
+was handed over (not before the issue date, not after today), the **Collection agency** and
+**The agency's case number**. An invoice with no delivery recorded by its due date is
+refused in words: if it was delivered, click **It was delivered: record the delivery**;
+otherwise tick **Hand it off anyway, without a delivery by the due date** and hand it off
+again. As with a hold, the letters not yet gone are withdrawn and the printed ones named.
+
+While it is handed off no letter goes, and payments are still registered: the
+**Payments** card says *Report every payment you receive directly to the agency.* When the
+claim comes back, **Withdraw the hand-off** with the day and the reason; letters may follow
+again.
+
+### Reminder settings, the regime and rates
+
+Under **Invoice settings** (`invoices:manage`) the **Reminders** card sets when reminders go
+and what they claim; a change applies to the letters made afterwards:
+
+- **Offer reminders** — off, no letter is made.
+- **First reminder, days after the due date** (1 to 60), **Each letter's deadline, in days**
+  (14 to 60 — the law asks at least 14), **Grace days after a deadline** (1 to 10) and
+  **Reminders before the debt collection notice** (0 to 2).
+- **Send a debt collection notice** — your own inkassovarsel, under the 1988 act only.
+- **Charge to a person** (the reminder fee or nothing) and **Charge to a business** (the
+  reminder fee, the business compensation or nothing — never both), and **Claim late
+  interest**.
+- **Bank data is old after, in days** (1 to 30): a run that claims charges on older bank
+  data asks you to confirm it.
+- **The collection-law regime**: the new debt collection act takes effect on a day not yet
+  set, and from that day no letter carries a fee. **The new act applies from** stays empty
+  until the day is known. **Regime reviewed through** is the last day a fee or a notice is
+  made under the 1988 act without anyone having looked again — at most a year ahead; the card
+  says who reviewed it last. Past it, fee-bearing letters and notices wait.
+
+If a colleague saved the settings while you edited, the card says **The reminder settings
+changed** and offers **Reload**.
+
+The **Collection rates** card lists the **Late interest rate**, the **Business
+compensation** and the **Inkassosats** as dated rows that Vantigo's releases fill in, each in
+force from its day until the next of its kind; the row in force today is marked **In force**.
+**Add a rate** adds a row ahead of a release: its kind, the day it takes effect — after
+today and after the latest printed or sent letter, and on 1 January or 1 July for the
+interest rate and the compensation — its value within the kind's bounds (interest 0.01 to
+30 percent; compensation 100 to 2 000 and inkassosats 100 to 5 000 kroner) and the
+regulation. A row of the same kind and day is refused in words. Your own rows not yet in
+force that no letter used can be deleted; a release's rows never. When a release brings
+another value for a row a manager added, the card warns and marks the row with the
+release's value ([collection rates](/en/reference/invoices/#collection-rates)).
+
+### A customer's reminder policy
+
+A customer's **Invoices** tab ends with the **Reminder policy** card: **Normal** (letters as
+the reminder settings make them), **No charges** (letters without a fee, compensation or
+interest) or **No reminders** (no letter at all; the customer's overdue invoices are still
+listed), with a note and who set it. Anyone with `invoices:access` reads it; someone with
+`invoices:payments` changes it and clicks **Save**. A customer with no invoice or draft
+here, or one anonymised, takes no policy, and the card says so. When two customers are
+merged the stricter policy wins.
 
 ## Sending a document by e-mail
 
@@ -1121,7 +1221,9 @@ for that customer — *delivered today until you change it* — and opens the ed
 offered with `invoices:create` and `customers:view`, and only on an active customer,
 never an archived, disabled, merged or anonymised one. Above the list, the card
 **Uninvoiced work** shows the customer's work not yet invoiced to whoever holds
-`invoices:create` as well ([Invoicing work](#invoicing-work)).
+`invoices:create` as well ([Invoicing work](#invoicing-work)). Below it, the card
+**Reminder policy** says whether the customer is reminded and charged, changed with
+`invoices:payments` ([A customer's reminder policy](#a-customers-reminder-policy)).
 
 ## Retention and anonymised customers
 
@@ -1144,9 +1246,9 @@ No built-in role holds these; an Owner holds everything
 
 | You want to | You need |
 | --- | --- |
-| Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list | `invoices:access` |
+| Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list, see an invoice's reminders, charges, deliveries, hold and hand-off and download a letter's PDF, read a customer's reminder policy | `invoices:access` |
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
-| Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission | `invoices:issue` |
-| Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file | `invoices:payments` |
+| Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one | `invoices:issue` |
+| Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file | `invoices:payments` |
 | Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings; change a bank account's file format under **Payments** | `invoices:manage` |
