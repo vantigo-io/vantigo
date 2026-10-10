@@ -37,6 +37,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import type { LetterLeft } from "../api/collection";
 import { deductibleQueryOptions } from "../api/deductible";
 import {
   creditInvoice,
@@ -51,18 +52,23 @@ import {
 import { type InvoicesMeta, invoicesMetaQueryOptions } from "../api/meta";
 import { ApiConflictError, ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import { vatCodesQueryOptions } from "../api/vat-codes";
+import { ChargesCard } from "../components/charges-card";
 import { CustomerPicker } from "../components/customer-picker";
 import { DeliveriesCard } from "../components/deliveries-card";
 import { DocumentLink } from "../components/document-link";
 import { EhfCard } from "../components/ehf-card";
+import { HandoffCard } from "../components/handoff-card";
+import { HoldCard } from "../components/hold-card";
 import { PaymentsCard } from "../components/payments-card";
 import { PdfButton } from "../components/pdf-button";
+import { RemindersCard, WithdrawReminderModal } from "../components/reminders-card";
 import { StaleAlert } from "../components/stale-alert";
 import { StateBadge } from "../components/state-badge";
 import { invoicesCatalog } from "../i18n";
 import { fieldRefusals, refusalMessage, warningMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { documentTotals, lineAmounts } from "../lib/money";
+import { letterName } from "../lib/reminders";
 import { invoiceLinkOptions } from "../lib/routes";
 import { draftRate } from "../lib/vat";
 import { DeductModal } from "./-deduct-modal";
@@ -74,13 +80,15 @@ export interface InvoicePageProps {
   invoiceId: number;
   /** Whether the caller holds `customers:view`, which changing the buyer needs (D1). */
   canViewCustomers: boolean;
+  /** The signed-in user, so a hold, a waiver or a letter withdrawn by them says "you". */
+  currentUserId?: string;
 }
 
 /**
  * One document (D12): a draft's editor, or an issued document's page. The
  * route owns the id and hands it over as a number.
  */
-export const InvoicePage = ({ invoiceId, canViewCustomers }: InvoicePageProps) => {
+export const InvoicePage = ({ invoiceId, canViewCustomers, currentUserId }: InvoicePageProps) => {
   const { t, date } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
   const document = useQuery(invoiceQueryOptions(invoiceId));
@@ -125,7 +133,7 @@ export const InvoicePage = ({ invoiceId, canViewCustomers }: InvoicePageProps) =
       canViewCustomers={canViewCustomers}
     />
   ) : (
-    <IssuedDocument document={document.data} meta={meta.data} />
+    <IssuedDocument document={document.data} meta={meta.data} currentUserId={currentUserId} />
   );
 };
 
@@ -1262,9 +1270,20 @@ const Totals = ({ currency, rates, net, vat, gross, paid, open, refundDue }: Tot
  * primary action by channel precedence, else offered on the card (EHF and
  * KID design D10).
  */
-const IssuedDocument = ({ document: doc, meta }: { document: InvoiceDocument; meta: InvoicesMeta }) => {
+const IssuedDocument = ({
+  document: doc,
+  meta,
+  currentUserId,
+}: {
+  document: InvoiceDocument;
+  meta: InvoicesMeta;
+  currentUserId?: string;
+}) => {
   const { t, money, unitPrice, date, number } = useInvoiceFormat();
   const { canIssue, canRegisterPayments, canSend, canSendEhf } = meta.capabilities;
+  // The letters a hold, a lift, a hand-off or its withdrawal left alone (D11),
+  // named until the person dismisses them or acts on them.
+  const [lettersLeft, setLettersLeft] = useState<LetterLeft[]>([]);
   const queryClient = useQueryClient();
   const navigate = useNavigate() as (options: unknown) => void;
   const heading = useHeading(doc);
@@ -1426,8 +1445,44 @@ const IssuedDocument = ({ document: doc, meta }: { document: InvoiceDocument; me
         </Card>
       )}
       {doc.kind === "invoice" && <PaymentsCard invoice={doc} canRegister={canRegisterPayments} today={meta.today} />}
+      {doc.kind === "invoice" && (
+        <>
+          <ChargesCard invoice={doc} canAct={canRegisterPayments} today={meta.today} currentUserId={currentUserId} />
+          <RemindersCard invoice={doc} canAct={canRegisterPayments} currentUserId={currentUserId} />
+          {lettersLeft.length > 0 && (
+            <LettersLeftAlert
+              invoice={doc}
+              letters={lettersLeft}
+              canAct={canRegisterPayments}
+              onDismiss={() => setLettersLeft([])}
+            />
+          )}
+          <SimpleGrid cols={{ base: 1, lg: 2 }}>
+            <HoldCard
+              invoice={doc}
+              canAct={canRegisterPayments}
+              currentUserId={currentUserId}
+              onLettersLeft={setLettersLeft}
+            />
+            <HandoffCard
+              invoice={doc}
+              canAct={canRegisterPayments}
+              canIssue={canIssue}
+              today={meta.today}
+              currentUserId={currentUserId}
+              onLettersLeft={setLettersLeft}
+            />
+          </SimpleGrid>
+        </>
+      )}
       <SimpleGrid cols={{ base: 1, lg: ehf ? 2 : 1 }}>
-        <DeliveriesCard deliveries={doc.deliveries ?? []} />
+        <DeliveriesCard
+          deliveries={doc.deliveries ?? []}
+          invoice={doc.kind === "invoice" ? doc : undefined}
+          canIssue={canIssue}
+          today={meta.today}
+          currentUserId={currentUserId}
+        />
         {ehf && (
           <EhfCard
             document={doc}
@@ -1440,5 +1495,66 @@ const IssuedDocument = ({ document: doc, meta }: { document: InvoiceDocument; me
       {sending && <SendDialog document={doc} defaults={doc.sendDefaults} onClose={() => setSending(false)} />}
       {sendingEhf && <SendEhfDialog document={doc} onClose={() => setSendingEhf(false)} />}
     </Stack>
+  );
+};
+
+/**
+ * The letters a hold, its lift, a hand-off or its withdrawal did not withdraw
+ * (D11, plan reading 9): a printed one — perhaps in the post already — with
+ * "Withdraw" for a caller with `invoices:payments`, once it is pulled; and one
+ * being sent right now, which will be sent.
+ */
+const LettersLeftAlert = ({
+  invoice,
+  letters,
+  canAct,
+  onDismiss,
+}: {
+  invoice: InvoiceDocument;
+  letters: LetterLeft[];
+  canAct: boolean;
+  onDismiss: () => void;
+}) => {
+  const { t } = useInvoiceFormat();
+  const [withdrawing, setWithdrawing] = useState<{ id: number; sequence: number } | null>(null);
+  return (
+    <Alert
+      color="yellow"
+      icon={<IconAlertCircle size={16} />}
+      title={t("lettersLeft.title")}
+      withCloseButton
+      closeButtonLabel={t("lettersLeft.dismiss")}
+      onClose={onDismiss}
+      data-testid="letters-left"
+    >
+      <Stack gap="xs">
+        {letters.map((left) => {
+          const sequence = invoice.reminders?.find((r) => r.id === left.reminderId)?.sequence ?? left.reminderId;
+          const name = letterName(t, sequence);
+          return (
+            <Group key={left.reminderId} gap="xs" justify="space-between" wrap="nowrap">
+              <Text size="sm">
+                {left.status === "printed"
+                  ? left.printBatchId !== undefined
+                    ? t("lettersLeft.printedInBatch", { letter: name, batch: left.printBatchId })
+                    : t("lettersLeft.printed", { letter: name })
+                  : t("lettersLeft.beingSent", { letter: name })}
+              </Text>
+              {canAct && left.status === "printed" && (
+                <Button
+                  size="xs"
+                  variant="default"
+                  aria-label={t("reminder.withdrawOf", { letter: name })}
+                  onClick={() => setWithdrawing({ id: left.reminderId, sequence })}
+                >
+                  {t("reminder.withdraw")}
+                </Button>
+              )}
+            </Group>
+          );
+        })}
+      </Stack>
+      {withdrawing && <WithdrawReminderModal letter={withdrawing} onClose={() => setWithdrawing(null)} />}
+    </Alert>
   );
 };

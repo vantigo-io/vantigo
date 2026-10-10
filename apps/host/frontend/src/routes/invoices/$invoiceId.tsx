@@ -24,5 +24,5 @@ function InvoiceRoute() {
   const { invoiceId } = Route.useParams();
   const access = useInvoiceAccess();
   if (!access.ready) return <ContentSkeleton rows={4} rowHeight={48} />;
-  return <InvoicePage invoiceId={invoiceId} canViewCustomers={access.canViewCustomers} />;
+  return <InvoicePage invoiceId={invoiceId} canViewCustomers={access.canViewCustomers} currentUserId={access.userId} />;
 }

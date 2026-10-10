@@ -1,5 +1,5 @@
-import { Anchor, Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
-import { IconPlus } from "@tabler/icons-react";
+import { Alert, Anchor, Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { IconInfoCircle, IconPlus } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
 import { appUrl } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -32,7 +32,9 @@ const settled = new Set(["paid", "credited"]);
  * struck through with its reason, since the record is the point. Who
  * registered a payment is not shown: a bank line's may have no person. "Register payment" is offered to a caller with
  * `invoices:payments` while something is left to pay, and "Remove" on each
- * live registration.
+ * live registration. While the invoice is handed off to a collection agency
+ * a payment is still registered here, and the card says to report one
+ * received directly to the agency (invoices payments and reminders design D11).
  */
 export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps) => {
   const { t, money, date, dateTime } = useInvoiceFormat();
@@ -40,6 +42,7 @@ export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps)
   const [registering, setRegistering] = useState(false);
   const [removing, setRemoving] = useState<InvoicePayment | null>(null);
   const payments = invoice.payments ?? [];
+  const handoff = invoice.handoff && !invoice.handoff.withdrawnOn ? invoice.handoff : undefined;
   return (
     <Card withBorder data-testid="payments-card">
       <Stack gap="xs">
@@ -51,6 +54,11 @@ export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps)
             </Button>
           )}
         </Group>
+        {handoff && (
+          <Alert color="grape" icon={<IconInfoCircle size={16} />} data-testid="report-to-agency">
+            {t("handoff.reportPayments", { agency: handoff.agency })}
+          </Alert>
+        )}
         {payments.length === 0 ? (
           <Text size="sm" c="dimmed">
             {t("noPayments")}

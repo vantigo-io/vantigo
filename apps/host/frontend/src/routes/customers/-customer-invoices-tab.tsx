@@ -18,7 +18,9 @@ import "../../i18n";
  * draft names its buyer from the customers module), and only on a customer the
  * server would take a draft for — active, neither merged away nor anonymised.
  * An archived or disabled customer, or one still loading, gets no "New
- * invoice".
+ * invoice". Below the list the customer's reminder policy is shown, and changed
+ * by a caller with `invoices:payments` (invoices payments and reminders design
+ * D7).
  *
  * Above the list sits the customer's work not yet invoiced (invoices work
  * design D18), for a caller who may draft an invoice of it — `invoices:access`
@@ -48,6 +50,8 @@ export const CustomerInvoicesTab = () => {
         customerId={customerId}
         canCreate={access.canCreateInvoices && access.canViewCustomers && invoiceable}
         userDisplayName={access.userDisplayName}
+        canChangeReminderPolicy={access.canChangeReminderPolicy}
+        currentUserId={access.userId}
       />
     </>
   );

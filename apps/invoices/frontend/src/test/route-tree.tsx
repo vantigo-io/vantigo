@@ -23,7 +23,8 @@ import { InvoiceRoute } from "./invoice-route";
 /**
  * Stands in for the host routes this package's pages are mounted by: the
  * same paths, so a page test drives a real router and reads the URL back
- * instead of mocking navigation.
+ * instead of mocking navigation. The pages are told the signed-in user is
+ * CURRENT_USER_ID, as the host tells them its session's.
  */
 const makeRouteTree = (canViewCustomers: boolean) => {
   const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: () => <Outlet /> });
@@ -36,7 +37,7 @@ const makeRouteTree = (canViewCustomers: boolean) => {
     createRoute({
       getParentRoute: () => rootRoute,
       path: INVOICE_ROUTE_PATH,
-      component: () => <InvoiceRoute canViewCustomers={canViewCustomers} />,
+      component: () => <InvoiceRoute canViewCustomers={canViewCustomers} currentUserId={CURRENT_USER_ID} />,
     }),
     createRoute({
       getParentRoute: () => rootRoute,

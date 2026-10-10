@@ -59,6 +59,8 @@ import { fieldRefusals, refusalCode, refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { computeKid, kidFits } from "../lib/kid";
 import { rateOn } from "../lib/vat";
+import { CollectionRatesCard } from "./-collection-rates";
+import { ReminderSettingsCard } from "./-reminder-settings";
 
 /** The seller fields issuing needs, in the form's order (D2). */
 const requiredSellerFields = [
@@ -79,15 +81,21 @@ const derivedPeppolId = (organisationNumber: string): string | null =>
 /** The rate a new code or period starts at: 25 % for S, the standard rate; 0 % for every other category. */
 const defaultRate = (category: string): number => (category === "S" ? 25 : 0);
 
+export interface SettingsPageProps {
+  /** The signed-in user, so a review or a rate of theirs says "you". */
+  currentUserId?: string;
+}
+
 /**
  * Invoice settings (D12), `invoices:manage`'s: the seller record with the
  * completeness checklist, the series start read-only once anything is issued,
- * and the VAT codes with their rate periods. The host guards the route with
+ * the VAT codes with their rate periods, and the reminder settings and the
+ * collection rates (invoices payments and reminders design D6, D7). The host guards the route with
  * the permission; the page asks meta's `canManage` too, so a caller whose
  * access changed under it is told why rather than shown a form every save of
  * which is refused.
  */
-export const SettingsPage = () => {
+export const SettingsPage = ({ currentUserId }: SettingsPageProps = {}) => {
   const { t, date } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
   return (
@@ -101,7 +109,7 @@ export const SettingsPage = () => {
       {meta.isPending && <ContentSkeleton rows={6} rowHeight={48} />}
       {meta.data &&
         (meta.data.capabilities.canManage ? (
-          <Settings />
+          <Settings today={meta.data.today} currentUserId={currentUserId} />
         ) : (
           <Alert color="gray" icon={<IconLock size={16} />}>
             {t("settingsNeedManage")}
@@ -111,7 +119,7 @@ export const SettingsPage = () => {
   );
 };
 
-const Settings = () => {
+const Settings = ({ today, currentUserId }: { today: string; currentUserId?: string }) => {
   const { t, date } = useInvoiceFormat();
   const settings = useQuery(invoiceSettingsQueryOptions());
   // The settings the unsaved edits were made on. While there are any, the form
@@ -138,6 +146,8 @@ const Settings = () => {
         />
       )}
       <VatCodesSection />
+      <ReminderSettingsCard today={today} currentUserId={currentUserId} />
+      <CollectionRatesCard today={today} currentUserId={currentUserId} />
     </>
   );
 };
