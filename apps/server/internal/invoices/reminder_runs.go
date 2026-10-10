@@ -155,6 +155,9 @@ func reminderWire(r store.InvoicesReminder, showRecipient bool) (gen.InvoicesRem
 	if r.Regime != nil {
 		w.Regime = ptr(gen.InvoicesReminderRegime(*r.Regime))
 	}
+	if r.HeldReason != nil {
+		w.HeldReason = ptr(gen.InvoicesReminderHeldReason(*r.HeldReason))
+	}
 	if r.FeeKind != nil {
 		w.FeeKind = ptr(gen.InvoicesReminderFeeKind(*r.FeeKind))
 	}

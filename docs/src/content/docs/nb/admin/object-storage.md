@@ -6,6 +6,7 @@ sidebar:
 sources:
   - apps/server/internal/storage
   - apps/server/internal/invoices/bankimport.go
+  - apps/server/internal/invoices/reminderpdf.go
 ---
 Objektlagring er applikasjonsporten Kommunikasjon mellomlagrer og serverer vedlegg
 gjennom. Moduler snakker aldri med en leverandør-SDK: de får et `ObjectStore` avgrenset
@@ -113,7 +114,13 @@ oppbevares slik den ble lastet opp, under `bank-files/<sha256>.ocr` (en OCR-giro
 én gang før importens transaksjon og aldri slettet eller overskrevet, siden den er
 dokumentasjonen for innbetalingene som bokføres fra den (bokføringsloven § 10); en import
 som feiler etter å ha lagret den, etterlater et objekt som neste import av de samme
-bytene bruker igjen ([Innbetalinger fra banken](/nb/admin/payments/)). Et avgrenset lager
+bytene bruker igjen ([Innbetalinger fra banken](/nb/admin/payments/)). PDF-en til et
+purrebrev lagres under `reminders/<invoiceId>/<reminderId>-<sentOn>-<sha256>.pdf` — med
+hashen av innholdet som nøkkel, lagt inn bare når ingenting ligger der fra før, før brevet
+sendes på e-post eller når det skrives ut, og aldri slettet eller overskrevet: et brev som
+lages på nytt med andre tall (et nytt forsøk samme dag etter en betaling), får sin egen
+nøkkel, og brevets rad viser til objektet det gikk med
+([jobben](/en/reference/invoices/#the-worker)). Et avgrenset lager
 avviser en relativ nøkkel som er lik omfanget sitt eller allerede begynner med
 `{scope}/`: kallere sender bare relative nøkler og må aldri bygge prefikset selv.
 

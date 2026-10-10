@@ -529,3 +529,53 @@ func SetQueueAfterLineLock(hook func(ctx context.Context, bankTransactionID int6
 	queueAfterLineLock = hook
 	return func() { queueAfterLineLock = nil }
 }
+
+// SetDispatchAfterLock installs a hook the reminder worker's dispatch calls
+// inside its first transaction right after it has locked the invoice and
+// before it locks the letter, with the letter's id, and answers the function
+// that removes it. An error rolls the step back and ends the claim. A race
+// test parks a dispatch there while a hold, a hand-off, a match or a
+// withdrawal comes. A test using it does not run in parallel: the hook is
+// the package's.
+func SetDispatchAfterLock(hook func(ctx context.Context, reminderID int64) error) func() {
+	dispatchAfterLock = hook
+	return func() { dispatchAfterLock = nil }
+}
+
+// SetReminderPDFModelText installs a hook told, for every letter laid out,
+// its id and its model as lines of text — the letter goldens (plan reading
+// 15) — and answers the function that removes it. A test using it does not
+// run in parallel: the hook is the package's.
+func SetReminderPDFModelText(hook func(reminderID int64, text []string)) func() {
+	reminderModelBuilt = func(id int64, m reminderModel) { hook(id, m.text()) }
+	return func() { reminderModelBuilt = nil }
+}
+
+// SetReminderLease sets the lease a reminder claim takes, and answers the
+// function that restores it: a lease shorter than the send's timeout and its
+// margin reaches the lease-left check. A test using it does not run in
+// parallel: the lease is the package's.
+func SetReminderLease(d time.Duration) func() {
+	reminderLease = d
+	return func() { reminderLease = reminderDefaultLease }
+}
+
+// RenderLetterForTest renders letter reminderID from its row, as the
+// dispatch does, and answers the bytes: the same row renders the same bytes.
+func RenderLetterForTest(ctx context.Context, d module.Deps, reminderID int64) ([]byte, error) {
+	s, err := newServer(d)
+	if err != nil {
+		return nil, err
+	}
+	q := store.New(d.Pool)
+	letter, err := q.GetReminder(ctx, reminderID)
+	if err != nil {
+		return nil, err
+	}
+	inv, err := q.GetInvoice(ctx, letter.InvoiceID)
+	if err != nil {
+		return nil, err
+	}
+	_, body, err := s.renderLetter(ctx, q, letter, inv)
+	return body, err
+}

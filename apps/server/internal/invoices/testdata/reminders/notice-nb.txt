@@ -1,0 +1,50 @@
+# Inkassovarsel
+## seller
+Selger AS
+Storgata 1
+0155 Oslo
+Org.nr. 987 654 321 MVA
+Foretaksregisteret
+post@selger.example
+## buyer
+Kunde 104
+Kundeveien 2
+0150 Oslo
+## meta
+Dato: 12.09.2026
+Fakturanummer: 104
+Fakturadato: 01.07.2026
+Forfallsdato: 20.07.2026
+Betalingsfrist: 28.09.2026
+## claim
+Vi har ikke registrert betaling av faktura 104, som forfalt 20.07.2026. Slik står kravet i dag.
+Beløp (NOK)
+Fakturabeløp: 1 000,00
+Kreditert: 0,00
+Betalt: 0,00
+Utestående hovedstol: 1 000,00
+Tidligere gebyrer og kompensasjon som står ute: 0,00
+Purregebyr: 38,00
+Forsinkelsesrente fra 21.07.2026: 18,12
+  12,25 % per år fra 21.07.2026 til 12.09.2026 av 1 000,00
+Å betale: NOK 1 056,12
+## payment
+Betal NOK 1 056,12 innen 28.09.2026.
+Kontonummer: 86011117947
+KID: 0001040
+Merk betalingen med KID 0001040.
+Kravet vil bli sendt til inkasso dersom det ikke er betalt innen 28.09.2026.
+Inkasso kan føre til at det påløper ytterligere kostnader.
+Har du betalt i mellomtiden, kan du se bort fra dette brevet.
+Har du innsigelser mot kravet, gi oss beskjed før fristen.
+## mail
+Subject: Inkassovarsel: faktura 104
+Attachment: inkassovarsel-104-2.pdf
+Hei,
+
+Vedlagt følger et inkassovarsel på faktura 104 fra Selger AS. Å betale er NOK 1 056,12, innen 28.09.2026.
+
+Har du betalt i mellomtiden, kan du se bort fra denne e-posten.
+
+Med vennlig hilsen
+Selger AS

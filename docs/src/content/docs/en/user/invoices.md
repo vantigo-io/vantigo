@@ -885,6 +885,19 @@ of its own — is exported for the agency. The screens come with the invoice pag
 reminder cards; until then this is in the API
 ([holds and the hand-off](/en/reference/invoices/#holds-and-the-hand-off-to-collection)).
 
+**How a letter by e-mail is sent.** Vantigo sends the e-mailed letters itself, in the
+background, one at a time. Each is judged again on the day it goes: its date, its deadline
+— at least 14 days on — its fee and its interest are that day's, not the run's; an invoice
+paid, put on hold or handed off meanwhile gets no letter, and the letter is withdrawn with
+the reason. The letter is a PDF, attached to a short e-mail in the customer's language,
+with replies going to your invoicing e-mail. A letter whose rates or regime review are
+missing waits, and goes once they are in place. A letter the mail server keeps refusing
+fails after 48 hours; it can then be sent again or withdrawn, and any letter not yet sent
+can be withdrawn, with your reason — but not while it is being e-mailed. A printed or sent
+letter's PDF can be downloaded. The screens come with the invoice page's reminder cards;
+until then this is in the API ([letters](/en/reference/invoices/#letters),
+[the worker](/en/reference/invoices/#the-worker)).
+
 ## Sending a document by e-mail
 
 Open an issued invoice or credit note and click **Send**. The button needs

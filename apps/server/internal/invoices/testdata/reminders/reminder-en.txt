@@ -1,0 +1,44 @@
+# Payment reminder
+## seller
+Selger AS
+Storgata 1
+0155 Oslo
+Org. no. 987 654 321 MVA
+Foretaksregisteret
+post@selger.example
+## buyer
+Kunde 102
+Kundeveien 2
+0150 Oslo
+## meta
+Date: 2026-09-12
+Invoice number: 102
+Invoice date: 2026-07-01
+Due date: 2026-08-03
+Payment deadline: 2026-09-28
+## claim
+We have not registered payment of invoice 102, which fell due on 2026-08-03. This is the claim as it stands today.
+Amount (NOK)
+Invoice total: 1,000.00
+Credited: 0.00
+Paid: 0.00
+Principal outstanding: 1,000.00
+Earlier fees and compensation outstanding: 0.00
+Amount due: NOK 1,000.00
+## payment
+Please pay NOK 1,000.00 by 2026-09-28.
+Account number: 86011117947
+Please quote invoice number 102 with your payment.
+If you have paid in the meantime, please disregard this letter.
+If you dispute the claim, let us know before the deadline.
+## mail
+Subject: Reminder: invoice 102
+Attachment: reminder-102-1.pdf
+Hello,
+
+Please find attached a payment reminder for invoice 102 from Selger AS. The amount due is NOK 1,000.00, to be paid by 2026-09-28.
+
+If you have paid in the meantime, please disregard this e-mail.
+
+Kind regards
+Selger AS

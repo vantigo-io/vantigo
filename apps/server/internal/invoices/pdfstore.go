@@ -50,18 +50,7 @@ func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 		kind: inv.Kind, language: str(inv.BuyerLanguage), currency: inv.Currency, number: inv.Number, issueDate: inv.IssueDate.Time,
 		paymentTermsDays: inv.PaymentTermsDays, yourReference: inv.YourReference, ourReference: inv.OurReference,
 		orderRef: inv.OrderReference, projectRef: str(inv.ProjectReference), note: inv.Note, footer: str(inv.SellerFooterText),
-		seller: pdfParty{
-			name: str(inv.SellerLegalName), line1: str(inv.SellerAddressLine1), line2: str(inv.SellerAddressLine2),
-			postalCode: str(inv.SellerPostalCode), city: str(inv.SellerCity), country: str(inv.SellerCountry),
-			organisationNumber: str(inv.SellerOrganisationNumber), email: str(inv.SellerEmail),
-			vatRegistered:      inv.SellerVatRegistered != nil && *inv.SellerVatRegistered,
-			foretaksregisteret: inv.SellerInForetaksregisteret != nil && *inv.SellerInForetaksregisteret,
-		},
-		buyer: pdfParty{
-			name: str(inv.BuyerName), line1: str(inv.BuyerAddressLine1), line2: str(inv.BuyerAddressLine2),
-			postalCode: str(inv.BuyerPostalCode), city: str(inv.BuyerCity), country: str(inv.BuyerCountry),
-			organisationNumber: str(inv.BuyerOrganisationNumber), foreignID: str(inv.BuyerForeignID),
-		},
+		seller: sellerParty(inv), buyer: buyerParty(inv),
 		bankAccount: str(inv.SellerBankAccount), iban: str(inv.SellerIban), bic: str(inv.SellerBic),
 	}
 	if inv.Kid != nil || inv.KidAlgorithm != nil {
@@ -123,6 +112,26 @@ func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 		d.deducted = deducted
 	}
 	return d, nil
+}
+
+// sellerParty and buyerParty are an issued document's snapshots as its PDF —
+// and its reminder letters — print them.
+func sellerParty(inv store.InvoicesInvoice) pdfParty {
+	return pdfParty{
+		name: deref(inv.SellerLegalName), line1: deref(inv.SellerAddressLine1), line2: deref(inv.SellerAddressLine2),
+		postalCode: deref(inv.SellerPostalCode), city: deref(inv.SellerCity), country: deref(inv.SellerCountry),
+		organisationNumber: deref(inv.SellerOrganisationNumber), email: deref(inv.SellerEmail),
+		vatRegistered:      inv.SellerVatRegistered != nil && *inv.SellerVatRegistered,
+		foretaksregisteret: inv.SellerInForetaksregisteret != nil && *inv.SellerInForetaksregisteret,
+	}
+}
+
+func buyerParty(inv store.InvoicesInvoice) pdfParty {
+	return pdfParty{
+		name: deref(inv.BuyerName), line1: deref(inv.BuyerAddressLine1), line2: deref(inv.BuyerAddressLine2),
+		postalCode: deref(inv.BuyerPostalCode), city: deref(inv.BuyerCity), country: deref(inv.BuyerCountry),
+		organisationNumber: deref(inv.BuyerOrganisationNumber), foreignID: deref(inv.BuyerForeignID),
+	}
 }
 
 // setDelivery copies a document's delivery and place of delivery.

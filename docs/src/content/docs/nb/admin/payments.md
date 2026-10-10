@@ -7,6 +7,7 @@ sources:
   - apps/server/internal/invoices/bankfile
   - apps/server/internal/invoices/bankimport.go
   - apps/server/internal/invoices/bankaccounts.go
+  - apps/server/internal/invoices/reminder_worker.go
 ---
 
 Vantigo leser bankens egen oversikt over pengene som kom inn på selgerens konto: en fil
@@ -141,3 +142,35 @@ konto med formatet, det forrige formatet og overgangsdagen, og den siste filen.
   Etter at en kontos format er byttet, bekreftes innbetalingene som skjæringsdagen holdt
   tilbake, som duplikater der, eller føres når de likevel ikke var med i det gamle
   formatets filer.
+
+## Purrejobben og e-post
+
+Purrebrev til kunder som får dem på e-post, sendes av bakgrunnsjobben
+`invoices-reminders` ([jobben](/en/reference/invoices/#the-worker)). Den kjører på hver
+installasjon, i API-prosessen eller i den dedikerte worker-containeren
+([Bakgrunnsjobber og skalering](/nb/admin/installation/#bakgrunnsjobber-og-skalering)),
+ett brev om gangen og høyst ett i sekundet per instans; flere instanser deler brevene
+under en lås på 60 sekunder og sender aldri et brev to ganger med vilje.
+
+- **Den trenger SMTP-innstillingene.** Brevene går gjennom de samme innstillingene
+  `MAIL_DRIVER=smtp` og `SMTP_*` som alt annet Vantigo sender på e-post, fra `SMTP_FROM`
+  under selgerens navn, med svar til e-postadressen i **Fakturainnstillinger**. Uten
+  e-post (`MAIL_DRIVER` er ikke `smtp`) gjør en purrekjøring **hvert brev til et
+  papirbrev**, med varselet `mail_unavailable`, og ingenting sendes på e-post.
+- **Den trenger et objektlager.** PDF-en til hvert brev lagres én gang, før det sendes,
+  under `reminders/` ([Objektlagring](/nb/admin/object-storage/)); et lager som ikke kan
+  skrives til, gir et mislykket forsøk.
+- **Et mislykket forsøk** — e-postserveren avviser, lageret svarer ikke, en sending som
+  ikke ville rekke å bli ferdig innenfor låsen — prøves igjen etter 2, 4, 8 … sekunder,
+  høyst en time imellom, med årsaken i brevets `lastError`. Et brev som fortsatt ikke er
+  sendt **48 timer etter første forsøk**, blir **`failed`**: sjekk e-postserveren og
+  lageret, og la så noen med `invoices:payments` prøve igjen
+  (`POST /api/v1/invoices/reminders/{id}/retry`, til skjermbildet for det kommer) eller
+  trekke brevet tilbake. List dem med `GET /api/v1/invoices/reminders?status=failed`.
+- **Et brev som venter.** Et brev der inkassosatsene mangler et halvår, eller som ville
+  hatt et gebyr etter at regelordningen sist ble gjennomgått, forsøkes ikke: det venter
+  en time om gangen, med `heldReason` som forklaring, uten noen gang å feile. Legg inn
+  satsen, eller gjennomgå regelordningen, i purreinnstillingene, så går det.
+- **Minst én gang.** Stopper prosessen mellom e-postserveren tar imot et brev og Vantigo
+  merker det sendt, sender neste forsøk det igjen, med samme Message-ID, så kundens
+  e-postprogram kan se at det er det samme brevet.

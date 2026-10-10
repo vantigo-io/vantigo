@@ -741,6 +741,24 @@ func (e InvoicesReminderFeeKind) Valid() bool {
 	}
 }
 
+// Defines values for InvoicesReminderHeldReason.
+const (
+	InvoicesReminderHeldReasonCollectionRatesOutdated    InvoicesReminderHeldReason = "collection_rates_outdated"
+	InvoicesReminderHeldReasonCollectionRegimeUnreviewed InvoicesReminderHeldReason = "collection_regime_unreviewed"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesReminderHeldReason enum.
+func (e InvoicesReminderHeldReason) Valid() bool {
+	switch e {
+	case InvoicesReminderHeldReasonCollectionRatesOutdated:
+		return true
+	case InvoicesReminderHeldReasonCollectionRegimeUnreviewed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvoicesReminderLevel.
 const (
 	InvoicesReminderLevelCollectionNotice InvoicesReminderLevel = "collection_notice"
@@ -1158,6 +1176,54 @@ func (e GetInvoicesOverdueParamsCharges) Valid() bool {
 	}
 }
 
+// Defines values for GetInvoicesRemindersParamsStatus.
+const (
+	GetInvoicesRemindersParamsStatusAwaitingPrint GetInvoicesRemindersParamsStatus = "awaiting_print"
+	GetInvoicesRemindersParamsStatusFailed        GetInvoicesRemindersParamsStatus = "failed"
+	GetInvoicesRemindersParamsStatusPrinted       GetInvoicesRemindersParamsStatus = "printed"
+	GetInvoicesRemindersParamsStatusQueued        GetInvoicesRemindersParamsStatus = "queued"
+	GetInvoicesRemindersParamsStatusSent          GetInvoicesRemindersParamsStatus = "sent"
+	GetInvoicesRemindersParamsStatusWithdrawn     GetInvoicesRemindersParamsStatus = "withdrawn"
+)
+
+// Valid indicates whether the value is a known member of the GetInvoicesRemindersParamsStatus enum.
+func (e GetInvoicesRemindersParamsStatus) Valid() bool {
+	switch e {
+	case GetInvoicesRemindersParamsStatusAwaitingPrint:
+		return true
+	case GetInvoicesRemindersParamsStatusFailed:
+		return true
+	case GetInvoicesRemindersParamsStatusPrinted:
+		return true
+	case GetInvoicesRemindersParamsStatusQueued:
+		return true
+	case GetInvoicesRemindersParamsStatusSent:
+		return true
+	case GetInvoicesRemindersParamsStatusWithdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetInvoicesRemindersParamsChannel.
+const (
+	GetInvoicesRemindersParamsChannelEmail GetInvoicesRemindersParamsChannel = "email"
+	GetInvoicesRemindersParamsChannelPaper GetInvoicesRemindersParamsChannel = "paper"
+)
+
+// Valid indicates whether the value is a known member of the GetInvoicesRemindersParamsChannel enum.
+func (e GetInvoicesRemindersParamsChannel) Valid() bool {
+	switch e {
+	case GetInvoicesRemindersParamsChannelEmail:
+		return true
+	case GetInvoicesRemindersParamsChannelPaper:
+		return true
+	default:
+		return false
+	}
+}
+
 // InvoicesAccessPointRequest PUT /settings/access-point's body (EHF and KID design D7). provider is storecove, the one provider so far; legalEntityId is the Storecove legal entity documents are sent as, a positive integer; apiKey is the provider's API key — omitted or null keeps the stored one, which is required the first time, and an empty or blank one is a 400. The key is sealed by the secrets box and never answered.
 type InvoicesAccessPointRequest struct {
 	ApiKey        *string `json:"apiKey,omitempty"`
@@ -1565,7 +1631,7 @@ type InvoicesCollectionRateRequest struct {
 // InvoicesCollectionRateRequestKind defines model for InvoicesCollectionRateRequest.Kind.
 type InvoicesCollectionRateRequestKind string
 
-// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
+// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 type InvoicesConflictProblem struct {
 	// AllowedIssueDates On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise.
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
@@ -2403,45 +2469,46 @@ type InvoicesPaymentRequest struct {
 	Reference *string            `json:"reference,omitempty"`
 }
 
-// InvoicesReminder A reminder letter (D10): made by a run without its facts, queued for e-mail or awaiting print for paper; its facts — sentOn, the deadline, the regime and the amounts — are written when it is sent (e-mail) or printed (paper) and frozen once sent. recipient is the address an e-mail letter goes to, empty for paper and once the customer is anonymised; it is answered only to a caller holding invoices:payments.
+// InvoicesReminder A reminder letter (D10): made by a run without its facts, queued for e-mail or awaiting print for paper; its facts — sentOn, the deadline, the regime and the amounts — are written when it is sent (e-mail, by the invoices-reminders worker, on the day it is mailed) or printed (paper) and frozen once sent; a failed attempt clears them again. recipient is the address an e-mail letter goes to, empty for paper and once the customer is anonymised; it is answered only to a caller holding invoices:payments. heldReason is why a queued letter waits an hour at a time without its attempt counted: collection_rates_outdated (a rate it needs has no row for a half-year) or collection_regime_unreviewed (it would carry a fee or be a collection notice past the regime review). withdrawalReason is a code when the module withdrew the letter and withdrawnBy is absent — settled, on_hold, handed_off, policy_none, customer_anonymised or action_changed (the engine no longer gives the letter's action or level) — and the person's own words when withdrawnBy names them (plan reading 44).
 type InvoicesReminder struct {
-	AnnouncesCollection bool                       `json:"announcesCollection"`
-	Attempts            int32                      `json:"attempts"`
-	Channel             InvoicesReminderChannel    `json:"channel"`
-	ChargeNotes         *[]string                  `json:"chargeNotes,omitempty"`
-	ChargesEarlier      *float64                   `json:"chargesEarlier,omitempty"`
-	Compensation        *float64                   `json:"compensation,omitempty"`
-	CreatedAt           time.Time                  `json:"createdAt"`
-	CreatedBy           openapi_types.UUID         `json:"createdBy"`
-	Deadline            *openapi_types.Date        `json:"deadline,omitempty"`
-	FailedAt            *time.Time                 `json:"failedAt,omitempty"`
-	Fee                 *float64                   `json:"fee,omitempty"`
-	FeeKind             *InvoicesReminderFeeKind   `json:"feeKind,omitempty"`
-	Id                  int64                      `json:"id"`
-	Inkassosats         *float64                   `json:"inkassosats,omitempty"`
-	Interest            *float64                   `json:"interest,omitempty"`
-	InterestFrom        *openapi_types.Date        `json:"interestFrom,omitempty"`
-	InterestPaid        *float64                   `json:"interestPaid,omitempty"`
-	InterestSegments    *[]InvoicesInterestSegment `json:"interestSegments,omitempty"`
-	InterestWaived      *float64                   `json:"interestWaived,omitempty"`
-	InvoiceId           int64                      `json:"invoiceId"`
-	Language            string                     `json:"language"`
-	LastError           *string                    `json:"lastError,omitempty"`
-	Level               InvoicesReminderLevel      `json:"level"`
-	NextAttemptAt       *time.Time                 `json:"nextAttemptAt,omitempty"`
-	PrincipalOpen       *float64                   `json:"principalOpen,omitempty"`
-	PrintBatchId        *int64                     `json:"printBatchId,omitempty"`
-	Recipient           *string                    `json:"recipient,omitempty"`
-	Regime              *InvoicesReminderRegime    `json:"regime,omitempty"`
-	RunId               int64                      `json:"runId"`
-	SentAt              *time.Time                 `json:"sentAt,omitempty"`
-	SentOn              *openapi_types.Date        `json:"sentOn,omitempty"`
-	Sequence            int32                      `json:"sequence"`
-	Status              InvoicesReminderStatus     `json:"status"`
-	Total               *float64                   `json:"total,omitempty"`
-	WithdrawalReason    *string                    `json:"withdrawalReason,omitempty"`
-	WithdrawnAt         *time.Time                 `json:"withdrawnAt,omitempty"`
-	WithdrawnBy         *openapi_types.UUID        `json:"withdrawnBy,omitempty"`
+	AnnouncesCollection bool                        `json:"announcesCollection"`
+	Attempts            int32                       `json:"attempts"`
+	Channel             InvoicesReminderChannel     `json:"channel"`
+	ChargeNotes         *[]string                   `json:"chargeNotes,omitempty"`
+	ChargesEarlier      *float64                    `json:"chargesEarlier,omitempty"`
+	Compensation        *float64                    `json:"compensation,omitempty"`
+	CreatedAt           time.Time                   `json:"createdAt"`
+	CreatedBy           openapi_types.UUID          `json:"createdBy"`
+	Deadline            *openapi_types.Date         `json:"deadline,omitempty"`
+	FailedAt            *time.Time                  `json:"failedAt,omitempty"`
+	Fee                 *float64                    `json:"fee,omitempty"`
+	FeeKind             *InvoicesReminderFeeKind    `json:"feeKind,omitempty"`
+	HeldReason          *InvoicesReminderHeldReason `json:"heldReason,omitempty"`
+	Id                  int64                       `json:"id"`
+	Inkassosats         *float64                    `json:"inkassosats,omitempty"`
+	Interest            *float64                    `json:"interest,omitempty"`
+	InterestFrom        *openapi_types.Date         `json:"interestFrom,omitempty"`
+	InterestPaid        *float64                    `json:"interestPaid,omitempty"`
+	InterestSegments    *[]InvoicesInterestSegment  `json:"interestSegments,omitempty"`
+	InterestWaived      *float64                    `json:"interestWaived,omitempty"`
+	InvoiceId           int64                       `json:"invoiceId"`
+	Language            string                      `json:"language"`
+	LastError           *string                     `json:"lastError,omitempty"`
+	Level               InvoicesReminderLevel       `json:"level"`
+	NextAttemptAt       *time.Time                  `json:"nextAttemptAt,omitempty"`
+	PrincipalOpen       *float64                    `json:"principalOpen,omitempty"`
+	PrintBatchId        *int64                      `json:"printBatchId,omitempty"`
+	Recipient           *string                     `json:"recipient,omitempty"`
+	Regime              *InvoicesReminderRegime     `json:"regime,omitempty"`
+	RunId               int64                       `json:"runId"`
+	SentAt              *time.Time                  `json:"sentAt,omitempty"`
+	SentOn              *openapi_types.Date         `json:"sentOn,omitempty"`
+	Sequence            int32                       `json:"sequence"`
+	Status              InvoicesReminderStatus      `json:"status"`
+	Total               *float64                    `json:"total,omitempty"`
+	WithdrawalReason    *string                     `json:"withdrawalReason,omitempty"`
+	WithdrawnAt         *time.Time                  `json:"withdrawnAt,omitempty"`
+	WithdrawnBy         *openapi_types.UUID         `json:"withdrawnBy,omitempty"`
 }
 
 // InvoicesReminderChannel defines model for InvoicesReminder.Channel.
@@ -2449,6 +2516,9 @@ type InvoicesReminderChannel string
 
 // InvoicesReminderFeeKind defines model for InvoicesReminder.FeeKind.
 type InvoicesReminderFeeKind string
+
+// InvoicesReminderHeldReason defines model for InvoicesReminder.HeldReason.
+type InvoicesReminderHeldReason string
 
 // InvoicesReminderLevel defines model for InvoicesReminder.Level.
 type InvoicesReminderLevel string
@@ -2591,6 +2661,11 @@ type InvoicesReminderSettingsRequest struct {
 	RemindersBeforeNotice json.RawMessage `json:"remindersBeforeNotice"`
 	Revision              json.RawMessage `json:"revision"`
 	StaleImportDays       json.RawMessage `json:"staleImportDays"`
+}
+
+// InvoicesReminderWithdrawRequest POST /invoices/reminders/{id}/withdraw's body (D10): reason is why the person withdraws the letter, 1-200 characters once trimmed.
+type InvoicesReminderWithdrawRequest struct {
+	Reason string `json:"reason"`
 }
 
 // InvoicesRunPreviewHeld An overdue invoice the run would not write to today, with its next action and the reasons.
@@ -3059,6 +3134,12 @@ type PaginatedResponseOfInvoicesInvoiceListItem struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
+// PaginatedResponseOfInvoicesReminder defines model for PaginatedResponseOfInvoicesReminder.
+type PaginatedResponseOfInvoicesReminder struct {
+	Data       []InvoicesReminder              `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
 // PaginatedResponseOfInvoicesReminderRun defines model for PaginatedResponseOfInvoicesReminderRun.
 type PaginatedResponseOfInvoicesReminderRun struct {
 	Data       []InvoicesReminderRun           `json:"data"`
@@ -3172,6 +3253,22 @@ type GetInvoicesReminderRunsParams struct {
 	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
+// GetInvoicesRemindersParams defines parameters for GetInvoicesReminders.
+type GetInvoicesRemindersParams struct {
+	Status    *GetInvoicesRemindersParamsStatus  `form:"status,omitempty" json:"status,omitempty"`
+	Channel   *GetInvoicesRemindersParamsChannel `form:"channel,omitempty" json:"channel,omitempty"`
+	InvoiceId *int64                             `form:"invoiceId,omitempty" json:"invoiceId,omitempty"`
+	RunId     *int64                             `form:"runId,omitempty" json:"runId,omitempty"`
+	Page      *int32                             `form:"page,omitempty" json:"page,omitempty"`
+	PageSize  *int32                             `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// GetInvoicesRemindersParamsStatus defines parameters for GetInvoicesReminders.
+type GetInvoicesRemindersParamsStatus string
+
+// GetInvoicesRemindersParamsChannel defines parameters for GetInvoicesReminders.
+type GetInvoicesRemindersParamsChannel string
+
 // GetInvoicesStatsSummaryParams defines parameters for GetInvoicesStatsSummary.
 type GetInvoicesStatsSummaryParams struct {
 	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
@@ -3219,6 +3316,9 @@ type PostInvoicesFromWorkJSONRequestBody = InvoicesFromWorkRequest
 
 // PostInvoicesReminderRunsJSONRequestBody defines body for PostInvoicesReminderRuns for application/json ContentType.
 type PostInvoicesReminderRunsJSONRequestBody = InvoicesReminderRunRequest
+
+// PostInvoicesRemindersByIdWithdrawJSONRequestBody defines body for PostInvoicesRemindersByIdWithdraw for application/json ContentType.
+type PostInvoicesRemindersByIdWithdrawJSONRequestBody = InvoicesReminderWithdrawRequest
 
 // PutInvoicesSettingsJSONRequestBody defines body for PutInvoicesSettings for application/json ContentType.
 type PutInvoicesSettingsJSONRequestBody = InvoicesSettingsRequest
@@ -3372,6 +3472,18 @@ type ServerInterface interface {
 	// GetInvoicesReminderRunsById Get a reminder run
 	// (GET /api/v1/invoices/reminder-runs/{id})
 	GetInvoicesReminderRunsById(w http.ResponseWriter, r *http.Request, id int64)
+	// GetInvoicesReminders List the reminder letters
+	// (GET /api/v1/invoices/reminders)
+	GetInvoicesReminders(w http.ResponseWriter, r *http.Request, params GetInvoicesRemindersParams)
+	// GetInvoicesRemindersByIdPdf Download a reminder letter's PDF
+	// (GET /api/v1/invoices/reminders/{id}/pdf)
+	GetInvoicesRemindersByIdPdf(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesRemindersByIdRetry Retry a failed reminder letter
+	// (POST /api/v1/invoices/reminders/{id}/retry)
+	PostInvoicesRemindersByIdRetry(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesRemindersByIdWithdraw Withdraw a reminder letter
+	// (POST /api/v1/invoices/reminders/{id}/withdraw)
+	PostInvoicesRemindersByIdWithdraw(w http.ResponseWriter, r *http.Request, id int64)
 	// GetInvoicesSettings Get the invoice settings
 	// (GET /api/v1/invoices/settings)
 	GetInvoicesSettings(w http.ResponseWriter, r *http.Request)
@@ -4630,6 +4742,182 @@ func (siw *ServerInterfaceWrapper) GetInvoicesReminderRunsById(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
+// GetInvoicesReminders operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesReminders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetInvoicesRemindersParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "channel" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "channel", r.URL.Query(), &params.Channel, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "channel"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "channel", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "invoiceId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "invoiceId", r.URL.Query(), &params.InvoiceId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "invoiceId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invoiceId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "runId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "runId", r.URL.Query(), &params.RunId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "runId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesReminders(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesRemindersByIdPdf operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesRemindersByIdPdf(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesRemindersByIdPdf(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesRemindersByIdRetry operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesRemindersByIdRetry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesRemindersByIdRetry(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesRemindersByIdWithdraw operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesRemindersByIdWithdraw(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesRemindersByIdWithdraw(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetInvoicesSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetInvoicesSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -5778,6 +6066,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/reminder-runs", wrapper.GetInvoicesReminderRuns)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/reminder-runs", wrapper.PostInvoicesReminderRuns)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/reminder-runs/{id}", wrapper.GetInvoicesReminderRunsById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/reminders", wrapper.GetInvoicesReminders)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/reminders/{id}/pdf", wrapper.GetInvoicesRemindersByIdPdf)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/reminders/{id}/withdraw", wrapper.PostInvoicesRemindersByIdWithdraw)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/reminders/{id}/retry", wrapper.PostInvoicesRemindersByIdRetry)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/vat-codes", wrapper.GetInvoicesVatCodes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/vat-codes", wrapper.PostInvoicesVatCodes)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/vat-codes/{id}", wrapper.PutInvoicesVatCodesById)
@@ -7883,6 +8175,335 @@ type GetInvoicesReminderRunsById404Response struct {
 func (response GetInvoicesReminderRunsById404Response) VisitGetInvoicesReminderRunsByIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetInvoicesRemindersRequestObject struct {
+	Params GetInvoicesRemindersParams
+}
+
+type GetInvoicesRemindersResponseObject interface {
+	VisitGetInvoicesRemindersResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesReminders200JSONResponse PaginatedResponseOfInvoicesReminder
+
+func (response GetInvoicesReminders200JSONResponse) VisitGetInvoicesRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesReminders400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetInvoicesReminders400ApplicationProblemPlusJSONResponse) VisitGetInvoicesRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesReminders401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesReminders401JSONResponse) VisitGetInvoicesRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesReminders403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesReminders403JSONResponse) VisitGetInvoicesRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesRemindersByIdPdfRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetInvoicesRemindersByIdPdfResponseObject interface {
+	VisitGetInvoicesRemindersByIdPdfResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesRemindersByIdPdf200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetInvoicesRemindersByIdPdf200ApplicationpdfResponse) VisitGetInvoicesRemindersByIdPdfResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetInvoicesRemindersByIdPdf401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesRemindersByIdPdf401JSONResponse) VisitGetInvoicesRemindersByIdPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesRemindersByIdPdf403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesRemindersByIdPdf403JSONResponse) VisitGetInvoicesRemindersByIdPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesRemindersByIdPdf404Response struct {
+}
+
+func (response GetInvoicesRemindersByIdPdf404Response) VisitGetInvoicesRemindersByIdPdfResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInvoicesRemindersByIdPdf409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response GetInvoicesRemindersByIdPdf409ApplicationProblemPlusJSONResponse) VisitGetInvoicesRemindersByIdPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesRemindersByIdPdf500ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetInvoicesRemindersByIdPdf500ApplicationProblemPlusJSONResponse) VisitGetInvoicesRemindersByIdPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesRemindersByIdPdf503ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response GetInvoicesRemindersByIdPdf503ApplicationProblemPlusJSONResponse) VisitGetInvoicesRemindersByIdPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesRemindersByIdRetryRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostInvoicesRemindersByIdRetryResponseObject interface {
+	VisitPostInvoicesRemindersByIdRetryResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesRemindersByIdRetry200JSONResponse InvoicesReminder
+
+func (response PostInvoicesRemindersByIdRetry200JSONResponse) VisitPostInvoicesRemindersByIdRetryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesRemindersByIdRetry401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesRemindersByIdRetry401JSONResponse) VisitPostInvoicesRemindersByIdRetryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesRemindersByIdRetry403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesRemindersByIdRetry403JSONResponse) VisitPostInvoicesRemindersByIdRetryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesRemindersByIdRetry404Response struct {
+}
+
+func (response PostInvoicesRemindersByIdRetry404Response) VisitPostInvoicesRemindersByIdRetryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesRemindersByIdRetry409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesRemindersByIdRetry409ApplicationProblemPlusJSONResponse) VisitPostInvoicesRemindersByIdRetryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesRemindersByIdWithdrawRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesRemindersByIdWithdrawJSONRequestBody
+}
+
+type PostInvoicesRemindersByIdWithdrawResponseObject interface {
+	VisitPostInvoicesRemindersByIdWithdrawResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesRemindersByIdWithdraw200JSONResponse InvoicesReminder
+
+func (response PostInvoicesRemindersByIdWithdraw200JSONResponse) VisitPostInvoicesRemindersByIdWithdrawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesRemindersByIdWithdraw400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesRemindersByIdWithdraw400ApplicationProblemPlusJSONResponse) VisitPostInvoicesRemindersByIdWithdrawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesRemindersByIdWithdraw401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesRemindersByIdWithdraw401JSONResponse) VisitPostInvoicesRemindersByIdWithdrawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesRemindersByIdWithdraw403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesRemindersByIdWithdraw403JSONResponse) VisitPostInvoicesRemindersByIdWithdrawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesRemindersByIdWithdraw404Response struct {
+}
+
+func (response PostInvoicesRemindersByIdWithdraw404Response) VisitPostInvoicesRemindersByIdWithdrawResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesRemindersByIdWithdraw409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesRemindersByIdWithdraw409ApplicationProblemPlusJSONResponse) VisitPostInvoicesRemindersByIdWithdrawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetInvoicesSettingsRequestObject struct {
@@ -11158,6 +11779,18 @@ type StrictServerInterface interface {
 	// GetInvoicesReminderRunsById Get a reminder run
 	// (GET /api/v1/invoices/reminder-runs/{id})
 	GetInvoicesReminderRunsById(ctx context.Context, request GetInvoicesReminderRunsByIdRequestObject) (GetInvoicesReminderRunsByIdResponseObject, error)
+	// GetInvoicesReminders List the reminder letters
+	// (GET /api/v1/invoices/reminders)
+	GetInvoicesReminders(ctx context.Context, request GetInvoicesRemindersRequestObject) (GetInvoicesRemindersResponseObject, error)
+	// GetInvoicesRemindersByIdPdf Download a reminder letter's PDF
+	// (GET /api/v1/invoices/reminders/{id}/pdf)
+	GetInvoicesRemindersByIdPdf(ctx context.Context, request GetInvoicesRemindersByIdPdfRequestObject) (GetInvoicesRemindersByIdPdfResponseObject, error)
+	// PostInvoicesRemindersByIdRetry Retry a failed reminder letter
+	// (POST /api/v1/invoices/reminders/{id}/retry)
+	PostInvoicesRemindersByIdRetry(ctx context.Context, request PostInvoicesRemindersByIdRetryRequestObject) (PostInvoicesRemindersByIdRetryResponseObject, error)
+	// PostInvoicesRemindersByIdWithdraw Withdraw a reminder letter
+	// (POST /api/v1/invoices/reminders/{id}/withdraw)
+	PostInvoicesRemindersByIdWithdraw(ctx context.Context, request PostInvoicesRemindersByIdWithdrawRequestObject) (PostInvoicesRemindersByIdWithdrawResponseObject, error)
 	// GetInvoicesSettings Get the invoice settings
 	// (GET /api/v1/invoices/settings)
 	GetInvoicesSettings(ctx context.Context, request GetInvoicesSettingsRequestObject) (GetInvoicesSettingsResponseObject, error)
@@ -12124,6 +12757,117 @@ func (sh *strictHandler) GetInvoicesReminderRunsById(w http.ResponseWriter, r *h
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetInvoicesReminderRunsByIdResponseObject); ok {
 		if err := validResponse.VisitGetInvoicesReminderRunsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesReminders operation middleware
+func (sh *strictHandler) GetInvoicesReminders(w http.ResponseWriter, r *http.Request, params GetInvoicesRemindersParams) {
+	var request GetInvoicesRemindersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesReminders(ctx, request.(GetInvoicesRemindersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesReminders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesRemindersResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesRemindersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesRemindersByIdPdf operation middleware
+func (sh *strictHandler) GetInvoicesRemindersByIdPdf(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetInvoicesRemindersByIdPdfRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesRemindersByIdPdf(ctx, request.(GetInvoicesRemindersByIdPdfRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesRemindersByIdPdf")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesRemindersByIdPdfResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesRemindersByIdPdfResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesRemindersByIdRetry operation middleware
+func (sh *strictHandler) PostInvoicesRemindersByIdRetry(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesRemindersByIdRetryRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesRemindersByIdRetry(ctx, request.(PostInvoicesRemindersByIdRetryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesRemindersByIdRetry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesRemindersByIdRetryResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesRemindersByIdRetryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesRemindersByIdWithdraw operation middleware
+func (sh *strictHandler) PostInvoicesRemindersByIdWithdraw(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesRemindersByIdWithdrawRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesRemindersByIdWithdrawJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesRemindersByIdWithdraw(ctx, request.(PostInvoicesRemindersByIdWithdrawRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesRemindersByIdWithdraw")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesRemindersByIdWithdrawResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesRemindersByIdWithdrawResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

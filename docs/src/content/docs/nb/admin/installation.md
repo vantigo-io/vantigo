@@ -267,8 +267,9 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 
 Standardoppsettet med én container kjører bakgrunnsjobbene til hver aktivert modul
 (utboks-levering, oppbevaring, opprydding av vedlegg, kundemodulens registerjobber,
-og fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
-`INVOICES_EHF_ENABLED` er på) inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
+fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
+`INVOICES_EHF_ENABLED` er på, og fakturamodulens purrejobb `invoices-reminders`, alltid)
+inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
 hver ekstra HTTP-replika ikke mangedobler pollerne:
 
@@ -281,9 +282,12 @@ Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre komman
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
 Uansett topologi tar oppbevaringsoppryddingen, registerjobbene og EHF-hendelsesjobben en
 rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
-instans per syklus; utboksen og `invoices-ehf`-jobben tar i stedet én rad om gangen
-under en tidsbegrenset lås, så et hvilket som helst antall instanser deler arbeidet uten
-å sende noe to ganger.
+instans per syklus; utboksen, `invoices-ehf`-jobben og `invoices-reminders`-jobben tar i
+stedet én rad om gangen under en tidsbegrenset lås, så et hvilket som helst antall
+instanser deler arbeidet uten å sende noe to ganger. Purrejobben sender ett brev om
+gangen, høyst ett i sekundet per instans, og hver sending må bli ferdig godt innenfor
+låsen på 60 sekunder
+([Purrejobben og e-post](/nb/admin/payments/#purrejobben-og-e-post)).
 
 Ved avslutning tømmer prosessen pågående arbeid i opptil `SHUTDOWN_TIMEOUT` (30
 sekunder som standard), nok til at den lengste enkeltoperasjonen i en bakgrunnsjobb

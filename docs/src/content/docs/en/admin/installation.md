@@ -261,9 +261,10 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 ## Background workers and scaling
 
 The single-container default hosts every enabled module's background workers (outbox
-delivery, retention, attachment cleanup, the customers registry workers, and the
+delivery, retention, attachment cleanup, the customers registry workers, the
 invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
-`INVOICES_EHF_ENABLED` is on) inside the
+`INVOICES_EHF_ENABLED` is on, and the invoices reminder worker `invoices-reminders`,
+always) inside the
 API process: `WORKERS_IN_PROCESS=1`, the default. Deployments that scale the API
 horizontally should move them to one dedicated worker container, so that every extra
 HTTP replica does not multiply the pollers:
@@ -276,9 +277,12 @@ HTTP replica does not multiply the pollers:
 Replicas that should neither migrate nor run workers can run the `server` command
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology
 you use, retention cleanup, the registry workers and the EHF events worker take a
-PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox and
-the `invoices-ehf` worker instead take one row at a time under a time-limited lease, so
-any number of instances share the work without sending anything twice.
+PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
+the `invoices-ehf` worker and the `invoices-reminders` worker instead take one row at a
+time under a time-limited lease, so any number of instances share the work without
+sending anything twice. The reminder worker sends one letter at a time, at most one a
+second per instance, and each send must finish well inside its 60-second lease
+([The reminder worker and mail](/en/admin/payments/#the-reminder-worker-and-mail)).
 
 On shutdown the process drains for up to `SHUTDOWN_TIMEOUT` (30 seconds by default),
 enough for the longest single worker operation to finish and commit. `compose.yaml`

@@ -7,6 +7,7 @@ sources:
   - apps/server/internal/invoices/bankfile
   - apps/server/internal/invoices/bankimport.go
   - apps/server/internal/invoices/bankaccounts.go
+  - apps/server/internal/invoices/reminder_worker.go
 ---
 
 Vantigo reads the bank's own record of the money that arrived on the seller's account: a
@@ -140,3 +141,36 @@ account with its format, the previous format and cutover, and its latest file.
   payment it reverses, which is then removed, or saying why none is. After the switch of
   an account's format, the payments held back by the cutover are confirmed as duplicates
   there, or applied when they were not in the old format's files after all.
+
+## The reminder worker and mail
+
+Reminder letters to customers who take them by e-mail are sent by the
+`invoices-reminders` background worker
+([the worker](/en/reference/invoices/#the-worker)). It runs on every installation,
+inside the API process or the dedicated worker container
+([Background workers and scaling](/en/admin/installation/#background-workers-and-scaling)),
+one letter at a time and at most one a second per instance; several instances share the
+letters under a 60-second lease and never send one twice on purpose.
+
+- **It needs the SMTP settings.** Letters go through the same `MAIL_DRIVER=smtp` and
+  `SMTP_*` settings as everything else Vantigo mails, from `SMTP_FROM` under the seller's
+  name, with replies to the e-mail in **Invoice settings**. Without mail (`MAIL_DRIVER`
+  not `smtp`), a reminder run makes **every letter a paper letter**, with the warning
+  `mail_unavailable`, and nothing is e-mailed.
+- **It needs an object store.** Each letter's PDF is stored once, before it is mailed,
+  under `reminders/` ([Object storage](/en/admin/object-storage/)); a store that cannot
+  be written is a failed attempt.
+- **A failed attempt** — the mail server refusing, the store unreachable, a send that
+  would not finish inside the lease — is retried after 2, 4, 8 … seconds, at most an hour
+  apart, with the reason in the letter's `lastError`. A letter still unsent **48 hours
+  after its first attempt** is **`failed`**: check the mail server and the store, then
+  someone with `invoices:payments` retries it
+  (`POST /api/v1/invoices/reminders/{id}/retry`, until the screen for it arrives) or
+  withdraws it. List them with `GET /api/v1/invoices/reminders?status=failed`.
+- **A letter that waits.** A letter whose collection rates miss a half-year, or that
+  would carry a fee past the regime review, is not attempted: it waits an hour at a time,
+  its `heldReason` saying why, without ever failing. Add the rate, or review the regime,
+  in the reminder settings, and it goes.
+- **At least once.** If the process stops between the mail server taking a letter and
+  Vantigo marking it sent, the next claim sends it again, with the same Message-ID, so
+  the customer's mail program can tell it is the same letter.

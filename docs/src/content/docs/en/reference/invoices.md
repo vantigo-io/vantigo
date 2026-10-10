@@ -109,7 +109,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.reminder_settings` | One row (`id = 1`): [the reminder settings](#the-reminder-settings), the 2026 regime's day `inkassolov_2026_from`, the review `regime_reviewed_through` with who moved it and when, and the row's revision, who changed it and when. Never deleted. |
 | `invoices.customer_reminder_policies` | One row per customer with [a reminder policy](#a-customers-reminder-policy) other than the default — keyed by the opaque `customer_id`, the mode (`normal`, `no_charges`, `none`), the note and who set it when. No row is `normal`. |
 | `invoices.reminder_runs` | One reminder run ([Runs](#runs)): the day, who made it and when, the bank data's `last_booked_on` and `stale_import_acknowledged`, and `letters` and `skipped`, set together once at its end from NULL. Never deleted or changed but by that one write. |
-| `invoices.reminders` | One letter of a run: the invoice, the run, its `sequence` on the invoice (unique per invoice), the level (`reminder` or `collection_notice`), `announces_collection`, the channel (`email` or `paper`), the recipient (`''` for paper and once the customer is anonymised), the language, who made it and when, the status (`queued`, `awaiting_print`, `printed`, `sent`, `withdrawn`, `failed`), and the facts written when it is sent or printed — `sent_on`, the deadline, the regime, the amounts and the charge notes. Created without facts; never deleted. |
+| `invoices.reminders` | One letter of a run ([Letters](#letters)): the invoice, the run, its `sequence` on the invoice (unique per invoice), the level (`reminder` or `collection_notice`), `announces_collection`, the channel (`email` or `paper`), the recipient (`''` for paper and once the customer is anonymised), the language, who made it and when, the status (`queued`, `awaiting_print`, `printed`, `sent`, `withdrawn`, `failed`), and the facts written when it is sent or printed — `sent_on`, the deadline, the regime, the amounts, the interest segments and the charge notes — with its PDF's key and hash; the worker's columns — `message_id` (set once, while queued), `attempts`, `next_attempt_at`, `first_attempt_at`, the lease (`lease_id`, `lease_until`), `last_error`, `held_reason` (`collection_rates_outdated` or `collection_regime_unreviewed`), `failed_at` — and the withdrawal's. Created without facts; never deleted; its facts change only while it is not sent or withdrawn. |
 | `invoices.invoice_holds` | An invoice marked disputed ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)): the invoice, `kind` (`disputed`), the note, who placed it and when, and — once lifted — when, by whom, the lift's note and `charges_allowed`, the answer to whether the objection was groundless; the lift's three facts together (`ck_invoice_holds_lift`). One live hold per invoice (`ux_invoice_holds_live`). Never deleted; an update is the lift, once, or the erase's blanking of the notes — and the lift of an anonymised customer's hold keeps no note. |
 | `invoices.collection_handoffs` | An invoice's hand-off to a collection agency ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)): the invoice, `handed_on`, the agency, its reference, a note, who recorded it and when, and — once withdrawn — `withdrawn_on`, by whom and why, together (`ck_collection_handoffs_withdrawal`). One live hand-off per invoice (`ux_collection_handoffs_live`). Never deleted; an update is the withdrawal, once, or the erase's blanking of the note. |
 
@@ -1801,6 +1801,8 @@ document) says so; neither channel is refused for the other.
 
 Two background workers carry a queued transmission to its outcome
 ([design D9](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-03-invoices-ehf-peppol-kid-design.md)).
+A third, `invoices-reminders`, sends the reminder letters and runs on every
+installation ([The worker](#the-worker)).
 Both run only when `INVOICES_EHF_ENABLED` is on — off, neither is handed to the
 runner — and both run with `PEPPOL_LOOKUP_ENABLED` off too: what is already submitted
 still completes, the 48-hour age cap still reaches a `queued` row (it makes no call),
@@ -2789,6 +2791,173 @@ skipped are answered by the run itself only; its row keeps their count.
 status, by sequence, its facts once it has them — and `nextAction`; a letter's
 `recipient` is answered only to a caller holding `invoices:payments`.
 
+### Letters
+
+A letter is one row of `invoices.reminders`, made by a run without its facts and moved
+by the worker, a print batch or a person through its statuses:
+
+| Status | What it means | What moves it on |
+| --- | --- | --- |
+| `queued` | An e-mail letter waiting for the worker, due at `next_attempt_at` | the worker sends it, withdraws it at sending, or fails it; a person withdraws it |
+| `awaiting_print` | A paper letter waiting for a print batch | a print batch; a person withdraws it |
+| `printed` | Printed for a posting day, its facts written | the posting confirmed sends it; a person withdraws it |
+| `sent` | Mailed, or posted — final | nothing: its PDF's key and hash are set once, and the erase blanks its recipient |
+| `withdrawn` | Will never go — final | nothing but the erase's blanking |
+| `failed` | Unsent 48 hours after its first attempt | a person's retry puts it back in the queue |
+
+**Why the facts are written at sending.** A letter's deadline is at least 14 days from
+the day it is sent (inkassoloven § 9) and its fee is judged on its own date
+(inkassoforskriften § 1-2), so a run that makes a letter on Monday that goes on Thursday
+must not fix Monday's figures. The facts — `sent_on`, the deadline, the regime, the
+principal open, the fee or the compensation, the earlier charges, the interest with its
+segments and from-date, what of it is waived and paid, the inkassosats, the total and
+the charge notes — are written by each dispatch attempt for e-mail (on the day it is
+mailed) and by the print for paper (for the posting day), and frozen once the letter is
+sent. A failed attempt clears them again with its lease, so a letter carrying facts is
+always one a live claim holds — or a printed one.
+
+**Withdrawn by whom.** `withdrawal_reason` is a code when the module withdrew the letter
+and `withdrawn_by_user_id` is NULL — `settled`, `on_hold`, `handed_off`, `policy_none`,
+`customer_anonymised` or `action_changed` — and the person's own words when a person did.
+
+**What makes and moves them**: a run makes them ([Runs](#runs)); the worker sends the
+e-mail ones ([The worker](#the-worker)); a hold, a hand-off and the erase withdraw the
+ones in flight ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection));
+a person withdraws one or retries a failed one:
+
+- `GET /invoices/reminders` (`invoices:access`) lists the letters, newest first, filtered
+  by `status`, `channel`, `invoiceId` and `runId`, paged (25 by default, at most 100); a
+  status or a channel that is none of the letters' is a 400. A letter's `recipient` is
+  answered only to a caller holding `invoices:payments`; its `heldReason` says why a
+  queued letter waits.
+- `GET /invoices/reminders/{id}/pdf` (`invoices:access`) answers a printed or sent
+  letter's PDF — the stored object, read whole and verified against `pdf_sha256`, never
+  rendered again — as `purring-<number>-<sequence>.pdf` or
+  `inkassovarsel-<number>-<sequence>.pdf` (`reminder-…` and `collection-notice-…` in
+  English), `Cache-Control: private, no-store`. 404 for no letter; 409
+  **`reminder_not_sent`** for one neither printed nor sent; 500 when the object is gone,
+  altered or never recorded; 503 `storage_unavailable` when the store is not configured
+  or cannot be read.
+- `POST /invoices/reminders/{id}/withdraw` `{reason}` (`invoices:access` and
+  `invoices:payments`) withdraws a `queued`, `awaiting_print`, `printed` or `failed`
+  letter with the person's reason (1 to 200 characters) and id. **The letter alone is
+  locked**; the worker re-reads its status after its own locks, so a letter withdrawn
+  before its dispatch takes it is never sent. 400 on `reason`; 404; 409
+  **`reminder_not_withdrawable`** for a sent or withdrawn letter, and for one **being
+  sent** — `queued`, its facts written, under a lease still live (`lease_until` after the
+  request's clock reading): it is mailed outside any lock, and a withdrawal then would
+  leave a mailed letter recorded as withdrawn. A minute later it is sent, or its attempt
+  failed and it may be withdrawn again.
+- `POST /invoices/reminders/{id}/retry` (`invoices:access` and `invoices:payments`)
+  puts a `failed` letter back to `queued`, due at once, its attempts, its 48 hours and its
+  backoff begun again; the letter alone is locked. The next claim judges it again and
+  withdraws it if the invoice was paid, held or handed off meanwhile. 404; 409
+  **`reminder_not_failed`**.
+
+### The worker
+
+**`invoices-reminders`** sends the letters queued for e-mail. It runs on every
+installation, whatever `INVOICES_EHF_ENABLED` says — a letter is queued only while
+reminders are on and mail is available, and each claim judges its letter again — and
+polls every 5 seconds; a cycle handles at most **five letters, one at a time, at most one
+a second**. A claim takes one `queued` letter whose `next_attempt_at` has come by a
+conditional `UPDATE` over a `FOR UPDATE SKIP LOCKED` pick, with a **60-second lease**, so
+two workers — two replicas — never take one letter; a lease is free again at exactly its
+end (`lease_until <= now`), the complement of "being sent", so no instant has a letter
+both claimable and unwithdrawable, or neither. The claim's one clock read is its time,
+and its Oslo day its `today`. Then four steps:
+
+1. **One transaction, the invoice `FOR UPDATE`, then the letter `FOR NO KEY UPDATE`** —
+   the order of every invoice-then-letter path (a run, a hold, a hand-off, the erase).
+   The letter is re-read: no longer `queued` under this claim's lease — withdrawn
+   meanwhile, or claimed again after this lease ran out — and the claim ends. Otherwise
+   the engine judges the invoice on `today` with this letter left out of the letters in
+   flight ([The rules](#the-rules)):
+   - **a rate missing or the regime unreviewed** — a half-year the letter needs has no
+     rate row, or it would carry a fee or be a collection notice past the review — and
+     the letter waits an hour, `held_reason` `collection_rates_outdated` or
+     `collection_regime_unreviewed`, **the try not counted**: neither `attempts` nor
+     `first_attempt_at` moves, so waiting never makes it `failed`. Attention names the
+     waiting letters by cause. Adding the rate or reviewing the regime lets the next
+     claim send it, and clears `held_reason`;
+   - **the letter no longer goes** — the customer anonymised (`customer_anonymised`), the
+     principal settled (`settled`), the invoice handed off (`handed_off`) or on hold
+     (`on_hold`), the customer's policy `none` (`policy_none`), or the engine giving
+     another action or level — reminders switched off, another letter on its way, a
+     notice where a reminder was made (`action_changed`) — and it is **withdrawn** with
+     that reason and no user;
+   - otherwise its **facts are written**, `sent_on` today and the deadline
+     `max(deadline_days, 14)` days on, moved to the next business day off a weekend or a
+     public holiday.
+2. **The PDF** is rendered from the row ([The letter's content](#the-letters-content)) and
+   stored once — `Exists` before `Put` — at
+   `reminders/<invoiceId>/<reminderId>-<sentOn>-<sha256>.pdf`, outside any lock, the store's
+   two calls under a 15-second timeout. The key carries the hash of the bytes, so a
+   different render — a same-day retry after a payment moved the principal — lands on a
+   key of its own and never records a new hash over an old object; earlier objects stay
+   (the module deletes none). The row is told the key and the hash.
+3. **The mail**, through the installation's SMTP settings, only **while the lease still
+   covers it**: a claim with less than 30 seconds of its lease left — the send's
+   20-second timeout and a 10-second margin for marking it sent — does not send, and the
+   attempt fails. The mail goes to the letter's recipient, from the seller's legal name,
+   **Reply-To the seller's e-mail** in the settings, the subject "Purring: faktura
+   {n}" or "Inkassovarsel: faktura {n}" ("Reminder: invoice {n}", "Debt collection notice:
+   invoice {n}"), a short cover in the letter's language and the PDF attached. Its
+   **Message-ID** is `reminder-<uuid>@vantigo.invalid`, made at the letter's first claim,
+   stored on the row while it is queued and kept on every retry: a mail sent twice — the
+   server took it but the mark never came — is recognisably one, and never another
+   installation's.
+4. **One transaction, the invoice, then the letter** — the letter, still this claim's,
+   **`sent`** at the claim's time. When a hold was placed, or a lift barred the charges,
+   while the letter was being sent (steps 2 and 3 run under no lock, and a hold leaves a
+   letter being sent alone), its fee and compensation are **waived `claimed_in_error`**
+   in this transaction, after the status change, in the name of the run's author.
+
+**A failed attempt** — the store, the send, a lease run short, a render — counts the
+attempt, records `last_error` (redacted) and **clears the lease and the facts**, so the
+letter is not "being sent" and may be withdrawn again, and is due again after
+`min(3600, 2^n)` seconds for its n-th attempt. A letter still unsent **48 hours after its
+first attempt** is **`failed`** (`failed_at`), an attention item until a person retries
+or withdraws it. Every write of a claim names its lease and the status it saw, and
+changes nothing when another actor moved the letter. No call leaves the module inside a
+transaction.
+
+### The letter's content
+
+A letter is one A4 page in the invoice PDF's layout and font, in the letter's language —
+English when the buyer snapshot's is, Norwegian otherwise — rendered from its row and its
+invoice's snapshots, so a row renders the same bytes every time (its creation date is
+`sent_on`). It holds, in order:
+
+- the seller block (the seller snapshot: name, address, organisation number with MVA,
+  Foretaksregisteret, e-mail) and the buyer block, the date `sent_on`, the heading
+  **"Purring"** or **"Inkassovarsel"** ("Payment reminder", "Debt collection notice");
+- the invoice it concerns — number, issue date, due date — and the payment deadline;
+- **the claim with every amount apart** (inkassoloven § 10 c and d by choice): the
+  invoice's total, what credit notes issued by `sent_on` took off it, what was paid, the
+  **principal open**; the **earlier fees and compensation still outstanding**
+  (`charges_earlier`) — worded **as a credit from earlier payments of charges** when it is
+  negative, the charges paid beyond the earlier ones paying this letter's own; this
+  letter's **reminder fee** or **compensation for recovery costs**; the **late payment
+  interest** accrued to `sent_on` from its from-date, each segment with its rate, its days
+  and its base; what of the interest is waived and what is already paid; and **the amount
+  to pay**;
+- "Betal {total} innen {deadline}", the account number, the invoice's **KID** when it has
+  one with "Merk betalingen med KID {kid}", else "Merk betalingen med fakturanummer {n}",
+  and IBAN and BIC when the seller has them;
+- **an inkassovarsel** says, clearly, "Kravet vil bli sendt til inkasso dersom det ikke
+  er betalt innen {deadline}" (inkassoloven § 9) and that collection **may** add costs —
+  never that it will;
+- **a reminder announcing the hand-off** under the 2026 act says the claim "vil bli
+  oversendt til et inkassoforetak" if unpaid by the deadline (Prop. 3 L (2025–2026)
+  12.5.5);
+- every letter: "Har du betalt i mellomtiden, kan du se bort fra dette brevet", and the
+  objection sentence "Har du innsigelser mot kravet, gi oss beskjed før fristen" (FinKN
+  2025-240).
+
+The English letter says the same in English. The words are pinned by text goldens of
+each level in both languages ([`testdata/reminders`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/invoices/testdata/reminders)).
+
 ## Holds and the hand-off to collection
 
 An invoice the customer disputes is put **on hold**, and one a collection agency has
@@ -3235,6 +3404,10 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /reminder-runs` | `invoices:payments` | the preview (narrowed by `customerId`, `dueBefore`): 409 `too_many_overdue`; the run: 400 on `items`; 409 `reminders_disabled`, `collection_rates_outdated` (with `kind`, `halfYear`), `collection_regime_unreviewed`, `bank_import_stale` (with `lastBookedOn`) |
 | `GET /reminder-runs` | `invoices:payments` | 400 paging |
 | `GET /reminder-runs/{id}` | `invoices:payments` | 404 |
+| `GET /reminders` | | 400 paging, an unknown `status` or `channel` |
+| `GET /reminders/{id}/pdf` | | 404; 409 `reminder_not_sent`; 500 a missing or altered stored object; 503 `storage_unavailable` |
+| `POST /reminders/{id}/withdraw` | `invoices:payments` | 400 on `reason`; 404; then under the letter's lock 409 `reminder_not_withdrawable` (sent, withdrawn, or being sent) |
+| `POST /reminders/{id}/retry` | `invoices:payments` | 404; then under the letter's lock 409 `reminder_not_failed` |
 | `PUT /customers/{customerId}/reminder-policy` | `invoices:payments` | 400 on `mode` or `note`; 404 the customer has no document here, or is anonymised |
 | `GET /vat-codes` | | |
 | `POST /vat-codes` | `invoices:manage` | 400 on the field, a duplicate code on `code` |

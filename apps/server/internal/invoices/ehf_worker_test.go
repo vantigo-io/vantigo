@@ -850,7 +850,7 @@ func TestEhfWorker_RunsOnWorkerModeDeps(t *testing.T) {
 }
 
 // The two workers are handed to the runner exactly when INVOICES_EHF_ENABLED
-// is on, PEPPOL_LOOKUP_ENABLED or not.
+// is on, PEPPOL_LOOKUP_ENABLED or not; the reminder worker always is.
 func TestEhfWorker_RegisteredOnlyWhenEnabled(t *testing.T) {
 	t.Parallel()
 	names := func(h *harness) []string {
@@ -861,15 +861,15 @@ func TestEhfWorker_RegisteredOnlyWhenEnabled(t *testing.T) {
 		slices.Sort(out)
 		return out
 	}
-	want := []string{"invoices-ehf-events@30s", "invoices-ehf@5s"}
+	want := []string{"invoices-ehf-events@30s", "invoices-ehf@5s", "invoices-reminders@5s"}
 	if got := names(newHarness(t)); !slices.Equal(got, want) {
 		t.Errorf("enabled: %v, want %v", got, want)
 	}
 	if got := names(newHarness(t, modtest.WithEnv("PEPPOL_LOOKUP_ENABLED", "0"))); !slices.Equal(got, want) {
 		t.Errorf("lookup disabled: %v, want %v", got, want)
 	}
-	if got := names(newHarness(t, modtest.WithEnv("INVOICES_EHF_ENABLED", "0"))); len(got) != 0 {
-		t.Errorf("switched off: %v, want none", got)
+	if got := names(newHarness(t, modtest.WithEnv("INVOICES_EHF_ENABLED", "0"))); !slices.Equal(got, []string{"invoices-reminders@5s"}) {
+		t.Errorf("switched off: %v, want the reminder worker alone", got)
 	}
 }
 
