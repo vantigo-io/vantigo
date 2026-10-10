@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const lockBankTransaction = `-- name: LockBankTransaction :one
@@ -319,6 +320,42 @@ func (q *Queries) LockReminder(ctx context.Context, id int64) (InvoicesReminder,
 		&i.WithdrawalReason,
 	)
 	return i, err
+}
+
+const shareCollectionRatesInForce = `-- name: ShareCollectionRatesInForce :many
+SELECT r.id FROM invoices.collection_rates r
+WHERE r.valid_from <= $1::date
+  AND NOT EXISTS (SELECT 1 FROM invoices.collection_rates n
+      WHERE n.kind = r.kind AND n.valid_from > r.valid_from AND n.valid_from <= $1::date)
+ORDER BY r.id
+FOR KEY SHARE OF r
+`
+
+// ShareCollectionRatesInForce reads FOR KEY SHARE, in id order, the rows a
+// letter dated @day relies on as the DELETE judges "used" (rates.sql's
+// GetCollectionRate, plan reading 6): of each kind, the row in force on that
+// day. A print batch takes it in each letter's transaction before it judges
+// the letter, so a DELETE — which takes its row FOR UPDATE first — either
+// waits for the letter and then sees it printed, or deleted the row before
+// the batch read the rates, which then judge without it.
+func (q *Queries) ShareCollectionRatesInForce(ctx context.Context, day pgtype.Date) ([]int64, error) {
+	rows, err := q.db.Query(ctx, shareCollectionRatesInForce, day)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const shareCustomerDocuments = `-- name: ShareCustomerDocuments :many

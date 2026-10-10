@@ -206,6 +206,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/reminder-print-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the print batches
+         * @description The print batches (D10, plan reading 12), newest first, each with its letters. posted true answers the posted ones; false the open ones — neither posted nor reprinted, which the paper page lists to post; absent, all. page and pageSize are the codebase's paging, 25 by default, at most 100.
+         */
+        get: operations["getInvoicesReminderPrintBatches"];
+        put?: never;
+        /**
+         * Print paper letters for a posting day
+         * @description Prints paper letters for a posting day (D10, reading 39). reminderIds, 1 to 200 letters, each once, each awaiting print as the pool reads them — 409 reminder_not_awaiting_print naming the first that is not, before anything is written; postOn today or one of the next 7 days (400). Without an object store, 503 storage_unavailable, before anything is written. Then the batch row, and per letter one transaction — its invoice FOR UPDATE, then the letter (D18), then the collection rates in force on postOn FOR KEY SHARE, so a rate a printed letter relies on cannot be deleted under it — that judges the letter again on postOn: a letter no longer awaiting print (withdrawn, or printed by another batch meanwhile) is left out; one that on postOn needs a rate with no row for a half-year, or would carry a fee or be a collection notice past the regime review, is left out and kept awaiting print (collection_rates_outdated, collection_regime_unreviewed); one the engine no longer gives on postOn — the invoice settled, held, handed off, the customer's policy none or the customer anonymised, another action or level — is withdrawn with that reason and left out; every other gets its facts as judged on postOn — sentOn is postOn, the deadline runs from it, the fee is judged then — and is printed in the batch. Then each printed letter's PDF is rendered and stored under a key carrying its hash, outside any transaction. 201 with the batch, its combined PDF's URL and the letters left out. A printed letter is in flight: no run writes to its invoice until it is posted or reprinted.
+         */
+        post: operations["postInvoicesReminderPrintBatches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/reminder-print-batches/{id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a print batch's PDF
+         * @description The batch's combined PDF (D10): its printed and sent letters — never one withdrawn since printing — each rendered again from its own row, in id order, each on its own pages; the same pages as often as it is asked for. Named paper-letters-<id>-<postOn>.pdf, never cached.
+         */
+        get: operations["getInvoicesReminderPrintBatchesByIdPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/reminder-print-batches/{id}/posted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a print batch was posted
+         * @description Confirms a batch was posted (D10, reading 39). postedOn after today is a 400. Then the batch FOR NO KEY UPDATE, its letters' invoices FOR UPDATE in descending id, then each letter (D18): a batch posted or reprinted already is 409 print_batch_closed; postedOn before the batch's postOn 409 reminder_posted_early, after it 409 reminder_posted_late — every fact on the letters was judged for postOn, so they must be reprinted. On postOn itself every printed letter is re-judged on postOn and becomes sent, sentAt the confirmation's time; a letter withdrawn by hand since printing is skipped and listed; a letter whose invoice was settled, held, handed off or its customer anonymised since printing, whose charges a lift barred, or whose re-judged outcome no longer carries the fee or compensation it printed, has those waived claimed_in_error in the same transaction, and is listed.
+         */
+        post: operations["postInvoicesReminderPrintBatchesByIdPosted"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/reminder-print-batches/{id}/reprint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reprint a print batch
+         * @description Reprints a batch (D10): the batch FOR NO KEY UPDATE, then every printed letter of it, which returns to awaiting print with its facts, its batch and its PDF cleared, to be printed in a new batch for the day it will be posted (a new render, a new key). It does not lock the letters' invoices: no path holds a printed letter and then waits on its invoice. A batch posted or reprinted already is 409 print_batch_closed.
+         */
+        post: operations["postInvoicesReminderPrintBatchesByIdReprint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/reminder-runs": {
         parameters: {
             query?: never;
@@ -1338,7 +1422,7 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -1919,6 +2003,69 @@ export interface components {
             total: number;
             warnings: ("collection_rates_outdated" | "collection_regime_unreviewed" | "collection_rate_differs_from_release" | "bank_data_stale" | "ocr_without_kid_payments")[];
         };
+        /** @description A batch of paper letters printed for one posting day (D10, reading 39): postOn is the day every letter's facts were judged for — sentOn, the deadline from it, the fee — and the only day it may be confirmed posted. postedOn, postedBy and postedAt are set together once it is posted, which sends its printed letters; reprintedAt once it is reprinted, which returns them to awaiting print. A batch is posted or reprinted, never both. letters are the letters naming it: printed until it is posted or reprinted, sent once it is posted, and any withdrawn by hand since printing. */
+        InvoicesPrintBatch: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string;
+            /** Format: int64 */
+            id: number;
+            letters: components["schemas"]["InvoicesReminder"][];
+            /** Format: date */
+            postOn: string;
+            /** Format: date-time */
+            postedAt?: string;
+            /** Format: uuid */
+            postedBy?: string;
+            /** Format: date */
+            postedOn?: string;
+            /** Format: date-time */
+            reprintedAt?: string;
+        };
+        /** @description A letter a print batch left out (D10): not_awaiting_print — withdrawn meanwhile, or printed by another batch — and still as it was; collection_rates_outdated (with outdated) or collection_regime_unreviewed — on the posting day it needs a rate with no row for a half-year, or would carry a fee or be a collection notice past the regime review — kept awaiting print (m9); or withdrawn by the batch's re-judge with the reason it now has: settled, on_hold, handed_off, policy_none, customer_anonymised or action_changed. */
+        InvoicesPrintBatchLeftOut: {
+            /** Format: int64 */
+            invoiceId: number;
+            outdated?: components["schemas"]["InvoicesOutdatedRate"];
+            /** @enum {string} */
+            reason: "not_awaiting_print" | "collection_rates_outdated" | "collection_regime_unreviewed" | "settled" | "on_hold" | "handed_off" | "policy_none" | "customer_anonymised" | "action_changed";
+            /** Format: int64 */
+            reminderId: number;
+        };
+        /** @description A batch confirmed posted (D10): the batch, its printed letters now sent; skipped, the letters withdrawn by hand since printing, never sent; waived, the letters whose fee or compensation the posting's re-judge waived claimed_in_error. */
+        InvoicesPrintBatchPosted: {
+            batch: components["schemas"]["InvoicesPrintBatch"];
+            skipped: number[];
+            waived: components["schemas"]["InvoicesPrintBatchWaiver"][];
+        };
+        /** @description POST /invoices/reminder-print-batches/{id}/posted's body (D10): postedOn is the day the batch went in the post — today or earlier, and the batch's postOn. */
+        InvoicesPrintBatchPostedRequest: {
+            /** Format: date */
+            postedOn: string;
+        };
+        /** @description POST /invoices/reminder-print-batches's body (D10): reminderIds, 1 to 200 letters awaiting print, each once; postOn, the day they will be posted — today or one of the next 7 days. */
+        InvoicesPrintBatchRequest: {
+            /** Format: date */
+            postOn: string;
+            reminderIds: number[];
+        };
+        /** @description A print batch made (D10): the batch with its printed letters, the URL of its combined PDF and the letters it left out. */
+        InvoicesPrintBatchResult: {
+            batch: components["schemas"]["InvoicesPrintBatch"];
+            leftOut: components["schemas"]["InvoicesPrintBatchLeftOut"][];
+            pdfUrl: string;
+        };
+        /** @description A posted letter whose charges the posting's re-judge waived claimed_in_error (D9, D10): kinds, its fee or its compensation, or both; reason, what changed since printing — settled, on_hold, handed_off, policy_none, customer_anonymised, charges_barred (a lift barred charges), or action_changed (the engine no longer gives the charge on the posting day). */
+        InvoicesPrintBatchWaiver: {
+            /** Format: int64 */
+            invoiceId: number;
+            kinds: ("fee" | "compensation")[];
+            /** @enum {string} */
+            reason: "settled" | "on_hold" | "handed_off" | "policy_none" | "customer_anonymised" | "charges_barred" | "action_changed";
+            /** Format: int64 */
+            reminderId: number;
+        };
         /** @description A reminder letter (D10): made by a run without its facts, queued for e-mail or awaiting print for paper; its facts — sentOn, the deadline, the regime and the amounts — are written when it is sent (e-mail, by the invoices-reminders worker, on the day it is mailed) or printed (paper) and frozen once sent; a failed attempt clears them again. recipient is the address an e-mail letter goes to, empty for paper and once the customer is anonymised; it is answered only to a caller holding invoices:payments. heldReason is why a queued letter waits an hour at a time without its attempt counted: collection_rates_outdated (a rate it needs has no row for a half-year) or collection_regime_unreviewed (it would carry a fee or be a collection notice past the regime review). withdrawalReason is a code when the module withdrew the letter and withdrawnBy is absent — settled, on_hold, handed_off, policy_none, customer_anonymised or action_changed (the engine no longer gives the letter's action or level) — and the person's own words when withdrawnBy names them (plan reading 44). */
         InvoicesReminder: {
             announcesCollection: boolean;
@@ -2082,6 +2229,10 @@ export interface components {
             number: number;
             recipient: string;
             warnings: ("reminder_email_missing" | "mail_unavailable")[];
+        };
+        PaginatedResponseOfInvoicesPrintBatch: {
+            data: components["schemas"]["InvoicesPrintBatch"][];
+            pagination: components["schemas"]["PaginationMetadata"];
         };
         PaginatedResponseOfInvoicesReminder: {
             data: components["schemas"]["InvoicesReminder"][];
@@ -4086,6 +4237,298 @@ export interface operations {
                 };
             };
             /** @description Conflict — too_many_overdue, more than 5 000 invoices to judge; narrow by customerId or dueBefore. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesReminderPrintBatches: {
+        parameters: {
+            query?: {
+                posted?: boolean;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfInvoicesPrintBatch"];
+                };
+            };
+            /** @description Bad Request — paging out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoicesReminderPrintBatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesPrintBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — the batch, its PDF's URL and the letters left out. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesPrintBatchResult"];
+                };
+            };
+            /** @description Bad Request — on reminderIds (none, more than 200, a letter twice, an id that names no letter) or postOn (before today or more than 7 days on). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — reminder_not_awaiting_print, naming the letter. Nothing is written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable, this installation has no object store to keep the letters in. Nothing is written. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesReminderPrintBatchesByIdPdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the PDF, with a Content-Disposition naming it and Cache-Control private, no-store. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no batch has that id, or it has no printed or sent letter (it was reprinted, or every letter was withdrawn or left out). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postInvoicesReminderPrintBatchesByIdPosted: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesPrintBatchPostedRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the batch posted, the letters skipped and the waivers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesPrintBatchPosted"];
+                };
+            };
+            /** @description Bad Request — postedOn after today. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no batch has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — print_batch_closed, reminder_posted_early or reminder_posted_late. Nothing is written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesReminderPrintBatchesByIdReprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the batch, reprinted; only letters withdrawn since printing still name it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesPrintBatch"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no batch has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — print_batch_closed. Nothing is written. */
             409: {
                 headers: {
                     [name: string]: unknown;

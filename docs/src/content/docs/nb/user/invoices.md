@@ -917,6 +917,19 @@ til et utskrevet eller sendt brev kan lastes ned. Skjermbildene kommer med purre
 fakturasiden; til da finnes dette i API-et ([brev](/en/reference/invoices/#letters),
 [jobben](/en/reference/invoices/#the-worker)).
 
+**Brev på papir.** Et brev på papir går når det postlegges. Den som har
+`invoices:payments`, skriver ut brevene som venter på utskrift, for dagen de skal
+postlegges — i dag eller inntil en uke fram — og hvert brev vurderes for den dagen: datoen,
+fristen og gebyret er postleggingsdagens. Et brev som ikke kan gå den dagen, holdes utenfor
+og navngis: trukket tilbake i mellomtiden, venter på en sats eller en gjennomgått
+regelordning, eller ikke lenger aktuelt — fakturaen er betalt, satt på vent eller
+overlevert. Brevene i bunken kommer som én PDF, som kan lastes ned på nytt. Når bunken er
+postlagt, bekrefter du at den ble postlagt den dagen, og brevene er sendt; et gebyr dagen
+ikke lenger gir grunnlag for — fakturaen er betalt, satt på vent eller overlevert etter
+utskriften — ettergis. Ble bunken postlagt en annen dag, må den skrives ut på nytt for
+dagen den går. Skjermbildene kommer med forfallsområdet; til da finnes dette i API-et
+([papir og postlegging](/en/reference/invoices/#paper-and-posting)).
+
 ## Sende et dokument på e-post
 
 Åpne en utstedt faktura eller kreditnota og klikk **Send**. Knappen krever

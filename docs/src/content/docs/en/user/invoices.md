@@ -899,6 +899,18 @@ letter's PDF can be downloaded. The screens come with the invoice page's reminde
 until then this is in the API ([letters](/en/reference/invoices/#letters),
 [the worker](/en/reference/invoices/#the-worker)).
 
+**Letters on paper.** A paper letter goes when it is posted. Someone with
+`invoices:payments` prints the letters awaiting print for the day they will be posted —
+today or up to a week ahead — and each is judged for that day: its date, its deadline and
+its fee are the posting day's. A letter that cannot go that day is left out and named:
+withdrawn meanwhile, waiting for a rate or the regime review, or no longer due — the
+invoice paid, put on hold or handed off. The batch's letters come as one PDF, which can be
+downloaded again. Once the batch is in the post, confirm it was posted that day, and its
+letters are sent; a fee the day no longer supports — the invoice paid, put on hold or
+handed off since printing — is waived. Posted on another day, the batch must be printed
+again for the day it goes. The screens come with the Overdue area; until then this is in
+the API ([paper and posting](/en/reference/invoices/#paper-and-posting)).
+
 ## Sending a document by e-mail
 
 Open an issued invoice or credit note and click **Send**. The button needs

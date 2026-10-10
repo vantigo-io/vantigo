@@ -7,6 +7,7 @@ sources:
   - apps/server/internal/storage
   - apps/server/internal/invoices/bankimport.go
   - apps/server/internal/invoices/reminderpdf.go
+  - apps/server/internal/invoices/print_batches.go
 ---
 Objektlagring er applikasjonsporten Kommunikasjon mellomlagrer og serverer vedlegg
 gjennom. Moduler snakker aldri med en leverandør-SDK: de får et `ObjectStore` avgrenset
@@ -120,7 +121,11 @@ hashen av innholdet som nøkkel, lagt inn bare når ingenting ligger der fra fø
 sendes på e-post eller når det skrives ut, og aldri slettet eller overskrevet: et brev som
 lages på nytt med andre tall (et nytt forsøk samme dag etter en betaling), får sin egen
 nøkkel, og brevets rad viser til objektet det gikk med
-([jobben](/en/reference/invoices/#the-worker)). Et avgrenset lager
+([jobben](/en/reference/invoices/#the-worker)). PDF-en til et papirbrev lagres på samme
+måte når utskriftsbunken skrives ut, under postleggingsdagen; en ny utskrift skriver det ut
+igjen under en ny nøkkel, og bunkens samlede PDF lages fra brevenes rader hver gang den
+lastes ned, og lagres aldri
+([papir og postlegging](/en/reference/invoices/#paper-and-posting)). Et avgrenset lager
 avviser en relativ nøkkel som er lik omfanget sitt eller allerede begynner med
 `{scope}/`: kallere sender bare relative nøkler og må aldri bygge prefikset selv.
 

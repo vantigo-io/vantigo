@@ -579,3 +579,14 @@ func RenderLetterForTest(ctx context.Context, d module.Deps, reminderID int64) (
 	_, body, err := s.renderLetter(ctx, q, letter, inv)
 	return body, err
 }
+
+// SetPostedAfterBatchLock installs a hook the posting of a print batch calls
+// inside its transaction right after it has locked the batch and before it
+// locks the letters' invoices, with the batch's id, and answers the function
+// that removes it. An error rolls the posting back. A race test parks a
+// posting there while a hold comes. A test using it does not run in
+// parallel: the hook is the package's.
+func SetPostedAfterBatchLock(hook func(ctx context.Context, batchID int64) error) func() {
+	postedAfterBatchLock = hook
+	return func() { postedAfterBatchLock = nil }
+}

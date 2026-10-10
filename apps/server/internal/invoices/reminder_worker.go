@@ -1,7 +1,6 @@
 package invoices
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -266,7 +265,7 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 	sum := sha256.Sum256(body)
 	sha := hex.EncodeToString(sum[:])
 	key := reminderKey(inv.ID, letter.ID, utcDay(letter.SentOn.Time), sha)
-	if err := c.store(ctx, key, body); err != nil {
+	if err := c.s.storeLetterPDF(ctx, key, body); err != nil {
 		c.w.logger().WarnContext(ctx, "invoices: a reminder letter could not be stored", "worker", reminderWorkerName,
 			"reminder_id", letter.ID, "error", err.Error())
 		return c.fail(ctx, reasonLetterNotStored)
@@ -538,19 +537,6 @@ func (s *server) renderLetter(ctx context.Context, q *store.Queries, letter stor
 		return reminderModel{}, nil, err
 	}
 	return m, body, nil
-}
-
-// store puts body under key unless something is there already: the key
-// carries the hash of the bytes, so what is there is these bytes. Both calls
-// are bounded together by reminderStoreTimeout.
-func (c *reminderClaim) store(ctx context.Context, key string, body []byte) error {
-	ctx, cancel := context.WithTimeout(ctx, reminderStoreTimeout)
-	defer cancel()
-	exists, err := c.s.objectExists(ctx, key)
-	if err != nil || exists {
-		return err
-	}
-	return c.s.objectPut(ctx, key, bytes.NewReader(body), "application/pdf")
 }
 
 // markSent is step 4 under the invoice's lock, then the letter's: the letter

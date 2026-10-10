@@ -12,10 +12,12 @@ import (
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/line"
+	"github.com/johnfercher/maroto/v2/pkg/components/page"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
+	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/fontrepository"
 	"github.com/johnfercher/maroto/v2/pkg/props"
 
@@ -290,6 +292,13 @@ func (m reminderModel) text() []string {
 // the invoice PDF's font and margins, its creation date the letter's day
 // (pdf.go's layoutPDF's shape), so a row renders the same bytes every time.
 func renderReminderPDF(m reminderModel) ([]byte, error) {
+	return renderLettersPDF([]reminderModel{m}, m.created, m.title)
+}
+
+// renderLettersPDF lays letters out on A4 one after the other, each from a
+// new page, in one document created on created and titled title: a single
+// letter's PDF, or a print batch's combined one (print_batches.go).
+func renderLettersPDF(letters []reminderModel, created time.Time, title string) ([]byte, error) {
 	fonts, err := fontrepository.New().
 		AddUTF8FontFromBytes(fontFamily, fontstyle.Normal, notoSansRegular).
 		AddUTF8FontFromBytes(fontFamily, fontstyle.Bold, notoSansBold).
@@ -302,10 +311,25 @@ func renderReminderPDF(m reminderModel) ([]byte, error) {
 		WithDefaultFont(&props.Font{Family: fontFamily, Size: 9}).
 		WithSequentialMode().
 		WithLeftMargin(15).WithRightMargin(15).WithTopMargin(15).
-		WithCreationDate(m.created).
-		WithTitle(m.title, true).
+		WithCreationDate(created).
+		WithTitle(title, true).
 		Build()
 	doc := maroto.New(cfg)
+	for i, m := range letters {
+		if i > 0 {
+			doc.AddPages(page.New()) // the next letter starts on a page of its own
+		}
+		layoutLetter(doc, m)
+	}
+	out, err := doc.Generate()
+	if err != nil {
+		return nil, fmt.Errorf("invoices: render the letter's PDF: %w", err)
+	}
+	return out.GetBytes(), nil
+}
+
+// layoutLetter adds one letter's rows to doc.
+func layoutLetter(doc core.Maroto, m reminderModel) {
 	bold := props.Text{Style: fontstyle.Bold}
 	right := props.Text{Align: align.Right}
 	boldRight := props.Text{Style: fontstyle.Bold, Align: align.Right}
@@ -349,11 +373,6 @@ func renderReminderPDF(m reminderModel) ([]byte, error) {
 	for _, s := range m.sentences {
 		doc.AddAutoRow(text.NewCol(12, s, props.Text{Bottom: 1.5}))
 	}
-	out, err := doc.Generate()
-	if err != nil {
-		return nil, fmt.Errorf("invoices: render the letter's PDF: %w", err)
-	}
-	return out.GetBytes(), nil
 }
 
 // reminderKey is where a letter's PDF is stored (plan reading 35): beside
