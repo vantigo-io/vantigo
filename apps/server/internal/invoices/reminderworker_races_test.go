@@ -85,7 +85,9 @@ func letterWaivers(t *testing.T, h *harness, id int64) []string {
 // hold held after its invoice lock — the dispatch's claim waits on the
 // invoice, the hold withdraws the letter on_hold (it is claimed, but carries
 // no facts: not being sent), and the dispatch's re-read finds it withdrawn
-// and mails nothing.
+// and mails nothing. A hold and a barring lift both made while the letter is
+// mailed (no lock held then): at its mark the invoice is no longer on hold
+// but its charges are barred, and the fee is waived claimed_in_error.
 func TestReminderDispatch_RacesHold(t *testing.T) {
 	t.Run("the dispatch first", func(t *testing.T) {
 		h, mails := workerHarness(t, "", modtest.WithPoolMaxConns(2))
@@ -128,6 +130,38 @@ func TestReminderDispatch_RacesHold(t *testing.T) {
 		answered(t, "the barring lift", payer(t, h).Do(http.MethodPost, liftPath(id), liftBody(false, "Innsigelsen var begrunnet")))
 		if got := letterWaivers(t, h, letter); !slices.Equal(got, []string{"fee claimed_in_error"}) {
 			t.Errorf("after the barring lift the waivers = %v, want the one fee waiver", got)
+		}
+		if after := deadlocks(t, probeConn); after != before {
+			t.Errorf("Postgres broke %d deadlock(s)", after-before)
+		}
+	})
+
+	t.Run("a barring lift while the letter is being sent", func(t *testing.T) {
+		h, mails := workerHarness(t, "", modtest.WithPoolMaxConns(2))
+		id, letter := dueLetter(t, h, 1)
+		probeConn := ownConn(t, h)
+		before := deadlocks(t, probeConn)
+		reached, release := heldSend(mails)
+		defer release()
+
+		done := claimed(invoices.NewReminderWorker(h.Deps()))
+		waitFor(t, "the send", reached)
+		if got := heldMode(t, probeConn, "invoices.reminders", "id = $1", letter); got != "" {
+			t.Errorf("the letter is held %q while it is mailed, want free", got)
+		}
+		held := answered(t, "the hold", payer(t, h).Do(http.MethodPost, holdPath(id), holdNote("Kunden bestrider timene")))
+		if len(held.LettersLeft) != 1 || held.LettersLeft[0].ReminderID != letter {
+			t.Errorf("lettersLeft = %+v, want the letter being sent", held.LettersLeft)
+		}
+		answered(t, "the barring lift", payer(t, h).Do(http.MethodPost, liftPath(id), liftBody(false, "Innsigelsen var begrunnet")))
+		release()
+		finishedClaim(t, done)
+		r := letterOf(t, h, letter)
+		if r.Status != "sent" || amountText(r.Fee) != "38.00" || len(mails.delivered()) != 1 {
+			t.Fatalf("the letter = %s fee %s after %d mails, want sent with its fee", r.Status, amountText(r.Fee), len(mails.delivered()))
+		}
+		if got := letterWaivers(t, h, letter); !slices.Equal(got, []string{"fee claimed_in_error"}) {
+			t.Errorf("the letter's waivers = %v, want its fee waived claimed_in_error: charges are barred, the hold is lifted", got)
 		}
 		if after := deadlocks(t, probeConn); after != before {
 			t.Errorf("Postgres broke %d deadlock(s)", after-before)

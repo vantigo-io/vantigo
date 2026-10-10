@@ -173,4 +173,6 @@ letters under a 60-second lease and never send one twice on purpose.
   in the reminder settings, and it goes.
 - **At least once.** If the process stops between the mail server taking a letter and
   Vantigo marking it sent, the next claim sends it again, with the same Message-ID, so
-  the customer's mail program can tell it is the same letter.
+  the customer's mail program can tell it is the same letter. If the process instead stalls past the
+  letter's 60-second lease in that window, someone may withdraw the letter meanwhile:
+  it was mailed but is recorded `withdrawn`, and the worker logs a warning naming it.

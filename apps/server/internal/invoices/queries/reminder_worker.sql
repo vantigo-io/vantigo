@@ -51,13 +51,15 @@ WHERE id = @id AND status IN ('queued', 'awaiting_print')
 RETURNING *;
 
 -- name: RescheduleReminderUncounted :execrows
--- RescheduleReminderUncounted puts a claimed letter whose rates or regime
--- review are missing back an hour out (plan readings 17, 46): held_reason
--- says why, which attention reads; neither attempts nor first_attempt_at
--- moves, so waiting never runs into the 48 hours. The lease and any facts
--- of an earlier attempt are cleared.
+-- RescheduleReminderUncounted puts a claimed letter back without counting
+-- the try (plan readings 17, 46): an hour out when its rates or regime
+-- review are missing, held_reason saying why, which attention reads; at
+-- once, held_reason NULL, when Oslo midnight passed before its send, so its
+-- facts are judged again on the new day. Neither attempts nor
+-- first_attempt_at moves, so waiting never runs into the 48 hours. The lease
+-- and the facts are cleared.
 UPDATE invoices.reminders
-SET next_attempt_at = @next_attempt_at::timestamptz, held_reason = @held_reason::text,
+SET next_attempt_at = @next_attempt_at::timestamptz, held_reason = sqlc.narg(held_reason)::text,
     lease_id = NULL, lease_until = NULL,
     sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,

@@ -914,7 +914,7 @@ venter, og går når de er på plass. Et brev e-postserveren fortsetter å avvis
 ennå, kan trekkes tilbake med en begrunnelse — men ikke mens det sendes på e-post. PDF-en
 til et utskrevet eller sendt brev kan lastes ned. Skjermbildene kommer med purrekortene på
 fakturasiden; til da finnes dette i API-et ([brev](/en/reference/invoices/#letters),
-[arbeideren](/en/reference/invoices/#the-worker)).
+[jobben](/en/reference/invoices/#the-worker)).
 
 ## Sende et dokument på e-post
 

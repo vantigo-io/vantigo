@@ -1192,7 +1192,10 @@ LOCKED` pick (`inv/queries/transmissions.sql:56-73`'s shape), then:
    invoice {n}"), a short cover text and the PDF; **a stable Message-ID per letter**,
    `<reminder-{uuid}@…>` made at the letter's first claim, stored on the row and reused on
    every retry, so it never collides across installations (at least once, reading 13;
-   revision 3).
+   revision 3). **Just before the send the clock is read again: past Oslo midnight since
+   the claim, the letter is put back uncounted, its lease and facts cleared, and the next
+   claim judges it on the new day**, so no letter leaves with a deadline counted from the
+   day before its sending (Task 12 review).
 4. `sent`, `sent_at`, `message_id` — a lease-checked `UPDATE`. A failure: `attempts + 1`,
    backoff `min(3600, 2^n)` s; still `queued` 48 hours after `first_attempt_at` → `failed`
    (an attention item). `POST /invoices/reminders/{reminderId}/retry` (`invoices:payments`)

@@ -140,7 +140,11 @@ func reminderModelOf(r store.InvoicesReminder, inv store.InvoicesInvoice, credit
 		m.meta = append(m.meta, [2]string{words.dueDate, due})
 	}
 	m.meta = append(m.meta, [2]string{words.deadline, day(deadline)})
-	m.intro = fmt.Sprintf(words.intro, number, due)
+	intro := words.intro
+	if paid.Sign() > 0 {
+		intro = words.introPartial
+	}
+	m.intro = fmt.Sprintf(intro, number, due)
 
 	m.amounts = [][2]string{
 		{words.invoiceTotal, amount(gross)}, {words.credited, amount(credited)}, {words.paid, amount(paid)},

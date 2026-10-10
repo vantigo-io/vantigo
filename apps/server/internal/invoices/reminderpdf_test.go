@@ -107,37 +107,41 @@ func TestReminderLetter_Goldens(t *testing.T) {
 	for _, c := range []struct {
 		file, set string
 		invoice   letterInvoice
-		sentFirst bool // one fee-free reminder sent on 20 August before
+		sentFirst bool   // one fee-free reminder sent on 20 August before
+		paid      string // a payment on 20 August, "" for none
 		level     string
 		announces bool
 		has       []string
 	}{
 		{"reminder-nb.txt", "person_charge = 'none', business_charge = 'none'",
-			letterInvoice{number: 101, customer: customerAcme, due: "2026-08-03", kid: "kid"}, false, "reminder", false,
-			[]string{"# Purring", "Merk betalingen med KID", "Har du betalt i mellomtiden, kan du se bort fra dette brevet.",
+			letterInvoice{number: 101, customer: customerAcme, due: "2026-08-03", kid: "kid"}, false, "", "reminder", false,
+			[]string{"# Purring", "Vi har ikke registrert betaling av faktura 101", "Merk betalingen med KID", "Har du betalt i mellomtiden, kan du se bort fra dette brevet.",
 				"Har du innsigelser mot kravet, gi oss beskjed før fristen.", "Subject: Purring: faktura 101"}},
 		{"reminder-en.txt", "person_charge = 'none', business_charge = 'none'",
-			letterInvoice{number: 102, customer: customerAcme, due: "2026-08-03", language: "en"}, false, "reminder", false,
+			letterInvoice{number: 102, customer: customerAcme, due: "2026-08-03", language: "en"}, false, "", "reminder", false,
 			[]string{"# Payment reminder", "Please quote invoice number 102 with your payment.",
 				"If you have paid in the meantime, please disregard this letter.",
 				"If you dispute the claim, let us know before the deadline.", "Subject: Reminder: invoice 102"}},
 		{"reminder-fee-nb.txt", "late_interest = true",
-			letterInvoice{number: 103, customer: customerAcme, due: "2026-08-03", kid: "kid"}, false, "reminder", false,
+			letterInvoice{number: 103, customer: customerAcme, due: "2026-08-03", kid: "kid"}, false, "", "reminder", false,
 			[]string{"Purregebyr: 38,00", "Forsinkelsesrente fra 04.08.2026", "Å betale: NOK"}},
 		{"notice-nb.txt", "late_interest = true",
-			letterInvoice{number: 104, customer: customerAcme, due: "2026-07-20", kid: "kid"}, true, "collection_notice", false,
-			[]string{"# Inkassovarsel", "Kravet vil bli sendt til inkasso dersom det ikke er betalt innen 28.09.2026.",
+			letterInvoice{number: 104, customer: customerAcme, due: "2026-07-20", kid: "kid"}, true, "", "collection_notice", false,
+			[]string{"# Inkassovarsel", "Kravet vil bli sendt til inkasso dersom det ikke er betalt innen 28.09.2026.", "Gebyr for inkassovarsel: ",
 				"Inkasso kan føre til at det påløper ytterligere kostnader.", "Subject: Inkassovarsel: faktura 104",
 				"Attachment: inkassovarsel-104-2.pdf"}},
 		{"notice-en.txt", "late_interest = true",
-			letterInvoice{number: 105, customer: customerAcme, due: "2026-07-20", language: "en"}, true, "collection_notice", false,
-			[]string{"# Debt collection notice", "The claim will be sent to debt collection if it is not paid by 2026-09-28.",
+			letterInvoice{number: 105, customer: customerAcme, due: "2026-07-20", language: "en"}, true, "", "collection_notice", false,
+			[]string{"# Debt collection notice", "The claim will be sent to debt collection if it is not paid by 2026-09-28.", "Collection notice fee: ",
 				"Debt collection may add further costs.", "Subject: Debt collection notice: invoice 105"}},
 		{"announces-collection-nb.txt", "inkassolov_2026_from = DATE '2026-09-01'",
-			letterInvoice{number: 106, customer: customerAcme, due: "2026-07-20", kid: "kid"}, true, "reminder", true,
+			letterInvoice{number: 106, customer: customerAcme, due: "2026-07-20", kid: "kid"}, true, "", "reminder", true,
 			[]string{"# Purring", "Kravet vil bli oversendt til et inkassoforetak dersom det ikke er betalt innen 28.09.2026."}},
+		{"reminder-partial-nb.txt", "",
+			letterInvoice{number: 108, customer: customerAcme, due: "2026-08-03", kid: "kid"}, false, "400", "reminder", false,
+			[]string{"Vi har ikke mottatt hele beløpet for faktura 108", "Betalt: 400,00", "Utestående hovedstol: 600,00"}},
 		{"compensation-en.txt", "business_charge = 'compensation', late_interest = true",
-			letterInvoice{number: 107, customer: customerAcme, due: "2026-08-03", language: "en", business: true}, false, "reminder", false,
+			letterInvoice{number: 107, customer: customerAcme, due: "2026-08-03", language: "en", business: true}, false, "", "reminder", false,
 			[]string{"Compensation for recovery costs: 430.00", "Late payment interest from 2026-08-04"}},
 	} {
 		t.Run(c.file, func(t *testing.T) {
@@ -148,6 +152,9 @@ func TestReminderLetter_Goldens(t *testing.T) {
 			}
 			id := plantLetterInvoice(t, h, spec)
 			sequence := 1
+			if c.paid != "" {
+				plantPayment(t, h, id, c.paid, "2026-08-20")
+			}
 			if c.sentFirst {
 				plantLetterSent(t, h, id, 1, "reminder", "2026-08-20", "", "")
 				sequence = 2
