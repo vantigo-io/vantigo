@@ -1098,6 +1098,24 @@ func (e GetInvoicesBankTransactionsParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for GetInvoicesBankTransactionsParamsOrder.
+const (
+	Newest GetInvoicesBankTransactionsParamsOrder = "newest"
+	Queue  GetInvoicesBankTransactionsParamsOrder = "queue"
+)
+
+// Valid indicates whether the value is a known member of the GetInvoicesBankTransactionsParamsOrder enum.
+func (e GetInvoicesBankTransactionsParamsOrder) Valid() bool {
+	switch e {
+	case Newest:
+		return true
+	case Queue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetInvoicesOverdueParamsAction.
 const (
 	GetInvoicesOverdueParamsActionBlocked          GetInvoicesOverdueParamsAction = "blocked"
@@ -3087,15 +3105,21 @@ type GetInvoicesBankTransactionsParams struct {
 	Account *string `form:"account,omitempty" json:"account,omitempty"`
 
 	// Amount The amount, compared by value — the lines of exactly this amount. Above 0, with at most two decimals.
-	Amount   *float64            `form:"amount,omitempty" json:"amount,omitempty"`
-	From     *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
-	To       *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
-	Page     *int32              `form:"page,omitempty" json:"page,omitempty"`
-	PageSize *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	Amount *float64            `form:"amount,omitempty" json:"amount,omitempty"`
+	From   *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+	To     *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+
+	// Order The order: queue (the default) puts the open lines — pending, exception and duplicate — first, each group oldest booking day first, then by id; newest is every line newest booking day first, then the highest id first, so a reversal's candidates read the latest before it.
+	Order    *GetInvoicesBankTransactionsParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+	Page     *int32                                  `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32                                  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // GetInvoicesBankTransactionsParamsStatus defines parameters for GetInvoicesBankTransactions.
 type GetInvoicesBankTransactionsParamsStatus string
+
+// GetInvoicesBankTransactionsParamsOrder defines parameters for GetInvoicesBankTransactions.
+type GetInvoicesBankTransactionsParamsOrder string
 
 // GetInvoicesCollectionExportCsvParams defines parameters for GetInvoicesCollectionExportCsv.
 type GetInvoicesCollectionExportCsvParams struct {
@@ -3901,6 +3925,19 @@ func (siw *ServerInterfaceWrapper) GetInvoicesBankTransactions(w http.ResponseWr
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "order", r.URL.Query(), &params.Order, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "order"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "order", Err: err})
 		}
 		return
 	}

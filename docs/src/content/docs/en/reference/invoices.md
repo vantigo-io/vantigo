@@ -2175,9 +2175,11 @@ D5): an `exception` with its reason, or a `duplicate` row. Every queue operation
 which is how the screen finds the payments a reversal may take back), the booking days
 `from` and `to` (inclusive) and `unapplied` filter it; an unknown status or reason, `from`
 after `to`, an account that is not 11 digits, an amount that is not above 0 with at most
-two decimals, or paging out of range is 400. The open lines —
-`pending`, `exception`, `duplicate` — come first, each group oldest booking day first,
-then by id; the total counts the filtered lines. Each line answers what the bank wrote,
+two decimals, an `order` other than `queue` or `newest`, or paging out of range is 400.
+By default (`order=queue`) the open lines — `pending`, `exception`, `duplicate` — come
+first, each group oldest booking day first, then by id; `order=newest` lists every line
+newest booking day first, then the highest id first — the screen reads a reversal's
+candidates so, the latest 500 before it; the total counts the filtered lines. Each line answers what the bank wrote,
 its file (`bankFile`: id, format, upload time), **`applied`** — every payment and charge
 payment that refers to it, removed ones included, with the invoice and its number — and
 **`unappliedAmount`**: its amount less its live payments and charge payments, and 0 for a

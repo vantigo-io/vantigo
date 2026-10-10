@@ -453,8 +453,10 @@ WHERE ($1::text IS NULL OR t.status = $1::text)
                 OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open')))
            AND NOT EXISTS (SELECT 1 FROM invoices.bank_transaction_events e WHERE e.bank_transaction_id = t.id AND e.event = 'reversed')
            AND t.amount > a.applied))
-ORDER BY (t.status IN ('pending', 'exception', 'duplicate')) DESC, t.booked_on, t.id
-LIMIT $10::integer OFFSET $9::integer
+ORDER BY CASE WHEN $9::boolean THEN t.booked_on END DESC,
+         CASE WHEN $9::boolean THEN t.id END DESC,
+         (t.status IN ('pending', 'exception', 'duplicate')) DESC, t.booked_on, t.id
+LIMIT $11::integer OFFSET $10::integer
 `
 
 type ListBankTransactionsParams struct {
@@ -466,6 +468,7 @@ type ListBankTransactionsParams struct {
 	Account    *string
 	Amount     pgtype.Numeric
 	Unapplied  bool
+	Newest     bool
 	PageOffset int32
 	PageSize   int32
 }
@@ -477,8 +480,10 @@ type ListBankTransactionsRow struct {
 // ListBankTransactions is a page of the bank lines (D5), each with what its
 // live payments and charge payments apply: the open lines — pending,
 // exception, duplicate — first, each group oldest booking day first, then by
-// id. account and amount keep the lines of one receiving account and one
-// amount, compared by value — what a reversal's candidates are read by.
+// id; newest instead lists every line newest booking day first, then the
+// highest id first — a reversal's candidates, the latest before it. account
+// and amount keep the lines of one receiving account and one amount,
+// compared by value — what a reversal's candidates are read by.
 // unapplied keeps the matched and resolved credit lines with a rest — a line
 // resolved otherwise than applied, a reversal and a negative line are
 // not money waiting to be applied, but a line dismissed after it was queued
@@ -494,6 +499,7 @@ func (q *Queries) ListBankTransactions(ctx context.Context, arg ListBankTransact
 		arg.Account,
 		arg.Amount,
 		arg.Unapplied,
+		arg.Newest,
 		arg.PageOffset,
 		arg.PageSize,
 	)

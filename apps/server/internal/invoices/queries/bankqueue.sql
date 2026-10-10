@@ -32,8 +32,10 @@ WHERE (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
 -- ListBankTransactions is a page of the bank lines (D5), each with what its
 -- live payments and charge payments apply: the open lines — pending,
 -- exception, duplicate — first, each group oldest booking day first, then by
--- id. account and amount keep the lines of one receiving account and one
--- amount, compared by value — what a reversal's candidates are read by.
+-- id; newest instead lists every line newest booking day first, then the
+-- highest id first — a reversal's candidates, the latest before it. account
+-- and amount keep the lines of one receiving account and one amount,
+-- compared by value — what a reversal's candidates are read by.
 -- unapplied keeps the matched and resolved credit lines with a rest — a line
 -- resolved otherwise than applied, a reversal and a negative line are
 -- not money waiting to be applied, but a line dismissed after it was queued
@@ -59,7 +61,9 @@ WHERE (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
                 OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open')))
            AND NOT EXISTS (SELECT 1 FROM invoices.bank_transaction_events e WHERE e.bank_transaction_id = t.id AND e.event = 'reversed')
            AND t.amount > a.applied))
-ORDER BY (t.status IN ('pending', 'exception', 'duplicate')) DESC, t.booked_on, t.id
+ORDER BY CASE WHEN @newest::boolean THEN t.booked_on END DESC,
+         CASE WHEN @newest::boolean THEN t.id END DESC,
+         (t.status IN ('pending', 'exception', 'duplicate')) DESC, t.booked_on, t.id
 LIMIT sqlc.arg(page_size)::integer OFFSET sqlc.arg(page_offset)::integer;
 
 -- name: GetBankTransaction :one

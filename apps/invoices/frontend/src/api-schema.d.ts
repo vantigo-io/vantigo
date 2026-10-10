@@ -919,7 +919,7 @@ export interface paths {
         };
         /**
          * List the bank lines and the exception queue
-         * @description The bank lines and the exception queue (invoices payments and reminders design D5): every line, filtered by status (pending, matched, exception, resolved or duplicate), reason, bankFileId, the receiving account (its 11 digits), the amount (compared by value, at most two decimals) and the booking days from and to (inclusive); unapplied=true keeps only matched and resolved lines with an unapplied rest — never one whose payment a reversal took back, and a dismissed one only when it was queued invoice_credited, invoice_settled or exceeds_open. The open lines — pending, exception and duplicate — first, each group oldest booking day first, then by id. Each line carries its file, the payments and charge payments that refer to it, its unappliedAmount, its suggestions while it is an exception the suggestions are for, the line a possible duplicate may repeat, and its events. page and pageSize are the codebase's paging, 25 by default, at most 100.
+         * @description The bank lines and the exception queue (invoices payments and reminders design D5): every line, filtered by status (pending, matched, exception, resolved or duplicate), reason, bankFileId, the receiving account (its 11 digits), the amount (compared by value, at most two decimals) and the booking days from and to (inclusive); unapplied=true keeps only matched and resolved lines with an unapplied rest — never one whose payment a reversal took back, and a dismissed one only when it was queued invoice_credited, invoice_settled or exceeds_open. The open lines — pending, exception and duplicate — first, each group oldest booking day first, then by id; order=newest lists every line newest booking day first, then by id descending. Each line carries its file, the payments and charge payments that refer to it, its unappliedAmount, its suggestions while it is an exception the suggestions are for, the line a possible duplicate may repeat, and its events. page and pageSize are the codebase's paging, 25 by default, at most 100.
          */
         get: operations["getInvoicesBankTransactions"];
         put?: never;
@@ -6593,6 +6593,8 @@ export interface operations {
                 amount?: number;
                 from?: string;
                 to?: string;
+                /** @description The order: queue (the default) puts the open lines — pending, exception and duplicate — first, each group oldest booking day first, then by id; newest is every line newest booking day first, then the highest id first, so a reversal's candidates read the latest before it. */
+                order?: "queue" | "newest";
                 page?: number;
                 pageSize?: number;
             };
@@ -6611,7 +6613,7 @@ export interface operations {
                     "application/json": components["schemas"]["PaginatedResponseOfInvoicesBankTransaction"];
                 };
             };
-            /** @description Bad Request — paging out of range, from after to, an account that is not 11 digits, or an amount that is not above 0 with at most two decimals. */
+            /** @description Bad Request — paging out of range, from after to, an account that is not 11 digits, an amount that is not above 0 with at most two decimals, or an order that is not queue or newest. */
             400: {
                 headers: {
                     [name: string]: unknown;

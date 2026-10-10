@@ -33,6 +33,7 @@ import {
   bankFileChoicesQueryOptions,
   bankFilesQueryOptions,
   bankTransactionsQueryOptions,
+  MAX_PAGES,
   matchRest,
   setAccountFormat,
   uploadBankFile,
@@ -671,6 +672,7 @@ const QueueCard = ({
           />
           <Select
             label={t("bank.filter.file")}
+            description={files.data?.truncated ? t("bank.filter.fileTruncated", { count: MAX_PAGES * 100 }) : undefined}
             searchable
             nothingFoundMessage={t("bank.filter.noFile")}
             data={[
