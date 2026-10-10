@@ -905,7 +905,8 @@ dette i API-et
 
 **Slik sendes et brev på e-post.** Vantigo sender brevene som går på e-post selv, i
 bakgrunnen, ett om gangen. Hvert brev vurderes på nytt den dagen det går: datoen, fristen
-— minst 14 dager fram — gebyret og renten er den dagens, ikke kjøringens; en faktura som er
+— minst 14 dager fram — gebyret og renten er den dagens, ikke kjøringens, og et brev som
+ville gått etter midnatt, vurderes på nytt den nye dagen; en faktura som er
 betalt, satt på vent eller overlevert i mellomtiden, får ikke brevet, og brevet trekkes
 tilbake med årsaken. Brevet er en PDF, vedlagt en kort e-post på kundens språk, og svar går
 til e-postadressen i fakturainnstillingene. Et brev som mangler satser eller en gjennomgått regelordning,

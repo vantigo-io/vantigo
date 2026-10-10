@@ -887,7 +887,8 @@ reminder cards; until then this is in the API
 
 **How a letter by e-mail is sent.** Vantigo sends the e-mailed letters itself, in the
 background, one at a time. Each is judged again on the day it goes: its date, its deadline
-— at least 14 days on — its fee and its interest are that day's, not the run's; an invoice
+— at least 14 days on — its fee and its interest are that day's, not the run's, and a
+letter that would leave after midnight is judged again on the new day; an invoice
 paid, put on hold or handed off meanwhile gets no letter, and the letter is withdrawn with
 the reason. The letter is a PDF, attached to a short e-mail in the customer's language,
 with replies going to your invoicing e-mail. A letter whose rates or regime review are
