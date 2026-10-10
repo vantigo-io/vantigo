@@ -5,7 +5,7 @@
 # and .bun-version files it reconciled.
 [tools]
 bun = "1.3.14"
-go = "1.27.0"
+go = "1.27.2"
 # Used by CI to scan container images.
 trivy = "0.74.0"
 # Only the EHF oracle (tools/ehf, `mise run ehf:validate`) needs a JDK: Saxon
@@ -15,7 +15,7 @@ java = "temurin-21.0.12+101.0.LTS"
 
 # Go server: lint, release and supply-chain tools. CI installs only the subset
 # each job needs (mise-action install_args).
-"aqua:golangci/golangci-lint" = "2.13.2"
+"aqua:golangci/golangci-lint" = "2.14.0"
 "aqua:goreleaser/goreleaser" = "2.18.0"
 "aqua:caarlos0/svu" = "3.4.1"
 "aqua:sigstore/cosign" = "3.1.3"
