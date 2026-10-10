@@ -75,6 +75,61 @@ export const bankFilesQueryOptions = (page: number) =>
     queryFn: ({ signal }) => request<BankFileList>(`/api/v1/invoices/bank-files${query({ page })}`, { signal }),
   });
 
+/** How many pages of 100 a screen reads before it says it stopped: 500 lines or files. */
+export const MAX_PAGES = 5;
+
+/** Every page of a paged read, 100 at a time, at most MAX_PAGES; `truncated` when more were left. */
+const allPages = async <T>(
+  read: (page: number) => Promise<{ data: T[]; pagination: { hasNextPage: boolean } }>,
+): Promise<{ data: T[]; truncated: boolean }> => {
+  const data: T[] = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const answer = await read(page);
+    data.push(...answer.data);
+    if (!answer.pagination.hasNextPage) return { data, truncated: false };
+  }
+  return { data, truncated: true };
+};
+
+/** The files the queue's File filter offers: up to MAX_PAGES pages of 100, newest first. */
+export const bankFileChoicesQueryOptions = () =>
+  queryOptions({
+    queryKey: [INVOICES_QUERY_KEY, "bank-files", "choices"],
+    queryFn: ({ signal }) =>
+      allPages((page) =>
+        request<BankFileList>(`/api/v1/invoices/bank-files${query({ page, pageSize: 100 })}`, { signal }),
+      ),
+  });
+
+/**
+ * The bank lines a reversal may have taken a payment back from: the matched
+ * and the resolved lines of its account and amount, booked on or before it —
+ * read whole, up to MAX_PAGES pages of 100 per status, `truncated` when more
+ * were left.
+ */
+export const reversalLinesQueryOptions = (reversal: BankTransaction) =>
+  queryOptions({
+    queryKey: [INVOICES_QUERY_KEY, "bank-transactions", "reversal", reversal.id],
+    queryFn: async ({ signal }) => {
+      const read = (status: BankTransactionStatus) =>
+        allPages((page) =>
+          request<BankTransactionList>(
+            `/api/v1/invoices/bank-transactions${query({
+              status,
+              account: reversal.account,
+              amount: Math.abs(reversal.amount),
+              to: reversal.bookedOn,
+              page,
+              pageSize: 100,
+            })}`,
+            { signal },
+          ),
+        );
+      const [matched, resolved] = await Promise.all([read("matched"), read("resolved")]);
+      return { data: [...matched.data, ...resolved.data], truncated: matched.truncated || resolved.truncated };
+    },
+  });
+
 export const bankFileQueryOptions = (id: number) =>
   queryOptions({
     queryKey: [INVOICES_QUERY_KEY, "bank-file", id],

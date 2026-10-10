@@ -107,7 +107,9 @@ const ApplyForm = ({ line, currency, rows: initial, onClose }: ApplyDialogProps 
   const left = ore(line.unappliedAmount);
   const allocated = rows.reduce((sum, r) => sum + ore(r.amount) + ore(r.charges), 0);
   const over = allocated - left;
-  const blocked = rows.length === 0 || allocated <= 0 || over > 0;
+  // A negative amount is never an allocation: refused here, as the server would.
+  const negative = rows.some((r) => ore(r.amount) < 0 || ore(r.charges) < 0);
+  const blocked = rows.length === 0 || allocated <= 0 || over > 0 || negative;
 
   const change = (invoiceId: number, patch: Partial<Row>) => {
     setRefusal(null);
@@ -224,6 +226,7 @@ const ApplyForm = ({ line, currency, rows: initial, onClose }: ApplyDialogProps 
             <NumberInput
               label={t("bank.apply.amount", { number: r.number })}
               min={0}
+              allowNegative={false}
               decimalScale={2}
               hideControls
               rightSection={currency}
@@ -234,6 +237,7 @@ const ApplyForm = ({ line, currency, rows: initial, onClose }: ApplyDialogProps 
             <NumberInput
               label={t("bank.apply.charges", { number: r.number })}
               min={0}
+              allowNegative={false}
               decimalScale={2}
               hideControls
               rightSection={currency}

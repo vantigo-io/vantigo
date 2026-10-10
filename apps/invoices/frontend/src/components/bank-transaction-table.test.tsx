@@ -1,18 +1,21 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BankTransaction } from "../api/bank";
 import { jsonResponse, refusal } from "../test/api";
 import { bankServer } from "../test/bank-server";
-import { requestTo } from "../test/document-server";
-import { bankTransaction, CURRENT_USER_ID, listPage, OTHER_USER_ID } from "../test/fixtures";
+import { NO_BODY, requestTo } from "../test/document-server";
+import { bankTransaction, CURRENT_USER_ID, listPage, OTHER_USER_ID, pageOf } from "../test/fixtures";
 import { renderAtHost } from "../test/route-tree";
 import { BankTransactionTable } from "./bank-transaction-table";
 
 /** Mounts the table where the host would, and waits for the router to draw it. */
 const table = async (lines: BankTransaction[], canAct = true) => {
-  renderAtHost(<BankTransactionTable lines={lines} currency="NOK" canAct={canAct} currentUserId={CURRENT_USER_ID} />);
+  const { queryClient } = renderAtHost(
+    <BankTransactionTable lines={lines} currency="NOK" canAct={canAct} currentUserId={CURRENT_USER_ID} />,
+  );
   await screen.findByText(`Line ${lines[0].lineRef}`);
+  return queryClient;
 };
 
 /** A line's row, found by its line reference. */
@@ -158,8 +161,10 @@ describe("BankTransactionTable", () => {
         ),
       },
     });
-    await table([
+    const queryClient = await table([
       bankTransaction({
+        amount: 2500,
+        unappliedAmount: 2500,
         suggestedInvoiceId: 2101,
         suggestions: [
           {
@@ -167,7 +172,7 @@ describe("BankTransactionTable", () => {
             number: 1001,
             customerId: 2001,
             buyerName: "Acme AS",
-            openAmount: 1000,
+            openAmount: 1500,
             why: "number_in_text",
           },
           {
@@ -185,28 +190,30 @@ describe("BankTransactionTable", () => {
     await userEvent.click(screen.getByRole("button", { name: "Apply: line NTF-0617/1/1" }));
     const dialog = await screen.findByRole("dialog", { name: "Apply line NTF-0617/1/1" });
     // The suggestions pre-filled, each up to its open amount, until the line runs out.
-    expect(within(dialog).getByLabelText("Principal for invoice 1001")).toHaveValue("1000");
-    expect(within(dialog).getByLabelText("Principal for invoice 1002")).toHaveValue("250");
+    expect(within(dialog).getByLabelText("Principal for invoice 1001")).toHaveValue("1500");
+    expect(within(dialog).getByLabelText("Principal for invoice 1002")).toHaveValue("500");
     expect(within(dialog).getByTestId("apply-total")).toHaveTextContent(
-      /^Applied NOK\s?1,250\.00 of NOK\s?1,250\.00; NOK\s?0\.00 stays unapplied\.$/,
+      /^Applied NOK\s?2,000\.00 of NOK\s?2,500\.00; NOK\s?500\.00 stays unapplied\.$/,
     );
 
     // Charges on top: more than the line has left, refused in the form.
     const submit = within(dialog).getByRole("button", { name: "Apply" });
-    await userEvent.type(within(dialog).getByLabelText("Charges for invoice 1001"), "{selectall}100");
+    await userEvent.type(within(dialog).getByLabelText("Charges for invoice 1001"), "{selectall}600");
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       /^That is NOK\s?100\.00 more than is left of this payment\. Lower the amounts\.$/,
     );
     expect(submit).toBeDisabled();
 
-    // Less on the second invoice, and an invoice added by its number: the totals follow.
-    await userEvent.clear(within(dialog).getByLabelText("Principal for invoice 1002"));
-    await userEvent.type(within(dialog).getByLabelText("Principal for invoice 1002"), "100");
+    // Less principal, written with a decimal comma; and an invoice added by its
+    // number, paying its charges alone: the totals follow.
+    await userEvent.clear(within(dialog).getByLabelText("Principal for invoice 1001"));
+    await userEvent.type(within(dialog).getByLabelText("Principal for invoice 1001"), "1234,50");
     await userEvent.type(within(dialog).getByLabelText("Add an invoice by its number"), "1000");
     await userEvent.click(within(dialog).getByRole("button", { name: "Add" }));
     expect(await within(dialog).findByLabelText("Principal for invoice 1000")).toHaveValue("0");
+    await userEvent.type(within(dialog).getByLabelText("Charges for invoice 1000"), "{selectall}70");
     expect(within(dialog).getByTestId("apply-total")).toHaveTextContent(
-      /^Applied NOK\s?1,200\.00 of NOK\s?1,250\.00; NOK\s?50\.00 stays unapplied\.$/,
+      /^Applied NOK\s?2,404\.50 of NOK\s?2,500\.00; NOK\s?95\.50 stays unapplied\.$/,
     );
     expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
     expect(submit).toBeEnabled();
@@ -227,14 +234,19 @@ describe("BankTransactionTable", () => {
     }
     expect(within(dialog).queryByText("The server's English.")).not.toBeInTheDocument();
 
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
     await userEvent.click(submit);
     expect(await screen.findByText("Applied to the invoices")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    // The invoice with nothing to pay is left out; charges only where there are some.
+    // Every read of the module is read again: the queue, the files, the invoices.
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["invoices"] });
+    // The decimals kept; charges only where there are some; an invoice paying
+    // its charges alone sent with a principal of 0.
     expect(requestTo(fetchMock, "POST", "/api/v1/invoices/bank-transactions/1001/apply")).toEqual({
       allocations: [
-        { invoiceId: 2101, amount: 1000, chargesAmount: 100 },
-        { invoiceId: 2102, amount: 100 },
+        { invoiceId: 2101, amount: 1234.5, chargesAmount: 600 },
+        { invoiceId: 2102, amount: 500 },
+        { invoiceId: 1001, amount: 0, chargesAmount: 70 },
       ],
     });
   });
@@ -262,8 +274,31 @@ describe("BankTransactionTable", () => {
         suggestions: undefined,
         applied: [{ kind: "payment", id: paymentId, invoiceId: 1001, number: 1000, amount, removed: false }],
       });
+    // The matched lines of the reversal's account and amount over two pages:
+    // the one it reverses is on the second.
+    const asked: string[] = [];
+    const removedOnly = {
+      ...matched(900, 1250, 7000),
+      applied: [{ kind: "payment" as const, id: 7000, invoiceId: 1001, number: 1000, amount: 1250, removed: true }],
+    };
     const fetchMock = bankServer({
-      lines: (query) => (query.get("status") === "matched" ? [matched(901, 1250, 7001), matched(902, 999, 7002)] : []),
+      lines: (query) => {
+        asked.push(query.toString());
+        if (query.get("status") !== "matched") return [];
+        const pages = [[removedOnly, matched(902, 999, 7002)], [matched(901, 1250, 7001)]];
+        const page = Number(query.get("page"));
+        return {
+          ...pageOf(pages[page - 1] ?? []),
+          pagination: {
+            page,
+            pageSize: 100,
+            totalCount: 3,
+            totalPages: 2,
+            hasNextPage: page < 2,
+            hasPreviousPage: page > 1,
+          },
+        };
+      },
       answers: {
         "POST /api/v1/invoices/bank-transactions/3001/handle-reversal": inTurn(
           () => jsonResponse(200, { ...reversal, status: "resolved", resolution: "reversal_handled" }),
@@ -276,13 +311,22 @@ describe("BankTransactionTable", () => {
 
     // A reversal is handled, never applied or dismissed.
     expect(screen.queryByRole("button", { name: "Apply: line R/1" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Not a customer payment: line R/1" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Handle reversal: line R/1" }));
     const dialog = await screen.findByRole("dialog", { name: "Handle the reversal on line R/1" });
     // The candidates: the payments of the same account and amount, nothing else.
     const candidate = await within(dialog).findByRole("checkbox", {
       name: /^Invoice 1000: NOK\s?1,250\.00, from line M\/901 booked Sep 10, 2026$/,
     });
-    expect(within(dialog).queryByRole("checkbox", { name: /M\/902/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("checkbox", { name: /M\/90[02]/ })).not.toBeInTheDocument();
+    // Read by the account, the amount and the day, every page of both statuses.
+    expect(asked).toEqual(
+      expect.arrayContaining([
+        "status=matched&account=86011117947&amount=1250&to=2026-09-12&page=1&pageSize=100",
+        "status=matched&account=86011117947&amount=1250&to=2026-09-12&page=2&pageSize=100",
+        "status=resolved&account=86011117947&amount=1250&to=2026-09-12&page=1&pageSize=100",
+      ]),
+    );
     expect(within(dialog).getByText(/cannot be undone; register that payment again by hand/)).toBeInTheDocument();
     await userEvent.click(candidate);
     await userEvent.click(within(dialog).getByRole("button", { name: "Handle the reversal" }));
@@ -310,6 +354,20 @@ describe("BankTransactionTable", () => {
     expect(bodies.slice(1)).toEqual([{ noPayment: true }, { noPayment: true, note: "Betalt tilbake utenfor Vantigo" }]);
   });
 
+  it("ReversalDialog_SaysAFailedReadRatherThanNoPayment", async () => {
+    bankServer({
+      lines: (query) => (query.get("status") === "resolved" ? jsonResponse(500, { title: "Boom", status: 500 }) : []),
+    });
+    await table([
+      bankTransaction({ id: 3001, lineRef: "R/1", direction: "debit", reason: "reversal", suggestions: undefined }),
+    ]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Handle reversal: line R/1" }));
+    const dialog = await screen.findByRole("dialog", { name: "Handle the reversal on line R/1" });
+    expect(await within(dialog).findByText("Could not load the payments it may reverse")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/^No payment from a bank line/)).not.toBeInTheDocument();
+  });
+
   it("QueueActions_DismissConfirmDistinctReopen", async () => {
     const fetchMock = bankServer({
       answers: {
@@ -333,6 +391,22 @@ describe("BankTransactionTable", () => {
       bankTransaction({ id: 1001, lineRef: "Q/1" }),
       bankTransaction({ id: 1002, lineRef: "Q/2", status: "duplicate", reason: undefined, suggestions: undefined }),
       bankTransaction({ id: 1003, lineRef: "Q/3", status: "resolved", resolution: "not_customer_payment" }),
+      // A line the bank reversed a payment of: its money went back, never reopened.
+      bankTransaction({
+        id: 1004,
+        lineRef: "Q/4",
+        status: "resolved",
+        resolution: "applied",
+        events: [
+          {
+            id: 9,
+            event: "reversed",
+            note: "Reversed by the bank: line R/1",
+            by: OTHER_USER_ID,
+            at: "2026-09-12T10:00:00Z",
+          },
+        ],
+      }),
     ]);
 
     // Each line offers what its state allows, and nothing else.
@@ -343,6 +417,7 @@ describe("BankTransactionTable", () => {
     expect(offered("Q/1")).toEqual(["Apply", "Not a customer payment"]);
     expect(offered("Q/2")).toEqual(["Confirm duplicate", "Treat as distinct"]);
     expect(offered("Q/3")).toEqual(["Reopen"]);
+    expect(offered("Q/4")).toEqual([]);
 
     // Dismiss: a note is required; a refusal in words, the dialog left open.
     await userEvent.click(screen.getByRole("button", { name: "Not a customer payment: line Q/1" }));
@@ -366,6 +441,7 @@ describe("BankTransactionTable", () => {
     expect(await within(confirm).findByText(/^This cannot be done to this bank line/)).toBeInTheDocument();
     await userEvent.click(within(confirm).getByRole("button", { name: "Confirm duplicate" }));
     expect(await screen.findByText("Confirmed a duplicate")).toBeInTheDocument();
+    // A JSON body even without a note.
     expect(requestTo(fetchMock, "POST", "/api/v1/invoices/bank-transactions/1002/confirm-duplicate")).toEqual({});
 
     // Treat as distinct and reopen act at once; their refusals in words.
@@ -377,5 +453,8 @@ describe("BankTransactionTable", () => {
     expect(await screen.findByText(/^Payments registered from this bank line still stand/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Reopen: line Q/3" }));
     expect(await screen.findByText("Back in the queue")).toBeInTheDocument();
+    // The two that act at once send no body.
+    expect(requestTo(fetchMock, "POST", "/api/v1/invoices/bank-transactions/1002/treat-as-distinct")).toBe(NO_BODY);
+    expect(requestTo(fetchMock, "POST", "/api/v1/invoices/bank-transactions/1003/reopen")).toBe(NO_BODY);
   });
 });

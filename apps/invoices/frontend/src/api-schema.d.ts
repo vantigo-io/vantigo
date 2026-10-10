@@ -919,7 +919,7 @@ export interface paths {
         };
         /**
          * List the bank lines and the exception queue
-         * @description The bank lines and the exception queue (invoices payments and reminders design D5): every line, filtered by status (pending, matched, exception, resolved or duplicate), reason, bankFileId and the booking days from and to (inclusive); unapplied=true keeps only matched and resolved lines with an unapplied rest — never one whose payment a reversal took back, and a dismissed one only when it was queued invoice_credited, invoice_settled or exceeds_open. The open lines — pending, exception and duplicate — first, each group oldest booking day first, then by id. Each line carries its file, the payments and charge payments that refer to it, its unappliedAmount, its suggestions while it is an exception the suggestions are for, the line a possible duplicate may repeat, and its events. page and pageSize are the codebase's paging, 25 by default, at most 100.
+         * @description The bank lines and the exception queue (invoices payments and reminders design D5): every line, filtered by status (pending, matched, exception, resolved or duplicate), reason, bankFileId, the receiving account (its 11 digits), the amount (compared by value, at most two decimals) and the booking days from and to (inclusive); unapplied=true keeps only matched and resolved lines with an unapplied rest — never one whose payment a reversal took back, and a dismissed one only when it was queued invoice_credited, invoice_settled or exceeds_open. The open lines — pending, exception and duplicate — first, each group oldest booking day first, then by id. Each line carries its file, the payments and charge payments that refer to it, its unappliedAmount, its suggestions while it is an exception the suggestions are for, the line a possible duplicate may repeat, and its events. page and pageSize are the codebase's paging, 25 by default, at most 100.
          */
         get: operations["getInvoicesBankTransactions"];
         put?: never;
@@ -6587,6 +6587,10 @@ export interface operations {
                 reason?: components["schemas"]["InvoicesBankTransactionReason"];
                 bankFileId?: number;
                 unapplied?: boolean;
+                /** @description The receiving account, its 11 digits — the lines paid into it. */
+                account?: string;
+                /** @description The amount, compared by value — the lines of exactly this amount. Above 0, with at most two decimals. */
+                amount?: number;
                 from?: string;
                 to?: string;
                 page?: number;
@@ -6607,7 +6611,7 @@ export interface operations {
                     "application/json": components["schemas"]["PaginatedResponseOfInvoicesBankTransaction"];
                 };
             };
-            /** @description Bad Request — paging out of range, or from after to. */
+            /** @description Bad Request — paging out of range, from after to, an account that is not 11 digits, or an amount that is not above 0 with at most two decimals. */
             400: {
                 headers: {
                     [name: string]: unknown;

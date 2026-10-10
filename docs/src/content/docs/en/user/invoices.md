@@ -691,7 +691,7 @@ OCR giro or camt.054 file, is too large or breaks its own rules (with where in t
 an account it names is neither your **Bank account** nor one an issued invoice printed;
 the account's files are imported in the other format; or there is no document store to
 keep the file in. A file imported before is refused too, naming the earlier import — its
-file number, when it was uploaded and by whom — with a link, **Open file**, to it.
+file number, when it was uploaded, and whether by you or another user — with a link, **Open file**, to it.
 
 **What the result says.** After an import, **The import's result** counts the file's
 **Payments in the file**: those **Matched to invoices**, with the amount registered as
@@ -707,10 +707,11 @@ payment it brought.
 **Match the rest.** Matching runs right after the import, one payment at a time. If it
 stops early, the file stays imported and some of its payments are **Not yet matched**:
 click **Match the rest** — in the result, on the file's row under **Imported files**, or
-on the file's page — and you are the one registering them.
+on the file's page — and you are the one registering them. The result then shows what
+that matching registered and queued.
 
-**Imported files** lists every file, newest first: its format, when and by whom it was
-uploaded, the booking days it covers, and its payments counted — matched, in the queue,
+**Imported files** lists every file, newest first: its format, when it was uploaded and
+whether by you or another user, the booking days it covers, and its payments counted — matched, in the queue,
 duplicates and not yet matched.
 
 **The format of each account.** **Bank accounts** lists every account a file was imported
@@ -740,12 +741,14 @@ would any other payment. Two such payments in the same file are both registered.
 
 **The exception queue**, at the foot of **Payments**, holds the payments matching could
 not place, and the duplicates — what waits for a person. It opens on **In the queue**;
-filter it by **Status**, **Reason** and **File**, or tick **Only payments with an
+the duplicates are under the status **Duplicate**. Filter it by **Status**, **Reason**
+and **File** (type to find a file), or tick **Only payments with an
 unapplied rest** to see the payments applied in part, matched and since removed, or
 dismissed as money owed back. Each line shows the day the bank booked it, its KID or else
 its text, the debtor and their account, the amount, what is applied — each payment linked
 to its invoice, a removed one struck through — what is unapplied, and its state and reason.
-**Details** shows what happened to the line, each step with when and by whom, the
+**Details** shows what happened to the line, each step with when, and whether by you or
+another user, the
 invoices it may pay, and, for a possible duplicate, the line it may repeat: that line's
 file, booking day and payments, and whether the bank reversed a payment of it.
 
@@ -788,7 +791,9 @@ another system's KID: say what it is, or what was done about it, in the **Note**
 click **Dismiss**.
 
 **Handle reversal.** The dialog offers the payments the reversal may take back — those
-registered from bank lines of the same account and amount, booked on or before it. Tick
+registered from bank lines of the same account and amount, booked on or before it; it
+reads the first 500 such lines of each kind and says so when there are more, and says so
+when they could not be read, rather than that there are none. Tick
 the one it reverses, or choose **No payment is removed; the note says why** and write the
 note, then click **Handle the reversal**. Each chosen payment is removed with the reason
 "Reversed by the bank", and the line it came from is never applied again. Without a
@@ -802,8 +807,8 @@ payment of the line it repeats, since that money went back.
 
 **Reopen.** A resolved line — or a matched one whose payments were all removed — goes back
 to the queue with **Reopen**, with its reason. It is refused while a payment registered from
-the line still stands (remove it on the invoice first), and for a line the bank reversed a
-payment of.
+the line still stands (remove it on the invoice first); a line the bank reversed a payment
+of is never offered it.
 
 Every action is checked again as it is made: a line someone else dealt with meanwhile is
 refused, in words, and nothing changes.

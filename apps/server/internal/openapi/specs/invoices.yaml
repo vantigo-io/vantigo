@@ -6803,7 +6803,7 @@ paths:
             x-vantigo-access: permission:invoices:access+invoices:payments
     /api/v1/invoices/bank-transactions:
         get:
-            description: 'The bank lines and the exception queue (invoices payments and reminders design D5): every line, filtered by status (pending, matched, exception, resolved or duplicate), reason, bankFileId and the booking days from and to (inclusive); unapplied=true keeps only matched and resolved lines with an unapplied rest — never one whose payment a reversal took back, and a dismissed one only when it was queued invoice_credited, invoice_settled or exceeds_open. The open lines — pending, exception and duplicate — first, each group oldest booking day first, then by id. Each line carries its file, the payments and charge payments that refer to it, its unappliedAmount, its suggestions while it is an exception the suggestions are for, the line a possible duplicate may repeat, and its events. page and pageSize are the codebase''s paging, 25 by default, at most 100.'
+            description: 'The bank lines and the exception queue (invoices payments and reminders design D5): every line, filtered by status (pending, matched, exception, resolved or duplicate), reason, bankFileId, the receiving account (its 11 digits), the amount (compared by value, at most two decimals) and the booking days from and to (inclusive); unapplied=true keeps only matched and resolved lines with an unapplied rest — never one whose payment a reversal took back, and a dismissed one only when it was queued invoice_credited, invoice_settled or exceeds_open. The open lines — pending, exception and duplicate — first, each group oldest booking day first, then by id. Each line carries its file, the payments and charge payments that refer to it, its unappliedAmount, its suggestions while it is an exception the suggestions are for, the line a possible duplicate may repeat, and its events. page and pageSize are the codebase''s paging, 25 by default, at most 100.'
             operationId: getInvoicesBankTransactions
             parameters:
                 - in: query
@@ -6829,6 +6829,17 @@ paths:
                   name: unapplied
                   schema:
                     type: boolean
+                - description: The receiving account, its 11 digits — the lines paid into it.
+                  in: query
+                  name: account
+                  schema:
+                    type: string
+                - description: The amount, compared by value — the lines of exactly this amount. Above 0, with at most two decimals.
+                  in: query
+                  name: amount
+                  schema:
+                    format: double
+                    type: number
                 - in: query
                   name: from
                   schema:
@@ -6861,7 +6872,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Bad Request — paging out of range, or from after to.
+                    description: Bad Request — paging out of range, from after to, an account that is not 11 digits, or an amount that is not above 0 with at most two decimals.
                 "401":
                     content:
                         application/json:

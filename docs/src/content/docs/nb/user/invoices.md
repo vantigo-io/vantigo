@@ -706,7 +706,7 @@ giro- eller camt.054-fil, er for stor eller bryter sine egne regler (med hvor i 
 konto den nevner, er verken din **Bankkonto** eller en som en utstedt faktura har skrevet
 ut; kontoens filer importeres i det andre formatet; eller det finnes ikke noe
 dokumentlager å oppbevare filen i. En fil som er importert før, avvises også, med den
-tidligere importen nevnt — filnummeret, når den ble lastet opp og av hvem — og en lenke,
+tidligere importen nevnt — filnummeret, når den ble lastet opp, og om det var av deg eller en annen bruker — og en lenke,
 **Åpne fil**, til den.
 
 **Hva resultatet sier.** Etter en import teller **Resultatet av importen** filens
@@ -723,10 +723,11 @@ side, med hver betaling den brakte inn.
 **Avstem resten.** Avstemmingen kjører rett etter importen, én betaling om gangen.
 Stopper den tidlig, står filen likevel importert, og noen av betalingene er **Ikke avstemt
 ennå**: klikk **Avstem resten** — i resultatet, på filens rad under **Importerte filer**,
-eller på filens side — og du er den som registrerer dem.
+eller på filens side — og du er den som registrerer dem. Resultatet viser da hva den
+avstemmingen registrerte og la i køen.
 
-**Importerte filer** lister hver fil, nyeste først: formatet, når og av hvem den ble lastet
-opp, bokføringsdagene den dekker, og betalingene talt opp — avstemt, i køen, duplikater og
+**Importerte filer** lister hver fil, nyeste først: formatet, når den ble lastet opp og om
+det var av deg eller en annen bruker, bokføringsdagene den dekker, og betalingene talt opp — avstemt, i køen, duplikater og
 ikke avstemt ennå.
 
 **Formatet for hver konto.** **Bankkontoer** lister hver konto det er importert en fil
@@ -748,20 +749,22 @@ er slik én betaling ser ut i to av bankens filer: en melding i løpet av dagen 
 dagens slutt, eller en OCR giro- og en camt.054-fil fra samme dag. En kunde som virkelig
 betaler samme beløp to ganger samme dag med samme KID, og der de to betalingene kommer i
 hver sin fil, får derfor den andre lagt i køen. Sjekk kontoutskriften; er begge
-betalingene ekte, finner du linjen i avvikskøen og klikker **Før** — mot fakturaen,
+betalingene ekte, finner du linjen i avvikskøen og klikker **Fordel** — mot fakturaen,
 purrekravene eller en annen faktura — som for en hvilken som helst annen betaling. To
 slike betalinger i samme fil registreres begge.
 
 ## Avvikskøen
 
 **Avvikskøen**, nederst på **Innbetalinger**, har betalingene avstemmingen ikke kunne
-plassere, og duplikatene — det som venter på en person. Den åpner på **I køen**; filtrer
-den på **Status**, **Årsak** og **Fil**, eller kryss av for **Bare betalinger med en rest
+plassere, og duplikatene — det som venter på en person. Den åpner på **I køen**;
+duplikatene står under statusen **Duplikat**. Filtrer den på **Status**, **Årsak** og
+**Fil** (skriv for å finne en fil), eller kryss av for **Bare betalinger med en rest
 som ikke er ført** for å se betalinger som er ført delvis, avstemt og senere fjernet, eller
 avvist som penger som skal tilbake. Hver linje viser dagen banken bokførte den, KID-en
 eller ellers teksten, betaleren og kontoen deres, beløpet, det som er ført — hver betaling
 lenket til fakturaen sin, en fjernet en gjennomstreket — det som ikke er ført, og tilstand
-og årsak. **Detaljer** viser hva som har skjedd med linjen, hvert steg med når og av hvem,
+og årsak. **Detaljer** viser hva som har skjedd med linjen, hvert steg med når, og om det var av deg
+eller en annen bruker,
 fakturaene den kan betale, og for et mulig duplikat linjen den kan gjenta: den linjens fil,
 bokføringsdag og betalinger, og om banken tilbakeførte en betaling fra den.
 
@@ -769,22 +772,22 @@ Hver årsak med vanlige ord, og hva du gjør:
 
 | Årsak | Hva den betyr | Hva du gjør |
 | --- | --- | --- |
-| **KID-en er ikke gyldig** | KID-ens kontrollsiffer er feil | **Før** den for hånd, eller avvis den |
-| **Ingen faktura har denne KID-en** | et annet systems eller en annen avtales KID | **Før** den, eller avvis den |
+| **KID-en er ikke gyldig** | KID-ens kontrollsiffer er feil | **Fordel** den for hånd, eller avvis den |
+| **Ingen faktura har denne KID-en** | et annet systems eller en annen avtales KID | **Fordel** den, eller avvis den |
 | **Fakturaen er kreditert** | KID-ens faktura er kreditert i sin helhet | **Ikke en kundebetaling**, med en merknad: pengene skal tilbake, og betales tilbake utenfor Vantigo |
 | **Ingenting er igjen å betale** | fakturaen er betalt, og betalingen er mer enn purrekravene | det samme |
-| **Mer enn det som skyldes** | mer enn utestående beløp og purrekravene | **Før** det som skyldes mot fakturaen og purrekravene; resten blir stående som ikke ført |
-| **Ingen KID** | betalingen har ingen KID | **Før** den mot én eller flere fakturaer fra forslagene |
+| **Mer enn det som skyldes** | mer enn utestående beløp og purrekravene | **Fordel** det som skyldes mot fakturaen og purrekravene; resten blir stående som ikke ført |
+| **Ingen KID** | betalingen har ingen KID | **Fordel** den mot én eller flere fakturaer fra forslagene |
 | **Et negativt beløp** | en OCR-linje med minustegn | **Ikke en kundebetaling**, med en merknad |
 | **En tilbakeføring** | banken tok en betaling tilbake | **Behandle tilbakeføring** |
 | **En Vipps-utbetaling** | en utbetaling fra Vipps, ikke en kundes betaling | **Ikke en kundebetaling** |
-| **Betalt før fakturaen ble utstedt** | bokført før KID-ens faktura ble utstedt | **Før** den etter å ha sjekket, eller avvis den |
-| **Betalt til en annen konto** | ikke til kontoen fakturaen viste | **Før** den etter å ha sjekket, eller avvis den |
-| **Et mulig duplikat** | kontoens skjæringsdag, eller samme betaling allerede registrert fra en annen fil | **Bekreft duplikat**, eller **Før** den som en egen betaling |
-| **Betalingen ble fjernet** | en avstemt betaling der alle registreringene ble fjernet, gjenåpnet | **Før** den på nytt, eller avvis den |
+| **Betalt før fakturaen ble utstedt** | bokført før KID-ens faktura ble utstedt | **Fordel** den etter å ha sjekket, eller avvis den |
+| **Betalt til en annen konto** | ikke til kontoen fakturaen viste | **Fordel** den etter å ha sjekket, eller avvis den |
+| **Et mulig duplikat** | kontoens skjæringsdag, eller samme betaling allerede registrert fra en annen fil | **Bekreft duplikat**, eller **Fordel** den som en egen betaling |
+| **Betalingen ble fjernet** | en avstemt betaling der alle registreringene ble fjernet, gjenåpnet | **Fordel** den på nytt, eller avvis den |
 | status **Duplikat** | en tidligere eller overlappende fil brakte samme linje | **Bekreft duplikat**, eller **Behold som egen betaling** |
 
-**Før.** Dialogen **Før linje …** åpner med fakturaene betalingen kan betale — den KID-en
+**Fordel.** Dialogen **Fordel linje …** åpner med fakturaene betalingen kan betale — den KID-en
 pekte på, og forslagene: en faktura hvis nummer står i betalingens tekst, en hvis
 utestående beløp er betalingens beløp, en åpen faktura for en kunde som har betalt fra samme
 konto før — fylt ut i rekkefølge, hver med inntil utestående beløp, til betalingen er
@@ -792,7 +795,7 @@ brukt opp. Legg til en annen med **Legg til en faktura etter nummer**, eller fje
 hver faktura fyller du inn **Hovedstol** og **Purrekrav** den betaler; en betaling kan
 betale bare purrekravene på en faktura som allerede er betalt. Summen under sier hvor mye
 som føres og hvor mye som blir stående som ikke ført, og fordelinger som til sammen er mer
-enn det som er igjen av betalingen, avvises i dialogen før noe sendes. Klikk **Før**. En
+enn det som er igjen av betalingen, avvises i dialogen før noe sendes. Klikk **Fordel**. En
 avvisning sies med ord, og ingenting føres: et beløp over en fakturas utestående beløp
 nevner fakturaen og det beløpet, en betaling av purrekrav over det som står ute nevner det
 som står ute, og en faktura utstedt etter at banken bokførte betalingen, kan ikke betales
@@ -805,7 +808,8 @@ Vantigo eller et annet systems KID: si hva den er, eller hva som ble gjort med d
 
 **Behandle tilbakeføring.** Dialogen tilbyr betalingene tilbakeføringen kan ta tilbake —
 de som er registrert fra banklinjer med samme konto og beløp, bokført samme dag eller
-tidligere. Kryss av for den den tilbakefører, eller velg **Ingen betaling fjernes;
+tidligere; den leser de første 500 slike linjene av hvert slag og sier fra når det er
+flere, og sier fra når de ikke kunne leses, i stedet for at det ikke finnes noen. Kryss av for den den tilbakefører, eller velg **Ingen betaling fjernes;
 merknaden sier hvorfor** og skriv merknaden, og klikk **Behandle tilbakeføringen**. Hver
 valgt betaling fjernes med begrunnelsen «Reversed by the bank», og linjen den kom fra,
 føres aldri igjen. Uten en betaling eller en merknad avvises tilbakeføringen, med ord. En
@@ -814,13 +818,13 @@ nytt for hånd.
 
 **Duplikater.** **Bekreft duplikat**, med en valgfri merknad, beholder linjen og
 registrerer ingenting. **Behold som egen betaling** gjør en duplikatrad til en egen
-betaling, tilbake i køen som et mulig duplikat, klar til å **Føre**; det avvises når banken
+betaling, tilbake i køen som et mulig duplikat, klar til å **Fordele**; det avvises når banken
 tilbakeførte en betaling fra linjen den gjentar, fordi de pengene gikk tilbake.
 
 **Gjenåpne.** En behandlet linje — eller en avstemt der alle betalingene ble fjernet — går
 tilbake til køen med **Gjenåpne**, med sin årsak. Det avvises så lenge en betaling
-registrert fra linjen fortsatt står (fjern den på fakturaen først), og for en linje banken
-tilbakeførte en betaling fra.
+registrert fra linjen fortsatt står (fjern den på fakturaen først); en linje banken
+tilbakeførte en betaling fra, får aldri tilbudet.
 
 Hver handling kontrolleres på nytt idet den gjøres: en linje noen andre har behandlet i
 mellomtiden, avvises, med ord, og ingenting endres.

@@ -42,7 +42,8 @@ type Open = { line: BankTransaction; dialog: "apply" | "reversal" | "dismiss" | 
  * or dismissed — a reversal handled instead, a negative line only dismissed,
  * a possible duplicate also confirmed; a duplicate row confirmed or kept as a
  * payment of its own; a resolved line, or a matched one whose payments were
- * all removed, reopened. The server judges each again.
+ * all removed, reopened — never a line the bank reversed a payment of, whose
+ * money went back. The server judges each again.
  */
 const actionsOf = (line: BankTransaction): ("apply" | "dismiss" | "reversal" | "confirm" | "distinct" | "reopen")[] => {
   if (line.status === "exception") {
@@ -52,6 +53,7 @@ const actionsOf = (line: BankTransaction): ("apply" | "dismiss" | "reversal" | "
     return ["apply", "dismiss"];
   }
   if (line.status === "duplicate") return ["confirm", "distinct"];
+  if (line.events.some((e) => e.event === "reversed")) return [];
   if (line.status === "resolved") return ["reopen"];
   if (line.status === "matched" && line.applied.length > 0 && line.applied.every((a) => a.removed)) return ["reopen"];
   return [];

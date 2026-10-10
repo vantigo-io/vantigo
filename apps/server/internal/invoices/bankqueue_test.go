@@ -253,8 +253,8 @@ func queueWrites(t *testing.T, h *harness) string {
 		UNION ALL SELECT 's ' || string_agg(id || status || coalesce(reason, '') || coalesce(resolution, ''), ',' ORDER BY id) FROM invoices.bank_transactions`), "; ")
 }
 
-// TestBankQueue_List: every filter — status, reason, bankFileId, the booking
-// days from and to, unapplied — the open lines first, oldest booking day
+// TestBankQueue_List: every filter — status, reason, bankFileId, the account,
+// the amount by value, the booking days from and to, unapplied — the open lines first, oldest booking day
 // first, then the rest; paging after the filter; unapplied=true lists the
 // matched and resolved lines with a rest (a matched line whose payment was
 // removed, a line applied in part) and never a dismissed one; each line's
@@ -327,6 +327,14 @@ func TestBankQueue_List(t *testing.T) {
 		{"unapplied=true", []int64{ids["PAID"], ids2["OVER"]}},
 		{"unapplied=true&status=matched", []int64{ids["PAID"]}},
 		{"unapplied=false&status=exception", []int64{ids["NOKID-3"], ids["REV-7"]}},
+		// The account and the amount, compared by value — a reversal's candidates.
+		{"amount=7.77", []int64{ids["NOKID-3"]}},
+		{"amount=400.00", []int64{ids["PAID"]}},
+		{"amount=50&status=exception", []int64{ids["REV-7"]}},
+		{"account=" + sellerAccount + "&amount=1200&status=resolved", []int64{ids2["OVER"]}},
+		{"account=" + sellerAccount, []int64{ids["NOKID-3"], ids["REV-7"], ids["NOKID-4"], ids["PAID"], ids2["OVER"]}},
+		{"account=" + olderAccount, []int64{}},
+		{"amount=50&status=matched", []int64{}},
 		{"pageSize=2&page=2", []int64{ids["NOKID-4"], ids["PAID"]}},
 		{"pageSize=2&page=3", []int64{ids2["OVER"]}},
 	} {
@@ -342,7 +350,10 @@ func TestBankQueue_List(t *testing.T) {
 			t.Errorf("?%s's total = %d, want %d", w.query, n, len(w.want))
 		}
 	}
-	for _, q := range []string{"status=open", "reason=lost", "from=2026-10-05&to=2026-10-04", "pageSize=101"} {
+	for _, q := range []string{
+		"status=open", "reason=lost", "from=2026-10-05&to=2026-10-04", "pageSize=101",
+		"account=1234", "account=8601111794x", "amount=0", "amount=-50", "amount=7.777",
+	} {
 		if res := importer(t, h).Do(http.MethodGet, queuePath+"?"+q, nil); res.Status != http.StatusBadRequest {
 			t.Errorf("?%s = %d %s, want 400", q, res.Status, res.Body)
 		}

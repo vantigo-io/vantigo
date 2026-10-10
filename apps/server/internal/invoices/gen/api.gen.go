@@ -3082,10 +3082,16 @@ type GetInvoicesBankTransactionsParams struct {
 	Reason     *InvoicesBankTransactionReason           `form:"reason,omitempty" json:"reason,omitempty"`
 	BankFileId *int64                                   `form:"bankFileId,omitempty" json:"bankFileId,omitempty"`
 	Unapplied  *bool                                    `form:"unapplied,omitempty" json:"unapplied,omitempty"`
-	From       *openapi_types.Date                      `form:"from,omitempty" json:"from,omitempty"`
-	To         *openapi_types.Date                      `form:"to,omitempty" json:"to,omitempty"`
-	Page       *int32                                   `form:"page,omitempty" json:"page,omitempty"`
-	PageSize   *int32                                   `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+
+	// Account The receiving account, its 11 digits — the lines paid into it.
+	Account *string `form:"account,omitempty" json:"account,omitempty"`
+
+	// Amount The amount, compared by value — the lines of exactly this amount. Above 0, with at most two decimals.
+	Amount   *float64            `form:"amount,omitempty" json:"amount,omitempty"`
+	From     *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+	To       *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+	Page     *int32              `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // GetInvoicesBankTransactionsParamsStatus defines parameters for GetInvoicesBankTransactions.
@@ -3843,6 +3849,32 @@ func (siw *ServerInterfaceWrapper) GetInvoicesBankTransactions(w http.ResponseWr
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unapplied"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unapplied", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "account" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "account", r.URL.Query(), &params.Account, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "account"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "account", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "amount" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "amount", r.URL.Query(), &params.Amount, runtime.BindQueryParameterOptions{Type: "number", Format: "double"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "amount"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "amount", Err: err})
 		}
 		return
 	}

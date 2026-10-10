@@ -4,7 +4,7 @@ import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { type BankTransaction, bankTransactionsQueryOptions, handleReversal } from "../api/bank";
+import { type BankTransaction, handleReversal, MAX_PAGES, reversalLinesQueryOptions } from "../api/bank";
 import { ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import "../i18n";
 import { fieldRefusals, refusalMessage } from "../lib/errors";
@@ -31,7 +31,9 @@ interface Candidate {
 /**
  * The payments a reversal may take back, computed here (the server links
  * nothing by itself): the live payments of the bank lines of the same account
- * and amount — matched or applied — booked on or before the reversal.
+ * and amount — matched or applied — booked on or before the reversal. The
+ * server filters by account and amount already; they are checked again here,
+ * so a line of another account or amount is never offered.
  */
 const candidatesOf = (reversal: BankTransaction, lines: BankTransaction[]): Candidate[] =>
   lines
@@ -65,16 +67,14 @@ const candidatesOf = (reversal: BankTransaction, lines: BankTransaction[]): Cand
 export const ReversalDialog = ({ line, currency, onClose }: ReversalDialogProps) => {
   const { t, money, date, dateTime } = useInvoiceFormat();
   const queryClient = useQueryClient();
-  const near = { to: line.bookedOn, pageSize: 100 };
-  const matched = useQuery(bankTransactionsQueryOptions({ ...near, status: "matched" }));
-  const resolved = useQuery(bankTransactionsQueryOptions({ ...near, status: "resolved" }));
+  const lines = useQuery(reversalLinesQueryOptions(line));
   const [mode, setMode] = useState<"payments" | "none">("payments");
   const [chosen, setChosen] = useState<Set<number>>(new Set());
   const [note, setNote] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
   const amount = (value: number) => money(value, currency);
 
-  const candidates = candidatesOf(line, [...(matched.data?.data ?? []), ...(resolved.data?.data ?? [])]);
+  const candidates = candidatesOf(line, lines.data?.data ?? []);
 
   const submit = useMutation({
     mutationFn: () =>
@@ -118,8 +118,13 @@ export const ReversalDialog = ({ line, currency, onClose }: ReversalDialogProps)
           <Stack gap="xs">
             <Radio value="payments" label={t("bank.reversal.payments")} />
             {mode === "payments" &&
-              (matched.isPending || resolved.isPending ? (
+              (lines.isPending ? (
                 <ContentSkeleton rows={2} rowHeight={28} />
+              ) : lines.isError ? (
+                // A read that failed is never "no payment": the person is told it failed.
+                <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("bank.reversal.couldNotLoad")} ml="xl">
+                  {refusalMessage(lines.error, t, date, amount, dateTime)}
+                </Alert>
               ) : candidates.length === 0 ? (
                 <Text size="sm" c="dimmed" pl="xl">
                   {t("bank.reversal.noCandidates")}
@@ -151,6 +156,11 @@ export const ReversalDialog = ({ line, currency, onClose }: ReversalDialogProps)
                   <Text size="xs" c="dimmed">
                     {t("bank.reversal.candidatesNote")}
                   </Text>
+                  {lines.data?.truncated && (
+                    <Text size="xs" c="orange">
+                      {t("bank.reversal.truncated", { count: MAX_PAGES * 100 })}
+                    </Text>
+                  )}
                 </Stack>
               ))}
             <Radio value="none" label={t("bank.reversal.noPayment")} />

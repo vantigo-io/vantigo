@@ -114,7 +114,9 @@ WHERE ($1::text IS NULL OR t.status = $1::text)
   AND ($3::bigint IS NULL OR t.bank_file_id = $3::bigint)
   AND ($4::date IS NULL OR t.booked_on >= $4::date)
   AND ($5::date IS NULL OR t.booked_on <= $5::date)
-  AND (NOT $6::boolean
+  AND ($6::text IS NULL OR t.account = $6::text)
+  AND ($7::numeric IS NULL OR t.amount = $7::numeric)
+  AND (NOT $8::boolean
        OR (t.status IN ('matched', 'resolved') AND t.direction = 'credit' AND NOT t.negative
            AND (coalesce(t.resolution, 'applied') = 'applied'
                 OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open')))
@@ -128,6 +130,8 @@ type CountBankTransactionsParams struct {
 	BankFileID *int64
 	FromOn     pgtype.Date
 	ToOn       pgtype.Date
+	Account    *string
+	Amount     pgtype.Numeric
 	Unapplied  bool
 }
 
@@ -145,6 +149,8 @@ func (q *Queries) CountBankTransactions(ctx context.Context, arg CountBankTransa
 		arg.BankFileID,
 		arg.FromOn,
 		arg.ToOn,
+		arg.Account,
+		arg.Amount,
 		arg.Unapplied,
 	)
 	var column_1 int32
@@ -439,14 +445,16 @@ WHERE ($1::text IS NULL OR t.status = $1::text)
   AND ($3::bigint IS NULL OR t.bank_file_id = $3::bigint)
   AND ($4::date IS NULL OR t.booked_on >= $4::date)
   AND ($5::date IS NULL OR t.booked_on <= $5::date)
-  AND (NOT $6::boolean
+  AND ($6::text IS NULL OR t.account = $6::text)
+  AND ($7::numeric IS NULL OR t.amount = $7::numeric)
+  AND (NOT $8::boolean
        OR (t.status IN ('matched', 'resolved') AND t.direction = 'credit' AND NOT t.negative
            AND (coalesce(t.resolution, 'applied') = 'applied'
                 OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open')))
            AND NOT EXISTS (SELECT 1 FROM invoices.bank_transaction_events e WHERE e.bank_transaction_id = t.id AND e.event = 'reversed')
            AND t.amount > a.applied))
 ORDER BY (t.status IN ('pending', 'exception', 'duplicate')) DESC, t.booked_on, t.id
-LIMIT $8::integer OFFSET $7::integer
+LIMIT $10::integer OFFSET $9::integer
 `
 
 type ListBankTransactionsParams struct {
@@ -455,6 +463,8 @@ type ListBankTransactionsParams struct {
 	BankFileID *int64
 	FromOn     pgtype.Date
 	ToOn       pgtype.Date
+	Account    *string
+	Amount     pgtype.Numeric
 	Unapplied  bool
 	PageOffset int32
 	PageSize   int32
@@ -467,8 +477,10 @@ type ListBankTransactionsRow struct {
 // ListBankTransactions is a page of the bank lines (D5), each with what its
 // live payments and charge payments apply: the open lines — pending,
 // exception, duplicate — first, each group oldest booking day first, then by
-// id. unapplied keeps the matched and resolved credit lines with a rest —
-// a line resolved otherwise than applied, a reversal and a negative line are
+// id. account and amount keep the lines of one receiving account and one
+// amount, compared by value — what a reversal's candidates are read by.
+// unapplied keeps the matched and resolved credit lines with a rest — a line
+// resolved otherwise than applied, a reversal and a negative line are
 // not money waiting to be applied, but a line dismissed after it was queued
 // invoice_credited, invoice_settled or exceeds_open is money owed back; a
 // line whose payment a reversal took back is never money to apply again.
@@ -479,6 +491,8 @@ func (q *Queries) ListBankTransactions(ctx context.Context, arg ListBankTransact
 		arg.BankFileID,
 		arg.FromOn,
 		arg.ToOn,
+		arg.Account,
+		arg.Amount,
 		arg.Unapplied,
 		arg.PageOffset,
 		arg.PageSize,

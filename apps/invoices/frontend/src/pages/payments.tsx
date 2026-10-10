@@ -30,6 +30,7 @@ import {
   type BankTransactionReason,
   type BankTransactionStatus,
   bankAccountsQueryOptions,
+  bankFileChoicesQueryOptions,
   bankFilesQueryOptions,
   bankTransactionsQueryOptions,
   matchRest,
@@ -60,7 +61,11 @@ export interface PaymentsPageProps {
 export const PaymentsPage = ({ currentUserId }: PaymentsPageProps) => {
   const { t, date } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
-  const [result, setResult] = useState<BankImportResult | null>(null);
+  // The last answer shown: an upload's, or a "Match the rest"'s — whose
+  // amounts are what that request matched, not the file's.
+  const [result, setResult] = useState<{ answer: BankImportResult; fromMatch: boolean } | null>(null);
+  const uploaded = (answer: BankImportResult) => setResult({ answer, fromMatch: false });
+  const matched = (answer: BankImportResult) => setResult({ answer, fromMatch: true });
   const canAct = Boolean(meta.data?.capabilities.canImportBankFiles);
   const canManage = Boolean(meta.data?.capabilities.canManage);
   const currency = meta.data?.currency ?? "NOK";
@@ -80,20 +85,21 @@ export const PaymentsPage = ({ currentUserId }: PaymentsPageProps) => {
       )}
       {meta.data && canAct && (
         <>
-          <UploadCard currency={currency} currentUserId={currentUserId} onResult={setResult} />
+          <UploadCard currency={currency} currentUserId={currentUserId} onResult={uploaded} />
           {result && (
             <ImportResultCard
-              file={result.file}
-              matchedAmount={result.matchedAmount}
-              exceptionsAmount={result.exceptionsAmount}
+              file={result.answer.file}
+              matchedAmount={result.answer.matchedAmount}
+              exceptionsAmount={result.answer.exceptionsAmount}
+              fromMatch={result.fromMatch}
               currency={currency}
               canAct={canAct}
-              onMatched={setResult}
+              onMatched={matched}
               linkToFile
             />
           )}
           <AccountsCard canManage={canManage} />
-          <FilesCard canAct={canAct} currentUserId={currentUserId} onMatched={setResult} />
+          <FilesCard canAct={canAct} currentUserId={currentUserId} onMatched={matched} />
           <QueueCard currency={currency} canAct={canAct} currentUserId={currentUserId} />
         </>
       )}
@@ -260,6 +266,8 @@ export interface ImportResultCardProps {
   /** The upload's and "Match the rest"'s answer carries the amounts; a file's row does not. */
   matchedAmount?: number;
   exceptionsAmount?: number;
+  /** The amounts are a "Match the rest"'s — what that request matched and queued, not the whole file's. */
+  fromMatch?: boolean;
   currency: string;
   canAct: boolean;
   onMatched?: (result: BankImportResult) => void;
@@ -276,6 +284,7 @@ export const ImportResultCard = ({
   file,
   matchedAmount,
   exceptionsAmount,
+  fromMatch = false,
   currency,
   canAct,
   onMatched,
@@ -313,10 +322,18 @@ export const ImportResultCard = ({
           ))}
         </SimpleGrid>
         {matchedAmount !== undefined && (
-          <Text size="sm">{t("bank.matchedAmount", { amount: money(matchedAmount, currency) })}</Text>
+          <Text size="sm">
+            {t(fromMatch ? "bank.matchedAmountByMatch" : "bank.matchedAmount", {
+              amount: money(matchedAmount, currency),
+            })}
+          </Text>
         )}
         {exceptionsAmount !== undefined && exceptionsAmount > 0 && (
-          <Text size="sm">{t("bank.exceptionsAmount", { amount: money(exceptionsAmount, currency) })}</Text>
+          <Text size="sm">
+            {t(fromMatch ? "bank.exceptionsAmountByMatch" : "bank.exceptionsAmount", {
+              amount: money(exceptionsAmount, currency),
+            })}
+          </Text>
         )}
         {ignoredKinds.map((kind) => (
           <Text key={kind} size="sm" c="dimmed">
@@ -606,7 +623,7 @@ const QueueCard = ({
   const [bankFileId, setBankFileId] = useState<string>("");
   const [unapplied, setUnapplied] = useState(false);
   const [page, setPage] = useState(1);
-  const files = useQuery(bankFilesQueryOptions(1));
+  const files = useQuery(bankFileChoicesQueryOptions());
   const filters: BankTransactionFilters = {
     ...(status ? { status } : {}),
     ...(reason ? { reason } : {}),
@@ -621,6 +638,9 @@ const QueueCard = ({
         <Title order={4}>{t("bank.queue")}</Title>
         <Text size="sm" c="dimmed">
           {t("bank.queueDescription")}
+        </Text>
+        <Text size="xs" c="dimmed">
+          {t("bank.queueDuplicatesHint")}
         </Text>
         <Group align="flex-end">
           <Select
@@ -651,6 +671,8 @@ const QueueCard = ({
           />
           <Select
             label={t("bank.filter.file")}
+            searchable
+            nothingFoundMessage={t("bank.filter.noFile")}
             data={[
               { value: "", label: t("bank.filter.anyFile") },
               ...(files.data?.data ?? []).map((f) => ({
