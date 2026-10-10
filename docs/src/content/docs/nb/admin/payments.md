@@ -167,10 +167,12 @@ under en lås på 60 sekunder og sender aldri et brev to ganger med vilje.
   lageret, og la så noen med `invoices:payments` prøve igjen
   (`POST /api/v1/invoices/reminders/{id}/retry`, til skjermbildet for det kommer) eller
   trekke brevet tilbake. List dem med `GET /api/v1/invoices/reminders?status=failed`.
-- **Et brev som venter.** Et brev der inkassosatsene mangler et halvår, eller som ville
+- **Et brev som venter.** Et brev der satsene mangler et halvår, eller som ville
   hatt et gebyr etter at regelordningen sist ble gjennomgått, forsøkes ikke: det venter
   en time om gangen, med `heldReason` som forklaring, uten noen gang å feile. Legg inn
   satsen, eller gjennomgå regelordningen, i purreinnstillingene, så går det.
 - **Minst én gang.** Stopper prosessen mellom e-postserveren tar imot et brev og Vantigo
   merker det sendt, sender neste forsøk det igjen, med samme Message-ID, så kundens
-  e-postprogram kan se at det er det samme brevet.
+  e-postprogram kan se at det er det samme brevet. Henger prosessen i stedet lenger enn
+  brevets lås på 60 sekunder i det tidsrommet, kan noen trekke brevet tilbake imens: det
+  ble sendt, men står som `withdrawn`, og jobben logger en advarsel som navngir det.

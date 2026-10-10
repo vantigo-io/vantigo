@@ -800,3 +800,74 @@ func (a *allCalls) byMethod(methods ...string) []contractCall {
 	}
 	return out
 }
+
+// Oslo midnight between the claim and the send (inkassoloven § 9): a letter
+// claimed at 23:59:45 on Monday 14 September has its facts judged for the
+// 14th, but the send comes at 00:00:05 on the 15th — mailed, it would give
+// the debtor 13 days from its sending. It is put back instead, due at once,
+// its lease and facts cleared, held for nothing and the try not counted;
+// the next claim judges it on the 15th, and it goes with that day's
+// deadline.
+func TestReminderWorker_MidnightBeforeTheSend(t *testing.T) {
+	h, mails := workerHarness(t, "")
+	moveClockTo(t, h, time.Date(2026, time.September, 14, 21, 59, 45, 0, time.UTC))
+	_, letter := dueLetter(t, h, 1)
+	w := invoices.NewReminderWorker(h.Deps())
+	restore := invoices.SetDispatchAfterLock(func(context.Context, int64) error {
+		h.Advance(20 * time.Second)
+		return nil
+	})
+	dispatch(t, w)
+	restore()
+	r := letterOf(t, h, letter)
+	if r.Status != "queued" || r.HeldReason != nil || r.Attempts != 0 || !factsCleared(r) || r.NextAttemptAt == nil ||
+		!r.NextAttemptAt.Equal(h.Now()) || len(mails.tried()) != 0 {
+		t.Fatalf("after midnight the letter = %s held %v attempts %d cleared %v next %v after %d sends; "+
+			"want queued, due now, nothing counted, no facts, nothing mailed",
+			r.Status, r.HeldReason, r.Attempts, factsCleared(r), r.NextAttemptAt, len(mails.tried()))
+	}
+	dispatch(t, w)
+	r = letterOf(t, h, letter)
+	if r.Status != "sent" || dayText(r.SentOn) != "2026-09-15" || dayText(r.Deadline) != "2026-09-29" || len(mails.delivered()) != 1 {
+		t.Errorf("the letter = %s sent_on %s deadline %s after %d mails; want sent on the 15th, its deadline the 29th",
+			r.Status, dayText(r.SentOn), dayText(r.Deadline), len(mails.delivered()))
+	}
+}
+
+// The re-read names the claim's lease: another claim took the letter while
+// this one waited on the invoice (its lease ran out meanwhile), so this
+// claim writes nothing and mails nothing — the letter is the other's.
+func TestReminderWorker_LeaseLostBeforeTheReRead(t *testing.T) {
+	h, mails := workerHarness(t, "")
+	_, letter := dueLetter(t, h, 1)
+	restore := invoices.SetDispatchAfterLock(func(context.Context, int64) error {
+		h.Exec(t, `UPDATE invoices.reminders SET lease_id = 'another-claim' WHERE id = $1`, letter)
+		return nil
+	})
+	dispatch(t, invoices.NewReminderWorker(h.Deps()))
+	restore()
+	r := letterOf(t, h, letter)
+	if r.Status != "queued" || deref(r.LeaseID) != "another-claim" || r.SentOn.Valid || r.Attempts != 0 || len(mails.tried()) != 0 {
+		t.Errorf("the letter = %s lease %s sent_on %s attempts %d after %d sends; want the other claim's, untouched, nothing mailed",
+			r.Status, deref(r.LeaseID), dayText(r.SentOn), r.Attempts, len(mails.tried()))
+	}
+}
+
+// An installation with no object store keeps no letter: the attempt fails
+// with that reason, counted, and nothing is mailed.
+func TestReminderWorker_NoObjectStore(t *testing.T) {
+	t.Parallel()
+	m := &letterMail{}
+	h := newHarnessWithoutStore(t, modtest.WithSMTPSend(m.send), modtest.WithEnv("MAIL_DRIVER", "smtp"),
+		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"), modtest.WithEnv("SMTP_FROM", "faktura@example.invalid"))
+	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) { p.ReminderEmail = "purring@acme.example" })
+	remindersOn(t, h, "")
+	_, letter := dueLetter(t, h, 1)
+	dispatch(t, invoices.NewReminderWorker(h.Deps()))
+	r := letterOf(t, h, letter)
+	if r.Status != "queued" || r.Attempts != 1 || deref(r.LastError) != "This installation has no object store to keep the letter in." ||
+		!factsCleared(r) || len(m.tried()) != 0 {
+		t.Errorf("the letter = %s attempts %d error %q cleared %v after %d sends; want a failed attempt for want of a store, nothing mailed",
+			r.Status, r.Attempts, deref(r.LastError), factsCleared(r), len(m.tried()))
+	}
+}

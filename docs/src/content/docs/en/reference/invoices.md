@@ -2899,7 +2899,11 @@ and its Oslo day its `today`. Then four steps:
 3. **The mail**, through the installation's SMTP settings, only **while the lease still
    covers it**: a claim with less than 30 seconds of its lease left — the send's
    20-second timeout and a 10-second margin for marking it sent — does not send, and the
-   attempt fails. The mail goes to the letter's recipient, from the seller's legal name,
+   attempt fails. Nor is it sent **past Oslo midnight**: when the clock read just before
+   the send is on a later Oslo day than the claim's `today`, the letter is put back, due
+   at once, its lease and facts cleared, `held_reason` empty and **the try not counted**,
+   so the next claim judges it on the new day — a letter never leaves with a `sent_on`
+   and a deadline counted from the day before it was mailed (inkassoloven § 9). The mail goes to the letter's recipient, from the seller's legal name,
    **Reply-To the seller's e-mail** in the settings, the subject "Purring: faktura
    {n}" or "Inkassovarsel: faktura {n}" ("Reminder: invoice {n}", "Debt collection notice:
    invoice {n}"), a short cover in the letter's language and the PDF attached. Its
@@ -2911,10 +2915,15 @@ and its Oslo day its `today`. Then four steps:
    **`sent`** at the claim's time. When a hold was placed, or a lift barred the charges,
    while the letter was being sent (steps 2 and 3 run under no lock, and a hold leaves a
    letter being sent alone), its fee and compensation are **waived `claimed_in_error`**
-   in this transaction, after the status change, in the name of the run's author.
+   in this transaction, after the status change, in the name of the run's author. A
+   letter the mail server took but the claim no longer holds at its mark — the process
+   stalled past the lease and another actor moved it — is left as that actor left it,
+   and the worker logs it at warn.
 
-**A failed attempt** — the store, the send, a lease run short, a render — counts the
-attempt, records `last_error` (redacted) and **clears the lease and the facts**, so the
+**A failed attempt** — the store (or no store configured), the settings unreadable, the
+send, a lease run short, a render — counts the attempt, records in `last_error` a fixed
+sentence naming which step failed (never the mail server's or the store's own words,
+which may quote the address), and **clears the lease and the facts**, so the
 letter is not "being sent" and may be withdrawn again, and is due again after
 `min(3600, 2^n)` seconds for its n-th attempt. A letter still unsent **48 hours after its
 first attempt** is **`failed`** (`failed_at`), an attention item until a person retries
@@ -2932,13 +2941,16 @@ invoice's snapshots, so a row renders the same bytes every time (its creation da
 - the seller block (the seller snapshot: name, address, organisation number with MVA,
   Foretaksregisteret, e-mail) and the buyer block, the date `sent_on`, the heading
   **"Purring"** or **"Inkassovarsel"** ("Payment reminder", "Debt collection notice");
-- the invoice it concerns — number, issue date, due date — and the payment deadline;
+- the invoice it concerns — number, issue date, due date — and the payment deadline, with
+  an opening that says payment was not registered, or, when part of the invoice is paid,
+  that the full amount was not received;
 - **the claim with every amount apart** (inkassoloven § 10 c and d by choice): the
   invoice's total, what credit notes issued by `sent_on` took off it, what was paid, the
   **principal open**; the **earlier fees and compensation still outstanding**
   (`charges_earlier`) — worded **as a credit from earlier payments of charges** when it is
   negative, the charges paid beyond the earlier ones paying this letter's own; this
-  letter's **reminder fee** or **compensation for recovery costs**; the **late payment
+  letter's **reminder fee** — on an inkassovarsel "Gebyr for inkassovarsel" ("Collection
+  notice fee") — or **compensation for recovery costs**; the **late payment
   interest** accrued to `sent_on` from its from-date, each segment with its rate, its days
   and its base; what of the interest is waived and what is already paid; and **the amount
   to pay**;

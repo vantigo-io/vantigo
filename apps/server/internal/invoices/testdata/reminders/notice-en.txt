@@ -24,7 +24,7 @@ Credited: 0.00
 Paid: 0.00
 Principal outstanding: 1,000.00
 Earlier fees and compensation outstanding: 0.00
-Reminder fee: 38.00
+Collection notice fee: 38.00
 Late payment interest from 2026-07-21: 18.12
   12.25 % a year from 2026-07-21 to 2026-09-12 on 1,000.00
 Amount due: NOK 1,056.12

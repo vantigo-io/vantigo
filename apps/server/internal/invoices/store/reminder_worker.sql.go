@@ -463,16 +463,18 @@ WHERE id = $3 AND lease_id = $4::text AND status = 'queued'
 
 type RescheduleReminderUncountedParams struct {
 	NextAttemptAt time.Time
-	HeldReason    string
+	HeldReason    *string
 	ID            int64
 	LeaseID       string
 }
 
-// RescheduleReminderUncounted puts a claimed letter whose rates or regime
-// review are missing back an hour out (plan readings 17, 46): held_reason
-// says why, which attention reads; neither attempts nor first_attempt_at
-// moves, so waiting never runs into the 48 hours. The lease and any facts
-// of an earlier attempt are cleared.
+// RescheduleReminderUncounted puts a claimed letter back without counting
+// the try (plan readings 17, 46): an hour out when its rates or regime
+// review are missing, held_reason saying why, which attention reads; at
+// once, held_reason NULL, when Oslo midnight passed before its send, so its
+// facts are judged again on the new day. Neither attempts nor
+// first_attempt_at moves, so waiting never runs into the 48 hours. The lease
+// and the facts are cleared.
 func (q *Queries) RescheduleReminderUncounted(ctx context.Context, arg RescheduleReminderUncountedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, rescheduleReminderUncounted,
 		arg.NextAttemptAt,

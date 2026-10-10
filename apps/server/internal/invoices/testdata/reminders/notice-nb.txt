@@ -24,7 +24,7 @@ Kreditert: 0,00
 Betalt: 0,00
 Utestående hovedstol: 1 000,00
 Tidligere gebyrer og kompensasjon som står ute: 0,00
-Purregebyr: 38,00
+Gebyr for inkassovarsel: 38,00
 Forsinkelsesrente fra 21.07.2026: 18,12
   12,25 % per år fra 21.07.2026 til 12.09.2026 av 1 000,00
 Å betale: NOK 1 056,12

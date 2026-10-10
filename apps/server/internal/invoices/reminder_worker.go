@@ -45,7 +45,9 @@ import (
 //  2. the PDF rendered from the row and stored once under a key carrying
 //     its hash (plan reading 35), outside any lock, under its own timeout;
 //  3. the lease left judged — a claim with less of it than the send may take
-//     and a margin does not send — then the mail, through the installation's
+//     and a margin does not send — and the day: past Oslo midnight since the
+//     claim, the letter is put back uncounted, its facts cleared, to be
+//     judged again on the new day; then the mail, through the installation's
 //     SMTP seam under its own timeout, Reply-To the seller, the letter's
 //     Message-ID made at its first claim (plan reading 52);
 //  4. one transaction — the invoice, then the letter — marks it sent, and
@@ -98,6 +100,8 @@ const (
 	reasonLetterNotMailed   = "The mail server did not accept the letter."
 	reasonMailUnavailable   = "This installation cannot send e-mail: MAIL_DRIVER is not smtp."
 	reasonNoRecipient       = "The letter has no recipient."
+	reasonNoStorage         = "This installation has no object store to keep the letter in."
+	reasonNoSettings        = "The invoice settings could not be read."
 
 	// waiverClaimedInError is the reason of the waivers a letter sent under
 	// a hold or a barring lift gets (D9).
@@ -248,6 +252,9 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 	c.first = letter.FirstAttemptAt
 
 	// 2. The PDF, from the row, stored once — no transaction open.
+	if !c.s.storageConfigured {
+		return c.fail(ctx, reasonNoStorage)
+	}
 	q := store.New(c.w.deps.Pool)
 	m, body, err := c.s.renderLetter(ctx, q, letter, inv)
 	if err != nil {
@@ -269,18 +276,28 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 		return c.done(ctx, "record the PDF of", n, err)
 	}
 
-	// 3. The mail: only while the lease still covers the send and its mark.
+	// 3. The mail: only while the lease still covers the send and its mark,
+	// and only on the day its facts were judged for.
 	switch {
 	case !c.s.mailAvailable():
 		return c.fail(ctx, reasonMailUnavailable)
 	case letter.Recipient == "":
 		return c.fail(ctx, reasonNoRecipient)
-	case c.leaseLeft() < reminderSendTimeout+reminderSendMargin:
-		return c.fail(ctx, reasonLetterOutOfTime)
 	}
 	settings, err := q.GetSettings(ctx)
 	if err != nil {
-		return fmt.Errorf("invoices: read the settings: %w", err)
+		c.w.logger().WarnContext(ctx, "invoices: the settings could not be read for a reminder letter", "worker", reminderWorkerName,
+			"reminder_id", letter.ID, "error", err.Error())
+		return c.fail(ctx, reasonNoSettings)
+	}
+	if c.leaseLeft() < reminderSendTimeout+reminderSendMargin {
+		return c.fail(ctx, reasonLetterOutOfTime)
+	}
+	if !businessDay(c.w.now()).Equal(c.today) {
+		// Oslo midnight passed since the claim judged the letter: its
+		// sent_on and deadline are yesterday's, which would leave the debtor
+		// a day short of the 14 (inkassoloven § 9). Judged again at once.
+		return c.rescheduleNewDay(ctx)
 	}
 	out := mail.Outbound{
 		DisplayName: deref(inv.SellerLegalName), To: []string{letter.Recipient}, Subject: m.subject,
@@ -336,7 +353,7 @@ func (c *reminderClaim) judge(ctx context.Context) (judgement, store.InvoicesInv
 		switch j.outcome {
 		case judgedHeld:
 			n, err = txq.RescheduleReminderUncounted(ctx, store.RescheduleReminderUncountedParams{
-				NextAttemptAt: c.now.Add(reminderHeldDelay), HeldReason: j.reason, ID: letter.ID, LeaseID: c.lease,
+				NextAttemptAt: c.now.Add(reminderHeldDelay), HeldReason: &j.reason, ID: letter.ID, LeaseID: c.lease,
 			})
 		case judgedWithdraw:
 			n, err = txq.WithdrawClaimedReminder(ctx, store.WithdrawClaimedReminderParams{
@@ -606,7 +623,11 @@ func (c *reminderClaim) markSent(ctx context.Context) error {
 		return fmt.Errorf("invoices: complete letter %d: %w", c.row.ID, err)
 	}
 	if moved {
-		return c.done(ctx, "mark sent", 0, nil)
+		// The mail server took the letter, but the claim lost it before the
+		// mark — a stall past the lease, then a withdrawal or another claim.
+		c.w.logger().WarnContext(ctx, "invoices: a reminder letter was mailed but moved under the claim before it was marked sent",
+			"worker", reminderWorkerName, "reminder_id", c.row.ID)
+		return nil
 	}
 	c.w.logger().InfoContext(ctx, "invoices: a reminder letter was sent", "worker", reminderWorkerName,
 		"reminder_id", c.row.ID, "waived", waived)
@@ -639,6 +660,21 @@ func (c *reminderClaim) fail(ctx context.Context, reason string) error {
 		ID: c.row.ID, LeaseID: c.lease,
 	})
 	return c.done(ctx, "reschedule", n, err)
+}
+
+// rescheduleNewDay puts the letter back, due at once, its lease and facts
+// cleared and the try not counted: the next claim judges it on the new day.
+func (c *reminderClaim) rescheduleNewDay(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reminderMarkTimeout)
+	defer cancel()
+	n, err := store.New(c.w.deps.Pool).RescheduleReminderUncounted(ctx, store.RescheduleReminderUncountedParams{
+		NextAttemptAt: c.w.now(), ID: c.row.ID, LeaseID: c.lease,
+	})
+	if err == nil && n == 1 {
+		c.w.logger().InfoContext(ctx, "invoices: a reminder letter is judged again: midnight passed before its send",
+			"worker", reminderWorkerName, "reminder_id", c.row.ID)
+	}
+	return c.done(ctx, "judge again on the new day", n, err)
 }
 
 // done reports a lease-checked write: 0 rows is another actor's move — a

@@ -25,8 +25,9 @@ type reminderWords struct {
 	heading, subject, fileStem string
 	// The meta block's labels.
 	date, invoiceNumber, invoiceDate, dueDate, deadline string
-	// intro: the invoice's number and due date.
-	intro string
+	// intro: the invoice's number and due date; introPartial is the intro
+	// when part of the invoice is paid.
+	intro, introPartial string
 	// The claim's amounts, each apart (R13; inkassoloven § 10 c, d).
 	amountHeader, invoiceTotal, credited, paid, principalOpen string
 	chargesEarlier, chargesCredit, fee, compensation          string
@@ -55,6 +56,7 @@ func reminderText(lang string, level reminderrules.Level, announces bool) remind
 			date: "Date", invoiceNumber: "Invoice number", invoiceDate: "Invoice date", dueDate: "Due date",
 			deadline:     "Payment deadline",
 			intro:        "We have not registered payment of invoice %d, which fell due on %s. This is the claim as it stands today.",
+			introPartial: "We have not received the full amount of invoice %d, which fell due on %s. This is the claim as it stands today.",
 			amountHeader: "Amount (%s)", invoiceTotal: "Invoice total", credited: "Credited", paid: "Paid",
 			principalOpen: "Principal outstanding", chargesEarlier: "Earlier fees and compensation outstanding",
 			chargesCredit: "Credit from earlier payments of charges", fee: "Reminder fee",
@@ -77,6 +79,7 @@ func reminderText(lang string, level reminderrules.Level, announces bool) remind
 		if notice {
 			w.heading, w.subject, w.fileStem = "Debt collection notice", "Debt collection notice: invoice %d", "collection-notice"
 			w.coverIntro = "Please find attached a debt collection notice for invoice %d from %s."
+			w.fee = "Collection notice fee"
 		}
 		if !announces || notice {
 			w.announcement = ""
@@ -88,6 +91,7 @@ func reminderText(lang string, level reminderrules.Level, announces bool) remind
 		date: "Dato", invoiceNumber: "Fakturanummer", invoiceDate: "Fakturadato", dueDate: "Forfallsdato",
 		deadline:     "Betalingsfrist",
 		intro:        "Vi har ikke registrert betaling av faktura %d, som forfalt %s. Slik står kravet i dag.",
+		introPartial: "Vi har ikke mottatt hele beløpet for faktura %d, som forfalt %s. Slik står kravet i dag.",
 		amountHeader: "Beløp (%s)", invoiceTotal: "Fakturabeløp", credited: "Kreditert", paid: "Betalt",
 		principalOpen: "Utestående hovedstol", chargesEarlier: "Tidligere gebyrer og kompensasjon som står ute",
 		chargesCredit: "Til gode fra tidligere innbetalinger av gebyrer", fee: "Purregebyr",
@@ -110,6 +114,7 @@ func reminderText(lang string, level reminderrules.Level, announces bool) remind
 	if notice {
 		w.heading, w.subject, w.fileStem = "Inkassovarsel", "Inkassovarsel: faktura %d", "inkassovarsel"
 		w.coverIntro = "Vedlagt følger et inkassovarsel på faktura %d fra %s."
+		w.fee = "Gebyr for inkassovarsel"
 	}
 	if !announces || notice {
 		w.announcement = ""
