@@ -141,3 +141,63 @@ func TestPeopleList_FiltersAndSummaries(t *testing.T) {
 		t.Errorf("GET seller = manager %+v department %+v, want Berit and Sales", person.Manager, person.Department)
 	}
 }
+
+// Under the current status the structure filters also find an upcoming hire
+// by their first terms row — HR looks for next month's new starter in their
+// department — while a person already active is still judged on the row in
+// force today.
+func TestPeopleList_FiltersFindAnUpcomingHire(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	unit := company(t, hr)
+	sales := createDepartment(t, hr, map[string]any{"code": "SALES", "name": "Sales"})
+	oslo := createLocation(t, hr, "Oslo office")
+	hire := createPerson(t, hr, with(newPerson("Nina", "Ny"), "employeeNumber", "U-NEW"))
+	createEmployment(t, hr, hire.Id, newEmployment(shiftDay(t, today(t, h), 20), terms("departmentId", sales.Id, "locationId", oslo.Id)))
+
+	for _, query := range []string{
+		fmt.Sprintf("?departmentId=%d", sales.Id),
+		fmt.Sprintf("?locationId=%d&unitId=%d", oslo.Id, unit.Id),
+		fmt.Sprintf("?departmentId=%d&status=all", sales.Id),
+	} {
+		if got := numbersListed(t, hr, query); !slices.Equal(got, []string{"U-NEW"}) {
+			t.Errorf("%s lists %v, want the upcoming hire", query, got)
+		}
+	}
+	colleague, _ := signIn(t, h, "staff:view")
+	if got := numbersListed(t, colleague, fmt.Sprintf("?departmentId=%d", sales.Id)); len(got) != 0 {
+		t.Errorf("the colleague lists %v, want nobody: the hire is not active today", got)
+	}
+}
+
+// A colleague, who sees only the people active today, is shown a manager —
+// on the list, on the person and up the org chain — only while that manager
+// is active today too; HR sees the manager whoever they are.
+func TestPeopleList_AColleagueSeesOnlyAnActiveManager(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	company(t, hr)
+	start := shiftDay(t, today(t, h), -60)
+	gone := createPerson(t, hr, newPerson("Gunnar", "Gone"))
+	g := createEmployment(t, hr, gone.Id, newEmployment(start, terms()))
+	do(t, hr, http.MethodPost, endPath(g.Id), map[string]any{"endDate": shiftDay(t, today(t, h), -1), "endReason": "employee_resigned"}, http.StatusOK, nil)
+	report := createPerson(t, hr, with(newPerson("Rita", "Report"), "employeeNumber", "M-REP"))
+	createEmployment(t, hr, report.Id, newEmployment(start, terms("managerPersonId", gone.Id)))
+
+	colleague, _ := signIn(t, h, "staff:view")
+	for name, c := range map[string]struct {
+		client *modtest.Client
+		want   bool
+	}{"colleague": {colleague, false}, "staff:manage": {hr, true}} {
+		row := listPeople(t, c.client, "?q=Rita").Data[0]
+		var person gen.StaffPerson
+		do(t, c.client, http.MethodGet, personPath(report.Id), nil, http.StatusOK, &person)
+		var org gen.StaffOrg
+		do(t, c.client, http.MethodGet, orgPath(report.Id), nil, http.StatusOK, &org)
+		if (row.Manager != nil) != c.want || (person.Manager != nil) != c.want || (len(org.Chain) == 1) != c.want {
+			t.Errorf("%s: list %+v person %+v chain %+v, want the manager shown %v", name, row.Manager, person.Manager, org.Chain, c.want)
+		}
+	}
+}

@@ -86,14 +86,15 @@ func TestAudience_ReadsItsGroups(t *testing.T) {
 
 // An event payload's fields are kept for a group the audience reads and
 // become "changed" for one it does not — an unknown field included, which no
-// audience reads.
+// audience reads — except the pay and HR's notes, which are left out
+// altogether: even the day a pay field changed is a pay date.
 func TestShapePayload_PerField(t *testing.T) {
 	t.Parallel()
 	stored := []byte(`{"fields":{"notes":{"from":"a","to":"b"},"givenName":{"to":"Kari"},"phoneMobile":{"from":"1"},"mystery":{"to":"x"}}}`)
 	self := shapePayload(stored, audience{Self: true})
 	fields := self["fields"].(map[string]any)
-	if fields["notes"] != "changed" || fields["mystery"] != "changed" {
-		t.Errorf("self: %v, want notes and mystery changed", fields)
+	if _, ok := fields["notes"]; ok || fields["mystery"] != "changed" {
+		t.Errorf("self: %v, want notes left out and mystery changed", fields)
 	}
 	if f, ok := fields["phoneMobile"].(map[string]any); !ok || f["from"] != "1" {
 		t.Errorf("self: phoneMobile = %v, want its value", fields["phoneMobile"])
@@ -135,7 +136,7 @@ func TestShapePayload_TheSealedAndLinkEvents(t *testing.T) {
 }
 
 // A terms row's event names its fields as the contract does, and a manager
-// reads the non-pay ones and "changed" for the pay and HR's note; the
+// reads the non-pay ones and nothing of the pay and HR's note; the
 // payload's employmentId and termsId — which row, not data about the person —
 // are kept for everyone who reads the history.
 func TestShapePayload_TermsEvents(t *testing.T) {
@@ -143,8 +144,11 @@ func TestShapePayload_TermsEvents(t *testing.T) {
 	stored := []byte(`{"employmentId":1001,"termsId":1002,"fields":{"title":{"to":"Developer"},"ftePercent":{"from":100,"to":80},"payComponents":{"to":[]},"note":{"to":"x"}}}`)
 	manager := shapePayload(stored, audience{Manager: true})
 	fields := manager["fields"].(map[string]any)
-	if fields["payComponents"] != changed || fields["note"] != changed {
-		t.Errorf("manager: %v, want payComponents and note changed", fields)
+	if _, ok := fields["payComponents"]; ok {
+		t.Errorf("manager: %v, want payComponents left out", fields)
+	}
+	if _, ok := fields["note"]; ok {
+		t.Errorf("manager: %v, want note left out", fields)
 	}
 	for _, name := range []string{"title", "ftePercent"} {
 		if _, ok := fields[name].(map[string]any); !ok {

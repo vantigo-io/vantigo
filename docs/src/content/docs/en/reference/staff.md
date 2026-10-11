@@ -253,7 +253,8 @@ names, the employee number and the work email — never a private field. Every r
 - **`manager`** and **`department`** — `{id, displayName, employeeNumber}` and `{id,
   code, name}` from the terms in force today on the person's earliest employment in
   force: the manager the terms name, else [the department's](#managers-and-the-org-view);
-  absent when there is none.
+  absent when there is none. A caller holding `staff:view` alone, who sees only the
+  people active today, is not shown a manager who is not active today either.
 
 Who lists whom:
 
@@ -264,9 +265,11 @@ Who lists whom:
   `status` says (`status=ended` lists nobody).
 - Anyone else is the uniform 403.
 
-`unitId`, `departmentId` and `locationId` keep the people with an employment in force
-today in that business unit whose terms in force today name that department and that
-location — every filter given, on the same employment. "Today" is the business time
+`unitId`, `departmentId` and `locationId` keep the people with an employment not ended
+before today in that business unit whose terms name that department and that location —
+the row in force today, or for an employment that starts later its first row, so HR
+finds next month's starter in their department — every filter given, on the same
+employment. "Today" is the business time
 zone's calendar day, computed once per request from the clock and handed to the
 database as a date, so the list turns over at midnight in Oslo, not in UTC, and does
 so on the right hour on the days the clocks change.
@@ -346,10 +349,13 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 the person themselves, a manager of theirs today, `staff:manage` and
 `staff:personal-data`; to anyone else — a colleague included — it is the unknown id's
 404. Each payload is **shaped per field** by the same table: a field of a group the
-caller may not read shows the string `"changed"` in place of its values. So a change
-to HR's notes reads `{"notes": "changed"}` to the person and `{"notes": {"from": …,
-"to": …}}` to HR; a manager reads a birth-date change as `"changed"` and a work-email
-change with its values, and a new terms row's pay as `"changed"`. An employment's and
+caller may not read shows the string `"changed"` in place of its values — except a
+field of the **pay** or of **HR's notes**, which is left out altogether: the day a pay
+field changed is itself a pay date (the `salaryChangedAt` a manager does not read), and
+HR's notes are HR's alone. So a manager reads a birth-date change as `"changed"`, a
+work-email change with its values, and a correction of the pay alone as a
+`terms_corrected` event with no field; a change to HR's notes is not in the person's
+own history at all, and HR reads it as `{"notes": {"from": …, "to": …}}`. An employment's and
 a terms row's `employmentId` and `termsId` are kept for everyone who reads the
 history. A sealed value is never in a payload. Each event also stores the retention
 classes its payload touches (`payload_classes`), which the erase uses and nothing
@@ -392,13 +398,17 @@ positions); the register does not refuse an overlap.
 - **`PUT /employments/{id}`** (`staff:manage`, `If-Match`) replaces `startDate`,
   `relationshipType`, `businessUnitId` and `contractSignedAt` (left out, cleared). A new
   start moves the first terms row with it, and is `terms_before_start` (409) when a
-  later row would then lie before it. The change is an `employment_updated` event.
+  later row would then lie before it. Every row's probation is judged again against the
+  new start: one ending more than six months (or half a temporary term) after it is
+  `probation_too_long` (400) on `startDate`, one ending before it a field error. The change is an `employment_updated` event.
 - **`POST /employments/{id}/end`** (`staff:manage`) takes `endDate` — the last day
   worked, on or after the start, and allowed in the future — and `endReason`, one of the
   a-melding's six: `employee_resigned`, `employer_terminated`, `contract_ended`,
   `wrongly_reported`, `internal_change`, `payroll_system_change`. Without the reason it
   is `end_reason_required` (400); a terms row dated after the end is `terms_after_end`
-  (409). Ending an ended employment moves its end. It is an `employment_ended` event.
+  (409). Ending an ended employment moves its end; a later end brings the terms after
+  the old one back into force, so it is judged on the [manager graph](#managers-and-the-org-view)
+  from the day after the old end. It is an `employment_ended` event.
 - **`POST /employments/{id}/reopen`** (`staff:manage`) takes the end and its reason
   away, for an end recorded in error — an `employment_reopened` event; an employment
   with no end is answered as it is.
@@ -552,7 +562,7 @@ visited set, so a department graph that loops ends it.
 Nobody manages themselves (`self_manager`, 409), and the graph never loops: a write
 that names, clears or changes a manager or a department on a terms row — adding,
 replacing or deleting one, a new start, a reopening — and a department write that
-changes its manager or parent take the manager graph's lock after the person's row and
+changes its manager or parent — and an end moved later — take the manager graph's lock after the person's row and
 judge the graph they leave on the row's day and on **every later day the graph
 changes** (each terms row's day, each start, each day after an end). A person who would
 manage themselves through anyone is `manager_cycle` (409), naming the first such day:
@@ -565,7 +575,8 @@ would close a loop is written.
 manager and so on up, following each one's earliest employment in force today and
 stopping where nobody manages or where the walk would come back on itself; `reports`
 are the people whose manager the person is today. Anyone who may see the person reads
-it.
+it; to a caller holding `staff:view` alone a manager in the chain who is not active
+today is left out, as they are from the directory.
 
 The **Manager audience** is resolved from the same rule on today: a caller whose
 self-service link names a manager of the person reads the person as the
@@ -695,7 +706,7 @@ caller about themselves.
   person as actor; together they move the revision on once. The link is judged again
   under the person's lock, so a person HR has just unlinked gets `no_person`.
 - **`GET /me/events`** is the person's own history, paged, shaped as Self reads it:
-  HR's notes show `"changed"`.
+  HR's notes are left out.
 
 ## Refusals and revisions
 
@@ -731,7 +742,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `terms_required_fields` | 400 | A terms row without `employmentType` or `ftePercent`. |
 | `temporary_ground_required` | 400 | A temporary row without its ground. |
 | `appointment_form_mismatch` | 400 | An appointment form the employment type does not take. |
-| `probation_too_long` | 400 | A probation past six months or half a temporary term, or an extension not agreed, without a reason or too long. |
+| `probation_too_long` | 400 | A probation past six months or half a temporary term — on a terms row, or on a new start — or an extension not agreed, without a reason or too long. |
 | `full_time_hours_mismatch` | 400 | Hours of a full position the scheme does not allow. |
 | `terms_valid_from_taken` | 409 | Another row of the employment has the day. |
 | `terms_before_start` | 409 | A row before the employment's start, or a new start after a row. |
@@ -775,7 +786,7 @@ person's, which it moves on when the list changes.
   `staff-manager-graph`, after any person's and employment's row, and runs the
   [cycle check](#managers-and-the-org-view) over the graph it leaves before it
   commits, so the checks across people are judged one at a time. An end takes no
-  graph lock: it only takes edges away.
+  graph lock — it only takes edges away — unless it moves an earlier end later.
 - **The defaults.** A write of a legal entity or a business unit takes its table's
   default lock first.
 - **The sequence.** A create that generates an employee number holds the settings row

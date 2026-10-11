@@ -175,6 +175,23 @@ func (a audience) reads(g fieldGroup) bool {
 	return false
 }
 
+// colleagueOnly is whether the audience is staff:view and nothing more: the
+// one that sees only the people active today (plan reading 15), so a person
+// it is shown — a manager on a summary, a link up the org chain — must be
+// active today too.
+func (a audience) colleagueOnly() bool {
+	return a.Colleague && !a.Self && !a.Manager && !a.Manage && !a.PersonalData
+}
+
+// shownManager is a placement's manager as the audience may read it: absent
+// for a colleague alone when the manager is not active today.
+func shownManager(a audience, p placement) *gen.StaffPersonSummary {
+	if a.colleagueOnly() && !p.managerActive {
+		return nil
+	}
+	return shown(a, "manager", p.manager)
+}
+
 // seesPerson is whether the person exists for this audience at all; to
 // anyone else they are the 404 an unknown id is.
 func (a audience) seesPerson() bool { return a.reads(groupWork) }
@@ -203,7 +220,7 @@ func shown[T any](a audience, field string, v *T) *T {
 func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.StaffPersonUser) gen.StaffPerson {
 	out := gen.StaffPerson{
 		Status:            p.status,
-		Manager:           shown(a, "manager", p.manager),
+		Manager:           shownManager(a, p),
 		Department:        shown(a, "department", p.department),
 		Id:                row.ID,
 		EmployeeNumber:    row.EmployeeNumber,
@@ -253,7 +270,7 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 func personListItemResponse(row store.ListPeopleRow, p placement, a audience) gen.StaffPersonListItem {
 	return gen.StaffPersonListItem{
 		Status:            p.status,
-		Manager:           shown(a, "manager", p.manager),
+		Manager:           shownManager(a, p),
 		Department:        shown(a, "department", p.department),
 		Id:                row.ID,
 		EmployeeNumber:    row.EmployeeNumber,
@@ -273,7 +290,11 @@ const changed = "changed"
 
 // shapePayload is a stored event payload as the audience may read it: each
 // of its fields kept when the audience reads the field's group, "changed"
-// otherwise. Every kind this module writes names its fields this way — the
+// otherwise — except a field of the pay or of HR's notes, which is left out
+// altogether: the day the pay changed is itself a pay date (the employment's
+// salaryChangedAt, which a manager does not read), and HR's notes are HR's
+// alone, so an audience that may not read them does not learn when they
+// moved either. Every kind this module writes names its fields this way — the
 // sealed fields' and the link's changes too, as nationalId, bankAccount and
 // user, each shaped by its own group — and a reveal names none, so its
 // payload is empty to everyone. A payload that is not the shape this module
@@ -300,9 +321,11 @@ func shapePayload(stored []byte, a audience) map[string]any {
 	}
 	fields := make(map[string]any, len(payload.Fields))
 	for name, value := range payload.Fields {
-		if a.show(name) {
+		switch g := groupOf(name); {
+		case a.reads(g):
 			fields[name] = value
-		} else {
+		case g == groupPay || g == groupHRNotes:
+		default:
 			fields[name] = changed
 		}
 	}

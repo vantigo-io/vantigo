@@ -78,7 +78,7 @@ func TestMe_TheSelfViewThroughTheRealLink(t *testing.T) {
 // date, HR's notes, a sealed field — is refused as a property the request
 // does not name, and nothing is written. Each change is an event the person
 // is the actor of, read back on GET /me/events shaped as the person reads
-// it: HR's notes changed by HR show "changed".
+// it: HR's notes changed by HR are left out.
 func TestMe_PutChangesThePrivateGroupOnly(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -128,8 +128,8 @@ func TestMe_PutChangesThePrivateGroupOnly(t *testing.T) {
 	if !slices.Equal(kinds[:3], []string{"person_updated", "next_of_kin_updated", "person_updated"}) {
 		t.Fatalf("kinds = %v, want HR's change, then the person's two", kinds)
 	}
-	if fieldsOf(history.Data[0])["notes"] != "changed" {
-		t.Errorf("HR's notes read %v on /me/events, want \"changed\"", fieldsOf(history.Data[0])["notes"])
+	if v, ok := fieldsOf(history.Data[0])["notes"]; ok {
+		t.Errorf("HR's notes read %v on /me/events, want them left out", v)
 	}
 	for _, e := range history.Data[1:3] {
 		if e.Actor.UserId == nil || *e.Actor.UserId != user || e.Actor.DisplayName != "Kari the user" {
@@ -157,7 +157,7 @@ func TestMe_PutChangesThePrivateGroupOnly(t *testing.T) {
 // /me is pure Self whatever else the caller holds: HR linked to their own
 // person reads their record on My page without HR's notes, which
 // GET /people/{id} shows them as staff:manage, and their own history there
-// shows a notes change as "changed".
+// leaves a notes change out.
 func TestMe_IsPureSelfForHR(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -174,8 +174,8 @@ func TestMe_IsPureSelfForHR(t *testing.T) {
 	do(t, hr, http.MethodPut, personPath(p.Id), with(newPerson("Hanne", "Hansen"), "notes", "Changed"), http.StatusOK, nil, ifMatch(personRevision(t, h, p.Id)))
 	var history gen.PaginatedResponseOfStaffEvent
 	do(t, hr, http.MethodGet, meEventsPath, nil, http.StatusOK, &history)
-	if got := fieldsOf(history.Data[0])["notes"]; got != "changed" {
-		t.Errorf("/me/events shows notes as %v, want \"changed\"", got)
+	if got, ok := fieldsOf(history.Data[0])["notes"]; ok {
+		t.Errorf("/me/events shows notes as %v, want them left out", got)
 	}
 	if f, ok := fieldsOf(listEvents(t, hr, p.Id)[0])["notes"].(map[string]any); !ok || f["to"] != "Changed" {
 		t.Errorf("/people/{id}/events shows HR notes as %v, want the value", f)

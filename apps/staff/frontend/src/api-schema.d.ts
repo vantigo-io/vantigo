@@ -205,7 +205,7 @@ export interface paths {
         put?: never;
         /**
          * End an employment
-         * @description Ends an employment on endDate — which may lie in the future — for one of the a-melding's six reasons. A terms row dated after the end is refused. Ending one already ended moves its end. The change is an employment_ended event.
+         * @description Ends an employment on endDate — which may lie in the future — for one of the a-melding's six reasons. A terms row dated after the end is refused. Ending one already ended moves its end; a later end brings terms back into force and is judged on the manager graph from the day after the old end. The change is an employment_ended event.
          */
         post: operations["postStaffEmploymentsByIdEnd"];
         delete?: never;
@@ -419,7 +419,7 @@ export interface paths {
         };
         /**
          * List my own history
-         * @description The caller's own history, newest first, shaped as the person themselves reads it — a field of a group they may not read, HR's notes, shows "changed". A caller linked to nobody gets the 404 no_person.
+         * @description The caller's own history, newest first, shaped as the person themselves reads it — a field of a group they may not read shows "changed", and HR's notes are left out. A caller linked to nobody gets the 404 no_person.
          */
         get: operations["getStaffMeEvents"];
         put?: never;
@@ -459,7 +459,7 @@ export interface paths {
         };
         /**
          * List people
-         * @description The directory, by display name, the work group with each person's manager, department and status today: staff:manage lists everyone, filtered by status (current by default — active, upcoming and no employment yet; ended; all); staff:view without it the people active today (an employment that has started and not ended), whatever status says. q matches each of its words against the names, the employee number and the work email; unitId, departmentId and locationId keep the people with an employment in force today in that unit, or whose terms in force today name that department or location — all on one employment. Anyone else is the uniform 403.
+         * @description The directory, by display name, the work group with each person's manager, department and status today: staff:manage lists everyone, filtered by status (current by default — active, upcoming and no employment yet; ended; all); staff:view without it the people active today (an employment that has started and not ended), whatever status says. q matches each of its words against the names, the employee number and the work email; unitId, departmentId and locationId keep the people with an employment not ended before today in that unit whose terms name that department or location — the row in force today, or an upcoming employment's first row — all on one employment. Anyone else is the uniform 403.
          */
         get: operations["getStaffPeople"];
         put?: never;
@@ -575,7 +575,7 @@ export interface paths {
         };
         /**
          * List a person's history
-         * @description A person's history, newest first, each payload shaped by the caller's field groups: a field of a group the caller may not read shows "changed" in place of its values. The person themselves, a manager of theirs today, staff:manage and staff:personal-data read it; anyone else — a colleague holding staff:view included — gets a 404 identical to an unknown id.
+         * @description A person's history, newest first, each payload shaped by the caller's field groups: a field of a group the caller may not read shows "changed" in place of its values, and one of the pay or of HR's notes is left out. The person themselves, a manager of theirs today, staff:manage and staff:personal-data read it; anyone else — a colleague holding staff:view included — gets a 404 identical to an unknown id.
          */
         get: operations["getStaffPeopleByIdEvents"];
         put?: never;
@@ -659,7 +659,7 @@ export interface paths {
         };
         /**
          * Get a person's place in the organisation
-         * @description The person's managers up the chain — each the manager of the one before, by the terms in force today or the department's manager — and their direct reports today, each as the work group names them. Anyone who may see the person reads it; anyone else gets a 404 identical to an unknown id.
+         * @description The person's managers up the chain — each the manager of the one before, by the terms in force today or the department's manager — and their direct reports today, each as the work group names them. A caller holding staff:view alone is not shown a manager in the chain who is not active today. Anyone who may see the person reads it; anyone else gets a 404 identical to an unknown id.
          */
         get: operations["getStaffPeopleByIdOrg"];
         put?: never;
@@ -1037,7 +1037,7 @@ export interface components {
          * @enum {string}
          */
         StaffEndReason: "employee_resigned" | "employer_terminated" | "contract_ended" | "wrongly_reported" | "internal_change" | "payroll_system_change";
-        /** @description One change in a person's history (design S21). payload.fields names each field the change touched, with its value before (from) and after (to) — either absent when the field was empty — or, for a field of a group the caller may not read, the string "changed" in place of the values. A sealed value is never in a payload. */
+        /** @description One change in a person's history (design S21). payload.fields names each field the change touched, with its value before (from) and after (to) — either absent when the field was empty — or, for a field of a group the caller may not read, the string "changed" in place of the values; a field of the pay or of HR's notes the caller may not read is left out altogether, since even the day it changed is not theirs to know. A sealed value is never in a payload. */
         StaffEvent: {
             actor: components["schemas"]["StaffEventActor"];
             /** Format: date-time */
@@ -1306,7 +1306,7 @@ export interface components {
             /** Format: uuid */
             userId: string | null;
         };
-        /** @description A person in the directory — the work group, with the manager and the department from the terms in force today (absent when there is none), and where the person stands today. */
+        /** @description A person in the directory — the work group, with the manager and the department from the terms in force today (absent when there is none; to a caller holding staff:view alone the manager is absent too when not active today), and where the person stands today. */
         StaffPersonListItem: {
             department?: components["schemas"]["StaffDepartmentSummary"];
             displayName: string;
@@ -2312,7 +2312,7 @@ export interface operations {
                     "application/json": components["schemas"]["StaffEmployment"];
                 };
             };
-            /** @description Bad Request — a field did not pass, or the employment number differs from the employment's. */
+            /** @description Bad Request — a field did not pass, or the employment number differs from the employment's; probation_too_long on startDate when a terms row's probation would end more than six months (or half a temporary term) after the new start, and a field error when one would end before it. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2462,7 +2462,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — terms_after_end when a terms row is dated after endDate. */
+            /** @description Conflict — terms_after_end when a terms row is dated after endDate; manager_cycle when a later end brings back terms that close a loop in the manager graph. */
             409: {
                 headers: {
                     [name: string]: unknown;
