@@ -2,12 +2,14 @@ package staff_test
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"mime/multipart"
 	"net/http"
-	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
@@ -32,7 +34,7 @@ func csvOf(rows ...string) string {
 
 // postImport sends data as the file part of one import; dryRun "" leaves the
 // flag out, which is a dry run.
-func postImport(t *testing.T, c *modtest.Client, data []byte, dryRun string) *modtest.Response {
+func postImport(t *testing.T, c *modtest.Client, data []byte, dryRun string, opts ...modtest.RequestOption) *modtest.Response {
 	t.Helper()
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
@@ -50,7 +52,7 @@ func postImport(t *testing.T, c *modtest.Client, data []byte, dryRun string) *mo
 	if dryRun != "" {
 		path += "?dryRun=" + dryRun
 	}
-	return c.Do(http.MethodPost, path, nil, modtest.RawBody(w.FormDataContentType(), buf.Bytes()))
+	return c.Do(http.MethodPost, path, nil, append([]modtest.RequestOption{modtest.RawBody(w.FormDataContentType(), buf.Bytes())}, opts...)...)
 }
 
 // importCSV runs one import and fails the test unless it answered 200.
@@ -99,16 +101,6 @@ func getPerson(t *testing.T, c *modtest.Client, id int64) gen.StaffPerson {
 	var out gen.StaffPerson
 	do(t, c, http.MethodGet, personPath(id), nil, http.StatusOK, &out)
 	return out
-}
-
-// randomInLogs is what a log line carries that no request chose — its time,
-// duration, size, trace id and any uuid — whose random digits could match
-// one of leaks' four-digit runs by chance (the tip's personal-data fix).
-var randomInLogs = regexp.MustCompile(`"(time|duration|bytes|trace_id)":("[^"]*"|[0-9]+)|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
-
-// scrubRandom is logs with randomInLogs taken out.
-func scrubRandom(logs string) string {
-	return randomInLogs.ReplaceAllString(logs, "")
 }
 
 func countPeople(t *testing.T, h *harness) int {
@@ -297,6 +289,35 @@ func TestImport_RowKeysAndInFileDuplicates(t *testing.T) {
 		}
 		if !hasRowError(res, 3, "employeeNumber", "Row 2") || !hasRowError(res, 4, "workEmail", "Row 2") {
 			t.Errorf("dryRun %v: errors %v, want the duplicates to name row 2", dryRun, rowErrors(res))
+		}
+	}
+}
+
+// Two rows of one file with the same national identity number refuse the
+// second in a dry run as in the real run — the dry run's rows each roll back,
+// so only the file can tell — naming the earlier row and never a digit of
+// the number.
+func TestImport_InFileDuplicateNationalID(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	pd, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	number := testNationalID("018190", 347)
+	file := csvOf(
+		"employeeNumber;givenName;familyName;birthDate;nationalIdKind;nationalId",
+		"D-1;Kari;Nordmann;1990-01-01;fodselsnummer;"+number,
+		"D-2;Kari;Nordmann-Hansen;1990-01-01;fodselsnummer;"+number,
+	)
+	for _, dryRun := range []bool{true, false} {
+		res := importCSV(t, pd, file, dryRun)
+		if res.Created != 1 || res.Failed != 1 || !hasRowError(res, 2, "nationalId", "Row 1 of this file") {
+			t.Errorf("dryRun %v: %+v %v, want row 2 refused on its nationalId, naming row 1", dryRun, res, rowErrors(res))
+		}
+		tally, err := json.Marshal(res)
+		if err != nil {
+			t.Fatalf("encode the tally: %v", err)
+		}
+		if leaks(string(tally), number) {
+			t.Errorf("dryRun %v: the tally carries digits of the national identity number", dryRun)
 		}
 	}
 }
@@ -568,6 +589,51 @@ func TestImport_SealedColumns(t *testing.T) {
 	do(t, pd, http.MethodPost, nationalIDRevealPath(kari), nil, http.StatusOK, &revealed)
 	if revealed.Value != number {
 		t.Errorf("a blank national id cell changed the number on file")
+	}
+}
+
+// A real run whose caller goes away mid-file keeps the rows it ran, and still
+// records people_imported with the counts so far — on a context the
+// request's end does not cancel — so the history says what the file did.
+func TestImport_CancelledRealRunRecordsItsTally(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	pd, pdID := signIn(t, h, "staff:manage", "staff:personal-data")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// The first row's bank-change mail goes after its commit: the caller hangs
+	// up there, and the server has noticed before the next row opens.
+	onContractCall(t, pdID, func(method string) {
+		if method == "SMTPSend" {
+			cancel()
+			time.Sleep(500 * time.Millisecond)
+		}
+	})
+	file := csvOf(
+		"employeeNumber;givenName;familyName;privateEmail;bankAccountKind;bankAccount",
+		"X-1;Kari;Nordmann;kari@privat.no;bban;12345678903",
+		"X-2;Ola;Nordmann;;;",
+		"X-3;Per;Nordmann;;;",
+	)
+	if r := postImport(t, pd, []byte(file), "false", modtest.Context(ctx)); r.Status != 0 {
+		t.Fatalf("import = %d %s, want the request cancelled", r.Status, r.Body)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for h.Count(t, `SELECT count(*) FROM staff.events WHERE kind = 'people_imported'`) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("no people_imported event after a real run cut short")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	payload := modtest.One[string](t, h.Harness, `
+		SELECT payload::text FROM staff.events WHERE person_id IS NULL AND kind = 'people_imported'`)
+	for _, want := range []string{`"rows": 3`, `"created": 1`, `"updated": 0`, `"failed": 0`} {
+		if !strings.Contains(payload, want) {
+			t.Errorf("people_imported payload = %s, want %s", payload, want)
+		}
+	}
+	if got := countPeople(t, h); got != 1 {
+		t.Errorf("people after the cut-short run = %d, want the first row's", got)
 	}
 }
 

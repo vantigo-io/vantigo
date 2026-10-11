@@ -222,7 +222,9 @@ reglene og kodene står i [referansen](/en/reference/staff/#the-registers-import
 
 En rad som feiler, skriver ingenting og stopper ikke de andre; rader som allerede er
 importert, blir stående, så send en rettet fil med bare de feilede radene, eller hele
-filen på nytt — rader som ikke endrer noe, skriver ingenting. Filen er høyst 5 MiB og
+filen på nytt — rader som ikke endrer noe, skriver ingenting. En import som avbrytes
+underveis — forbindelsen brytes midt i filen — beholder radene den kjørte, og
+installasjonens historikk registrerer den likevel med tallene så langt. Filen er høyst 5 MiB og
 `STAFF_IMPORT_MAX_ROWS` rader (5000 med mindre du har hevet det,
 [konfigurasjonsreferansen](/nb/admin/authentication/#konfigurasjonsreferanse)).
 
@@ -237,6 +239,18 @@ e-post, slik en endring for hånd gjør ([E-posten om endret kontonummer](#e-pos
 når raden deres er lagret — aldri i en prøvekjøring. Ingen svar, logglinje eller
 historikkoppføring har et siffer av noen av verdiene.
 
+E-posten sendes rad for rad, etter hvert som hver rad lagres, og importen venter på hver
+sending: en import av hundre nyansatte med kontonummer sender hundre e-poster — et
+første kontonummer gir også e-post, slik det gjør for hånd — og tar tilsvarende lengre
+tid.
+
+En rad kan ikke endre en persons `birthDate` og `nationalId` samtidig: importen skriver
+personens kolonner først, og kontrollerer den nye fødselsdatoen mot nummeret som er
+lagret, som fortsatt koder den gamle — raden avvises med
+`national_id_birth_date_mismatch`. Gjør endringen i to filer, slik du ville gjort for
+hånd: først det nye `nationalId` med tom `birthDate`-celle, deretter den nye
+`birthDate`.
+
 ### Eksporter registeret
 
 `GET /api/v1/staff/people/export.csv` laster ned `staff-people-<i dag>.csv`: hver person —
@@ -248,7 +262,8 @@ ferdig.
 
 En eksport importeres tilbake uendret: kolonnene etter privatgruppen ignoreres, så å
 endre personens kolonner i en eksport og importere den er en måte å endre mange
-personer på én gang.
+personer på én gang. Raden til en slettet person kommer også tilbake og skriver
+ingenting; endrer du den, avvises raden med `person_erased`.
 
 ## E-posten om endret kontonummer
 

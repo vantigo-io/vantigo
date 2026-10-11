@@ -94,7 +94,9 @@ func carriesMoreThanLast4(text, account string) bool {
 // writes it; no response, history or log line carries a digit of it — the
 // writer's own answer, the person's, HR's — only its kind and that one is on
 // file; what is stored is sealed and its MAC 32 bytes; the reveal answers it
-// once with Cache-Control no-store and records who looked.
+// once with Cache-Control no-store and records who looked. Each haystack is
+// searched with its random parts taken out (scrubRandom): a user id's or a
+// log line's timing digits could match one of leaks' runs by chance.
 func TestNationalID_SealedRoundTrip(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -109,19 +111,19 @@ func TestNationalID_SealedRoundTrip(t *testing.T) {
 	if r.Status != http.StatusOK {
 		t.Fatalf("set: %d %s, want 200", r.Status, r.Body)
 	}
-	if leaks(string(r.Body), number) {
+	if leaks(scrubRandom(string(r.Body)), number) {
 		t.Errorf("the set's answer carries the number: %s", r.Body)
 	}
 	for name, c := range map[string]*modtest.Client{"staff:personal-data": pd, "staff:manage": hr, "self": self} {
 		got := c.Do(http.MethodGet, personPath(p.Id), nil)
-		if leaks(string(got.Body), number) {
+		if leaks(scrubRandom(string(got.Body)), number) {
 			t.Errorf("%s reads the number: %s", name, got.Body)
 		}
 		id, _ := raw(t, got)["nationalId"].(map[string]any)
 		if len(id) != 2 || id["kind"] != "fodselsnummer" || id["onFile"] != true {
 			t.Errorf("%s nationalId = %v, want the kind and onFile only", name, id)
 		}
-		if events := c.Do(http.MethodGet, eventsPath(p.Id), nil); leaks(string(events.Body), number) {
+		if events := c.Do(http.MethodGet, eventsPath(p.Id), nil); leaks(scrubRandom(string(events.Body)), number) {
 			t.Errorf("%s's history carries the number: %s", name, events.Body)
 		}
 	}
@@ -157,7 +159,7 @@ func TestNationalID_SealedRoundTrip(t *testing.T) {
 	if set := fieldsOf(events[1])["nationalId"].(map[string]any); set["to"].(map[string]any)["kind"] != "fodselsnummer" {
 		t.Errorf("national_id_set = %v, want the kind it was set to", set)
 	}
-	if leaks(h.Logs(), number) {
+	if leaks(scrubRandom(h.Logs()), number) {
 		t.Error("a log line carries the number")
 	}
 }

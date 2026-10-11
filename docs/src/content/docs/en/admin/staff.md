@@ -215,7 +215,9 @@ the columns, the rules and the codes are in
 
 A row that fails writes nothing and does not stop the others; rows already imported stay
 imported, so send a corrected file of the failed rows alone, or the whole file again —
-rows that change nothing write nothing. The file is at most 5 MiB and
+rows that change nothing write nothing. An import cut short — the connection dropped
+mid-file — keeps the rows it ran, and the installation's history still records it with
+the counts so far. The file is at most 5 MiB and
 `STAFF_IMPORT_MAX_ROWS` rows (5000 unless you raised it,
 [configuration reference](/en/admin/authentication/#configuration-reference)).
 
@@ -230,6 +232,16 @@ mails the person, as a change by hand does ([The bank-change mail](#the-bank-cha
 once their row is saved — never in a dry run. No answer, log line or history entry
 carries a digit of either value.
 
+The mail is sent row by row, as each row is saved, and the import waits for each send:
+an onboarding import of a hundred people with bank accounts sends a hundred mails — a
+first account mails too, as by hand — and takes correspondingly longer.
+
+A row cannot change a person's `birthDate` and `nationalId` together: the import
+writes the person's columns first, and checks the new birth date against the number on
+file, which still encodes the old one — the row is refused
+`national_id_birth_date_mismatch`. Make the change in two files, as you would by hand:
+first the new `nationalId` with the `birthDate` cell blank, then the new `birthDate`.
+
 ### Export the register
 
 `GET /api/v1/staff/people/export.csv` downloads `staff-people-<today>.csv`: every person
@@ -241,7 +253,8 @@ and delete it when you are done.
 
 An export imports back unchanged: the columns after the private group are ignored, so
 editing the person's columns in an export and importing it is a way to change many
-people at once.
+people at once. An erased person's row comes back too and writes nothing; edit it, and
+the row is refused `person_erased`.
 
 ## The bank-change mail
 

@@ -279,6 +279,23 @@ func (s *server) sealBankAccount(kind ident.AccountKind, value string) (sealedBa
 	return sealedBankAccount{kind: string(kind), last4: ident.Last4(value), value: value, sealed: sealed}, nil
 }
 
+// sameBankAccount reports whether v is the account on file: the stored one
+// opened to compare — local work, no call out.
+func (s *server) sameBankAccount(ctx context.Context, txq *store.Queries, personID int64, v sealedBankAccount) (bool, error) {
+	stored, err := txq.PersonBankAccount(ctx, personID)
+	if err != nil {
+		return false, fmt.Errorf("staff: read person %d's bank account: %w", personID, err)
+	}
+	if stored.BankAccountKind == nil || *stored.BankAccountKind != v.kind || len(stored.BankAccountSealed) == 0 {
+		return false, nil
+	}
+	opened, err := s.deps.Secrets.Open(purposeBankAccount, stored.BankAccountSealed)
+	if err != nil {
+		return false, fmt.Errorf("staff: open person %d's bank account: %w", personID, err)
+	}
+	return string(opened) == v.value, nil
+}
+
 // setBankAccount is PUT /people/{id}/bank-account's write under the person's
 // lock: the account on file opened to compare — local work, no call out — so
 // the same account again is no change (false: no write, no event and no
@@ -290,18 +307,8 @@ func (s *server) setBankAccount(ctx context.Context, txq *store.Queries, personI
 	if err != nil {
 		return false, err
 	}
-	stored, err := txq.PersonBankAccount(ctx, personID)
-	if err != nil {
-		return false, fmt.Errorf("staff: read person %d's bank account: %w", personID, err)
-	}
-	if stored.BankAccountKind != nil && *stored.BankAccountKind == v.kind && len(stored.BankAccountSealed) > 0 {
-		opened, err := s.deps.Secrets.Open(purposeBankAccount, stored.BankAccountSealed)
-		if err != nil {
-			return false, fmt.Errorf("staff: open person %d's bank account: %w", personID, err)
-		}
-		if string(opened) == v.value {
-			return false, nil
-		}
+	if same, err := s.sameBankAccount(ctx, txq, personID, v); err != nil || same {
+		return false, err
 	}
 	if err := txq.SetPersonBankAccount(ctx, store.SetPersonBankAccountParams{
 		Kind: &v.kind, Last4: &v.last4, Sealed: v.sealed, Now: s.deps.Clock(), ID: personID,
