@@ -195,3 +195,9 @@ SELECT id, display_name, employee_number FROM staff.people WHERE id = ANY(@ids::
 
 -- name: DepartmentsByID :many
 SELECT * FROM staff.departments WHERE id = ANY(@ids::bigint[]);
+
+-- name: ListAllEmployments :many
+-- ListAllEmployments is every employment, by person and start: the
+-- register's export reads them whole, with ListTermsOfEmployments' chains,
+-- to add up what is in force today.
+SELECT * FROM staff.employments ORDER BY person_id, start_date, id;

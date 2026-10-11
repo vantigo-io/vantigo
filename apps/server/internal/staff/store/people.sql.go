@@ -612,6 +612,107 @@ func (q *Queries) ListPeople(ctx context.Context, arg ListPeopleParams) ([]ListP
 	return items, nil
 }
 
+const listPeopleForExport = `-- name: ListPeopleForExport :many
+SELECT
+    id, employee_number, given_name, family_name, display_name, birth_date, gender,
+    national_id_kind, (national_id_mac IS NOT NULL)::boolean AS national_id_on_file,
+    work_email, phone_work, phone_mobile, phone_private, private_email,
+    street, postal_code, city, country, work_country, preferred_language,
+    bank_account_kind, bank_account_last4, notes, revision,
+    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at
+FROM staff.people
+ORDER BY id
+LIMIT $1
+`
+
+type ListPeopleForExportRow struct {
+	ID                int64
+	EmployeeNumber    string
+	GivenName         string
+	FamilyName        string
+	DisplayName       string
+	BirthDate         pgtype.Date
+	Gender            *string
+	NationalIDKind    *string
+	NationalIDOnFile  bool
+	WorkEmail         *string
+	PhoneWork         *string
+	PhoneMobile       *string
+	PhonePrivate      *string
+	PrivateEmail      *string
+	Street            *string
+	PostalCode        *string
+	City              *string
+	Country           *string
+	WorkCountry       string
+	PreferredLanguage string
+	BankAccountKind   *string
+	BankAccountLast4  *string
+	Notes             *string
+	Revision          int32
+	LegalHold         bool
+	LegalHoldReason   *string
+	LegalHoldByUserID *uuid.UUID
+	LegalHoldAt       *time.Time
+	ErasedAt          *time.Time
+	ReassessedAt      *time.Time
+}
+
+// ListPeopleForExport is the register's file: every person, erased ones
+// included, oldest first, as GetPerson reads one — at most @max_rows, which
+// the export asks for one past its bound to tell "the whole register" from
+// "more than a file may hold" without a count of its own.
+func (q *Queries) ListPeopleForExport(ctx context.Context, maxRows int32) ([]ListPeopleForExportRow, error) {
+	rows, err := q.db.Query(ctx, listPeopleForExport, maxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPeopleForExportRow
+	for rows.Next() {
+		var i ListPeopleForExportRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EmployeeNumber,
+			&i.GivenName,
+			&i.FamilyName,
+			&i.DisplayName,
+			&i.BirthDate,
+			&i.Gender,
+			&i.NationalIDKind,
+			&i.NationalIDOnFile,
+			&i.WorkEmail,
+			&i.PhoneWork,
+			&i.PhoneMobile,
+			&i.PhonePrivate,
+			&i.PrivateEmail,
+			&i.Street,
+			&i.PostalCode,
+			&i.City,
+			&i.Country,
+			&i.WorkCountry,
+			&i.PreferredLanguage,
+			&i.BankAccountKind,
+			&i.BankAccountLast4,
+			&i.Notes,
+			&i.Revision,
+			&i.LegalHold,
+			&i.LegalHoldReason,
+			&i.LegalHoldByUserID,
+			&i.LegalHoldAt,
+			&i.ErasedAt,
+			&i.ReassessedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPersonRoles = `-- name: ListPersonRoles :many
 SELECT role, from_date, to_date FROM staff.person_roles
 WHERE person_id = $1
@@ -700,6 +801,20 @@ func (q *Queries) PersonActiveOn(ctx context.Context, arg PersonActiveOnParams) 
 	var active bool
 	err := row.Scan(&active)
 	return active, err
+}
+
+const personIDByEmployeeNumber = `-- name: PersonIDByEmployeeNumber :one
+SELECT id FROM staff.people WHERE upper(employee_number) = upper($1::text)
+`
+
+// PersonIDByEmployeeNumber is the person an employee number names, however
+// it is cased — the unique index's own reading, so the import's key finds
+// the one person the number can be. No row is a number nobody has.
+func (q *Queries) PersonIDByEmployeeNumber(ctx context.Context, employeeNumber string) (int64, error) {
+	row := q.db.QueryRow(ctx, personIDByEmployeeNumber, employeeNumber)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const personInUse = `-- name: PersonInUse :one

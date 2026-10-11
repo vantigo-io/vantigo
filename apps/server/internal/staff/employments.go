@@ -259,39 +259,14 @@ func (s *server) PostStaffPeopleByIdEmployments(ctx context.Context, req gen.Pos
 	if req.Body != nil {
 		body = *req.Body
 	}
-	var f fieldErrors
-	start := body.StartDate.Time
-	if start.IsZero() {
-		f.add("startDate", "An employment's start date is required")
-	}
-	number, msg := parseEmploymentNumber(body.EmploymentNumber)
-	f.add("employmentNumber", msg)
-	relationship := "ordinary"
-	if v, msg := parseEnum("A relationship type", body.RelationshipType, relationshipTypes); msg != "" {
-		f.add("relationshipType", msg)
-	} else if v != nil {
-		relationship = *v
-	}
-	if body.Terms.Correction != nil {
-		f.add("terms.correction", "correction is for changing a terms row, not for a new one")
-	}
-	first, termsErrors := parseTerms(body.Terms, termsSource{given: func(string) bool { return true }}, start, "terms.")
-	for field, messages := range termsErrors.errs {
-		for _, m := range messages {
-			f.add(field, m)
-		}
-	}
-	if f.code == "" {
-		f.code = termsErrors.code
-	}
+	parsed, f := parseNewEmployment(body)
 	if f.failed() {
 		return gen.PostStaffPeopleByIdEmployments400ApplicationProblemPlusJSONResponse(invalid(invalidEmploymentTitle, f)), nil
 	}
-	if body.Terms.ValidFrom != nil && !civilDate(body.Terms.ValidFrom).Equal(start) {
+	if body.Terms.ValidFrom != nil && !civilDate(body.Terms.ValidFrom).Equal(body.StartDate.Time) {
 		return gen.PostStaffPeopleByIdEmployments409ApplicationProblemPlusJSONResponse(conflict(codeTermsFirstRowStart, "The first row is dated the start",
 			"An employment's first terms row takes effect on its start date; leave terms.validFrom out, or send the start.")), nil
 	}
-	first.ValidFrom = dayParam(start)
 	who, err := s.actorFor(ctx)
 	if err != nil {
 		return nil, err
@@ -303,11 +278,11 @@ func (s *server) PostStaffPeopleByIdEmployments(ctx context.Context, req gen.Pos
 
 	var created store.StaffEmployment
 	for attempt := 1; ; attempt++ {
-		err = s.createEmployment(ctx, req.Id, body, number, relationship, first, who, &created)
+		err = s.createEmployment(ctx, req.Id, parsed, who, &created)
 		// A generated number another create took before committing trips the
 		// index; one more try sees it and takes the next free number. A
 		// typed number is the caller's to change and is never retried.
-		if number == nil && attempt < generationAttempts && refusedWithCode(err, codeEmploymentNumberTaken) {
+		if parsed.number == nil && attempt < generationAttempts && refusedWithCode(err, codeEmploymentNumberTaken) {
 			continue
 		}
 		break
@@ -336,67 +311,17 @@ func (s *server) PostStaffPeopleByIdEmployments(ctx context.Context, req gen.Pos
 }
 
 // createEmployment is one try of PostStaffPeopleByIdEmployments' write, in
-// one transaction under the person's lock. It is one of the writes an erased
-// person allows (erased.go): on them it is a rehire, which opens the record
-// again in the same transaction.
-func (s *server) createEmployment(ctx context.Context, personID int64, body gen.StaffEmploymentRequest, number *string, relationship string,
-	first store.StaffEmploymentTerm, who actor, created *store.StaffEmployment) error {
-	start := body.StartDate.Time
+// one transaction under the person's lock (addEmployment). It is one of the
+// writes an erased person allows (erased.go): on them it is a rehire, which
+// opens the record again in the same transaction.
+func (s *server) createEmployment(ctx context.Context, personID int64, e newEmployment, who actor, created *store.StaffEmployment) error {
 	return s.withPersonLock(ctx, personID, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		if err := s.rehireIfErased(ctx, txq, personID, who); err != nil {
 			return err
 		}
-		edges := first.ManagerPersonID != nil || first.DepartmentID != nil
-		if edges {
-			if err := lockManagerGraph(ctx, txq); err != nil {
-				return err
-			}
-		}
-		unit, err := resolveUnit(ctx, txq, body.BusinessUnitId, 0)
-		if err != nil {
-			return err
-		}
-		if err := checkTermsReferences(ctx, txq, personID, first, nil, "terms."); err != nil {
-			return err
-		}
-		employmentNumber := ""
-		if number != nil {
-			taken, err := txq.EmploymentNumberTaken(ctx, *number)
-			if err != nil {
-				return fmt.Errorf("staff: is employment number %s taken: %w", *number, err)
-			}
-			if taken {
-				return employmentNumberTaken()
-			}
-			employmentNumber = *number
-		} else if employmentNumber, err = generateEmploymentNumber(ctx, txq, personID); err != nil {
-			return err
-		}
-		*created, err = txq.InsertEmployment(ctx, store.InsertEmploymentParams{
-			PersonID: personID, EmploymentNumber: employmentNumber, RelationshipType: relationship, BusinessUnitID: unit,
-			StartDate: dayParam(start), ContractSignedAt: pgDate(civilDate(body.ContractSignedAt)), Now: s.deps.Clock(),
-		})
-		if err != nil {
-			return employmentWriteError(fmt.Errorf("staff: add an employment to person %d: %w", personID, err))
-		}
-		first.EmploymentID = created.ID
-		row, err := insertTerms(ctx, txq, first, s.deps.Clock())
-		if err != nil {
-			return err
-		}
-		if edges {
-			if err := checkManagerCycle(ctx, txq, personID, start); err != nil {
-				return err
-			}
-		}
-		values, err := employmentValues(created)
-		if err != nil {
-			return err
-		}
-		if err := s.recordRowChange(ctx, txq, personID, eventEmploymentCreated, who, created.ID, 0, diffFields(nil, values)); err != nil {
-			return err
-		}
-		return s.recordTermsChange(ctx, txq, personID, eventTermsAdded, who, nil, &row)
+		var err error
+		*created, err = s.addEmployment(ctx, txq, personID, e, who)
+		return err
 	})
 }
 

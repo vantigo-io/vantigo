@@ -247,6 +247,15 @@ type Config struct {
 	// invoices:manage holder cannot aim the client anywhere.
 	InvoicesStorecoveBaseURL string
 
+	// StaffImportMaxRows is how many people one Staff import takes and one
+	// Staff export writes (STAFF_IMPORT_MAX_ROWS, staff records plan Task 3),
+	// default 5000 and never fewer — one number for both, so a file the
+	// export wrote always fits the import, and never under the five thousand
+	// the import template promises. At most 100000: every row is its own
+	// transaction, and a run at five thousand already takes most of the
+	// minute and a half a proxy in front of a hosted installation allows.
+	StaffImportMaxRows int
+
 	// StorageProvider selects the internal/storage backend: "" (unset,
 	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
 	// returns a store rather than failing to start; every operation on it
@@ -420,6 +429,7 @@ func Load(env map[string]string) (*Config, error) {
 	customersRegistryWorkers(&p, env, c)
 	customersAnonymisation(&p, env, c)
 	invoicesEhf(&p, env, c)
+	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 100000)
 
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)

@@ -426,6 +426,9 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `INVOICES_EHF_ENABLED` og `INVOICES_STORECOVE_BASE_URL`, ved siden av
   Peppol-oppslagets; å sette opp sending som EHF — Storecove-kontoen, påloggingsdataene
   og KID-avtalen — er en egen prosedyre ([E-faktura](/nb/admin/e-invoicing/)).
+- `vantigo.env.example` dokumenterer også `STAFF_IMPORT_MAX_ROWS`, hvor mange personer
+  én import i Ansatte tar og én eksport skriver
+  ([Ansatte](/nb/admin/staff/#importer-og-eksporter-registeret)).
 - `vantigo.env.example` dokumenterer de statiske OIDC- og SCIM-innstillingene.
   Konfigurasjonen er bundet til utrullingen, og endringer krever omstart. Ikke legg
   leverandør- eller SCIM-hemmeligheter i filer under versjonskontroll — injiser

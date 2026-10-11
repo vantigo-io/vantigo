@@ -384,6 +384,7 @@ oppstarten feiler.
 | `PEPPOL_TIMEOUT` | Budsjett for ett oppslag fra ende til ende (DNS og SMP samlet) | `10s` |
 | `INVOICES_EHF_ENABLED` | Av/på-bryter for å sende fakturaer som EHF i Peppol-nettverket; krever også `PEPPOL_LOOKUP_ENABLED=1`, påloggingsdata for aksesspunktet og selgerens Peppol-ID ([E-faktura](/nb/admin/e-invoicing/)) | `1` |
 | `INVOICES_STORECOVE_BASE_URL` | Basis-URL for API-et til Storecove-aksesspunktet — en absolutt http- eller https-URL, en avsluttende skråstrek fjernes; pek den på en testvert for en test (Storecoves sandkasse er den samme verten med en sandkassenøkkel) | `https://api.storecove.com/api/v2/` |
+| `STAFF_IMPORT_MAX_ROWS` | Personer én import i Ansatte tar og én eksport skriver, fra `5000` til `100000` — ett tall for begge, så en eksport alltid kan importeres tilbake ([Ansatte](/nb/admin/staff/#importer-og-eksporter-registeret)) | `5000` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | Profilering av SPA-en | ikke satt |
 
 Peppol-oppslaget behandler NXDOMAIN og NOERROR-uten-NAPTR-poster som det samme

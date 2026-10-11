@@ -895,6 +895,28 @@ type StaffEventActor struct {
 // StaffGender female, male, other or unspecified — what the equality report (ARP) counts.
 type StaffGender string
 
+// StaffImportError One problem with one row of an import. No message carries a digit of a national identity number or a bank account.
+type StaffImportError struct {
+	// Column The column the problem is in, as the file's header spells it; absent for a problem with the row as a whole.
+	Column  *string `json:"column,omitempty"`
+	Message string  `json:"message"`
+
+	// Row The data row, the first under the header being 1; a row whose every cell is blank is skipped and numbered not at all.
+	Row int32 `json:"row"`
+}
+
+// StaffImportResult What an import's rows did, or would do in a dry run.
+type StaffImportResult struct {
+	Created int32 `json:"created"`
+	DryRun  bool  `json:"dryRun"`
+
+	// Errors Every problem of every failed row, in file order; [] when none failed.
+	Errors  []StaffImportError `json:"errors"`
+	Failed  int32              `json:"failed"`
+	Rows    int32              `json:"rows"`
+	Updated int32              `json:"updated"`
+}
+
 // StaffLanguage The language the person reads Vantigo and its mail in.
 type StaffLanguage string
 
@@ -1869,6 +1891,17 @@ type GetStaffPeopleParams struct {
 // GetStaffPeopleParamsStatus defines parameters for GetStaffPeople.
 type GetStaffPeopleParamsStatus string
 
+// PostStaffPeopleImportMultipartBody defines parameters for PostStaffPeopleImport.
+type PostStaffPeopleImportMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
+// PostStaffPeopleImportParams defines parameters for PostStaffPeopleImport.
+type PostStaffPeopleImportParams struct {
+	// DryRun 'true' (the default) checks the file and keeps nothing; 'false' imports it.
+	DryRun *string `form:"dryRun,omitempty" json:"dryRun,omitempty"`
+}
+
 // PutStaffPeopleByIdParams defines parameters for PutStaffPeopleById.
 type PutStaffPeopleByIdParams struct {
 	// IfMatch The revision the person was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
@@ -1960,6 +1993,9 @@ type PutStaffMeJSONRequestBody = StaffMeRequest
 
 // PostStaffPeopleJSONRequestBody defines body for PostStaffPeople for application/json ContentType.
 type PostStaffPeopleJSONRequestBody = StaffPersonRequest
+
+// PostStaffPeopleImportMultipartRequestBody defines body for PostStaffPeopleImport for multipart/form-data ContentType.
+type PostStaffPeopleImportMultipartRequestBody PostStaffPeopleImportMultipartBody
 
 // PostStaffPeopleSimilarErasedJSONRequestBody defines body for PostStaffPeopleSimilarErased for application/json ContentType.
 type PostStaffPeopleSimilarErasedJSONRequestBody = StaffSimilarErasedRequest
@@ -2113,6 +2149,15 @@ type ServerInterface interface {
 	// PostStaffPeople Add a person
 	// (POST /api/v1/staff/people)
 	PostStaffPeople(w http.ResponseWriter, r *http.Request)
+	// GetStaffPeopleExportCsv Export the register as CSV
+	// (GET /api/v1/staff/people/export.csv)
+	GetStaffPeopleExportCsv(w http.ResponseWriter, r *http.Request)
+	// PostStaffPeopleImport Import people from CSV
+	// (POST /api/v1/staff/people/import)
+	PostStaffPeopleImport(w http.ResponseWriter, r *http.Request, params PostStaffPeopleImportParams)
+	// GetStaffPeopleImportTemplateCsv Download the register's import template
+	// (GET /api/v1/staff/people/import-template.csv)
+	GetStaffPeopleImportTemplateCsv(w http.ResponseWriter, r *http.Request)
 	// PostStaffPeopleSimilarErased Find erased people with the same names and birth date
 	// (POST /api/v1/staff/people/similar-erased)
 	PostStaffPeopleSimilarErased(w http.ResponseWriter, r *http.Request)
@@ -3340,6 +3385,67 @@ func (siw *ServerInterfaceWrapper) PostStaffPeople(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffPeopleExportCsv operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleExportCsv(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleExportCsv(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffPeopleImport operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleImport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostStaffPeopleImportParams
+
+	// ------------- Optional query parameter "dryRun" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dryRun", r.URL.Query(), &params.DryRun, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dryRun"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dryRun", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleImport(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffPeopleImportTemplateCsv operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleImportTemplateCsv(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleImportTemplateCsv(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostStaffPeopleSimilarErased operation middleware
 func (siw *ServerInterfaceWrapper) PostStaffPeopleSimilarErased(w http.ResponseWriter, r *http.Request) {
 
@@ -4336,6 +4442,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/meta", wrapper.GetStaffMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people", wrapper.GetStaffPeople)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people", wrapper.PostStaffPeople)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/export.csv", wrapper.GetStaffPeopleExportCsv)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/import", wrapper.PostStaffPeopleImport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/import-template.csv", wrapper.GetStaffPeopleImportTemplateCsv)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/similar-erased", wrapper.PostStaffPeopleSimilarErased)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.DeleteStaffPeopleById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.GetStaffPeopleById)
@@ -7016,6 +7125,195 @@ func (response PostStaffPeople403JSONResponse) VisitPostStaffPeopleResponse(w ht
 	return err
 }
 
+type GetStaffPeopleExportCsvRequestObject struct {
+}
+
+type GetStaffPeopleExportCsvResponseObject interface {
+	VisitGetStaffPeopleExportCsvResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleExportCsv200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetStaffPeopleExportCsv200TextcsvResponse) VisitGetStaffPeopleExportCsvResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetStaffPeopleExportCsv400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffPeopleExportCsv400ApplicationProblemPlusJSONResponse) VisitGetStaffPeopleExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleExportCsv401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleExportCsv401JSONResponse) VisitGetStaffPeopleExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleExportCsv403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleExportCsv403JSONResponse) VisitGetStaffPeopleExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleImportRequestObject struct {
+	Params PostStaffPeopleImportParams
+	Body   *multipart.Reader
+}
+
+type PostStaffPeopleImportResponseObject interface {
+	VisitPostStaffPeopleImportResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleImport200JSONResponse StaffImportResult
+
+func (response PostStaffPeopleImport200JSONResponse) VisitPostStaffPeopleImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleImport400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleImport400ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleImport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleImport401JSONResponse) VisitPostStaffPeopleImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleImport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleImport403JSONResponse) VisitPostStaffPeopleImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleImportTemplateCsvRequestObject struct {
+}
+
+type GetStaffPeopleImportTemplateCsvResponseObject interface {
+	VisitGetStaffPeopleImportTemplateCsvResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleImportTemplateCsv200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetStaffPeopleImportTemplateCsv200TextcsvResponse) VisitGetStaffPeopleImportTemplateCsvResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetStaffPeopleImportTemplateCsv401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleImportTemplateCsv401JSONResponse) VisitGetStaffPeopleImportTemplateCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleImportTemplateCsv403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleImportTemplateCsv403JSONResponse) VisitGetStaffPeopleImportTemplateCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostStaffPeopleSimilarErasedRequestObject struct {
 	Body *PostStaffPeopleSimilarErasedJSONRequestBody
 }
@@ -9113,6 +9411,15 @@ type StrictServerInterface interface {
 	// PostStaffPeople Add a person
 	// (POST /api/v1/staff/people)
 	PostStaffPeople(ctx context.Context, request PostStaffPeopleRequestObject) (PostStaffPeopleResponseObject, error)
+	// GetStaffPeopleExportCsv Export the register as CSV
+	// (GET /api/v1/staff/people/export.csv)
+	GetStaffPeopleExportCsv(ctx context.Context, request GetStaffPeopleExportCsvRequestObject) (GetStaffPeopleExportCsvResponseObject, error)
+	// PostStaffPeopleImport Import people from CSV
+	// (POST /api/v1/staff/people/import)
+	PostStaffPeopleImport(ctx context.Context, request PostStaffPeopleImportRequestObject) (PostStaffPeopleImportResponseObject, error)
+	// GetStaffPeopleImportTemplateCsv Download the register's import template
+	// (GET /api/v1/staff/people/import-template.csv)
+	GetStaffPeopleImportTemplateCsv(ctx context.Context, request GetStaffPeopleImportTemplateCsvRequestObject) (GetStaffPeopleImportTemplateCsvResponseObject, error)
 	// PostStaffPeopleSimilarErased Find erased people with the same names and birth date
 	// (POST /api/v1/staff/people/similar-erased)
 	PostStaffPeopleSimilarErased(ctx context.Context, request PostStaffPeopleSimilarErasedRequestObject) (PostStaffPeopleSimilarErasedResponseObject, error)
@@ -10305,6 +10612,87 @@ func (sh *strictHandler) PostStaffPeople(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostStaffPeopleResponseObject); ok {
 		if err := validResponse.VisitPostStaffPeopleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleExportCsv operation middleware
+func (sh *strictHandler) GetStaffPeopleExportCsv(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffPeopleExportCsvRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleExportCsv(ctx, request.(GetStaffPeopleExportCsvRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleExportCsv")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleExportCsvResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleExportCsvResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleImport operation middleware
+func (sh *strictHandler) PostStaffPeopleImport(w http.ResponseWriter, r *http.Request, params PostStaffPeopleImportParams) {
+	var request PostStaffPeopleImportRequestObject
+
+	request.Params = params
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleImport(ctx, request.(PostStaffPeopleImportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleImport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleImportResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleImportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleImportTemplateCsv operation middleware
+func (sh *strictHandler) GetStaffPeopleImportTemplateCsv(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffPeopleImportTemplateCsvRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleImportTemplateCsv(ctx, request.(GetStaffPeopleImportTemplateCsvRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleImportTemplateCsv")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleImportTemplateCsvResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleImportTemplateCsvResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

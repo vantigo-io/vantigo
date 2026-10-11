@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the erased state, the legal hold and the reassessment, the settings, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the erased state, the legal hold and the reassessment, the settings, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -30,7 +30,8 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 [sealed identifiers](#the-sealed-identifiers), the
 [self-service link](#the-self-service-link), [My page](#my-page), the
 [documents](#documents) and their [categories](#categories-and-classes), the
-[personal-data exports](#the-personal-data-exports), the [erased state](#the-erased-state),
+[personal-data exports](#the-personal-data-exports), the register's
+[import and export](#the-registers-import-and-export), the [erased state](#the-erased-state),
 the [legal hold](#the-legal-hold) and the [reassessment](#the-reassessment), [how a refusal
 looks](#refusals-and-revisions), the [locks](#locks) and the [endpoints](#endpoints).
 
@@ -391,6 +392,8 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `legal_hold_lifted` | `fields.legalHold` (`true` to `false`), `fields.legalHoldReason` as `from`. |
 | `reassessed` | `fields.reassessedAt` as `to`. |
 | `person_rehired` | `fields.erasedAt` and, when set, `fields.reassessedAt`, each as `from`. |
+| `people_imported` | Installation-level (no person): `rows`, `created`, `updated`, `failed` of a real [import](#the-registers-import-and-export); each row's own events name the people it wrote. |
+| `people_exported` | Installation-level (no person): `rows`, the people the [export](#the-registers-import-and-export) wrote. |
 
 `GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
 the person themselves, a manager of theirs today, `staff:manage` and
@@ -932,6 +935,125 @@ after the snapshot: the linked user's name, and the viewer's for the audit.
   them either), and with each event shaped as the person reads their history on My
   page. It records no event: it is the person's own.
 
+## The register's import and export
+
+The register travels as one CSV file (design S19): `GET /people/export.csv` writes it,
+`GET /people/import-template.csv` starts one by hand and `POST /people/import` reads it
+back. All three are `staff:manage`'s. The form is the Customers and Expenses files':
+UTF-8 with a byte order mark, semicolon-separated, CRLF line ends, a header row, RFC
+4180 quoting, ISO dates and the decimal comma. A cell beginning with `=`, `+`, `-`, `@`,
+a tab or a carriage return is written with an apostrophe in front, so nothing a person
+typed becomes a formula in a spreadsheet; the import takes that apostrophe off again.
+
+### The columns
+
+The header names are the contract's own field names, matched without regard to case.
+
+| Group | Columns | Export | Template | Import |
+| --- | --- | --- | --- | --- |
+| Key | `employeeNumber` | yes | yes | required on every row |
+| Work | `givenName`, `familyName`, `displayName`, `workEmail`, `phoneWork`, `workCountry`, `preferredLanguage` | yes | yes | yes |
+| Private | `birthDate`, `gender`, `phoneMobile`, `phonePrivate`, `privateEmail`, `street`, `postalCode`, `city`, `country` | yes | yes | yes |
+| Sealed | `nationalIdKind`, `nationalIdCountry`, `nationalId`, `bankAccountKind`, `bankAccount` | never | `staff:personal-data` only | `staff:personal-data` only |
+| First employment | `startDate`, `businessUnit`, `employmentType`, `temporaryGround`, `expectedEndDate`, `ftePercent`, `appointmentForm`, `workingHoursScheme`, `fullTimeHoursPerWeek`, `occupationCode`, `title`, `department`, `location`, `managerEmployeeNumber` | no | yes | on a create only |
+| Export-only | `status`, `currentTitle`, `currentDepartment`, `currentBusinessUnit`, `currentLocation`, `currentManagerEmployeeNumber`, `currentFtePercent`, `nationalIdOnFile` | yes | no | ignored |
+
+HR's notes are in none of them. A column named `error` — what a failed-rows file adds
+— is ignored too, so a failed-rows file imports as it is.
+
+### The export
+
+`GET /people/export.csv` is every person, erased ones included, oldest first: the key,
+the work and private groups, and where each stands today in the business time zone —
+`status` (`active`, `upcoming`, `ended` or `none`), the title, the department's code,
+the business unit's and the location's names and the manager's employee number of the
+employment their place today is read from (as on their record), and
+`currentFtePercent`, the percentages of every employment in force today added up. The
+**sealed values are never in it** (reading 10): `nationalIdOnFile` says `yes` or `no`,
+and nothing of the bank account is written, not its kind and not its last four digits.
+
+It is read in one snapshot and answered as an attachment named
+`staff-people-YYYY-MM-DD.csv` (the day in the business time zone), with
+`Cache-Control: private, no-store`. More people than `STAFF_IMPORT_MAX_ROWS` (5000
+unless the operator raised it; see
+[the configuration reference](/en/admin/authentication/#configuration-reference)) is
+the 400 `export_too_many`. Every export is recorded as the installation's
+`people_exported` event naming the exporter and the number of rows (reading 11 — a
+departure from Customers, whose export records nothing, because S21 asks for every
+export to be an event); a file whose export could not be recorded is not answered.
+
+### The template
+
+`GET /people/import-template.csv` is the header row alone: the key, the person's
+columns, the sealed ones only for a caller holding `staff:personal-data`, and the first
+employment's — every column the caller's import can write, so a template filled in and
+sent back is never refused for its header.
+
+### The import
+
+`POST /people/import` takes the file as the multipart part `file` and the query flag
+`dryRun`, which defaults to `true`. The router allows the operation a body of 5 MiB and
+64 KiB.
+
+**The file and its header** are judged before any row, every refusal at once, each a
+400 on `file`: more than 5 MiB is `import_too_large`; a comma-separated file is
+`import_not_semicolon`; more data rows than `STAFF_IMPORT_MAX_ROWS` is
+`import_too_many_rows`; a file that is not UTF-8 or not a CSV file, a part missing,
+repeated or empty, a header with a column the table does not know (named, never
+silently ignored), a repeated or nameless column, no `employeeNumber` column, or half of
+a sealed pair (`nationalId` with `nationalIdKind`, `nationalIdCountry` only with them,
+`bankAccount` with `bankAccountKind`) is a plain field error. A **sealed column** from a
+caller without `staff:personal-data` refuses the whole file, `import_sealed_columns`,
+rather than being skipped: a skipped column is a change the sender believes was made.
+`dryRun` other than `true` or `false` is a 400 on `dryRun`.
+
+**Each row**, in file order, is keyed on its `employeeNumber`, which every row needs:
+
+- A number no person has — however it is cased — **creates** the person, the row's
+  person columns as `POST /people` takes them (a blank display name derived, a blank
+  work country `NO`, a blank language `nb`). When `startDate` is filled in, the row also
+  creates the person's **first employment** with its first terms row, as
+  `POST /people/{id}/employments` takes them, in the same transaction (reading 9):
+  `businessUnit` by its name or its org number (the default unit when blank; a name two
+  units share is refused), `department` by its code, `location` by its name and
+  `managerEmployeeNumber` by the person who has it; `ftePercent` and
+  `fullTimeHoursPerWeek` take either decimal mark. A filled first-employment cell without
+  a `startDate` is the row's error. The manager must be in the register already or on
+  an earlier row of the file.
+- A number a person has **updates** that person's own columns, and only those the file
+  carries — a blank cell clears an optional field, a column not in the file keeps its
+  value — as `PUT /people/{id}` would, without a revision. An update **never touches
+  employments**: the first-employment cells of such a row are not read. A row that
+  changes nothing writes nothing, as a `PUT` that changes nothing.
+- A filled **sealed cell** writes its value through the sealed paths — checked by its
+  kind, sealed and, for a national identity number, MAC'd, with the
+  `national_id_duplicate` and `national_id_birth_date_mismatch` rules — and a blank one
+  changes nothing (spec §9). A bank account that changes mails the person, as
+  `PUT /people/{id}/bank-account` does, **once that row has committed**, and never in a
+  dry run.
+
+Each row is **its own transaction** through the endpoints' own validation, statements
+and events — `person_created`, `person_updated`, `employment_created`, `terms_added`,
+`national_id_set`, `bank_account_set` — the importer as their actor. An update takes the
+person's lock with the [read-only rule](#the-erased-state), so an erased person's row is
+refused `person_erased`. A row that fails writes nothing and does not stop the file.
+Two rows of one file with the same employee number, however cased, or the same work
+email refuse the second, in a dry run as in a real one.
+
+A **dry run** is the real run rolled back row by row: the same statements, locks and
+events, none kept — no person, no employee number, no event and no mail. It cannot see
+an earlier row's effect on a later one, with one exception made for it: a
+`managerEmployeeNumber` naming a person an earlier row of the file creates is taken as
+found, and the row is judged without its manager.
+
+The answer is `{dryRun, rows, created, updated, failed, errors}`: `updated` counts every
+row that matched a person, changed or not, and each error is `{row, column, message}`,
+`row` the data row counted from 1 under the header (a row whose every cell is blank is
+skipped and counted not at all), `column` the header's own spelling, absent for a
+problem with the row as a whole. **No message carries a digit of a national identity
+number or a bank account**, and neither does a log line or an event. A real run is
+recorded as the installation's `people_imported` event carrying the four counts.
+
 ## The erased state
 
 The retention run (later in A2) erases a former employee's personnel administration
@@ -1051,6 +1173,11 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `seed_immutable` | 409 | Changing a seeded document category. |
 | `person_erased` | 409 | Any write of a person the retention run has erased but the hold, the reassessment, an unlink and a rehire. |
 | `storage_unavailable` | 503 | The object store could not be written to or read from. |
+| `import_too_large` | 400 | An import file over 5 MiB. |
+| `import_not_semicolon` | 400 | A comma-separated import file. |
+| `import_too_many_rows` | 400 | An import file with more data rows than `STAFF_IMPORT_MAX_ROWS`. |
+| `import_sealed_columns` | 400 | An import file carrying a sealed column from a caller without `staff:personal-data`. |
+| `export_too_many` | 400 | An export of more people than `STAFF_IMPORT_MAX_ROWS`. |
 
 An unknown id is a bare 404 with no body.
 
@@ -1120,6 +1247,7 @@ All under `/api/v1/staff`.
 | `GET /me`, `PUT /me`, `GET /me/events`, `GET /me/documents`, `GET /me/export` | `staff:access`, then a self-service link (otherwise `no_person`) |
 | `GET /people/{id}/personal-data`, `PUT /people/{id}/legal-hold`, `POST /people/{id}/reassessed` | `staff:personal-data` |
 | `POST /people/similar-erased` | `staff:manage` |
+| `POST /people/import`, `GET /people/export.csv`, `GET /people/import-template.csv` | `staff:manage`; an import file's sealed columns `staff:personal-data` too (`import_sealed_columns`) |
 | `GET /people/{id}/documents`, `GET /documents/{id}` | `staff:access`, then the person, `staff:manage` (not health documents) or `staff:personal-data` (otherwise 404) |
 | `POST /people/{id}/documents`, `PUT /documents/{id}`, `DELETE /documents/{id}` | `staff:access`, then `staff:manage` or `staff:personal-data`, a health document `staff:personal-data` (judged in the module; otherwise 403) |
 | `GET /document-categories` | `staff:view`, `staff:manage` or `staff:personal-data` (judged in the module; otherwise 403) |

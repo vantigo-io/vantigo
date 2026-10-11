@@ -28,8 +28,9 @@ func TestDocumentUpload_PolicyAndBodyLimit(t *testing.T) {
 	if len(limits) != 1 || limits["postStaffPeopleByIdDocuments"] != policyDocumentUpload {
 		t.Errorf("limits = %v, want the upload's policy alone", limits)
 	}
-	if len(bodyLimits) != 1 || bodyLimits["postStaffPeopleByIdDocuments"] != 10*1024*1024+64*1024 {
-		t.Errorf("bodyLimits = %v, want the upload's 10 MiB + 64 KiB alone", bodyLimits)
+	if len(bodyLimits) != 2 || bodyLimits["postStaffPeopleByIdDocuments"] != 10*1024*1024+64*1024 ||
+		bodyLimits["postStaffPeopleImport"] != 5*1024*1024+64*1024 {
+		t.Errorf("bodyLimits = %v, want the upload's 10 MiB + 64 KiB and the import's 5 MiB + 64 KiB alone", bodyLimits)
 	}
 }
 

@@ -330,3 +330,25 @@ WHERE erased_at IS NOT NULL
   AND lower(family_name) = lower(@family_name::text)
   AND birth_date = @birth_date::date
 ORDER BY erased_at DESC, id;
+
+-- name: PersonIDByEmployeeNumber :one
+-- PersonIDByEmployeeNumber is the person an employee number names, however
+-- it is cased — the unique index's own reading, so the import's key finds
+-- the one person the number can be. No row is a number nobody has.
+SELECT id FROM staff.people WHERE upper(employee_number) = upper(@employee_number::text);
+
+-- name: ListPeopleForExport :many
+-- ListPeopleForExport is the register's file: every person, erased ones
+-- included, oldest first, as GetPerson reads one — at most @max_rows, which
+-- the export asks for one past its bound to tell "the whole register" from
+-- "more than a file may hold" without a count of its own.
+SELECT
+    id, employee_number, given_name, family_name, display_name, birth_date, gender,
+    national_id_kind, (national_id_mac IS NOT NULL)::boolean AS national_id_on_file,
+    work_email, phone_work, phone_mobile, phone_private, private_email,
+    street, postal_code, city, country, work_country, preferred_language,
+    bank_account_kind, bank_account_last4, notes, revision,
+    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at
+FROM staff.people
+ORDER BY id
+LIMIT @max_rows;

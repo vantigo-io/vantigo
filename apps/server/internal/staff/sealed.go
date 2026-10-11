@@ -14,7 +14,6 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
-	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/ident"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
@@ -166,13 +165,9 @@ func (s *server) PutStaffPeopleByIdNationalId(ctx context.Context, req gen.PutSt
 			code: codeNationalIDInvalid,
 		})), nil
 	}
-	sealed, err := s.deps.Secrets.Seal(purposeNationalID, []byte(n.Value()))
+	sealed, err := s.sealNationalID(n)
 	if err != nil {
-		return nil, fmt.Errorf("staff: seal person %d's national identity number: %w", req.Id, err)
-	}
-	mac, err := s.deps.Secrets.MAC(purposeNationalIDIndex, ident.IndexInput(n))
-	if err != nil {
-		return nil, fmt.Errorf("staff: index person %d's national identity number: %w", req.Id, err)
+		return nil, fmt.Errorf("staff: person %d: %w", req.Id, err)
 	}
 	who, err := s.actorFor(ctx)
 	if err != nil {
@@ -183,52 +178,20 @@ func (s *server) PutStaffPeopleByIdNationalId(ctx context.Context, req gen.PutSt
 		return nil, err
 	}
 
-	kind := string(n.Kind())
-	var countryCode *string
-	if c := n.Country(); c != "" {
-		countryCode = &c
-	}
 	var (
 		saved store.GetPersonRow
 		link  *string
 	)
 	err = s.withPersonLock(ctx, req.Id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		current, err := readPerson(ctx, txq, req.Id)
-		if err != nil {
+		if err := s.setNationalID(ctx, txq, req.Id, sealed, who); err != nil {
 			return err
 		}
-		if birth, ok := n.BirthDate(); ok && current.BirthDate.Valid && !sameDay(current.BirthDate.Time, birth) {
-			return refuseInvalid(invalidNationalIDTitle, fieldErrors{
-				errs: fieldError("value", "The number encodes another birth date than the person's; correct whichever is wrong"),
-				code: codeNationalIDBirthDateMismatch,
-			})
-		}
-		before, err := txq.PersonNationalID(ctx, req.Id)
-		if err != nil {
-			return fmt.Errorf("staff: read person %d's national identity number: %w", req.Id, err)
-		}
-		// The MAC covers the kind, the country and the value, so an equal one
-		// is the number on file, however it was typed: no change, no event.
-		if len(before.NationalIDMac) > 0 && secrets.MACEqual(before.NationalIDMac, mac) {
-			saved = current
-			link, err = linkedUserID(ctx, txq, req.Id)
-			return err
-		}
-		if err := txq.SetPersonNationalID(ctx, store.SetPersonNationalIDParams{
-			Kind: &kind, Country: countryCode, Sealed: sealed, Mac: mac, Now: s.deps.Clock(), ID: req.Id,
-		}); err != nil {
-			return nationalIDWriteError(fmt.Errorf("staff: write person %d's national identity number: %w", req.Id, err))
-		}
+		var err error
 		if saved, err = readPerson(ctx, txq, req.Id); err != nil {
 			return err
 		}
-		if link, err = linkedUserID(ctx, txq, req.Id); err != nil {
-			return err
-		}
-		return s.recordChanges(ctx, txq, req.Id, eventNationalIDSet, who, changes{"nationalId": fieldChange{
-			From: nationalIDSummary(before.NationalIDKind, before.NationalIDCountry),
-			To:   nationalIDSummary(&kind, countryCode),
-		}})
+		link, err = linkedUserID(ctx, txq, req.Id)
+		return err
 	})
 	if errors.Is(err, errPersonNotFound) {
 		return gen.PutStaffPeopleByIdNationalId404Response{}, nil
@@ -311,9 +274,9 @@ func (s *server) PutStaffPeopleByIdBankAccount(ctx context.Context, req gen.PutS
 			code: codeBankAccountInvalid,
 		})), nil
 	}
-	sealed, err := s.deps.Secrets.Seal(purposeBankAccount, []byte(value))
+	sealed, err := s.sealBankAccount(ident.AccountKind(body.Kind), value)
 	if err != nil {
-		return nil, fmt.Errorf("staff: seal person %d's bank account: %w", req.Id, err)
+		return nil, fmt.Errorf("staff: person %d: %w", req.Id, err)
 	}
 	who, err := s.actorFor(ctx)
 	if err != nil {
@@ -324,50 +287,21 @@ func (s *server) PutStaffPeopleByIdBankAccount(ctx context.Context, req gen.PutS
 		return nil, err
 	}
 
-	kind, last4 := string(body.Kind), ident.Last4(value)
 	var (
 		saved   store.GetPersonRow
 		link    *string
 		changed bool
 	)
 	err = s.withPersonLock(ctx, req.Id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		current, err := readPerson(ctx, txq, req.Id)
-		if err != nil {
+		var err error
+		if changed, err = s.setBankAccount(ctx, txq, req.Id, sealed, who); err != nil {
 			return err
-		}
-		if link, err = linkedUserID(ctx, txq, req.Id); err != nil {
-			return err
-		}
-		// The account on file, opened to compare — local work under the lock,
-		// no call out: the same account again is no change, so no event and
-		// no mail telling the person it changed.
-		stored, err := txq.PersonBankAccount(ctx, req.Id)
-		if err != nil {
-			return fmt.Errorf("staff: read person %d's bank account: %w", req.Id, err)
-		}
-		if stored.BankAccountKind != nil && *stored.BankAccountKind == kind && len(stored.BankAccountSealed) > 0 {
-			opened, err := s.deps.Secrets.Open(purposeBankAccount, stored.BankAccountSealed)
-			if err != nil {
-				return fmt.Errorf("staff: open person %d's bank account: %w", req.Id, err)
-			}
-			if string(opened) == value {
-				saved = current
-				return nil
-			}
-		}
-		changed = true
-		if err := txq.SetPersonBankAccount(ctx, store.SetPersonBankAccountParams{
-			Kind: &kind, Last4: &last4, Sealed: sealed, Now: s.deps.Clock(), ID: req.Id,
-		}); err != nil {
-			return fmt.Errorf("staff: write person %d's bank account: %w", req.Id, err)
 		}
 		if saved, err = readPerson(ctx, txq, req.Id); err != nil {
 			return err
 		}
-		return s.recordChanges(ctx, txq, req.Id, eventBankAccountSet, who, changes{"bankAccount": fieldChange{
-			From: bankAccountSummary(current.BankAccountKind, current.BankAccountLast4),
-			To:   bankAccountSummary(&kind, &last4),
-		}})
+		link, err = linkedUserID(ctx, txq, req.Id)
+		return err
 	})
 	if errors.Is(err, errPersonNotFound) {
 		return gen.PutStaffPeopleByIdBankAccount404Response{}, nil

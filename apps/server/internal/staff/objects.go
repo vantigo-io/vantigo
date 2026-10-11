@@ -71,10 +71,12 @@ const documentFormField = "file"
 // one: the column is NOT NULL, and a download needs something to offer.
 const documentFallbackName = "document"
 
-// bodyLimits raises the router's request-body cap for the upload alone;
-// every other operation keeps the platform default (1 MiB).
+// bodyLimits raises the router's request-body cap for the document upload
+// and the register's import (people_import.go); every other operation keeps
+// the platform default (1 MiB).
 var bodyLimits = map[string]int64{
 	"postStaffPeopleByIdDocuments": maxDocumentRequestBytes,
+	"postStaffPeopleImport":        maxImportRequestBytes,
 }
 
 // documentUploadsPerHour is how many uploads one client address may make. Two

@@ -32,6 +32,10 @@ export const eventKinds = [
   "legal_hold_lifted",
   "reassessed",
   "person_rehired",
+  // Installation-level, like person_deleted: the register's import and export
+  // (plan reading 11) belong to no person's history.
+  "people_imported",
+  "people_exported",
 ] as const;
 
 /**

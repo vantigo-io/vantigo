@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, the bank-change mail, and the settings — the business time zone and the employee number sequence.
+description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, the bank-change mail, and the settings — the business time zone and the employee number sequence.
 sidebar:
   order: 44
 sources:
@@ -12,6 +12,9 @@ sources:
   - apps/server/internal/staff/personal_data.go
   - apps/server/internal/staff/legal_hold.go
   - apps/server/internal/staff/erased.go
+  - apps/server/internal/staff/people_import.go
+  - apps/server/internal/staff/people_export.go
+  - apps/server/internal/staff/csvfile.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -182,6 +185,64 @@ To link the person's user to a new record instead, unlink it from the erased one
 (`PUT /api/v1/staff/people/{id}/user` with `{"userId": null}`) — the one change of the
 link an erased record allows.
 
+## Import and export the register
+
+The register travels as one semicolon-separated CSV file — the form a Norwegian Excel
+opens and saves as CSV without an import dialog. All three steps need `staff:manage`;
+the columns, the rules and the codes are in
+[the reference](/en/reference/staff/#the-registers-import-and-export).
+
+### Import a register
+
+1. Download the template: `GET /api/v1/staff/people/import-template.csv`. It is the
+   header row alone — the person's columns, the first employment's, and the sealed ones
+   only if you hold `staff:personal-data`. Or start from an export.
+2. Fill in one row per person. `employeeNumber` is required on every row: a number no
+   person has adds the person, a number a person has changes them. For a new person,
+   fill in `startDate` to add their first employment too — `businessUnit` by its name or
+   org number (blank is the default unit), `department` by its code, `location` by its
+   name, `managerEmployeeNumber` by the manager's employee number. A manager the file
+   adds must come on an earlier row. A person already in the register only has their
+   own columns changed — never an employment: change those in the app.
+3. Save it as CSV UTF-8 with semicolons, and check it: `POST /api/v1/staff/people/import`
+   with the file in the multipart part `file`. Without `dryRun=false` the import is a
+   **dry run**: every row runs and is rolled back, and the answer says what each row
+   would do — `created`, `updated`, `failed`, and each problem with its row and column.
+4. Fix what failed and check again. When the dry run is clean, send the same file with
+   `?dryRun=false`.
+5. Verify: the answer's counts are what you expect, the people are in the list, and each
+   person's history shows the import's changes under your name.
+
+A row that fails writes nothing and does not stop the others; rows already imported stay
+imported, so send a corrected file of the failed rows alone, or the whole file again —
+rows that change nothing write nothing. The file is at most 5 MiB and
+`STAFF_IMPORT_MAX_ROWS` rows (5000 unless you raised it,
+[configuration reference](/en/admin/authentication/#configuration-reference)).
+
+### The sealed columns
+
+`nationalIdKind`, `nationalIdCountry`, `nationalId`, `bankAccountKind` and `bankAccount`
+need `staff:personal-data` as well. A file carrying any of them from someone without it
+is refused whole (`import_sealed_columns`) — remove the columns or ask for the
+permission. A filled cell sets the value with the same checks as on the person's
+record; a blank one leaves the value on file as it is. A bank account the import changes
+mails the person, as a change by hand does ([The bank-change mail](#the-bank-change-mail)),
+once their row is saved — never in a dry run. No answer, log line or history entry
+carries a digit of either value.
+
+### Export the register
+
+`GET /api/v1/staff/people/export.csv` downloads `staff-people-<today>.csv`: every person
+— erased ones too — with the work and private groups and where each stands today. The
+national identity number and the bank account are never in it: `nationalIdOnFile` says
+`yes` or `no`. Every export is recorded in the installation's history with your name and
+the number of rows. The file holds personal data: keep it where you keep the register,
+and delete it when you are done.
+
+An export imports back unchanged: the columns after the private group are ignored, so
+editing the person's columns in an export and importing it is a way to change many
+people at once.
+
 ## The bank-change mail
 
 When a bank account is set or changed, the person is mailed — at their private email
@@ -254,3 +315,14 @@ changing the settings at once cannot overwrite each other unseen.
   the matter is closed.
 - **`reassessment_not_due`.** The person is not erased, has been reassessed already, or
   their last employment ended less than twelve months ago.
+- **`import_not_semicolon`.** The file is comma-separated. Save it again as CSV with
+  semicolons — in a Norwegian Excel, *CSV UTF-8* does.
+- **`import_too_large`** or **`import_too_many_rows`.** The file is over 5 MiB or has
+  more rows than `STAFF_IMPORT_MAX_ROWS`. Import it in slices.
+- **`import_sealed_columns`.** The file carries a national identity number or bank
+  account column and you do not hold `staff:personal-data`. Remove the columns, or ask
+  for the permission.
+- **An unknown column.** The import names it: a misspelt header is refused rather than
+  ignored. Correct it to one of the template's names.
+- **`export_too_many`.** The register holds more people than `STAFF_IMPORT_MAX_ROWS`.
+  Raise it, within its bounds, and restart.

@@ -1268,3 +1268,23 @@ func TestLoad_InvoicesEhfSettings(t *testing.T) {
 		}
 	}
 }
+
+// STAFF_IMPORT_MAX_ROWS bounds the Staff register's import and its export
+// alike (staff records plan, Task 3): default 5000, and never under 5000 — a
+// lower bound would let an export written under an earlier, higher one fail
+// to re-import, and the template promises five thousand rows to everyone. A
+// value under it, or one that is no number, is a configuration problem named
+// by the key rather than a bound nobody chose.
+func TestLoad_StaffImportMaxRows(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.StaffImportMaxRows != 5000 {
+		t.Errorf("StaffImportMaxRows = %d, want 5000", cfg.StaffImportMaxRows)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "STAFF_IMPORT_MAX_ROWS", "20000")); cfg.StaffImportMaxRows != 20000 {
+		t.Errorf("StaffImportMaxRows = %d, want 20000", cfg.StaffImportMaxRows)
+	}
+	for _, v := range []string{"4999", "0", "-1", "many", "100001"} {
+		if msg := loadError(t, with(validEnv(), "STAFF_IMPORT_MAX_ROWS", v)); !strings.Contains(msg, "STAFF_IMPORT_MAX_ROWS: must be an integer from 5000 to 100000") {
+			t.Errorf("%s: error = %q", v, msg)
+		}
+	}
+}
