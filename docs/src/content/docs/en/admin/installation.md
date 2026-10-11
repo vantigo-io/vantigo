@@ -419,6 +419,9 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   and `INVOICES_STORECOVE_BASE_URL`, beside the Peppol lookup's; setting up sending as
   EHF — the Storecove account, the credentials and the KID agreement — is its own
   procedure ([E-invoicing](/en/admin/e-invoicing/)).
+- `vantigo.env.example` also documents `STAFF_IMPORT_MAX_ROWS`, how many people one
+  Staff import takes and one Staff export writes
+  ([Staff](/en/admin/staff/#import-and-export-the-register)).
 - `vantigo.env.example` documents the static OIDC and SCIM settings. Configuration is
   deployment-bound and changes require a restart. Do not put provider or SCIM secrets
   in source-controlled files — inject `OIDC_CLIENT_SECRET`, `SCIM_TOKEN`,

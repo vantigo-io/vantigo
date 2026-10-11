@@ -372,6 +372,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `PEPPOL_TIMEOUT` | Budget for one lookup end to end (DNS and SMP together) | `10s` |
 | `INVOICES_EHF_ENABLED` | On/off switch for sending invoices as EHF over Peppol; also needs `PEPPOL_LOOKUP_ENABLED=1`, access-point credentials and the seller's Peppol id ([E-invoicing](/en/admin/e-invoicing/)) | `1` |
 | `INVOICES_STORECOVE_BASE_URL` | Base URL of the Storecove access point's API — an absolute http or https URL, any trailing slash trimmed; point it at a mock host for a test (Storecove's sandbox is the same host with a sandbox key) | `https://api.storecove.com/api/v2/` |
+| `STAFF_IMPORT_MAX_ROWS` | People one Staff import takes and one Staff export writes, from `5000` to `100000` — one number for both, so an export always imports back ([Staff](/en/admin/staff/#import-and-export-the-register)) | `5000` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding | unset |
 
 The Peppol lookup treats NXDOMAIN and NOERROR-with-no-NAPTR-records as the same

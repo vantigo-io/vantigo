@@ -75,6 +75,15 @@ const (
 	eventPersonRehired        = "person_rehired"
 )
 
+// The register's file's events (plan reading 11): installation events, no
+// person's — S21 asks for every export to be an event, and the import is
+// recorded the same way, its rows' own events naming each person it wrote.
+// Each names its actor and counts its rows, nothing more.
+const (
+	eventPeopleImported = "people_imported"
+	eventPeopleExported = "people_exported"
+)
+
 // holdEventKinds are the hold's kinds: about the record's retention and who
 // exported it rather than about the person's work, so they are listed only to
 // an audience that reads the hold group — and to the person themselves, who

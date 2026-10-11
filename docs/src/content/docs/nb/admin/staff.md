@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, e-posten om endret kontonummer, og innstillingene — forretningstidssonen og ansattnummerserien.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, e-posten om endret kontonummer, og innstillingene — forretningstidssonen og ansattnummerserien.
 sidebar:
   order: 44
 sources:
@@ -12,6 +12,9 @@ sources:
   - apps/server/internal/staff/personal_data.go
   - apps/server/internal/staff/legal_hold.go
   - apps/server/internal/staff/erased.go
+  - apps/server/internal/staff/people_import.go
+  - apps/server/internal/staff/people_export.go
+  - apps/server/internal/staff/csvfile.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -190,6 +193,63 @@ For å koble personens bruker til nye opplysninger i stedet, fjerner du først k
 fra de slettede (`PUT /api/v1/staff/people/{id}/user` med `{"userId": null}`) — den ene
 endringen av koblingen slettede opplysninger tillater.
 
+## Importer og eksporter registeret
+
+Registeret flyttes som én semikolonseparert CSV-fil — formen et norsk Excel åpner og
+lagrer som CSV uten en importdialog. Alle tre stegene krever `staff:manage`; kolonnene,
+reglene og kodene står i [referansen](/en/reference/staff/#the-registers-import-and-export).
+
+### Importer et register
+
+1. Last ned malen: `GET /api/v1/staff/people/import-template.csv`. Den er overskriftsraden
+   alene — personens kolonner, det første arbeidsforholdets, og de forseglede bare hvis du
+   har `staff:personal-data`. Eller start fra en eksport.
+2. Fyll inn én rad per person. `employeeNumber` er påkrevd på hver rad: et nummer ingen
+   har, legger til personen, et nummer en person har, endrer dem. For en ny person fyller
+   du inn `startDate` for å legge til det første arbeidsforholdet også — `businessUnit`
+   med navn eller organisasjonsnummer (tomt er standardenheten), `department` med koden,
+   `location` med navnet, `managerEmployeeNumber` med lederens ansattnummer. En leder
+   filen legger til, må komme på en tidligere rad. En person som allerede er i registeret,
+   får bare sine egne kolonner endret — aldri et arbeidsforhold: dem endrer du i appen.
+3. Lagre den som CSV UTF-8 med semikolon, og sjekk den: `POST /api/v1/staff/people/import`
+   med filen i multipart-delen `file`. Uten `dryRun=false` er importen en **prøvekjøring**:
+   hver rad kjøres og rulles tilbake, og svaret sier hva hver rad ville gjort —
+   `created`, `updated`, `failed`, og hvert problem med rad og kolonne.
+4. Rett det som feilet, og sjekk igjen. Når prøvekjøringen er ren, sender du den samme
+   filen med `?dryRun=false`.
+5. Kontroller: tallene i svaret er de du venter, personene er i listen, og historikken til
+   hver person viser importens endringer under ditt navn.
+
+En rad som feiler, skriver ingenting og stopper ikke de andre; rader som allerede er
+importert, blir stående, så send en rettet fil med bare de feilede radene, eller hele
+filen på nytt — rader som ikke endrer noe, skriver ingenting. Filen er høyst 5 MiB og
+`STAFF_IMPORT_MAX_ROWS` rader (5000 med mindre du har hevet det,
+[konfigurasjonsreferansen](/nb/admin/authentication/#konfigurasjonsreferanse)).
+
+### De forseglede kolonnene
+
+`nationalIdKind`, `nationalIdCountry`, `nationalId`, `bankAccountKind` og `bankAccount`
+krever `staff:personal-data` i tillegg. En fil med noen av dem fra noen uten den, avvises
+i sin helhet (`import_sealed_columns`) — fjern kolonnene eller be om rettigheten. En
+utfylt celle setter verdien med de samme kontrollene som på personens opplysninger; en
+tom celle lar verdien som er lagret, stå. Et kontonummer importen endrer, gir personen en
+e-post, slik en endring for hånd gjør ([E-posten om endret kontonummer](#e-posten-om-endret-kontonummer)),
+når raden deres er lagret — aldri i en prøvekjøring. Ingen svar, logglinje eller
+historikkoppføring har et siffer av noen av verdiene.
+
+### Eksporter registeret
+
+`GET /api/v1/staff/people/export.csv` laster ned `staff-people-<i dag>.csv`: hver person —
+slettede også — med jobb- og privatgruppen og hvor hver står i dag. Fødselsnummeret og
+kontonummeret er aldri med: `nationalIdOnFile` sier `yes` eller `no`. Hver eksport
+registreres i installasjonens historikk med ditt navn og antall rader. Filen inneholder
+personopplysninger: oppbevar den der du oppbevarer registeret, og slett den når du er
+ferdig.
+
+En eksport importeres tilbake uendret: kolonnene etter privatgruppen ignoreres, så å
+endre personens kolonner i en eksport og importere den er en måte å endre mange
+personer på én gang.
+
 ## E-posten om endret kontonummer
 
 Når et kontonummer settes eller endres, får personen en e-post — til den private
@@ -260,3 +320,13 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   saken er avsluttet.
 - **`reassessment_not_due`.** Personen er ikke slettet, er allerede revurdert, eller det
   siste arbeidsforholdet sluttet for mindre enn tolv måneder siden.
+- **`import_not_semicolon`.** Filen er kommaseparert. Lagre den på nytt som CSV med
+  semikolon — i et norsk Excel gjør *CSV UTF-8* det.
+- **`import_too_large`** eller **`import_too_many_rows`.** Filen er over 5 MiB eller har
+  flere rader enn `STAFF_IMPORT_MAX_ROWS`. Importer den i deler.
+- **`import_sealed_columns`.** Filen har en kolonne for fødselsnummer eller kontonummer,
+  og du har ikke `staff:personal-data`. Fjern kolonnene, eller be om rettigheten.
+- **En ukjent kolonne.** Importen navngir den: en feilstavet overskrift avvises i stedet
+  for å ignoreres. Rett den til et av navnene i malen.
+- **`export_too_many`.** Registeret har flere personer enn `STAFF_IMPORT_MAX_ROWS`. Hev
+  det, innenfor grensene, og start på nytt.

@@ -203,34 +203,9 @@ func (s *server) PostStaffPeople(ctx context.Context, req gen.PostStaffPeopleReq
 	var created store.GetPersonRow
 	for attempt := 1; ; attempt++ {
 		err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-			number := ""
-			if parsed.EmployeeNumber != nil {
-				number = *parsed.EmployeeNumber
-			} else {
-				generated, err := generateEmployeeNumber(ctx, txq)
-				if err != nil {
-					return err
-				}
-				number = generated
-			}
-			row := parsed.applyTo(store.GetPersonRow{EmployeeNumber: number})
-			id, err := txq.InsertPerson(ctx, store.InsertPersonParams{
-				EmployeeNumber: row.EmployeeNumber, GivenName: row.GivenName, FamilyName: row.FamilyName,
-				DisplayName: row.DisplayName, BirthDate: row.BirthDate, Gender: row.Gender,
-				WorkEmail: row.WorkEmail, PhoneWork: row.PhoneWork, PhoneMobile: row.PhoneMobile,
-				PhonePrivate: row.PhonePrivate, PrivateEmail: row.PrivateEmail, Street: row.Street,
-				PostalCode: row.PostalCode, City: row.City, Country: row.Country, WorkCountry: row.WorkCountry,
-				PreferredLanguage: row.PreferredLanguage, Notes: row.Notes, Now: s.deps.Clock(),
-			})
-			if err != nil {
-				return personWriteError(err, invalidPersonTitle)
-			}
-			read, err := readPerson(ctx, txq, id)
-			if err != nil {
-				return err
-			}
-			created = read
-			return s.recordChanges(ctx, txq, id, eventPersonCreated, who, diffPerson(nil, created))
+			var err error
+			created, err = s.createPerson(ctx, txq, parsed, who)
+			return err
 		})
 		if parsed.EmployeeNumber == nil && attempt < generationAttempts && refusedWithCode(err, codeEmployeeNumberTaken) {
 			continue
@@ -344,31 +319,8 @@ func (s *server) PutStaffPeopleById(ctx context.Context, req gen.PutStaffPeopleB
 		if link, err = linkedUserID(ctx, txq, req.Id); err != nil {
 			return err
 		}
-		next := parsed.applyTo(current)
-		diff := diffPerson(&current, next)
-		if len(diff) == 0 {
-			saved = current
-			return nil
-		}
-		if _, changes := diff["birthDate"]; changes {
-			if err := s.checkBirthDateAgainstNationalID(ctx, txq, req.Id, next.BirthDate); err != nil {
-				return err
-			}
-		}
-		if err := txq.UpdatePerson(ctx, store.UpdatePersonParams{
-			ID: req.Id, GivenName: next.GivenName, FamilyName: next.FamilyName, DisplayName: next.DisplayName,
-			BirthDate: next.BirthDate, Gender: next.Gender, WorkEmail: next.WorkEmail, PhoneWork: next.PhoneWork,
-			PhoneMobile: next.PhoneMobile, PhonePrivate: next.PhonePrivate, PrivateEmail: next.PrivateEmail,
-			Street: next.Street, PostalCode: next.PostalCode, City: next.City, Country: next.Country,
-			WorkCountry: next.WorkCountry, PreferredLanguage: next.PreferredLanguage, Notes: next.Notes,
-			Now: s.deps.Clock(),
-		}); err != nil {
-			return personWriteError(err, invalidPersonTitle)
-		}
-		if saved, err = readPerson(ctx, txq, req.Id); err != nil {
-			return err
-		}
-		return s.recordChanges(ctx, txq, req.Id, eventPersonUpdated, who, diff)
+		saved, err = s.updatePerson(ctx, txq, current, parsed, who)
+		return err
 	})
 	if errors.Is(err, errPersonNotFound) {
 		return gen.PutStaffPeopleById404Response{}, nil

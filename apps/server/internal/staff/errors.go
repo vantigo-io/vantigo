@@ -74,6 +74,16 @@ const (
 	codeReassessmentNotDue = "reassessment_not_due"
 )
 
+// The refusal codes of the register's import and export (delivery A2,
+// Task 3): every one a 400, the file's own on "file".
+const (
+	codeImportSealedColumns = "import_sealed_columns"
+	codeImportTooLarge      = "import_too_large"
+	codeImportTooManyRows   = "import_too_many_rows"
+	codeImportNotSemicolon  = "import_not_semicolon"
+	codeExportTooMany       = "export_too_many"
+)
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.
@@ -97,6 +107,7 @@ const (
 	invalidDocumentTitle     = "Invalid document"
 	invalidCategoryTitle     = "Invalid document category"
 	invalidLegalHoldTitle    = "Invalid legal hold"
+	invalidImportFileTitle   = "Invalid import file"
 )
 
 // withFieldError adds one message to a map another rule may already have put

@@ -586,6 +586,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/people/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export the register as CSV
+         * @description The register as the register's file (design S19): UTF-8 with a byte order mark, semicolon-separated, CRLF line ends, a header row, ISO dates and the decimal comma — the Expenses and Customers form, which a Norwegian Excel opens without an import dialog. Quoting is RFC 4180's with the semicolon as the separator, and a cell beginning with '=', '+', '-', '@', a tab or a carriage return is prefixed with an apostrophe, so nothing a person typed becomes a formula; the import takes that apostrophe off again.
+         *
+         *     The columns, in this order: employeeNumber; the work group — givenName, familyName, displayName, workEmail, phoneWork, workCountry, preferredLanguage; the private group — birthDate, gender, phoneMobile, phonePrivate, privateEmail, street, postalCode, city, country; then where the person stands today, in the business time zone — status, currentTitle, currentDepartment (its code), currentBusinessUnit (its name), currentLocation (its name), currentManagerEmployeeNumber, currentFtePercent (the percentages of the employments in force today, added up) — and nationalIdOnFile (yes or no). The sealed values are never in it: neither a national identity number nor anything of a bank account. The columns after country are export-only and an import ignores them, so the file re-imports unchanged.
+         *
+         *     Every person, erased ones included, oldest first; more than STAFF_IMPORT_MAX_ROWS people (5000 unless the operator raised it) is refused export_too_many. Every export is recorded as a people_exported event of the installation naming the exporter and the number of rows; a file whose export could not be recorded is not answered.
+         */
+        get: operations["getStaffPeopleExportCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import people from CSV
+         * @description Creates and updates people from the register's file (design S19) — the columns GET /people/export.csv writes and GET /people/import-template.csv starts, read with the same format rules (a byte order mark tolerated, UTF-8, semicolons, CRLF or LF). The export-only columns (status, the current… summary, nationalIdOnFile) and a column named error are ignored, so an export and a failed-rows file import as they are. At most 5 MiB and STAFF_IMPORT_MAX_ROWS data rows (5000 unless the operator raised it).
+         *
+         *     The header is judged before any row: a column the table does not know is refused by name (a misspelt header is never a silently ignored one), and so is a repeated one; employeeNumber is required; nationalId and nationalIdKind come together, nationalIdCountry only with them, bankAccount and bankAccountKind together. The sealed columns — nationalIdKind, nationalIdCountry, nationalId, bankAccountKind, bankAccount — need staff:personal-data as well: a file carrying any of them from a caller without it is refused whole, import_sealed_columns, rather than imported without them.
+         *
+         *     Each row, in file order, is keyed on employeeNumber, which every row needs. A number no person has (however it is cased) creates the person — the row's person columns as POST /people takes them — and, when startDate is filled in, their first employment with its first terms row from the first-employment columns (startDate, businessUnit by name or org number — the default unit when blank, employmentType, temporaryGround, expectedEndDate, ftePercent, appointmentForm, workingHoursScheme, fullTimeHoursPerWeek, occupationCode, title, department by code, location by name, managerEmployeeNumber), as POST /people/{id}/employments takes them, in the row's one transaction. A number a person has updates that person's own columns, and only those the file carries — a blank cell clears an optional field, a column not in the file is left alone — as PUT /people/{id} would, without a revision; an update never touches employments, so the first-employment cells of such a row are not read. A filled sealed cell sets the value as PUT /people/{id}/national-id or /bank-account does (a blank one changes nothing); a bank account that changes mails the person once that row has committed, never in a dry run. Each row is its own transaction through the endpoints' own validation, statements and events, the caller as actor, and an erased person's row is refused person_erased; a row that fails writes nothing and does not stop the file. Two rows with the same employee number or the same work email (however cased) refuse the second, in both runs.
+         *
+         *     dryRun defaults to true: every row runs exactly as in a real run and is rolled back instead of committed — no person, no employee number, no event and no mail is kept. A dry run cannot see an earlier row's effect on a later one, with one exception made for it: a managerEmployeeNumber naming a person an earlier row of the file creates is taken as found. A real run is recorded as a people_imported event of the installation carrying the four counts.
+         */
+        post: operations["postStaffPeopleImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/import-template.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the register's import template
+         * @description The register's file's header row alone (design S19), with every column the caller's import can write — employeeNumber, the person's columns, the sealed columns (nationalIdKind, nationalIdCountry, nationalId, bankAccountKind, bankAccount) only for a caller holding staff:personal-data, and the first employment's columns — so a template filled in and imported by the one who downloaded it is never refused for its header. The starting point for a file made by hand.
+         */
+        get: operations["getStaffPeopleImportTemplateCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/people/similar-erased": {
         parameters: {
             query?: never;
@@ -1406,6 +1476,31 @@ export interface components {
          * @enum {string}
          */
         StaffGender: "female" | "male" | "other" | "unspecified";
+        /** @description One problem with one row of an import. No message carries a digit of a national identity number or a bank account. */
+        StaffImportError: {
+            /** @description The column the problem is in, as the file's header spells it; absent for a problem with the row as a whole. */
+            column?: string;
+            message: string;
+            /**
+             * Format: int32
+             * @description The data row, the first under the header being 1; a row whose every cell is blank is skipped and numbered not at all.
+             */
+            row: number;
+        };
+        /** @description What an import's rows did, or would do in a dry run. */
+        StaffImportResult: {
+            /** Format: int32 */
+            created: number;
+            dryRun: boolean;
+            /** @description Every problem of every failed row, in file order; [] when none failed. */
+            errors: components["schemas"]["StaffImportError"][];
+            /** Format: int32 */
+            failed: number;
+            /** Format: int32 */
+            rows: number;
+            /** Format: int32 */
+            updated: number;
+        };
         /**
          * @description The language the person reads Vantigo and its mail in.
          * @enum {string}
@@ -4274,6 +4369,148 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getStaffPeopleExportCsv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named staff-people-YYYY-MM-DD.csv (the day in the business time zone), and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — export_too_many, the register holds more people than one file may. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postStaffPeopleImport: {
+        parameters: {
+            query?: {
+                /** @description 'true' (the default) checks the file and keeps nothing; 'false' imports it. */
+                dryRun?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK — what the rows did, or would do in a dry run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffImportResult"];
+                };
+            };
+            /** @description Bad Request — on file, for the file itself, every refusal of its header at once — import_too_large (over 5 MiB), import_not_semicolon (comma-separated), import_too_many_rows (more data rows than the bound), import_sealed_columns (a sealed column without staff:personal-data), and plain field errors for a missing, repeated or empty part, a file that is not UTF-8 or not a CSV file, and a header with an unknown, repeated or nameless column, no employeeNumber column or half of a sealed pair; or on dryRun, a value that is neither 'true' nor 'false'. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getStaffPeopleImportTemplateCsv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named staff-people-import-template.csv. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
             /** @description Unauthorized */

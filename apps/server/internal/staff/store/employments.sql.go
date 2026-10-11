@@ -501,6 +501,46 @@ func (q *Queries) InsertTerms(ctx context.Context, arg InsertTermsParams) (Staff
 	return i, err
 }
 
+const listAllEmployments = `-- name: ListAllEmployments :many
+SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at FROM staff.employments ORDER BY person_id, start_date, id
+`
+
+// ListAllEmployments is every employment, by person and start: the
+// register's export reads them whole, with ListTermsOfEmployments' chains,
+// to add up what is in force today.
+func (q *Queries) ListAllEmployments(ctx context.Context) ([]StaffEmployment, error) {
+	rows, err := q.db.Query(ctx, listAllEmployments)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StaffEmployment
+	for rows.Next() {
+		var i StaffEmployment
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.EmploymentNumber,
+			&i.RelationshipType,
+			&i.BusinessUnitID,
+			&i.StartDate,
+			&i.EndDate,
+			&i.EndReason,
+			&i.ContractSignedAt,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPersonEmployments = `-- name: ListPersonEmployments :many
 SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at FROM staff.employments WHERE person_id = $1 ORDER BY start_date, id
 `
