@@ -1,5 +1,34 @@
 components:
     schemas:
+        PaginatedResponseOfStaffEvent:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/StaffEvent'
+                    type: array
+                pagination:
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
+            required:
+                - data
+                - pagination
+            type: object
+        PaginatedResponseOfStaffPersonListItem:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/StaffPersonListItem'
+                    type: array
+                pagination:
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
+            required:
+                - data
+                - pagination
+            type: object
+        StaffBankAccountKind:
+            enum:
+                - bban
+                - iban
+            type: string
         StaffBusinessUnit:
             description: A business unit, the virksomhet or underenhet the a-melding reports per (design S6).
             properties:
@@ -139,6 +168,61 @@ components:
                 - code
                 - name
             type: object
+        StaffEvent:
+            description: One change in a person's history (design S21). payload.fields names each field the change touched, with its value before (from) and after (to) — either absent when the field was empty — or, for a field of a group the caller may not read, the string "changed" in place of the values. A sealed value is never in a payload.
+            properties:
+                actor:
+                    $ref: '#/components/schemas/StaffEventActor'
+                at:
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    description: person_created, person_updated, next_of_kin_updated or roles_updated in this delivery; the kinds grow with it.
+                    type: string
+                payload:
+                    additionalProperties: true
+                    description: 'The change, shaped by the caller''s field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}.'
+                    type: object
+            required:
+                - id
+                - kind
+                - at
+                - actor
+                - payload
+            type: object
+        StaffEventActor:
+            description: Who made the change, as the user directory named them at the time.
+            properties:
+                displayName:
+                    type: string
+                kind:
+                    description: user, or system for a change no user made.
+                    type: string
+                userId:
+                    description: Absent for a system change.
+                    format: uuid
+                    type: string
+            required:
+                - kind
+                - displayName
+            type: object
+        StaffGender:
+            description: female, male, other or unspecified — what the equality report (ARP) counts.
+            enum:
+                - female
+                - male
+                - other
+                - unspecified
+            type: string
+        StaffLanguage:
+            description: The language the person reads Vantigo and its mail in.
+            enum:
+                - en
+                - nb
+            type: string
         StaffLegalEntity:
             description: A legal entity, the juridisk enhet (design S6).
             properties:
@@ -257,8 +341,331 @@ components:
                 - today
                 - capabilities
             type: object
+        StaffNationalIdKind:
+            enum:
+                - fodselsnummer
+                - d_nummer
+                - foreign
+            type: string
+        StaffNextOfKin:
+            description: One of a person's next of kin (private).
+            properties:
+                name:
+                    description: 1 to 200 characters.
+                    maxLength: 200
+                    type: string
+                note:
+                    description: Up to 500 characters. Absent when not set.
+                    maxLength: 500
+                    type: string
+                phone:
+                    description: Up to 32 characters. Absent when not set.
+                    maxLength: 32
+                    type: string
+                relationship:
+                    $ref: '#/components/schemas/StaffNextOfKinRelationship'
+            required:
+                - name
+                - relationship
+            type: object
+        StaffNextOfKinRelationship:
+            enum:
+                - spouse
+                - partner
+                - parent
+                - child
+                - sibling
+                - other
+            type: string
+        StaffNextOfKinRequest:
+            description: A person's next of kin, all of them, in the order they are to be listed — a full replace. An empty list removes them all.
+            properties:
+                nextOfKin:
+                    items:
+                        $ref: '#/components/schemas/StaffNextOfKin'
+                    maxItems: 3
+                    type: array
+            required:
+                - nextOfKin
+            type: object
+        StaffPerson:
+            description: 'A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR''s notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone''s who may see the person; the private group, the national identity number, the bank account and the user are the person''s own and HR''s (staff:manage, staff:personal-data); notes are HR''s alone. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person.'
+            properties:
+                bankAccount:
+                    $ref: '#/components/schemas/StaffPersonBankAccount'
+                birthDate:
+                    description: Private. Absent when not set.
+                    format: date
+                    type: string
+                capabilities:
+                    $ref: '#/components/schemas/StaffPersonCapabilities'
+                city:
+                    description: Private. Absent when not set.
+                    type: string
+                country:
+                    description: Private. Absent when not set.
+                    type: string
+                displayName:
+                    type: string
+                employeeNumber:
+                    type: string
+                familyName:
+                    type: string
+                gender:
+                    $ref: '#/components/schemas/StaffGender'
+                givenName:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                nationalId:
+                    $ref: '#/components/schemas/StaffPersonNationalId'
+                notes:
+                    description: HR's notes — staff:manage and staff:personal-data only. Absent when not set.
+                    type: string
+                phoneMobile:
+                    description: Private. Absent when not set.
+                    type: string
+                phonePrivate:
+                    description: Private. Absent when not set.
+                    type: string
+                phoneWork:
+                    description: Absent when not set.
+                    type: string
+                postalCode:
+                    description: Private. Absent when not set.
+                    type: string
+                preferredLanguage:
+                    $ref: '#/components/schemas/StaffLanguage'
+                privateEmail:
+                    description: Private. Absent when not set.
+                    type: string
+                revision:
+                    description: The revision a change sends back in If-Match.
+                    format: int32
+                    type: integer
+                street:
+                    description: Private. Absent when not set.
+                    type: string
+                user:
+                    $ref: '#/components/schemas/StaffPersonUser'
+                workCountry:
+                    type: string
+                workEmail:
+                    description: Absent when not set.
+                    type: string
+            required:
+                - id
+                - employeeNumber
+                - givenName
+                - familyName
+                - displayName
+                - workCountry
+                - preferredLanguage
+                - capabilities
+                - revision
+            type: object
+        StaffPersonBankAccount:
+            description: The bank account on file, as its kind and its last four digits. Present for the person themselves, staff:manage and staff:personal-data, when one is on file.
+            properties:
+                kind:
+                    $ref: '#/components/schemas/StaffBankAccountKind'
+                last4:
+                    type: string
+            required:
+                - kind
+                - last4
+            type: object
+        StaffPersonCapabilities:
+            description: What the caller may do with this person. The access layer still decides every request.
+            properties:
+                canEdit:
+                    description: staff:manage — change the record, the next of kin and the roles, and delete a person created in error.
+                    type: boolean
+                canManageAccount:
+                    description: staff:manage — the self-service link to a user.
+                    type: boolean
+                canRevealIdentifiers:
+                    description: staff:personal-data — reveal and write the national identity number and the bank account.
+                    type: boolean
+                canSeePay:
+                    description: The person themselves, staff:manage or staff:personal-data — the pay terms of the person's employments.
+                    type: boolean
+            required:
+                - canEdit
+                - canRevealIdentifiers
+                - canSeePay
+                - canManageAccount
+            type: object
+        StaffPersonListItem:
+            description: A person in the directory — the work group only, whoever lists.
+            properties:
+                displayName:
+                    type: string
+                employeeNumber:
+                    type: string
+                familyName:
+                    type: string
+                givenName:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                phoneWork:
+                    description: Absent when not set.
+                    type: string
+                preferredLanguage:
+                    $ref: '#/components/schemas/StaffLanguage'
+                workCountry:
+                    type: string
+                workEmail:
+                    description: Absent when not set.
+                    type: string
+            required:
+                - id
+                - employeeNumber
+                - givenName
+                - familyName
+                - displayName
+                - workCountry
+                - preferredLanguage
+            type: object
+        StaffPersonNationalId:
+            description: Whether a national identity number is on file, and its kind — never a digit of it. Present for the person themselves, staff:manage and staff:personal-data.
+            properties:
+                kind:
+                    $ref: '#/components/schemas/StaffNationalIdKind'
+                onFile:
+                    type: boolean
+            required:
+                - onFile
+            type: object
+        StaffPersonRequest:
+            additionalProperties: false
+            description: 'A person''s editable fields, the whole record as staff:manage replaces it (design §3.1, §5): the work group, the private group and HR''s notes. The national identity number and the bank account are written through their own operations under staff:personal-data, and the self-service link through its own; a property this schema does not name — one of those among them — is refused as a 400 naming it. On a change every optional field left out is cleared, except displayName, which stays.'
+            properties:
+                birthDate:
+                    description: A calendar date. Private.
+                    format: date
+                    type: string
+                city:
+                    description: Up to 100 characters. Private (the home address).
+                    maxLength: 100
+                    type: string
+                country:
+                    description: An ISO 3166-1 alpha-2 code. Private (the home address).
+                    type: string
+                displayName:
+                    description: 1 to 200 characters, the name the person is shown by. Left out on a create, it is the given name and the family name; left out on a change, it stays as it is — it is set once from the names and then HR's to edit.
+                    maxLength: 200
+                    type: string
+                employeeNumber:
+                    description: 1 to 16 letters, digits or hyphens, unique however it is cased; employee_number_too_long when longer, employee_number_taken when another person has it. Left out on a create, it is generated as the settings' prefix and next number, skipping past any number already taken. It never changes after the create, so on a change it is left out or sent as it is.
+                    maxLength: 16
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                familyName:
+                    description: 1 to 100 characters.
+                    maxLength: 100
+                    type: string
+                gender:
+                    $ref: '#/components/schemas/StaffGender'
+                givenName:
+                    description: 1 to 100 characters.
+                    maxLength: 100
+                    type: string
+                notes:
+                    description: HR's notes, up to 2000 characters. Read by staff:manage and staff:personal-data only — never by the person.
+                    maxLength: 2000
+                    type: string
+                phoneMobile:
+                    description: Up to 32 characters. Private.
+                    maxLength: 32
+                    type: string
+                phonePrivate:
+                    description: Up to 32 characters. Private.
+                    maxLength: 32
+                    type: string
+                phoneWork:
+                    description: Up to 32 characters.
+                    maxLength: 32
+                    type: string
+                postalCode:
+                    description: Up to 16 characters. Private (the home address).
+                    maxLength: 16
+                    type: string
+                preferredLanguage:
+                    $ref: '#/components/schemas/StaffLanguage'
+                privateEmail:
+                    description: An email address of up to 254 characters, stored lower-cased. Private.
+                    maxLength: 254
+                    type: string
+                street:
+                    description: Up to 200 characters. Private (the home address).
+                    maxLength: 200
+                    type: string
+                workCountry:
+                    description: Where the person works from (the usage location), an ISO 3166-1 alpha-2 code. Left out, Norway (NO).
+                    type: string
+                workEmail:
+                    description: An email address of up to 254 characters, stored lower-cased, unique however it is cased (work_email_taken).
+                    maxLength: 254
+                    type: string
+            required:
+                - givenName
+                - familyName
+            type: object
+        StaffPersonRole:
+            description: A role a person holds for the company (design S6), with the dates they were elected for.
+            properties:
+                fromDate:
+                    description: Absent when not set.
+                    format: date
+                    type: string
+                role:
+                    $ref: '#/components/schemas/StaffPersonRoleKind'
+                toDate:
+                    description: On or after fromDate. Absent when not set.
+                    format: date
+                    type: string
+            required:
+                - role
+            type: object
+        StaffPersonRoleKind:
+            description: verneombud (the safety representative), amu_member (a member of the working environment committee) or hms_responsible.
+            enum:
+                - verneombud
+                - amu_member
+                - hms_responsible
+            type: string
+        StaffPersonRolesRequest:
+            description: A person's roles, all of them — a full replace. An empty list removes them all.
+            properties:
+                roles:
+                    items:
+                        $ref: '#/components/schemas/StaffPersonRole'
+                    type: array
+            required:
+                - roles
+            type: object
+        StaffPersonUser:
+            description: The user the person is linked to for self-service, as the user directory names them. Present for the person themselves, staff:manage and staff:personal-data, when a link exists. A user the directory no longer knows is "Unknown user", not active.
+            properties:
+                active:
+                    description: False when the account is disabled.
+                    type: boolean
+                displayName:
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+            required:
+                - id
+                - displayName
+                - active
+            type: object
         StaffProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, structure_archived, structure_default, department_cycle and revision_conflict. errors carries the field errors of a 400, keyed by the request''s camelCase field; a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle and revision_conflict. errors carries the field errors of a 400, keyed by the request''s camelCase field (an element of a list as nextOfKin[0].name); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -1075,6 +1482,451 @@ paths:
             tags:
                 - Staff
             x-vantigo-access: permission:staff:access
+    /api/v1/staff/people:
+        get:
+            description: 'The directory: every person, by display name, the work group only. q matches each of its words against the names, the employee number and the work email. Listed for staff:view and staff:manage; anyone else is the uniform 403.'
+            operationId: getStaffPeople
+            parameters:
+                - description: Words that must each appear in a name, the employee number or the work email, however cased.
+                  in: query
+                  name: q
+                  schema:
+                    type: string
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfStaffPersonListItem'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/StaffProblem'
+                    description: Bad Request — paging out of range.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — neither staff:view nor staff:manage.
+            summary: List people
+            tags:
+                - Staff
+            x-vantigo-access: permission:staff:access
+        post:
+            description: Adds a person. The employee number is the one given, or the next from the settings' sequence — the prefix and the next number, skipping past any number already taken — taken under the settings row's lock, so two creators get two numbers. The display name is the given name and the family name unless one is given. The creation is a person_created event.
+            operationId: postStaffPeople
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StaffPersonRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StaffPerson'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/StaffProblem'
+                    description: Bad Request — a field did not pass, or a property the request does not name; employee_number_too_long when the given or the generated number is longer than 16 characters, employee_number_taken when another person has it however cased, work_email_taken when another person has the work email.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Add a person
+            tags:
+                - Staff
+            x-vantigo-access: permission:staff:access+staff:manage
+    /api/v1/staff/people/{id}:
+        delete:
+            description: Deletes a person created in error, with their next of kin, their roles and their history, and records an installation-level person_deleted event carrying the employee number only. A person with an employment or a user link, or named as a department's manager or as the manager on anyone's terms, is in use and is never deleted.
+            operationId: deleteStaffPeopleById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such person. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/StaffProblem'
+                    description: Conflict — person_in_use.
+            summary: Delete a person created in error
+            tags:
+                - Staff
+            x-vantigo-access: permission:staff:access+staff:manage
+        get:
+            description: 'One person, shaped by who is asking (design §5): the person themselves through their self-service link, staff:view, staff:manage and staff:personal-data each see the field groups theirs to read. Anyone else gets a 404 identical to an unknown id.'
+            operationId: getStaffPeopleById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StaffPerson'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such person, or not one the caller may see. The body is empty.
+            summary: Get a person
+            tags:
+                - Staff
+            x-vantigo-access: permission:staff:access
+        put:
+            description: Replaces a person's editable fields — the work group, the private group and HR's notes. The employee number never changes; the display name stays when left out. The change is a person_updated event naming each field with its value before and after; a replace that changes nothing writes nothing.
+            operationId: putStaffPeopleById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The revision the person was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StaffPersonRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StaffPerson'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/StaffProblem'
+                    description: Bad Request — a field did not pass, or a property the request does not name; a field error when the employee number differs from the person's; work_email_taken when another person has the work email.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such person. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/StaffProblem'
+                    description: Conflict — revision_conflict.
+            summary: Change a person
+            tags:
+                - Staff
+            x-vantigo-access: permission:staff:access+staff:manage
+    /api/v1/staff/people/{id}/events:
+        get:
+            description: 'A person''s history, newest first, each payload shaped by the caller''s field groups: a field of a group the caller may not read shows "changed" in place of its values. The person themselves, staff:manage and staff:personal-data read it; anyone else — a colleague holding staff:view included — gets a 404 identical to an unknown id.'
+            operationId: getStaffPeopleByIdEvents
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfStaffEvent'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/StaffProblem'
+                    description: Bad Request — paging out of range.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such person, or not one whose history the caller may read. The body is empty.
+            summary: List a person's history
+            tags:
+                - Staff
+            x-vantigo-access: permission:staff:access
+    /api/v1/staff/people/{id}/next-of-kin:
+        get:
+            description: A person's next of kin, in their order — the private group, so the person themselves, staff:manage and staff:personal-data read it; anyone else gets a 404 identical to an unknown id.
+            operationId: getStaffPeopleByIdNextOfKin
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/StaffNextOfKin'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such person, or not one whose private group the caller may read. The body is empty.
+            summary: List a person's next of kin
+            tags:
+                - Staff
+            x-vantigo-access: permission:staff:access
+        put:
+            description: Replaces a person's next of kin — at most three — and records a next_of_kin_updated event when they changed.
+            operationId: putStaffPeopleByIdNextOfKin
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StaffNextOfKinRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/StaffNextOfKin'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/StaffProblem'
+                    description: Bad Request — more than three, or a field did not pass (keyed as nextOfKin[0].name).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such person. The body is empty.
+            summary: Replace a person's next of kin
+            tags:
+                - Staff
+            x-vantigo-access: permission:staff:access+staff:manage
+    /api/v1/staff/people/{id}/roles:
+        get:
+            description: A person's roles — the work group, so everyone who may see the person reads them; anyone else gets a 404 identical to an unknown id.
+            operationId: getStaffPeopleByIdRoles
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/StaffPersonRole'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such person, or not one the caller may see. The body is empty.
+            summary: List a person's roles
+            tags:
+                - Staff
+            x-vantigo-access: permission:staff:access
+        put:
+            description: Replaces a person's roles and records a roles_updated event when they changed.
+            operationId: putStaffPeopleByIdRoles
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StaffPersonRolesRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/StaffPersonRole'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/StaffProblem'
+                    description: Bad Request — a field did not pass (keyed as roles[0].toDate), such as a toDate before its fromDate.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such person. The body is empty.
+            summary: Replace a person's roles
+            tags:
+                - Staff
+            x-vantigo-access: permission:staff:access+staff:manage
     /api/v1/staff/settings:
         get:
             description: 'The installation''s Staff settings as delivery A1 exposes them: the business time zone, the employee number sequence, the pension provider and the occupational injury insurer.'

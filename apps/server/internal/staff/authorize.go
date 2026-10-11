@@ -39,6 +39,11 @@ type callerContext struct {
 	Manage       bool // staff:manage — HR
 	PersonalData bool // staff:personal-data — the sealed fields, the erase
 
+	// Person is the person the caller is, through their self-service link —
+	// the Self audience on that person — and nil when they are linked to
+	// nobody.
+	Person *int64
+
 	Settings store.StaffSetting
 
 	// Zone is Settings.TimeZone parsed once, and Today the calendar day of the
@@ -50,26 +55,70 @@ type callerContext struct {
 	Today time.Time
 }
 
-// callerFor reads the request's caller: the permissions, the settings and
-// today. It reads on q, which is the pool for every handler today; it is never
-// called inside a transaction, since the permission checks read identity's
-// tables through the access layer's own connection.
+// callerFor reads the request's caller: the permissions, the person they are
+// linked to, the settings and today. It reads on q, which is the pool for
+// every handler today; it is never called inside a transaction, since the
+// permission checks read identity's tables through the access layer's own
+// connection.
 func (s *server) callerFor(ctx context.Context, q *store.Queries) (*callerContext, error) {
 	row, err := settings(ctx, q)
 	if err != nil {
 		return nil, err
 	}
+	userID := callerID(ctx)
+	person, err := personForUser(ctx, q, userID)
+	if err != nil {
+		return nil, err
+	}
 	zone := zoneOf(row)
 	return &callerContext{
-		UserID:       callerID(ctx),
+		UserID:       userID,
 		View:         s.has(ctx, permView),
 		Approve:      s.has(ctx, permApprove),
 		Manage:       s.has(ctx, permManage),
 		PersonalData: s.has(ctx, permPersonalData),
+		Person:       person,
 		Settings:     row,
 		Zone:         zone,
 		Today:        civilToday(s.deps.Clock(), zone),
 	}, nil
+}
+
+// audience is who the caller is to one person (design §5): any of the
+// columns of the field group × audience matrix at once — HR reading their own
+// record is both Self and staff:manage, and reads what either may. What each
+// may read is shaping.go's table; this is only who they are. staff:approve
+// is no audience in delivery A1 (plan reading 18).
+type audience struct {
+	Self         bool // the caller's self-service link names the person
+	Manager      bool // a manager of the person today (Task 4)
+	Colleague    bool // staff:view
+	Manage       bool // staff:manage
+	PersonalData bool // staff:personal-data
+}
+
+// audienceOn is the caller's audience on personID. manager is whether the
+// caller manages the person today, which managerOf answers.
+func (c *callerContext) audienceOn(personID int64, manager bool) audience {
+	return audience{
+		Self:         c.Person != nil && *c.Person == personID,
+		Manager:      manager,
+		Colleague:    c.View,
+		Manage:       c.Manage,
+		PersonalData: c.PersonalData,
+	}
+}
+
+// managesPerson reports whether the caller is a manager of personID today:
+// a person they are linked to is the manager, by the terms in force today or
+// the department's fallback, of one of personID's employments.
+//
+// TASK 4 HOOK — it answers false until the employments and their terms land
+// (delivery A1's Task 4), which resolves managerOf today through the
+// caller's link; until then nobody is a manager, and the Manager audience
+// sees nothing it would not see as a colleague.
+func managesPerson(_ context.Context, _ *store.Queries, _ *callerContext, _ int64) (bool, error) {
+	return false, nil
 }
 
 // civilToday is the calendar day of now in zone, as a date at midnight UTC.

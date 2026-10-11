@@ -26,6 +26,9 @@ const (
 	codeStructureDefault      = "structure_default"
 	codeDepartmentCycle       = "department_cycle"
 	codeRevisionConflict      = "revision_conflict"
+	codeEmployeeNumberTaken   = "employee_number_taken"
+	codeWorkEmailTaken        = "work_email_taken"
+	codePersonInUse           = "person_in_use"
 )
 
 // The titles this module's validation problems carry, one per thing a request
@@ -37,6 +40,10 @@ const (
 	invalidBusinessUnitTitle = "Invalid business unit"
 	invalidDepartmentTitle   = "Invalid department"
 	invalidLocationTitle     = "Invalid location"
+	invalidPersonTitle       = "Invalid person"
+	invalidNextOfKinTitle    = "Invalid next of kin"
+	invalidRolesTitle        = "Invalid roles"
+	invalidPagingTitle       = "Invalid paging"
 )
 
 // withFieldError adds one message to a map another rule may already have put

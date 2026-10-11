@@ -2,6 +2,7 @@ package staff
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -128,4 +129,43 @@ func parseIfMatch(raw string) (int32, bool) {
 		return 0, false
 	}
 	return int32(n), true
+}
+
+// listDefaultPageSize and listMaxPageSize are the paging bounds every other
+// module's list uses; listMaxPage keeps page × pageSize inside the int32 the
+// offset is sent as (Expenses' bound, internal/expenses/entries.go).
+const (
+	listDefaultPageSize = 25
+	listMaxPageSize     = 100
+	listMaxPage         = math.MaxInt32 / listMaxPageSize
+)
+
+// validatePageParams is the paging rule, every failure collected and named by
+// its parameter.
+func validatePageParams(page, pageSize *int32) fieldErrors {
+	var f fieldErrors
+	switch {
+	case page == nil:
+	case *page < 1:
+		f.add("page", fmt.Sprintf("'page' must be 1 or greater, but was %d.", *page))
+	case *page > listMaxPage:
+		f.add("page", fmt.Sprintf("'page' must be at most %d, but was %d.", listMaxPage, *page))
+	}
+	if pageSize != nil && (*pageSize < 1 || *pageSize > listMaxPageSize) {
+		f.add("pageSize", fmt.Sprintf("'pageSize' must be between 1 and %d, but was %d.", listMaxPageSize, *pageSize))
+	}
+	return f
+}
+
+// pageParams is the validated paging as numbers: page 1 and
+// listDefaultPageSize rows unless the caller asked otherwise.
+func pageParams(page, pageSize *int32) (int32, int32) {
+	p, size := int32(1), int32(listDefaultPageSize)
+	if page != nil {
+		p = *page
+	}
+	if pageSize != nil {
+		size = *pageSize
+	}
+	return p, size
 }

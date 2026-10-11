@@ -1,6 +1,9 @@
 package staff
 
 import (
+	"github.com/jackc/pgx/v5/pgtype"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
@@ -58,4 +61,23 @@ func mapRows[R, T any](rows []R, f func(R) T) []T {
 		out = append(out, f(r))
 	}
 	return out
+}
+
+// dateOf is a nullable date column as the contract's date, nil when NULL.
+func dateOf(d pgtype.Date) *openapi_types.Date {
+	if !d.Valid {
+		return nil
+	}
+	return &openapi_types.Date{Time: d.Time}
+}
+
+// enumOf is a nullable text column as one of the contract's enum types, nil
+// when NULL. The value is the module's own, written through the enum's
+// validation, so it is not judged again on the way out.
+func enumOf[T ~string](v *string) *T {
+	if v == nil {
+		return nil
+	}
+	out := T(*v)
+	return &out
 }

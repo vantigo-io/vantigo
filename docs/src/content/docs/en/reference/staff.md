@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: the settings, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, the settings, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -20,9 +20,12 @@ no slot; nothing in another module reads the register yet.
 
 This page grows with the module. What is here today: the [permissions](#permissions),
 the [settings](#settings), the [business time zone](#the-business-time-zone), the
-[structure](#the-structure), [how a refusal looks](#refusals-and-revisions), the
-[locks](#locks) and the [endpoints](#endpoints). People, the sealed identifiers, the
-self-service link, employments and terms arrive with the rest of the delivery.
+[structure](#the-structure), [people](#people) — the record, its
+[field groups and audiences](#field-groups-and-audiences), the
+[history](#the-history) and [deletion](#deleting-a-person) — [how a refusal
+looks](#refusals-and-revisions), the [locks](#locks) and the [endpoints](#endpoints).
+The sealed identifiers, the self-service link's endpoints, employments and terms
+arrive with the rest of the delivery.
 
 ## The schema
 
@@ -164,6 +167,147 @@ to 200, a postal code up to 16, a city up to 100; a country is an ISO 3166-1 alp
 code, stored upper-case. An optional text sent as only whitespace is refused — leave
 the field out to clear it.
 
+## People
+
+A person (`staff.people`) is a human the company has a relationship with, stable
+across hires and accounts. HR (`staff:manage`) creates them with `POST /people`,
+replaces their editable fields with `PUT /people/{id}` and deletes one created in error
+with `DELETE /people/{id}`; who reads a person, and which of their fields, is the
+[audience](#field-groups-and-audiences).
+
+**The employee number** is permanent and short: 1–16 letters, digits or hyphens,
+unique however it is cased (`emp-7` and `EMP-7` are one number). A create either gives
+one — kept as typed — or leaves it out, and the module generates the settings' prefix
+and next number, unpadded, under the settings row's lock, so two people created at once
+get two numbers. The sequence skips forward past any number a person already has
+(however cased), so a number HR assigned by hand never collides with a generated one,
+and moves the next number on past the one used. A number longer than 16 characters is
+`employee_number_too_long` on `employeeNumber` (400), on both paths — a typed one, and
+a generation the skip carries past 16. A number another person has is
+`employee_number_taken` (400), including when two writes race and the unique index
+settles it. The number never changes after the create: a `PUT` leaves it out or sends
+it as it is.
+
+**The display name** is derived once, at the create, from the given and the family
+name, unless one is given; after that it is HR's to edit, and a `PUT` that leaves it
+out keeps it. The person never edits it.
+
+**The fields** a request may carry (`StaffPersonRequest`):
+
+| Field | Group | Rule |
+| --- | --- | --- |
+| `employeeNumber` | Work | Above. |
+| `givenName`, `familyName` | Work | Required, 1–100 characters. |
+| `displayName` | Work | 1–200 characters. |
+| `workEmail` | Work | An address alone (no display name), up to 254 characters, stored lower-cased; unique however cased — `work_email_taken` (400). |
+| `phoneWork` | Work | Up to 32 characters. |
+| `workCountry` | Work | ISO 3166-1 alpha-2, stored upper-case; `NO` when left out. |
+| `preferredLanguage` | Work | `en` or `nb`; `nb` when left out. |
+| `birthDate`, `gender` | Private | A date; `female`, `male`, `other` or `unspecified`. |
+| `phoneMobile`, `phonePrivate` | Private | Up to 32 characters. |
+| `privateEmail` | Private | As the work email, without the uniqueness. |
+| `street`, `postalCode`, `city`, `country` | Private | The home address: 200, 16 and 100 characters, an alpha-2 country. |
+| `notes` | HR notes | Up to 2000 characters. |
+
+Text is trimmed; an optional field sent as only whitespace is refused — leave it out
+to clear it. A `PUT` is a full replace: an optional field left out is cleared. A
+replace that changes nothing writes nothing: the revision stays and no event is
+recorded.
+
+The national identity number, the bank account, the account flags and the self-service
+link are **not** on the request — they are written through their own operations under
+their own permissions. The schema is closed (`additionalProperties: false`), and the
+module enforces it: a property it does not name is a 400 naming that property, and
+nothing is written, so a client that sends `nationalId` learns it was not stored.
+
+**Next of kin** (`GET|PUT /people/{id}/next-of-kin`) are at most three, each a name
+(1–200), a relationship (`spouse`, `partner`, `parent`, `child`, `sibling`, `other`),
+an optional phone (32) and note (500), listed in the order HR gives them. **Roles**
+(`GET|PUT /people/{id}/roles`) are `verneombud`, `amu_member` or `hms_responsible`,
+each with optional `fromDate` and `toDate` (not before the from date). Both are
+replaced whole by `staff:manage`; an empty list removes them. A field error names the
+element: `nextOfKin[1].name`, `roles[0].toDate`.
+
+**The directory**, `GET /people`, lists people by display name with the work group
+only, paged (`page`, `pageSize` up to 100). `q` matches each of its words, however
+cased, against the names, the employee number and the work email — never a private
+field. It is listed for `staff:view` and `staff:manage`; anyone else is the uniform
+403. In this release `staff:view` lists everyone; with employments it is narrowed to
+the people active today, and `staff:manage` gains a status filter.
+
+### Field groups and audiences
+
+Every field of a person belongs to one **field group**, held in one static table in
+`shaping.go`; every response is built by asking that table, field by field, whether the
+caller's audience reads the field's group. A group the audience may not read is absent
+from the response — never null.
+
+| Group | Fields | Self | Colleague (`staff:view`) | `staff:manage` | `staff:personal-data` |
+| --- | --- | --- | --- | --- | --- |
+| Work | name, employee number, work email and phone, work country, language, roles | ✓ | ✓ | ✎ | ✎ |
+| Private | birth date, gender, mobile, private phone and email, home address, next of kin | ✓ | — | ✎ | ✎ |
+| HR notes | `notes` | — | — | ✎ | ✎ |
+| National identity number | `nationalId { kind, onFile }` | ✓ | — | ✓ | ✓ |
+| Bank account | `bankAccount { kind, last4 }` | ✓ | — | ✓ | ✓ |
+| Link | `user { id, displayName, active }` | ✓ | — | ✓ | ✓ |
+
+- **Self** is the user a person's self-service link names, whatever state the link is
+  in. **Colleague** is `staff:view`. A caller holding several is every one of them at
+  once and reads what any may. `staff:approve` is no audience yet; the **manager**
+  audience — the work group and the non-pay terms of their reports — arrives with
+  employments.
+- **The national identity number** is never answered as a digit: only its kind and
+  whether one is on file, since the last digits with the birth date reconstruct the
+  whole number. **The bank account** is its kind and last four digits.
+- **The user** is read from the user directory after the person's transaction has
+  ended; a user the directory no longer knows is "Unknown user", not active.
+- **Anyone else** — signed in with `staff:access` but none of these — gets a 404 with
+  an empty body, byte for byte what an unknown id gets, on the person and on every
+  sub-resource. A sub-resource whose group the audience does not read answers the same
+  404: a colleague reads a person's roles but not their next of kin.
+
+Each person carries `capabilities`: `canEdit` and `canManageAccount` (`staff:manage`),
+`canRevealIdentifiers` (`staff:personal-data`) and `canSeePay` (the person themselves,
+`staff:manage` or `staff:personal-data`).
+
+### The history
+
+Every change to a person is an **event** (`staff.events`), written in the same
+transaction as the change, attributed to the actor as the user directory named them
+just before (`actor { kind, displayName, userId }`; a user it no longer knows is
+"Unknown user"). The kinds today:
+
+| Kind | Payload |
+| --- | --- |
+| `person_created` | `fields`: each field set, with its value as `to`. |
+| `person_updated` | `fields`: each field that changed, `from` and `to` (either absent when the field was empty). |
+| `next_of_kin_updated` | `fields.nextOfKin`: the list before and after. |
+| `roles_updated` | `fields.roles`: the list before and after. |
+| `person_deleted` | Installation-level (no person): `employeeNumber` only. |
+
+`GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
+the person themselves, `staff:manage` and `staff:personal-data` (and, with employments,
+their manager); to anyone else — a colleague included — it is the unknown id's 404.
+Each payload is **shaped per field** by the same table: a field of a group the caller
+may not read shows the string `"changed"` in place of its values. So a change to HR's
+notes reads `{"notes": "changed"}` to the person and `{"notes": {"from": …, "to": …}}`
+to HR. A sealed value is never in a payload. Each event also stores the retention
+classes its payload touches (`payload_classes`), which the erase uses and nothing
+else; who reads what is never decided by them.
+
+### Deleting a person
+
+`DELETE /people/{id}` (`staff:manage`) is the hard delete of a person **created in
+error**: one with no employment, no user link, and named as nobody's manager — neither
+a department's nor on anyone's terms. Anything else is `person_in_use` (409), whose
+detail says what names the person; the person stays. The delete takes the person's row
+and then the manager-graph lock before it judges, so no write can start naming the
+person between the check and the delete, and a foreign key that refuses anyway is still
+`person_in_use`. In one transaction it removes the next of kin, the roles and the
+person's own history — the one exception to the history's append-only rule — and
+records an installation-level `person_deleted` event carrying the employee number and
+nothing else. It answers 204.
+
 ## Refusals and revisions
 
 Every refusal is an RFC 9457 problem, `StaffProblem`: `title`, `status`, `detail`,
@@ -171,12 +315,16 @@ and — when a rule of the design refused — `code`, which is what a client key
 never the words. A 400 carries `errors`, the field errors keyed by the request's
 camelCase field; a plain validation failure has no code, a named rule (such as
 `org_number_invalid`) carries one beside its field errors. A request the server
-cannot decode — malformed JSON, a missing required header — is a bare 400.
+cannot decode — malformed JSON, a missing required header — is a bare 400. A list
+element's field is named by its place: `nextOfKin[0].name`.
 
 | Code | Status | When |
 | --- | --- | --- |
 | `org_number_invalid` | 400 | An organisation number that is not nine digits with a valid check digit. |
-| `employee_number_too_long` | 400 | The prefix and the next number make a number longer than 16. |
+| `employee_number_too_long` | 400 | The prefix and the next number make a number longer than 16; a typed employee number longer than 16; a generation the skip carries past 16. |
+| `employee_number_taken` | 400 | Another person has the employee number, however it is cased. |
+| `work_email_taken` | 400 | Another person has the work email. |
+| `person_in_use` | 409 | Deleting a person with an employment or a user link, or named as a manager. |
 | `structure_archived` | 409 | A write newly names an archived row, or makes one the default. |
 | `structure_default` | 409 | Archiving the default, or the legal entity the default business unit sits under, or taking the flag off the default in place. |
 | `department_cycle` | 409 | A parent that is the department itself or below it. |
@@ -212,6 +360,10 @@ told the first won. Archiving needs no revision: it is idempotent.
   person's row, so the cycle checks across people are judged one at a time.
 - **The defaults.** A write of a legal entity or a business unit takes its table's
   default lock first.
+- **The sequence.** A create that generates an employee number holds the settings row
+  until it commits, so two creators take numbers one after the other.
+- **The delete.** `DELETE /people/{id}` takes the person's row, then the manager graph,
+  before it judges whether anyone names the person as a manager.
 
 ## Endpoints
 
@@ -223,6 +375,9 @@ All under `/api/v1/staff`.
 | `GET /settings`, `PUT /settings` | `staff:manage` |
 | `GET /legal-entities`, `/business-units`, `/departments`, `/locations` | `staff:view` |
 | `POST` the same, `PUT /{id}`, `POST /{id}/archive` | `staff:manage` |
+| `GET /people` | `staff:view` or `staff:manage` (judged in the module; otherwise 403) |
+| `GET /people/{id}`, `/next-of-kin`, `/roles`, `/events` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
+| `POST /people`, `PUT /people/{id}`, `DELETE /people/{id}`, `PUT /people/{id}/next-of-kin`, `PUT /people/{id}/roles` | `staff:manage` |
 
 Every operation also requires `staff:access`. The request and response shapes are in
 the contract, [`openapi/staff.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/staff.yaml),
