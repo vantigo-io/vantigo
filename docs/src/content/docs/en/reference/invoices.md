@@ -972,6 +972,42 @@ always newer — holds a higher id — than the original it credits", stated twi
 future path that locks more than one row of `invoices.invoices` at once must keep both
 true.
 
+**The receivables' lock order** (phase 4, design D18) keeps that invariant and adds one
+rule: **own row first, then invoices in descending id, never the reverse.** Every new
+path takes its row locks through one helper each, which reports them to a lock-order
+seam its tests pin.
+
+| Path | Locks, in order |
+| --- | --- |
+| a bank import | the file's account rows, in account order (`FOR SHARE`), then the inserts |
+| an account's format change | the account row alone |
+| a bank match | the line `FOR NO KEY UPDATE`, then its invoice (a deadline-met waiver inserted) |
+| the queue's apply and handle-reversal | the line, then its invoices in descending id |
+| dismiss, confirm-duplicate, treat-as-distinct, reopen | the line alone |
+| a charge payment, a waiver, a manual delivery and its removal | the invoice alone (the children's insert triggers share it) |
+| a hold, a lift, a hand-off and its withdrawal | the invoice, then its letters (withdrawn), and on a barring lift the waivers inserted |
+| a reminder run's item | the invoice, then the letter inserted |
+| the reminder worker's dispatch, a print batch's letter | the invoice, then its letter |
+| a batch posted or reprinted | the batch `FOR NO KEY UPDATE`, then its letters' invoices in descending id, then the letters |
+| a letter's withdraw or retry | the letter alone |
+| a policy `PUT` | the customer's documents `FOR SHARE`, newest first, then the policy row; the merge: the documents, then the policy rows by customer id |
+| the erase | the person's documents `FOR UPDATE`, newest first, then their letters, then their children's notes, then the resolved bank lines (below) |
+
+**No path locks an invoice and then a bank line, an account row or a print batch**, so
+the own-row-first orders cannot cycle with each other or with the invoice-only and
+descending paths of payments and credit notes. **The one named exception is the
+erase** ([Retention and personal data](#retention-and-personal-data)): holding the
+person's documents, it blanks the `resolution_note` of the bank lines linked to their
+payments — but only **`resolved`** lines with a **non-empty** note. No path locks a
+resolved line before an invoice — `apply` and `handle-reversal` lock `exception` lines,
+`reopen` locks its line alone — and the erase's statement skips, without waiting, a line
+that is not resolved, so the documents-then-line order can never meet a line-then-invoice
+order on the same line. Likewise its recipient blanking touches only a letter whose
+recipient is not blank already, so it never waits on a printed paper letter a reprint
+holds without its invoice. A removal of an imported payment locks only the invoice and
+never writes its line. Every directory read, object-store call and SMTP send is made
+outside any transaction, read-only snapshots included.
+
 The checks, each a 409 that rolls the number back: `seller_incomplete`, `no_lines`,
 `delivery_date_missing`, `issue_date_not_allowed` (with `allowedIssueDates`); for an
 invoice the customer gates, `buyer_incomplete`, `vat_code_inactive` and
@@ -3349,8 +3385,32 @@ is in the period when `fromDay ≤ issue date < toDayExclusive`, a payment when 
 of Oslo days, `toDayExclusive − fromDay`, ending at `fromDay`. The platform's
 `previousFrom` is an absolute duration, a day off the current period's length across a
 daylight-saving change or for a default period that starts mid-day, and "the period of
-the same length just before" is what the delta compares against. There is no timeseries
-and no attention list in this phase.
+the same length just before" is what the delta compares against. There is no timeseries.
+
+### Attention
+
+`GET /invoices/stats/attention` is the dashboard's attention list for Invoices, in the
+item shape every module's `/stats/attention` shares — `id`, `type`, `title`,
+`occurredAt`, `entityId` and, where an item stands for several things, `count` — the
+host translating the sentence from `type` (design D12, plan reading 29). It needs
+`invoices:access`. The first two types are answered to every caller; the other four
+only to a caller who also holds `invoices:payments`, and a caller without it is answered
+the first two — never a 403. Every item is derived from the rows as they are, so nothing
+is dismissed: each clears when what it is about is done. One clock read: "today" is the
+request's Oslo day.
+
+| `type` | One item per | `entityId`, `title`, `occurredAt`, `count` | Clears when |
+| --- | --- | --- | --- |
+| `invoiceOverdue` | one of the **20 most overdue** issued invoices — overdue today by the state the list derives, oldest due date first — once the day after its effective due date E has come (the due date moved off a weekend or a public holiday; an invoice due on a Saturday is an item from the Tuesday) | the invoice; the buyer's name; the day after E at UTC midnight; — | it is paid or credited |
+| `invoiceRefundDue` | every issued invoice whose open amount is **below zero** — a credit note issued after a payment (M16) — or whose charge payments exceed every charge less its waivers (the [charges](#charges)' `refundDue`); uncapped | the invoice; the buyer's name; when its money last moved (the latest credit note issued, payment or charge payment registered, or waiver); — | the money paid back outside Vantigo is recorded by removing the payment or the charge payment with a reason — refunds are not a flow in this phase |
+| `bankTransactionsOpen` | bank file with lines `pending` (matching stopped early), `exception` or `duplicate` | the file; its booking days (`2026-10-01`, or `2026-10-01 – 2026-10-07`); its upload; the open lines, as the queue counts them | every line is matched or resolved ([The exception queue](#the-exception-queue)) |
+| `reminderFailed` | letter whose e-mail failed for good | the letter's invoice (the item's `id` names the letter, `reminderFailed/<letterId>`); the buyer's name; its failure; — | it is retried or withdrawn |
+| `remindersHeld` | cause queued letters wait on (`held_reason`, plan reading 46): `collectionRatesOutdated` — a collection rate missing for a half-year a letter needs — or `collectionRegimeUnreviewed` — the 1988 regime past its review | the cause, as `entityId` and `title`; the oldest waiting letter's creation; the letters waiting | the rate is added or the review made, and the worker sends them |
+| `reminderBatchUnposted` | print batch neither confirmed posted nor reprinted from **two days** after its posting day | the batch; its posting day; that day plus two at UTC midnight; its printed letters | it is confirmed posted or reprinted ([Printing and posting](#letters)) |
+
+`id` is `<type>/<entityId>` but for `reminderFailed`. A credited invoice whose letters'
+charges are still outstanding is in none of them: it owes nothing back, and the overdue
+list's `charges=outstanding` covers only paid invoices — a follow-up.
 
 ## Retention and personal data
 
@@ -3371,6 +3431,15 @@ evidence stores are the record of the transmission: like the PDF, they are kept 
 years after the end of the financial year, and the module never deletes an object
 ([Sending as EHF](#sending-as-ehf)).
 
+**The receivables are kept with the document too** (design D19): its letters — a sent
+letter is the documentation of the claim, and the evidence the bad-debt VAT relief needs
+(merverdiavgiftsloven § 4-7-1) — its charge payments, waivers, manual deliveries, holds
+and hand-offs; and the bank files and their lines with the payer data the bank wrote,
+which are the bank's record of money received, bookkeeping material under § 13 like the
+payments. Bank files, letters and their PDFs are kept five years after the end of the
+financial year, as the invoice PDFs; the module deletes no object, and an anonymisation
+blanks addresses and notes in them, never a row.
+
 **A timesheet is kept with its document** for the same five years: an issued
 invoice's rows are part of the sales document its PDF printed, which art. 17(3)(b)
 exempts from erasure, and nothing identity does to a user — renaming, disabling or
@@ -3389,8 +3458,10 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
 - **Merging customers** (`contracts.CustomerReferenceHolder`) re-points every document of
   the absorbed customer, drafts and issued, reported as `invoices.invoices`. An issued
   document keeps its buyer snapshot — the id is not printed, the snapshot is — and its
-  revision. Payments, deliveries and transmissions hang off the document by id and
-  carry no customer id, so they follow it and are not reported. The customer's
+  revision. Payments, deliveries and transmissions — and the receivables: charge
+  payments, waivers, manual deliveries, letters, holds and hand-offs — hang off the
+  document by id and carry no customer id, so they follow it and are not reported; bank
+  lines hang off their file and name no customer at all. The customer's
   reminder policy is keyed by customer and is re-pointed after the documents, both
   rows locked by customer id ascending: moved when the survivor has none, merged into
   the survivor's at the stricter mode with the notes joined when both have one
@@ -3418,19 +3489,51 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   provider's reference. A draft has none of the three. Every document that carries a
   timesheet, issued or draft, carries `timesheet` — its rows as printed, each with its
   position, person label, date, hours, work type and description — since the customer
-  received it, or would; never a time entry's note. The section carries the customer's
+  received it, or would; never a time entry's note. Each payment carries its `source` —
+  `manual`, `ocr` or `camt054` — and an imported one its `bankLine`: the booking day,
+  the debtor's name and account and the remittance text, as the bank wrote them. An
+  issued document carries its receivables (design D19): `chargePayments` (each with
+  its paid date, amount, source, reference, note, registration and removal, and an
+  imported one's `bankLine`), `chargeWaivers` (the letter's sequence, the kind, the
+  amount, through when for interest, the reason, the note and when), `manualDeliveries`
+  (the kind, the day, the note, when it was recorded and a removal), `reminders` — every
+  letter in every status, with its sequence, level, whether it announces collection,
+  channel, recipient (`""` for paper and once anonymised), language, status, creation,
+  `sentOn`, `deadline`, `regime`, the amounts it states, `sentAt`, a failure's time and a
+  withdrawal's time and reason; never its PDF's key, its Message-ID or an SMTP error,
+  which may quote the address — `holds` (the kind, the note, when placed, a lift's time,
+  note and whether charges stay allowed) and `collectionHandoffs` (the day, the agency
+  and its reference, the note, when recorded, a withdrawal's day and reason). Each is
+  `[]` on an issued document with none; a draft has none of them. The section carries the customer's
   `reminderPolicy` — its mode, note and when it was set — when there is one; a customer
   with only a policy here has a section with no documents.
-- **Anonymisation**, inside the customers module's transaction, in this order: it locks
-  the person's documents `FOR UPDATE`, newest first — the merge holder's statement, the
-  module's lock order — so a delivery insert, whose trigger takes the document `FOR
-  SHARE`, waits for it; writes the marker in `invoices.erased_customers`; blanks the
-  recipient of every delivery of those documents; blanks the note of every payment of
-  them, live and removed; cancels every `queued` transmission of them that was never
-  attempted (`submit_attempted_at` NULL), leased or not — a worker holding one stamps
-  its marker only on a row still `queued`, so it finds the row cancelled and makes no
-  call; deletes the drafts; and deletes the customer's reminder policy. It reports six
-  kinds, in this order:
+- **Anonymisation**, inside the customers module's transaction, with one clock read, in
+  this order: it locks the person's documents `FOR UPDATE`, newest first — the merge
+  holder's statement, the module's lock order — so a delivery insert, whose trigger
+  takes the document `FOR SHARE`, waits for it; writes the marker in
+  `invoices.erased_customers`; blanks the recipient of every delivery of those
+  documents; blanks the note of every payment of them, live and removed; cancels every
+  `queued` transmission of them that was never attempted (`submit_attempted_at` NULL),
+  leased or not — a worker holding one stamps its marker only on a row still `queued`,
+  so it finds the row cancelled and makes no call; deletes the drafts. Then the
+  receivables, in design D19's order: every letter **in flight** — `queued`,
+  `awaiting_print` or `failed` — is withdrawn `customer_anonymised`, each document's
+  under the lock already held, with the hold's own write (plan reading 44); a
+  **`printed`** letter is left to the posting, which re-judges it — the paper may be in
+  the post already — and a letter **being sent** (queued, its facts written, under a live
+  lease) is left to become sent (plan readings 9, 45); both are named at warn in the
+  log with their ids, `invoices: the anonymisation left letters printed for the posting
+  or being sent`, so a person can pull a printed one from the post and withdraw it by
+  hand. Every letter's recipient is then blanked **in every status** — a sent one and
+  one a hold withdrew earlier among them, the one write the letters' trigger allows on a
+  final row (B1) — touching only a letter whose recipient is not blank already, so a
+  printed paper letter, whose recipient is always blank, is never waited for. The notes
+  of the charge payments, the waivers, the manual deliveries, the holds and their lifts,
+  and the hand-offs are blanked. The `resolution_note` of every **resolved** bank line
+  the person's payments or charge payments (live or removed) came from, when it is not
+  empty, is blanked, with the notes of those lines' events — the [lock
+  order](#issuing)'s one named exception. Last the customer's reminder policy is
+  deleted. It reports thirteen kinds, in this order:
   - `invoices.drafts` — the drafts deleted, invoice and credit-note drafts alike, their
     line sources and timesheet rows with them by the cascade: a draft is not a sales
     document and has no retention basis, so GDPR art. 17 applies;
@@ -3455,6 +3558,23 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
     the receiver's Peppol id is an organisation's or the snapshot's own. Its resolution
     note stays, the audit trail of a person's verdict, as a payment's removal reason
     does. The insert trigger refuses any later transmission for the customer;
+  - `invoices.reminders` — the letters changed: withdrawn, or their recipient blanked,
+    each counted once. A sent letter is kept, its facts and its PDF with it — the claim's
+    documentation and the bad-debt relief's evidence (FMVA § 4-7-1) — and its address
+    goes; the PDF in the store, rendered when it was sent, keeps the address it was
+    sent to, as the invoice PDFs keep the buyer;
+  - `invoices.chargePayments`, `invoices.chargeWaivers`, `invoices.manualDeliveries`,
+    `invoices.invoiceHolds`, `invoices.collectionHandoffs` — the rows whose note (and a
+    hold's lift note) was blanked. The rows are kept with the document under § 13: a
+    charge payment's date, amount, source and reference, a waiver's amount and reason, a
+    delivery's day, a hold's times and verdict, a hand-off's agency and its reference
+    and a removal's or a withdrawal's reason, the audit trail as for payments;
+  - `invoices.bankTransactions` — the bank lines whose note, or an event's note, was
+    blanked. The lines and their events are kept with the payer data the bank wrote —
+    debtor name, account and text — the bank's record of money received. A line not
+    resolved keeps its notes: an open line has none, and a matched line's `reversed`
+    event carries the reason its payment was removed, the audit trail a payment's
+    removal reason is;
   - `invoices.customerReminderPolicies` — the reminder policy deleted (0 or 1): staff's
     decision and note about the person, which no retention rule keeps. A later PUT for
     the anonymised customer is a 404.
@@ -3462,22 +3582,36 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   Run twice, it finds nothing and reports zeros, and the marker keeps its first time.
   The marker refuses every later send (`customer_anonymised`), blanks any delivery
   row a send racing the erase writes ([Sending a document](#sending-a-document)), and
-  blanks the note of any payment registered after or racing the erase; it is
-  read by this module only and never removed — anonymisation is never undone.
+  blanks the note of any payment registered after or racing the erase; it refuses a
+  later run's letter (`customer_anonymised`), and a letter row inserted after it — a
+  run item that held the invoice while the erase waited — is written with no
+  recipient. A child row — a charge payment, a waiver, a manual delivery, a hold, a
+  hand-off — inserted after it keeps no note, and a lift keeps no lift note. A queue
+  action that resolves a line after the erase writes its note: the erase ran once. The
+  marker is read by this module only and never removed — anonymisation is never undone.
   `contracts.ErasedData` carries no reason field; this paragraph is where the reasons
   are written.
 
 ## Permissions
 
-No built-in role holds any of these; Owner has the wildcard.
+No built-in role holds any of these; Owner has the wildcard. Phase 4 adds no key (design
+D1): it gives each of the five what fits it, and the catalog's descriptions, which an
+administrator reads when building a role, say so.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off. |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; the attention items about overdue invoices and refunds due ([Attention](#attention)). |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)). |
 | `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
-| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), and see the address each letter goes to; hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)). |
+| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); the attention items about the bank lines, the letters and the print batches ([Attention](#attention)). |
+
+**Why reminders are `invoices:payments` and not `invoices:issue`.** A reminder is not a
+sales document and takes no number; it is credit control — what the company says it is
+owed, the very reason `invoices:payments` is sensitive. A manual delivery is
+`invoices:issue`: handing the sale over belongs to whoever issues and sends it, and it
+registers no money. The reminder settings, the rates and an account's import format
+change what every letter and every import does, so they are `invoices:manage`.
 
 `invoices:payments` is sensitive because a registration changes what the company says it
 is owed, and a wrong one is corrected only by a removal that stays on record.
@@ -3606,14 +3740,40 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |
 | `GET /export.csv` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, more than 5000 rows |
 | `GET /collection-export.csv` | `invoices:payments` | 400 neither or both of `handedFrom`/`handedTo` and `invoiceId`, one date alone, `handedFrom` after `handedTo`, more than 500 `invoiceId`s or one that is not an issued invoice, more than 500 rows |
+| `GET /stats/attention` | | none: the items for `invoices:payments` are left out for a caller without it |
 | `GET /stats/summary` | | 400 `from` after `to` |
 
 ## What comes next
 
-- **4** (next): payment files matched on KID — every invoice issued under an agreement carries
-  one — reminders and late interest, and overpayment, customer credit balances and
-  refunds as a flow, which 1B refuses or only shows as a figure.
+- **4C** (next, the phase's second pull request): the payments port and its Vipps
+  adapter, pay links and the public pay page, and the quick invoice — paid on site, a
+  kontantfaktura ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
+  D13–D17). Attention's item shape takes its four types by adding enum values.
 - **5**: energy consumption billing.
+
+Phase 4's first pull request built receiving payments from the bank — OCR giro and
+camt.054 files matched on KID, the exception queue — and chasing them: collection
+rates, the reminder settings and a customer's policy, the rules engine, charges kept
+apart from the principal, reminder runs, the letters by e-mail and on paper, holds and
+the hand-off to collection, the overdue list and attention. **Not phase 4** (design
+D20), though the earlier roadmap named some of them: overpayment set off against the
+next invoice, customer credit balances and refunds as a flow — an overpayment is
+refused or queued, a refund due is only shown as a figure and an attention item, and
+a refund made outside Vantigo is recorded by removing the registration with a reason —
+and rounding off small differences.
+
+Left out of phase 4 on purpose (design D20): an export of payments or charges for the
+accountant; bank APIs and direct file delivery; camt.053 and the reconciliation of
+movements that are not customers' payments; the Vipps Report API and settlement
+reconciliation (a payout is dismissed as `vipps_payout`); MobilePay markets, other
+providers, cards, push messages and long-living payments; the creditor's own
+betalingsoppfordring (inkassoloven § 10); the § 19 regulation's egeninkasso fees; an
+agreed B2B interest rate; interest on fees; the chapter 2 cost caps; letters as EHF or
+eFaktura, and SMS; a letter for charges alone; an agency API and an automatic hand-off;
+a group-level reminder policy; the B2B 60-day term check; several KID lengths on one
+agreement; a holiday calendar of the installation's own; automatic webhook
+re-registration; a "paid" stamp or receipt on the PDF; and anything of a kassasystem —
+counter sales, receipts, X and Z reports.
 
 Left out of phase 3 on purpose (design D13, D16):
 
@@ -3655,6 +3815,6 @@ payment in another currency than the document's, a payment against a credit note
 payment allocated across several invoices, an idempotency key, HTML mail, a logo, an
 editable template or a personal message in the mail, sending through an outbox or a
 worker, honouring `communications.suppressions`, bulk sending, a "paid" stamp on the PDF
-(the PDF is immutable), timeseries and attention stats, per-currency stats, a public-body
+(the PDF is immutable), timeseries and attention stats (attention came in phase 4), per-currency stats, a public-body
 fact on the directory, user display names on payments and deliveries (ids only), and a
 purge of anything.

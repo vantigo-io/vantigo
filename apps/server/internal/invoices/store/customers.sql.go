@@ -8,7 +8,153 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const bankLinesOfDocuments = `-- name: BankLinesOfDocuments :many
+SELECT t.id, t.booked_on, t.debtor_name, t.debtor_account, t.remittance_text
+FROM invoices.bank_transactions t
+WHERE t.id IN (
+    SELECT p.bank_transaction_id FROM invoices.payments p
+    WHERE p.invoice_id = ANY($1::bigint[]) AND p.bank_transaction_id IS NOT NULL
+    UNION
+    SELECT c.bank_transaction_id FROM invoices.charge_payments c
+    WHERE c.invoice_id = ANY($1::bigint[]) AND c.bank_transaction_id IS NOT NULL)
+ORDER BY t.id
+`
+
+type BankLinesOfDocumentsRow struct {
+	ID             int64
+	BookedOn       pgtype.Date
+	DebtorName     string
+	DebtorAccount  string
+	RemittanceText string
+}
+
+// BankLinesOfDocuments is every bank line a payment or a charge payment of
+// several documents came from, for a person's export (D19): the booking day
+// and what the bank said of the payer.
+func (q *Queries) BankLinesOfDocuments(ctx context.Context, invoiceIds []int64) ([]BankLinesOfDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, bankLinesOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BankLinesOfDocumentsRow
+	for rows.Next() {
+		var i BankLinesOfDocumentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BookedOn,
+			&i.DebtorName,
+			&i.DebtorAccount,
+			&i.RemittanceText,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const blankCustomerBankEventNotes = `-- name: BlankCustomerBankEventNotes :many
+UPDATE invoices.bank_transaction_events e SET note = ''
+WHERE e.note <> ''
+  AND e.bank_transaction_id IN (
+    SELECT t.id FROM invoices.bank_transactions t
+    WHERE t.status = 'resolved' AND t.id IN (
+        SELECT p.bank_transaction_id FROM invoices.payments p JOIN invoices.invoices i ON i.id = p.invoice_id
+        WHERE i.customer_id = $1 AND p.bank_transaction_id IS NOT NULL
+        UNION
+        SELECT c.bank_transaction_id FROM invoices.charge_payments c JOIN invoices.invoices i ON i.id = c.invoice_id
+        WHERE i.customer_id = $1 AND c.bank_transaction_id IS NOT NULL))
+RETURNING e.bank_transaction_id
+`
+
+// BlankCustomerBankEventNotes blanks the note of every event of the resolved
+// bank lines BlankCustomerBankLineNotes reads (D19; the one write
+// tr_bank_transaction_events_immutable allows, B1), and answers each
+// event's line. The lines are read, never locked, and an event row is
+// locked by nothing else: the queue only ever inserts them.
+func (q *Queries) BlankCustomerBankEventNotes(ctx context.Context, customerID int32) ([]int64, error) {
+	rows, err := q.db.Query(ctx, blankCustomerBankEventNotes, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var bank_transaction_id int64
+		if err := rows.Scan(&bank_transaction_id); err != nil {
+			return nil, err
+		}
+		items = append(items, bank_transaction_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const blankCustomerBankLineNotes = `-- name: BlankCustomerBankLineNotes :many
+UPDATE invoices.bank_transactions t SET resolution_note = ''
+WHERE t.status = 'resolved' AND t.resolution_note <> ''
+  AND t.id IN (
+    SELECT p.bank_transaction_id FROM invoices.payments p JOIN invoices.invoices i ON i.id = p.invoice_id
+    WHERE i.customer_id = $1 AND p.bank_transaction_id IS NOT NULL
+    UNION
+    SELECT c.bank_transaction_id FROM invoices.charge_payments c JOIN invoices.invoices i ON i.id = c.invoice_id
+    WHERE i.customer_id = $1 AND c.bank_transaction_id IS NOT NULL)
+RETURNING t.id
+`
+
+// BlankCustomerBankLineNotes blanks the resolution note of every bank line a
+// customer's payments or charge payments, live or removed, came from (D19,
+// M10) — only a resolved line whose note is not empty: the lock order's one
+// named exception (D18, plan reading 54). The erase holds the person's
+// documents; no path locks a resolved line before an invoice (apply and
+// handle-reversal lock exception lines, reopen locks the line alone), and a
+// line that is not resolved is skipped without being waited for, so no cycle
+// forms. It answers the lines it blanked.
+func (q *Queries) BlankCustomerBankLineNotes(ctx context.Context, customerID int32) ([]int64, error) {
+	rows, err := q.db.Query(ctx, blankCustomerBankLineNotes, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const blankCustomerChargePaymentNotes = `-- name: BlankCustomerChargePaymentNotes :execrows
+UPDATE invoices.charge_payments c SET note = ''
+FROM invoices.invoices i
+WHERE c.invoice_id = i.id AND i.customer_id = $1 AND c.note <> ''
+`
+
+// BlankCustomerChargePaymentNotes removes the staff-written note from every
+// charge payment of a customer's documents, live and removed (D19).
+func (q *Queries) BlankCustomerChargePaymentNotes(ctx context.Context, customerID int32) (int64, error) {
+	result, err := q.db.Exec(ctx, blankCustomerChargePaymentNotes, customerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
 
 const blankCustomerDeliveries = `-- name: BlankCustomerDeliveries :execrows
 UPDATE invoices.deliveries d SET recipient = ''
@@ -22,6 +168,87 @@ WHERE d.invoice_id = i.id AND i.customer_id = $1 AND d.recipient <> ''
 // when the claim was sent. A row blanked already is not counted again.
 func (q *Queries) BlankCustomerDeliveries(ctx context.Context, customerID int32) (int64, error) {
 	result, err := q.db.Exec(ctx, blankCustomerDeliveries, customerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const blankCustomerHandoffNotes = `-- name: BlankCustomerHandoffNotes :execrows
+UPDATE invoices.collection_handoffs c SET note = ''
+FROM invoices.invoices i
+WHERE c.invoice_id = i.id AND i.customer_id = $1 AND c.note <> ''
+`
+
+// BlankCustomerHandoffNotes removes the note from every hand-off of a
+// customer's documents (D19); the agency and its reference stay.
+func (q *Queries) BlankCustomerHandoffNotes(ctx context.Context, customerID int32) (int64, error) {
+	result, err := q.db.Exec(ctx, blankCustomerHandoffNotes, customerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const blankCustomerHoldNotes = `-- name: BlankCustomerHoldNotes :execrows
+UPDATE invoices.invoice_holds h SET note = '', lift_note = CASE WHEN h.lift_note IS NULL THEN NULL ELSE '' END
+FROM invoices.invoices i
+WHERE h.invoice_id = i.id AND i.customer_id = $1 AND (h.note <> '' OR coalesce(h.lift_note, '') <> '')
+`
+
+// BlankCustomerHoldNotes removes the note and the lift's note from every
+// hold of a customer's documents (D19); a hold never lifted keeps no lift
+// note.
+func (q *Queries) BlankCustomerHoldNotes(ctx context.Context, customerID int32) (int64, error) {
+	result, err := q.db.Exec(ctx, blankCustomerHoldNotes, customerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const blankCustomerLetterRecipients = `-- name: BlankCustomerLetterRecipients :many
+UPDATE invoices.reminders r SET recipient = ''
+FROM invoices.invoices i
+WHERE r.invoice_id = i.id AND i.customer_id = $1 AND r.recipient <> ''
+RETURNING r.id
+`
+
+// BlankCustomerLetterRecipients blanks the recipient of every letter of a
+// customer's documents, in every status (D19; tr_reminders_immutable allows
+// exactly that, B1), and answers the letters it blanked. Only a letter with
+// a recipient is touched: a paper letter's is ” already, so a printed
+// letter a reprint holds without its invoice is never waited for.
+func (q *Queries) BlankCustomerLetterRecipients(ctx context.Context, customerID int32) ([]int64, error) {
+	rows, err := q.db.Query(ctx, blankCustomerLetterRecipients, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const blankCustomerManualDeliveryNotes = `-- name: BlankCustomerManualDeliveryNotes :execrows
+UPDATE invoices.manual_deliveries d SET note = ''
+FROM invoices.invoices i
+WHERE d.invoice_id = i.id AND i.customer_id = $1 AND d.note <> ''
+`
+
+// BlankCustomerManualDeliveryNotes removes the note from every manual
+// delivery of a customer's documents, live and removed (D19).
+func (q *Queries) BlankCustomerManualDeliveryNotes(ctx context.Context, customerID int32) (int64, error) {
+	result, err := q.db.Exec(ctx, blankCustomerManualDeliveryNotes, customerID)
 	if err != nil {
 		return 0, err
 	}
@@ -46,6 +273,69 @@ func (q *Queries) BlankCustomerPaymentNotes(ctx context.Context, customerID int3
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const blankCustomerWaiverNotes = `-- name: BlankCustomerWaiverNotes :execrows
+UPDATE invoices.charge_waivers w SET note = ''
+FROM invoices.invoices i
+WHERE w.invoice_id = i.id AND i.customer_id = $1 AND w.note <> ''
+`
+
+// BlankCustomerWaiverNotes removes the note from every charge waiver of a
+// customer's documents (D19).
+func (q *Queries) BlankCustomerWaiverNotes(ctx context.Context, customerID int32) (int64, error) {
+	result, err := q.db.Exec(ctx, blankCustomerWaiverNotes, customerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const chargePaymentsOfDocuments = `-- name: ChargePaymentsOfDocuments :many
+
+SELECT id, invoice_id, paid_on, amount, currency, source, bank_transaction_id, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason FROM invoices.charge_payments
+WHERE invoice_id = ANY($1::bigint[])
+ORDER BY invoice_id, paid_on, id
+`
+
+// The receivables of a person's export and erase (invoices payments and
+// reminders design D19): what each issued document carries beyond its
+// payments, deliveries and transmissions, and what the erase blanks of it.
+// ChargePaymentsOfDocuments is every charge payment of several documents at
+// once, removed ones included, for a person's export (D19).
+func (q *Queries) ChargePaymentsOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesChargePayment, error) {
+	rows, err := q.db.Query(ctx, chargePaymentsOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesChargePayment
+	for rows.Next() {
+		var i InvoicesChargePayment
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.PaidOn,
+			&i.Amount,
+			&i.Currency,
+			&i.Source,
+			&i.BankTransactionID,
+			&i.Reference,
+			&i.Note,
+			&i.RegisteredByUserID,
+			&i.RegisteredAt,
+			&i.RemovedAt,
+			&i.RemovedByUserID,
+			&i.RemovalReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const customerDocuments = `-- name: CustomerDocuments :many
@@ -147,6 +437,37 @@ func (q *Queries) CustomerDocuments(ctx context.Context, customerID int32) ([]In
 	return items, nil
 }
 
+const customerLetterInvoices = `-- name: CustomerLetterInvoices :many
+SELECT DISTINCT r.invoice_id
+FROM invoices.reminders r
+JOIN invoices.invoices i ON i.id = r.invoice_id
+WHERE i.customer_id = $1 AND r.status IN ('queued', 'awaiting_print', 'failed', 'printed')
+ORDER BY r.invoice_id DESC
+`
+
+// CustomerLetterInvoices is the person's invoices with a letter in flight or
+// printed, newest first, the erase's documents being locked already: each is
+// handed to withdrawInFlight (D19).
+func (q *Queries) CustomerLetterInvoices(ctx context.Context, customerID int32) ([]int64, error) {
+	rows, err := q.db.Query(ctx, customerLetterInvoices, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var invoice_id int64
+		if err := rows.Scan(&invoice_id); err != nil {
+			return nil, err
+		}
+		items = append(items, invoice_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteCustomerDrafts = `-- name: DeleteCustomerDrafts :execrows
 DELETE FROM invoices.invoices WHERE customer_id = $1 AND status = 'draft'
 `
@@ -188,6 +509,85 @@ func (q *Queries) DeliveriesOfDocuments(ctx context.Context, invoiceIds []int64)
 			&i.PdfSha256,
 			&i.SentAt,
 			&i.SentByUserID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const handoffsOfDocuments = `-- name: HandoffsOfDocuments :many
+SELECT id, invoice_id, handed_on, agency, agency_reference, note, created_at, created_by_user_id, withdrawn_on, withdrawn_by_user_id, withdrawal_reason FROM invoices.collection_handoffs
+WHERE invoice_id = ANY($1::bigint[])
+ORDER BY invoice_id, created_at, id
+`
+
+// HandoffsOfDocuments is every hand-off of several documents at once,
+// withdrawn ones included, for a person's export (D19).
+func (q *Queries) HandoffsOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesCollectionHandoff, error) {
+	rows, err := q.db.Query(ctx, handoffsOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesCollectionHandoff
+	for rows.Next() {
+		var i InvoicesCollectionHandoff
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.HandedOn,
+			&i.Agency,
+			&i.AgencyReference,
+			&i.Note,
+			&i.CreatedAt,
+			&i.CreatedByUserID,
+			&i.WithdrawnOn,
+			&i.WithdrawnByUserID,
+			&i.WithdrawalReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const holdsOfDocuments = `-- name: HoldsOfDocuments :many
+SELECT id, invoice_id, kind, note, placed_at, placed_by_user_id, lifted_at, lifted_by_user_id, lift_note, charges_allowed FROM invoices.invoice_holds
+WHERE invoice_id = ANY($1::bigint[])
+ORDER BY invoice_id, placed_at, id
+`
+
+// HoldsOfDocuments is every hold of several documents at once, lifted ones
+// included, for a person's export (D19).
+func (q *Queries) HoldsOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesInvoiceHold, error) {
+	rows, err := q.db.Query(ctx, holdsOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesInvoiceHold
+	for rows.Next() {
+		var i InvoicesInvoiceHold
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.Kind,
+			&i.Note,
+			&i.PlacedAt,
+			&i.PlacedByUserID,
+			&i.LiftedAt,
+			&i.LiftedByUserID,
+			&i.LiftNote,
+			&i.ChargesAllowed,
 		); err != nil {
 			return nil, err
 		}
@@ -270,6 +670,45 @@ func (q *Queries) LockCustomerDocuments(ctx context.Context, arg LockCustomerDoc
 	return err
 }
 
+const manualDeliveriesOfDocuments = `-- name: ManualDeliveriesOfDocuments :many
+SELECT id, invoice_id, kind, delivered_on, note, recorded_by_user_id, recorded_at, removed_at, removed_by_user_id, removal_reason FROM invoices.manual_deliveries
+WHERE invoice_id = ANY($1::bigint[])
+ORDER BY invoice_id, delivered_on, id
+`
+
+// ManualDeliveriesOfDocuments is every manual delivery of several documents
+// at once, removed ones included, for a person's export (D19).
+func (q *Queries) ManualDeliveriesOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesManualDelivery, error) {
+	rows, err := q.db.Query(ctx, manualDeliveriesOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesManualDelivery
+	for rows.Next() {
+		var i InvoicesManualDelivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.Kind,
+			&i.DeliveredOn,
+			&i.Note,
+			&i.RecordedByUserID,
+			&i.RecordedAt,
+			&i.RemovedAt,
+			&i.RemovedByUserID,
+			&i.RemovalReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markCustomerErased = `-- name: MarkCustomerErased :exec
 INSERT INTO invoices.erased_customers (customer_id, erased_at)
 VALUES ($1, $2::timestamptz)
@@ -335,6 +774,80 @@ func (q *Queries) PaymentsOfDocuments(ctx context.Context, invoiceIds []int64) (
 	return items, nil
 }
 
+const remindersOfDocuments = `-- name: RemindersOfDocuments :many
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders
+WHERE invoice_id = ANY($1::bigint[])
+ORDER BY invoice_id, sequence, id
+`
+
+// RemindersOfDocuments is every letter of several documents at once, in
+// every status, for a person's export (D19).
+func (q *Queries) RemindersOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesReminder, error) {
+	rows, err := q.db.Query(ctx, remindersOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesReminder
+	for rows.Next() {
+		var i InvoicesReminder
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.RunID,
+			&i.PrintBatchID,
+			&i.Sequence,
+			&i.Level,
+			&i.AnnouncesCollection,
+			&i.Channel,
+			&i.Recipient,
+			&i.Language,
+			&i.CreatedAt,
+			&i.CreatedByUserID,
+			&i.SentOn,
+			&i.Deadline,
+			&i.Regime,
+			&i.PrincipalOpen,
+			&i.Credited,
+			&i.FeeKind,
+			&i.Fee,
+			&i.Compensation,
+			&i.ChargesEarlier,
+			&i.Interest,
+			&i.InterestWaived,
+			&i.InterestPaid,
+			&i.InterestFrom,
+			&i.InterestSegments,
+			&i.Inkassosats,
+			&i.Total,
+			&i.ChargeNotes,
+			&i.PdfObjectKey,
+			&i.PdfSha256,
+			&i.MessageID,
+			&i.SentAt,
+			&i.Status,
+			&i.HeldReason,
+			&i.Attempts,
+			&i.NextAttemptAt,
+			&i.FirstAttemptAt,
+			&i.LeaseID,
+			&i.LeaseUntil,
+			&i.LastError,
+			&i.FailedAt,
+			&i.WithdrawnAt,
+			&i.WithdrawnByUserID,
+			&i.WithdrawalReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const repointCustomer = `-- name: RepointCustomer :execrows
 UPDATE invoices.invoices SET
     customer_id = $1,
@@ -360,4 +873,43 @@ func (q *Queries) RepointCustomer(ctx context.Context, arg RepointCustomerParams
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const waiversOfDocuments = `-- name: WaiversOfDocuments :many
+SELECT id, invoice_id, reminder_id, kind, amount, interest_through, reason, note, waived_by_user_id, waived_at FROM invoices.charge_waivers
+WHERE invoice_id = ANY($1::bigint[])
+ORDER BY invoice_id, waived_at, id
+`
+
+// WaiversOfDocuments is every charge waiver of several documents at once,
+// for a person's export (D19).
+func (q *Queries) WaiversOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesChargeWaiver, error) {
+	rows, err := q.db.Query(ctx, waiversOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesChargeWaiver
+	for rows.Next() {
+		var i InvoicesChargeWaiver
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.ReminderID,
+			&i.Kind,
+			&i.Amount,
+			&i.InterestThrough,
+			&i.Reason,
+			&i.Note,
+			&i.WaivedByUserID,
+			&i.WaivedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

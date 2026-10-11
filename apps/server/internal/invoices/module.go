@@ -35,12 +35,22 @@ import (
 // registration corrected only by a removal that stays on record (payments and
 // delivery design D1). Sending, by e-mail or as EHF, is under invoices:issue;
 // the seller's Peppol id, the KID agreement and the access point's
-// credentials are under invoices:manage (EHF and KID design D1).
+// credentials are under invoices:manage (EHF and KID design D1). Phase 4
+// adds no key (invoices payments and reminders design D1): reading the
+// receivables is invoices:access; the bank import, the queue, the runs and
+// the letters, holds, hand-offs, charges and a customer's policy are
+// invoices:payments — credit control, "what the company says it is owed";
+// the reminder settings, the rates and an account's import format are
+// invoices:manage; a manual delivery is invoices:issue, handing the sale
+// over.
 var permissions = []contracts.Permission{
 	{
 		Key: "invoices:access", Display: "Use Invoices",
-		Description: "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats.",
-		Category:    "Invoices", Sensitive: false, Delegable: true,
+		Description: "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, " +
+			"the CSV export and the stats; the overdue list and an invoice's reminders, hold, hand-off, manual deliveries " +
+			"and charges; the collection rates, the reminder settings and a customer's reminder policy; and the attention " +
+			"items about overdue invoices and refunds due.",
+		Category: "Invoices", Sensitive: false, Delegable: true,
 	},
 	{
 		Key: "invoices:create", Display: "Create invoices",
@@ -49,18 +59,27 @@ var permissions = []contracts.Permission{
 	},
 	{
 		Key: "invoices:issue", Display: "Issue invoices",
-		Description: "Issue a draft into a numbered document that can never be changed, create credit notes, send an issued document by e-mail or as EHF, and cancel or resolve its EHF transmissions.",
-		Category:    "Invoices", Sensitive: true, Delegable: true,
+		Description: "Issue a draft into a numbered document that can never be changed, create credit notes, send an " +
+			"issued document by e-mail or as EHF, cancel or resolve its EHF transmissions, and record that an invoice " +
+			"was handed over or posted, or remove such a record.",
+		Category: "Invoices", Sensitive: true, Delegable: true,
 	},
 	{
 		Key: "invoices:manage", Display: "Manage invoicing",
-		Description: "Change the seller record and its Peppol id, the number series start, the KID agreement, the e-invoicing access point's credentials, and the VAT codes and their rates.",
-		Category:    "Invoices", Sensitive: true, Delegable: true,
+		Description: "Change the seller record and its Peppol id, the number series start, the KID agreement, the " +
+			"e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the " +
+			"regime review, the collection rates added ahead of a release, and the format a bank account's files are " +
+			"imported in.",
+		Category: "Invoices", Sensitive: true, Delegable: true,
 	},
 	{
 		Key: "invoices:payments", Display: "Register payments",
-		Description: "Register payments against issued invoices, and remove a registration with a reason.",
-		Category:    "Invoices", Sensitive: true, Delegable: true,
+		Description: "Register payments against issued invoices and remove a registration with a reason; import bank " +
+			"files and work the exception queue; make reminder runs, and print, post, withdraw and retry the letters; " +
+			"hold a disputed invoice, hand one to collection and export the collection file; register and remove " +
+			"charge payments and waive charges; set a customer's reminder policy; and see the attention items about " +
+			"the bank lines and the letters.",
+		Category: "Invoices", Sensitive: true, Delegable: true,
 	},
 }
 

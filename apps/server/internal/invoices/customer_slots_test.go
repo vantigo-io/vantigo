@@ -1,12 +1,15 @@
 package invoices_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -200,7 +203,8 @@ func TestCustomerPersonalData_Export(t *testing.T) {
 			`"address":{"line1":"Hjemveien 5","postalCode":"5003","city":"Bergen","region":"Vestland","country":"NO"},"language":"en"}`,
 		`"deliveryAddress":{"line1":"Hytta","postalCode":"3580","city":"Geilo","country":"NO"}`, `"internalNote":"Ringte to ganger"`,
 		`"vatRatePercent":"25.00"`, `"drafts":[{"kind":"invoice"`, `"internalNote":"Utkast til neste måned"`, `"quantity":"1.500"`,
-		`"payments":[],"deliveries":[],"transmissions":[]}`,
+		`"payments":[],"deliveries":[],"transmissions":[],"chargePayments":[],"chargeWaivers":[],"manualDeliveries":[],` +
+			`"reminders":[],"holds":[],"collectionHandoffs":[]}`,
 	} {
 		if !strings.Contains(raw, want) {
 			t.Errorf("export %s has no %s", raw, want)
@@ -255,11 +259,7 @@ func TestCustomerPersonalData_EraseDeletesDraftsAndKeepsDocuments(t *testing.T) 
 	if n := h.Count(t, `SELECT count(*) FROM invoices.invoices WHERE customer_id = $1 AND status = 'draft'`, customerPerson); n != 3 {
 		t.Fatalf("drafts after a rolled-back erase = %d, want 3", n)
 	}
-	if got, want := erase(true), []contracts.ErasedData{
-		{Kind: "invoices.drafts", Count: 3}, {Kind: "invoices.documents", Count: 0},
-		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
-		{Kind: "invoices.transmissions", Count: 0}, {Kind: "invoices.customerReminderPolicies", Count: 0},
-	}; !slices.Equal(got, want) {
+	if got, want := erase(true), eraseReport(3, 0, 0, 0); !slices.Equal(got, want) {
 		t.Errorf("erased = %+v, want %+v", got, want)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM invoices.invoices WHERE id = $1`, credit.ID); n != 0 {
@@ -271,11 +271,7 @@ func TestCustomerPersonalData_EraseDeletesDraftsAndKeepsDocuments(t *testing.T) 
 	if n := h.Count(t, `SELECT count(*) FROM invoices.invoices WHERE customer_id = $1`, customerAcme); n != 1 {
 		t.Error("another customer's draft was erased")
 	}
-	if got, want := erase(true), []contracts.ErasedData{
-		{Kind: "invoices.drafts", Count: 0}, {Kind: "invoices.documents", Count: 0},
-		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
-		{Kind: "invoices.transmissions", Count: 0}, {Kind: "invoices.customerReminderPolicies", Count: 0},
-	}; !slices.Equal(got, want) {
+	if got, want := erase(true), eraseReport(0, 0, 0, 0); !slices.Equal(got, want) {
 		t.Errorf("a second erase = %+v, want zeros", got)
 	}
 }
@@ -306,8 +302,8 @@ func TestCustomerPersonalData_ExportCarriesPaymentsAndDeliveries(t *testing.T) {
 	raw := string(b)
 	for _, want := range []string{
 		`"payments":[` +
-			`{"paidOn":"2026-09-12","amount":"300.10","currency":"NOK","reference":"KID 0012345","note":"Delbetaling","registeredAt":"2026-09-12T12:00:00Z"},` +
-			`{"paidOn":"2026-09-12","amount":"0.50","currency":"NOK","registeredAt":"2026-09-12T13:00:00Z",` +
+			`{"paidOn":"2026-09-12","amount":"300.10","currency":"NOK","source":"manual","reference":"KID 0012345","note":"Delbetaling","registeredAt":"2026-09-12T12:00:00Z"},` +
+			`{"paidOn":"2026-09-12","amount":"0.50","currency":"NOK","source":"manual","registeredAt":"2026-09-12T13:00:00Z",` +
 			`"removedAt":"2026-09-12T14:00:00Z","removalReason":"Feil beløp"}]`,
 		`"deliveries":[{"recipient":"kari@example.org","sentAt":"2026-09-12T14:00:00Z","subject":` + string(subject) + `}]`,
 	} {
@@ -361,11 +357,7 @@ func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFiveKinds(t *testin
 		return erased
 	}
 
-	if got, want := erase(), []contracts.ErasedData{
-		{Kind: "invoices.drafts", Count: 1}, {Kind: "invoices.documents", Count: 0},
-		{Kind: "invoices.payments", Count: 2}, {Kind: "invoices.deliveries", Count: 2},
-		{Kind: "invoices.transmissions", Count: 0}, {Kind: "invoices.customerReminderPolicies", Count: 0},
-	}; !slices.Equal(got, want) {
+	if got, want := erase(), eraseReport(1, 2, 2, 0); !slices.Equal(got, want) {
 		t.Errorf("erased = %+v, want %+v", got, want)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM invoices.deliveries WHERE invoice_id = $1 AND recipient = ''`, doc.ID); n != 2 {
@@ -394,11 +386,7 @@ func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFiveKinds(t *testin
 	}
 
 	h.Advance(time.Hour)
-	if got, want := erase(), []contracts.ErasedData{
-		{Kind: "invoices.drafts", Count: 0}, {Kind: "invoices.documents", Count: 0},
-		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
-		{Kind: "invoices.transmissions", Count: 0}, {Kind: "invoices.customerReminderPolicies", Count: 0},
-	}; !slices.Equal(got, want) {
+	if got, want := erase(), eraseReport(0, 0, 0, 0); !slices.Equal(got, want) {
 		t.Errorf("a second erase = %+v, want zeros", got)
 	}
 	if at := modtest.One[time.Time](t, h.Harness, marker, customerPerson); !at.Equal(erasedAt) {
@@ -818,5 +806,477 @@ func TestExport_TheProjectAndTheTimesheet(t *testing.T) {
 	}
 	if n := strings.Count(raw, `"projectReference"`); n != 2 {
 		t.Errorf("export %s names %d projects, want the issued invoice's and project 42's draft's", raw, n)
+	}
+}
+
+// eraseReport is the erase's report in its order (D6; invoices payments and
+// reminders design D19): the drafts, the documents at 0, the payment notes,
+// the deliveries and the transmissions as given, then the receivables' eight
+// kinds, each 0 unless more names it.
+func eraseReport(drafts, payments, deliveries, transmissions int64, more ...contracts.ErasedData) []contracts.ErasedData {
+	out := []contracts.ErasedData{
+		{Kind: "invoices.drafts", Count: drafts}, {Kind: "invoices.documents", Count: 0},
+		{Kind: "invoices.payments", Count: payments}, {Kind: "invoices.deliveries", Count: deliveries},
+		{Kind: "invoices.transmissions", Count: transmissions},
+		{Kind: "invoices.reminders"}, {Kind: "invoices.chargePayments"}, {Kind: "invoices.chargeWaivers"},
+		{Kind: "invoices.manualDeliveries"}, {Kind: "invoices.invoiceHolds"}, {Kind: "invoices.collectionHandoffs"},
+		{Kind: "invoices.bankTransactions"}, {Kind: "invoices.customerReminderPolicies"},
+	}
+	for _, m := range more {
+		for i := range out {
+			if out[i].Kind == m.Kind {
+				out[i].Count = m.Count
+			}
+		}
+	}
+	return out
+}
+
+// receivables is one of every receivable planted on an issued invoice of a
+// customer (D19), each with a note or an address, at the harness's clock:
+// its letters in every status the erase treats apart, and the bank lines its
+// money came from.
+type receivables struct {
+	invoice                                                                  int64
+	queued, withdrawnEarlier, sentLetter, printed, awaiting, failed, sending int64
+	resolvedLine, eventOnlyLine, matchedLine, chargeLine                     int64
+}
+
+// plantReceivables plants receivables on a new issued invoice of customer,
+// number number, its letters to recipient.
+func plantReceivables(t *testing.T, h *harness, customer int32, number int64, recipient string) receivables {
+	t.Helper()
+	at := h.Now()
+	r := receivables{invoice: plantOverdue(t, h, overdueSpec{number: number, customer: customer, issue: "2026-07-01", due: "2026-08-03"})}
+	run := plantRun(t, h)
+	letter := func(sequence int, status, channel, to, extraCols, extraVals string, args ...any) int64 {
+		return plantID(t, h, `
+			INSERT INTO invoices.reminders (invoice_id, run_id, sequence, level, channel, recipient, language, created_at,
+			    created_by_user_id, status`+extraCols+`)
+			VALUES ($1, $2, $3, 'reminder', $4, $5, 'nb', $6, gen_random_uuid(), $7`+extraVals+`)
+			RETURNING id`, append([]any{r.invoice, run, sequence, channel, to, at, status}, args...)...)
+	}
+	facts := `, sent_on, deadline, regime, principal_open, fee_kind, fee, charges_earlier, interest, interest_waived,
+		interest_paid, total`
+	factValues := `, DATE '2026-08-20', DATE '2026-09-03', 'inkassolov_1988', 1000, 'reminder_fee', 35, 0, 0, 0, 0, 1035`
+	r.queued = letter(1, "queued", "email", recipient, "", "")
+	r.withdrawnEarlier = letter(2, "withdrawn", "email", recipient, ", withdrawn_at, withdrawal_reason", ", $6, 'on_hold'")
+	r.sentLetter = letter(3, "sent", "email", recipient, facts+", sent_at", factValues+", $6")
+	batch := plantID(t, h, `INSERT INTO invoices.reminder_print_batches (post_on, created_at, created_by_user_id)
+		VALUES (DATE '2026-09-14', $1, gen_random_uuid()) RETURNING id`, at)
+	r.printed = letter(4, "printed", "paper", "", facts+", print_batch_id", factValues+", $8", batch)
+	r.awaiting = letter(5, "awaiting_print", "paper", "", "", "")
+	r.failed = letter(6, "failed", "email", recipient, ", failed_at", ", $6")
+	r.sending = letter(7, "queued", "email", recipient, facts+", lease_id, lease_until", factValues+", 'lease-1', $6::timestamptz + interval '2 hours'")
+
+	file := plantID(t, h, `
+		INSERT INTO invoices.bank_files (format, sha256, file_identity, object_key, byte_size, accounts, transactions,
+		    ignored, ignored_kinds, first_booked_on, last_booked_on, uploaded_by_user_id, uploaded_at)
+		VALUES ('camt054', md5(random()::text) || md5(random()::text), md5(random()::text), 'bank-files/e.xml', 400,
+		    ARRAY['15032080119'], 4, 0, '{}', DATE '2026-08-10', DATE '2026-08-10', gen_random_uuid(), $1) RETURNING id`, at)
+	line := func(status, note string) int64 {
+		resolution := map[string]any{"resolved": "applied", "matched": nil}[status]
+		return plantID(t, h, `
+			INSERT INTO invoices.bank_transactions (bank_file_id, line_ref, format, account, direction, booked_on, amount, currency,
+			    debtor_name, debtor_account, remittance_text, fingerprint, ordinal, status, resolution, resolved_by_user_id,
+			    resolved_at, resolution_note)
+			VALUES ($1, md5(random()::text), 'camt054', '15032080119', 'credit', DATE '2026-08-10', 500, 'NOK', 'Kari Nordmann',
+			    '12345678903', 'Faktura 1', md5(random()::text) || md5(random()::text), 1, $2, $3::text,
+			    CASE WHEN $3::text IS NULL THEN NULL ELSE gen_random_uuid() END, CASE WHEN $3::text IS NULL THEN NULL ELSE $4::timestamptz END, $5)
+			RETURNING id`, file, status, resolution, at, note)
+	}
+	event := func(lineID int64, event, note string) {
+		h.Exec(t, `INSERT INTO invoices.bank_transaction_events (bank_transaction_id, event, note, by_user_id, at)
+			VALUES ($1, $2, $3, gen_random_uuid(), $4)`, lineID, event, note, at)
+	}
+	payment := func(lineID int64, removed bool) {
+		h.Exec(t, `INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, source, bank_transaction_id,
+			    registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason)
+			VALUES ($1, DATE '2026-08-10', 500, 'NOK', 'camt054', $2, gen_random_uuid(), $3,
+			    CASE WHEN $4 THEN $3::timestamptz END, CASE WHEN $4 THEN gen_random_uuid() END, CASE WHEN $4 THEN 'Reversert' END)`,
+			r.invoice, lineID, at, removed)
+	}
+	r.resolvedLine = line("resolved", "Kari ringte om innbetalingen")
+	payment(r.resolvedLine, false)
+	event(r.resolvedLine, "applied", "Kari ringte")
+	r.eventOnlyLine = line("resolved", "")
+	payment(r.eventOnlyLine, true)
+	event(r.eventOnlyLine, "applied", "Avtalt med Kari")
+	r.matchedLine = line("matched", "")
+	payment(r.matchedLine, true)
+	event(r.matchedLine, "reversed", "Banken tok den tilbake")
+	r.chargeLine = line("resolved", "Gebyr fra Kari")
+
+	h.Exec(t, `INSERT INTO invoices.charge_payments (invoice_id, paid_on, amount, currency, source, bank_transaction_id, note,
+		    registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason)
+		VALUES ($1, DATE '2026-09-01', 35, 'NOK', 'manual', NULL, 'Betalte gebyret', gen_random_uuid(), $2, NULL, NULL, NULL),
+		       ($1, DATE '2026-09-01', 10, 'NOK', 'manual', NULL, 'Feil', gen_random_uuid(), $2, $2, gen_random_uuid(), 'Feil beløp'),
+		       ($1, DATE '2026-08-10', 5, 'NOK', 'camt054', $3, '', gen_random_uuid(), $2, NULL, NULL, NULL)`,
+		r.invoice, at, r.chargeLine)
+	h.Exec(t, `INSERT INTO invoices.charge_waivers (invoice_id, reminder_id, kind, amount, reason, note, waived_by_user_id, waived_at)
+		VALUES ($1, $2, 'fee', 35, 'goodwill', 'Kari klaget', gen_random_uuid(), $3)`, r.invoice, r.sentLetter, at)
+	h.Exec(t, `INSERT INTO invoices.manual_deliveries (invoice_id, kind, delivered_on, note, recorded_by_user_id, recorded_at,
+		    removed_at, removed_by_user_id, removal_reason)
+		VALUES ($1, 'handed_over', DATE '2026-07-01', 'Levert i hånd', gen_random_uuid(), $2, NULL, NULL, NULL),
+		       ($1, 'posted', DATE '2026-07-02', 'Feil dag', gen_random_uuid(), $2, $2, gen_random_uuid(), 'Feil dag')`, r.invoice, at)
+	h.Exec(t, `INSERT INTO invoices.invoice_holds (invoice_id, kind, note, placed_at, placed_by_user_id, lifted_at,
+		    lifted_by_user_id, lift_note, charges_allowed)
+		VALUES ($1, 'disputed', 'Bestridt', $2, gen_random_uuid(), $2, gen_random_uuid(), 'Avklart', true),
+		       ($1, 'disputed', 'Bestridt igjen', $2, gen_random_uuid(), NULL, NULL, NULL, NULL)`, r.invoice, at)
+	h.Exec(t, `INSERT INTO invoices.collection_handoffs (invoice_id, handed_on, agency, agency_reference, note, created_at,
+		    created_by_user_id, withdrawn_on, withdrawn_by_user_id, withdrawal_reason)
+		VALUES ($1, DATE '2026-09-10', 'Inkasso AS', 'K-1', 'Overlevert', $2, gen_random_uuid(), DATE '2026-09-11', gen_random_uuid(), 'Betalt'),
+		       ($1, DATE '2026-09-11', 'Inkasso AS', 'K-2', 'Overlevert igjen', $2, gen_random_uuid(), NULL, NULL, NULL)`, r.invoice, at)
+	return r
+}
+
+// TestExport_CarriesEveryReceivable: each issued document carries, beside
+// its payments, its charge payments, waivers, manual deliveries, letters,
+// holds and hand-offs, each with its note, dates, amounts as exact decimal
+// text and a letter's recipient (D19); each payment its source, and an
+// imported one the bank line's date, debtor name, debtor account and text.
+func TestExport_CarriesEveryReceivable(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	plantReceivables(t, h, customerPerson, 1, "kari@example.org")
+	section, err := invoices.Module().CustomerPersonalData(disabledDeps(h)).ExportCustomerData(context.Background(), customerPerson)
+	if err != nil {
+		t.Fatalf("ExportCustomerData: %v", err)
+	}
+	b, _ := json.Marshal(section)
+	raw := string(b)
+	at := `"2026-09-12T12:00:00Z"`
+	bankLine := `"bankLine":{"bookedOn":"2026-08-10","debtorName":"Kari Nordmann","debtorAccount":"12345678903","text":"Faktura 1"}`
+	for _, want := range []string{
+		`{"paidOn":"2026-08-10","amount":"500.00","currency":"NOK","source":"camt054","registeredAt":` + at + `,` + bankLine + `}`,
+		`{"paidOn":"2026-08-10","amount":"500.00","currency":"NOK","source":"camt054","registeredAt":` + at + `,"removedAt":` + at +
+			`,"removalReason":"Reversert",` + bankLine + `}`,
+		`"chargePayments":[{"paidOn":"2026-08-10","amount":"5.00","currency":"NOK","source":"camt054","registeredAt":` + at + `,` +
+			bankLine + `},` +
+			`{"paidOn":"2026-09-01","amount":"35.00","currency":"NOK","source":"manual","note":"Betalte gebyret","registeredAt":` + at + `},` +
+			`{"paidOn":"2026-09-01","amount":"10.00","currency":"NOK","source":"manual","note":"Feil","registeredAt":` + at +
+			`,"removedAt":` + at + `,"removalReason":"Feil beløp"}]`,
+		`"chargeWaivers":[{"reminderSequence":3,"kind":"fee","amount":"35.00","reason":"goodwill","note":"Kari klaget","waivedAt":` + at + `}]`,
+		`"manualDeliveries":[{"kind":"handed_over","deliveredOn":"2026-07-01","note":"Levert i hånd","recordedAt":` + at + `},` +
+			`{"kind":"posted","deliveredOn":"2026-07-02","note":"Feil dag","recordedAt":` + at + `,"removedAt":` + at + `,"removalReason":"Feil dag"}]`,
+		`{"sequence":3,"level":"reminder","announcesCollection":false,"channel":"email","recipient":"kari@example.org","language":"nb",` +
+			`"status":"sent","createdAt":` + at + `,"sentOn":"2026-08-20","deadline":"2026-09-03","regime":"inkassolov_1988",` +
+			`"principalOpen":"1000.00","feeKind":"reminder_fee","fee":"35.00","chargesEarlier":"0.00","interest":"0.00",` +
+			`"interestWaived":"0.00","interestPaid":"0.00","total":"1035.00","sentAt":` + at + `}`,
+		`{"sequence":2,"level":"reminder","announcesCollection":false,"channel":"email","recipient":"kari@example.org","language":"nb",` +
+			`"status":"withdrawn","createdAt":` + at + `,"withdrawnAt":` + at + `,"withdrawalReason":"on_hold"}`,
+		`{"sequence":5,"level":"reminder","announcesCollection":false,"channel":"paper","recipient":"","language":"nb",` +
+			`"status":"awaiting_print","createdAt":` + at + `}`,
+		`"holds":[{"kind":"disputed","note":"Bestridt","placedAt":` + at + `,"liftedAt":` + at + `,"liftNote":"Avklart","chargesAllowed":true},` +
+			`{"kind":"disputed","note":"Bestridt igjen","placedAt":` + at + `}]`,
+		`"collectionHandoffs":[{"handedOn":"2026-09-10","agency":"Inkasso AS","agencyReference":"K-1","note":"Overlevert","createdAt":` + at +
+			`,"withdrawnOn":"2026-09-11","withdrawalReason":"Betalt"},` +
+			`{"handedOn":"2026-09-11","agency":"Inkasso AS","agencyReference":"K-2","note":"Overlevert igjen","createdAt":` + at + `}]`,
+	} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("export %s has no %s", raw, want)
+		}
+	}
+	if n := strings.Count(raw, `"sequence":`); n != 7 {
+		t.Errorf("the export has %d letters, want all seven, in every status", n)
+	}
+}
+
+// eraseOf erases customer with deps' slot in a transaction it commits.
+func eraseOf(t *testing.T, h *harness, d module.Deps, customer int32) []contracts.ErasedData {
+	t.Helper()
+	var erased []contracts.ErasedData
+	inTx(t, h, true, func(tx pgx.Tx) {
+		var err error
+		if erased, err = invoices.Module().CustomerPersonalData(d).EraseCustomerData(context.Background(), tx, customer); err != nil {
+			t.Fatalf("EraseCustomerData: %v", err)
+		}
+	})
+	return erased
+}
+
+// TestErase_DoesEachAndReportsEach: after today's steps and in D19's order,
+// the erase withdraws every letter in flight customer_anonymised — queued,
+// awaiting print, failed — but leaves the printed one to the posting and the
+// one being sent to become sent, naming both in a warning; blanks every
+// letter's recipient in every status, one withdrawn earlier by a hold and a
+// sent one among them (B1); blanks the notes of the charge payments, the
+// waivers, the manual deliveries, the holds and their lifts and the
+// hand-offs; blanks the resolution note of the resolved bank lines its
+// payments and charge payments came from, and their events' notes, but
+// nothing of a line not resolved; and deletes the policy. Each kind reports
+// what it changed. Another customer's are all kept.
+func TestErase_DoesEachAndReportsEach(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	kari := plantReceivables(t, h, customerPerson, 1, "kari@example.org")
+	acme := plantReceivables(t, h, customerAcme, 2, "faktura@acme.example")
+	plantPolicy(t, h, customerPerson, "none", "Kari er syk")
+	var logged bytes.Buffer
+	d := disabledDeps(h)
+	d.Logger = slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	h.Advance(time.Hour)
+
+	if got, want := eraseOf(t, h, d, customerPerson), eraseReport(0, 0, 0, 0,
+		contracts.ErasedData{Kind: "invoices.reminders", Count: 6}, contracts.ErasedData{Kind: "invoices.chargePayments", Count: 2},
+		contracts.ErasedData{Kind: "invoices.chargeWaivers", Count: 1}, contracts.ErasedData{Kind: "invoices.manualDeliveries", Count: 2},
+		contracts.ErasedData{Kind: "invoices.invoiceHolds", Count: 2}, contracts.ErasedData{Kind: "invoices.collectionHandoffs", Count: 2},
+		contracts.ErasedData{Kind: "invoices.bankTransactions", Count: 3},
+		contracts.ErasedData{Kind: "invoices.customerReminderPolicies", Count: 1},
+	); !slices.Equal(got, want) {
+		t.Errorf("erased = %+v, want %+v", got, want)
+	}
+
+	letters := `SELECT string_agg(sequence || ' ' || status || ' ' || coalesce(withdrawal_reason, '-') || ' ' ||
+		CASE WHEN recipient = '' THEN 'blank' ELSE recipient END, ', ' ORDER BY sequence) FROM invoices.reminders WHERE invoice_id = $1`
+	if got := modtest.One[string](t, h.Harness, letters, kari.invoice); got != "1 withdrawn customer_anonymised blank, "+
+		"2 withdrawn on_hold blank, 3 sent - blank, 4 printed - blank, 5 withdrawn customer_anonymised blank, "+
+		"6 withdrawn customer_anonymised blank, 7 queued - blank" {
+		t.Errorf("the person's letters = %s; want those in flight withdrawn, the printed one and the one being sent left, "+
+			"and every recipient blank", got)
+	}
+	if got := modtest.One[string](t, h.Harness, letters, acme.invoice); strings.Count(got, "faktura@acme.example") != 5 ||
+		strings.Contains(got, "customer_anonymised") {
+		t.Errorf("another customer's letters = %s, want untouched", got)
+	}
+	log := logged.String()
+	for _, id := range []int64{kari.printed, kari.sending} {
+		if !strings.Contains(log, "level=WARN") || !strings.Contains(log, strconv.FormatInt(id, 10)) {
+			t.Errorf("the warning %q does not name letter %d, left by the erase", log, id)
+		}
+	}
+
+	notes := `SELECT
+		(SELECT string_agg(note, '|' ORDER BY id) FROM invoices.charge_payments WHERE invoice_id = $1) || '/' ||
+		(SELECT string_agg(note, '|' ORDER BY id) FROM invoices.charge_waivers WHERE invoice_id = $1) || '/' ||
+		(SELECT string_agg(note, '|' ORDER BY id) FROM invoices.manual_deliveries WHERE invoice_id = $1) || '/' ||
+		(SELECT string_agg(note || ',' || coalesce(lift_note, '-'), '|' ORDER BY id) FROM invoices.invoice_holds WHERE invoice_id = $1) || '/' ||
+		(SELECT string_agg(note || ',' || agency_reference, '|' ORDER BY id) FROM invoices.collection_handoffs WHERE invoice_id = $1)`
+	if got := modtest.One[string](t, h.Harness, notes, kari.invoice); got != "||//|/,|,-/,K-1|,K-2" {
+		t.Errorf("the person's notes = %s, want every one blank, the agency's references kept", got)
+	}
+	if got := modtest.One[string](t, h.Harness, notes, acme.invoice); got != "Betalte gebyret|Feil|/Kari klaget/Levert i hånd|Feil dag/"+
+		"Bestridt,Avklart|Bestridt igjen,-/Overlevert,K-1|Overlevert igjen,K-2" {
+		t.Errorf("another customer's notes = %s, want kept", got)
+	}
+
+	lines := `SELECT string_agg(t.status || ' ' || CASE WHEN t.resolution_note = '' THEN 'blank' ELSE t.resolution_note END || ' ' ||
+		coalesce((SELECT string_agg(CASE WHEN e.note = '' THEN 'blank' ELSE e.note END, ',') FROM invoices.bank_transaction_events e
+		    WHERE e.bank_transaction_id = t.id), '-') || ' ' || t.debtor_name, '; ' ORDER BY t.id)
+		FROM invoices.bank_transactions t WHERE t.id = ANY($1)`
+	if got := modtest.One[string](t, h.Harness, lines, []int64{kari.resolvedLine, kari.eventOnlyLine, kari.matchedLine, kari.chargeLine}); got !=
+		"resolved blank blank Kari Nordmann; resolved blank blank Kari Nordmann; "+
+			"matched blank Banken tok den tilbake Kari Nordmann; resolved blank - Kari Nordmann" {
+		t.Errorf("the person's bank lines = %s; want the resolved ones' notes and events blank, the matched one's event "+
+			"kept, the bank's payer data kept", got)
+	}
+	if got := modtest.One[string](t, h.Harness, lines, []int64{acme.resolvedLine, acme.chargeLine}); got !=
+		"resolved Kari ringte om innbetalingen Kari ringte Kari Nordmann; resolved Gebyr fra Kari - Kari Nordmann" {
+		t.Errorf("another customer's bank lines = %s, want kept", got)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.payments WHERE invoice_id = $1`, kari.invoice); n != 3 {
+		t.Errorf("the person's payments = %d, want all three kept", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.customer_reminder_policies WHERE customer_id = $1`, customerPerson); n != 0 {
+		t.Error("the person's reminder policy was kept")
+	}
+}
+
+// TestErase_TwiceReportsZeros: a second erase finds nothing of the
+// receivables either.
+func TestErase_TwiceReportsZeros(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	plantReceivables(t, h, customerPerson, 1, "kari@example.org")
+	plantPolicy(t, h, customerPerson, "none", "")
+	eraseOf(t, h, disabledDeps(h), customerPerson)
+	h.Advance(time.Hour)
+	if got, want := eraseOf(t, h, disabledDeps(h), customerPerson), eraseReport(0, 0, 0, 0); !slices.Equal(got, want) {
+		t.Errorf("a second erase = %+v, want zeros", got)
+	}
+}
+
+// startErase erases customer in a transaction of its own under a 10-second
+// deadline on its own goroutine, committing it, and answers its outcome.
+func startErase(h *harness, customer int32) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		tx, err := h.Pool().Begin(ctx)
+		if err != nil {
+			done <- err
+			return
+		}
+		defer func() { _ = tx.Rollback(context.Background()) }()
+		if _, err := invoices.Module().CustomerPersonalData(disabledDeps(h)).EraseCustomerData(ctx, tx, customer); err != nil {
+			done <- err
+			return
+		}
+		done <- tx.Commit(ctx)
+	}()
+	return done
+}
+
+// erased waits for an erase started with startErase and fails the test
+// unless it committed.
+func erased(t *testing.T, what string, done <-chan error) {
+	t.Helper()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("%s: %v", what, err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatalf("%s never finished", what)
+	}
+}
+
+// TestErase_RacesQueueApply: an apply on an exception line of the person's
+// invoice, parked after its line lock — the line FOR NO KEY UPDATE, no
+// invoice. The line is linked to a removed payment of the person and carries
+// a note no flow writes on an open line today, so only the erase's
+// "resolved" guard keeps it off the line (reading 54): the erase holds the
+// person's documents, blanks the resolved line's note and commits without
+// waiting on the apply's line; released, the apply locks the invoice and
+// resolves its line. Both finish; no deadlock.
+func TestErase_RacesQueueApply(t *testing.T) {
+	h, _ := matchHarness(t, modtest.WithPoolMaxConns(2))
+	inv := kidInvoice(t, h)
+	toMatchDay(h)
+	c := importer(t, h)
+	_, ids := camtLines(t, h, c, "ERASE-1", noKidEntry(6, 100, "Til faktura", "DONE"), noKidEntry(6, 400, "Til faktura", "OPEN"))
+	done := applyBody(allocate(inv, 100))
+	done["note"] = "Acme ringte"
+	acted(t, c, ids["DONE"], "apply", done)
+	h.Exec(t, `INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, source, bank_transaction_id,
+		    registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason)
+		VALUES ($1, DATE '2026-10-06', 400, 'NOK', 'camt054', $2, gen_random_uuid(), now(), now(), gen_random_uuid(), 'Feil')`, inv.ID, ids["OPEN"])
+	h.Exec(t, `UPDATE invoices.bank_transactions SET resolution_note = 'Acme sa det var deres' WHERE id = $1`, ids["OPEN"])
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+	hook, parked := parkEach()
+	restore := invoices.SetQueueAfterLineLock(hook)
+	defer restore()
+
+	applyDone := startAction(c, ids["OPEN"], "apply", applyBody(allocate(inv, 400)))
+	p := waitParked(t, "the apply", parked)
+	if got := heldMode(t, probeConn, "invoices.bank_transactions", "id = $1", ids["OPEN"]); got != modeNoKeyUpdate {
+		t.Errorf("the open line is held %q, want FOR NO KEY UPDATE", got)
+	}
+	erased(t, "the erase beside the parked apply", startErase(h, customerAcme))
+	close(p.release)
+	if res := finished(t, "the apply", applyDone, http.StatusOK); res.Status == http.StatusOK {
+		var l queueLineJSON
+		res.JSON(&l)
+		if l.Status != "resolved" {
+			t.Errorf("the apply = %s, want resolved", l.Status)
+		}
+	}
+	if got := modtest.One[string](t, h.Harness, `SELECT resolution_note FROM invoices.bank_transactions WHERE id = $1`, ids["DONE"]); got != "" {
+		t.Errorf("the resolved line's note = %q, want blank", got)
+	}
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("Postgres broke %d deadlock(s)", after-before)
+	}
+}
+
+// TestErase_DoesNotWaitOnAPrintedLetter: a reprint holds a batch's printed
+// letters without their invoice (Task 13); the erase blanks only a recipient
+// that is not blank already, and a paper letter's always is, so it never
+// waits on one — here held FOR NO KEY UPDATE on a raw connection — and the
+// order documents → letters cannot meet letters → documents.
+func TestErase_DoesNotWaitOnAPrintedLetter(t *testing.T) {
+	h := raceHarness(t)
+	id := plantOverdue(t, h, overdueSpec{number: 1, customer: customerPerson, issue: "2026-07-01", due: "2026-08-03"})
+	printed := plantLetterIn(t, h, id, 1, "printed")
+	queued := queuedLetter(t, h, id, 2)
+	raw := holdRow(t, h, `SELECT 1 FROM invoices.reminders WHERE id = $1 FOR NO KEY UPDATE`, printed)
+	erased(t, "the erase beside a held printed letter", startErase(h, customerPerson))
+	raw.release(t)
+	if s := letterStateOf(t, h, printed); s.status != "printed" {
+		t.Errorf("the printed letter = %+v, want left for the posting", s)
+	}
+	if got := modtest.One[string](t, h.Harness, `SELECT status || ' ' || recipient FROM invoices.reminders WHERE id = $1`, queued); got != "withdrawn " {
+		t.Errorf("the queued letter = %q, want withdrawn with no recipient", got)
+	}
+}
+
+// TestErase_ALetterRacingTheEraseIsInsertedBlank: a run's item parked after
+// its invoice lock while the erase waits on the person's documents; released,
+// the letter is inserted with the reminder address and committed, and the
+// erase, locking after it, withdraws it and blanks its address. Reversed — the
+// erase holding the documents with its marker written — a letter inserted
+// meanwhile waits on the trigger's FOR SHARE of its invoice and, once the
+// erase commits, the trigger reads the marker and writes it with no address.
+func TestErase_ALetterRacingTheEraseIsInsertedBlank(t *testing.T) {
+	h := runReady(t, "", modtest.WithPoolMaxConns(2))
+	id := deliveredOn(t, h, 1, customerAcme, "2026-08-03")
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+	hook, parked := parkEach()
+	restore := invoices.SetRunItemAfterLock(hook)
+	runDone := startRequest(payer(t, h), http.MethodPost, reminderRunsPath, runBody(yes, item(id, "reminder")))
+	p := waitParked(t, "the run's item", parked)
+	eraseDone := startErase(h, customerAcme)
+	eraser := newWaiter(t, probeConn)
+	if got := heldMode(t, probeConn, "invoices.invoices", "id = $1", id); got != modeUpdate {
+		t.Errorf("the invoice is held %q by the run's item, want FOR UPDATE", got)
+	}
+	close(p.release)
+	restore()
+	r := made(t, "the run", finished(t, "the run", runDone, http.StatusCreated))
+	erased(t, "the erase", eraseDone)
+	if len(r.Created) != 1 {
+		t.Fatalf("the run = %+v, want one letter", r)
+	}
+	if got := modtest.One[string](t, h.Harness, `SELECT status || ' ' || coalesce(withdrawal_reason, '-') || ' ' || recipient
+		FROM invoices.reminders WHERE id = $1`, r.Created[0].ID); got != "withdrawn customer_anonymised " {
+		t.Errorf("the letter the erase waited for = %q (eraser pid %d), want withdrawn with no address", got, eraser)
+	}
+
+	// Reversed: the erase of Kari holds her documents and has written the
+	// marker; a letter inserted for her waits on its invoice, then is
+	// written blank.
+	kari := deliveredOn(t, h, 2, customerPerson, "2026-08-03")
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := invoices.Module().CustomerPersonalData(disabledDeps(h)).EraseCustomerData(ctx, tx, customerPerson); err != nil {
+		t.Fatalf("EraseCustomerData: %v", err)
+	}
+	inserter := ownConn(t, h)
+	run := plantRun(t, h)
+	inserted := make(chan error, 1)
+	var letter int64
+	go func() {
+		inserted <- inserter.QueryRow(ctx, `
+			INSERT INTO invoices.reminders (invoice_id, run_id, sequence, level, channel, recipient, language, created_at,
+			    created_by_user_id, status)
+			VALUES ($1, $2, 1, 'reminder', 'email', 'kari@example.org', 'nb', now(), gen_random_uuid(), 'queued')
+			RETURNING id`, kari, run).Scan(&letter)
+	}()
+	if got := blockersOf(t, probeConn, newWaiter(t, probeConn)); len(got) != 1 {
+		t.Errorf("the insert waits on %v, want the erase alone", got)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-inserted:
+		if err != nil {
+			t.Fatalf("the insert: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the insert never finished")
+	}
+	if got := modtest.One[string](t, h.Harness, `SELECT recipient FROM invoices.reminders WHERE id = $1`, letter); got != "" {
+		t.Errorf("the letter inserted after the marker = %q, want no address", got)
+	}
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("Postgres broke %d deadlock(s)", after-before)
 	}
 }

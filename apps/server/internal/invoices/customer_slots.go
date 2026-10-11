@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,6 +35,15 @@ const (
 	// (invoices payments and reminders design D7): the one row keyed by
 	// customer, re-pointed by a merge and deleted by an erase.
 	kindInvoicesReminderPolicies = "invoices.customerReminderPolicies"
+	// The receivables an erase changes (invoices payments and reminders
+	// design D19), reported after the five above, the policy last.
+	kindInvoicesReminders          = "invoices.reminders"
+	kindInvoicesChargePayments     = "invoices.chargePayments"
+	kindInvoicesChargeWaivers      = "invoices.chargeWaivers"
+	kindInvoicesManualDeliveries   = "invoices.manualDeliveries"
+	kindInvoicesInvoiceHolds       = "invoices.invoiceHolds"
+	kindInvoicesCollectionHandoffs = "invoices.collectionHandoffs"
+	kindInvoicesBankTransactions   = "invoices.bankTransactions"
 )
 
 // customerReferenceHolder is this module's contracts.CustomerReferenceHolder:
@@ -87,20 +98,31 @@ func (h *customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx
 // customerPersonalData is this module's contracts.CustomerPersonalData: what
 // was invoiced to a private person, handed over, and on anonymisation the
 // drafts erased while the issued documents stay — their payments with the
-// notes blanked, their deliveries with the address blanked — and the
-// customer marked erased, so no later send reaches them (D6).
+// notes blanked, their deliveries with the address blanked (D6), their
+// letters withdrawn while in flight and every one's address blanked, the
+// notes of their receivables and of the resolved bank lines their money
+// came from blanked (invoices payments and reminders design D19) — and the
+// customer marked erased, so no later send or letter reaches them.
 type customerPersonalData struct {
 	pool *pgxpool.Pool
 	// clock is Deps.Clock, for the erased-customer marker's erased_at
 	// (payments and delivery design D6).
 	clock func() time.Time
+	// logger is Deps.Logger, where the erase names the letters it leaves
+	// (invoices payments and reminders design D19); slog's default when
+	// the module is built without one.
+	logger *slog.Logger
 }
 
 var _ contracts.CustomerPersonalData = customerPersonalData{}
 
 // newCustomerPersonalData is Module's CustomerPersonalData.
 func newCustomerPersonalData(d module.Deps) contracts.CustomerPersonalData {
-	return customerPersonalData{pool: d.Pool, clock: d.Clock}
+	logger := d.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return customerPersonalData{pool: d.Pool, clock: d.Clock, logger: logger}
 }
 
 type invoicesSection struct {
@@ -151,6 +173,16 @@ type exportedDocument struct {
 	Payments      []exportedPayment      `json:"payments,omitzero"`
 	Deliveries    []exportedDelivery     `json:"deliveries,omitzero"`
 	Transmissions []exportedTransmission `json:"transmissions,omitzero"`
+	// ChargePayments, ChargeWaivers, ManualDeliveries, Reminders, Holds and
+	// CollectionHandoffs are an issued document's receivables (invoices
+	// payments and reminders design D19), empty when it has none; a draft
+	// has none of them.
+	ChargePayments     []exportedChargePayment  `json:"chargePayments,omitzero"`
+	ChargeWaivers      []exportedChargeWaiver   `json:"chargeWaivers,omitzero"`
+	ManualDeliveries   []exportedManualDelivery `json:"manualDeliveries,omitzero"`
+	Reminders          []exportedReminder       `json:"reminders,omitzero"`
+	Holds              []exportedHold           `json:"holds,omitzero"`
+	CollectionHandoffs []exportedHandoff        `json:"collectionHandoffs,omitzero"`
 	// Timesheet is the document's timesheet as printed (invoices work design
 	// D5), an issued document's and a draft's alike — the customer received,
 	// or would receive, it; nil leaves the key out of a document without one.
@@ -172,14 +204,121 @@ type exportedTimesheetRow struct {
 // registered, and its removal when it was removed: a bank reference often
 // names the payer, and a note is staff free text about them.
 type exportedPayment struct {
-	PaidOn        string     `json:"paidOn"`
-	Amount        string     `json:"amount"`
-	Currency      string     `json:"currency"`
-	Reference     string     `json:"reference,omitempty"`
+	PaidOn   string `json:"paidOn"`
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+	// Source is how it was registered — manual, ocr or camt054 — and
+	// BankLine, for an imported one, what the bank said of the payer
+	// (invoices payments and reminders design D19).
+	Source        string            `json:"source"`
+	Reference     string            `json:"reference,omitempty"`
+	Note          string            `json:"note,omitempty"`
+	RegisteredAt  time.Time         `json:"registeredAt"`
+	RemovedAt     *time.Time        `json:"removedAt,omitempty"`
+	RemovalReason string            `json:"removalReason,omitempty"`
+	BankLine      *exportedBankLine `json:"bankLine,omitempty"`
+}
+
+// exportedBankLine is the bank line an imported payment or charge payment
+// came from, as the bank wrote it: the booking day, the debtor's name and
+// account and the remittance text (D19).
+type exportedBankLine struct {
+	BookedOn      string `json:"bookedOn"`
+	DebtorName    string `json:"debtorName,omitempty"`
+	DebtorAccount string `json:"debtorAccount,omitempty"`
+	Text          string `json:"text,omitempty"`
+}
+
+// exportedChargePayment is one payment of an invoice's reminder charges, as
+// registered, and its removal when it was removed (D9, D19).
+type exportedChargePayment struct {
+	PaidOn        string            `json:"paidOn"`
+	Amount        string            `json:"amount"`
+	Currency      string            `json:"currency"`
+	Source        string            `json:"source"`
+	Reference     string            `json:"reference,omitempty"`
+	Note          string            `json:"note,omitempty"`
+	RegisteredAt  time.Time         `json:"registeredAt"`
+	RemovedAt     *time.Time        `json:"removedAt,omitempty"`
+	RemovalReason string            `json:"removalReason,omitempty"`
+	BankLine      *exportedBankLine `json:"bankLine,omitempty"`
+}
+
+// exportedChargeWaiver is one charge a letter claimed and staff released
+// (D9, D19), naming its letter by sequence.
+type exportedChargeWaiver struct {
+	ReminderSequence int16     `json:"reminderSequence"`
+	Kind             string    `json:"kind"`
+	Amount           string    `json:"amount"`
+	InterestThrough  *string   `json:"interestThrough,omitempty"`
+	Reason           string    `json:"reason"`
+	Note             string    `json:"note,omitempty"`
+	WaivedAt         time.Time `json:"waivedAt"`
+}
+
+// exportedManualDelivery is one delivery recorded by hand, and its removal
+// when it was removed (D8, D19).
+type exportedManualDelivery struct {
+	Kind          string     `json:"kind"`
+	DeliveredOn   string     `json:"deliveredOn"`
 	Note          string     `json:"note,omitempty"`
-	RegisteredAt  time.Time  `json:"registeredAt"`
+	RecordedAt    time.Time  `json:"recordedAt"`
 	RemovedAt     *time.Time `json:"removedAt,omitempty"`
 	RemovalReason string     `json:"removalReason,omitempty"`
+}
+
+// exportedReminder is one letter (D10, D19) — its level, channel, recipient
+// ("" for paper and once the customer is anonymised), status, dates,
+// amounts and regime — never its PDF's key, its Message-ID or an SMTP
+// error, which may quote the address.
+type exportedReminder struct {
+	Sequence            int16      `json:"sequence"`
+	Level               string     `json:"level"`
+	AnnouncesCollection bool       `json:"announcesCollection"`
+	Channel             string     `json:"channel"`
+	Recipient           string     `json:"recipient"`
+	Language            string     `json:"language"`
+	Status              string     `json:"status"`
+	CreatedAt           time.Time  `json:"createdAt"`
+	SentOn              *string    `json:"sentOn,omitempty"`
+	Deadline            *string    `json:"deadline,omitempty"`
+	Regime              string     `json:"regime,omitempty"`
+	PrincipalOpen       *string    `json:"principalOpen,omitempty"`
+	FeeKind             string     `json:"feeKind,omitempty"`
+	Fee                 *string    `json:"fee,omitempty"`
+	Compensation        *string    `json:"compensation,omitempty"`
+	ChargesEarlier      *string    `json:"chargesEarlier,omitempty"`
+	Interest            *string    `json:"interest,omitempty"`
+	InterestWaived      *string    `json:"interestWaived,omitempty"`
+	InterestPaid        *string    `json:"interestPaid,omitempty"`
+	InterestFrom        *string    `json:"interestFrom,omitempty"`
+	Total               *string    `json:"total,omitempty"`
+	SentAt              *time.Time `json:"sentAt,omitempty"`
+	FailedAt            *time.Time `json:"failedAt,omitempty"`
+	WithdrawnAt         *time.Time `json:"withdrawnAt,omitempty"`
+	WithdrawalReason    string     `json:"withdrawalReason,omitempty"`
+}
+
+// exportedHold is one hold of a disputed invoice and its lift (D11, D19).
+type exportedHold struct {
+	Kind           string     `json:"kind"`
+	Note           string     `json:"note,omitempty"`
+	PlacedAt       time.Time  `json:"placedAt"`
+	LiftedAt       *time.Time `json:"liftedAt,omitempty"`
+	LiftNote       string     `json:"liftNote,omitempty"`
+	ChargesAllowed *bool      `json:"chargesAllowed,omitempty"`
+}
+
+// exportedHandoff is one hand-off to a collection agency and its withdrawal
+// (D11, D19).
+type exportedHandoff struct {
+	HandedOn         string    `json:"handedOn"`
+	Agency           string    `json:"agency"`
+	AgencyReference  string    `json:"agencyReference,omitempty"`
+	Note             string    `json:"note,omitempty"`
+	CreatedAt        time.Time `json:"createdAt"`
+	WithdrawnOn      *string   `json:"withdrawnOn,omitempty"`
+	WithdrawalReason string    `json:"withdrawalReason,omitempty"`
 }
 
 // exportedDelivery is one e-mail that handed a document over: to whom, when
@@ -344,9 +483,11 @@ func decimalOf(n pgtype.Numeric, places int) (string, error) {
 // carries its payments, removed ones with their removal, its deliveries
 // (payments and delivery design D6) and its EHF transmissions (EHF and KID
 // design D12); every document its project's code as snapshotted (invoices
-// work design D9) and its timesheet as printed (D5); and the section the
-// customer's reminder policy (invoices payments and reminders design D7,
-// D19). Every read is in one REPEATABLE READ, READ ONLY transaction,
+// work design D9) and its timesheet as printed (D5); an issued document its
+// receivables — charge payments, waivers, manual deliveries, letters, holds
+// and hand-offs — and each payment its source and an imported one its bank
+// line (invoices payments and reminders design D19); and the section the
+// customer's reminder policy (D7, D19). Every read is in one REPEATABLE READ, READ ONLY transaction,
 // as the customers module reads its own part of the export: a payment or a
 // send landing midway cannot make the file disagree with itself.
 func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
@@ -392,6 +533,10 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 	for _, l := range lines {
 		byDoc[l.InvoiceID] = append(byDoc[l.InvoiceID], l)
 	}
+	recv, err := readReceivables(ctx, q, ids)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read customer %d's receivables: %w", customerID, err)
+	}
 	payments, err := q.PaymentsOfDocuments(ctx, ids)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read customer %d's payments: %w", customerID, err)
@@ -403,9 +548,9 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 			return nil, err
 		}
 		e := exportedPayment{
-			PaidOn: orEmpty(dateText(r.PaidOn)), Amount: amount, Currency: r.Currency,
+			PaidOn: orEmpty(dateText(r.PaidOn)), Amount: amount, Currency: r.Currency, Source: r.Source,
 			Reference: r.Reference, Note: r.Note, RegisteredAt: r.RegisteredAt.UTC(),
-			RemovalReason: orEmpty(r.RemovalReason),
+			RemovalReason: orEmpty(r.RemovalReason), BankLine: recv.lineOf(r.BankTransactionID),
 		}
 		if r.RemovedAt != nil {
 			e.RemovedAt = ptr(r.RemovedAt.UTC())
@@ -503,12 +648,162 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 			e.Payments = append([]exportedPayment{}, paymentsOf[d.ID]...)
 			e.Deliveries = append([]exportedDelivery{}, deliveriesOf[d.ID]...)
 			e.Transmissions = append([]exportedTransmission{}, transmissionsOf[d.ID]...)
+			e.ChargePayments = append([]exportedChargePayment{}, recv.chargePayments[d.ID]...)
+			e.ChargeWaivers = append([]exportedChargeWaiver{}, recv.waivers[d.ID]...)
+			e.ManualDeliveries = append([]exportedManualDelivery{}, recv.manualDeliveries[d.ID]...)
+			e.Reminders = append([]exportedReminder{}, recv.reminders[d.ID]...)
+			e.Holds = append([]exportedHold{}, recv.holds[d.ID]...)
+			e.CollectionHandoffs = append([]exportedHandoff{}, recv.handoffs[d.ID]...)
 			section.Documents = append(section.Documents, e)
 		} else {
 			section.Drafts = append(section.Drafts, e)
 		}
 	}
 	return section, nil
+}
+
+// exportedReceivables is every receivable of a person's documents as the
+// export writes it (invoices payments and reminders design D19), by
+// document, and the bank lines their money came from, by id.
+type exportedReceivables struct {
+	lines            map[int64]exportedBankLine
+	chargePayments   map[int64][]exportedChargePayment
+	waivers          map[int64][]exportedChargeWaiver
+	manualDeliveries map[int64][]exportedManualDelivery
+	reminders        map[int64][]exportedReminder
+	holds            map[int64][]exportedHold
+	handoffs         map[int64][]exportedHandoff
+}
+
+// lineOf is the bank line id names, nil for none.
+func (r exportedReceivables) lineOf(id *int64) *exportedBankLine {
+	if id == nil {
+		return nil
+	}
+	if l, ok := r.lines[*id]; ok {
+		return &l
+	}
+	return nil
+}
+
+// decimalOrNil is a nullable numeric column as exact decimal text, nil when
+// unset.
+func decimalOrNil(n pgtype.Numeric) (*string, error) {
+	if !n.Valid {
+		return nil, nil
+	}
+	d, err := decimalOf(n, 2)
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+// readReceivables reads every receivable of the documents ids with q, the
+// export's transaction.
+func readReceivables(ctx context.Context, q *store.Queries, ids []int64) (exportedReceivables, error) {
+	r := exportedReceivables{
+		lines: map[int64]exportedBankLine{}, chargePayments: map[int64][]exportedChargePayment{},
+		waivers: map[int64][]exportedChargeWaiver{}, manualDeliveries: map[int64][]exportedManualDelivery{},
+		reminders: map[int64][]exportedReminder{}, holds: map[int64][]exportedHold{}, handoffs: map[int64][]exportedHandoff{},
+	}
+	lines, err := q.BankLinesOfDocuments(ctx, ids)
+	if err != nil {
+		return r, err
+	}
+	for _, l := range lines {
+		r.lines[l.ID] = exportedBankLine{
+			BookedOn: orEmpty(dateText(l.BookedOn)), DebtorName: l.DebtorName, DebtorAccount: l.DebtorAccount, Text: l.RemittanceText,
+		}
+	}
+	chargePayments, err := q.ChargePaymentsOfDocuments(ctx, ids)
+	if err != nil {
+		return r, err
+	}
+	for _, c := range chargePayments {
+		amount, err := decimalOf(c.Amount, 2)
+		if err != nil {
+			return r, err
+		}
+		r.chargePayments[c.InvoiceID] = append(r.chargePayments[c.InvoiceID], exportedChargePayment{
+			PaidOn: orEmpty(dateText(c.PaidOn)), Amount: amount, Currency: c.Currency, Source: c.Source, Reference: c.Reference,
+			Note: c.Note, RegisteredAt: c.RegisteredAt.UTC(), RemovedAt: utcOf(c.RemovedAt), RemovalReason: orEmpty(c.RemovalReason),
+			BankLine: r.lineOf(c.BankTransactionID),
+		})
+	}
+	letters, err := q.RemindersOfDocuments(ctx, ids)
+	if err != nil {
+		return r, err
+	}
+	sequenceOf := map[int64]int16{}
+	for _, l := range letters {
+		sequenceOf[l.ID] = l.Sequence
+		e := exportedReminder{
+			Sequence: l.Sequence, Level: l.Level, AnnouncesCollection: l.AnnouncesCollection, Channel: l.Channel,
+			Recipient: l.Recipient, Language: l.Language, Status: l.Status, CreatedAt: l.CreatedAt.UTC(),
+			SentOn: dateText(l.SentOn), Deadline: dateText(l.Deadline), Regime: orEmpty(l.Regime), FeeKind: orEmpty(l.FeeKind),
+			InterestFrom: dateText(l.InterestFrom), SentAt: utcOf(l.SentAt), FailedAt: utcOf(l.FailedAt),
+			WithdrawnAt: utcOf(l.WithdrawnAt), WithdrawalReason: orEmpty(l.WithdrawalReason),
+		}
+		for _, c := range []struct {
+			dst **string
+			n   pgtype.Numeric
+		}{
+			{&e.PrincipalOpen, l.PrincipalOpen}, {&e.Fee, l.Fee}, {&e.Compensation, l.Compensation},
+			{&e.ChargesEarlier, l.ChargesEarlier}, {&e.Interest, l.Interest}, {&e.InterestWaived, l.InterestWaived},
+			{&e.InterestPaid, l.InterestPaid}, {&e.Total, l.Total},
+		} {
+			if *c.dst, err = decimalOrNil(c.n); err != nil {
+				return r, err
+			}
+		}
+		r.reminders[l.InvoiceID] = append(r.reminders[l.InvoiceID], e)
+	}
+	waivers, err := q.WaiversOfDocuments(ctx, ids)
+	if err != nil {
+		return r, err
+	}
+	for _, w := range waivers {
+		amount, err := decimalOf(w.Amount, 2)
+		if err != nil {
+			return r, err
+		}
+		r.waivers[w.InvoiceID] = append(r.waivers[w.InvoiceID], exportedChargeWaiver{
+			ReminderSequence: sequenceOf[w.ReminderID], Kind: w.Kind, Amount: amount, InterestThrough: dateText(w.InterestThrough),
+			Reason: w.Reason, Note: w.Note, WaivedAt: w.WaivedAt.UTC(),
+		})
+	}
+	deliveries, err := q.ManualDeliveriesOfDocuments(ctx, ids)
+	if err != nil {
+		return r, err
+	}
+	for _, d := range deliveries {
+		r.manualDeliveries[d.InvoiceID] = append(r.manualDeliveries[d.InvoiceID], exportedManualDelivery{
+			Kind: d.Kind, DeliveredOn: orEmpty(dateText(d.DeliveredOn)), Note: d.Note, RecordedAt: d.RecordedAt.UTC(),
+			RemovedAt: utcOf(d.RemovedAt), RemovalReason: orEmpty(d.RemovalReason),
+		})
+	}
+	holds, err := q.HoldsOfDocuments(ctx, ids)
+	if err != nil {
+		return r, err
+	}
+	for _, h := range holds {
+		r.holds[h.InvoiceID] = append(r.holds[h.InvoiceID], exportedHold{
+			Kind: h.Kind, Note: h.Note, PlacedAt: h.PlacedAt.UTC(), LiftedAt: utcOf(h.LiftedAt), LiftNote: orEmpty(h.LiftNote),
+			ChargesAllowed: h.ChargesAllowed,
+		})
+	}
+	handoffs, err := q.HandoffsOfDocuments(ctx, ids)
+	if err != nil {
+		return r, err
+	}
+	for _, h := range handoffs {
+		r.handoffs[h.InvoiceID] = append(r.handoffs[h.InvoiceID], exportedHandoff{
+			HandedOn: orEmpty(dateText(h.HandedOn)), Agency: h.Agency, AgencyReference: h.AgencyReference, Note: h.Note,
+			CreatedAt: h.CreatedAt.UTC(), WithdrawnOn: dateText(h.WithdrawnOn), WithdrawalReason: orEmpty(h.WithdrawalReason),
+		})
+	}
+	return r, nil
 }
 
 // EraseCustomerData anonymises the person in this module (payments and
@@ -521,36 +816,52 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 // queued EHF transmission of theirs that was never attempted, leased or not
 // (EHF and KID design D12); deletes the drafts — their line sources and
 // timesheet rows with them, by the cascade (invoices work design D2, D5),
-// while an issued document's timesheet stays with it; and deletes the
-// customer's reminder policy (invoices payments and reminders design D7,
-// D19) — staff's decision and note about the person, which no retention rule
-// keeps, reported as invoices.customerReminderPolicies. A draft is
-// not a salgsdokument, so it has no retention basis and GDPR art. 17
-// applies; an issued document, its buyer snapshot and its payments are
-// bookkeeping material kept under bokføringsloven § 13 — five years after
-// the end of the financial year — which is why invoices.documents reports 0
-// and a payment keeps its date, its amount and the bank's reference. A
-// payment's note is staff free text about the person, which no retention
-// rule needs: invoices.payments reports the notes blanked. A delivery is
-// kept as the record of when the claim was handed to the mail server, its
-// address gone. A transmission is kept whole — its UBL is the sales
-// document as the PDF is, and its receiver is an organisation's id or the
-// snapshot's own — except a queued one never attempted: it has sent
-// nothing, so it is cancelled rather than sent after the person is gone,
-// and invoices.transmissions reports those. A worker holding one stamps its
+// while an issued document's timesheet stays with it. Then the receivables
+// (invoices payments and reminders design D19), in D19's order: every letter
+// in flight withdrawn customer_anonymised (withdrawInFlight, each document
+// already held) — a printed letter left to the posting's re-judge and one
+// being sent left to become sent (plan readings 9, 45), both named in a
+// warning, since the report is counts; every letter's recipient blanked, in
+// every status (B1); the notes of the charge payments, the waivers, the
+// manual deliveries, the holds and their lifts, and the hand-offs blanked;
+// the resolution note of every resolved bank line the person's payments or
+// charge payments came from, and its events' notes, blanked — the lock
+// order's one named exception (D18, plan reading 54: no path locks a
+// resolved line before an invoice, and a line that is not resolved is
+// skipped, never waited for); and last the customer's reminder policy
+// deleted (D7) — staff's decision and note about the person, which no
+// retention rule keeps, reported as invoices.customerReminderPolicies. A
+// draft is not a salgsdokument, so it has no retention basis and GDPR art.
+// 17 applies; an issued document, its buyer snapshot, its payments, its
+// letters, charge payments, waivers, deliveries, holds and hand-offs, and
+// the bank's lines with their payer data are bookkeeping material kept
+// under bokføringsloven § 13 — five years after the end of the financial
+// year — and a sent letter is also the claim's documentation and the
+// bad-debt relief's evidence (FMVA § 4-7-1); which is why invoices.documents
+// reports 0 and the receivables' kinds report the rows whose address or
+// note was blanked, or whose letter was withdrawn. A payment's note is staff
+// free text about the person, which no retention rule needs:
+// invoices.payments reports the notes blanked. A delivery is kept as the
+// record of when the claim was handed to the mail server, its address gone.
+// A transmission is kept whole — its UBL is the sales document as the PDF
+// is, and its receiver is an organisation's id or the snapshot's own —
+// except a queued one never attempted: it has sent nothing, so it is
+// cancelled rather than sent after the person is gone, and
+// invoices.transmissions reports those. A worker holding one stamps its
 // marker only on a row still queued, so it finds the row cancelled and makes
 // no call. One whose crash marker is set may already be with the provider
-// and is left to the worker.
+// and is left to the worker. One clock read for the whole erase.
 // contracts.ErasedData carries no reason;
 // docs/src/content/docs/en/reference/invoices.md and the anonymisation table
 // in docs/src/content/docs/en/reference/customers.md say it. Run twice, it
 // reports zeros and the marker keeps its first time.
 func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, customerID int32) ([]contracts.ErasedData, error) {
+	now := p.clock()
 	q := store.New(tx)
 	if err := q.LockCustomerDocuments(ctx, store.LockCustomerDocumentsParams{FromCustomerID: customerID, IntoCustomerID: customerID}); err != nil {
 		return nil, fmt.Errorf("invoices: lock customer %d's documents: %w", customerID, err)
 	}
-	if err := q.MarkCustomerErased(ctx, store.MarkCustomerErasedParams{CustomerID: customerID, ErasedAt: p.clock()}); err != nil {
+	if err := q.MarkCustomerErased(ctx, store.MarkCustomerErasedParams{CustomerID: customerID, ErasedAt: now}); err != nil {
 		return nil, fmt.Errorf("invoices: mark customer %d erased: %w", customerID, err)
 	}
 	blanked, err := q.BlankCustomerDeliveries(ctx, customerID)
@@ -562,7 +873,7 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 		return nil, fmt.Errorf("invoices: blank customer %d's payment notes: %w", customerID, err)
 	}
 	cancelled, err := q.CancelCustomerUnattemptedTransmissions(ctx, store.CancelCustomerUnattemptedTransmissionsParams{
-		CustomerID: customerID, Now: p.clock(),
+		CustomerID: customerID, Now: now,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("invoices: cancel customer %d's unattempted transmissions: %w", customerID, err)
@@ -571,16 +882,83 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	if err != nil {
 		return nil, fmt.Errorf("invoices: erase customer %d's drafts: %w", customerID, err)
 	}
-	policies, err := q.DeletePolicy(ctx, customerID)
+	letters, err := p.eraseLetters(ctx, q, customerID, now)
 	if err != nil {
-		return nil, fmt.Errorf("invoices: delete customer %d's reminder policy: %w", customerID, err)
+		return nil, err
 	}
-	return []contracts.ErasedData{
+	erased := []contracts.ErasedData{
 		{Kind: kindInvoicesDrafts, Count: drafts},
 		{Kind: kindInvoicesDocuments, Count: 0},
 		{Kind: kindInvoicesPayments, Count: notes},
 		{Kind: kindInvoicesDeliveries, Count: blanked},
 		{Kind: kindInvoicesTransmissions, Count: cancelled},
-		{Kind: kindInvoicesReminderPolicies, Count: policies},
-	}, nil
+		{Kind: kindInvoicesReminders, Count: letters},
+	}
+	for _, step := range []struct {
+		kind  string
+		blank func(context.Context, int32) (int64, error)
+	}{
+		{kindInvoicesChargePayments, q.BlankCustomerChargePaymentNotes},
+		{kindInvoicesChargeWaivers, q.BlankCustomerWaiverNotes},
+		{kindInvoicesManualDeliveries, q.BlankCustomerManualDeliveryNotes},
+		{kindInvoicesInvoiceHolds, q.BlankCustomerHoldNotes},
+		{kindInvoicesCollectionHandoffs, q.BlankCustomerHandoffNotes},
+	} {
+		n, err := step.blank(ctx, customerID)
+		if err != nil {
+			return nil, fmt.Errorf("invoices: blank customer %d's notes of %s: %w", customerID, step.kind, err)
+		}
+		erased = append(erased, contracts.ErasedData{Kind: step.kind, Count: n})
+	}
+	lines, err := q.BlankCustomerBankLineNotes(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: blank customer %d's bank lines' notes: %w", customerID, err)
+	}
+	events, err := q.BlankCustomerBankEventNotes(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: blank customer %d's bank lines' event notes: %w", customerID, err)
+	}
+	touched := slices.Compact(slices.Sorted(slices.Values(append(lines, events...))))
+	policies, err := q.DeletePolicy(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: delete customer %d's reminder policy: %w", customerID, err)
+	}
+	return append(erased,
+		contracts.ErasedData{Kind: kindInvoicesBankTransactions, Count: int64(len(touched))},
+		contracts.ErasedData{Kind: kindInvoicesReminderPolicies, Count: policies},
+	), nil
+}
+
+// eraseLetters is the erase's letters (D19), its documents already held FOR
+// UPDATE: each document's letters in flight withdrawn customer_anonymised by
+// withdrawInFlight — the hold's and the hand-off's own write — then every
+// letter's recipient blanked; the printed letters and those being sent that
+// withdrawInFlight left are named at warn, so a person can pull them from
+// the post or know one went. It answers how many letters it changed.
+func (p customerPersonalData) eraseLetters(ctx context.Context, q *store.Queries, customerID int32, now time.Time) (int64, error) {
+	invoiceIDs, err := q.CustomerLetterInvoices(ctx, customerID)
+	if err != nil {
+		return 0, fmt.Errorf("invoices: read customer %d's documents with letters: %w", customerID, err)
+	}
+	var changed, left []int64
+	for _, id := range invoiceIDs {
+		withdrawn, kept, err := withdrawInFlight(ctx, q, id, withdrawnAnonymised, now)
+		if err != nil {
+			return 0, err
+		}
+		changed = append(changed, withdrawn...)
+		for _, l := range kept {
+			left = append(left, l.ID)
+		}
+	}
+	blanked, err := q.BlankCustomerLetterRecipients(ctx, customerID)
+	if err != nil {
+		return 0, fmt.Errorf("invoices: blank customer %d's letters' recipients: %w", customerID, err)
+	}
+	if len(left) > 0 {
+		slices.Sort(left)
+		p.logger.WarnContext(ctx, "invoices: the anonymisation left letters printed for the posting or being sent; "+
+			"pull a printed one from the post and withdraw it by hand", "customerId", customerID, "reminderIds", left)
+	}
+	return int64(len(slices.Compact(slices.Sorted(slices.Values(append(changed, blanked...)))))), nil
 }

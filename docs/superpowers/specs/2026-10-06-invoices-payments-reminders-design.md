@@ -1971,10 +1971,11 @@ in D3–D17 runs on a pool of `MaxConns = 2` with each raw lock-holding transact
   waivers, manual deliveries, holds (and lift notes) and hand-offs blanked; the
   `resolution_note` of every bank line, and the notes of its events, **linked to the
   person's payments or charge payments** blanked (M10); every live pay link revoked; the
-  policy row deleted. Reported, after today's five kinds: `invoices.reminders`,
-  `invoices.charge_payments`, `invoices.charge_waivers`, `invoices.manual_deliveries`,
-  `invoices.invoice_holds`, `invoices.collection_handoffs`, `invoices.bank_transactions`
-  (notes), `invoices.pay_links` (revoked), `invoices.customerReminderPolicies` (deleted).
+  policy row deleted. Reported, after today's five kinds, in the contracts' camelCase as
+  today's kinds are spelled (amended by Task 14): `invoices.reminders`,
+  `invoices.chargePayments`, `invoices.chargeWaivers`, `invoices.manualDeliveries`,
+  `invoices.invoiceHolds`, `invoices.collectionHandoffs`, `invoices.bankTransactions`
+  (notes), `invoices.payLinks` (revoked, 4C), `invoices.customerReminderPolicies` (deleted).
   **Kept**: the sent letters (the documentation of the claim, and the bad-debt VAT relief's
   evidence — FMVA § 4-7-1, R4 §2.9), charge payments, waivers, deliveries, hand-offs,
   attempts, and the bank files and transactions with their payer data — the bank's record of
