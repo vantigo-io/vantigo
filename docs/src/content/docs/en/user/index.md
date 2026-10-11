@@ -22,7 +22,7 @@ card with the numbers that need your attention. Its **Needs attention** list gat
 apps' items that wait for someone — Invoices' among them: overdue invoices, money owed
 back on an invoice, and, with `invoices:payments`, bank lines in the exception queue,
 reminders that failed or wait for a rate or a review, and print batches not confirmed
-posted ([the dashboard card](/en/user/invoices/#the-dashboard-card)).
+posted, each with its printed letters counted ([the dashboard card](/en/user/invoices/#the-dashboard-card)).
 
 Inside an app, the sidebar lists its areas. Many of them are only shown to people who
 hold the matching permission, so a colleague's sidebar may be longer or shorter than

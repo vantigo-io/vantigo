@@ -960,7 +960,10 @@ Med standardinnstillingene sender Vantigo to brev før det foreslår overleverin
 inkasso. For tre setter du **Purringer før inkassovarselet** til 2 i purreinnstillingene:
 etter inkassoloven av 1988 er det tredje brevet inkassovarselet, som krever at **Send
 inkassovarsel** er slått på; etter den nye loven er det purringen som varsler overlevering
-til inkasso. Brevene alene er ikke nødvendigvis nok: i KMVA 8156 la Skatteetaten vekt på at
+til inkasso. Tre brev nås først når en levering innen forfallsdagen er registrert: uten
+en slik sender Vantigo høyst to purringer, begge uten gebyr, og fakturaen merkes **Ikke
+levert innen forfall**. Brevene alene er ikke nødvendigvis nok: i KMVA 8156 la
+Klagenemnda for merverdiavgift vekt på at
 to inkassovarsler ikke ble fulgt opp med inndriving, så dokumenter hva mer du gjorde for å
 få inn kravet. Brevene på kortet **Purringer** på hver faktura viser hva som er sendt.
 
@@ -1318,7 +1321,8 @@ vært forfalt lengst) og *… skal ha penger tilbake på en faktura* for alle me
 `invoices:access`; med `invoices:payments` også banklinjene som venter i avvikskøen, per
 fil; en purring som ikke kunne sendes; purringene som venter på en sats eller på
 gjennomgangen av inkassoregelverket, som leder til **Forfalt**; og en utskriftsbunke som
-ikke er bekreftet postlagt to dager etter postleggingsdagen, som leder til **Papirbrev**
+ikke er bekreftet postlagt to dager etter postleggingsdagen, med antallet utskrevne brev
+som fortsatt ligger i den, som leder til **Papirbrev**
 ([oppmerksomhet](/en/reference/invoices/#stats)).
 
 ## En kundes fakturaer

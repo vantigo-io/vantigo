@@ -20,8 +20,8 @@ du kan åpne; **Hjem** er dashbordet, der hver app du bruker viser sitt eget kor
 tallene som trenger oppmerksomheten din. Listen **Trenger oppfølging** samler det i appene
 som venter på noen — også fra Fakturaer: forfalte fakturaer, penger som skal tilbake på en
 faktura, og, med `invoices:payments`, banklinjer i avvikskøen, purringer som feilet eller
-venter på en sats eller en gjennomgang, og utskriftsbunker som ikke er bekreftet postlagt
-([kortet på dashbordet](/nb/user/invoices/#kortet-på-dashbordet)).
+venter på en sats eller en gjennomgang, og utskriftsbunker som ikke er bekreftet postlagt,
+hver med de utskrevne brevene talt ([kortet på dashbordet](/nb/user/invoices/#kortet-på-dashbordet)).
 
 Inne i en app lister sidemenyen appens områder. Mange av dem vises bare til den som har
 den tilhørende rettigheten, så en kollegas sidemeny kan være lengre eller kortere enn
