@@ -26,3 +26,6 @@ Sidene her dekker reglene en endring holdes til, og vedlikeholdes på engelsk:
 - [Validering av bankfiler](/en/contributing/bank-file-validation/) — hvordan OCR giro-
   og camt.054-leserne holdes til formatene: elementstiene testene låser, testfilene og
   byggerne, og hvorfor ISO 20022-XSD-oraklet er utsatt.
+- [Plattformpakker](/en/contributing/platform-packages/) — pakkene hver modul kan
+  bruke: `secrets`-boksen som forsegler verdier og beregner MAC-er under nøkler avledet
+  fra `APP_SECRET`, konvensjonen for formål, og hva det koster å rotere `APP_SECRET`.

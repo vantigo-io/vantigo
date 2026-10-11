@@ -26,3 +26,6 @@ The pages here cover the rules a change is held to:
 - [Bank file validation](/en/contributing/bank-file-validation/) — how the OCR giro and
   camt.054 parsers are held to the formats: the element paths pinned by tests, the
   fixtures and the builders, and why the ISO 20022 XSD oracle is deferred.
+- [Platform packages](/en/contributing/platform-packages/) — the packages every module
+  may use: the secrets box that seals and MACs values under keys derived from
+  `APP_SECRET`, the purposes convention, and what rotating `APP_SECRET` costs.

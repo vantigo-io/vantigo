@@ -2,8 +2,13 @@ package secrets
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -325,5 +330,148 @@ func TestBox_NeverPrintsTheSecret(t *testing.T) {
 	}
 	if !strings.Contains(jsonOutput, "redacted") {
 		t.Errorf("slog JSON handler: output does not contain redaction message: %q", jsonOutput)
+	}
+}
+
+// TestMAC is the keyed MAC's contract (staff design S4): HMAC-SHA256 under the
+// purpose's HKDF-derived key, so the same purpose and data always give the same
+// 32 bytes — which is what lets a unique column find a duplicate — and another
+// purpose, or other data, gives other bytes.
+func TestMAC(t *testing.T) {
+	box, err := New(testAppSecret)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	mac := func(purpose, data string) []byte {
+		t.Helper()
+		m, err := box.MAC(purpose, []byte(data))
+		if err != nil {
+			t.Fatalf("MAC(%q): %v", purpose, err)
+		}
+		return m
+	}
+
+	first := mac("staff/national-id-index", "fodselsnummer||01019012345")
+	t.Run("is 32 bytes", func(t *testing.T) {
+		if len(first) != sha256.Size {
+			t.Errorf("len(MAC) = %d, want %d", len(first), sha256.Size)
+		}
+	})
+	t.Run("is deterministic for one purpose and one input", func(t *testing.T) {
+		if again := mac("staff/national-id-index", "fodselsnummer||01019012345"); !bytes.Equal(first, again) {
+			t.Errorf("two MACs of the same input differ: %x and %x", first, again)
+		}
+	})
+	t.Run("differs across purposes", func(t *testing.T) {
+		if other := mac("staff/bank-account-index", "fodselsnummer||01019012345"); bytes.Equal(first, other) {
+			t.Error("the same input under two purposes gives the same MAC, want distinct keys")
+		}
+	})
+	t.Run("differs across inputs", func(t *testing.T) {
+		if other := mac("staff/national-id-index", "fodselsnummer||01019012346"); bytes.Equal(first, other) {
+			t.Error("two inputs give the same MAC")
+		}
+	})
+	t.Run("is HMAC-SHA256 under the purpose's derived key", func(t *testing.T) {
+		key, err := box.keyFor("staff/national-id-index")
+		if err != nil {
+			t.Fatalf("keyFor: %v", err)
+		}
+		h := hmac.New(sha256.New, key)
+		h.Write([]byte("fodselsnummer||01019012345"))
+		if want := h.Sum(nil); !bytes.Equal(first, want) {
+			t.Errorf("MAC = %x, want HMAC-SHA256 under keyFor(purpose) = %x", first, want)
+		}
+	})
+	t.Run("depends on APP_SECRET", func(t *testing.T) {
+		otherBox, err := New(bytes.Repeat([]byte("t"), 32))
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		other, err := otherBox.MAC("staff/national-id-index", []byte("fodselsnummer||01019012345"))
+		if err != nil {
+			t.Fatalf("MAC: %v", err)
+		}
+		if bytes.Equal(first, other) {
+			t.Error("two APP_SECRETs give the same MAC")
+		}
+	})
+}
+
+// failingReader stands in for an HKDF stream that cannot produce a key.
+type failingReader struct{ err error }
+
+func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
+
+// TestMAC_ReturnsTheKeyDerivationError proves MAC's only error is keyFor's,
+// passed through unchanged and with no MAC beside it. HKDF-SHA256 cannot fail
+// for a 32-byte key, so the derivation is replaced for the duration; this test
+// must therefore not call t.Parallel, like every other test in the package.
+func TestMAC_ReturnsTheKeyDerivationError(t *testing.T) {
+	derivationFailed := errors.New("derivation failed")
+	realHKDF := newHKDF
+	newHKDF = func(func() hash.Hash, []byte, []byte, []byte) io.Reader { return failingReader{derivationFailed} }
+	t.Cleanup(func() { newHKDF = realHKDF })
+
+	box, err := New(testAppSecret)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	mac, err := box.MAC("staff/national-id-index", []byte("data"))
+	if !errors.Is(err, derivationFailed) {
+		t.Errorf("MAC error = %v, want the derivation's error", err)
+	}
+	if mac != nil {
+		t.Errorf("MAC returned %d bytes beside its error, want none", len(mac))
+	}
+}
+
+func TestMACEqual(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		a, b []byte
+		want bool
+	}{
+		{"equal bytes are equal", []byte{1, 2, 3}, []byte{1, 2, 3}, true},
+		{"one byte different is unequal", []byte{1, 2, 3}, []byte{1, 2, 4}, false},
+		{"a prefix is unequal", []byte{1, 2, 3}, []byte{1, 2}, false},
+		{"empty against a value is unequal", nil, []byte{1}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := MACEqual(c.a, c.b); got != c.want {
+				t.Errorf("MACEqual(%x, %x) = %v, want %v", c.a, c.b, got, c.want)
+			}
+		})
+	}
+}
+
+// TestBox_StillRedactsOnceAMACKeyIsCached: MAC caches a derived key in the Box
+// as Seal does, and neither the secret nor that key may reach fmt or slog.
+func TestBox_StillRedactsOnceAMACKeyIsCached(t *testing.T) {
+	box, err := New(testAppSecret)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := box.MAC("staff/national-id-index", []byte("data")); err != nil {
+		t.Fatalf("MAC: %v", err)
+	}
+	key, err := box.keyFor("staff/national-id-index")
+	if err != nil {
+		t.Fatalf("keyFor: %v", err)
+	}
+
+	var logged bytes.Buffer
+	slog.New(slog.NewJSONHandler(&logged, nil)).Info("test", slog.Any("box", box))
+	outputs := map[string]string{"slog": logged.String()}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%x"} {
+		outputs[verb] = fmt.Sprintf(verb, box)
+	}
+	for name, out := range outputs {
+		if !strings.Contains(out, "secrets.Box{redacted}") {
+			t.Errorf("%s: %q, want the redaction", name, out)
+		}
+		if strings.Contains(out, hex.EncodeToString(key)) || strings.Contains(out, string(testAppSecret)) {
+			t.Errorf("%s: %q carries key material", name, out)
+		}
 	}
 }
