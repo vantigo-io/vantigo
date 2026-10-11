@@ -26,8 +26,13 @@ var ErrInvalidBankAccount = errors.New("not a valid bank account number")
 // NormaliseAccount, split by kind).
 //
 // A BBAN is eleven digits once spaces and full stops are dropped, its last
-// digit the MOD11 check over the first ten. An IBAN is read without spaces and
-// upper-cased: two letters, two check digits and alphanumerics, 15 to 34
+// digit the MOD11 check over the first ten. An IBAN is read with only its
+// spaces dropped, unlike bankfile.NormaliseAccount, which drops full stops
+// from an IBAN too: ISO 13616 prints an IBAN in groups of four separated by
+// spaces and nothing else, while full stops belong to the Norwegian way of
+// writing a kontonummer (1234.56.78903), so a full stop in an IBAN is a
+// mistyping to refuse rather than punctuation to forgive. It is upper-cased
+// and must be two letters, two check digits and alphanumerics, 15 to 34
 // characters in all, whose ISO 13616 mod-97 check holds; a Norwegian one must
 // moreover be 15 characters with an eleven-digit BBAN whose own MOD11 holds,
 // the rule a Norwegian account is held to whichever way it is written. No

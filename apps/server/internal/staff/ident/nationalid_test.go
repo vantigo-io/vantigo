@@ -20,11 +20,14 @@ import (
 //
 // It is its own arithmetic, deliberately not the package's: a test that built
 // its numbers with the function under test could not catch a wrong weight in
-// it. The month must be in a synthetic range — plus 40 or plus 80 — so nothing
-// built here is a real person's number.
+// it. Nothing built here may be a real person's number: the month is in a
+// synthetic range — plus 40 or plus 80 — or, for a plain month, the year is
+// 30–39 with an individual number of 500 or more, a birth in the 2030s that
+// nobody alive can have yet.
 func nationalIDForTest(birth string, individual int, dNumber bool) string {
-	if len(birth) != 6 || birth[2:4] < "41" {
-		panic("nationalIDForTest: " + birth + " is not a synthetic birth date (the month plus 40 or 80)")
+	plainFuture := len(birth) == 6 && birth[2:4] <= "12" && birth[4] == '3' && individual >= 500
+	if len(birth) != 6 || (birth[2:4] < "41" && !plainFuture) {
+		panic("nationalIDForTest: " + birth + " is neither a synthetic birth date (the month plus 40 or 80) nor one in the 2030s")
 	}
 	firstWeights := []int{3, 7, 6, 1, 8, 9, 4, 5, 2}
 	secondWeights := []int{5, 4, 3, 2, 7, 6, 5, 4, 3, 2}
@@ -104,6 +107,11 @@ func TestParseNationalID(t *testing.T) {
 		{"individual 900-999 with year 40-99 is the 1900s", ident.Fodselsnummer, "", nationalIDForTest("018190", 950, false), &want{nationalIDForTest("018190", 950, false), "", civil(1990, 1, 1)}},
 		{"individual 500-999 with year 10 is the 2000s", ident.Fodselsnummer, "", nationalIDForTest("018110", 600, false), &want{nationalIDForTest("018110", 600, false), "", civil(2010, 1, 1)}},
 		{"individual 750-899 with year 40-99 is no century and refused", ident.Fodselsnummer, "", nationalIDForTest("018190", 800, false), nil},
+		{"individual 500-749 with year 40-53 is no century and refused", ident.Fodselsnummer, "", nationalIDForTest("018145", 600, false), nil},
+		{"individual 500-749 with year 53 is no century and refused", ident.Fodselsnummer, "", nationalIDForTest("018153", 600, false), nil},
+		{"individual 500-749 with year 54 is 1854", ident.Fodselsnummer, "", nationalIDForTest("018154", 600, false), &want{nationalIDForTest("018154", 600, false), "", civil(1854, 1, 1)}},
+		{"a plain month is accepted in a fødselsnummer", ident.Fodselsnummer, "", nationalIDForTest("010139", 500, false), &want{nationalIDForTest("010139", 500, false), "", civil(2039, 1, 1)}},
+		{"a plain month is accepted in a d-nummer", ident.DNummer, "", nationalIDForTest("311239", 500, true), &want{nationalIDForTest("311239", 500, true), "", civil(2039, 12, 31)}},
 		{"the month plus 40 is accepted", ident.Fodselsnummer, "", nationalIDForTest("014190", 100, false), &want{nationalIDForTest("014190", 100, false), "", civil(1990, 1, 1)}},
 		{"the month plus 80 is accepted", ident.Fodselsnummer, "", nationalIDForTest("018290", 100, false), &want{nationalIDForTest("018290", 100, false), "", civil(1990, 2, 1)}},
 		{"a d-nummer is accepted with its birth date", ident.DNummer, "", dnr, &want{dnr, "", civil(1990, 1, 1)}},
@@ -119,6 +127,11 @@ func TestParseNationalID(t *testing.T) {
 		{"an empty foreign id is refused", ident.Foreign, "SE", "  ", nil},
 		{"a space inside a foreign id is refused", ident.Foreign, "SE", "AB 123", nil},
 		{"a letter outside A-Z in a foreign id is refused", ident.Foreign, "SE", "ÆB-123", nil},
+		{"a long s that upper-cases to S is refused", ident.Foreign, "SE", "ſB-123", nil},
+		{"a dotless i that upper-cases to I is refused", ident.Foreign, "SE", "ıB-123", nil},
+		{"a country's long s that upper-cases to S is refused", ident.Foreign, "ſE", "AB-123", nil},
+		{"a foreign id with the country NO is refused: Norway's numbers have their own kinds", ident.Foreign, "no", "AB-123", nil},
+		{"a fødselsnummer as a foreign id of Norway is refused", ident.Foreign, "NO", fnr, nil},
 		{"an unknown kind is refused", ident.NationalIDKind("passport"), "", fnr, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -186,7 +199,7 @@ func TestIndexInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	asForeign, err := ident.ParseNationalID(ident.Foreign, "NO", fnr)
+	asForeign, err := ident.ParseNationalID(ident.Foreign, "SE", fnr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +213,7 @@ func TestIndexInput(t *testing.T) {
 		want string
 	}{
 		{"a fødselsnummer has an empty country", asFnr, "fodselsnummer||" + fnr},
-		{"the same digits as a foreign id carry kind and country", asForeign, "foreign|NO|" + fnr},
+		{"the same digits as a foreign id carry kind and country", asForeign, "foreign|SE|" + fnr},
 		{"a foreign id is indexed normalised", foreign, "foreign|SE|AB-123"},
 	} {
 		if got := string(ident.IndexInput(c.n)); got != c.want {
@@ -230,6 +243,21 @@ func TestNormalised_NeverPrintsTheValue(t *testing.T) {
 	for name, out := range outputs {
 		if strings.Contains(out, fnr[6:]) || !strings.Contains(out, "redacted") {
 			t.Errorf("%s: %q, want a redaction without the digits", name, out)
+		}
+	}
+
+	// In an unexported field of another struct fmt does not call Format: it
+	// reflects into the value, and must find nothing there but a pointer.
+	type request struct{ id ident.Normalised }
+	var deep strings.Builder
+	slog.New(slog.NewTextHandler(&deep, nil)).Info("test", slog.Any("request", request{n}))
+	nested := map[string]string{"nested slog text": deep.String()}
+	for _, verb := range []string{"%v", "%+v", "%#v"} {
+		nested["nested "+verb] = fmt.Sprintf(verb, request{n})
+	}
+	for name, out := range nested {
+		if strings.Contains(out, fnr) || strings.Contains(out, fnr[6:]) || strings.Contains(out, "fodselsnummer") {
+			t.Errorf("%s: %q carries the number", name, out)
 		}
 	}
 }

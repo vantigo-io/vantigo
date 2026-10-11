@@ -47,9 +47,11 @@ A purpose is a constant the calling module owns, never input from a request, wri
 | `communications/channel-smtp-credential` | a channel's SMTP password |
 | `invoices/access-point-credential` | the e-invoicing access point's API key |
 
-A purpose either seals or MACs, never both, so no key both encrypts and
-authenticates: a module that seals a value and indexes it uses two purposes, such as
-`staff/national-id` for the sealed value and `staff/national-id-index` for its MAC.
+**A purpose either seals or MACs, never both**, so no key both encrypts and
+authenticates. A MAC purpose carries the suffix `-index`: a module that seals a value
+and indexes it uses two purposes, `module/purpose` for the sealed value and
+`module/purpose-index` for its MAC — `staff/national-id` and
+`staff/national-id-index` — and pins the two constants distinct in a test.
 When one MAC purpose covers values of several kinds, the caller separates them in the
 input itself — kind, then country, then value, with a separator none of them can
 contain — so the same characters under two kinds do not collide. The form of that
