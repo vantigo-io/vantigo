@@ -1085,3 +1085,12 @@ these, not from §9.
    employee-facing pages beside the manager pages (§9 option a). The person, the
    employment, absence and competence remain Staff's. If the single Staffing app
    grows unwieldy, the host may later split its tiles by audience.
+10. **Entra ID is its own module** (`entra`), providing a many-provider
+    `IdentityProvisioner` slot that Staff consumes; identity stays the owner of
+    local accounts only, and must accept the SCIM enterprise extension inbound
+    (§7.1). The setup is a wizard on the module's tile with the portal steps in the
+    UI. Moving the OIDC and SCIM configuration from environment variables into the
+    module is a later roadmap entry.
+11. **The sequence**: Staff phase 1 (register, absence, the provisioning flag with
+    the local-invitation path) → the Entra module → Staff phase 2 (competence) →
+    Staffing.
