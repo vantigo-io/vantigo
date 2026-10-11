@@ -36,6 +36,8 @@ export const eventKinds = [
   // (plan reading 11) belong to no person's history.
   "people_imported",
   "people_exported",
+  // Installation-level too: a month's payroll file (plan reading 13).
+  "payroll_exported",
 ] as const;
 
 /**

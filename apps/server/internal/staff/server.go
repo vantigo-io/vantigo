@@ -23,6 +23,9 @@ type server struct {
 	// every one of them answers instead.
 	objects    storage.ObjectStore
 	objectsErr error
+	// payroll is the payroll port's implementations by format (payroll.go):
+	// csv alone, until a payroll system needs its own.
+	payroll map[string]PayrollExporter
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)

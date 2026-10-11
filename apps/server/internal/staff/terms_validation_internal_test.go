@@ -46,8 +46,10 @@ func TestFullTimeHours_PerScheme(t *testing.T) {
 	}
 }
 
-// The six schemes and the six end reasons are pinned to Skatteetaten's codes,
-// which the payroll export will report.
+// The six schemes, the six end reasons and the five appointment forms are
+// pinned to Skatteetaten's a-melding codes, which the payroll export reports
+// (the remuneration type has none: the a-melding dropped avlønningstype from
+// 2019, and the export writes it as stored).
 func TestSkatteetatenCodes_Pinned(t *testing.T) {
 	t.Parallel()
 	for name, c := range map[string]struct {
@@ -69,6 +71,13 @@ func TestSkatteetatenCodes_Pinned(t *testing.T) {
 			"internal_change":       "endringIOrganisasjonsstrukturEllerByttetJobbInternt",
 			"payroll_system_change": "byttetLoenssystemEllerRegnskapsfoerer",
 		}},
+		"appointment forms": {appointmentFormCodes, map[string]string{
+			"fast":                         "fast",
+			"midlertidig":                  "midlertidig",
+			"fast_utleid":                  "fastAnsattUtleid",
+			"midlertidig_utleid":           "midlertidigAnsattUtleid",
+			"midlertidig_tilkallingsvikar": "midlertidigAnsattSomTilkallingsvikar",
+		}},
 	} {
 		if !maps.Equal(c.got, c.want) {
 			t.Errorf("%s = %v, want %v", name, c.got, c.want)
@@ -85,8 +94,13 @@ func TestSkatteetatenCodes_Pinned(t *testing.T) {
 			t.Errorf("end reason %s has no code", reason)
 		}
 	}
-	if len(workingHoursSchemes) != 6 || len(endReasons) != 6 {
-		t.Errorf("schemes %v and reasons %v, want six of each", workingHoursSchemes, endReasons)
+	for _, form := range appointmentForms {
+		if _, ok := appointmentFormCodes[form]; !ok {
+			t.Errorf("appointment form %s has no code", form)
+		}
+	}
+	if len(workingHoursSchemes) != 6 || len(endReasons) != 6 || len(appointmentForms) != 5 {
+		t.Errorf("schemes %v, reasons %v and forms %v, want six, six and five", workingHoursSchemes, endReasons, appointmentForms)
 	}
 }
 

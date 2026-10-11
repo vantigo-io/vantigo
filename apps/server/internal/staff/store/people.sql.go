@@ -713,6 +713,45 @@ func (q *Queries) ListPeopleForExport(ctx context.Context, maxRows int32) ([]Lis
 	return items, nil
 }
 
+const listPeopleForPayroll = `-- name: ListPeopleForPayroll :many
+SELECT id, employee_number, given_name, family_name FROM staff.people ORDER BY id
+`
+
+type ListPeopleForPayrollRow struct {
+	ID             int64
+	EmployeeNumber string
+	GivenName      string
+	FamilyName     string
+}
+
+// ListPeopleForPayroll is what the payroll file reads of every person: the
+// employee number and the names, erased people included — never a sealed
+// column, which payroll already holds (design reading 9).
+func (q *Queries) ListPeopleForPayroll(ctx context.Context) ([]ListPeopleForPayrollRow, error) {
+	rows, err := q.db.Query(ctx, listPeopleForPayroll)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPeopleForPayrollRow
+	for rows.Next() {
+		var i ListPeopleForPayrollRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EmployeeNumber,
+			&i.GivenName,
+			&i.FamilyName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPersonRoles = `-- name: ListPersonRoles :many
 SELECT role, from_date, to_date FROM staff.person_roles
 WHERE person_id = $1

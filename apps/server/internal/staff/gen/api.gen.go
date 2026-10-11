@@ -1868,6 +1868,15 @@ type GetStaffMeEventsParams struct {
 	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
+// GetStaffPayrollExportParams defines parameters for GetStaffPayrollExport.
+type GetStaffPayrollExportParams struct {
+	// Month The month, as YYYY-MM; anything else is payroll_month_invalid.
+	Month string `form:"month" json:"month"`
+
+	// Format The file's format; csv, the default, is the one there is. Anything else is payroll_format_unsupported.
+	Format *string `form:"format,omitempty" json:"format,omitempty"`
+}
+
 // GetStaffPeopleParams defines parameters for GetStaffPeople.
 type GetStaffPeopleParams struct {
 	// Q Words that must each appear in a name, the employee number or the work email, however cased.
@@ -2143,6 +2152,9 @@ type ServerInterface interface {
 	// GetStaffMeta Get the Staff metadata
 	// (GET /api/v1/staff/meta)
 	GetStaffMeta(w http.ResponseWriter, r *http.Request)
+	// GetStaffPayrollExport Export a month for payroll
+	// (GET /api/v1/staff/payroll/export)
+	GetStaffPayrollExport(w http.ResponseWriter, r *http.Request, params GetStaffPayrollExportParams)
 	// GetStaffPeople List people
 	// (GET /api/v1/staff/people)
 	GetStaffPeople(w http.ResponseWriter, r *http.Request, params GetStaffPeopleParams)
@@ -3251,6 +3263,52 @@ func (siw *ServerInterfaceWrapper) GetStaffMeta(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetStaffMeta(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffPayrollExport operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPayrollExport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetStaffPayrollExportParams
+
+	// ------------- Required query parameter "month" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "month", r.URL.Query(), &params.Month, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "month"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "month", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "format", r.URL.Query(), &params.Format, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "format"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "format", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPayrollExport(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4440,6 +4498,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/events", wrapper.GetStaffMeEvents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/export", wrapper.GetStaffMeExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/meta", wrapper.GetStaffMeta)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/payroll/export", wrapper.GetStaffPayrollExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people", wrapper.GetStaffPeople)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people", wrapper.PostStaffPeople)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/export.csv", wrapper.GetStaffPeopleExportCsv)
@@ -6997,6 +7056,76 @@ func (response GetStaffMeta403JSONResponse) VisitGetStaffMetaResponse(w http.Res
 	return err
 }
 
+type GetStaffPayrollExportRequestObject struct {
+	Params GetStaffPayrollExportParams
+}
+
+type GetStaffPayrollExportResponseObject interface {
+	VisitGetStaffPayrollExportResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPayrollExport200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetStaffPayrollExport200TextcsvResponse) VisitGetStaffPayrollExportResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetStaffPayrollExport400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffPayrollExport400ApplicationProblemPlusJSONResponse) VisitGetStaffPayrollExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPayrollExport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPayrollExport401JSONResponse) VisitGetStaffPayrollExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPayrollExport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPayrollExport403JSONResponse) VisitGetStaffPayrollExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStaffPeopleRequestObject struct {
 	Params GetStaffPeopleParams
 }
@@ -9405,6 +9534,9 @@ type StrictServerInterface interface {
 	// GetStaffMeta Get the Staff metadata
 	// (GET /api/v1/staff/meta)
 	GetStaffMeta(ctx context.Context, request GetStaffMetaRequestObject) (GetStaffMetaResponseObject, error)
+	// GetStaffPayrollExport Export a month for payroll
+	// (GET /api/v1/staff/payroll/export)
+	GetStaffPayrollExport(ctx context.Context, request GetStaffPayrollExportRequestObject) (GetStaffPayrollExportResponseObject, error)
 	// GetStaffPeople List people
 	// (GET /api/v1/staff/people)
 	GetStaffPeople(ctx context.Context, request GetStaffPeopleRequestObject) (GetStaffPeopleResponseObject, error)
@@ -10555,6 +10687,32 @@ func (sh *strictHandler) GetStaffMeta(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetStaffMetaResponseObject); ok {
 		if err := validResponse.VisitGetStaffMetaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPayrollExport operation middleware
+func (sh *strictHandler) GetStaffPayrollExport(w http.ResponseWriter, r *http.Request, params GetStaffPayrollExportParams) {
+	var request GetStaffPayrollExportRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPayrollExport(ctx, request.(GetStaffPayrollExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPayrollExport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPayrollExportResponseObject); ok {
+		if err := validResponse.VisitGetStaffPayrollExportResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

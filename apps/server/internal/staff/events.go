@@ -84,6 +84,15 @@ const (
 	eventPeopleExported = "people_exported"
 )
 
+// eventPayrollExported is a month's payroll file (design S18, plan reading
+// 13): an installation event naming its actor, the month, the format, the
+// rows and the SHA-256 of the file answered, so the very file payroll
+// received can be recognised later. Its classes are A: the payroll exports'
+// lineage is pay documentation (S15).
+const (
+	eventPayrollExported = "payroll_exported"
+)
+
 // holdEventKinds are the hold's kinds: about the record's retention and who
 // exported it rather than about the person's work, so they are listed only to
 // an audience that reads the hold group — and to the person themselves, who

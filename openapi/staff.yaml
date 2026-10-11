@@ -3653,6 +3653,57 @@ paths:
             tags:
                 - Staff
             x-vantigo-access: permission:staff:access
+    /api/v1/staff/payroll/export:
+        get:
+            description: |-
+                A month's employments as payroll reads them (design S18), behind the module's payroll port, whose one format is csv: UTF-8 with a byte order mark, semicolon-separated, CRLF line ends, a header row, ISO dates and the decimal comma — the Expenses form — each cell guarded against a spreadsheet formula as the register's file is.
+
+                One row per employment in the month — started on or before its last day, and open-ended or ended on or after its first — erased people's included, ordered by employee number and then employment number, with the terms in force on the month's last day, or on the end day when the employment ends earlier. The columns, in this order, with sentence-case English headers: Employee number; Name (given and family name); Employment number; Business unit org number; Start; End and End reason — filled only in the month the employment ends, the reason as Skatteetaten's sluttårsak code; Occupation code; Full-time hours; FTE percent; FTE changed; Working hours scheme (Skatteetaten's arbeidstidsordning code); Appointment form (Skatteetaten's ansettelsesform code); Remuneration type (as stored — the a-melding has not carried one since 2019); Salary changed; Department (its code); Cost centre (the terms' own, else the department's); Seniority date; Pay grade. An employment with no terms row in force that day keeps its row with the terms cells blank. The sealed identifiers are never read: payroll already holds the national identity number and the bank account. Leave and absence columns are a later delivery's, and will be appended to the right.
+
+                Read in one snapshot. Every export is recorded as a payroll_exported event of the installation naming the exporter, with the month, the format, the number of rows and the SHA-256 of the file answered (hex); a file whose export could not be recorded is not answered.
+            operationId: getStaffPayrollExport
+            parameters:
+                - description: The month, as YYYY-MM; anything else is payroll_month_invalid.
+                  in: query
+                  name: month
+                  required: true
+                  schema:
+                    type: string
+                - description: The file's format; csv, the default, is the one there is. Anything else is payroll_format_unsupported.
+                  in: query
+                  name: format
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        text/csv:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — served as an attachment named staff-payroll-YYYY-MM.csv, and never cached.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/StaffProblem'
+                    description: Bad Request — payroll_month_invalid on month, a month that is not YYYY-MM with a month from 01 to 12; payroll_format_unsupported on format, a format other than csv.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Export a month for payroll
+            tags:
+                - Staff
+            x-vantigo-access: permission:staff:access+staff:manage
     /api/v1/staff/people:
         get:
             description: 'The directory, by display name, the work group with each person''s manager, department and status today: staff:manage lists everyone, filtered by status (current by default — active, upcoming and no employment yet; ended; all); staff:view without it the people active today (an employment that has started and not ended), whatever status says. q matches each of its words against the names, the employee number and the work email; unitId, departmentId and locationId keep the people with an employment not ended before today in that unit whose terms name that department or location — the row in force today, or an upcoming employment''s first row — all on one employment. Anyone else is the uniform 403.'

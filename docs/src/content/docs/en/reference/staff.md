@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the erased state, the legal hold and the reassessment, the settings, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the erased state, the legal hold and the reassessment, the settings, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -31,7 +31,8 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 [self-service link](#the-self-service-link), [My page](#my-page), the
 [documents](#documents) and their [categories](#categories-and-classes), the
 [personal-data exports](#the-personal-data-exports), the register's
-[import and export](#the-registers-import-and-export), the [erased state](#the-erased-state),
+[import and export](#the-registers-import-and-export), the
+[payroll export](#the-payroll-export), the [erased state](#the-erased-state),
 the [legal hold](#the-legal-hold) and the [reassessment](#the-reassessment), [how a refusal
 looks](#refusals-and-revisions), the [locks](#locks) and the [endpoints](#endpoints).
 
@@ -394,6 +395,7 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `person_rehired` | `fields.erasedAt` and, when set, `fields.reassessedAt`, each as `from`. |
 | `people_imported` | Installation-level (no person): `rows`, `created`, `updated`, `failed` of a real [import](#the-registers-import-and-export); each row's own events name the people it wrote. |
 | `people_exported` | Installation-level (no person): `rows`, the people the [export](#the-registers-import-and-export) wrote. |
+| `payroll_exported` | Installation-level (no person): `month`, `format`, `rows` and `sha256` (hex) of the [payroll file](#the-payroll-export) answered; classes `A`. |
 
 `GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
 the person themselves, a manager of theirs today, `staff:manage` and
@@ -490,8 +492,9 @@ positions); the register does not refuse an overlap.
   [audience](#field-groups-and-audiences) reads them: a colleague reads the dates, a
   manager every field but `salaryChangedAt`.
 
-The six end reasons and the six working-hours schemes map to Skatteetaten's codes in
-`values.go`, pinned by a table test for the payroll export:
+The six end reasons, the six working-hours schemes and the five appointment forms map
+to Skatteetaten's a-melding codes in `values.go`, pinned by a table test for the
+[payroll export](#the-payroll-export):
 
 | Scheme | a-melding | End reason | a-melding |
 | --- | --- | --- | --- |
@@ -501,6 +504,18 @@ The six end reasons and the six working-hours schemes map to Skatteetaten's code
 | `continuous_336` | `helkontinuerligSkiftOgAndreOrdninger336` | `wrongly_reported` | `arbeidsforholdetSkulleAldriVaertRapportert` |
 | `round_the_clock_355` | `doegnkontinuerligSkiftOgTurnus355` | `internal_change` | `endringIOrganisasjonsstrukturEllerByttetJobbInternt` |
 | `other_shift` | `andreSkift` | `payroll_system_change` | `byttetLoenssystemEllerRegnskapsfoerer` |
+
+| Appointment form | a-melding |
+| --- | --- |
+| `fast` | `fast` |
+| `midlertidig` | `midlertidig` |
+| `fast_utleid` | `fastAnsattUtleid` |
+| `midlertidig_utleid` | `midlertidigAnsattUtleid` |
+| `midlertidig_tilkallingsvikar` | `midlertidigAnsattSomTilkallingsvikar` |
+
+The hired-out and on-call forms have had codes of their own in the a-melding since
+2025. The remuneration type has none: the a-melding dropped avlønningstype from 2019,
+and the payroll export writes it as stored.
 
 ### Terms
 
@@ -1072,6 +1087,81 @@ cancel, bounded by a timeout of its own. On a run cut short, `rows` is the file'
 count while `created`, `updated` and `failed` count only the rows processed before the
 cut, so they do not sum to `rows`. A dry run records nothing.
 
+## The payroll export
+
+`GET /payroll/export?month=YYYY-MM&format=csv` hands a month's employments to payroll
+(design S18). It is `staff:manage`'s; anyone else gets the uniform 403. The rows are the
+module's own; what file they become is a **payroll port**'s — `PayrollExporter`, an
+interface inside the module with one implementation today, `csvExporter`, chosen by
+`format` — so a payroll system that wants its own file is one implementation more and
+not a change to the rows.
+
+**The parameters.** `month` is required and is `YYYY-MM` with a month from `01` to
+`12`; anything else is the 400 `payroll_month_invalid` on `month`. `format` defaults to
+`csv`, the one there is; any other value, `CSV` and an empty one included, is the 400
+`payroll_format_unsupported` on `format`. Neither refusal is an export, so neither is
+recorded.
+
+**The rows.** One row per employment **in the month** — started on or before its last
+day, and open-ended or ended on or after its first day — erased people's included (who
+was employed when is class C and outlives the erase, and payroll may need a past month
+again). The rows are ordered by employee number, then employment number. Each row's
+terms are those [in force](#the-derived-dates) on the **month's last day**, or on the
+**end day** when the employment ends earlier in the month: the last day it still had
+terms. A row dated after that day — a change agreed for the next month — is not yet in
+force. An employment with no terms row in force that day keeps its row with every terms
+column blank (validation dates the first row on the start, so this does not happen in
+practice).
+
+**The file** (`format=csv`) is the Expenses form: UTF-8 with a byte order mark,
+semicolon-separated, CRLF line ends, RFC 4180 quoting, ISO dates and the decimal comma
+(`37,50`), each cell through the same formula guard as [the register's
+file](#the-registers-import-and-export). The header is sentence-case English (reading
+12), in this order:
+
+| Column | Source |
+| --- | --- |
+| `Employee number` | The person's employee number. |
+| `Name` | The given name and the family name, separated by a space (not the display name). |
+| `Employment number` | The employment's number, the a-melding `arbeidsforholdID`. |
+| `Business unit org number` | The org number of the employment's business unit (the virksomhet); blank when the unit has none. |
+| `Start` | The employment's start date. |
+| `End` | The end date — **only in the month the employment ends**; blank in every other month. |
+| `End reason` | Skatteetaten's sluttårsak code for the end reason, in the end month only (below). |
+| `Occupation code` | The STYRK-08 occupation code (yrkeskode), as stored. |
+| `Full-time hours` | The hours per week of a full position. |
+| `FTE percent` | The position percentage. |
+| `FTE changed` | [`fteChangedAt`](#the-derived-dates), judged on the same day as the terms. |
+| `Working hours scheme` | Skatteetaten's arbeidstidsordning code (below). |
+| `Appointment form` | Skatteetaten's ansettelsesform code (below). |
+| `Remuneration type` | As stored: `monthly`, `hourly`, `commission`, `fee` or `piecework`. The a-melding has not carried an avlønningstype since 2019, so there is no code to translate it to. |
+| `Salary changed` | [`salaryChangedAt`](#the-derived-dates), judged on the same day as the terms. |
+| `Department` | The department's **code**. |
+| `Cost centre` | The terms' own cost centre, **else the department's**, else blank. |
+| `Seniority date` | When set. |
+| `Pay grade` | When set. |
+
+The scheme, the end reason and the appointment form are written as the codes in
+[the employments' table](#employments).
+
+The **sealed identifiers are never read** (design reading 9): the national identity
+number and the bank account are not in the file, nor anything derived from them —
+payroll already holds them. The leave and absence columns are delivery B's and will be
+**appended to the right** of `Pay grade`, so a payroll system's mapping of these
+columns keeps working.
+
+**The order of work.** The parameters and the actor are judged first; everything the
+file is built from — the people's numbers and names, the employments, their terms, the
+business units and the departments — is read in **one REPEATABLE READ snapshot**; the
+rows and the file are built in memory; then the export is recorded as the
+installation's **`payroll_exported`** event, naming the exporter, with `month`,
+`format`, `rows` and `sha256` — the hex SHA-256 of the very bytes answered, so the file
+payroll received can be recognised later (reading 13). The event's classes are `A`: the
+payroll exports' lineage is pay documentation, kept five years past the end year
+(S15). A file whose export could not be recorded is not answered. The file is served as
+an attachment named `staff-payroll-YYYY-MM.csv`, with `Cache-Control: private,
+no-store` and `X-Content-Type-Options: nosniff`.
+
 ## The erased state
 
 The retention run (later in A2) erases a former employee's personnel administration
@@ -1196,6 +1286,8 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `import_too_many_rows` | 400 | An import file with more data rows than `STAFF_IMPORT_MAX_ROWS`. |
 | `import_sealed_columns` | 400 | An import file carrying a sealed column from a caller without `staff:personal-data`. |
 | `export_too_many` | 400 | An export of more people than `STAFF_IMPORT_MAX_ROWS`. |
+| `payroll_month_invalid` | 400 | A payroll export's `month` that is not `YYYY-MM` with a month from `01` to `12`. |
+| `payroll_format_unsupported` | 400 | A payroll export's `format` other than `csv`. |
 
 An unknown id is a bare 404 with no body.
 
@@ -1266,6 +1358,7 @@ All under `/api/v1/staff`.
 | `GET /people/{id}/personal-data`, `PUT /people/{id}/legal-hold`, `POST /people/{id}/reassessed` | `staff:personal-data` |
 | `POST /people/similar-erased` | `staff:manage` |
 | `POST /people/import`, `GET /people/export.csv`, `GET /people/import-template.csv` | `staff:manage`; an import file's sealed columns `staff:personal-data` too (`import_sealed_columns`) |
+| `GET /payroll/export` | `staff:manage` |
 | `GET /people/{id}/documents`, `GET /documents/{id}` | `staff:access`, then the person, `staff:manage` (not health documents) or `staff:personal-data` (otherwise 404) |
 | `POST /people/{id}/documents`, `PUT /documents/{id}`, `DELETE /documents/{id}` | `staff:access`, then `staff:manage` or `staff:personal-data`, a health document `staff:personal-data` (judged in the module; otherwise 403) |
 | `GET /document-categories` | `staff:view`, `staff:manage` or `staff:personal-data` (judged in the module; otherwise 403) |

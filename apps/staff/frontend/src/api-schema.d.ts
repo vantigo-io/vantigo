@@ -562,6 +562,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/payroll/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export a month for payroll
+         * @description A month's employments as payroll reads them (design S18), behind the module's payroll port, whose one format is csv: UTF-8 with a byte order mark, semicolon-separated, CRLF line ends, a header row, ISO dates and the decimal comma — the Expenses form — each cell guarded against a spreadsheet formula as the register's file is.
+         *
+         *     One row per employment in the month — started on or before its last day, and open-ended or ended on or after its first — erased people's included, ordered by employee number and then employment number, with the terms in force on the month's last day, or on the end day when the employment ends earlier. The columns, in this order, with sentence-case English headers: Employee number; Name (given and family name); Employment number; Business unit org number; Start; End and End reason — filled only in the month the employment ends, the reason as Skatteetaten's sluttårsak code; Occupation code; Full-time hours; FTE percent; FTE changed; Working hours scheme (Skatteetaten's arbeidstidsordning code); Appointment form (Skatteetaten's ansettelsesform code); Remuneration type (as stored — the a-melding has not carried one since 2019); Salary changed; Department (its code); Cost centre (the terms' own, else the department's); Seniority date; Pay grade. An employment with no terms row in force that day keeps its row with the terms cells blank. The sealed identifiers are never read: payroll already holds the national identity number and the bank account. Leave and absence columns are a later delivery's, and will be appended to the right.
+         *
+         *     Read in one snapshot. Every export is recorded as a payroll_exported event of the installation naming the exporter, with the month, the format, the number of rows and the SHA-256 of the file answered (hex); a file whose export could not be recorded is not answered.
+         */
+        get: operations["getStaffPayrollExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/people": {
         parameters: {
             query?: never;
@@ -4258,6 +4282,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffMeta"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getStaffPayrollExport: {
+        parameters: {
+            query: {
+                /** @description The month, as YYYY-MM; anything else is payroll_month_invalid. */
+                month: string;
+                /** @description The file's format; csv, the default, is the one there is. Anything else is payroll_format_unsupported. */
+                format?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named staff-payroll-YYYY-MM.csv, and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — payroll_month_invalid on month, a month that is not YYYY-MM with a month from 01 to 12; payroll_format_unsupported on format, a format other than csv. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
                 };
             };
             /** @description Unauthorized */
