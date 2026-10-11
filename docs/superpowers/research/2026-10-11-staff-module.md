@@ -1042,3 +1042,46 @@ Phase 5 rather than living in Staff.
    pay categories, and payroll owns the numbers. Recommended: store the contract's
    pay components as the contract text requires, mark them payroll-sourced, and
    never compute from them.
+
+## 10. Decisions taken by the owner on 2026-10-11
+
+The open questions in §9 were answered the same day. The design spec starts from
+these, not from §9.
+
+1. **The fødselsnummer is stored.** It is required for nearly everything the
+   register serves. Encrypted through `internal/secrets`, behind the sensitive
+   `staff:personal-data` permission, never displayed in full, never a display key.
+2. **Payroll export is a CSV first, behind an adapter port.** The export of the
+   employment and absence fields (§4.7) is shaped so a Tripletex, PowerOffice or
+   other adapter can be plugged in later without touching the register; the first
+   adapter is the file.
+3. **Time's person rate card stays in Time** for now; revisited once the employment
+   record exists.
+4. **Phase 1 is the register and absence; competence is phase 2.** What
+   "competence" must mean for this company is discussed before that phase is
+   specified; §6.5 is the starting proposal, not the decision.
+5. **Entra ID is the first external identity provider**, with a setup that is
+   deliberately simple and carries its instructions in the UI. Whether it is its own
+   module is discussed in §10.9.
+6. **Holiday and leave entitlements are configured by HR per company.** The
+   statutory values (25 virkedager, +6 at 60, egenmelding 3 × 4) are the seeded
+   minimum, and a company sets its own scheme and benefits above them — the same
+   seeded-and-editable pattern as Expenses' rates.
+7. **Pay components are stored as the contract requires them**, marked
+   payroll-sourced, and never computed from.
+8. **Provisioning is a flag on the employee, time-controlled.** `provision_account`
+   (true or false, HR's decision; false for the rare cases that get no user) and
+   `provision_from` (defaulting to the employment's start date, editable earlier or
+   later). A person being hired exists in the register before the start with the
+   date in the future and no account; a daily worker in the business time zone
+   creates the account on the day. The same pair drives the leaver: the account is
+   disabled on the employment's end date, and a rehire re-enables it. In an
+   installation with Entra connected, "the account" is the Entra user, and the
+   Vantigo login follows through SSO (just-in-time or inbound SCIM, correlated on
+   the employee number, §5.5); without one, it is a local identity invitation sent
+   on the day. Staff is the authority for existence and status in both cases.
+9. **Staffing is one module**, owning every booking of a person's time
+   (allocation, assignment, shift), requests, wishes, matching and trades, with
+   employee-facing pages beside the manager pages (§9 option a). The person, the
+   employment, absence and competence remain Staff's. If the single Staffing app
+   grows unwieldy, the host may later split its tiles by audience.
