@@ -242,3 +242,23 @@ WHERE id = @id AND status IN ('resolved', 'matched');
 UPDATE invoices.bank_transactions
 SET status = 'exception', reason = 'possible_duplicate', suggested_invoice_id = sqlc.narg(suggested_invoice_id)::bigint
 WHERE id = @id AND status = 'duplicate';
+
+-- name: LineLinkedInvoices :many
+-- LineLinkedInvoices is every invoice a bank line's payments or charge
+-- payments, live or removed, were registered against, highest id first: a
+-- queue action that writes a note on the line locks them after it (D18's
+-- line-then-invoices order) and asks whether any is an anonymised
+-- customer's (D19).
+SELECT p.invoice_id FROM invoices.payments p WHERE p.bank_transaction_id = @id
+UNION
+SELECT c.invoice_id FROM invoices.charge_payments c WHERE c.bank_transaction_id = @id
+ORDER BY 1 DESC;
+
+-- name: AnyCustomerErased :one
+-- AnyCustomerErased is whether any of the invoices ids belongs to a
+-- customer this module has anonymised (D19): a queue action that resolves a
+-- line linked to one writes no note. Read after the invoices are locked, so
+-- an erase that held them has committed its marker.
+SELECT EXISTS (
+    SELECT 1 FROM invoices.invoices i JOIN invoices.erased_customers e ON e.customer_id = i.customer_id
+    WHERE i.id = ANY(@ids::bigint[])) AS erased;

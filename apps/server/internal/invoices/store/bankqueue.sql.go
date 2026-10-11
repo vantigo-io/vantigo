@@ -13,6 +13,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const anyCustomerErased = `-- name: AnyCustomerErased :one
+SELECT EXISTS (
+    SELECT 1 FROM invoices.invoices i JOIN invoices.erased_customers e ON e.customer_id = i.customer_id
+    WHERE i.id = ANY($1::bigint[])) AS erased
+`
+
+// AnyCustomerErased is whether any of the invoices ids belongs to a
+// customer this module has anonymised (D19): a queue action that resolves a
+// line linked to one writes no note. Read after the invoices are locked, so
+// an erase that held them has committed its marker.
+func (q *Queries) AnyCustomerErased(ctx context.Context, ids []int64) (bool, error) {
+	row := q.db.QueryRow(ctx, anyCustomerErased, ids)
+	var erased bool
+	err := row.Scan(&erased)
+	return erased, err
+}
+
 const appliedToTransactions = `-- name: AppliedToTransactions :many
 SELECT 'payment'::text AS kind, p.id, p.bank_transaction_id::bigint AS bank_transaction_id, p.invoice_id, i.number,
        p.amount, (p.removed_at IS NOT NULL)::boolean AS removed
@@ -408,6 +425,38 @@ func (q *Queries) InvoicesOpenEqual(ctx context.Context, amount pgtype.Numeric) 
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lineLinkedInvoices = `-- name: LineLinkedInvoices :many
+SELECT p.invoice_id FROM invoices.payments p WHERE p.bank_transaction_id = $1
+UNION
+SELECT c.invoice_id FROM invoices.charge_payments c WHERE c.bank_transaction_id = $1
+ORDER BY 1 DESC
+`
+
+// LineLinkedInvoices is every invoice a bank line's payments or charge
+// payments, live or removed, were registered against, highest id first: a
+// queue action that writes a note on the line locks them after it (D18's
+// line-then-invoices order) and asks whether any is an anonymised
+// customer's (D19).
+func (q *Queries) LineLinkedInvoices(ctx context.Context, id *int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, lineLinkedInvoices, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var invoice_id int64
+		if err := rows.Scan(&invoice_id); err != nil {
+			return nil, err
+		}
+		items = append(items, invoice_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -295,6 +295,12 @@ func TestReceivables_FromBankFileToPaidCharges(t *testing.T) {
 	}
 
 	// The queue's two lines handled, nothing is left to look at.
+	queued := attentionTypes(t, c)
+	for _, file := range []int64{ocr, camt} {
+		if !slices.Contains(queued, fmt.Sprintf("bankTransactionsOpen %d", file)) {
+			t.Errorf("attention = %v, want file %d's open line before it is handled", queued, file)
+		}
+	}
 	for _, l := range append(linesOf(t, c, ocr), lines...) {
 		switch {
 		case l.Status != "exception":

@@ -1260,10 +1260,11 @@ overlevere til aksesspunktet, avbrytes; de utstedte dokumentene, med kjøperen d
 navngir og timelistene sine, blir stående. Purrebrev som fortsatt er underveis — i kø,
 venter på utskrift eller feilet — trekkes tilbake, og adressen på hvert brev blankes,
 også på et sendt brev; et brev som allerede er skrevet ut, lar Vantigo stå, slik at du
-kan ta det ut av posten og trekke det tilbake for hånd, og loggen navngir det.
-Merknadene på gebyrbetalinger, frafalte gebyrer, registrerte leveringer, venting og
-overleveringer tømmes, og det samme gjør merknadene på banklinjene kundens betalinger
-kom fra, når linjene er behandlet; brevene, banklinjene og betalerens opplysninger blir
+kan ta det ut av posten og trekke det tilbake for hånd — det står fortsatt som utskrevet
+på fakturaens kort **Purringer**, og administratorens serverlogg navngir det.
+Merknadene på betalinger av purrekrav, ettergitte purrekrav, registrerte leveringer, vent
+og overleveringer tømmes, og det samme gjør merknadene på banklinjene kundens betalinger
+kom fra; en linje som behandles i avvikskøen etterpå, får heller ingen merknad. Brevene, banklinjene og betalerens opplysninger blir
 stående, som bankens og kravets dokumentasjon. Ingen dokumenter sendes til en anonymisert kunde igjen, men en
 kreditnota kan fortsatt utstedes, med kjøperen originalen navnga.
 

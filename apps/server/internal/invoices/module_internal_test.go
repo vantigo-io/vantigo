@@ -70,39 +70,43 @@ func TestMount_RefusesAnInstallationWithoutCustomers(t *testing.T) {
 // rewrites, once every PR 1 operation exists (plan reading 41).
 const (
 	descAccess = "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, " +
-		"the CSV export and the stats; the overdue list and an invoice's reminders, hold, hand-off, manual deliveries " +
-		"and charges; the collection rates, the reminder settings and a customer's reminder policy; and the attention " +
-		"items about overdue invoices and refunds due."
+		"the CSV export and the stats; the overdue list and an invoice's reminder letters and their PDFs, " +
+		"hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings and a " +
+		"customer's reminder policy; and the attention items about overdue invoices and refunds due."
 	descIssue = "Issue a draft into a numbered document that can never be changed, create credit notes, send an " +
-		"issued document by e-mail or as EHF, cancel or resolve its EHF transmissions, and record that an invoice " +
-		"was handed over or posted, or remove such a record."
+		"issued document by e-mail or as EHF, cancel or resolve its EHF transmissions, and record that an " +
+		"invoice was handed over or posted, or remove such a record."
 	descManage = "Change the seller record and its Peppol id, the number series start, the KID agreement, the " +
 		"e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the " +
-		"regime review, the collection rates added ahead of a release, and the format a bank account's files are " +
-		"imported in."
+		"regime review, the collection rates — add one ahead of a release, or delete one nothing has relied " +
+		"on — and the format a bank account's files are imported in."
 	descPayments = "Register payments against issued invoices and remove a registration with a reason; import bank " +
-		"files and work the exception queue; make reminder runs, and print, post, withdraw and retry the letters; " +
-		"hold a disputed invoice, hand one to collection and export the collection file; register and remove " +
-		"charge payments and waive charges; set a customer's reminder policy; and see the attention items about " +
-		"the bank lines and the letters."
+		"files, read the imported files, the bank accounts and their lines, and work the exception queue; " +
+		"make and read reminder runs, print paper letters and confirm them posted or reprint them, and " +
+		"withdraw and retry letters; hold a disputed invoice, hand one to collection and export the " +
+		"collection file; register and remove charge payments and waive charges; set a customer's reminder " +
+		"policy; and see the attention items about the bank lines, the letters and the print batches."
 )
 
 // Each key's description names what D1's table gives it — and no other
 // key's names it — so an administrator reading the catalog sees where the
 // overdue list, the bank import, the runs, the settings and a manual
-// delivery live (invoices payments and reminders design D1).
+// delivery live (invoices payments and reminders design D1); and every
+// operation's access rule is covered by the key it needs.
 func TestPermissions_Descriptions(t *testing.T) {
 	t.Parallel()
 	gains := map[string][]string{
-		"invoices:access": {"the overdue list", "an invoice's reminders, hold, hand-off, manual deliveries and charges",
+		"invoices:access": {"the overdue list", "an invoice's reminder letters and their PDFs, hold, hand-off, manual deliveries and charges",
 			"the collection rates, the reminder settings and a customer's reminder policy",
 			"attention items about overdue invoices and refunds due"},
 		"invoices:issue": {"record that an invoice was handed over or posted"},
-		"invoices:manage": {"the reminder settings and the regime review", "the collection rates added ahead of a release",
-			"the format a bank account's files are imported in"},
-		"invoices:payments": {"import bank files", "exception queue", "reminder runs", "print, post, withdraw and retry",
+		"invoices:manage": {"the reminder settings and the regime review", "add one ahead of a release",
+			"delete one nothing has relied on", "the format a bank account's files are imported in"},
+		"invoices:payments": {"import bank files", "the bank accounts and their lines", "exception queue", "reminder runs",
+			"print paper letters and confirm them posted or reprint them", "withdraw and retry letters",
 			"hold a disputed invoice", "hand one to collection", "export the collection file", "charge payments",
-			"waive charges", "set a customer's reminder policy", "attention items about the bank lines and the letters"},
+			"waive charges", "set a customer's reminder policy",
+			"attention items about the bank lines, the letters and the print batches"},
 	}
 	descriptions := map[string]string{}
 	for _, p := range Module().Permissions {

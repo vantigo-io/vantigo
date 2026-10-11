@@ -610,18 +610,18 @@ const en = {
     "Change expense settings, rates and categories, record expenses for a colleague, mark expenses reimbursed, and work past the period lock.",
   "admin.permission.invoicesAccess": "Use Invoices",
   "admin.permission.invoicesAccessDescription":
-    "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats.",
+    "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats; the overdue list and an invoice's reminder letters and their PDFs, hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings and a customer's reminder policy; and the attention items about overdue invoices and refunds due.",
   "admin.permission.invoicesCreate": "Create invoices",
   "admin.permission.invoicesCreateDescription": "Create, edit and delete invoice drafts, and preview a draft as PDF.",
   "admin.permission.invoicesIssue": "Issue invoices",
   "admin.permission.invoicesIssueDescription":
-    "Issue a draft into a numbered document that can never be changed, create credit notes, send an issued document by e-mail or as EHF, and cancel or resolve its EHF transmissions.",
+    "Issue a draft into a numbered document that can never be changed, create credit notes, send an issued document by e-mail or as EHF, cancel or resolve its EHF transmissions, and record that an invoice was handed over or posted, or remove such a record.",
   "admin.permission.invoicesManage": "Manage invoicing",
   "admin.permission.invoicesManageDescription":
-    "Change the seller record and its Peppol id, the number series start, the KID agreement, the e-invoicing access point's credentials, and the VAT codes and their rates.",
+    "Change the seller record and its Peppol id, the number series start, the KID agreement, the e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the regime review, the collection rates — add one ahead of a release, or delete one nothing has relied on — and the format a bank account's files are imported in.",
   "admin.permission.invoicesPayments": "Register payments",
   "admin.permission.invoicesPaymentsDescription":
-    "Register payments against issued invoices, and remove a registration with a reason.",
+    "Register payments against issued invoices and remove a registration with a reason; import bank files, read the imported files, the bank accounts and their lines, and work the exception queue; make and read reminder runs, print paper letters and confirm them posted or reprint them, and withdraw and retry letters; hold a disputed invoice, hand one to collection and export the collection file; register and remove charge payments and waive charges; set a customer's reminder policy; and see the attention items about the bank lines, the letters and the print batches.",
   "admin.accountExists": "An account already exists for this email address.",
   "admin.filterUsers": "Filter users by {{label}}",
   "admin.searchUsers": "Search users",
@@ -973,19 +973,19 @@ const nb: { [Key in keyof typeof en]: string } = {
     "Endre utleggsinnstillinger, satser og kategorier, før utlegg for en kollega, merk utlegg som refundert, og arbeid forbi periodelåsen.",
   "admin.permission.invoicesAccess": "Bruke Fakturaer",
   "admin.permission.invoicesAccessDescription":
-    "Bruke Fakturaer-appen og lese alle fakturaer, kreditnotaer, PDF-er, betalinger og forsendelser, journalen, CSV-eksporten og statistikken.",
+    "Bruke Fakturaer-appen og lese alle fakturaer, kreditnotaer, PDF-er, betalinger og forsendelser, journalen, CSV-eksporten og statistikken; forfallslisten og en fakturas purrebrev og PDF-ene deres, vent, overlevering, manuelle leveringer og purrekrav; inkassosatsene, purreinnstillingene og en kundes purreregel; og dashbordets varsler om forfalte fakturaer og penger som skal tilbakebetales.",
   "admin.permission.invoicesCreate": "Lage fakturaer",
   "admin.permission.invoicesCreateDescription":
     "Lage, endre og slette fakturautkast, og forhåndsvise et utkast som PDF.",
   "admin.permission.invoicesIssue": "Utstede fakturaer",
   "admin.permission.invoicesIssueDescription":
-    "Utstede et utkast som et nummerert dokument som aldri kan endres, lage kreditnotaer, sende et utstedt dokument på e-post eller som EHF, og avbryte eller avklare EHF-sendingene.",
+    "Utstede et utkast som et nummerert dokument som aldri kan endres, lage kreditnotaer, sende et utstedt dokument på e-post eller som EHF, avbryte eller avklare EHF-sendingene, og registrere at en faktura er levert eller postlagt, eller fjerne en slik registrering.",
   "admin.permission.invoicesManage": "Administrere fakturering",
   "admin.permission.invoicesManageDescription":
-    "Endre selgeropplysningene og Peppol-ID-en, startnummeret for nummerserien, KID-avtalen, påloggingsdataene til aksesspunktet for e-faktura, og mva-kodene og satsene deres.",
+    "Endre selgeropplysningene og Peppol-ID-en, startnummeret for nummerserien, KID-avtalen, påloggingsdataene til aksesspunktet for e-faktura, mva-kodene og satsene deres, purreinnstillingene og gjennomgangen av regelverket, inkassosatsene — legge til en før en ny versjon, eller slette en som ingenting har brukt — og formatet en bankkontos filer importeres i.",
   "admin.permission.invoicesPayments": "Registrere betalinger",
   "admin.permission.invoicesPaymentsDescription":
-    "Registrere betalinger mot utstedte fakturaer, og fjerne en registrering med en begrunnelse.",
+    "Registrere betalinger mot utstedte fakturaer og fjerne en registrering med begrunnelse; importere bankfiler, lese de importerte filene, bankkontoene og linjene deres, og arbeide i avvikskøen; gjøre og lese purrekjøringer, skrive ut papirbrev og bekrefte dem postlagt eller skrive dem ut på nytt, og trekke tilbake og sende brev på nytt; sette en omstridt faktura på vent, overlevere en til inkasso og eksportere inkassofilen; registrere og fjerne betalinger av purrekrav og ettergi purrekrav; sette en kundes purreregel; og se dashbordets varsler om banklinjer, brev og utskriftsbunker.",
   "admin.accountExists": "Det finnes allerede en konto for denne e-postadressen.",
   "admin.filterUsers": "Filtrer brukere etter {{label}}",
   "admin.searchUsers": "Søk etter brukere",
