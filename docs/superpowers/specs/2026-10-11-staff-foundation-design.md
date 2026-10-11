@@ -2,11 +2,12 @@
 
 A new module, `staff`. Research: `docs/superpowers/research/2026-10-11-staff-module.md`
 ("R", cited by section); its §10 holds the nineteen decisions the owner took on
-2026-10-11, which this design implements and does not reopen. Revision 3 (pre-flight), after the
+2026-10-11, which this design implements and does not reopen. Revision 4 (A2 pre-flight), after the
 critical review of 2026-10-11 (five blockers, fourteen major findings, thirty minor —
 every one taken in its place), its re-check (seventeen edits, taken; its five open
 questions answered as readings 30–34), and the A1 plan's pre-flight of the same day
-(the amendments marked **(pre-flight)** below).
+(the amendments marked **(pre-flight)** below), and the A2 plan's pre-flight (marked
+**(A2 pre-flight)**).
 Code references are against `main` at `6941e58d`; `srv/` abbreviates
 `apps/server/internal/`, `mig/` `srv/db/migrations/`, `boundaries.md` the page
 `docs/src/content/docs/en/contributing/module-boundaries.md`.
@@ -312,9 +313,23 @@ employment state, it blanks the E content and queues the health objects; for eve
 A item older than five years after its year, it blanks. Objects go through
 `object_deletions` (object key, attempts, next attempt), retried every cycle until the
 store confirms, so a legal erase is never best-effort (M7). It writes an `erased`
-event per person listing kinds and counts, and schedules a **re-assessment**
-attention item twelve months after the end, cleared by `reassessed_at` and
-`reassessed_by`. A person erased is read-only except the hold and a rehire, which
+event per person listing kinds and counts, and a **re-assessment** attention item
+is derived — due twelve months after the last employment's end for a person with
+`erased_at` set and `reassessed_at` null — cleared by `reassessed_at` and
+`reassessed_by`. **(A2 pre-flight)** The three schedules are three due queries, each
+over what remains: **D** — `erased_at` null, every employment ended before today
+minus the grace, not held; **health** — a *health document* is one in a **restricted**
+category (restricted ⇔ class E), deleted `healthRetentionDays` after the last
+employment's end until B attaches documents to a sick case (`documents.case_id`,
+nullable, added by B) and moves the attached ones to the case's schedule, current
+staff's health documents being kept until then; **A** — per employment whose end
+year is more than five years past, nulling that employment's pay columns, deleting
+its A documents and blanking the A fields of its events' payloads, so a rehired
+person's old employment loses its pay terms while they work again. Document rows
+are **deleted**, never marked: a delete and an erase both remove the row and insert
+the object's ledger row in the same transaction, and the ledger finishes the object
+after commit. A person erased is read-only except the hold, the reassessment, the
+unlink of their user, the reads, and a rehire, which
 opens a fresh D record under the same employee number; because the MAC is gone, the
 creation form warns of an erased person with the same name and birth date so a
 duplicate is a choice, not an accident. Identity's user is never deleted by this
@@ -324,7 +339,12 @@ module (R §10.13); `Deactivate` is the most it asks.
 the sealed values omitted — reading 31) and `GET /people/{id}/personal-data`
 (`staff:personal-data`) stream one JSON document with every field group, every
 absence, every case, every event and the documents' metadata (the files follow on the
-archive's download endpoints), the shape of customers' export (R §7.4). The module
+archive's download endpoints), the shape of customers' export (R §7.4) — built in
+memory in one snapshot, never refused for size, and **an audited reveal**: an event
+`personal_data_exported` naming the viewer (A2 pre-flight). `/me/export` carries the
+person's own data without the sealed values (reading 31) and without HR's notes on
+them, its events shaped as Self's; the HR-issued export is the complete answer to an
+innsyn request (reading 35, for the owner's verdict). The module
 does not implement `CustomerPersonalData`: a person who is also a customer is a later
 concern.
 
@@ -362,19 +382,22 @@ never export.
 **S20 — Attention and stats.** `GET /stats` (headcount, FTE sum, people on leave
 today, open sick cases, absence rate for the trailing twelve months) and
 `GET /stats/attention`, the host dashboard's items, shaped by who asks (customers'
-follow-ups): absence awaiting the caller's decision; a contract overdue (no document
-of category contract on an employment seven days after its start — immediately for
-one under a month or hired out, R §4.1); a probation ending within a month; a
+follow-ups; item types in camelCase as every module's): absence awaiting the
+caller's decision; a contract overdue (neither a typed `contract_signed_at` nor a
+signed contract document on an employment seven days after its start — immediately
+for one under a month or hired out, R §4.1); a probation ending within a month; a
 temporary employment past twelve months (notice due, any ground) or whose chain of
 temporary employments on grounds a or b for the person passes thirty-six (converts,
 R §4.2);
 a sick-case milestone due or overdue for the caller's reports; untaken holiday from
 last year (January) and fewer than the main-period days approved by 1 June; reports
 without a manager; a provisioning failure or a person blocked from an account, with
-the reason; an invitation unanswered; a retention re-assessment due; the OTP
-threshold crossed (R §4.8); a headcount threshold crossed and not yet acknowledged
-(5: varslingsrutine and verneombud; 30: AMU; 50: ARP — R §4.10), acknowledged per
-threshold by `staff:manage`.
+the reason; an invitation unanswered; a retention re-assessment due; the deletion
+ledger failing (A2 pre-flight); the OTP threshold crossed (R §4.8 — judged without an
+owner flag: one person at ≥ 75 %, two, or ≥ 20 % positions summing to two årsverk,
+the item naming the owner exception); a headcount threshold crossed and not yet
+acknowledged (5: varslingsrutine and verneombud; 30: AMU; 50: ARP — R §4.10),
+acknowledged per threshold by `staff:manage`, once and permanently, as an event.
 
 **S21 — Events are the history, shaped like the data, by field group.** `staff.events` (person,
 nullable for installation events; kind; actor snapshot; instant; payload) records
@@ -685,10 +708,18 @@ recomputed when the case's rows change), `done_at`, `done_by_user_id`, `waived`,
 ### 3.6 Documents, links, events, settings
 
 `staff.documents` — `person_id`, `category_id` → `document_categories` (`key`, names,
-`retention_class`, `restricted` for health, `seeded`), `object_key`, `file_name`,
-`content_type`, `size_bytes`, `valid_to`, `signed_at`, `uploaded_by_user_id`,
-`deleted_at`. Keys `people/<personId>/<uuid>`. `staff.object_deletions` — `object_key`,
-`attempts`, `next_attempt_at`, `last_error`.
+`retention_class`, `restricted` ⇔ class E, `seeded`, `archived_at`, `sort`),
+`object_key`, `file_name`, `content_type`, `size_bytes`, `valid_to`, `signed_at`,
+`uploaded_by_user_id`, `revision` (no `deleted_at`: rows are deleted — A2
+pre-flight). Keys `people/<personId>/<uuid>`. `staff.object_deletions` — `object_key`,
+`attempts`, `next_attempt_at`, `claimed_until`, `last_error`, `created_at`. The
+`retention` block of `GET /settings` (pending and failing deletions, the oldest
+pending, the last erase) is derived from these and the events; no settings column
+is added. Document events carry `{documentId, fields: {category, fileName, validTo,
+signedAt}}` under a `documents` group (Self, manage, personal-data) or a `health`
+group (Self, personal-data) chosen by the category, with their classes passed per
+event from the category; a health document's events are left out of the listing for
+an audience without the health group.
 
 `staff.identity_links` — `person_id`, `provider` varchar(20) (`identity` now; the
 Entra module adds its value), `external_id` varchar(200), `state` (`linked`,
@@ -871,7 +902,7 @@ employee role (S26) is the Owner's to create and is the one that carries
 | Area | Operations |
 |---|---|
 | Meta | `GET /meta` — capabilities, structure, absence types visible to the caller, schemes, the zone, `accountMode`, whether identity's provisioning roles are set |
-| People | `GET /people` (q, unitId, departmentId, locationId, status, paged) · `POST /people` · `GET|PUT /people/{id}` · `DELETE /people/{id}` (created in error: no employment, no absence, no link, named as nobody's manager) · `GET|PUT /people/{id}/user` (the self-service link, pre-flight) · `GET /assignable-users?q=` (the picker over `Deps.Users`) · `PUT /people/{id}/national-id` · `POST /people/{id}/national-id/reveal` · `PUT /people/{id}/bank-account` · `POST /people/{id}/bank-account/reveal` · `GET|PUT /people/{id}/next-of-kin` · `GET|PUT /people/{id}/roles` · `GET /people/{id}/events` · `GET /people/{id}/personal-data` · `PUT /people/{id}/legal-hold` · `POST /people/{id}/reassessed` · `GET /people/{id}/org` |
+| People | `GET /people` (q, unitId, departmentId, locationId, status, paged) · `POST /people` · `GET|PUT /people/{id}` · `DELETE /people/{id}` (created in error: no employment, no absence, no link, named as nobody's manager) · `GET|PUT /people/{id}/user` (the self-service link, pre-flight) · `POST /people/similar-erased` (the rehire warning, A2 pre-flight) · `GET /assignable-users?q=` (the picker over `Deps.Users`) · `PUT /people/{id}/national-id` · `POST /people/{id}/national-id/reveal` · `PUT /people/{id}/bank-account` · `POST /people/{id}/bank-account/reveal` · `GET|PUT /people/{id}/next-of-kin` · `GET|PUT /people/{id}/roles` · `GET /people/{id}/events` · `GET /people/{id}/personal-data` · `PUT /people/{id}/legal-hold` · `POST /people/{id}/reassessed` · `GET /people/{id}/org` |
 | Employments | `GET|POST /people/{id}/employments` · `GET|PUT /employments/{id}` · `POST /employments/{id}/end` · `/reopen` · `GET|POST /employments/{id}/terms` · `PUT /terms/{id}` (latest, or a correction with `correction: true`) · `DELETE /terms/{id}` (latest) · `GET /employments/{id}/contract-check` |
 | Structure | `GET|POST`, `PUT /{id}`, `POST /{id}/archive` for `/legal-entities`, `/business-units`, `/departments`, `/locations` |
 | Documents | `GET /people/{id}/documents` · `POST /people/{id}/documents` · `GET /documents/{id}` · `PUT /documents/{id}` · `DELETE /documents/{id}` · `GET|POST /document-categories` · `PUT /document-categories/{id}` |
@@ -892,8 +923,12 @@ Refusal codes: `national_id_invalid`, `national_id_duplicate`, `bank_account_inv
 `absence_note_on_sick`, `self_certification_exhausted`,
 `self_certification_too_early`, `self_certification_withdrawn`, `decision_not_yours`,
 `own_request`, `holiday_scheme_in_use`, `seed_immutable`, `document_type_unsupported`,
-`document_too_large`, `person_erased`, `person_in_use`, `legal_hold`,
-`import_sealed_columns`, `work_email_taken`, `employment_number_taken`,
+`document_too_large`, `document_count_exceeded`, `category_restricted`,
+`person_erased`, `person_in_use`, `legal_hold`, `reassessment_not_due`,
+`import_sealed_columns`, `import_too_large`, `import_too_many_rows`,
+`import_not_semicolon`, `export_too_many`, `payroll_month_invalid`,
+`payroll_format_unsupported`, `storage_unavailable`, `threshold_unknown`,
+`retention_busy`, `work_email_taken`, `employment_number_taken`,
 `full_time_hours_mismatch`, `user_inactive`, `user_linked_elsewhere`, `no_person`,
 `structure_default`, `national_id_birth_date_mismatch`, `account_email_missing`,
 `account_email_taken`, `account_not_managed`, `account_privileged`,
@@ -1147,6 +1182,10 @@ For the owner's verdict; each is how the design read a decision or a gap.
     local mode, so a takeover by password reset is noticed.
 34. **A leave's "total length" for the a-melding is the chain** of contiguous rows of
     the same type (an extension row continues the leave), not the single row.
+35. **(A2 pre-flight) `/me/export` omits HR's notes about the person**, as the UI
+    does; GDPR art. 15 covers such notes, so the HR-issued personal-data export,
+    which includes them, is the module's complete answer to an innsyn request. For
+    the owner's verdict.
 
 ## 12. Open questions
 
