@@ -47,6 +47,8 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 | **Projects**       | Projects per customer, the people on them and their billing rules.   | 🚧 In development |
 | **Time**           | Hours on projects, with rates, weekly submission and approval.       | 🚧 In development |
 | **Expenses**       | Outlays and mileage, receipts, approval, reimbursement and invoicing. | 🚧 In development |
+| **Invoices**       | Invoices and credit notes, payments, reminders and EHF delivery.      | 🚧 In development |
+| **Staff**          | The company's people, their employments and its structure.           | 🚧 In development |
 
 Identity — accounts, sign-in, MFA, RBAC, OIDC and SCIM — is always part of the
 application and is never listed as an optional module. Which business modules a
@@ -75,8 +77,8 @@ docker compose up -d
 
 Compose starts PostgreSQL, applies the database migrations as a one-shot `migrate`
 job, and then brings up the single Vantigo application on <http://localhost:8080>.
-Customers, Communications, Products, Energy, Projects, Time and Expenses are
-modules in that one application.
+Customers, Communications, Products, Energy, Projects, Time, Expenses, Invoices
+and Staff are modules in that one application.
 
 The stack runs outside development, so `vantigo.env` must carry `APP_SECRET` before
 the first start — at least 32 bytes of key material, generated with
@@ -111,6 +113,8 @@ vantigo/
 │   │       ├── projects/            # Projects vertical slice
 │   │       ├── time/                # Time vertical slice
 │   │       ├── expenses/            # Expenses vertical slice
+│   │       ├── invoices/            # Invoices vertical slice (the sales document)
+│   │       ├── staff/               # Staff vertical slice (the workforce register)
 │   │       ├── module/              # The platform modules mount through
 │   │       ├── db/                  # Pool and the embedded goose migrations
 │   │       └── web/                 # The embedded SPA
@@ -121,7 +125,9 @@ vantigo/
 │   ├── energy/frontend/             # @vantigo/energy-ui
 │   ├── projects/frontend/           # @vantigo/projects-ui
 │   ├── time/frontend/               # @vantigo/time-ui
-│   └── expenses/frontend/           # @vantigo/expenses-ui
+│   ├── expenses/frontend/           # @vantigo/expenses-ui
+│   ├── invoices/frontend/           # @vantigo/invoices-ui
+│   └── staff/frontend/              # @vantigo/staff-ui
 ├── packages/
 │   ├── frontend-shell/              # @vantigo/frontend-shell — shared shell, theme, branding
 │   └── frontend-api-client/         # @vantigo/frontend-api-client — generated types and client

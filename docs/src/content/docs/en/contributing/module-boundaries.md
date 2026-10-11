@@ -9,8 +9,8 @@ sources:
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
 its own deployable without a rewrite. Customers, Products, Energy, Communications,
-Projects, Time, Expenses and Invoices are vertical-slice modules composed only by
-`cmd/vantigo`, on the Identity platform.
+Projects, Time, Expenses, Invoices and Staff are vertical-slice modules composed only
+by `cmd/vantigo`, on the Identity platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
 through the in-process contracts in `internal/contracts`; asynchronous ones use the
@@ -47,7 +47,7 @@ Communications' outbox is the working example.
    type, never a store type, and the reason is rules 8, 9 and 10's.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
-   `projects`, `time`, `expenses`, `invoices`), and no module's migrations or queries reference
+   `projects`, `time`, `expenses`, `invoices`, `staff`), and no module's migrations or queries reference
    another's. **No cross-schema foreign keys or joins** — reference other modules'
    data by opaque ID only. That is what keeps a future "move this schema to its own
    server" a connection-string change instead of a data migration.
@@ -289,7 +289,7 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications,projects,time,expenses,invoices`). Identity is always mounted and
+(`customers,products,energy,communications,projects,time,expenses,invoices,staff`). Identity is always mounted and
 is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
 name the binary does not know fails startup naming both the value and the known set.
 

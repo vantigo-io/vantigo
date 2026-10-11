@@ -325,4 +325,26 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-Total: 296 of 431 operations have no recorded exchange.
+## staff (19 uncovered)
+
+- `GET /api/v1/staff/business-units` (getStaffBusinessUnits)
+- `GET /api/v1/staff/departments` (getStaffDepartments)
+- `GET /api/v1/staff/legal-entities` (getStaffLegalEntities)
+- `GET /api/v1/staff/locations` (getStaffLocations)
+- `GET /api/v1/staff/meta` (getStaffMeta)
+- `GET /api/v1/staff/settings` (getStaffSettings)
+- `POST /api/v1/staff/business-units/{id}/archive` (postStaffBusinessUnitsByIdArchive)
+- `POST /api/v1/staff/business-units` (postStaffBusinessUnits)
+- `POST /api/v1/staff/departments/{id}/archive` (postStaffDepartmentsByIdArchive)
+- `POST /api/v1/staff/departments` (postStaffDepartments)
+- `POST /api/v1/staff/legal-entities/{id}/archive` (postStaffLegalEntitiesByIdArchive)
+- `POST /api/v1/staff/legal-entities` (postStaffLegalEntities)
+- `POST /api/v1/staff/locations/{id}/archive` (postStaffLocationsByIdArchive)
+- `POST /api/v1/staff/locations` (postStaffLocations)
+- `PUT /api/v1/staff/business-units/{id}` (putStaffBusinessUnitsById)
+- `PUT /api/v1/staff/departments/{id}` (putStaffDepartmentsById)
+- `PUT /api/v1/staff/legal-entities/{id}` (putStaffLegalEntitiesById)
+- `PUT /api/v1/staff/locations/{id}` (putStaffLocationsById)
+- `PUT /api/v1/staff/settings` (putStaffSettings)
+
+Total: 315 of 450 operations have no recorded exchange.

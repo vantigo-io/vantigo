@@ -825,8 +825,8 @@ func TestLoad_TrustedProxyHopsRequireCIDRsOutsideDevelopment(t *testing.T) {
 }
 
 func TestLoad_Modules(t *testing.T) {
-	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices"}) {
-		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects,time,expenses,invoices when MODULES is unset", cfg.Modules)
+	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff"}) {
+		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects,time,expenses,invoices,staff when MODULES is unset", cfg.Modules)
 	}
 
 	cfg := mustLoad(t, with(validEnv(), "MODULES", " Customers ,, ENERGY,products "))
@@ -834,7 +834,7 @@ func TestLoad_Modules(t *testing.T) {
 		t.Errorf("Modules = %v, want trimmed, lower-cased entries with empties dropped", cfg.Modules)
 	}
 
-	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices") {
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices, staff") {
 		t.Errorf("error = %q, want it to name the bad value and the known set", msg)
 	}
 
@@ -881,6 +881,15 @@ func TestLoad_Modules(t *testing.T) {
 	cfg = mustLoad(t, with(validEnv(), "MODULES", "expenses"))
 	if !slices.Equal(cfg.Modules, []string{"expenses"}) {
 		t.Errorf("Modules = %v, want exactly expenses", cfg.Modules)
+	}
+
+	// staff depends on nobody but identity (staff foundation design S1): it
+	// reads users through contracts.UserDirectory, which identity always
+	// provides, and no other module's contract. MODULES=staff alone is an
+	// installation a company running only its workforce register may run.
+	cfg = mustLoad(t, with(validEnv(), "MODULES", "staff"))
+	if !slices.Equal(cfg.Modules, []string{"staff"}) {
+		t.Errorf("Modules = %v, want exactly staff", cfg.Modules)
 	}
 }
 

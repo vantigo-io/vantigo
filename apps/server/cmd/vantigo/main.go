@@ -53,6 +53,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/server"
+	"github.com/vantigo-io/vantigo/server/internal/staff"
 	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	timetracking "github.com/vantigo-io/vantigo/server/internal/time"
 	"github.com/vantigo-io/vantigo/server/internal/web"
@@ -297,6 +298,7 @@ func businessModules(access *identity.Access) []module.Module {
 		timetracking.Module(),
 		expenses.Module(),
 		invoices.Module(),
+		staff.Module(),
 	}
 }
 
