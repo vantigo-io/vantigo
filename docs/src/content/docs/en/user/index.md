@@ -34,6 +34,7 @@ yours:
 | [Projects](/en/user/projects/) | Projects, My tasks, Project economy |
 | [Time](/en/user/time/) | My week, Approvals, People, Time settings |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
+| [Staff](/en/user/staff/) | My page, People, Staff settings |
 | [Invoices](/en/user/invoices/) | Invoices, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
