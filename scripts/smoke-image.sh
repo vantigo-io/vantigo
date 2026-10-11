@@ -168,6 +168,9 @@ pass "time demands authentication"
 [ "$(status "$base/api/v1/expenses/entries")" = 401 ] || fail "expenses entries is not 401 without a session"
 pass "expenses demands authentication"
 
+[ "$(status "$base/api/v1/staff/meta")" = 401 ] || fail "staff meta is not 401 without a session"
+pass "staff demands authentication"
+
 docker exec "$APP" /app/vantigo healthcheck || fail "the healthcheck command failed inside the container"
 health=""
 for _ in $(seq 1 30); do

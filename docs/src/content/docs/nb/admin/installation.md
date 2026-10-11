@@ -83,11 +83,11 @@ engangsjobb, og starter deretter Vantigo:
 - **Vantigo** — <http://localhost:8080>
 - **API-kontrakten** — `GET http://localhost:8080/api/openapi.json` (krever en sesjon)
 
-Modulene Kunder, Produkter, Energi, Kommunikasjon, Prosjekter, Tid, Utgifter og
-Fakturaer er aktivert som standard (`MODULES` i `vantigo.env`). De deler én
+Modulene Kunder, Produkter, Energi, Kommunikasjon, Prosjekter, Tid, Utgifter, Fakturaer
+og Ansatte er aktivert som standard (`MODULES` i `vantigo.env`). De deler én
 PostgreSQL-database ved navn `vantigo`, med uavhengige skjemaer `identity`,
-`customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses` og
-`invoices`, hver med sin egen migreringshistorikk.
+`customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`,
+`invoices` og `staff`, hver med sin egen migreringshistorikk.
 
 ## Hva stacken inneholder
 
@@ -178,12 +178,12 @@ gjenopprettingsprosedyrer, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).
 - **`MODULES`** (`vantigo.env`) — den kommaseparerte listen over forretningsmoduler
   denne installasjonen aktiverer. `identity` er alltid montert og listes aldri. Usatt
   aktiverer hver modul binæren kan montere: `customers`, `products`, `energy`,
-  `communications`, `projects`, `time`, `expenses` og `invoices`. `energy`,
+  `communications`, `projects`, `time`, `expenses`, `invoices` og `staff`. `energy`,
   `communications`, `projects` og `invoices` krever hver `customers`, og `time` krever
   `projects`; `projects` bruker også `products` når den er aktivert og svarer 409 på
   endepunktene for faktureringslinjer når den ikke er det; `expenses` krever ingenting
-  og leser `projects` bare når den tilfeldigvis er aktivert. For en mindre
-  installasjon lister du bare det du vil ha, for eksempel
+  og leser `projects` bare når den tilfeldigvis er aktivert; `staff` krever ingenting.
+  For en mindre installasjon lister du bare det du vil ha, for eksempel
   `MODULES=customers,products`.
 - **`OWNERS_REQUIRE_MFA=0` og `OWNERS_ALLOW_INSECURE_NO_MFA=1`** (`vantigo.env`) —
   leveres i eksempelet fordi en fersk installasjon ikke har noen til å registrere en
@@ -239,8 +239,7 @@ hindrer API-containeren i å starte før den lykkes, oppgraderinger inkludert.
 
 Rollesetningene kjøres fra PostgreSQL sitt init-skript, som bare kjører når volumet
 `postgres-data` opprettes. En eksisterende installasjon kan legge til rollen for hånd
-(juster skjemalistene så de stemmer med `MODULES` som er aktivert i din installasjon,
-og legg til `invoices` når den er aktivert):
+(juster skjemalistene så de stemmer med `MODULES` som er aktivert i din installasjon):
 
 ```sql
 \connect vantigo
@@ -258,9 +257,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Standardrettigheter dekker bare objekter som opprettes etterpå; gi rettigheter
 -- på skjemaene de aktiverte modulene allerede har opprettet (legg til/fjern
 -- skjemaer så de stemmer med MODULES aktivert i din installasjon).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff TO "vantigo_app";
 ```
 
 ## Bakgrunnsjobber og skalering
@@ -336,7 +335,7 @@ Hele applikasjonen kan serveres under ett konfigurerbart stiprefiks. Sett
 verten — ingen sti, siden stiprefikset er `APP_BASE_PATH`, ikke en del av `APP_URL`.
 API-prefiksene forblir `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
-`/api/v1/expenses` og `/api/v1/invoices`.
+`/api/v1/expenses`, `/api/v1/invoices` og `/api/v1/staff`.
 
 For eksempel, med nginx:
 
@@ -500,6 +499,15 @@ organisasjonsnummer i kjøperøyeblikksbildet — `buyer_foreign_id` viser `no�
 bokstaver. De øyeblikksbildene er uforanderlige: der det betyr noe, krediterer du et
 slikt dokument og utsteder det på nytt. Dokumenter utstedt fra denne utgivelsen av er
 riktige.
+
+**Utgivelsen med Ansatte.** En installasjon som lar `MODULES` stå usatt aktiverer hver
+modul denne binæren kjenner, så den får Ansatte-appen ved oppgradering, og migreringen
+oppretter skjemaet `staff`. Bare Owner kan bruke den — Owner har allerede hver
+rettighet — før en rolle gir `staff:access`; de fire andre rettighetene ligger over
+den. Hvis databasen kjører en applikasjonsrolle med minste privilegium, gir du den
+skjemaet `staff` som over. En installasjon som lister `MODULES` eksplisitt får Ansatte
+først når `staff` legges til; den trenger ingen annen modul. Se
+[Ansatte](/nb/admin/staff/).
 
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).

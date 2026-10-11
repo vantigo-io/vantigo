@@ -38,6 +38,9 @@ applikasjonen.
 - **Innbetalinger.** [Innbetalinger fra banken](/nb/admin/payments/) er bankavtalen som
   gir deg OCR-giro- eller camt.054-filer med innbetalinger, hvor hver bank lar deg laste
   dem ned, og formatet hver kontos filer importeres i.
+- **Ansatte.** [Ansatte](/nb/admin/staff/) slår på registeret over de ansatte, gir folk
+  tilgang til det med de fem rettighetene, og setter forretningstidssonen og
+  ansattnummerserien.
 
 ## Den komplette konfigurasjonsreferansen
 

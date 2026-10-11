@@ -83,11 +83,11 @@ job, and then starts Vantigo:
 - **Vantigo** — <http://localhost:8080>
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
-The Customers, Products, Energy, Communications, Projects, Time, Expenses and Invoices
-modules are enabled by default (`MODULES` in `vantigo.env`). They share one PostgreSQL
-database named `vantigo`, with independent `identity`, `customers`, `products`,
-`energy`, `communications`, `projects`, `time`, `expenses` and `invoices` schemas and
-migration histories.
+The Customers, Products, Energy, Communications, Projects, Time, Expenses, Invoices and
+Staff modules are enabled by default (`MODULES` in `vantigo.env`). They share one
+PostgreSQL database named `vantigo`, with independent `identity`, `customers`,
+`products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices` and
+`staff` schemas and migration histories.
 
 ## What the stack contains
 
@@ -175,12 +175,12 @@ see [SSO and SCIM operations](/en/admin/sso-scim/).
 - **`MODULES`** (`vantigo.env`) — the comma-separated list of business modules this
   deployment enables. `identity` is always mounted and never listed. Unset enables
   every module the binary can mount: `customers`, `products`, `energy`,
-  `communications`, `projects`, `time`, `expenses` and `invoices`. `energy`,
+  `communications`, `projects`, `time`, `expenses`, `invoices` and `staff`. `energy`,
   `communications`, `projects` and `invoices` each require `customers`, and `time`
   requires `projects`; `projects` also uses `products` when it is enabled and answers
   409 on its billing-line endpoints when it is not; `expenses` requires nothing and
-  reads `projects` only when it happens to be enabled. To run a smaller install, list
-  only what you want, for example `MODULES=customers,products`.
+  reads `projects` only when it happens to be enabled; `staff` requires nothing. To run
+  a smaller install, list only what you want, for example `MODULES=customers,products`.
 - **`OWNERS_REQUIRE_MFA=0` and `OWNERS_ALLOW_INSECURE_NO_MFA=1`** (`vantigo.env`) —
   shipped in the example because a fresh installation has nobody around to enrol an
   authenticator right after `/setup`. Remove them before production; see
@@ -234,8 +234,7 @@ starting until it succeeds, upgrades included.
 
 The role statements run from the PostgreSQL init script, which executes only when the
 `postgres-data` volume is created. An existing installation can add the role by hand
-(adjust the schema lists to match the `MODULES` enabled in your installation, adding
-`invoices` when it is enabled):
+(adjust the schema lists to match the `MODULES` enabled in your installation):
 
 ```sql
 \connect vantigo
@@ -253,9 +252,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff TO "vantigo_app";
 ```
 
 ## Background workers and scaling
@@ -329,7 +328,7 @@ The whole application can be served below one configurable path prefix. Set
 path, since the path prefix is `APP_BASE_PATH`, not part of `APP_URL`. The API
 prefixes remain `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
-`/api/v1/expenses` and `/api/v1/invoices`.
+`/api/v1/expenses`, `/api/v1/invoices` and `/api/v1/staff`.
 
 For example, with nginx:
 
@@ -486,6 +485,14 @@ number in their buyer snapshot — `buyer_foreign_id` reads `no…` instead — 
 issue compared the directory's country case-sensitively. Those snapshots are
 immutable: where it matters, credit such a document and issue it again. Documents
 issued from this release on are right.
+
+**The release with Staff.** An installation that leaves `MODULES` unset enables every
+module this binary knows, so it gets the Staff app on upgrade, and the migration
+creates the `staff` schema. Only the Owner can use it — Owner holds every permission
+already — until a role grants `staff:access`; the other four permissions sit above it.
+If the database runs a least-privilege application role, grant it the `staff` schema as
+above. An installation that lists `MODULES` explicitly gets Staff only once `staff` is
+added; it needs no other module. See [Staff](/en/admin/staff/).
 
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).

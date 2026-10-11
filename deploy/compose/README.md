@@ -60,11 +60,11 @@ a one-shot job, and then starts Vantigo:
 - **Vantigo** — <http://localhost:8080>
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
-The Customers, Products, Energy, Communications, Projects, Time, Expenses and
-Invoices modules are enabled by default (`MODULES` in `vantigo.env`). They share
-one PostgreSQL database named `vantigo`, with independent `identity`, `customers`,
-`products`, `energy`, `communications`, `projects`, `time`, `expenses` and
-`invoices` schemas and migration histories.
+The Customers, Products, Energy, Communications, Projects, Time, Expenses,
+Invoices and Staff modules are enabled by default (`MODULES` in `vantigo.env`).
+They share one PostgreSQL database named `vantigo`, with independent `identity`,
+`customers`, `products`, `energy`, `communications`, `projects`, `time`,
+`expenses`, `invoices` and `staff` schemas and migration histories.
 
 ## First sign-in
 
@@ -165,9 +165,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff TO "vantigo_app";
 ```
 
 ## Background workers

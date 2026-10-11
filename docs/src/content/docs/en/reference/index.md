@@ -30,6 +30,7 @@ serves under `/docs/`.
 | [Time](/en/reference/time/) | Hours on projects, rates and their snapshots, weekly submission and approval. |
 | [Expenses](/en/reference/expenses/) | Outlays and mileage, receipts, approval, reimbursement and invoicing. |
 | [Invoices](/en/reference/invoices/) | The sales document: numbering, VAT, issue, credit notes, the PDF, payments, sending and export. |
+| [Staff](/en/reference/staff/) | The workforce register: the settings, the business time zone and the company's structure. |
 
 Identity is not a module: accounts, sessions, MFA, RBAC, OIDC and SCIM are always
 part of the application and are documented under
