@@ -1,6 +1,12 @@
-import type { StaffEmployment, StaffEmploymentInput } from "../api/employments";
+import type {
+  StaffContractCheckItem,
+  StaffEmployment,
+  StaffEmploymentInput,
+  StaffTerms,
+  StaffTermsInput,
+} from "../api/employments";
 import type { StaffMeta } from "../api/meta";
-import type { StaffPerson, StaffPersonInput } from "../api/people";
+import type { StaffAssignableUser, StaffEvent, StaffPerson, StaffPersonInput } from "../api/people";
 import type { StaffSettings } from "../api/settings";
 import type { StaffBusinessUnit, StaffDepartment, StaffLegalEntity, StaffLocation } from "../api/structure";
 import { defaultFullTimeHours, fullTimeHoursMismatch } from "../lib/terms";
@@ -8,13 +14,19 @@ import { jsonResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
 import {
   capabilitiesOf,
+  assignableUsers as defaultAssignableUsers,
   businessUnits as defaultBusinessUnits,
   departments as defaultDepartments,
+  employments as defaultEmployments,
+  events as defaultEvents,
   legalEntities as defaultLegalEntities,
   locations as defaultLocations,
   meta as defaultMeta,
-  people as defaultPeople,
+  peopleWithRecords as defaultPeople,
   settings as defaultSettings,
+  terms as defaultTerms,
+  manages,
+  type PersonRecord,
   type Role,
   type StoredPerson,
   TODAY,
@@ -32,6 +44,13 @@ export interface StaffServer {
   locations?: StaffLocation[];
   /** The directory, the array the test passes, so a create shows up in the next list read. */
   people?: StoredPerson[];
+  /** The person the caller's self-service link names: it makes them Self to that person and Manager to their reports. */
+  me?: number;
+  employments?: StaffEmployment[];
+  terms?: StaffTerms[];
+  /** Each person's history, newest first, as HR reads it; the fake shapes it for everyone else. */
+  events?: Record<number, StaffEvent[]>;
+  users?: (StaffAssignableUser & { active: boolean })[];
   pageSize?: number;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
@@ -45,7 +64,9 @@ export interface StaffState {
   departments: StaffDepartment[];
   locations: StaffLocation[];
   people: StoredPerson[];
-  employments: (StaffEmployment & { terms: StaffEmploymentInput["terms"] })[];
+  employments: StaffEmployment[];
+  terms: StaffTerms[];
+  events: Record<number, StaffEvent[]>;
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -64,6 +85,13 @@ export const staffProblem = (
   });
 
 const notFound = () => new Response(null, { status: 404 });
+
+/** The calendar day before `date` (YYYY-MM-DD), in UTC as every Staff date is. */
+const dayBefore = (date: string): string => {
+  const day = new Date(`${date}T00:00:00.000Z`);
+  day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+};
 
 /** The access layer's uniform 403. */
 const forbidden = () => jsonResponse(403, { error: { code: "forbidden", message: "Forbidden" } });
@@ -84,12 +112,124 @@ const page = <T>(data: T[], pageNumber: number, pageSize: number) => {
   };
 };
 
-/** What the wire carries of a stored person: the unit and the location are the fake's own. */
+/** What the wire carries of a stored person: the unit, the location and the record are the fake's own. */
 const listItem = (stored: StoredPerson) => {
   const item: Partial<StoredPerson> = { ...stored };
   delete item.unitId;
   delete item.locationId;
-  return item as Omit<StoredPerson, "unitId" | "locationId">;
+  delete item.record;
+  return item as Omit<StoredPerson, "unitId" | "locationId" | "record">;
+};
+
+/**
+ * Who the caller is to one person (design §5): themselves through the `me`
+ * link, their manager when the person's manager today is `me`, HR, and a
+ * colleague holding the directory — who sees only the people active today.
+ */
+interface Audience {
+  self: boolean;
+  manager: boolean;
+  hr: boolean;
+  personalData: boolean;
+  colleague: boolean;
+}
+
+type Group = "work" | "dates" | "employment" | "pay" | "private" | "notes" | "sealed";
+
+/** Design §5's field groups, as `shaping.go` keys them; a field not named is the employment group's. */
+const groupOf: Record<string, Group> = {
+  ...Object.fromEntries(
+    [
+      "employeeNumber",
+      "givenName",
+      "familyName",
+      "displayName",
+      "workEmail",
+      "phoneWork",
+      "workCountry",
+      "preferredLanguage",
+      "roles",
+      "manager",
+      "department",
+    ].map((field) => [field, "work" as Group]),
+  ),
+  ...Object.fromEntries(
+    ["status", "startDate", "endDate", "validFrom", "validTo", "employmentType", "ftePercent", "fteChangedAt"].map(
+      (field) => [field, "dates" as Group],
+    ),
+  ),
+  ...Object.fromEntries(
+    [
+      "remunerationType",
+      "payComponents",
+      "payMethod",
+      "paydayText",
+      "seniorityDate",
+      "payGrade",
+      "salaryChangedAt",
+    ].map((field) => [field, "pay" as Group]),
+  ),
+  ...Object.fromEntries(
+    [
+      "birthDate",
+      "gender",
+      "phoneMobile",
+      "phonePrivate",
+      "privateEmail",
+      "street",
+      "postalCode",
+      "city",
+      "country",
+      "nextOfKin",
+    ].map((field) => [field, "private" as Group]),
+  ),
+  notes: "notes",
+  note: "notes",
+  nationalId: "sealed",
+  bankAccount: "sealed",
+  user: "sealed",
+};
+
+const reads = (audience: Audience, group: Group): boolean => {
+  switch (group) {
+    case "work":
+    case "dates":
+      return true;
+    case "employment":
+      return audience.self || audience.manager || audience.hr;
+    case "pay":
+    case "private":
+    case "sealed":
+      return audience.self || audience.hr;
+    case "notes":
+      return audience.hr;
+  }
+};
+
+/** A row with every field the audience may not read left out — never null. */
+const shape = <T extends object>(audience: Audience, row: T, keep: readonly string[] = []): T =>
+  Object.fromEntries(
+    Object.entries(row).filter(
+      ([field, value]) =>
+        value !== undefined && (keep.includes(field) || reads(audience, groupOf[field] ?? "employment")),
+    ),
+  ) as T;
+
+/**
+ * An event's payload as the audience reads it (design S21): a field of a
+ * group it may not read is "changed" — except the pay and HR's notes, which
+ * are left out altogether.
+ */
+const shapeEvent = (audience: Audience, event: StaffEvent): StaffEvent => {
+  const fields = (event.payload as { fields?: Record<string, unknown> }).fields;
+  if (!fields) return event;
+  const shaped: Record<string, unknown> = {};
+  for (const [field, change] of Object.entries(fields)) {
+    const group = groupOf[field] ?? "employment";
+    if (reads(audience, group)) shaped[field] = change;
+    else if (group !== "pay" && group !== "notes") shaped[field] = "changed";
+  }
+  return { ...event, payload: { ...event.payload, fields: shaped } };
 };
 
 /**
@@ -104,10 +244,16 @@ const listItem = (stored: StoredPerson) => {
  * employee number's 16 characters, the directory per audience (a colleague
  * lists the people active today whatever `status` says), the generated
  * employee and employment numbers, the required terms fields and the hours
- * rule. **What it does not model**: the archived-reference rule
- * (`structure_archived`), the cycles, the field shaping of a person, and
- * the structure filters across several employments — a test that needs one
- * of those stages it with `write`.
+ * rule; the person page's reads shaped per audience (Self and Manager by
+ * the `me` link, the colleague, HR, personal data) with the field groups of
+ * design §5, the next of kin, roles and link with the person's revision,
+ * the sealed fields' set and reveal, the org view, the history shaped per
+ * field, the terms chain's dated rules, end and reopen, a § 14-6 check from
+ * the row in force, and `/me`. **What it does not model**: the
+ * archived-reference rule (`structure_archived`), the cycles, the probation
+ * and the derived dates, the events a write records, and the structure
+ * filters across several employments — a test that needs one of those stages
+ * it with `write`.
  */
 export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
   const role = server.role ?? "manage";
@@ -119,8 +265,11 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     departments: server.departments ?? defaultDepartments(),
     locations: server.locations ?? defaultLocations(),
     people: server.people ?? defaultPeople(),
-    employments: [],
+    employments: server.employments ?? defaultEmployments(),
+    terms: server.terms ?? defaultTerms(),
+    events: server.events ?? defaultEvents(),
   };
+  const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
 
   const metaOf = (): StaffMeta => {
@@ -220,16 +369,194 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     return jsonResponse(201, personOf(stored));
   };
 
-  const personOf = (stored: StoredPerson): StaffPerson => ({
-    ...listItem(stored),
-    revision: 1,
-    capabilities: {
-      canEdit: capabilitiesOf(role).canEdit,
-      canManageAccount: capabilitiesOf(role).canEdit,
-      canRevealIdentifiers: false,
-      canSeePay: capabilitiesOf(role).canSeePay,
-    },
+  const audienceOf = (stored: StoredPerson): Audience | undefined => {
+    const audience: Audience = {
+      self: server.me === stored.id,
+      manager: server.me !== undefined && stored.manager?.id === server.me,
+      hr: manages(role),
+      personalData: role === "personalData",
+      // Reading 15: the directory reaches the people active today alone.
+      colleague: capabilitiesOf(role).canViewDirectory && stored.status.state === "active",
+    };
+    return audience.self || audience.manager || audience.hr || audience.colleague ? audience : undefined;
+  };
+
+  /** A person as the audience reads them, with what the caller may do with them. */
+  const personOf = (stored: StoredPerson, audience: Audience = audienceOf(stored) as Audience): StaffPerson => {
+    const record: PersonRecord = stored.record ?? {};
+    const { sealed, user, revision = 1, ...rest } = record;
+    // The next of kin and the roles are read through their own endpoints.
+    const fields: Partial<PersonRecord> = { ...rest };
+    delete fields.nextOfKin;
+    delete fields.roles;
+    const whole: StaffPerson = {
+      ...listItem(stored),
+      ...fields,
+      nationalId: sealed?.nationalId ? { kind: sealed.nationalId.kind, onFile: true } : { onFile: false },
+      ...(sealed?.bankAccount
+        ? { bankAccount: { kind: sealed.bankAccount.kind, last4: sealed.bankAccount.value.slice(-4) } }
+        : {}),
+      ...(user ? { user } : {}),
+      revision,
+      capabilities: {
+        canEdit: audience.hr,
+        canManageAccount: audience.hr,
+        canRevealIdentifiers: audience.personalData,
+        canSeePay: audience.self || audience.hr,
+      },
+    };
+    return shape(audience, whole, ["id", "revision", "capabilities", "status"]);
+  };
+
+  const findPerson = (id: number) => state.people.find((one) => one.id === id);
+
+  /** The person and who the caller is to them, or nothing — the unknown id's 404 — for an outsider. */
+  const seen = (id: number) => {
+    const stored = findPerson(id);
+    const audience = stored ? audienceOf(stored) : undefined;
+    return stored && audience ? { stored, audience } : undefined;
+  };
+
+  const recordOf = (stored: StoredPerson): PersonRecord => {
+    stored.record = stored.record ?? {};
+    return stored.record;
+  };
+
+  const bumpRevision = (stored: StoredPerson) => {
+    const record = recordOf(stored);
+    record.revision = (record.revision ?? 1) + 1;
+  };
+
+  /** A terms chain, oldest first, each row's `validTo` the day before the next row's. */
+  const chainOf = (employmentId: number): StaffTerms[] => {
+    const rows = state.terms
+      .filter((row) => row.employmentId === employmentId)
+      .sort((a, b) => a.validFrom.localeCompare(b.validFrom));
+    return rows.map((row, index) => {
+      const next = rows[index + 1];
+      const copy: StaffTerms = { ...row };
+      delete copy.validTo;
+      if (next) copy.validTo = dayBefore(next.validFrom);
+      return copy;
+    });
+  };
+
+  const inForce = (employment: StaffEmployment): StaffTerms | undefined => {
+    const chain = chainOf(employment.id);
+    const day = employment.endDate && employment.endDate < TODAY ? employment.endDate : TODAY;
+    return [...chain].reverse().find((row) => row.validFrom <= day) ?? chain[0];
+  };
+
+  /** Design §4's § 14-6 table, judged on the row in force today. */
+  const contractCheckOf = (employment: StaffEmployment) => {
+    const row = inForce(employment);
+    const has = (value: unknown) => value !== undefined && value !== null && value !== "";
+    const hiredOut = row?.appointmentForm === "fast_utleid" || row?.appointmentForm === "midlertidig_utleid";
+    const judge = (applies: boolean, present: boolean): StaffContractCheckItem["state"] =>
+      !applies ? "not_applicable" : present ? "present" : "missing";
+    const items: [string, string, StaffContractCheckItem["state"]][] = [
+      ["a", "employment.businessUnitId", "present"],
+      ["b", "terms.locationId", judge(true, has(row?.locationId))],
+      ["c", "terms.title", judge(true, has(row?.title) || has(row?.occupationCode))],
+      ["d", "employment.startDate", "present"],
+      [
+        "e",
+        "terms.expectedEndDate",
+        judge(row?.employmentType === "midlertidig", has(row?.expectedEndDate) && has(row?.temporaryGround)),
+      ],
+      ["f", "terms.probationEndDate", judge(has(row?.probationEndDate), true)],
+      ["g", "terms.holidayTermsText", judge(true, has(row?.holidayTermsText))],
+      ["h", "terms.noticeEmployee", judge(true, has(row?.noticeEmployee) && has(row?.noticeUnit))],
+      [
+        "i",
+        "terms.payComponents",
+        judge(true, (row?.payComponents?.length ?? 0) > 0 && has(row?.payMethod) && has(row?.paydayText)),
+      ],
+      ["j", "terms.workingTimeText", judge(true, has(row?.workingTimeText))],
+      ["k", "terms.breakMinutes", judge(true, has(row?.breakMinutes))],
+      [
+        "l",
+        "terms.specialHoursText",
+        judge(row?.workingHoursScheme !== "not_shift" || has(row?.specialHoursText), has(row?.specialHoursText)),
+      ],
+      ["m", "terms.overtimeRuleText", judge(true, has(row?.overtimeRuleText))],
+      ["n", "terms.tariffReference", judge(has(row?.tariffReference) || hiredOut, has(row?.tariffReference))],
+      ["o", "terms.hiredOutTo", judge(hiredOut, has(row?.hiredOutTo))],
+      ["p", "terms.competenceDevelopmentText", judge(true, has(row?.competenceDevelopmentText))],
+      [
+        "q",
+        "terms.socialSecurityText",
+        judge(true, has(row?.socialSecurityText) || has(state.settings.pensionProvider)),
+      ],
+    ];
+    return {
+      employmentId: employment.id,
+      ...(row ? { termsId: row.id } : {}),
+      contractSigned: employment.contractSignedAt !== undefined,
+      ...(employment.contractSignedAt ? { contractSignedAt: employment.contractSignedAt } : {}),
+      items: items.map(([item, source, itemState]) => ({ item, source, state: itemState })),
+    };
+  };
+
+  const summaryOf = (stored: StoredPerson) => ({
+    id: stored.id,
+    displayName: stored.displayName,
+    employeeNumber: stored.employeeNumber,
   });
+
+  const orgOf = (stored: StoredPerson) => {
+    const chain = [];
+    const visited = new Set([stored.id]);
+    let manager = stored.manager ? findPerson(stored.manager.id) : undefined;
+    while (manager && !visited.has(manager.id)) {
+      visited.add(manager.id);
+      chain.push(summaryOf(manager));
+      manager = manager.manager ? findPerson(manager.manager.id) : undefined;
+    }
+    const reports = state.people.filter((one) => one.manager?.id === stored.id).map(summaryOf);
+    return { person: summaryOf(stored), chain, reports };
+  };
+
+  /** The private group's replace, as `PUT /people/{id}` and `PUT /me` both do it. */
+  const privateFields = ["phoneMobile", "phonePrivate", "privateEmail", "street", "postalCode", "city", "country"];
+
+  const meProblem = () =>
+    staffProblem(404, {
+      code: "no_person",
+      title: "No person",
+      detail: "You are linked to no person in Staff. Ask HR to link your user to your record.",
+    });
+
+  const termsConflict = (code: string, title: string, detail: string) => staffProblem(409, { code, title, detail });
+
+  /** The required fields after the defaults, as the server judges every row. */
+  const termsRefusal = (row: Partial<StaffTerms>, prefix = ""): Response | undefined => {
+    const errors: Record<string, string[]> = {};
+    if (!row.employmentType) errors[`${prefix}employmentType`] = ["Every terms row states the employment type"];
+    if (row.ftePercent === undefined || row.ftePercent === null)
+      errors[`${prefix}ftePercent`] = ["Every terms row states the percentage of a full position"];
+    if (Object.keys(errors).length > 0)
+      return staffProblem(400, { code: "terms_required_fields", title: "Invalid terms", errors });
+    const scheme = row.workingHoursScheme ?? "not_shift";
+    if (fullTimeHoursMismatch(scheme, row.fullTimeHoursPerWeek ?? defaultFullTimeHours[scheme]))
+      return staffProblem(400, {
+        code: "full_time_hours_mismatch",
+        title: "Invalid terms",
+        errors: { [`${prefix}fullTimeHoursPerWeek`]: [`The hours do not fit ${scheme}`] },
+      });
+    return undefined;
+  };
+
+  /** A request's fields onto a row: left out keeps `base`'s value, null clears it. */
+  const merged = (base: Partial<StaffTerms>, body: StaffTermsInput): Partial<StaffTerms> => {
+    const row: Record<string, unknown> = { ...base };
+    for (const [field, value] of Object.entries(body)) {
+      if (field === "correction") continue;
+      if (value === null) delete row[field];
+      else row[field] = value;
+    }
+    return row as Partial<StaffTerms>;
+  };
 
   const createEmployment = (personId: number, body: StaffEmploymentInput): Response => {
     const stored = state.people.find((one) => one.id === personId);
@@ -260,7 +587,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     if (Object.keys(errors).length > 0) return staffProblem(400, { code, title: "Invalid employment", errors });
 
     const employmentNumber = body.employmentNumber ?? `${stored.employeeNumber}-1`;
-    const employment = {
+    const employment: StaffEmployment = {
       id: nextId++,
       personId,
       employmentNumber,
@@ -268,17 +595,21 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       businessUnitId: body.businessUnitId ?? state.businessUnits.find((one) => one.isDefault)?.id,
       relationshipType: body.relationshipType ?? "ordinary",
       revision: 1,
-      terms,
     };
     state.employments.push(employment);
+    state.terms.push({
+      ...(merged({}, terms) as StaffTerms),
+      id: nextId++,
+      employmentId: employment.id,
+      validFrom: body.startDate,
+      revision: 1,
+    });
     stored.status = body.startDate > TODAY ? { state: "upcoming", date: body.startDate } : { state: "active" };
     stored.unitId = employment.businessUnitId;
     stored.locationId = terms.locationId ?? undefined;
     const department = state.departments.find((one) => one.id === terms.departmentId);
     stored.department = department ? { id: department.id, code: department.code, name: department.name } : undefined;
-    const answered: Partial<typeof employment> = { ...employment };
-    delete answered.terms;
-    return jsonResponse(201, answered);
+    return jsonResponse(201, employment);
   };
 
   const listPeople = (url: URL): Response => {
@@ -312,6 +643,340 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       .sort((a, b) => a.displayName.localeCompare(b.displayName))
       .map(listItem);
     return jsonResponse(200, page(rows, Math.max(1, Number(params.get("page")) || 1), pageSize));
+  };
+
+  /** The person page's and My page's endpoints; undefined falls through to a 404. */
+  const personRoutes = (
+    method: string,
+    path: string,
+    url: URL,
+    init: RequestInit | undefined,
+    body: Record<string, unknown> | undefined,
+  ): Response | undefined => {
+    const hr = manages(role);
+
+    if (path === "/api/v1/staff/assignable-users" && method === "GET") {
+      if (!hr) return forbidden();
+      const q = (url.searchParams.get("q") ?? "").toLowerCase();
+      return jsonResponse(
+        200,
+        users
+          .filter((user) => user.active && user.displayName.toLowerCase().includes(q))
+          .map(({ id, displayName }) => ({ id, displayName })),
+      );
+    }
+
+    if (path === "/api/v1/staff/me" || path === "/api/v1/staff/me/events") {
+      const stored = server.me === undefined ? undefined : findPerson(server.me);
+      if (!stored) return meProblem();
+      // Whatever else the caller holds, My page reads them as themselves.
+      const self: Audience = { self: true, manager: false, hr: false, personalData: false, colleague: false };
+      if (path.endsWith("/events")) {
+        const all = (state.events[stored.id] ?? []).map((event) => shapeEvent(self, event));
+        return jsonResponse(200, page(all, Math.max(1, Number(url.searchParams.get("page")) || 1), pageSize));
+      }
+      if (method === "GET") return jsonResponse(200, personOf(stored, self));
+      if (method === "PUT") {
+        const record = recordOf(stored);
+        const stale = staleRevision(init, record.revision ?? 1, "person");
+        if (stale) return stale;
+        for (const field of privateFields) delete (record as Record<string, unknown>)[field];
+        const { nextOfKin, ...rest } = body as Record<string, unknown>;
+        Object.assign(record, rest);
+        record.nextOfKin = nextOfKin as PersonRecord["nextOfKin"];
+        bumpRevision(stored);
+        return jsonResponse(200, personOf(stored, self));
+      }
+    }
+
+    const person = /^\/api\/v1\/staff\/people\/(\d+)(?:\/(.+))?$/.exec(path);
+    if (person) {
+      const found = seen(Number(person[1]));
+      if (!found) return notFound();
+      const { stored, audience } = found;
+      const record = recordOf(stored);
+      const sub = person[2];
+      const privateReader = reads(audience, "private");
+
+      if (sub === undefined) {
+        if (method === "GET") return jsonResponse(200, personOf(stored, audience));
+        if (method === "PUT") {
+          const stale = staleRevision(init, record.revision ?? 1, "person");
+          if (stale) return stale;
+          const { givenName, familyName, displayName, workEmail, phoneWork, workCountry, preferredLanguage, ...rest } =
+            body as StaffPersonInput;
+          Object.assign(stored, {
+            givenName,
+            familyName,
+            displayName: displayName ?? stored.displayName,
+            workEmail,
+            phoneWork,
+            workCountry: workCountry ?? "NO",
+            preferredLanguage: preferredLanguage ?? "nb",
+          });
+          for (const field of [...privateFields, "birthDate", "gender", "notes"])
+            delete (record as Record<string, unknown>)[field];
+          Object.assign(record, rest);
+          bumpRevision(stored);
+          return jsonResponse(200, personOf(stored, audience));
+        }
+      }
+      if (sub === "next-of-kin" && privateReader) {
+        if (method === "GET")
+          return jsonResponse(200, { nextOfKin: record.nextOfKin ?? [], revision: record.revision ?? 1 });
+        if (method === "PUT") {
+          const stale = staleRevision(init, record.revision ?? 1, "person");
+          if (stale) return stale;
+          record.nextOfKin = (body as { nextOfKin: PersonRecord["nextOfKin"] }).nextOfKin;
+          bumpRevision(stored);
+          return jsonResponse(200, { nextOfKin: record.nextOfKin, revision: record.revision });
+        }
+      }
+      if (sub === "roles") {
+        if (method === "GET") return jsonResponse(200, { roles: record.roles ?? [], revision: record.revision ?? 1 });
+        if (method === "PUT") {
+          const stale = staleRevision(init, record.revision ?? 1, "person");
+          if (stale) return stale;
+          record.roles = (body as { roles: PersonRecord["roles"] }).roles;
+          bumpRevision(stored);
+          return jsonResponse(200, { roles: record.roles, revision: record.revision });
+        }
+      }
+      if (sub === "user" && reads(audience, "sealed")) {
+        const linkOf = () =>
+          record.user ? { linked: true, state: "linked", managed: false, user: record.user } : { linked: false };
+        if (method === "GET") return jsonResponse(200, linkOf());
+        if (method === "PUT") {
+          const userId = (body as { userId: string | null }).userId;
+          if (userId === null) {
+            delete record.user;
+            return jsonResponse(200, linkOf());
+          }
+          const user = users.find((one) => one.id === userId);
+          if (!user)
+            return staffProblem(400, { title: "Invalid user link", errors: { userId: ["No user has this id"] } });
+          if (!user.active)
+            return staffProblem(400, {
+              code: "user_inactive",
+              title: "Invalid user link",
+              errors: { userId: ["This user is disabled; only an active user can be linked"] },
+            });
+          if (state.people.some((one) => one.id !== stored.id && one.record?.user?.id === userId))
+            return staffProblem(400, {
+              code: "user_linked_elsewhere",
+              title: "Invalid user link",
+              errors: { userId: ["This user is linked to another person; unlink them there first"] },
+            });
+          record.user = { id: user.id, displayName: user.displayName, active: true };
+          return jsonResponse(200, linkOf());
+        }
+      }
+      if (sub === "org" && method === "GET") return jsonResponse(200, orgOf(stored));
+      if (sub === "events" && method === "GET") {
+        // §5's Events row: the person, a manager of theirs and HR — a colleague gets the unknown id's 404.
+        if (!audience.self && !audience.manager && !audience.hr) return notFound();
+        const all = (state.events[stored.id] ?? []).map((event) => shapeEvent(audience, event));
+        return jsonResponse(200, page(all, Math.max(1, Number(url.searchParams.get("page")) || 1), pageSize));
+      }
+      if (sub === "employments" && method === "GET")
+        return jsonResponse(
+          200,
+          state.employments
+            .filter((one) => one.personId === stored.id)
+            .map((one) => shape(audience, one, ["id", "personId", "revision"])),
+        );
+
+      const sealedKind = /^(national-id|bank-account)(\/reveal)?$/.exec(sub ?? "");
+      if (sealedKind) {
+        if (!audience.personalData) return forbidden();
+        record.sealed = record.sealed ?? {};
+        const sealed = record.sealed;
+        const nationalId = sealedKind[1] === "national-id";
+        if (sealedKind[2] && method === "POST") {
+          const value = nationalId ? sealed.nationalId : sealed.bankAccount;
+          if (!value) return notFound();
+          return new Response(JSON.stringify(value), {
+            status: 200,
+            headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+          });
+        }
+        if (!sealedKind[2] && method === "PUT") {
+          const input = body as { kind: string; value: string; country?: string };
+          const digits = input.value.replace(/[\s.-]/g, "");
+          if (nationalId) {
+            if (input.kind !== "foreign" && !/^\d{11}$/.test(digits))
+              return staffProblem(400, {
+                code: "national_id_invalid",
+                title: "Invalid national identity number",
+                errors: { value: ["Not eleven digits"] },
+              });
+            // The six first digits are the birth date, ddmmyy.
+            const encoded = `${digits.slice(4, 6)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}`;
+            if (input.kind !== "foreign" && record.birthDate && record.birthDate.slice(2) !== encoded)
+              return staffProblem(400, {
+                code: "national_id_birth_date_mismatch",
+                title: "Invalid national identity number",
+                errors: {
+                  value: ["The number encodes another birth date than the person's; correct whichever is wrong"],
+                },
+              });
+            sealed.nationalId = {
+              kind: input.kind as "fodselsnummer",
+              value: digits,
+              ...(input.country ? { country: input.country } : {}),
+            };
+          } else {
+            sealed.bankAccount = { kind: input.kind as "bban", value: digits };
+          }
+          return jsonResponse(200, personOf(stored, audience));
+        }
+      }
+      return undefined;
+    }
+
+    const employment = /^\/api\/v1\/staff\/employments\/(\d+)(?:\/(terms|contract-check|end|reopen))?$/.exec(path);
+    if (employment) {
+      const row = state.employments.find((one) => one.id === Number(employment[1]));
+      const found = row ? seen(row.personId) : undefined;
+      if (!row || !found) return notFound();
+      const { audience } = found;
+      const sub = employment[2];
+      if (method === "GET" && sub === undefined) return jsonResponse(200, shape(audience, row, ["id", "personId"]));
+      if (method === "GET" && sub === "terms")
+        return jsonResponse(
+          200,
+          chainOf(row.id).map((one) => shape(audience, one, ["id", "employmentId", "revision"])),
+        );
+      if (method === "GET" && sub === "contract-check")
+        return reads(audience, "employment") ? jsonResponse(200, contractCheckOf(row)) : notFound();
+      if (!audience.hr) return forbidden();
+      if (method === "PUT" && sub === undefined) {
+        const stale = staleRevision(init, row.revision, "employment");
+        if (stale) return stale;
+        const input = body as Partial<StaffEmployment>;
+        const first = chainOf(row.id)[0];
+        const second = chainOf(row.id)[1];
+        if (input.startDate && second && input.startDate >= second.validFrom)
+          return termsConflict(
+            "terms_before_start",
+            "Terms before the start",
+            "A later terms row would lie before the new start.",
+          );
+        row.startDate = input.startDate ?? row.startDate;
+        row.businessUnitId = input.businessUnitId ?? row.businessUnitId;
+        row.relationshipType = input.relationshipType ?? row.relationshipType;
+        if (input.contractSignedAt) row.contractSignedAt = input.contractSignedAt;
+        else delete row.contractSignedAt;
+        const stored = state.terms.find((one) => one.id === first?.id);
+        if (stored) stored.validFrom = row.startDate;
+        row.revision += 1;
+        return jsonResponse(200, row);
+      }
+      if (method === "POST" && sub === "end") {
+        const input = body as { endDate?: string; endReason?: string };
+        if (!input.endReason)
+          return staffProblem(400, {
+            code: "end_reason_required",
+            title: "Invalid end of employment",
+            errors: { endReason: ["An ended employment states why"] },
+          });
+        if (input.endDate && chainOf(row.id).some((one) => one.validFrom > (input.endDate as string)))
+          return termsConflict("terms_after_end", "Terms after the end", "A terms row takes effect after this end.");
+        row.endDate = input.endDate;
+        row.endReason = input.endReason as StaffEmployment["endReason"];
+        row.revision += 1;
+        return jsonResponse(200, row);
+      }
+      if (method === "POST" && sub === "reopen") {
+        delete row.endDate;
+        delete row.endReason;
+        row.revision += 1;
+        return jsonResponse(200, row);
+      }
+      if (method === "POST" && sub === "terms") {
+        const input = body as StaffTermsInput;
+        const validFrom = input.validFrom;
+        if (!validFrom)
+          return staffProblem(400, {
+            title: "Invalid terms",
+            errors: { validFrom: ["Give the day the row takes effect"] },
+          });
+        const chain = chainOf(row.id);
+        if (chain.some((one) => one.validFrom === validFrom))
+          return termsConflict(
+            "terms_valid_from_taken",
+            "Day taken",
+            `Another terms row of this employment takes effect on ${validFrom}.`,
+          );
+        if (validFrom < row.startDate)
+          return termsConflict("terms_before_start", "Terms before the start", "The row is dated before the start.");
+        if (row.endDate && validFrom > row.endDate)
+          return termsConflict("terms_after_end", "Terms after the end", "The row is dated after the end.");
+        const before = [...chain].reverse().find((one) => one.validFrom < validFrom) ?? chain[0];
+        const base: Partial<StaffTerms> = { ...before };
+        delete base.validTo;
+        const added = merged(base, input);
+        const refused = termsRefusal(added);
+        if (refused) return refused;
+        const saved = { ...added, id: nextId++, employmentId: row.id, validFrom, revision: 1 } as StaffTerms;
+        state.terms.push(saved);
+        return jsonResponse(201, saved);
+      }
+      return undefined;
+    }
+
+    const termsRow = /^\/api\/v1\/staff\/terms\/(\d+)$/.exec(path);
+    if (termsRow) {
+      const stored = state.terms.find((one) => one.id === Number(termsRow[1]));
+      const row = stored ? state.employments.find((one) => one.id === stored.employmentId) : undefined;
+      const found = row ? seen(row.personId) : undefined;
+      if (!stored || !row || !found) return notFound();
+      if (!found.audience.hr) return forbidden();
+      const chain = chainOf(row.id);
+      const latest = chain[chain.length - 1].id === stored.id;
+      const first = chain[0].id === stored.id;
+      if (method === "DELETE") {
+        if (first)
+          return termsConflict("terms_first_row_start", "The first row stays", "The first terms row is never deleted.");
+        if (!latest)
+          return termsConflict("terms_not_latest", "Not the latest row", "Only the latest terms row is deleted.");
+        state.terms.splice(state.terms.indexOf(stored), 1);
+        return new Response(null, { status: 204 });
+      }
+      if (method === "PUT") {
+        const stale = staleRevision(init, stored.revision, "terms row");
+        if (stale) return stale;
+        const input = body as StaffTermsInput;
+        if (!latest && input.correction !== true)
+          return termsConflict(
+            "terms_not_latest",
+            "Not the latest row",
+            "Only the latest row is replaced; a past row is corrected.",
+          );
+        const validFrom = input.validFrom ?? stored.validFrom;
+        if (first && validFrom !== row.startDate)
+          return termsConflict(
+            "terms_first_row_start",
+            "The first row is dated the start",
+            "The first terms row takes effect on the employment's start.",
+          );
+        if (chain.some((one) => one.id !== stored.id && one.validFrom === validFrom))
+          return termsConflict(
+            "terms_valid_from_taken",
+            "Day taken",
+            `Another terms row takes effect on ${validFrom}.`,
+          );
+        // A replace: every field left out is cleared.
+        const replaced = merged({}, input);
+        const refused = termsRefusal(replaced);
+        if (refused) return refused;
+        const revision = stored.revision + 1;
+        for (const key of Object.keys(stored)) delete (stored as Record<string, unknown>)[key];
+        Object.assign(stored, replaced, { id: Number(termsRow[1]), employmentId: row.id, validFrom, revision });
+        return jsonResponse(200, stored);
+      }
+    }
+    return undefined;
   };
 
   const stub = stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
@@ -384,15 +1049,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (method === "GET") return Promise.resolve(role === "access" ? forbidden() : listPeople(url));
       if (method === "POST") return Promise.resolve(createPerson(body));
     }
-    const personRow = /^\/api\/v1\/staff\/people\/(\d+)$/.exec(path);
-    if (personRow && method === "GET") {
-      const stored = state.people.find((one) => one.id === Number(personRow[1]));
-      return Promise.resolve(stored ? jsonResponse(200, personOf(stored)) : notFound());
-    }
     const employments = /^\/api\/v1\/staff\/people\/(\d+)\/employments$/.exec(path);
     if (employments && method === "POST") return Promise.resolve(createEmployment(Number(employments[1]), body));
 
-    return Promise.resolve(notFound());
+    return Promise.resolve(personRoutes(method, path, url, init, body) ?? notFound());
   }) as StaffStub;
   stub.state = state;
   return stub;

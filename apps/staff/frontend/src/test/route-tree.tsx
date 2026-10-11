@@ -11,12 +11,13 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
-import { PEOPLE_ROUTE_PATH, PERSON_ROUTE_PATH, STAFF_SETTINGS_ROUTE_PATH } from "../lib/routes";
-import { validatePeopleSearch } from "../lib/search";
+import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH, PERSON_ROUTE_PATH, STAFF_SETTINGS_ROUTE_PATH } from "../lib/routes";
+import { validatePeopleSearch, validatePersonSearch } from "../lib/search";
+import { MyPage } from "../pages/my-page";
 import { PeoplePage } from "../pages/people";
+import { PersonPage } from "../pages/person";
 import { SettingsPage } from "../pages/settings";
 import "../i18n";
-import { PersonStandIn } from "./person-stand-in";
 
 /**
  * Stands in for the host routes this package's pages are mounted by (Task
@@ -36,12 +37,23 @@ export const makeRouteTree = () => {
       component: PeoplePage,
       validateSearch: validatePeopleSearch,
     }),
-    createRoute({ getParentRoute: () => rootRoute, path: PERSON_ROUTE_PATH, component: PersonStandIn }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: PERSON_ROUTE_PATH,
+      component: PersonPage,
+      validateSearch: validatePersonSearch,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: MY_PAGE_ROUTE_PATH,
+      component: MyPage,
+      validateSearch: validatePersonSearch,
+    }),
     createRoute({ getParentRoute: () => rootRoute, path: STAFF_SETTINGS_ROUTE_PATH, component: SettingsPage }),
   ]);
 };
 
-/** Mounts the stand-in route at a URL under the providers the host gives the pages. */
+/** Mounts the route tree at a URL under the providers the host gives the pages. */
 export const renderRoute = (url: string) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const router = createRouter({

@@ -1,5 +1,15 @@
+import type { StaffEmployment, StaffTerms } from "../api/employments";
 import type { StaffCapabilities, StaffMeta, StaffStructure } from "../api/meta";
-import type { StaffPersonListItem } from "../api/people";
+import type {
+  StaffAssignableUser,
+  StaffBankAccountKind,
+  StaffEvent,
+  StaffNationalIdKind,
+  StaffNextOfKin,
+  StaffPerson,
+  StaffPersonListItem,
+  StaffPersonRole,
+} from "../api/people";
 import type { StaffSettings } from "../api/settings";
 import type { StaffBusinessUnit, StaffDepartment, StaffLegalEntity, StaffLocation } from "../api/structure";
 
@@ -9,18 +19,20 @@ export const TODAY = "2026-10-11";
 /**
  * Who is asking. `manage` is HR (`staff:manage` with `staff:view`), `view` a
  * colleague holding `staff:view` alone, `manageOnly` an HR role without
- * `staff:view` — it still lists people and reads the structure — and
- * `access` somebody holding `staff:access` alone, who reads neither.
+ * `staff:view` — it still lists people and reads the structure —
+ * `personalData` HR who also holds `staff:personal-data`, and `access`
+ * somebody holding `staff:access` alone, who reads neither. Being the person
+ * themselves or their manager is not a role but a link (the stub's `me`).
  */
-export type Role = "manage" | "view" | "manageOnly" | "access";
+export type Role = "manage" | "view" | "manageOnly" | "personalData" | "access";
 
-const manages = (role: Role) => role === "manage" || role === "manageOnly";
+export const manages = (role: Role) => role === "manage" || role === "manageOnly" || role === "personalData";
 
 export const capabilitiesOf = (role: Role): StaffCapabilities => ({
   canEdit: manages(role),
   canSeePay: manages(role),
-  canRevealIdentifiers: false,
-  canViewDirectory: role === "manage" || role === "view",
+  canRevealIdentifiers: role === "personalData",
+  canViewDirectory: role === "manage" || role === "view" || role === "personalData",
 });
 
 export const legalEntities = (): StaffLegalEntity[] => [
@@ -92,7 +104,36 @@ export const settings = (overrides: Partial<StaffSettings> = {}): StaffSettings 
 export interface StoredPerson extends StaffPersonListItem {
   unitId?: number;
   locationId?: number;
+  /** What the record holds beyond the directory's columns — the private group, HR's notes and the rest. */
+  record?: PersonRecord;
 }
+
+/** The sealed values as the fake keeps them — what a reveal opens. */
+export interface Sealed {
+  nationalId?: { kind: StaffNationalIdKind; value: string; country?: string };
+  bankAccount?: { kind: StaffBankAccountKind; value: string };
+}
+
+export type PersonRecord = Pick<
+  StaffPerson,
+  | "birthDate"
+  | "gender"
+  | "phoneMobile"
+  | "phonePrivate"
+  | "privateEmail"
+  | "street"
+  | "postalCode"
+  | "city"
+  | "country"
+  | "notes"
+> & {
+  revision?: number;
+  sealed?: Sealed;
+  nextOfKin?: StaffNextOfKin[];
+  roles?: StaffPersonRole[];
+  /** The user the self-service link names. */
+  user?: { id: string; displayName: string; active: boolean };
+};
 
 export const person = (overrides: Partial<StoredPerson> = {}): StoredPerson => ({
   id: 101,
@@ -157,3 +198,171 @@ export const people = (): StoredPerson[] => [
     locationId: undefined,
   }),
 ];
+
+/** Ada's record: everything the private group, HR's notes and the sealed fields hold. */
+export const adaRecord = (): PersonRecord => ({
+  birthDate: "1990-12-10",
+  gender: "female",
+  phoneMobile: "+47 912 34 567",
+  privateEmail: "ada@home.example",
+  street: "Storgata 1",
+  postalCode: "0155",
+  city: "Oslo",
+  country: "NO",
+  notes: "Asked for a standing desk",
+  revision: 3,
+  sealed: {
+    nationalId: { kind: "fodselsnummer", value: "10129049905" },
+    bankAccount: { kind: "bban", value: "12345678903" },
+  },
+  nextOfKin: [{ name: "Byron Lovelace", relationship: "spouse", phone: "+47 400 00 000" }],
+  roles: [{ role: "verneombud", fromDate: "2026-01-01" }],
+  user: { id: "8d5c6a3e-0000-4000-8000-000000000101", displayName: "Ada at Fjord", active: true },
+});
+
+/** The directory with Ada's record filled in — the person most page tests open. */
+export const peopleWithRecords = (): StoredPerson[] =>
+  people().map((one) =>
+    one.id === 101
+      ? { ...one, record: adaRecord() }
+      : one.id === 102
+        ? { ...one, record: { revision: 1, birthDate: "1985-06-01", phoneMobile: "+47 999 88 777" } }
+        : one,
+  );
+
+/** The users the link picker finds. */
+export const assignableUsers = (): (StaffAssignableUser & { active: boolean })[] => [
+  { id: "8d5c6a3e-0000-4000-8000-000000000101", displayName: "Ada at Fjord", active: true },
+  { id: "8d5c6a3e-0000-4000-8000-000000000102", displayName: "Grace at Fjord", active: true },
+  { id: "8d5c6a3e-0000-4000-8000-000000000199", displayName: "Gone Gunnar", active: false },
+];
+
+/**
+ * Ada's employment with two terms rows — a raise and a new title from 1 March —
+ * and Grace's, whose terms name Ada as her manager.
+ */
+export const employments = (): StaffEmployment[] => [
+  {
+    id: 201,
+    personId: 101,
+    employmentNumber: "E-1-1",
+    startDate: "2025-01-01",
+    businessUnitId: 11,
+    relationshipType: "ordinary",
+    contractSignedAt: "2024-12-15",
+    fteChangedAt: "2026-03-01",
+    salaryChangedAt: "2026-03-01",
+    revision: 2,
+  },
+  {
+    id: 202,
+    personId: 102,
+    employmentNumber: "E-2-1",
+    startDate: "2026-01-15",
+    businessUnitId: 12,
+    relationshipType: "ordinary",
+    fteChangedAt: "2026-01-15",
+    salaryChangedAt: "2026-01-15",
+    revision: 1,
+  },
+];
+
+export const terms = (): StaffTerms[] => [
+  {
+    id: 301,
+    employmentId: 201,
+    validFrom: "2025-01-01",
+    employmentType: "fast",
+    appointmentForm: "fast",
+    ftePercent: 100,
+    workingHoursScheme: "not_shift",
+    fullTimeHoursPerWeek: 37.5,
+    title: "Engineer",
+    departmentId: 21,
+    locationId: 31,
+    holidayTermsText: "Five weeks",
+    payComponents: [{ name: "Base salary", amount: 650000, currency: "NOK", period: "yearly" }],
+    payMethod: "Bank transfer",
+    paydayText: "The 20th",
+    note: "Hired through the referral programme",
+    revision: 1,
+  },
+  {
+    id: 302,
+    employmentId: 201,
+    validFrom: "2026-03-01",
+    employmentType: "fast",
+    appointmentForm: "fast",
+    ftePercent: 80,
+    workingHoursScheme: "not_shift",
+    fullTimeHoursPerWeek: 37.5,
+    title: "Senior engineer",
+    occupationCode: "2512101",
+    departmentId: 21,
+    locationId: 31,
+    holidayTermsText: "Five weeks",
+    noticeEmployee: 3,
+    noticeEmployer: 3,
+    noticeUnit: "months",
+    payComponents: [{ name: "Base salary", amount: 700000, currency: "NOK", period: "yearly" }],
+    payMethod: "Bank transfer",
+    paydayText: "The 20th",
+    seniorityDate: "2020-01-01",
+    payGrade: "L7",
+    revision: 4,
+  },
+  {
+    id: 303,
+    employmentId: 202,
+    validFrom: "2026-01-15",
+    employmentType: "midlertidig",
+    temporaryGround: "b",
+    expectedEndDate: "2026-12-31",
+    appointmentForm: "midlertidig",
+    ftePercent: 50,
+    workingHoursScheme: "not_shift",
+    fullTimeHoursPerWeek: 37.5,
+    title: "Operator",
+    departmentId: 22,
+    managerPersonId: 101,
+    payComponents: [{ name: "Hourly wage", amount: 320, currency: "NOK", period: "hourly" }],
+    revision: 1,
+  },
+];
+
+/** Ada's history, newest first: HR's change to her private and work fields, the pay correction, the note. */
+export const events = (): Record<number, StaffEvent[]> => ({
+  101: [
+    {
+      id: 403,
+      kind: "national_id_revealed",
+      at: "2026-10-10T09:30:00Z",
+      actor: { kind: "user", displayName: "Hilde HR", userId: "8d5c6a3e-0000-4000-8000-000000000900" },
+      payload: {},
+    },
+    {
+      id: 402,
+      kind: "terms_corrected",
+      at: "2026-09-01T08:00:00Z",
+      actor: { kind: "user", displayName: "Hilde HR", userId: "8d5c6a3e-0000-4000-8000-000000000900" },
+      payload: {
+        employmentId: 201,
+        termsId: 302,
+        fields: { payGrade: { from: "L6", to: "L7" }, title: { from: "Engineer II", to: "Senior engineer" } },
+      },
+    },
+    {
+      id: 401,
+      kind: "person_updated",
+      at: "2026-08-15T12:00:00Z",
+      actor: { kind: "user", displayName: "Hilde HR", userId: "8d5c6a3e-0000-4000-8000-000000000900" },
+      payload: {
+        fields: {
+          workEmail: { from: "ada@old.example", to: "ada@fjord.example" },
+          birthDate: { from: "1990-12-01", to: "1990-12-10" },
+          notes: { to: "Asked for a standing desk" },
+        },
+      },
+    },
+  ],
+});

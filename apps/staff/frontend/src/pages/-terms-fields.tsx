@@ -1,10 +1,24 @@
-import { Button, NumberInput, Select, SimpleGrid, Stack, Textarea, TextInput } from "@mantine/core";
+import {
+  ActionIcon,
+  Button,
+  Card,
+  Checkbox,
+  Group,
+  NumberInput,
+  Select,
+  SimpleGrid,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+} from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import type { UseFormReturnType } from "@mantine/form";
-import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
+import { IconChevronDown, IconChevronRight, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useI18n } from "@vantigo/frontend-shell";
 import type { StaffAppointmentForm, StaffEmploymentType, StaffWorkingHoursScheme } from "../api/employments";
 import type { StaffStructure } from "../api/meta";
+import type { StaffPersonSummary } from "../api/people";
 import { PersonPicker } from "../components/person-picker";
 import "../i18n";
 import { useDecimalSeparator, useStaffFormat } from "../lib/format";
@@ -14,12 +28,14 @@ import {
   employeeTypes,
   employmentTypes,
   isHiredOut,
+  MAX_PAY_COMPONENTS,
   noticeUnits,
+  payPeriods,
   remunerationTypes,
   temporaryGrounds,
   workingHoursSchemes,
 } from "../lib/terms";
-import { hoursMismatchMessage, type TermsFormValues } from "../lib/terms-form";
+import { emptyPayComponent, hoursMismatchMessage, type TermsFormValues } from "../lib/terms-form";
 
 export interface TermsFieldsProps<V extends { terms: TermsFormValues }> {
   form: UseFormReturnType<V>;
@@ -31,6 +47,8 @@ export interface TermsFieldsProps<V extends { terms: TermsFormValues }> {
   /** Whether the hours were typed by hand; untouched, they follow the scheme. */
   hoursTouched: boolean;
   onHoursTouched: () => void;
+  /** The manager a stored row names, so the picker says who it is before anything is searched. */
+  managerSelected?: StaffPersonSummary;
 }
 
 /**
@@ -48,6 +66,7 @@ export const TermsFields = <V extends { terms: TermsFormValues }>({
   onToggleMore,
   hoursTouched,
   onHoursTouched,
+  managerSelected,
 }: TermsFieldsProps<V>) => {
   const { t } = useI18n("staff");
   const decimalSeparator = useDecimalSeparator();
@@ -170,6 +189,7 @@ export const TermsFields = <V extends { terms: TermsFormValues }>({
           label={t("manager")}
           description={t("termsManagerDescription")}
           value={terms.managerPersonId}
+          selected={managerSelected}
           onChange={(id) => setField("managerPersonId", id)}
           error={form.errors["terms.managerPersonId"] as string | undefined}
         />
@@ -207,6 +227,26 @@ export const TermsFields = <V extends { terms: TermsFormValues }>({
             clearable
             {...field("probationEndDate")}
           />
+          {/* An extension (aml. § 15-6 (4)) exists only as agreed in writing,
+              so its day and its reason are asked for once it is. */}
+          {terms.probationEndDate && (
+            <Checkbox
+              label={t("probationExtensionAgreed")}
+              mt="lg"
+              {...form.getInputProps("terms.probationExtensionAgreed" as never, { type: "checkbox" })}
+            />
+          )}
+          {terms.probationEndDate && terms.probationExtensionAgreed && (
+            <>
+              <DateInput
+                label={t("probationExtendedTo")}
+                valueFormat={t("dateInputFormat")}
+                clearable
+                {...field("probationExtendedTo")}
+              />
+              <TextInput label={t("probationExtensionReason")} {...field("probationExtensionReason")} />
+            </>
+          )}
           <NumberInput
             label={t("noticeEmployee")}
             min={0}
@@ -251,10 +291,90 @@ export const TermsFields = <V extends { terms: TermsFormValues }>({
               />
               <TextInput label={t("payMethod")} {...field("payMethod")} />
               <TextInput label={t("paydayText")} {...field("paydayText")} />
+              <DateInput
+                label={t("seniorityDate")}
+                valueFormat={t("dateInputFormat")}
+                clearable
+                {...field("seniorityDate")}
+              />
+              <TextInput label={t("payGrade")} {...field("payGrade")} />
             </>
           )}
           <Textarea label={t("termsNote")} description={t("termsNoteDescription")} {...field("note")} />
         </SimpleGrid>
+      )}
+      {moreOpen && canSeePay && <PayComponentsField form={form} />}
+    </Stack>
+  );
+};
+
+/**
+ * The pay components (§ 14-6 i, the pay group): a list of named amounts,
+ * each with its currency and period, at most twenty. Written by those who
+ * see the pay; the list is sent whole.
+ */
+const PayComponentsField = <V extends { terms: TermsFormValues }>({ form }: { form: UseFormReturnType<V> }) => {
+  const { t } = useI18n("staff");
+  const decimalSeparator = useDecimalSeparator();
+  const rows = (form.values as { terms: TermsFormValues }).terms.payComponents;
+  const path = (index: number, field: string) => `terms.payComponents.${index}.${field}` as never;
+  return (
+    <Stack gap="xs">
+      <Text size="sm" fw={500}>
+        {t("payComponents")}
+      </Text>
+      {rows.map((_, index) => (
+        <Card key={index} withBorder padding="sm" radius="sm">
+          <Group align="flex-start" wrap="nowrap" gap="xs">
+            <SimpleGrid cols={{ base: 1, sm: 4 }} style={{ flex: 1 }}>
+              <TextInput label={t("name")} withAsterisk {...form.getInputProps(path(index, "name"))} />
+              <NumberInput
+                label={t("amount")}
+                withAsterisk
+                min={0}
+                decimalScale={2}
+                decimalSeparator={decimalSeparator}
+                allowNegative={false}
+                {...form.getInputProps(path(index, "amount"))}
+              />
+              <TextInput
+                label={t("currency")}
+                withAsterisk
+                maxLength={3}
+                {...form.getInputProps(path(index, "currency"))}
+              />
+              <Select
+                label={t("period")}
+                allowDeselect={false}
+                data={payPeriods.map((value) => ({ value, label: t(`payPeriod_${value}`) }))}
+                {...form.getInputProps(path(index, "period"))}
+              />
+            </SimpleGrid>
+            <ActionIcon
+              variant="subtle"
+              color="red"
+              mt={28}
+              aria-label={t("removePayComponent", { n: index + 1 })}
+              onClick={() => form.removeListItem("terms.payComponents" as never, index)}
+            >
+              <IconTrash size={16} />
+            </ActionIcon>
+          </Group>
+        </Card>
+      ))}
+      {rows.length < MAX_PAY_COMPONENTS ? (
+        <Button
+          variant="light"
+          leftSection={<IconPlus size={16} />}
+          style={{ alignSelf: "flex-start" }}
+          onClick={() => form.insertListItem("terms.payComponents" as never, emptyPayComponent() as never)}
+        >
+          {t("addPayComponent")}
+        </Button>
+      ) : (
+        <Text size="sm" c="dimmed">
+          {t("payComponentsMax", { max: MAX_PAY_COMPONENTS })}
+        </Text>
       )}
     </Stack>
   );

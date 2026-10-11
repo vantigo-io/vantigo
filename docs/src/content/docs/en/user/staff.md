@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: The people register — People, New person and the Staff settings with the company's structure.
+description: The people register — People, a person's page, New person, My page and the Staff settings with the company's structure.
 sidebar:
   order: 45
 sources:
@@ -60,7 +60,136 @@ last day worked, or **No employment**. "Today" is the business time zone's day
 (see [Change the settings](#change-the-settings)), so the list turns over at midnight
 there, not in your browser.
 
-Press a name to open the person's page.
+Press a name to open [the person's page](#a-persons-page).
+
+## A person's page
+
+A person's page has three tabs — **Profile**, **Employments** and **History** — and the
+tab you are on is in the page's address. It shows what you may see of the person and
+nothing else: a group of fields that is not yours to read is not on the page at all,
+not even as an empty heading. The person themselves, a manager of theirs, a colleague
+holding `staff:view` and HR each see a different page; the full table is under
+[field groups and audiences](/en/reference/staff/#field-groups-and-audiences). A person
+you may not see answers exactly as one who does not exist.
+
+### Profile
+
+- **Work** — the names, the employee number, the work email and phone, the department
+  and the manager in force today, the language and the work country. Everyone who may
+  open the page sees it.
+- **Private** — the birth date, gender, mobile and private phone, private email and home
+  address. The person and HR.
+- **HR's notes** — HR alone (`staff:manage`, `staff:personal-data`).
+- **Identifiers** — the national identity number as **On file** or **Not on file**, with
+  its kind, and the bank account as **Ending in** and its last four digits. The page
+  never shows more than that, except through **Reveal** below.
+- **Next of kin** and **Roles** (Safety representative, AMU member, HSE responsible,
+  each with the days they hold it).
+- **Self-service** — the user the person signs in as, if HR has linked one.
+- **Organisation** — **Managers** up the chain from the person's manager today, and
+  the **Direct reports**. Press a name to open their page.
+
+A manager sees the work group, the roles and the organisation of the people they
+manage; a colleague the same of anyone active today.
+
+#### Change the details (HR)
+
+1. Press **Edit details** in the Work group. The form holds the work group, the private
+   group and HR's notes. The employee number is shown but never changes.
+2. Change what you need and press **Save**. A refusal lands on its field — a work email
+   another person has, for one.
+
+If somebody else saved the person since you opened the form, the form closes, the page
+reloads and says *Somebody else saved this; it has been reloaded*. Make your change
+again on what is there now.
+
+#### Next of kin and roles (HR)
+
+- **Edit next of kin** opens the list: up to three, each with a **Name** and a
+  **Relationship** (both required), a **Phone** and a **Note**. **Add next of kin**
+  adds one, the bin removes one, and **Save** replaces the whole list.
+- **Edit roles** works the same way: **Add role**, choose the **Role**, and give
+  **From** and **To** if you know them (the end not before the start).
+
+#### Reveal or set the national identity number and the bank account
+
+With `staff:personal-data`, the Identifiers group offers **Reveal** and **Set**:
+
+- **Reveal** asks first, then shows the number for 30 seconds with a countdown
+  (*Hidden in … s*); **Hide** hides it sooner. Each reveal is recorded in the person's
+  history with your name. The number is not kept by the page or the browser.
+- **Set** asks for the **Kind** — fødselsnummer, d-nummer or a foreign identity number
+  with its **Country** — and the **Number**, or for the bank account a Norwegian
+  account number or an IBAN. A national identity number that encodes another birth date
+  than the person's is refused on the number: one of the two is wrong, so correct
+  whichever it is. Setting a bank account mails the person, naming its last four
+  digits.
+
+`staff:manage` alone sees **On file** and the last four digits and nothing more. See
+[the sealed identifiers](/en/reference/staff/#the-sealed-identifiers).
+
+#### Link the person to their user (HR)
+
+The **Self-service** group links the person to the user they sign in as, so they see
+their own record on [My page](#my-page). Type a name in **User**, choose the user and
+press **Link**. The page then says *… — linked, not managed by Staff*: the link gives
+the user My page and nothing more, grants no permission, and Staff never changes the
+user's account. A disabled user, or one already linked to another person, is refused
+on the field. **Unlink** asks first, then removes the link; the user's account stays as
+it is.
+
+### Employments
+
+Each employment is a card with its start, its end and the reason, the business unit,
+the kind of employment relationship, the day the contract was signed, and the days the
+percentage (**Percentage in force since**) and the pay (**Pay in force since**) took
+effect, with a status badge. Under it, the **Terms** as a timeline, newest first, the
+row in force today marked **In force**. Each row shows its fields as you may read them:
+the person and HR see every field and the **Pay components**; a manager every field
+but the pay; a colleague only the days, the employment type and the percentage.
+
+With `staff:manage` the card and its rows offer:
+
+- **New terms** — a new row from the day it **Takes effect**, prefilled from the row in
+  force today. Change what changes and press **Save terms**; a field you empty is
+  cleared from that day. **More terms** holds the rest of § 14-6 and the pay: **Add pay
+  component** (a name, an amount, a currency and a period, at most twenty), the
+  **Seniority date**, the **Pay grade**, and — once a probation is set — whether an
+  extension of it is agreed in writing, to which day and why.
+- **Correct** on any row — rewrites the row as it was really agreed; the history
+  records what changed. The first row takes effect on the start: to move it, change the
+  start under **Edit employment**.
+- **Delete** on the latest row only, never the first, after asking. The row before it
+  is in force again.
+- **Edit employment** — the **Start date** (the first terms move with it), the
+  **Business unit**, the kind of relationship and **Contract signed**. The employment
+  number never changes.
+- **End employment** — the **Last day worked**, today in the business time zone unless
+  you change it and allowed in the future, and the **End reason**, one of the
+  a-melding's six; the form asks for the reason before it sends anything. **Reopen**
+  takes an end recorded in error away again.
+
+A refusal lands on the field it is about: a day another row already has on **Takes
+effect**, a manager who would end up managing themselves on **Manager**, a probation
+that is too long on **Probation ends**, hours that do not fit the scheme on the hours,
+and terms dated after the end on **Last day worked**.
+
+#### The contract check
+
+The **Contract check** lists the seventeen items aml. § 14-6 asks a written contract to
+hold, a) to q), each **Present**, **Missing** or **Not applicable** — judged on the
+terms in force today — and says whether a signed contract is recorded. It informs; it
+never stops a save. The person, a manager of theirs and HR see it. See
+[the § 14-6 check](/en/reference/staff/#terms) for where each item is read from.
+
+### History
+
+**History** lists every change to the person, newest first and paged: what changed,
+who changed it and when. A field shows its value before and after (*Work email:
+old → new*); a field of a group you may not read only that it changed (*Birth date
+changed*); a change of the pay is left out for a manager, so a pay correction shows as
+the kind of change alone. The person, a manager of theirs and HR see the History tab;
+a colleague does not.
 
 ## Add a new person
 
@@ -124,6 +253,30 @@ refuses the terms without them.
    field; one about the whole employment is shown as a message.
 
 **Add it later** closes the form with the person saved and opens their page.
+
+## My page
+
+**My page** (`staff:access`) is your own record in Staff, found through the user HR
+linked it to, and shows what you see of yourself — whatever else you may hold. It has
+the same three tabs as a person's page:
+
+- **Profile** — your work details, your private details, your national identity number
+  as **On file** and your bank account's last four digits, your next of kin, your roles
+  and where you sit in the organisation. Press **Edit my details** to change your
+  mobile and private phone, your private email, your home address and your next of
+  kin, then **Save**. Everything else — your name, your work details, your birth date
+  and gender, your national identity number and your bank account — is HR's to change:
+  ask HR. If HR saved your record while you were editing, the form closes on what is
+  there now and says so.
+- **Employments** — your employments and their terms, the pay included: it is your
+  contract.
+- **History** — the changes to your record, without HR's notes.
+
+If HR has not linked your user to a record yet, My page says *You have no record in
+Staff yet* and explains how it comes to be; ask HR if you think yours is missing.
+
+My page is made for a phone first: on a narrow screen everything is one column and the
+form takes the whole screen.
 
 ## Change the settings
 

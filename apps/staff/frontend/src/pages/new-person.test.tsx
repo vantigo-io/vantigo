@@ -148,7 +148,8 @@ describe("New person — step 2, the first employment", () => {
         title: "Flight software lead",
       },
     });
-    expect(await screen.findByTestId("person-page")).toHaveTextContent("900");
+    // The person page opens on the person just made.
+    expect(await screen.findByRole("heading", { name: "Margaret Hamilton", level: 2 })).toBeInTheDocument();
   });
 
   it("asks for the ground of a temporary employment and offers only the forms that go with it", async () => {
@@ -278,7 +279,8 @@ describe("New person — step 2, the first employment", () => {
     await personStep(dialog);
 
     await userEvent.click(within(dialog).getByRole("button", { name: "Add it later" }));
-    expect(await screen.findByTestId("person-page")).toHaveTextContent("900");
+    // The person page opens on the person just made.
+    expect(await screen.findByRole("heading", { name: "Margaret Hamilton", level: 2 })).toBeInTheDocument();
     expect(fetchMock.state.people.find((one) => one.id === 900)?.status.state).toBe("none");
   });
 });

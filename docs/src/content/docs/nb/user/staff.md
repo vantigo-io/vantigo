@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Personregisteret — Personer, Ny person og Ansatteinnstillinger med selskapets struktur.
+description: Personregisteret — Personer, personsiden, Ny person, Min side og Ansatteinnstillinger med selskapets struktur.
 sidebar:
   order: 45
 sources:
@@ -61,7 +61,136 @@ arbeidsdag, eller **Ikke ansatt**. «I dag» er dagen i virksomhetens tidssone (
 [Endre innstillingene](#endre-innstillingene)), så listen skifter ved midnatt der, ikke
 i nettleseren din.
 
-Trykk på et navn for å åpne personens side.
+Trykk på et navn for å åpne [personsiden](#personsiden).
+
+## Personsiden
+
+En persons side har tre faner — **Profil**, **Arbeidsforhold** og **Historikk** — og
+fanen du står på, ligger i sidens adresse. Siden viser det du kan se av personen og
+ikke noe annet: en gruppe felt som ikke er din å lese, står ikke på siden i det hele
+tatt, heller ikke som en tom overskrift. Personen selv, en leder av dem, en kollega med
+`staff:view` og HR ser hver sin side; hele tabellen står under
+[feltgrupper og målgrupper](/en/reference/staff/#field-groups-and-audiences) i
+referansen. En person du ikke kan se, svarer akkurat som en som ikke finnes.
+
+### Profil
+
+- **Jobb** — navnene, ansattnummeret, e-post og telefon på jobb, avdelingen og lederen
+  som gjelder i dag, språket og arbeidslandet. Alle som kan åpne siden, ser den.
+- **Privat** — fødselsdato, kjønn, mobil og privat telefon, privat e-post og
+  hjemmeadresse. Personen selv og HR.
+- **HRs notater** — bare HR (`staff:manage`, `staff:personal-data`).
+- **Identifikatorer** — fødselsnummeret som **Registrert** eller **Ikke registrert**,
+  med typen, og bankkontoen som **Slutter på** og de fire siste sifrene. Siden viser
+  aldri mer enn det, bortsett fra gjennom **Vis** nedenfor.
+- **Pårørende** og **Roller** (verneombud, medlem av AMU, HMS-ansvarlig, hver med
+  dagene de har rollen).
+- **Selvbetjening** — brukeren personen logger inn med, hvis HR har koblet en.
+- **Organisasjon** — **Ledere** oppover fra personens leder i dag, og de **Direkte
+  underordnede**. Trykk på et navn for å åpne siden deres.
+
+En leder ser jobbgruppen, rollene og organisasjonen til dem de leder; en kollega det
+samme for alle som er aktive i dag.
+
+#### Endre opplysningene (HR)
+
+1. Trykk **Endre opplysninger** i gruppen Jobb. Skjemaet har jobbgruppen, den private
+   gruppen og HRs notater. Ansattnummeret vises, men endres aldri.
+2. Endre det du trenger, og trykk **Lagre**. En avvisning havner på feltet den gjelder
+   — for eksempel en e-post på jobb som en annen person har.
+
+Har noen andre lagret personen etter at du åpnet skjemaet, lukkes skjemaet, siden lastes
+inn på nytt og sier *Noen andre lagret dette først; det er lastet inn på nytt*. Gjør
+endringen din på nytt ut fra det som står der nå.
+
+#### Pårørende og roller (HR)
+
+- **Endre pårørende** åpner listen: opptil tre, hver med **Navn** og **Relasjon**
+  (begge må oppgis), **Telefon** og **Merknad**. **Legg til pårørende** legger til én,
+  søppelbøtten fjerner én, og **Lagre** erstatter hele listen.
+- **Endre roller** virker på samme måte: **Legg til rolle**, velg **Rolle**, og oppgi
+  **Fra** og **Til** hvis du vet dem (slutten ikke før starten).
+
+#### Vis eller registrer fødselsnummeret og bankkontoen
+
+Med `staff:personal-data` tilbyr gruppen Identifikatorer **Vis** og **Registrer**:
+
+- **Vis** spør først, og viser så nummeret i 30 sekunder med nedtelling (*Skjules om
+  … s*); **Skjul** skjuler det før. Hver visning registreres i personens historikk med
+  navnet ditt. Nummeret lagres verken av siden eller nettleseren.
+- **Registrer** spør etter **Type** — fødselsnummer, d-nummer eller et utenlandsk
+  identitetsnummer med **Land** — og **Nummer**, eller for bankkontoen et norsk
+  kontonummer eller et IBAN. Et fødselsnummer som viser en annen fødselsdato enn
+  personens, avvises på nummeret: ett av dem er feil, så rett det som er feil. Når en
+  bankkonto registreres, får personen en e-post som nevner de fire siste sifrene.
+
+`staff:manage` alene ser **Registrert** og de fire siste sifrene, og ikke noe mer. Se
+[de forseglede identifikatorene](/en/reference/staff/#the-sealed-identifiers) i
+referansen.
+
+#### Koble personen til brukeren sin (HR)
+
+Gruppen **Selvbetjening** kobler personen til brukeren de logger inn med, så de ser sin
+egen oppføring på [Min side](#min-side). Skriv et navn i **Bruker**, velg brukeren og
+trykk **Koble**. Siden sier da *… — koblet, ikke styrt av Ansatte*: koblingen gir
+brukeren Min side og ikke noe mer, gir ingen rettigheter, og Ansatte endrer aldri
+brukerens konto. En deaktivert bruker, eller en som allerede er koblet til en annen
+person, avvises på feltet. **Koble fra** spør først og fjerner så koblingen; brukerens
+konto blir som den er.
+
+### Arbeidsforhold
+
+Hvert arbeidsforhold er et kort med starten, slutten og årsaken, virksomheten, typen
+arbeidsforhold, dagen avtalen ble signert, og dagene stillingsprosenten
+(**Stillingsprosent gjeldende fra**) og lønnen (**Lønn gjeldende fra**) gjaldt fra,
+med et statusmerke. Under det står **Vilkår** som en tidslinje, nyeste først, og raden
+som gjelder i dag er merket **Gjeldende**. Hver rad viser feltene slik du kan lese dem:
+personen og HR ser alle feltene og **Lønnselementer**; en leder alle feltene unntatt
+lønnen; en kollega bare dagene, ansettelsestypen og stillingsprosenten.
+
+Med `staff:manage` tilbyr kortet og radene:
+
+- **Nye vilkår** — en ny rad fra dagen den **Gjelder fra**, forhåndsutfylt fra raden som
+  gjelder i dag. Endre det som endres, og trykk **Lagre vilkårene**; et felt du tømmer,
+  fjernes fra den dagen. **Flere vilkår** har resten av § 14-6 og lønnen: **Legg til
+  lønnselement** (navn, beløp, valuta og periode, høyst tjue), **Ansiennitetsdato**,
+  **Lønnstrinn**, og — når prøvetiden er satt — om en forlengelse av den er avtalt
+  skriftlig, til hvilken dag og hvorfor.
+- **Korriger** på hvilken som helst rad — skriver om raden slik den faktisk ble avtalt;
+  historikken viser hva som ble endret. Den første raden gjelder fra starten: for å
+  flytte den, endre starten under **Endre arbeidsforholdet**.
+- **Slett** bare på den siste raden, aldri den første, etter at du har bekreftet. Raden
+  før gjelder da igjen.
+- **Endre arbeidsforholdet** — **Startdato** (de første vilkårene flyttes med),
+  **Virksomhet**, typen arbeidsforhold og **Avtale signert**. Arbeidsforholdsnummeret
+  endres aldri.
+- **Avslutt arbeidsforholdet** — **Siste arbeidsdag**, i dag i virksomhetens tidssone
+  med mindre du endrer den, og gjerne fram i tid, og **Sluttårsak**, en av
+  a-meldingens seks; skjemaet ber om årsaken før noe sendes. **Gjenåpne** fjerner en
+  slutt som ble registrert ved en feil.
+
+En avvisning havner på feltet den gjelder: en dag en annen rad allerede har, på
+**Gjelder fra**; en leder som ville endt opp som sin egen leder, på **Leder**; en for
+lang prøvetid på **Prøvetiden slutter**; timer som ikke passer ordningen, på timene; og
+vilkår datert etter slutten på **Siste arbeidsdag**.
+
+#### Avtalekontrollen
+
+**Avtalekontroll** lister de sytten punktene aml. § 14-6 krever at en skriftlig
+arbeidsavtale inneholder, a) til q), hvert som **Finnes**, **Mangler** eller **Gjelder
+ikke** — vurdert ut fra vilkårene som gjelder i dag — og sier om en signert avtale er
+registrert. Den informerer; den stopper aldri en lagring. Personen, en leder av dem og
+HR ser den. Se [§ 14-6-kontrollen](/en/reference/staff/#terms) i referansen for hvor
+hvert punkt leses fra.
+
+### Historikk
+
+**Historikk** lister hver endring av personen, nyeste først og sidevis: hva som ble
+endret, hvem som endret det og når. Et felt viser verdien før og etter (*E-post på
+jobb: gammel → ny*); et felt i en gruppe du ikke kan lese, bare at det ble endret
+(*Fødselsdato endret*); en lønnsendring holdes utenfor for en leder, så en
+lønnskorrigering vises bare som typen endring. Personen selv, en leder av dem og HR ser
+fanen Historikk; en kollega gjør det ikke.
 
 ## Legg til en ny person
 
@@ -125,6 +254,30 @@ avviser vilkår uten dem.
    det feltet; en som gjelder hele arbeidsforholdet, vises som en melding.
 
 **Legg det til senere** lukker skjemaet med personen lagret og åpner siden deres.
+
+## Min side
+
+**Min side** (`staff:access`) er din egen oppføring i Ansatte, funnet gjennom brukeren
+HR koblet den til, og viser det du ser av deg selv — uansett hvilke andre rettigheter du
+har. Den har de samme tre fanene som en persons side:
+
+- **Profil** — jobbopplysningene, de private opplysningene, fødselsnummeret som
+  **Registrert** og de fire siste sifrene i bankkontoen, de pårørende, rollene og hvor
+  du hører hjemme i organisasjonen. Trykk **Endre opplysningene mine** for å endre
+  mobil og privat telefon, privat e-post, hjemmeadresse og pårørende, og så **Lagre**.
+  Alt annet — navnet, jobbopplysningene, fødselsdatoen og kjønnet, fødselsnummeret og
+  bankkontoen — endres av HR: spør HR. Har HR lagret oppføringen din mens du endret,
+  lukkes skjemaet på det som står der nå, og siden sier fra.
+- **Arbeidsforhold** — arbeidsforholdene dine og vilkårene, lønnen medregnet: det er
+  din arbeidsavtale.
+- **Historikk** — endringene i oppføringen din, uten HRs notater.
+
+Har HR ikke koblet brukeren din til en oppføring ennå, sier Min side *Du har ingen
+oppføring i Ansatte ennå* og forklarer hvordan den kommer på plass; spør HR hvis du
+mener din mangler.
+
+Min side er laget for mobilen først: på en smal skjerm står alt i én kolonne, og
+skjemaet fyller hele skjermen.
 
 ## Endre innstillingene
 

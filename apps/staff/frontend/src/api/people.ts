@@ -59,3 +59,102 @@ export const personQueryOptions = (id: number) =>
  */
 export const createPerson = (input: StaffPersonInput): Promise<StaffPerson> =>
   request<StaffPerson>("/api/v1/staff/people", json("POST", input));
+
+export type StaffNextOfKin = Schemas["StaffNextOfKin"];
+export type StaffNextOfKinList = Schemas["StaffNextOfKinList"];
+export type StaffNextOfKinRelationship = Schemas["StaffNextOfKinRelationship"];
+export type StaffPersonRole = Schemas["StaffPersonRole"];
+export type StaffPersonRoleList = Schemas["StaffPersonRoleList"];
+export type StaffPersonRoleKind = Schemas["StaffPersonRoleKind"];
+export type StaffPersonLink = Schemas["StaffPersonLink"];
+export type StaffAssignableUser = Schemas["StaffAssignableUser"];
+export type StaffOrg = Schemas["StaffOrg"];
+export type StaffEvent = Schemas["StaffEvent"];
+export type StaffNationalIdKind = Schemas["StaffNationalIdKind"];
+export type StaffNationalIdInput = Schemas["StaffNationalIdRequest"];
+export type StaffNationalIdReveal = Schemas["StaffNationalIdReveal"];
+export type StaffBankAccountKind = Schemas["StaffBankAccountKind"];
+export type StaffBankAccountInput = Schemas["StaffBankAccountRequest"];
+export type StaffBankAccountReveal = Schemas["StaffBankAccountReveal"];
+
+/** HR's full replace of the editable fields, guarded by the revision the form was opened at. */
+export const updatePerson = (id: number, input: StaffPersonInput, revision: number): Promise<StaffPerson> =>
+  request<StaffPerson>(`/api/v1/staff/people/${id}`, json("PUT", input, revision));
+
+/** The person's next of kin with the person's revision; the private group's readers alone get them. */
+export const nextOfKinQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", id, "next-of-kin"],
+    queryFn: ({ signal }) => request<StaffNextOfKinList>(`/api/v1/staff/people/${id}/next-of-kin`, { signal }),
+  });
+
+/** All of them, in order — a full replace guarded by the person's revision. */
+export const updateNextOfKin = (id: number, nextOfKin: StaffNextOfKin[], revision: number) =>
+  request<StaffNextOfKinList>(`/api/v1/staff/people/${id}/next-of-kin`, json("PUT", { nextOfKin }, revision));
+
+/** The roles a person holds for the company (the work group), with the person's revision. */
+export const rolesQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", id, "roles"],
+    queryFn: ({ signal }) => request<StaffPersonRoleList>(`/api/v1/staff/people/${id}/roles`, { signal }),
+  });
+
+export const updateRoles = (id: number, roles: StaffPersonRole[], revision: number) =>
+  request<StaffPersonRoleList>(`/api/v1/staff/people/${id}/roles`, json("PUT", { roles }, revision));
+
+/** The self-service link — the person's and HR's to read. */
+export const personLinkQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", id, "user"],
+    queryFn: ({ signal }) => request<StaffPersonLink>(`/api/v1/staff/people/${id}/user`, { signal }),
+  });
+
+/** Links the person to a user, or unlinks them with null (`staff:manage`). */
+export const updatePersonLink = (id: number, userId: string | null) =>
+  request<StaffPersonLink>(`/api/v1/staff/people/${id}/user`, json("PUT", { userId }));
+
+/** The active users a person may be linked to, as the user directory finds them — at most twenty. */
+export const assignableUsersQueryOptions = (q: string) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "assignable-users", q],
+    queryFn: ({ signal }) =>
+      request<StaffAssignableUser[]>(`/api/v1/staff/assignable-users?q=${encodeURIComponent(q)}`, { signal }),
+  });
+
+/** The manager chain up and the direct reports, today. */
+export const orgQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", id, "org"],
+    queryFn: ({ signal }) => request<StaffOrg>(`/api/v1/staff/people/${id}/org`, { signal }),
+  });
+
+/** One page of a person's history, newest first, shaped by who is asking. */
+export const personEventsQueryOptions = (id: number, page: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", id, "events", page],
+    queryFn: ({ signal }) =>
+      request<Paginated<StaffEvent>>(`/api/v1/staff/people/${id}/events?page=${page}`, { signal }),
+    placeholderData: keepPreviousData,
+  });
+
+// The sealed identifiers (design S4): written and revealed under
+// `staff:personal-data` alone. A reveal is a POST answered `no-store`; it is
+// never a query, so nothing of it lands in the query cache.
+
+export const setNationalId = (id: number, input: StaffNationalIdInput) =>
+  request<StaffPerson>(`/api/v1/staff/people/${id}/national-id`, json("PUT", input));
+
+export const revealNationalId = (id: number) =>
+  request<StaffNationalIdReveal>(`/api/v1/staff/people/${id}/national-id/reveal`, {
+    method: "POST",
+    cache: "no-store",
+  });
+
+export const setBankAccount = (id: number, input: StaffBankAccountInput) =>
+  request<StaffPerson>(`/api/v1/staff/people/${id}/bank-account`, json("PUT", input));
+
+export const revealBankAccount = (id: number) =>
+  request<StaffBankAccountReveal>(`/api/v1/staff/people/${id}/bank-account/reveal`, {
+    method: "POST",
+    cache: "no-store",
+  });

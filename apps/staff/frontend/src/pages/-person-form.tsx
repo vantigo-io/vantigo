@@ -12,6 +12,8 @@ export interface PersonFieldsProps {
   form: UseFormReturnType<PersonFormValues>;
   /** What the generated number will be, when the settings could be read. */
   generatedNumber?: string;
+  /** The number of a person who exists: shown, never typed — it does not change after the create. */
+  fixedNumber?: string;
   privateOpen: boolean;
   onTogglePrivate: () => void;
 }
@@ -21,7 +23,13 @@ export interface PersonFieldsProps {
  * how to reach them at work and their language — and the private group
  * folded away, optional, since a hire is often entered before HR has it.
  */
-export const PersonFields = ({ form, generatedNumber, privateOpen, onTogglePrivate }: PersonFieldsProps) => {
+export const PersonFields = ({
+  form,
+  generatedNumber,
+  fixedNumber,
+  privateOpen,
+  onTogglePrivate,
+}: PersonFieldsProps) => {
   const { t } = useI18n("staff");
   return (
     <Stack>
@@ -34,30 +42,39 @@ export const PersonFields = ({ form, generatedNumber, privateOpen, onTogglePriva
         description={t("displayNameDescription")}
         {...form.getInputProps("displayName")}
       />
-      <Stack gap={4}>
-        <Switch label={t("assignOwnEmployeeNumber")} {...form.getInputProps("assignOwnNumber", { type: "checkbox" })} />
-        {form.values.assignOwnNumber ? (
-          <TextInput
-            label={t("employeeNumber")}
-            description={t("employeeNumberDescription", { max: EMPLOYEE_NUMBER_MAX_LENGTH })}
-            withAsterisk
-            {...form.getInputProps("employeeNumber")}
+      {fixedNumber !== undefined ? (
+        <Text size="sm" c="dimmed">
+          {t("employeeNumberFixed", { number: fixedNumber })}
+        </Text>
+      ) : (
+        <Stack gap={4}>
+          <Switch
+            label={t("assignOwnEmployeeNumber")}
+            {...form.getInputProps("assignOwnNumber", { type: "checkbox" })}
           />
-        ) : (
-          <Text size="sm" c="dimmed">
-            {generatedNumber
-              ? t("employeeNumberGenerated", { number: generatedNumber })
-              : t("employeeNumberGeneratedPlain")}
-          </Text>
-        )}
-        {/* A refusal of the generated number (employee_number_too_long) has no
+          {form.values.assignOwnNumber ? (
+            <TextInput
+              label={t("employeeNumber")}
+              description={t("employeeNumberDescription", { max: EMPLOYEE_NUMBER_MAX_LENGTH })}
+              withAsterisk
+              {...form.getInputProps("employeeNumber")}
+            />
+          ) : (
+            <Text size="sm" c="dimmed">
+              {generatedNumber
+                ? t("employeeNumberGenerated", { number: generatedNumber })
+                : t("employeeNumberGeneratedPlain")}
+            </Text>
+          )}
+          {/* A refusal of the generated number (employee_number_too_long) has no
             field on screen to land on while the switch is off. */}
-        {!form.values.assignOwnNumber && form.errors.employeeNumber && (
-          <Text size="sm" c="red">
-            {form.errors.employeeNumber}
-          </Text>
-        )}
-      </Stack>
+          {!form.values.assignOwnNumber && form.errors.employeeNumber && (
+            <Text size="sm" c="red">
+              {form.errors.employeeNumber}
+            </Text>
+          )}
+        </Stack>
+      )}
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
         <TextInput label={t("workEmail")} type="email" {...form.getInputProps("workEmail")} />
         <TextInput label={t("phoneWork")} {...form.getInputProps("phoneWork")} />
