@@ -1257,7 +1257,14 @@ dem. Anonymiseres en person i Kunder, slettes utkastene deres, mottakeren på hv
 sending blankes — kolonnen **Til** viser da *(anonymisert)* — merknadene på betalingene
 deres tømmes, og en EHF som fortsatt venter i køen, og som Vantigo aldri har prøvd å
 overlevere til aksesspunktet, avbrytes; de utstedte dokumentene, med kjøperen de
-navngir og timelistene sine, blir stående. Ingen dokumenter sendes til en anonymisert kunde igjen, men en
+navngir og timelistene sine, blir stående. Purrebrev som fortsatt er underveis — i kø,
+venter på utskrift eller feilet — trekkes tilbake, og adressen på hvert brev blankes,
+også på et sendt brev; et brev som allerede er skrevet ut, lar Vantigo stå, slik at du
+kan ta det ut av posten og trekke det tilbake for hånd, og loggen navngir det.
+Merknadene på gebyrbetalinger, frafalte gebyrer, registrerte leveringer, venting og
+overleveringer tømmes, og det samme gjør merknadene på banklinjene kundens betalinger
+kom fra, når linjene er behandlet; brevene, banklinjene og betalerens opplysninger blir
+stående, som bankens og kravets dokumentasjon. Ingen dokumenter sendes til en anonymisert kunde igjen, men en
 kreditnota kan fortsatt utstedes, med kjøperen originalen navnga.
 
 ## Rettigheter
@@ -1267,9 +1274,15 @@ Ingen innebygd rolle har disse; en eier har alt
 
 | Du vil | Du trenger |
 | --- | --- |
-| Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet, lese forfallslisten, se en fakturas purringer, purrekrav, leveringer, vent og overlevering og laste ned PDF-en til et brev, lese en kundes purreregel | `invoices:access` |
+| Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet, lese forfallslisten, se en fakturas purringer, purrekrav, leveringer, vent og overlevering og laste ned PDF-en til et brev, lese en kundes purreregel, inkassosatsene og purreinnstillingene, se dashbordets varsler om forfalte fakturaer og penger som skal tilbake | `invoices:access` |
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en | `invoices:issue` |
-| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen | `invoices:payments` |
-| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, inkassosatsene og purreinnstillingene; endre en bankkontos filformat under **Innbetalinger** | `invoices:manage` |
+| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev og bekrefte dem postlagt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; se dashbordets varsler om banklinjer, brev og utskriftsbunker | `invoices:payments` |
+| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger** | `invoices:manage` |
+
+Innbetalinger og purring har ingen egen rettighet. Purringer, avvikskøen, vent og
+overlevering til inkasso krever `invoices:payments`, ikke `invoices:issue`: en purring er
+ikke et salgsdokument, men kredittstyring — det selskapet sier at det har til gode. Å
+registrere en levering manuelt hører til å overlevere salget, og er derfor
+`invoices:issue`.

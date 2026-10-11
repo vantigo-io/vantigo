@@ -1236,7 +1236,14 @@ buyer printed on them. When a person is anonymised in Customers, their drafts ar
 deleted, the recipient of every send is blanked — the **To** column then reads
 *(anonymised)* — the notes on their payments are emptied, and an EHF still waiting in
 the queue that Vantigo never tried to hand to the access point is cancelled; the issued documents, with the
-buyer they name and their timesheets, stay. No document is sent to an anonymised customer again, though a
+buyer they name and their timesheets, stay. Their reminder letters still on their way —
+queued, waiting to be printed, or failed — are withdrawn, and every letter's address is
+blanked, a sent one's too; a letter already printed is left for you to pull from the
+post and withdraw by hand, and the log names it. The notes on charge payments, waived
+charges, recorded deliveries, holds and hand-offs are emptied, and so are the notes on
+the bank lines the customer's payments came from once those lines are handled; the
+letters, the bank lines and their payer details stay, as the bank's and the claim's
+record. No document is sent to an anonymised customer again, though a
 credit note can still be issued, naming the buyer the original named.
 
 ## Permissions
@@ -1246,9 +1253,14 @@ No built-in role holds these; an Owner holds everything
 
 | You want to | You need |
 | --- | --- |
-| Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list, see an invoice's reminders, charges, deliveries, hold and hand-off and download a letter's PDF, read a customer's reminder policy | `invoices:access` |
+| Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list, see an invoice's reminders, charges, deliveries, hold and hand-off and download a letter's PDF, read a customer's reminder policy, the collection rates and the reminder settings, see the dashboard's notices about overdue invoices and money owed back | `invoices:access` |
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one | `invoices:issue` |
-| Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file | `invoices:payments` |
-| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings; change a bank account's file format under **Payments** | `invoices:manage` |
+| Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters and confirm them posted; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; see the dashboard's notices about bank lines, letters and print batches | `invoices:payments` |
+| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments** | `invoices:manage` |
+
+Payments and reminders add no permission of their own. Reminders, the exception queue,
+holds and hand-offs need `invoices:payments`, not `invoices:issue`: a reminder is not a
+sales document but credit control — what the company says it is owed. Recording a
+delivery by hand is part of handing the sale over, so it is `invoices:issue`.

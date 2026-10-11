@@ -420,7 +420,12 @@ without Projects.
 (`internal/config`): the buyer, its billing profile and its invoice address come
 from `contracts.CustomerDirectory.BillingProfile`, read before any issue or save
 takes a lock and never under one — as is a send's recipient, the customer's current
-invoice e-mail. Beside it, and each optionally, it reads the project directory
+invoice e-mail. A reminder run reads each item's customer's billing profile the same
+way — `ReminderEmail` and `ReminderDelivery`, where its letters go — once per customer
+on the pool before any item's lock, and the collection export reads the customers'
+reminder addresses for the agency's file, on the pool, a failed read leaving the
+address blank and logged; the reminder worker reads no directory, the run having fixed
+each letter's channel and recipient. Beside it, and each optionally, it reads the project directory
 (`contracts.ProjectDirectory`: the projects a draft's work belongs to, before an
 issue's transaction; with `projects` disabled a draft that bills work cannot be
 issued, `projects_unavailable`), the user directory (the issuer's name a holder's
@@ -435,13 +440,23 @@ single-provider contract. It fills both many-provider slots: as a `CustomerRefer
 merged-away customer, drafts and issued alike (`invoices.invoices`), the immutability
 trigger allowing exactly `customer_id` to change on an issued one; as
 `CustomerPersonalData` it exports a person's documents and drafts with their payments,
-deliveries and EHF transmissions and, on anonymisation, locks the person's documents,
+deliveries and EHF transmissions — and an issued document's charge payments, waivers,
+manual deliveries, letters, holds and hand-offs, each payment's source and an imported
+one's bank line — and, on anonymisation, locks the person's documents,
 writes a module-private marker that refuses every later send, blanks every delivery's
 recipient (`invoices.deliveries`), blanks every payment's note (`invoices.payments`,
 the notes blanked), cancels every queued transmission never attempted
-(`invoices.transmissions`), deletes the drafts (`invoices.drafts`) and keeps the issued
-documents, their payments and every other transmission under bokføringsloven § 13
-(`invoices.documents`, at 0).
+(`invoices.transmissions`), deletes the drafts (`invoices.drafts`); withdraws the
+letters in flight and blanks every letter's address (`invoices.reminders`), blanks the
+notes of the receivables (`invoices.chargePayments`, `invoices.chargeWaivers`,
+`invoices.manualDeliveries`, `invoices.invoiceHolds`, `invoices.collectionHandoffs`)
+and of the resolved bank lines their money came from (`invoices.bankTransactions` —
+the lock order's one named exception, the [reference](/en/reference/invoices/#issuing)
+says why it cannot cycle), deletes the reminder policy
+(`invoices.customerReminderPolicies`), and keeps the issued documents, their payments,
+letters and every other transmission under bokføringsloven § 13
+(`invoices.documents`, at 0). Every write runs on the customers module's transaction
+it is handed and makes no call out of it.
 For those gates `contracts.CustomerBillingProfile` carries the customer's `Status`
 (`active`, `disabled`, `archived`) and `MergedInto`, the one change to the
 customers contract Invoices made: `disabled` is "blocked for invoicing", and an

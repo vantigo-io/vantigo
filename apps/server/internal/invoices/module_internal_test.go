@@ -17,7 +17,7 @@ func TestPermissions_AreTheCatalogTheDesignNames(t *testing.T) {
 	want := []contracts.Permission{
 		{
 			Key: "invoices:access", Display: "Use Invoices",
-			Description: "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats.",
+			Description: descAccess,
 			Category:    "Invoices", Sensitive: false, Delegable: true,
 		},
 		{
@@ -27,17 +27,17 @@ func TestPermissions_AreTheCatalogTheDesignNames(t *testing.T) {
 		},
 		{
 			Key: "invoices:issue", Display: "Issue invoices",
-			Description: "Issue a draft into a numbered document that can never be changed, create credit notes, send an issued document by e-mail or as EHF, and cancel or resolve its EHF transmissions.",
+			Description: descIssue,
 			Category:    "Invoices", Sensitive: true, Delegable: true,
 		},
 		{
 			Key: "invoices:manage", Display: "Manage invoicing",
-			Description: "Change the seller record and its Peppol id, the number series start, the KID agreement, the e-invoicing access point's credentials, and the VAT codes and their rates.",
+			Description: descManage,
 			Category:    "Invoices", Sensitive: true, Delegable: true,
 		},
 		{
 			Key: "invoices:payments", Display: "Register payments",
-			Description: "Register payments against issued invoices, and remove a registration with a reason.",
+			Description: descPayments,
 			Category:    "Invoices", Sensitive: true, Delegable: true,
 		},
 	}
@@ -63,5 +63,61 @@ func TestMount_RefusesAnInstallationWithoutCustomers(t *testing.T) {
 	_, err := Module().Mount(module.Deps{})
 	if err == nil || !strings.Contains(err.Error(), "requires the customers module") {
 		t.Errorf("Mount without a directory = %v, want the customers requirement named", err)
+	}
+}
+
+// The descriptions D1's table (invoices payments and reminders design)
+// rewrites, once every PR 1 operation exists (plan reading 41).
+const (
+	descAccess = "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, " +
+		"the CSV export and the stats; the overdue list and an invoice's reminders, hold, hand-off, manual deliveries " +
+		"and charges; the collection rates, the reminder settings and a customer's reminder policy; and the attention " +
+		"items about overdue invoices and refunds due."
+	descIssue = "Issue a draft into a numbered document that can never be changed, create credit notes, send an " +
+		"issued document by e-mail or as EHF, cancel or resolve its EHF transmissions, and record that an invoice " +
+		"was handed over or posted, or remove such a record."
+	descManage = "Change the seller record and its Peppol id, the number series start, the KID agreement, the " +
+		"e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the " +
+		"regime review, the collection rates added ahead of a release, and the format a bank account's files are " +
+		"imported in."
+	descPayments = "Register payments against issued invoices and remove a registration with a reason; import bank " +
+		"files and work the exception queue; make reminder runs, and print, post, withdraw and retry the letters; " +
+		"hold a disputed invoice, hand one to collection and export the collection file; register and remove " +
+		"charge payments and waive charges; set a customer's reminder policy; and see the attention items about " +
+		"the bank lines and the letters."
+)
+
+// Each key's description names what D1's table gives it — and no other
+// key's names it — so an administrator reading the catalog sees where the
+// overdue list, the bank import, the runs, the settings and a manual
+// delivery live (invoices payments and reminders design D1).
+func TestPermissions_Descriptions(t *testing.T) {
+	t.Parallel()
+	gains := map[string][]string{
+		"invoices:access": {"the overdue list", "an invoice's reminders, hold, hand-off, manual deliveries and charges",
+			"the collection rates, the reminder settings and a customer's reminder policy",
+			"attention items about overdue invoices and refunds due"},
+		"invoices:issue": {"record that an invoice was handed over or posted"},
+		"invoices:manage": {"the reminder settings and the regime review", "the collection rates added ahead of a release",
+			"the format a bank account's files are imported in"},
+		"invoices:payments": {"import bank files", "exception queue", "reminder runs", "print, post, withdraw and retry",
+			"hold a disputed invoice", "hand one to collection", "export the collection file", "charge payments",
+			"waive charges", "set a customer's reminder policy", "attention items about the bank lines and the letters"},
+	}
+	descriptions := map[string]string{}
+	for _, p := range Module().Permissions {
+		descriptions[p.Key] = p.Description
+	}
+	for key, phrases := range gains {
+		for _, phrase := range phrases {
+			if !strings.Contains(descriptions[key], phrase) {
+				t.Errorf("%s's description %q does not name %q", key, descriptions[key], phrase)
+			}
+			for other, d := range descriptions {
+				if other != key && strings.Contains(d, phrase) {
+					t.Errorf("%s's description names %q, which D1 gives %s", other, phrase, key)
+				}
+			}
+		}
 	}
 }

@@ -1164,6 +1164,36 @@ func (e InvoicesSettingsResponseTimesheetPersonLabel) Valid() bool {
 	}
 }
 
+// Defines values for InvoicesStatsAttentionItemType.
+const (
+	BankTransactionsOpen  InvoicesStatsAttentionItemType = "bankTransactionsOpen"
+	InvoiceOverdue        InvoicesStatsAttentionItemType = "invoiceOverdue"
+	InvoiceRefundDue      InvoicesStatsAttentionItemType = "invoiceRefundDue"
+	ReminderBatchUnposted InvoicesStatsAttentionItemType = "reminderBatchUnposted"
+	ReminderFailed        InvoicesStatsAttentionItemType = "reminderFailed"
+	RemindersHeld         InvoicesStatsAttentionItemType = "remindersHeld"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesStatsAttentionItemType enum.
+func (e InvoicesStatsAttentionItemType) Valid() bool {
+	switch e {
+	case BankTransactionsOpen:
+		return true
+	case InvoiceOverdue:
+		return true
+	case InvoiceRefundDue:
+		return true
+	case ReminderBatchUnposted:
+		return true
+	case ReminderFailed:
+		return true
+	case RemindersHeld:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvoicesTransmissionResolutionOutcome.
 const (
 	InvoicesTransmissionResolutionOutcomeDelivered InvoicesTransmissionResolutionOutcome = "delivered"
@@ -3008,6 +3038,32 @@ type InvoicesSourcesBlock struct {
 	WouldRelease *[]InvoicesSourceRef `json:"wouldRelease,omitempty"`
 }
 
+// InvoicesStatsAttentionItem One thing the dashboard wants a human to look at (invoices payments and reminders design D12). The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing. Every caller holding invoices:access is answered `invoiceOverdue` and `invoiceRefundDue`; a caller also holding invoices:payments is answered the other four, and a caller without it the two, never a 403. One clock read: today is the Oslo day of the request.
+//
+// `invoiceOverdue`: the 20 most overdue issued invoices — overdue today, oldest due date first — each until it is paid or credited; id is 'invoiceOverdue/<invoiceId>', entityId the invoice id, title the buyer's name, occurredAt the day after its effective due date E (the due date moved off a weekend or a public holiday) at UTC midnight. An invoice due on a Saturday is not an item before the Tuesday after it.
+//
+// `invoiceRefundDue`: every issued invoice whose open amount is below zero — a credit note issued after a payment — or whose charge payments exceed every charge less its waivers (the charges' refundDue); id 'invoiceRefundDue/<invoiceId>', entityId the invoice id, title the buyer's name, occurredAt when its money last moved (the latest credit note issued, payment or charge payment registered, or waiver made). It clears when what was paid back outside Vantigo is recorded by removing the payment or charge payment with a reason.
+//
+// `bankTransactionsOpen`: one per bank file with lines pending, exception or duplicate; id 'bankTransactionsOpen/<bankFileId>', entityId the bank file id, title the file's booking days ('2026-10-01' or '2026-10-01 – 2026-10-07'), occurredAt its upload, count its open lines. It clears when every line is matched or resolved.
+//
+// `reminderFailed`: one per letter whose e-mail failed for good; id 'reminderFailed/<reminderId>', entityId the letter's invoice id, title the buyer's name, occurredAt its failure. It clears when the letter is retried or withdrawn.
+//
+// `remindersHeld`: one per cause while queued letters wait on it; id 'remindersHeld/<cause>', entityId and title the cause — `collectionRatesOutdated` (a collection rate missing for a half-year a letter needs) or `collectionRegimeUnreviewed` (the 1988 regime past its review) — occurredAt the oldest waiting letter's creation, count the letters. It clears when the rate is added or the review is made, and the worker sends them.
+//
+// `reminderBatchUnposted`: one per print batch neither confirmed posted nor reprinted from two days after its posting day; id 'reminderBatchUnposted/<batchId>', entityId the batch id, title its posting day, occurredAt two days after it at UTC midnight, count its printed letters. It clears when the batch is confirmed posted or reprinted.
+type InvoicesStatsAttentionItem struct {
+	// Count How many things the item stands for, when it stands for more than one — a file's open lines, the letters waiting on one cause, a batch's printed letters. Absent on an item about a single invoice or letter. It is here because a count inside a server-written title could never be translated.
+	Count      *int32                         `json:"count,omitempty"`
+	EntityId   string                         `json:"entityId"`
+	Id         string                         `json:"id"`
+	OccurredAt time.Time                      `json:"occurredAt"`
+	Title      string                         `json:"title"`
+	Type       InvoicesStatsAttentionItemType `json:"type"`
+}
+
+// InvoicesStatsAttentionItemType defines model for InvoicesStatsAttentionItem.Type.
+type InvoicesStatsAttentionItemType string
+
 // InvoicesStatsSummaryResponse The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's Oslo date. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on an Oslo day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK.
 type InvoicesStatsSummaryResponse struct {
 	CreditedCount         int32     `json:"creditedCount"`
@@ -3702,6 +3758,9 @@ type ServerInterface interface {
 	// PutInvoicesSettingsReminders Change the reminder settings
 	// (PUT /api/v1/invoices/settings/reminders)
 	PutInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request)
+	// GetInvoicesStatsAttention Get the invoices dashboard attention items
+	// (GET /api/v1/invoices/stats/attention)
+	GetInvoicesStatsAttention(w http.ResponseWriter, r *http.Request)
 	// GetInvoicesStatsSummary Get the invoices dashboard summary
 	// (GET /api/v1/invoices/stats/summary)
 	GetInvoicesStatsSummary(w http.ResponseWriter, r *http.Request, params GetInvoicesStatsSummaryParams)
@@ -5375,6 +5434,20 @@ func (siw *ServerInterfaceWrapper) PutInvoicesSettingsReminders(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// GetInvoicesStatsAttention operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesStatsAttention(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesStatsAttention(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetInvoicesStatsSummary operation middleware
 func (siw *ServerInterfaceWrapper) GetInvoicesStatsSummary(w http.ResponseWriter, r *http.Request) {
 
@@ -6469,6 +6542,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/journal", wrapper.GetInvoicesJournal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/export.csv", wrapper.GetInvoicesExportCsv)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/collection-export.csv", wrapper.GetInvoicesCollectionExportCsv)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/stats/attention", wrapper.GetInvoicesStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/stats/summary", wrapper.GetInvoicesStatsSummary)
 
 	return m
@@ -9764,6 +9838,55 @@ func (response PutInvoicesSettingsReminders409ApplicationProblemPlusJSONResponse
 	return err
 }
 
+type GetInvoicesStatsAttentionRequestObject struct {
+}
+
+type GetInvoicesStatsAttentionResponseObject interface {
+	VisitGetInvoicesStatsAttentionResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesStatsAttention200JSONResponse []InvoicesStatsAttentionItem
+
+func (response GetInvoicesStatsAttention200JSONResponse) VisitGetInvoicesStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesStatsAttention401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesStatsAttention401JSONResponse) VisitGetInvoicesStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesStatsAttention403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesStatsAttention403JSONResponse) VisitGetInvoicesStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetInvoicesStatsSummaryRequestObject struct {
 	Params GetInvoicesStatsSummaryParams
 }
@@ -12559,6 +12682,9 @@ type StrictServerInterface interface {
 	// PutInvoicesSettingsReminders Change the reminder settings
 	// (PUT /api/v1/invoices/settings/reminders)
 	PutInvoicesSettingsReminders(ctx context.Context, request PutInvoicesSettingsRemindersRequestObject) (PutInvoicesSettingsRemindersResponseObject, error)
+	// GetInvoicesStatsAttention Get the invoices dashboard attention items
+	// (GET /api/v1/invoices/stats/attention)
+	GetInvoicesStatsAttention(ctx context.Context, request GetInvoicesStatsAttentionRequestObject) (GetInvoicesStatsAttentionResponseObject, error)
 	// GetInvoicesStatsSummary Get the invoices dashboard summary
 	// (GET /api/v1/invoices/stats/summary)
 	GetInvoicesStatsSummary(ctx context.Context, request GetInvoicesStatsSummaryRequestObject) (GetInvoicesStatsSummaryResponseObject, error)
@@ -13967,6 +14093,30 @@ func (sh *strictHandler) PutInvoicesSettingsReminders(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutInvoicesSettingsRemindersResponseObject); ok {
 		if err := validResponse.VisitPutInvoicesSettingsRemindersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesStatsAttention operation middleware
+func (sh *strictHandler) GetInvoicesStatsAttention(w http.ResponseWriter, r *http.Request) {
+	var request GetInvoicesStatsAttentionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesStatsAttention(ctx, request.(GetInvoicesStatsAttentionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesStatsAttention")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesStatsAttentionResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesStatsAttentionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

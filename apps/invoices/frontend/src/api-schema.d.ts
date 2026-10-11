@@ -1314,6 +1314,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/stats/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the invoices dashboard attention items
+         * @description The dashboard's invoices attention items (invoices payments and reminders design D12) — the overdue invoices and the refunds due for every caller, and for a caller holding invoices:payments the bank files with open lines, the failed and the held letters and the unposted print batches. A caller without invoices:payments is answered the first two, never a 403.
+         */
+        get: operations["getInvoicesStatsAttention"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/stats/summary": {
         parameters: {
             query?: never;
@@ -3411,6 +3431,35 @@ export interface components {
             netTotal: number;
             /** Format: double */
             vatTotal: number;
+        };
+        /**
+         * @description One thing the dashboard wants a human to look at (invoices payments and reminders design D12). The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing. Every caller holding invoices:access is answered `invoiceOverdue` and `invoiceRefundDue`; a caller also holding invoices:payments is answered the other four, and a caller without it the two, never a 403. One clock read: today is the Oslo day of the request.
+         *
+         *     `invoiceOverdue`: the 20 most overdue issued invoices — overdue today, oldest due date first — each until it is paid or credited; id is 'invoiceOverdue/<invoiceId>', entityId the invoice id, title the buyer's name, occurredAt the day after its effective due date E (the due date moved off a weekend or a public holiday) at UTC midnight. An invoice due on a Saturday is not an item before the Tuesday after it.
+         *
+         *     `invoiceRefundDue`: every issued invoice whose open amount is below zero — a credit note issued after a payment — or whose charge payments exceed every charge less its waivers (the charges' refundDue); id 'invoiceRefundDue/<invoiceId>', entityId the invoice id, title the buyer's name, occurredAt when its money last moved (the latest credit note issued, payment or charge payment registered, or waiver made). It clears when what was paid back outside Vantigo is recorded by removing the payment or charge payment with a reason.
+         *
+         *     `bankTransactionsOpen`: one per bank file with lines pending, exception or duplicate; id 'bankTransactionsOpen/<bankFileId>', entityId the bank file id, title the file's booking days ('2026-10-01' or '2026-10-01 – 2026-10-07'), occurredAt its upload, count its open lines. It clears when every line is matched or resolved.
+         *
+         *     `reminderFailed`: one per letter whose e-mail failed for good; id 'reminderFailed/<reminderId>', entityId the letter's invoice id, title the buyer's name, occurredAt its failure. It clears when the letter is retried or withdrawn.
+         *
+         *     `remindersHeld`: one per cause while queued letters wait on it; id 'remindersHeld/<cause>', entityId and title the cause — `collectionRatesOutdated` (a collection rate missing for a half-year a letter needs) or `collectionRegimeUnreviewed` (the 1988 regime past its review) — occurredAt the oldest waiting letter's creation, count the letters. It clears when the rate is added or the review is made, and the worker sends them.
+         *
+         *     `reminderBatchUnposted`: one per print batch neither confirmed posted nor reprinted from two days after its posting day; id 'reminderBatchUnposted/<batchId>', entityId the batch id, title its posting day, occurredAt two days after it at UTC midnight, count its printed letters. It clears when the batch is confirmed posted or reprinted.
+         */
+        InvoicesStatsAttentionItem: {
+            /**
+             * Format: int32
+             * @description How many things the item stands for, when it stands for more than one — a file's open lines, the letters waiting on one cause, a batch's printed letters. Absent on an item about a single invoice or letter. It is here because a count inside a server-written title could never be translated.
+             */
+            count?: number;
+            entityId: string;
+            id: string;
+            /** Format: date-time */
+            occurredAt: string;
+            title: string;
+            /** @enum {string} */
+            type: "invoiceOverdue" | "invoiceRefundDue" | "bankTransactionsOpen" | "reminderFailed" | "remindersHeld" | "reminderBatchUnposted";
         };
         /** @description The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's Oslo date. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on an Oslo day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK. */
         InvoicesStatsSummaryResponse: {
@@ -8050,6 +8099,44 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getInvoicesStatsAttention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesStatsAttentionItem"][];
                 };
             };
             /** @description Unauthorized */
