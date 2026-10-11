@@ -721,6 +721,105 @@ skill and employee group, which block.
 Skill trees and competency frameworks, demand forecasting, automatic shift generation
 (Quinyx Auto Schedule, Gat Optur), payroll rule engines.
 
+### 6.7 The staffing cases the owner named (2026-10-11), and the ones they imply
+
+The owner's three cases describe **project staffing in a consultancy or
+engineering firm**, not shift scheduling: people are placed on customer projects for
+months, a project has phases with different needs, and a placement has contractual
+terms of its own. That settles open question 1 for the data model (the shift-rule
+layer in §6.4 stays reserved, not built) and adds one entity the market products
+above do not have.
+
+1. **Capacity at intake.** When a new project is being accepted, see whether the
+   firm has people with the right competence free in each phase. This needs: a
+   project in a **pipeline state** (bid, tender, likely) so planning does not
+   pollute real data — Float and Productive call it Draft or Tentative at project
+   level; **demand per phase** as placeholders (role, competence requirements at a
+   minimum level, hours or percent, date range) — the Runn and Severa shape; and
+   **capacity** = contract hours − absence − holidays − confirmed and tentative
+   allocations, filtered by competence valid on those dates. The answer is a fit
+   per phase (covered, partly covered, uncovered) with the candidates behind it.
+   Several pipeline projects at once is the natural extension: "can we take A and
+   B, or only one". Phases are the roadmap's Projects Phase 4 delivery milestones
+   and timeline; allocations are Phase 5.
+2. **The employee's timeline.** One forward view per person: allocations and
+   assignments with their end dates, planned absence, holidays, certificates that
+   expire inside a planned assignment, the notice period of the current assignment,
+   and the end of employment when known. From it the system derives the **unbooked
+   list**: anyone whose allocated share falls under a threshold within a horizon
+   (for example under 50 % in the next six weeks), with the date they roll off.
+   This is Runn's and Float's utilisation forecast turned into an alert. The same
+   data gives the revenue forecast from planned hours the roadmap already names.
+3. **Wishes, requests and matching with notice periods.** Two sides meet: a
+   **move wish** on the person (wants off project A from a date, with reasons and
+   preferences, visible to managers only) and a **staffing request** on a project
+   (wants competence X at level Y from a date, open until filled). The matcher
+   proposes moves. The constraint the owner names is the **assignment's notice
+   period**: a placement on a customer project is a contract (an oppdragsavtale)
+   with its own oppsigelsestid, typically one to three months, so the earliest
+   release date is max(notice given + notice period, phase end) and a person cannot
+   start elsewhere before it. That makes the **assignment** an entity distinct from
+   the allocation: person × project × from and to × notice period × notice given on
+   × earliest release × customer terms. Customer terms seen in consultant contracts
+   and worth columns from the start: a minimum duration, whether the customer must
+   approve a replacement, a required handover overlap, and a non-compete or
+   karantene toward named competitors for a period after the assignment, which
+   the matcher must honour as a hard filter.
+
+Cases the three imply, and that the products reviewed or Norwegian practice
+suggest adding:
+
+- **Handover overlap.** A move is two allocations, not one: the leaver's taper and
+  the joiner's ramp-up overlap for an agreed number of weeks, and the project's
+  cost shows both. Suggest the overlap when proposing a move.
+- **Foreseeable capacity drops.** Approved foreldrepermisjon, a reduced position, a
+  long sick-leave case or an employment end date is a known hole in a project
+  months ahead; the system should raise a staffing request automatically
+  ("vikar needed on project P from date D with competence X").
+- **Holiday against staffing.** Ferie approval should see the allocations it
+  conflicts with (coverage per project per week), and intake should see planned
+  holiday. Today neither exists; both read the same two tables.
+- **Certificates against planned work.** An assignment that needs a certificate
+  expiring before its end should create a renewal reminder dated before the start,
+  not at the usual lead time; a lapsed certificate on an assignment is a warning
+  on the timeline.
+- **Gap-to-hire or gap-to-train.** Requests that stay open past a threshold, and
+  competences the pipeline needs more of than the firm has, feed two decisions:
+  recruit, or send someone with the interest flag on a course. The § 14-6 p right
+  to competence development and the person's own interests (§6.5) make the
+  training path a first-class suggestion, not an afterthought.
+- **Rotation and fairness.** How long a person has been on one project, how often
+  their wishes were granted, and who always gets the attractive assignments are
+  the fairness signals Quinyx's and Gat's optimisers weigh; here they are a sort
+  order on the match list and a flag on the timeline ("on project A for 34 months").
+- **Key-person risk.** A project whose requirement is met by exactly one person,
+  or a competence held by one employee, is a risk the intake view should show.
+- **Over-allocation and part-time.** Allocations across projects summed against the
+  contract's hours, with part-time, reduced hours and the § 14-4a trailing-year
+  check from §4.2 in the same view.
+- **External capacity.** Freelancers, subcontractors and innleid staff fill
+  placeholders too, with their own cost and availability; the a-melding vocabulary
+  already distinguishes them. Their assignments carry the customer terms above and,
+  for innleie, the § 14-12 limits.
+- **Access follows the assignment.** When provisioning exists, a confirmed
+  assignment is what adds a person to the project's groups, mailboxes and tools,
+  and the earliest release date is what removes them — the mover case in §5.5.
+- **Notifications.** New request matching a wish, wish matching an open request,
+  unbooked within the horizon, assignment ending in N weeks with no follow-on,
+  notice period elapsed, certificate at risk — all to the manager, some to the
+  person.
+
+**Where this lives** is a design decision the spec must take. The entities split
+three ways: the person's side (wishes, interests, preferences, availability) is
+Staff's; the project's side (phases, requests, allocations) is Projects' Phase 5;
+the assignment with customer terms, and the matcher that reads both, belong to
+neither. The module-boundary rules (§7.2) suggest a third module — **Staffing** —
+that owns assignments, requests, allocations and matching, reads Projects through
+`contracts.ProjectDirectory` and Staff through a new read contract (employment on a
+date, competences valid on a date, preferences and wishes), and is the first module
+that consumes two business modules at once. Whether Phase 5's allocations move
+there from Projects, or Staffing reads them, is the first question of that spec.
+
 ## 7. Where the codebase stands
 
 ### 7.1 Identity, and the SCIM gap
@@ -880,11 +979,12 @@ Phase 5 rather than living in Staff.
 
 ## 9. Open questions for the owner
 
-1. **What does bemanning mean here** — project resource planning (Projects Phase 5
-   on top of Staff), shift scheduling (turnus, vaktplan, the Quinyx and Gat market),
-   or hiring staff out to customers (innleie, with § 14-12's rules and the
-   construction ban)? The data model in §6.5 serves the first two; the third adds an
-   assignment entity with innleier terms and is a different legal product.
+1. **What does bemanning mean here** — answered 2026-10-11: project staffing across
+   customer projects (§6.7), not shift scheduling. Two sub-questions remain: do
+   assignments ever mean the firm is the bemanningsforetak (hiring staff out under
+   § 14-12, with likebehandling and the construction ban), or only that its own
+   employees work on customer projects under an oppdragsavtale? And does the
+   staffing feature become a third module (Staffing) or extend Projects Phase 5?
 2. **Store the fødselsnummer?** Customers refuses it by design; Staff cannot work
    without it for payroll, HMS-kort and pension. Recommended: yes, encrypted, behind
    `staff:personal-data`, never displayed in full.
