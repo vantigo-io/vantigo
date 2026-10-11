@@ -185,7 +185,8 @@ Etter innlogging havner du på kontrollpanelet — **Hjem** i app-velgeren øver
 siden. Det hilser deg med navn og viser et kort for hver app du har tilgang til, med
 nøkkeltallene for valgt datoperiode (**7d**, **30d**, **90d**, **12m** eller
 **Tilpasset**), listen **Trenger oppfølging** med det som venter på deg, og
-**Hurtighandlinger** for det du gjør oftest. Et nytt arbeidsområde viser også
+**Hurtighandlinger** for det du gjør oftest. Ansatte har ingen tall ennå, så appen står
+bare under **Moduler** nederst på siden. Et nytt arbeidsområde viser også
 **Fullfør oppsettet**, en kort liste over de første stegene (den første kunden, en
 postkasse, et produkt, et prosjekt …) som forsvinner når alle er gjort.
 

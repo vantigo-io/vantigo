@@ -375,6 +375,36 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.invoicesPayments",
     descriptionKey: "admin.permission.invoicesPaymentsDescription",
   },
+  "staff:access": {
+    moduleKey: "admin.permission.module.staff",
+    categoryKey: "admin.permission.category.staff",
+    displayNameKey: "admin.permission.staffAccess",
+    descriptionKey: "admin.permission.staffAccessDescription",
+  },
+  "staff:view": {
+    moduleKey: "admin.permission.module.staff",
+    categoryKey: "admin.permission.category.staff",
+    displayNameKey: "admin.permission.staffView",
+    descriptionKey: "admin.permission.staffViewDescription",
+  },
+  "staff:approve": {
+    moduleKey: "admin.permission.module.staff",
+    categoryKey: "admin.permission.category.staff",
+    displayNameKey: "admin.permission.staffApprove",
+    descriptionKey: "admin.permission.staffApproveDescription",
+  },
+  "staff:manage": {
+    moduleKey: "admin.permission.module.staff",
+    categoryKey: "admin.permission.category.staff",
+    displayNameKey: "admin.permission.staffManage",
+    descriptionKey: "admin.permission.staffManageDescription",
+  },
+  "staff:personal-data": {
+    moduleKey: "admin.permission.module.staff",
+    categoryKey: "admin.permission.category.staff",
+    displayNameKey: "admin.permission.staffPersonalData",
+    descriptionKey: "admin.permission.staffPersonalDataDescription",
+  },
 } as const;
 
 export const getHostPermissionTranslation = (permissionKey: string) =>
@@ -464,6 +494,7 @@ const en = {
   "admin.permission.module.time": "Time",
   "admin.permission.module.expenses": "Expenses",
   "admin.permission.module.invoices": "Invoices",
+  "admin.permission.module.staff": "Staff",
   "admin.permission.category.administration": "Administration",
   "admin.permission.category.customers": "Customers",
   "admin.permission.category.legalIdentity": "Legal identity",
@@ -483,6 +514,7 @@ const en = {
   "admin.permission.category.time": "Time",
   "admin.permission.category.expenses": "Expenses",
   "admin.permission.category.invoices": "Invoices",
+  "admin.permission.category.staff": "Staff",
   "admin.permission.identityManage": "Manage identity",
   "admin.permission.identityManageDescription": "Manage accounts, roles, and access.",
   "admin.permission.customersView": "View customers",
@@ -622,6 +654,21 @@ const en = {
   "admin.permission.invoicesPayments": "Register payments",
   "admin.permission.invoicesPaymentsDescription":
     "Register payments against issued invoices and remove a registration with a reason; import bank files, read the imported files, the bank accounts and their lines, and work the exception queue; make and read reminder runs, print paper letters and confirm them posted or reprint them, and withdraw and retry letters; hold a disputed invoice, hand one to collection and export the collection file; register and remove charge payments and waive charges; set a customer's reminder policy; and see the attention items about the bank lines, the letters and the print batches.",
+  "admin.permission.staffAccess": "Use Staff",
+  "admin.permission.staffAccessDescription":
+    "Use the Staff app: your own record, your own absence, your own documents and your own export.",
+  "admin.permission.staffView": "View the staff directory",
+  "admin.permission.staffViewDescription":
+    "See everyone's work details, employments and terms without pay, the company's structure, and the calendar with absence types hidden.",
+  "admin.permission.staffApprove": "Decide absence",
+  "admin.permission.staffApproveDescription":
+    "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, and mark their milestones.",
+  "admin.permission.staffManage": "Manage staff",
+  "admin.permission.staffManageDescription":
+    "Create and edit people (not their national identity number or bank account), employments and terms with pay, the company's structure, absence types and holiday schemes, the settings, documents other than health documents, the account flag, imports, exports and the payroll export.",
+  "admin.permission.staffPersonalData": "Reveal and erase personal data",
+  "admin.permission.staffPersonalDataDescription":
+    "Reveal and change national identity numbers and bank accounts, read health documents and sick-leave notes, see HR-only absence types, export anyone's personal data, set legal holds, and erase and re-assess people.",
   "admin.accountExists": "An account already exists for this email address.",
   "admin.filterUsers": "Filter users by {{label}}",
   "admin.searchUsers": "Search users",
@@ -825,6 +872,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.time": "Timer",
   "admin.permission.module.expenses": "Utlegg",
   "admin.permission.module.invoices": "Fakturaer",
+  "admin.permission.module.staff": "Ansatte",
   "admin.permission.category.administration": "Administrasjon",
   "admin.permission.category.customers": "Kunder",
   "admin.permission.category.legalIdentity": "Juridisk identitet",
@@ -844,6 +892,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.time": "Timer",
   "admin.permission.category.expenses": "Utlegg",
   "admin.permission.category.invoices": "Fakturaer",
+  "admin.permission.category.staff": "Ansatte",
   "admin.permission.identityManage": "Administrer identitet",
   "admin.permission.identityManageDescription": "Administrer kontoer, roller og tilgang.",
   "admin.permission.customersView": "Se kunder",
@@ -986,6 +1035,21 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.invoicesPayments": "Registrere betalinger",
   "admin.permission.invoicesPaymentsDescription":
     "Registrere betalinger mot utstedte fakturaer og fjerne en registrering med begrunnelse; importere bankfiler, lese de importerte filene, bankkontoene og linjene deres, og arbeide i avvikskøen; gjøre og lese purrekjøringer, skrive ut papirbrev og bekrefte dem postlagt eller skrive dem ut på nytt, og trekke tilbake og sende brev på nytt; sette en omstridt faktura på vent, overlevere en til inkasso og eksportere inkassofilen; registrere og fjerne betalinger av purrekrav og ettergi purrekrav; sette en kundes purreregel; og se dashbordets varsler om banklinjer, brev og utskriftsbunker.",
+  "admin.permission.staffAccess": "Bruke Ansatte",
+  "admin.permission.staffAccessDescription":
+    "Bruke Ansatte-appen: din egen oppføring, ditt eget fravær, dine egne dokumenter og din egen eksport.",
+  "admin.permission.staffView": "Se ansattoversikten",
+  "admin.permission.staffViewDescription":
+    "Se alles arbeidsopplysninger, arbeidsforhold og vilkår uten lønn, selskapets struktur, og kalenderen med fraværstypene skjult.",
+  "admin.permission.staffApprove": "Avgjøre fravær",
+  "admin.permission.staffApproveDescription":
+    "Avgjøre alles fraværssøknader, se andre fraværstyper enn dem bare HR ser og datoene for åpne sykefraværssaker, og krysse av milepælene deres.",
+  "admin.permission.staffManage": "Administrere ansatte",
+  "admin.permission.staffManageDescription":
+    "Opprette og endre personer (ikke fødselsnummeret eller bankkontoen deres), arbeidsforhold og vilkår med lønn, selskapets struktur, fraværstyper og ferieordninger, innstillingene, andre dokumenter enn helsedokumenter, kontoflagget, import, eksport og lønnseksporten.",
+  "admin.permission.staffPersonalData": "Vise og slette personopplysninger",
+  "admin.permission.staffPersonalDataDescription":
+    "Vise og endre fødselsnumre og bankkontoer, lese helsedokumenter og sykmeldinger, se fraværstyper bare HR ser, eksportere hvem som helst sine personopplysninger, sette rettslig hold, og slette og vurdere personer på nytt.",
   "admin.accountExists": "Det finnes allerede en konto for denne e-postadressen.",
   "admin.filterUsers": "Filtrer brukere etter {{label}}",
   "admin.searchUsers": "Søk etter brukere",

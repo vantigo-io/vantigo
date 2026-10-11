@@ -20,7 +20,7 @@ The sidebar shows the areas your permissions give you:
 | Area in the sidebar | Who sees it |
 | --- | --- |
 | **My page** | everyone with `staff:access` |
-| **People** | `staff:view`, or `staff:manage` — an HR role without `staff:view` still lists people and reads the structure |
+| **Staff directory** (the People screen) | `staff:view`, or `staff:manage` — an HR role without `staff:view` still lists people and reads the structure |
 | **Staff settings** | `staff:manage` |
 
 What a screen offers follows what the server says you may do: the **New person**
@@ -29,7 +29,7 @@ The full table is under [Permissions](/en/reference/staff/#permissions).
 
 ## Find someone in People
 
-**People** lists the company's people by name, with their employee number, department,
+**People** (sidebar: **Staff directory**) lists the company's people by name, with their employee number, department,
 manager and work email. The department and the manager are the ones in the terms in
 force today; a dash means there is none.
 
@@ -193,7 +193,8 @@ a colleague does not.
 
 ## Add a new person
 
-With `staff:manage`, press **New person** in People. The form has two steps, as a hire
+With `staff:manage`, press **New person** in People, or choose **New person** in the
+search's quick actions, which opens People with the form already open. The form has two steps, as a hire
 does: the person, then their first employment. The person is saved by the first step,
 so you can stop after it and add the employment later — they stay in People under
 **Current** with the status **No employment**.

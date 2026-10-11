@@ -21,7 +21,7 @@ Sidemenyen viser områdene rettighetene dine gir deg:
 | Område i sidemenyen | Hvem ser det |
 | --- | --- |
 | **Min side** | alle med `staff:access` |
-| **Personer** | `staff:view`, eller `staff:manage` — en HR-rolle uten `staff:view` ser også listen og strukturen |
+| **Ansattoversikt** (skjermbildet Personer) | `staff:view`, eller `staff:manage` — en HR-rolle uten `staff:view` ser også listen og strukturen |
 | **Ansatteinnstillinger** | `staff:manage` |
 
 Hva et skjermbilde tilbyr, følger det serveren sier at du kan gjøre: knappen **Ny
@@ -30,7 +30,7 @@ tabellen står under [rettighetene](/en/reference/staff/#permissions) i referans
 
 ## Finn noen under Personer
 
-**Personer** lister selskapets personer etter navn, med ansattnummer, avdeling, leder
+**Personer** (i sidemenyen: **Ansattoversikt**) lister selskapets personer etter navn, med ansattnummer, avdeling, leder
 og e-post på jobb. Avdelingen og lederen er de som står i vilkårene som gjelder i dag;
 en strek betyr at det ikke finnes noen.
 
@@ -194,7 +194,8 @@ fanen Historikk; en kollega gjør det ikke.
 
 ## Legg til en ny person
 
-Med `staff:manage` trykker du **Ny person** under Personer. Skjemaet har to steg, slik
+Med `staff:manage` trykker du **Ny person** under Personer, eller velger **Ny person**
+blant søkets hurtighandlinger, som åpner Personer med skjemaet allerede åpent. Skjemaet har to steg, slik
 en ansettelse har: personen, så det første arbeidsforholdet. Personen lagres i første
 steg, så du kan stoppe der og legge til arbeidsforholdet senere — personen står da
 under **Nåværende** i Personer med statusen **Ikke ansatt**.

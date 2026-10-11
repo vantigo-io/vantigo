@@ -14,6 +14,7 @@ import {
   IconRoute,
   IconSearch,
   IconUser,
+  IconUserPlus,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -23,6 +24,7 @@ import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name
 import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
+import { PEOPLE_ROUTE_PATH } from "@vantigo/staff-ui/lib/routes";
 import { useState } from "react";
 import "../i18n";
 import { spotlightNavSections } from "../apps";
@@ -124,6 +126,16 @@ export const AppSpotlight = ({
     // already open.
     ...(enabledModules?.includes("expenses") && hasPermissions(permissions, ["expenses:access"])
       ? [{ label: t("dashboard.newTravelClaim"), icon: IconRoute, path: "/expenses", search: { create: "claim" } }]
+      : []),
+    // New person is HR's: People opens the two-step form on arrival (the
+    // package's `create=person` seam). Creating a person needs the app and
+    // staff:manage both, and hasPermissions is any-of, hence two checks. My
+    // page, the directory and the settings are the sidebar's destinations,
+    // already in the list above.
+    ...(enabledModules?.includes("staff") &&
+    hasPermissions(permissions, ["staff:access"]) &&
+    hasPermissions(permissions, ["staff:manage"])
+      ? [{ label: t("dashboard.newPerson"), icon: IconUserPlus, path: PEOPLE_ROUTE_PATH, search: { create: "person" } }]
       : []),
   ];
 

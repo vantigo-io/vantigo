@@ -171,14 +171,17 @@ det den ga.
 Tillatelser er additive: en person har summen av rollenes tillatelser. Hva hver
 tillatelse låser opp i en app, er listet på appens referanseside, for eksempel
 [Customers](/en/reference/customers/), [Projects](/en/reference/projects/),
-[Time](/en/reference/time/), [Expenses](/en/reference/expenses/) og
-[Invoices](/en/reference/invoices/). Beskrivelsene i katalogen sier det navnet ikke
+[Time](/en/reference/time/), [Expenses](/en/reference/expenses/),
+[Invoices](/en/reference/invoices/) og [Staff](/en/reference/staff/). Beskrivelsene i katalogen sier det navnet ikke
 sier: I Fakturaer sender **Utstede fakturaer** også et dokument på e-post eller som
 EHF, avbryter eller avklarer EHF-sendingene og registrerer at en faktura er levert;
 **Administrere fakturering** omfatter også Peppol-ID-en, KID-avtalen, aksesspunktet for
 e-faktura, purreinnstillingene og inkassosatsene; og **Registrere betalinger** dekker
 hele kredittstyringen — bankimport og avvikskøen, purrekjøringer og brev, vent,
-overlevering til inkasso og en kundes purreregel. **Administrer
+overlevering til inkasso og en kundes purreregel. I Ansatte er **Vise og slette
+personopplysninger** den eneste tillatelsen som viser et fødselsnummer eller en bankkonto
+— **Administrere ansatte** gjør det ikke — og **Avgjøre fravær** kan gis allerede, men
+tillater ingenting før fravær kommer til Ansatte. **Administrer
 identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse.
 
 ### Tildelinger

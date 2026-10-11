@@ -187,6 +187,32 @@ describe("ModuleAccessGuard", () => {
     expect(screen.getByText("Allowed content")).toBeInTheDocument();
   });
 
+  // Staff's destinations come from the package (`staffNavItems`). People is
+  // offered in the sidebar to staff:view and to staff:manage, but its URL —
+  // and a person's page under it — is guarded by the app alone: a manager
+  // opens their own reports' pages from My page or the org view with neither,
+  // and the server answers an outsider with the unknown id's 404. Only the
+  // settings ask for more than the app.
+  it.each([
+    ["/staff/me", ["staff:access"]],
+    ["/staff/people", ["staff:access"]],
+    ["/staff/people/12", ["staff:access"]],
+    ["/staff/settings", ["staff:manage"]],
+  ])("guards %s behind %s", (pathname, permissions) => {
+    renderGuardFor(pathname, []);
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+
+    cleanup();
+    renderGuardFor(pathname, permissions);
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
+  it("refuses the staff settings to a caller holding only staff:access and staff:view", () => {
+    renderGuardFor("/staff/settings", ["staff:access", "staff:view"]);
+
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+  });
+
   // Expenses' approval queue is Time's own seam again: the sidebar entry is
   // for expenses:approve holders, but a project manager approves their own
   // project's expenses through their role alone and reaches the queue from the

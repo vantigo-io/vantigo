@@ -34,6 +34,7 @@
     "@vantigo/invoices-ui": "workspace:*",
     "@vantigo/products-ui": "workspace:*",
     "@vantigo/projects-ui": "workspace:*",
+    "@vantigo/staff-ui": "workspace:*",
     "@vantigo/time-ui": "workspace:*",
     "@tiptap/extension-link": "catalog:",
     "@tiptap/pm": "catalog:",

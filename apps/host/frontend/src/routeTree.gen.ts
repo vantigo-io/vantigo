@@ -27,6 +27,7 @@ import { Route as SessionExpiredRouteImport } from './routes/session-expired'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as StaffRouteImport } from './routes/staff'
 import { Route as TimeRouteImport } from './routes/time'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -59,6 +60,9 @@ import { Route as ProjectsMyTasksRouteImport } from './routes/projects/my-tasks'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsSecurityRouteImport } from './routes/settings/security'
+import { Route as StaffIndexRouteImport } from './routes/staff/index'
+import { Route as StaffMeRouteImport } from './routes/staff/me'
+import { Route as StaffSettingsRouteImport } from './routes/staff/settings'
 import { Route as TimeIndexRouteImport } from './routes/time/index'
 import { Route as TimeApprovalsRouteImport } from './routes/time/approvals'
 import { Route as TimeDayRouteImport } from './routes/time/day'
@@ -89,6 +93,8 @@ import { Route as ProjectsProjectIdInvoicingRouteImport } from './routes/project
 import { Route as ProjectsProjectIdPeopleRouteImport } from './routes/projects/$projectId.people'
 import { Route as ProjectsProjectIdTasksRouteImport } from './routes/projects/$projectId.tasks'
 import { Route as ProjectsProjectIdTimeRouteImport } from './routes/projects/$projectId.time'
+import { Route as StaffPeopleIndexRouteImport } from './routes/staff/people.index'
+import { Route as StaffPeopleIdRouteImport } from './routes/staff/people.$id'
 import { Route as InvoicesPaymentsFilesBankFileIdRouteImport } from './routes/invoices/payments.files.$bankFileId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -179,6 +185,11 @@ const SetupRoute = SetupRouteImport.update({
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StaffRoute = StaffRouteImport.update({
+  id: '/staff',
+  path: '/staff',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TimeRoute = TimeRouteImport.update({
@@ -342,6 +353,21 @@ const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
   path: '/security',
   getParentRoute: () => SettingsRoute,
 } as any)
+const StaffIndexRoute = StaffIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => StaffRoute,
+} as any)
+const StaffMeRoute = StaffMeRouteImport.update({
+  id: '/me',
+  path: '/me',
+  getParentRoute: () => StaffRoute,
+} as any)
+const StaffSettingsRoute = StaffSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => StaffRoute,
+} as any)
 const TimeIndexRoute = TimeIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -504,6 +530,16 @@ const ProjectsProjectIdTimeRoute = ProjectsProjectIdTimeRouteImport.update({
   path: '/time',
   getParentRoute: () => ProjectsProjectIdRoute,
 } as any)
+const StaffPeopleIndexRoute = StaffPeopleIndexRouteImport.update({
+  id: '/people/',
+  path: '/people/',
+  getParentRoute: () => StaffRoute,
+} as any)
+const StaffPeopleIdRoute = StaffPeopleIdRouteImport.update({
+  id: '/people/$id',
+  path: '/people/$id',
+  getParentRoute: () => StaffRoute,
+} as any)
 const InvoicesPaymentsFilesBankFileIdRoute =
   InvoicesPaymentsFilesBankFileIdRouteImport.update({
     id: '/payments/files/$bankFileId',
@@ -530,6 +566,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/staff': typeof StaffRouteWithChildren
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
   '/communications/channels': typeof CommunicationsChannelsRoute
@@ -553,6 +590,8 @@ export interface FileRoutesByFullPath {
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
+  '/staff/me': typeof StaffMeRoute
+  '/staff/settings': typeof StaffSettingsRoute
   '/time/approvals': typeof TimeApprovalsRoute
   '/time/day': typeof TimeDayRoute
   '/time/people': typeof TimePeopleRoute
@@ -570,6 +609,7 @@ export interface FileRoutesByFullPath {
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
@@ -587,11 +627,13 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
+  '/staff/people/$id': typeof StaffPeopleIdRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/staff/people/': typeof StaffPeopleIndexRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
 }
 export interface FileRoutesByTo {
@@ -623,6 +665,8 @@ export interface FileRoutesByTo {
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
+  '/staff/me': typeof StaffMeRoute
+  '/staff/settings': typeof StaffSettingsRoute
   '/time/approvals': typeof TimeApprovalsRoute
   '/time/day': typeof TimeDayRoute
   '/time/people': typeof TimePeopleRoute
@@ -640,6 +684,7 @@ export interface FileRoutesByTo {
   '/products': typeof ProductsIndexRoute
   '/projects': typeof ProjectsIndexRoute
   '/settings': typeof SettingsIndexRoute
+  '/staff': typeof StaffIndexRoute
   '/time': typeof TimeIndexRoute
   '/workspace': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
@@ -657,11 +702,13 @@ export interface FileRoutesByTo {
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
+  '/staff/people/$id': typeof StaffPeopleIdRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts': typeof CustomersContactsIndexRoute
   '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
   '/invoices/payments': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
+  '/staff/people': typeof StaffPeopleIndexRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
 }
 export interface FileRoutesById {
@@ -684,6 +731,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/staff': typeof StaffRouteWithChildren
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
   '/communications/channels': typeof CommunicationsChannelsRoute
@@ -707,6 +755,8 @@ export interface FileRoutesById {
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
+  '/staff/me': typeof StaffMeRoute
+  '/staff/settings': typeof StaffSettingsRoute
   '/time/approvals': typeof TimeApprovalsRoute
   '/time/day': typeof TimeDayRoute
   '/time/people': typeof TimePeopleRoute
@@ -724,6 +774,7 @@ export interface FileRoutesById {
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
@@ -741,11 +792,13 @@ export interface FileRoutesById {
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
+  '/staff/people/$id': typeof StaffPeopleIdRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/staff/people/': typeof StaffPeopleIndexRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
 }
 export interface FileRouteTypes {
@@ -769,6 +822,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/staff'
     | '/time'
     | '/workspace'
     | '/communications/channels'
@@ -792,6 +846,8 @@ export interface FileRouteTypes {
     | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
+    | '/staff/me'
+    | '/staff/settings'
     | '/time/approvals'
     | '/time/day'
     | '/time/people'
@@ -809,6 +865,7 @@ export interface FileRouteTypes {
     | '/products/'
     | '/projects/'
     | '/settings/'
+    | '/staff/'
     | '/time/'
     | '/workspace/'
     | '/customers/$customerId/energy'
@@ -826,11 +883,13 @@ export interface FileRouteTypes {
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
+    | '/staff/people/$id'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/energy/metering-points/'
     | '/invoices/payments/'
     | '/projects/$projectId/'
+    | '/staff/people/'
     | '/invoices/payments/files/$bankFileId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -862,6 +921,8 @@ export interface FileRouteTypes {
     | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
+    | '/staff/me'
+    | '/staff/settings'
     | '/time/approvals'
     | '/time/day'
     | '/time/people'
@@ -879,6 +940,7 @@ export interface FileRouteTypes {
     | '/products'
     | '/projects'
     | '/settings'
+    | '/staff'
     | '/time'
     | '/workspace'
     | '/customers/$customerId/energy'
@@ -896,11 +958,13 @@ export interface FileRouteTypes {
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
+    | '/staff/people/$id'
     | '/customers/$customerId'
     | '/customers/contacts'
     | '/energy/metering-points'
     | '/invoices/payments'
     | '/projects/$projectId'
+    | '/staff/people'
     | '/invoices/payments/files/$bankFileId'
   id:
     | '__root__'
@@ -922,6 +986,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/staff'
     | '/time'
     | '/workspace'
     | '/communications/channels'
@@ -945,6 +1010,8 @@ export interface FileRouteTypes {
     | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
+    | '/staff/me'
+    | '/staff/settings'
     | '/time/approvals'
     | '/time/day'
     | '/time/people'
@@ -962,6 +1029,7 @@ export interface FileRouteTypes {
     | '/products/'
     | '/projects/'
     | '/settings/'
+    | '/staff/'
     | '/time/'
     | '/workspace/'
     | '/customers/$customerId/energy'
@@ -979,11 +1047,13 @@ export interface FileRouteTypes {
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
+    | '/staff/people/$id'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/energy/metering-points/'
     | '/invoices/payments/'
     | '/projects/$projectId/'
+    | '/staff/people/'
     | '/invoices/payments/files/$bankFileId'
   fileRoutesById: FileRoutesById
 }
@@ -1006,6 +1076,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRouteWithChildren
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
+  StaffRoute: typeof StaffRouteWithChildren
   TimeRoute: typeof TimeRouteWithChildren
   WorkspaceRoute: typeof WorkspaceRouteWithChildren
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
@@ -1137,6 +1208,13 @@ declare module '@tanstack/react-router' {
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/staff': {
+      id: '/staff'
+      path: '/staff'
+      fullPath: '/staff'
+      preLoaderRoute: typeof StaffRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/time': {
@@ -1363,6 +1441,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsSecurityRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/staff/': {
+      id: '/staff/'
+      path: '/'
+      fullPath: '/staff/'
+      preLoaderRoute: typeof StaffIndexRouteImport
+      parentRoute: typeof StaffRoute
+    }
+    '/staff/me': {
+      id: '/staff/me'
+      path: '/me'
+      fullPath: '/staff/me'
+      preLoaderRoute: typeof StaffMeRouteImport
+      parentRoute: typeof StaffRoute
+    }
+    '/staff/settings': {
+      id: '/staff/settings'
+      path: '/settings'
+      fullPath: '/staff/settings'
+      preLoaderRoute: typeof StaffSettingsRouteImport
+      parentRoute: typeof StaffRoute
+    }
     '/time/': {
       id: '/time/'
       path: '/'
@@ -1572,6 +1671,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectId/time'
       preLoaderRoute: typeof ProjectsProjectIdTimeRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
+    }
+    '/staff/people/': {
+      id: '/staff/people/'
+      path: '/people'
+      fullPath: '/staff/people/'
+      preLoaderRoute: typeof StaffPeopleIndexRouteImport
+      parentRoute: typeof StaffRoute
+    }
+    '/staff/people/$id': {
+      id: '/staff/people/$id'
+      path: '/people/$id'
+      fullPath: '/staff/people/$id'
+      preLoaderRoute: typeof StaffPeopleIdRouteImport
+      parentRoute: typeof StaffRoute
     }
     '/invoices/payments/files/$bankFileId': {
       id: '/invoices/payments/files/$bankFileId'
@@ -1789,6 +1902,24 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
   SettingsRouteChildren,
 )
 
+interface StaffRouteChildren {
+  StaffMeRoute: typeof StaffMeRoute
+  StaffSettingsRoute: typeof StaffSettingsRoute
+  StaffIndexRoute: typeof StaffIndexRoute
+  StaffPeopleIdRoute: typeof StaffPeopleIdRoute
+  StaffPeopleIndexRoute: typeof StaffPeopleIndexRoute
+}
+
+const StaffRouteChildren: StaffRouteChildren = {
+  StaffMeRoute: StaffMeRoute,
+  StaffSettingsRoute: StaffSettingsRoute,
+  StaffIndexRoute: StaffIndexRoute,
+  StaffPeopleIdRoute: StaffPeopleIdRoute,
+  StaffPeopleIndexRoute: StaffPeopleIndexRoute,
+}
+
+const StaffRouteWithChildren = StaffRoute._addFileChildren(StaffRouteChildren)
+
 interface TimeRouteChildren {
   TimeApprovalsRoute: typeof TimeApprovalsRoute
   TimeDayRoute: typeof TimeDayRoute
@@ -1846,6 +1977,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRouteWithChildren,
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
+  StaffRoute: StaffRouteWithChildren,
   TimeRoute: TimeRouteWithChildren,
   WorkspaceRoute: WorkspaceRouteWithChildren,
   InvitationsAcceptRoute: InvitationsAcceptRoute,

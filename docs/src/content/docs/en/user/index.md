@@ -16,9 +16,10 @@ shown.
 ## Apps and the switcher
 
 Each module is an **app** with its own sidebar: Customers, Projects, Time, Expenses,
-Invoices, Communications, Products and Energy. The app switcher in the top bar lists
+Staff, Invoices, Communications, Products and Energy. The app switcher in the top bar lists
 the apps you can open; **Home** is the dashboard, where every app you use shows its own
-card with the numbers that need your attention. Its **Needs attention** list gathers the
+card with the numbers that need your attention — Staff, which has no figures yet, only
+under **Modules** at the bottom. Its **Needs attention** list gathers the
 apps' items that wait for someone — Invoices' among them: overdue invoices, money owed
 back on an invoice, and, with `invoices:payments`, bank lines in the exception queue,
 reminders that failed or wait for a rate or a review, and print batches not confirmed
@@ -34,7 +35,7 @@ yours:
 | [Projects](/en/user/projects/) | Projects, My tasks, Project economy |
 | [Time](/en/user/time/) | My week, Approvals, People, Time settings |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
-| [Staff](/en/user/staff/) | My page, People, Staff settings |
+| [Staff](/en/user/staff/) | My page, Staff directory, Staff settings |
 | [Invoices](/en/user/invoices/) | Invoices, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |

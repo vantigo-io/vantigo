@@ -223,6 +223,7 @@
         "@vantigo/invoices-ui": "workspace:*",
         "@vantigo/products-ui": "workspace:*",
         "@vantigo/projects-ui": "workspace:*",
+        "@vantigo/staff-ui": "workspace:*",
         "@vantigo/time-ui": "workspace:*",
         "country-flag-icons": "catalog:",
         "dayjs": "catalog:",

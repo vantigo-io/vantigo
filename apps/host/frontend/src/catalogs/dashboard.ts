@@ -18,6 +18,8 @@ const en = {
   "dashboard.manageExpenses": "Record expenses, approve them and pay them back.",
   "dashboard.invoices": "Invoices",
   "dashboard.manageInvoices": "Issue and send invoices, and register payments.",
+  "dashboard.staff": "Staff",
+  "dashboard.manageStaff": "Keep the company's people, their employments and its structure.",
   "dashboard.invoicesOutstanding": "Outstanding",
   "dashboard.invoicesOverdueHint": "{{count}} overdue ({{amount}})",
   "dashboard.invoicesIssuedDelta": "issued vs previous period",
@@ -117,6 +119,7 @@ const en = {
   "dashboard.logTime": "Log time",
   "dashboard.newExpense": "New expense",
   "dashboard.newTravelClaim": "New travel claim",
+  "dashboard.newPerson": "New person",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -137,6 +140,8 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.manageExpenses": "Før utlegg, godkjenn dem og betal dem tilbake.",
   "dashboard.invoices": "Fakturaer",
   "dashboard.manageInvoices": "Utsted og send fakturaer, og registrer betalinger.",
+  "dashboard.staff": "Ansatte",
+  "dashboard.manageStaff": "Hold oversikt over selskapets personer, arbeidsforholdene deres og strukturen.",
   "dashboard.invoicesOutstanding": "Utestående",
   "dashboard.invoicesOverdueHint": "{{count}} forfalte ({{amount}})",
   "dashboard.invoicesIssuedDelta": "fakturert mot forrige periode",
@@ -236,6 +241,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.logTime": "Før timer",
   "dashboard.newExpense": "Nytt utlegg",
   "dashboard.newTravelClaim": "Ny reiseregning",
+  "dashboard.newPerson": "Ny person",
 };
 
 export const dashboardCatalog = { en, nb } as const satisfies CatalogResources;
