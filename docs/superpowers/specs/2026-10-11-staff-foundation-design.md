@@ -2,10 +2,11 @@
 
 A new module, `staff`. Research: `docs/superpowers/research/2026-10-11-staff-module.md`
 ("R", cited by section); its §10 holds the nineteen decisions the owner took on
-2026-10-11, which this design implements and does not reopen. Revision 2, after the
+2026-10-11, which this design implements and does not reopen. Revision 3 (pre-flight), after the
 critical review of 2026-10-11 (five blockers, fourteen major findings, thirty minor —
-every one taken in its place) and its re-check (seventeen edits, taken; its five open
-questions answered as readings 30–34).
+every one taken in its place), its re-check (seventeen edits, taken; its five open
+questions answered as readings 30–34), and the A1 plan's pre-flight of the same day
+(the amendments marked **(pre-flight)** below).
 Code references are against `main` at `6941e58d`; `srv/` abbreviates
 `apps/server/internal/`, `mig/` `srv/db/migrations/`, `boundaries.md` the page
 `docs/src/content/docs/en/contributing/module-boundaries.md`.
@@ -44,17 +45,21 @@ which B adds.
 
 - **A1 — People and employments**: the module, people with the sealed identifiers,
   employments and their dated terms, structure (legal entities, business units,
-  departments, locations), person roles, permissions, events, settings, the People,
-  Person and Settings pages, the docs.
-- **A2 — Records**: documents, import and export, the payroll CSV behind its port,
-  the personal-data export, retention classes and the retention worker, stats and
-  attention.
+  departments, locations), person roles, permissions, events, settings, the
+  **self-service link** between a person and an existing user (`identity_links`,
+  S24 — **pre-flight**), the People, Person and Settings pages, My page's profile,
+  the docs.
+- **A2 — Records**: documents and their categories, `object_deletions`, import and
+  export, the payroll CSV behind its port, the personal-data export, the retention
+  worker, stats and attention.
 - **B — Absence**: the public-holiday calendar moved to the platform, absence types,
-  holiday schemes and accounts, requests, decisions and notifications, sick-leave
-  cases with milestones, care days, the calendar, the approvals inbox, My page.
+  holiday schemes and accounts (adding `holiday_scheme_id` and its key to
+  `employments` — **pre-flight**), requests, decisions and notifications, sick-leave
+  cases with milestones, care days, the calendar, the approvals inbox, My page's
+  absence.
 - **C — Accounts**: identity's provisioning contract, managed users, the employee
-  role, the authority mode, the flag and its dates, identity links, the accounts
-  worker, adoption of existing users, the Account tab.
+  role, the authority mode, the flag and its dates, the **managed** link, the
+  accounts worker, adoption of existing users, the Account tab.
 
 Out of scope, named: payroll itself (a-melding, skattekort, feriepenger arithmetic,
 inntektsmelding — R §1.3); competence, certificates and preferences (phase 2);
@@ -131,6 +136,15 @@ social-security and pension reference, the innleier when hired out, and the temp
 ground and expected end when the employment is temporary. The dates the a-melding
 wants derived — `fteChangedAt`, `salaryChangedAt` — are computed from the row chain
 (pay components compared as a sorted list of name and amount), never typed.
+**(pre-flight)** `full_time_hours_per_week` is checked against the a-melding's rule
+per arbeidstidsordning — exactly 36.5 for `shift_365`, exactly 35.5 for
+`round_the_clock_355`, 28–33.6 for `offshore_336` and `continuous_336`, free for
+`not_shift` and `other_shift` — refused `full_time_hours_mismatch`; the
+`employment_number` (the arbeidsforholdID) is typed or generated as
+`<employee_number>-<n>` under the person lock, immutable, unique
+(`employment_number_taken`); the § 14-6 check answers each item as `present`,
+`missing` or `not_applicable` (e only when temporary, f only when probation is agreed,
+o only when hired out) with its source, and `contractSigned` apart from the items.
 `employmentType` (fast or midlertidig) and `ftePercent` are **required** on every row:
 the law presumes the employee's claim when they are missing (R §4.1), so the module
 refuses a row without them rather than defaulting. The first row is dated the
@@ -247,7 +261,9 @@ ends — the sole Owner, or a manager without a manager — and no other decider
 an account, the person may approve their own with an event (`self_approved`). A type
 that is a notification (egenmelding, sykmelding, sykt barn, helse) is `registered`
 when entered, by the person or by HR on their behalf. **Notifications** go by the
-installation's mail (`Deps.Mail`, after commit, never under a lock): to the deciders
+installation's mail (`mail.SendOutbound` through the `Deps.SMTPSend` seam as
+Invoices does, skipped with a log line when the mail driver is not SMTP — pre-flight;
+after commit, never under a lock): to the deciders
 on a request, to the person on a decision, to the manager on a registration, to the
 person on a bank-account change, and to HR on a worker failure the attention list
 also shows. A decided absence in the past can be corrected by HR only, as an event.
@@ -358,7 +374,7 @@ threshold crossed (R §4.8); a headcount threshold crossed and not yet acknowled
 (5: varslingsrutine and verneombud; 30: AMU; 50: ARP — R §4.10), acknowledged per
 threshold by `staff:manage`.
 
-**S21 — Events are the history, shaped like the data.** `staff.events` (person,
+**S21 — Events are the history, shaped like the data, by field group.** `staff.events` (person,
 nullable for installation events; kind; actor snapshot; instant; payload) records
 every mutation — created, field changed (the field names, never a sealed value),
 terms added or corrected, absence requested, decided and corrected, case milestone
@@ -366,7 +382,10 @@ done or waived, document added or removed, account prepared, activated,
 deactivated, updated or refused, export made, erased, hold set, threshold
 acknowledged — and `GET /people/{id}/events` lists them with each payload shaped by
 the field groups the caller may see (§5): a D or E detail the caller may not see is
-replaced by the field's name and "changed".
+replaced by the field's name and "changed". **(pre-flight)** The shaping keys on a
+static field → §5 group table applied per field, never on the retention classes,
+which are not visibility groups (`work_email` is class D yet in the Work group;
+`birth_date` is class C yet Private).
 
 ### Accounts
 
@@ -409,6 +428,9 @@ managed with the employee number — which an Owner does once, under `OwnerManag
 (Owner plus MFA), through identity's own `POST /owner/users/{id}/manage {module:
 "staff", employeeNumber}` (and `/unmanage`), the **adoption** that also brings the
 installation's current staff into the register (open question 4, now in scope).
+**(pre-flight)** The **self-service link** of A1 is a different thing: it ties a
+person to any existing active user for the Self and Manager audiences only, Owners
+included; it never makes the user managed, and the worker never acts on it.
 `Prepare` by email alone finds nothing; the email is checked only for a collision
 (`account_email_taken`). `Prepare` (when it links), `Activate`, `Deactivate`
 and `Update` refuse an unmanaged user (`account_not_managed`) and any Owner or
@@ -574,7 +596,7 @@ column (S15).
 | `start_date` | date not null | |
 | `end_date` | date | |
 | `end_reason` | varchar(40) | one of the six a-melding reasons; required with `end_date` |
-| `holiday_scheme_id` → holiday_schemes | | null = default |
+| `holiday_scheme_id` → holiday_schemes | | null = default; **added by delivery B** with its key (pre-flight) |
 | `contract_signed_at` | date | typed, or set from a contract document's `signedAt` |
 
 All class C. Indexes `(person_id, start_date)`, `(end_date)` partial on not null.
@@ -667,15 +689,23 @@ recomputed when the case's rows change), `done_at`, `done_by_user_id`, `waived`,
 `attempts`, `next_attempt_at`, `last_error`.
 
 `staff.identity_links` — `person_id`, `provider` varchar(20) (`identity` now; the
-Entra module adds its value), `external_id` varchar(200), `state` (`pending`,
-`active`, `disabled`, `failed`, `blocked`), `blocked_reason`, `last_error`, `attempts`,
-`next_attempt_at`, `lease_id` uuid, `lease_until`, `last_synced_at`, `last_spec_hash`
-(for `Update`); unique `(person_id, provider)`, unique `(provider, external_id)`,
-index `(next_attempt_at)`.
+Entra module adds its value), `external_id` varchar(200), `state` (`linked`,
+`pending`, `active`, `disabled`, `failed`, `blocked`), `managed` boolean (what identity
+last reported), `blocked_reason`, `last_error`, `attempts`, `next_attempt_at`,
+`lease_id` uuid, `lease_until`, `last_synced_at`, `last_spec_hash` (for `Update`);
+unique `(person_id, provider)`, unique `(provider, external_id)`, index
+`(next_attempt_at)`. **(pre-flight)** The table lands in A1: a **self-service link**
+(`state = linked`, written by HR through `PUT /people/{id}/user { userId | null }`
+after reading the user from `Deps.Users` outside the transaction; an inactive user
+is refused `user_inactive`, a user linked to another person
+`user_linked_elsewhere`) establishes the Self and Manager audiences and nothing
+else. C's worker acts only on a link whose user identity reports **managed**; an
+unmanaged link is left alone and shown as "linked, not managed by Staff".
 
 `staff.events` — `person_id` nullable, `kind`, `actor_kind`, `actor_user_id`,
-`actor_display`, `at`, `payload` jsonb, `payload_classes` text[] (the classes the
-payload touches, for shaping and erase). Index `(person_id, at)`. Append-only.
+`actor_display`, `at`, `payload` jsonb, `payload_classes` text[] (the retention
+classes the payload touches, **for the erase only** — pre-flight). Index
+`(person_id, at)`. Append-only.
 
 `staff.settings` — one row: `time_zone` (Europe/Oslo, validated as Expenses does,
 `mig/00013_expenses_claims.sql:88-107`), `employee_number_prefix` varchar(8),
@@ -734,8 +764,12 @@ in the future. A row dated after the end is refused. HR's correction of a past r
 an event with before and after.
 
 **Managers.** A person's manager on a date is the terms' `manager_person_id`, else
-the department's manager; self and cycles are refused (`self_manager`,
-`manager_cycle`, `department_cycle`). The manager's *user* is the linked identity
+the department's manager **unless that is the person, in which case the parent
+departments are climbed to the first whose manager is someone else, else none**
+(pre-flight); self and cycles are refused (`self_manager`, `manager_cycle` — judged at
+the row's `valid_from` and at every later change date, under a transaction advisory
+lock on the manager graph taken after the person lock, since two people's rows are
+never locked together; `department_cycle`); the org view walks with a visited set. The manager's *user* is the linked identity
 user of that person, if any.
 
 **Sealed fields.** Written only through `PUT /people/{id}/national-id` and
@@ -830,7 +864,7 @@ employee role (S26) is the Owner's to create and is the one that carries
 | Area | Operations |
 |---|---|
 | Meta | `GET /meta` — capabilities, structure, absence types visible to the caller, schemes, the zone, `accountMode`, whether identity's provisioning roles are set |
-| People | `GET /people` (q, unitId, departmentId, locationId, active, paged) · `POST /people` · `GET|PUT /people/{id}` · `DELETE /people/{id}` (created in error: no employment, no absence, no link) · `PUT /people/{id}/national-id` · `POST /people/{id}/national-id/reveal` · `PUT /people/{id}/bank-account` · `POST /people/{id}/bank-account/reveal` · `GET|PUT /people/{id}/next-of-kin` · `GET|PUT /people/{id}/roles` · `GET /people/{id}/events` · `GET /people/{id}/personal-data` · `PUT /people/{id}/legal-hold` · `POST /people/{id}/reassessed` · `GET /people/{id}/org` |
+| People | `GET /people` (q, unitId, departmentId, locationId, status, paged) · `POST /people` · `GET|PUT /people/{id}` · `DELETE /people/{id}` (created in error: no employment, no absence, no link, named as nobody's manager) · `PUT /people/{id}/user` (the self-service link, pre-flight) · `GET /assignable-users?q=` (the picker over `Deps.Users`) · `PUT /people/{id}/national-id` · `POST /people/{id}/national-id/reveal` · `PUT /people/{id}/bank-account` · `POST /people/{id}/bank-account/reveal` · `GET|PUT /people/{id}/next-of-kin` · `GET|PUT /people/{id}/roles` · `GET /people/{id}/events` · `GET /people/{id}/personal-data` · `PUT /people/{id}/legal-hold` · `POST /people/{id}/reassessed` · `GET /people/{id}/org` |
 | Employments | `GET|POST /people/{id}/employments` · `GET|PUT /employments/{id}` · `POST /employments/{id}/end` · `/reopen` · `GET|POST /employments/{id}/terms` · `PUT /terms/{id}` (latest, or a correction with `correction: true`) · `DELETE /terms/{id}` (latest) · `GET /employments/{id}/contract-check` |
 | Structure | `GET|POST`, `PUT /{id}`, `POST /{id}/archive` for `/legal-entities`, `/business-units`, `/departments`, `/locations` |
 | Documents | `GET /people/{id}/documents` · `POST /people/{id}/documents` · `GET /documents/{id}` · `PUT /documents/{id}` · `DELETE /documents/{id}` · `GET|POST /document-categories` · `PUT /document-categories/{id}` |
@@ -852,7 +886,9 @@ Refusal codes: `national_id_invalid`, `national_id_duplicate`, `bank_account_inv
 `self_certification_too_early`, `self_certification_withdrawn`, `decision_not_yours`,
 `own_request`, `holiday_scheme_in_use`, `seed_immutable`, `document_type_unsupported`,
 `document_too_large`, `person_erased`, `person_in_use`, `legal_hold`,
-`import_sealed_columns`, `work_email_taken`, `account_email_missing`,
+`import_sealed_columns`, `work_email_taken`, `employment_number_taken`,
+`full_time_hours_mismatch`, `user_inactive`, `user_linked_elsewhere`, `no_person`,
+`structure_default`, `national_id_birth_date_mismatch`, `account_email_missing`,
 `account_email_taken`, `account_not_managed`, `account_privileged`,
 `blocked_by_owner`, `disabled_by_owner`, `role_not_assignable`,
 `accounts_unavailable`, `employee_role_missing`, `terms_not_latest`,
@@ -911,8 +947,9 @@ A new app "Staff" / "Ansatte" (`apps/staff/frontend`, `@vantigo/staff-ui`).
 ## 8. Platform, identity and documentation changes
 
 1. **`internal/calendar`** (S13), delivery B.
-2. **`secrets.Box.MAC(purpose, data) []byte`** (S4), delivery A1, HMAC-SHA256 under the
-   HKDF key for the purpose, tests, the operator note on rotation.
+2. **`secrets.Box.MAC(purpose, data) ([]byte, error)`** (S4; the error is `keyFor`'s —
+   pre-flight), delivery A1, HMAC-SHA256 under the HKDF key for the purpose, tests,
+   the operator note on rotation.
 3. **Identity** (S24–S26), delivery C: migration — `managed_by`, `employee_number`,
    `pending_since`, `disabled_by` on `identity.users`; `user_id` on
    `identity.invitations`; the provider in `srv/identity/accounts.go`; the accept
@@ -939,8 +976,10 @@ A new app "Staff" / "Ansatte" (`apps/staff/frontend`, `@vantigo/staff-ui`).
    `user/workspace-administration.md` en+nb (pending users, managed by Staff, the
    employee role); `user/getting-started.md` en+nb (accepting a Staff invitation);
    the section overviews `user/index.md`, `admin/index.md`, `reference/index.md`; a
-   new `contributing/platform-packages.md` (English only) naming `internal/calendar`
-   and `internal/secrets` in its `sources`, with the MAC and the rotation rule;
+   new `contributing/platform-packages.md` (English only) naming `internal/secrets`
+   in its `sources` from A1 and `internal/calendar` from B, with the MAC and the
+   rotation rule (the identifier checks live in `staff/ident`, a module package,
+   ported from customers' and invoices' validators — pre-flight);
    `admin/installation.md` en+nb carrying the `APP_SECRET` rotation note for the
    national-id index; `reference/invoices.md` for
    the calendar import path (a `Docs-Impact` trailer where nothing documented changes);
@@ -1066,9 +1105,11 @@ For the owner's verdict; each is how the design read a decision or a gap.
     end is the one exception, as a leaver must lose access whatever the provider
     does.
 20. **Owners are never managed by Staff** (`account_privileged`); an Owner who is
-    also an employee has a person record with the flag off and no link.
+    also an employee has a person record with the flag off and, since the
+    pre-flight, a self-service link so My page works for them.
 21. **An Owner's disable wins over the worker**, for ever, until an Owner enables.
-22. **One migration per delivery**, numbers assigned at plan time.
+22. **One migration per delivery**, each number assigned when its delivery's first
+    task lands (pre-flight), since other branches take numbers meanwhile.
 23. **No "propose a change" workflow**; the employee edits the private fields
     directly and asks HR for the rest.
 24. **The national-id validator accepts the synthetic test ranges** (month + 40,
