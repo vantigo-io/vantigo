@@ -3036,7 +3036,10 @@ either the posting — `posted_on`, `posted_by_user_id` and `posted_at`, set tog
   stays printed, its own download is a 500 for now, and the batch's PDF is rendered from
   the rows anyway. **The next posting of the batch, and the next download of its PDF**,
   store every printed or sent letter of it that has no PDF yet, outside any transaction
-  — the stored PDF is what the letter's own download answers, never a render.
+  — the stored PDF is what the letter's own download answers, never a render. Each of
+  the three stores the letters one at a time and **stops at the first the store fails**
+  (each call may wait 15 seconds), logging it once and answering as it otherwise would,
+  so a store that is down costs a request one timeout, not one per letter.
 - 201 with the batch and its letters, `pdfUrl` — its combined PDF — and `leftOut`, each
   letter left out with its invoice and reason.
 

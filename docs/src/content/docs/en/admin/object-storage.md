@@ -122,7 +122,9 @@ the object it went with ([the worker](/en/reference/invoices/#the-worker)). A pa
 PDF is stored the same way when its print batch is printed, under its posting day; a
 reprint prints it again under a new key, and the batch's combined PDF is rendered from
 the letters' rows each time it is downloaded, never stored; a letter whose PDF could not
-be stored when it was printed is stored when the batch is next posted or downloaded
+be stored when it was printed is stored when the batch is next posted or downloaded, and
+each of those stops at the first letter the store fails, so an outage holds a request for
+one store timeout
 ([paper and posting](/en/reference/invoices/#paper-and-posting)). A scoped store refuses a
 relative key that equals its scope or already begins with `{scope}/`: callers pass
 relative keys only and must never construct the prefix themselves.

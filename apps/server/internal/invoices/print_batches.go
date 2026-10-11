@@ -213,9 +213,7 @@ func (s *server) PostInvoicesReminderPrintBatches(ctx context.Context, req gen.P
 		}
 		printed = append(printed, l.ID)
 	}
-	for _, id := range printed {
-		s.storePrintedLetter(ctx, batch.ID, id)
-	}
+	s.storePrintedLetters(ctx, batch.ID, printed)
 
 	inBatch, err := q.LettersOfBatch(ctx, batch.ID)
 	if err != nil {
@@ -327,14 +325,31 @@ func (s *server) printLetterOnce(ctx context.Context, batchID int64, letter stor
 	return left, nil
 }
 
+// storePrintedLetters stores the PDF of each of a batch's letters ids
+// (storePrintedLetter), one at a time, and stops at the first the store
+// fails: each call waits up to reminderStoreTimeout, so a store that is down
+// would otherwise hold the request for that long per letter — a posting's
+// client gives up and its retry finds the batch posted. The letters left are
+// stored by the batch's next posting or download (healPrintedLetters).
+func (s *server) storePrintedLetters(ctx context.Context, batchID int64, ids []int64) {
+	for i, id := range ids {
+		if err := s.storePrintedLetter(ctx, batchID, id); err != nil {
+			s.deps.Logger.WarnContext(ctx, "invoices: the document store failed; the batch's other letters' PDFs are left for its next posting or download",
+				"print_batch_id", batchID, "reminder_id", id, "left", len(ids)-i-1, "error", err.Error())
+			return
+		}
+	}
+}
+
 // storePrintedLetter renders a letter the batch printed from its row and
 // stores it once under a key carrying its hash (plan reading 35), outside
 // any transaction, then records it on the letter while the letter is still
-// in the batch, printed or sent, without a PDF. A failure is logged and
-// leaves the letter without a stored PDF for now — the letter is printed all
-// the same, and the batch's combined PDF is rendered from the rows — and the
-// next posting or download of the batch stores it (healPrintedLetters).
-func (s *server) storePrintedLetter(ctx context.Context, batchID, letterID int64) {
+// in the batch, printed or sent, without a PDF. It answers the store's
+// failure; any other failure is logged and answered as nil, so it never
+// stops the other letters. A letter left without a stored PDF is printed
+// all the same — the batch's combined PDF is rendered from the rows — and
+// the next posting or download of the batch stores it (healPrintedLetters).
+func (s *server) storePrintedLetter(ctx context.Context, batchID, letterID int64) error {
 	q := store.New(s.deps.Pool)
 	warn := func(what string, err error) {
 		s.deps.Logger.WarnContext(ctx, "invoices: a printed letter's PDF could not be "+what,
@@ -343,45 +358,49 @@ func (s *server) storePrintedLetter(ctx context.Context, batchID, letterID int64
 	letter, err := q.GetReminder(ctx, letterID)
 	if err != nil {
 		warn("read", err)
-		return
+		return nil
 	}
 	if (letter.Status != reminderrules.StatusPrinted && letter.Status != reminderrules.StatusSent) ||
 		letter.PrintBatchID == nil || *letter.PrintBatchID != batchID || letter.PdfObjectKey != nil {
-		return // reprinted, withdrawn, or stored already
+		return nil // reprinted, withdrawn, or stored already
 	}
 	inv, err := q.GetInvoice(ctx, letter.InvoiceID)
 	if err != nil {
 		warn("read", err)
-		return
+		return nil
 	}
 	_, body, err := renderLetter(letter, inv)
 	if err != nil {
 		warn("rendered", err)
-		return
+		return nil
 	}
 	sum := sha256.Sum256(body)
 	sha := hex.EncodeToString(sum[:])
 	key := reminderKey(inv.ID, letter.ID, utcDay(letter.SentOn.Time), sha)
 	if err := s.storeLetterPDF(ctx, key, body); err != nil {
 		warn("stored", err)
-		return
+		return err
 	}
 	if _, err := q.SetPrintedPDF(ctx, store.SetPrintedPDFParams{
 		PdfObjectKey: key, PdfSha256: sha, ID: letter.ID, PrintBatchID: batchID,
 	}); err != nil {
 		warn("recorded", err)
 	}
+	return nil
 }
 
 // healPrintedLetters stores the PDF of every letter of the batch among
 // letters that is printed or sent and has none — its store failed when the
-// batch was printed — outside any transaction (storePrintedLetter).
+// batch was printed — outside any transaction, stopping at the first the
+// store fails (storePrintedLetters).
 func (s *server) healPrintedLetters(ctx context.Context, batchID int64, letters []store.InvoicesReminder) {
+	var ids []int64
 	for _, l := range letters {
 		if (l.Status == reminderrules.StatusPrinted || l.Status == reminderrules.StatusSent) && l.PdfObjectKey == nil {
-			s.storePrintedLetter(ctx, batchID, l.ID)
+			ids = append(ids, l.ID)
 		}
 	}
+	s.storePrintedLetters(ctx, batchID, ids)
 }
 
 // storeLetterPDF puts body under key unless something is there already: the
