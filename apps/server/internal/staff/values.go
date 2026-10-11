@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/vantigo-io/vantigo/server/internal/staff/ident"
 )
 
 // This file is the module's value rules. Each takes the raw value and answers
@@ -95,48 +97,19 @@ func parseCountry(raw *string, fallback string) (string, string) {
 
 // parseOrgNumber is an optional organisation number: the spaces a person types
 // between the groups taken out, then nine digits with a valid MOD11 check
-// digit (validOrgNumber). It answers the normalised number and the message.
+// digit — staff/ident's check, the one every identifier of this module goes
+// through. It answers the normalised number and the message.
 func parseOrgNumber(raw *string) (*string, string) {
 	if raw == nil {
 		return nil, ""
 	}
-	v := strings.Join(strings.Fields(*raw), "")
-	if !validOrgNumber(v) {
+	// ident.ErrInvalidOrgNumber is the check's only refusal; its wrapped
+	// reason stays out of the message, which says what a valid number is.
+	v, err := ident.ValidateOrgNumber(*raw)
+	if err != nil {
 		return nil, "An organisation number is nine digits with a valid check digit"
 	}
 	return &v, ""
-}
-
-// validOrgNumber is the Brønnøysund organisasjonsnummer check: exactly nine
-// ASCII digits, the last of which is the MOD11 check digit over the first
-// eight with weights 3 2 7 6 5 4 3 2. A remainder that would make the check
-// digit 10 is invalid outright — nine digits cannot encode it. It is the
-// customers module's check (internal/customers/values.go,
-// validNorwegianOrgNumber), written again because no module imports another;
-// delivery A1's Task 3a moves it into staff/ident with the national-id and
-// bank-account checks.
-func validOrgNumber(digits string) bool {
-	if len(digits) != 9 {
-		return false
-	}
-	for _, r := range digits {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	weights := [8]int{3, 2, 7, 6, 5, 4, 3, 2}
-	sum := 0
-	for i, w := range weights {
-		sum += int(digits[i]-'0') * w
-	}
-	check := 0
-	if r := sum % 11; r != 0 {
-		check = 11 - r
-		if check == 10 {
-			return false
-		}
-	}
-	return int(digits[8]-'0') == check
 }
 
 // parseIfMatch reads the revision an If-Match header carries: the bare number

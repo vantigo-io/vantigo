@@ -501,8 +501,8 @@ informasjonskapslene `Secure`, og `APP_URL` må være `https`.
 ## Databasemigreringer
 
 Én PostgreSQL-database holder ett skjema per modul — `identity`, `customers`,
-`products`, `energy`, `communications`, `projects` og `time` — migrert av rene SQL-filer
-innebygd i binærfilen. Alle skjemaer migreres uansett hvilke moduler `MODULES` slår på,
+`products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices` og
+`staff` — migrert av rene SQL-filer innebygd i binærfilen. Alle skjemaer migreres uansett hvilke moduler `MODULES` slår på,
 så det å slå på en modul senere krever ingen migrering. Se
 [migreringsveiledningen for bidragsytere](https://github.com/vantigo-io/vantigo/blob/main/CONTRIBUTING.md#database-migrations)
 for hvordan migreringer skrives og anvendes.

@@ -486,8 +486,8 @@ OIDC callback on that HTTPS origin. Outside development cookies are `Secure` and
 ## Database migrations
 
 One PostgreSQL database holds one schema per module — `identity`, `customers`,
-`products`, `energy`, `communications`, `projects` and `time` — migrated by plain SQL files embedded in
-the binary. Every schema is migrated regardless of which modules `MODULES` enables,
+`products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices` and
+`staff` — migrated by plain SQL files embedded in the binary. Every schema is migrated regardless of which modules `MODULES` enables,
 so enabling a module later needs no migration. See the
 [contributor migration guide](https://github.com/vantigo-io/vantigo/blob/main/CONTRIBUTING.md#database-migrations) for how
 migrations are written and applied.

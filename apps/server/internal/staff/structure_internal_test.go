@@ -2,30 +2,6 @@ package staff
 
 import "testing"
 
-// Ported from customers' TestValidNorwegianOrgNumber (internal/customers/
-// values_test.go): the Brønnøysund mod-11 check, weights 3 2 7 6 5 4 3 2 over
-// the first eight digits, a remainder that would make check digit 10 invalid.
-// Delivery A1's Task 3a moves the check into staff/ident; the table moves
-// with it.
-func TestValidOrgNumber(t *testing.T) {
-	t.Parallel()
-	cases := map[string]bool{
-		"923609016":  true,  // Equinor ASA
-		"974760673":  true,  // Brønnøysundregistrene
-		"923609017":  false, // Equinor's number with the check digit flipped
-		"92360901":   false, // eight digits
-		"9236090166": false, // ten digits
-		"92360901a":  false, // a letter where a digit belongs
-		"912345678":  false, // the first eight digits' weighted sum gives check digit 10
-		"":           false,
-	}
-	for v, want := range cases {
-		if got := validOrgNumber(v); got != want {
-			t.Errorf("validOrgNumber(%q) = %v, want %v", v, got, want)
-		}
-	}
-}
-
 // The cycle check walks the parent graph from the proposed parent upward with
 // a visited set: the department itself, or any department below it, as the
 // parent is a cycle; anything else is not — and a graph that already holds a

@@ -36,7 +36,9 @@ domain rules and reports them per field. The exceptions to "the index is only a
 backstop" are stated where they matter below: the employee number is unique however
 it is cased (`ux_people_employee_number_upper`), a work email likewise where set, at
 most one legal entity and one business unit is the default, and the settings table
-holds exactly one row.
+holds exactly one row. The care-day inputs on a person and a terms row's pay components are
+nullable with no default: NULL is "not recorded", and it is what the retention erase
+writes.
 
 ## Permissions
 
@@ -137,7 +139,11 @@ the flag from the previous one, in one transaction. `isDefault: false` on the de
 is refused `structure_default` (409) — move it by making another row the default —
 and leaving `isDefault` out changes nothing about the flag. The default is never
 archived (`structure_default`), and an archived row is never made the default
-(`structure_archived`). Each table's default is serialised by a transaction advisory
+(`structure_archived`). Nor is the legal entity the default business unit sits under
+archived (`structure_default` — make a unit under another legal entity the default
+first), and a unit under an archived legal entity is never made the default
+(`structure_archived`), so the unit an employment is put in by default never hangs
+from an archived legal entity. Each table's default is serialised by a transaction advisory
 lock of its own, and a partial unique index on `is_default` is the backstop.
 
 **Organisation numbers** are nine digits with a valid MOD11 check digit (weights
@@ -172,7 +178,7 @@ cannot decode — malformed JSON, a missing required header — is a bare 400.
 | `org_number_invalid` | 400 | An organisation number that is not nine digits with a valid check digit. |
 | `employee_number_too_long` | 400 | The prefix and the next number make a number longer than 16. |
 | `structure_archived` | 409 | A write newly names an archived row, or makes one the default. |
-| `structure_default` | 409 | Archiving the default, or taking the flag off it in place. |
+| `structure_default` | 409 | Archiving the default, or the legal entity the default business unit sits under, or taking the flag off the default in place. |
 | `department_cycle` | 409 | A parent that is the department itself or below it. |
 | `revision_conflict` | 409 | The `If-Match` revision has moved on. |
 

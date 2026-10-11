@@ -117,6 +117,40 @@ func TestStaffFoundation_AppliesAndIsIdempotent(t *testing.T) {
 		t.Error("staff.employments has holiday_scheme_id, which is delivery B's with its key")
 	}
 
+	// The class D care-day inputs and the class A pay components are erased to
+	// NULL (design S15), so they are nullable with no default: NULL is "not
+	// recorded", never a zero somebody typed.
+	for _, c := range []struct{ table, column string }{
+		{"people", "children_under_12"}, {"people", "sole_carer"}, {"people", "chronically_ill_children"},
+		{"employment_terms", "pay_components"},
+	} {
+		var nullable string
+		var def *string
+		if err := pool.QueryRow(ctx, `
+			SELECT is_nullable, column_default FROM information_schema.columns
+			WHERE table_schema = 'staff' AND table_name = $1 AND column_name = $2`, c.table, c.column).Scan(&nullable, &def); err != nil {
+			t.Fatalf("read staff.%s.%s: %v", c.table, c.column, err)
+		}
+		if nullable != "YES" || def != nil {
+			shown := "none"
+			if def != nil {
+				shown = *def
+			}
+			t.Errorf("staff.%s.%s is nullable %s with default %s, want nullable with no default", c.table, c.column, nullable, shown)
+		}
+	}
+
+	var macUnique int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM pg_constraint
+		WHERE conrelid = 'staff.people'::regclass AND contype = 'u'
+		  AND pg_get_constraintdef(oid) = 'UNIQUE (national_id_mac)'`).Scan(&macUnique); err != nil {
+		t.Fatalf("read the MAC constraint: %v", err)
+	}
+	if macUnique != 1 {
+		t.Errorf("staff.people has %d UNIQUE (national_id_mac) constraints, want one", macUnique)
+	}
+
 	checks := staffCollect(t, ctx, pool, "checks", `
 		SELECT conname FROM pg_constraint WHERE connamespace = 'staff'::regnamespace AND contype = 'c'`)
 	if len(checks) != 0 {
@@ -146,6 +180,13 @@ func TestStaffFoundation_AppliesAndIsIdempotent(t *testing.T) {
 		"CREATE UNIQUE INDEX ux_business_units_default ON staff.business_units USING btree (is_default) WHERE is_default",
 		"CREATE UNIQUE INDEX ux_departments_code_upper ON staff.departments USING btree (upper((code)::text))",
 		"CREATE UNIQUE INDEX ux_settings_single_row ON staff.settings USING btree ((true))",
+		"CREATE UNIQUE INDEX ux_legal_entities_org_number ON staff.legal_entities USING btree (org_number)",
+		"CREATE UNIQUE INDEX ux_business_units_org_number ON staff.business_units USING btree (org_number)",
+		"CREATE INDEX ix_business_units_legal_entity ON staff.business_units USING btree (legal_entity_id)",
+		"CREATE INDEX ix_departments_manager ON staff.departments USING btree (manager_person_id)",
+		"CREATE INDEX ix_departments_parent ON staff.departments USING btree (parent_id)",
+		"CREATE INDEX ix_next_of_kin_person ON staff.next_of_kin USING btree (person_id)",
+		"CREATE INDEX ix_person_roles_person ON staff.person_roles USING btree (person_id)",
 	} {
 		if !indexes[want] {
 			t.Errorf("missing index: %s", want)

@@ -192,9 +192,9 @@ type StaffPerson struct {
 	BankAccountSealed       []byte
 	BankAccountLast4        *string
 	BankAccountKind         *string
-	ChildrenUnder12         int16
-	SoleCarer               bool
-	ChronicallyIllChildren  int16
+	ChildrenUnder12         *int16
+	SoleCarer               *bool
+	ChronicallyIllChildren  *int16
 	SelfCertWithdrawnUntil  pgtype.Date
 	SelfCertWithdrawnReason *string
 	ProvisionAccount        bool

@@ -92,10 +92,11 @@ CREATE TABLE staff.people (
     bank_account_sealed        bytea,
     bank_account_last4         char(4),
     bank_account_kind          varchar(10),
-    -- The care-day inputs (S11), delivery B's to expose.
-    children_under_12          smallint      NOT NULL DEFAULT 0,
-    sole_carer                 boolean       NOT NULL DEFAULT false,
-    chronically_ill_children   smallint      NOT NULL DEFAULT 0,
+    -- The care-day inputs (S11), delivery B's to expose. Class D, so the erase
+    -- sets them to NULL: NULL is "not recorded", never a zero anyone typed.
+    children_under_12          smallint,
+    sole_carer                 boolean,
+    chronically_ill_children   smallint,
     -- The self-certification withdrawal (S10), delivery B's.
     self_cert_withdrawn_until  date,
     self_cert_withdrawn_reason varchar(500),
@@ -205,6 +206,8 @@ CREATE INDEX ix_employments_end_date ON staff.employments (end_date) WHERE end_d
 -- An employment's terms (S5, §3.3): one row per change, in force from
 -- valid_from until the next row's, never overwritten. The first row is dated
 -- the employment's start; the module holds that and every other rule of §4.
+-- pay_components is nullable with no default: it is class A, which the erase
+-- sets to NULL five years past the end year (S15), and NULL is "not recorded".
 CREATE TABLE staff.employment_terms (
     id                          bigint        GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     employment_id               bigint        NOT NULL REFERENCES staff.employments (id),
@@ -221,7 +224,7 @@ CREATE TABLE staff.employment_terms (
     title                       varchar(120),
     employee_type               varchar(20),
     remuneration_type           varchar(20),
-    pay_components              jsonb         NOT NULL DEFAULT '[]'::jsonb,
+    pay_components              jsonb,
     pay_method                  varchar(40),
     payday_text                 varchar(100),
     department_id               bigint        REFERENCES staff.departments (id),
