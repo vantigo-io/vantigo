@@ -1377,3 +1377,84 @@ func TestErase_AQueueActionAfterTheEraseWritesNoNote(t *testing.T) {
 		t.Errorf("a line linked to nobody = %q, want its note kept", got)
 	}
 }
+
+// dismissNotes is a dismissed line's note and its dismissed event's note.
+func dismissNotes(t *testing.T, h *harness, line int64) string {
+	t.Helper()
+	return modtest.One[string](t, h.Harness, `SELECT t.resolution_note || '|' || coalesce(
+		(SELECT string_agg(e.note, ',') FROM invoices.bank_transaction_events e
+		 WHERE e.bank_transaction_id = t.id AND e.event = 'dismissed'), '-')
+		FROM invoices.bank_transactions t WHERE t.id = $1`, line)
+}
+
+// TestErase_RacesAQueueActionEraseFirst: the erase holds the person's
+// documents and has written its marker, uncommitted, on a raw transaction; a
+// dismissal of a reopened line their removed payment came from locks the
+// line, then waits on those documents. Once the erase commits, the
+// dismissal reads the marker — after its invoice locks, never before — and
+// writes no note on the line nor on its event. Read before the locks, the
+// marker would not be seen yet and the note would stay. No deadlock.
+func TestErase_RacesAQueueActionEraseFirst(t *testing.T) {
+	h, _ := matchHarness(t, modtest.WithPoolMaxConns(2))
+	inv := kidInvoice(t, h)
+	toMatchDay(h)
+	c := importer(t, h)
+	line := appliedThenReopened(t, h, c, inv, "RACE-EF")
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+	raw := holdRow(t, h, `SELECT 1 FROM invoices.invoices WHERE customer_id = $1 ORDER BY id DESC FOR UPDATE`, customerAcme)
+	if _, err := raw.tx.Exec(context.Background(), `INSERT INTO invoices.erased_customers (customer_id, erased_at)
+		VALUES ($1, now())`, customerAcme); err != nil {
+		t.Fatalf("the raw erase's marker: %v", err)
+	}
+
+	done := startAction(c, line, "dismiss", map[string]any{"note": "Acme sa den var feil"})
+	waiter := newWaiter(t, probeConn)
+	if got := blockersOf(t, probeConn, waiter); !slices.Equal(got, []uint32{raw.pid}) {
+		t.Errorf("the dismissal waits on %v, want the erase's documents %d", got, raw.pid)
+	}
+	if got := heldMode(t, probeConn, "invoices.bank_transactions", "id = $1", line); got != modeNoKeyUpdate {
+		t.Errorf("the line is held %q while the dismissal waits, want FOR NO KEY UPDATE", got)
+	}
+	raw.release(t)
+	finished(t, "the dismissal", done, http.StatusOK)
+	if got := dismissNotes(t, h, line); got != "|" {
+		t.Errorf("the line's note|its dismissed event's = %q, want both blank", got)
+	}
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("Postgres broke %d deadlock(s)", after-before)
+	}
+}
+
+// TestErase_RacesAQueueActionActionFirst: the reverse order — a dismissal
+// of the same kind of line parked holding its line and the person's
+// invoices, before it reads the marker; the erase waits on the documents.
+// Released, the dismissal writes its note and commits; the erase then finds
+// the line resolved and blanks it, and the event's. No deadlock.
+func TestErase_RacesAQueueActionActionFirst(t *testing.T) {
+	h, _ := matchHarness(t, modtest.WithPoolMaxConns(2))
+	inv := kidInvoice(t, h)
+	toMatchDay(h)
+	c := importer(t, h)
+	line := appliedThenReopened(t, h, c, inv, "RACE-AF")
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+	parked, release := parkFirstLock(t, "invoice")
+
+	done := startAction(c, line, "dismiss", map[string]any{"note": "Acme sa den var feil"})
+	waitFor(t, "the dismissal's invoice locks", parked)
+	eraseDone := startErase(h, customerAcme)
+	waiter := newWaiter(t, probeConn)
+	if got := heldMode(t, probeConn, "invoices.invoices", "id = $1", inv.ID); got != modeUpdate {
+		t.Errorf("the invoice is held %q by the dismissal, want FOR UPDATE (the erase pid %d waits)", got, waiter)
+	}
+	close(release)
+	finished(t, "the dismissal", done, http.StatusOK)
+	erased(t, "the erase after the dismissal", eraseDone)
+	if got := dismissNotes(t, h, line); got != "|" {
+		t.Errorf("the line's note|its dismissed event's = %q, want both blanked by the erase", got)
+	}
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("Postgres broke %d deadlock(s)", after-before)
+	}
+}
