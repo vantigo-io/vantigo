@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/ident"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
@@ -34,12 +35,13 @@ import (
 //   - Each row is written through the functions the endpoints themselves call
 //     (writes.go) behind the same validators and followed by the same events,
 //     the importer as actor, under the same guard: an update takes the
-//     person's lock with the erased rule (withPersonLock, refuseErased), so a
-//     row that succeeds is indistinguishable from the same edits made by
-//     hand, and one that fails leaves nothing half-written. A create is the
-//     person, then — when the row has a startDate — the first employment and
-//     its terms, in the row's one transaction; an update is the person's own
-//     columns and never an employment (reading 9).
+//     person's lock (withPersonLock) and an erased person's row is
+//     person_erased when it would change anything, so a row that succeeds is
+//     indistinguishable from the same edits made by hand, and one that fails
+//     leaves nothing half-written. A create is the person, then — when the
+//     row has a startDate — the first employment and its terms, in the row's
+//     one transaction; an update is the person's own columns and never an
+//     employment (reading 9).
 //   - A dry run is the real run minus the commit: each row in its own
 //     transaction, rolled back when the row has run — no person, no employee
 //     number, no event, no mail. What it cannot see is an earlier row's effect
@@ -424,12 +426,14 @@ func (s *server) planImportRow(l importLayout, rec csvRecord) (importPlan, error
 }
 
 // inFileDuplicates refuses the second of two rows with the same employee
-// number (however cased, as the unique index compares) or the same work
-// email (lower-cased, as it is stored), in both runs alike: a dry run's rows
-// each roll back before the next, so the database could not tell it. A row
-// whose cells already failed claims nothing.
+// number (however cased, as the unique index compares), the same work email
+// (lower-cased, as it is stored) or the same national identity number (by
+// its MAC, as the unique index compares, and never naming a digit of it), in
+// both runs alike: a dry run's rows each roll back before the next, so the
+// database could not tell it. A row whose cells already failed claims
+// nothing.
 func inFileDuplicates(l importLayout, plans []importPlan) {
-	numbers, emails := map[string]int{}, map[string]int{}
+	numbers, emails, nationalIDs := map[string]int{}, map[string]int{}, map[string]int{}
 	for i := range plans {
 		p := &plans[i]
 		if len(p.errs) > 0 {
@@ -445,12 +449,23 @@ func inFileDuplicates(l importLayout, plans []importPlan) {
 			p.errs = append(p.errs, importError{Row: p.rec.Row, Column: "workEmail",
 				Message: fmt.Sprintf("Row %d of this file already has this work email", row)})
 		}
+		mac := ""
+		if p.nationalID != nil {
+			mac = string(p.nationalID.mac)
+			if row, seen := nationalIDs[mac]; seen {
+				p.errs = append(p.errs, importError{Row: p.rec.Row, Column: "nationalId",
+					Message: fmt.Sprintf("Row %d of this file already has this national identity number", row)})
+			}
+		}
 		if len(p.errs) > 0 {
 			continue
 		}
 		numbers[number] = p.rec.Row
 		if email != "" {
 			emails[email] = p.rec.Row
+		}
+		if mac != "" {
+			nationalIDs[mac] = p.rec.Row
 		}
 	}
 }
@@ -702,10 +717,10 @@ const (
 )
 
 // importRow writes one planned row in its own transaction — under the
-// person's lock with the erased rule for a number a person has, a locked
-// transaction creating them otherwise — rolled back on a dry run. A refusal
-// is an importRowRefusal; any other error is the request's. A bank account
-// the row changed mails the person once the row has committed.
+// person's lock for a number a person has, a locked transaction creating
+// them otherwise — rolled back on a dry run. A refusal is an
+// importRowRefusal; any other error is the request's. A bank account the row
+// changed mails the person once the row has committed.
 func (s *server) importRow(ctx context.Context, l importLayout, p importPlan, o importOptions) (importOutcome, error) {
 	id, err := store.New(s.deps.Pool).PersonIDByEmployeeNumber(ctx, p.employeeNumber)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -749,7 +764,10 @@ func (s *server) importRow(ctx context.Context, l importLayout, p importPlan, o 
 			return write(ctx, txq, personID)
 		})
 	} else {
-		err = s.withPersonLock(ctx, id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		// allowErased: the export carries erased people, so their unchanged
+		// rows come back; importUpdate refuses only a row that would change
+		// one (person_erased), judged on the row the lock holds.
+		err = s.withPersonLock(ctx, id, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 			if err := s.importUpdate(ctx, txq, l, p, o, id); err != nil {
 				return err
 			}
@@ -771,7 +789,10 @@ func (s *server) importRow(ctx context.Context, l importLayout, p importPlan, o 
 
 // importUpdate is PUT /people/{id} for a row, under the person's lock: the
 // person as stored, the row's person columns laid over them, the person's
-// own rules, and updatePerson. An update never touches employments.
+// own rules, and updatePerson. An update never touches employments. An
+// erased person is read-only (erased.go): their row is person_erased when it
+// would change a person column or a sealed value, and otherwise — the row
+// the export wrote for them — no write, as any unchanged row.
 func (s *server) importUpdate(ctx context.Context, txq *store.Queries, l importLayout, p importPlan, o importOptions, personID int64) error {
 	current, err := readPerson(ctx, txq, personID)
 	if err != nil {
@@ -783,10 +804,48 @@ func (s *server) importUpdate(ctx context.Context, txq *store.Queries, l importL
 	if err := refuseRowFields(r, f); err != nil {
 		return err
 	}
+	if current.ErasedAt != nil {
+		changed, err := s.importChanges(ctx, txq, current, parsed, p)
+		if err != nil {
+			return err
+		}
+		if changed {
+			return rowRefusal(p.rec.Row, personErased(), "")
+		}
+	}
 	if _, err := s.updatePerson(ctx, txq, current, parsed, o.who); err != nil {
 		return rowRefusal(p.rec.Row, err, "")
 	}
 	return nil
+}
+
+// importChanges reports whether an update row would change current: a person
+// column, or a sealed cell that is not the value on file (the national
+// identity number by its MAC, the bank account opened to compare — local
+// work, no call out).
+func (s *server) importChanges(ctx context.Context, txq *store.Queries, current store.GetPersonRow, parsed parsedPerson, p importPlan) (bool, error) {
+	if len(diffPerson(&current, parsed.applyTo(current))) > 0 {
+		return true, nil
+	}
+	if p.nationalID != nil {
+		before, err := txq.PersonNationalID(ctx, current.ID)
+		if err != nil {
+			return false, fmt.Errorf("staff: read person %d's national identity number: %w", current.ID, err)
+		}
+		if len(before.NationalIDMac) == 0 || !secrets.MACEqual(before.NationalIDMac, p.nationalID.mac) {
+			return true, nil
+		}
+	}
+	if p.bankAccount != nil {
+		same, err := s.sameBankAccount(ctx, txq, current.ID, *p.bankAccount)
+		if err != nil {
+			return false, err
+		}
+		if !same {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // importCreate is POST /people for a row and, when it has a startDate, POST
@@ -903,7 +962,8 @@ func (t importTally) result(dryRun bool) gen.StaffImportResult {
 // against each other (inFileDuplicates) before any row is applied. A refusal
 // is that row's failure and the next row runs; any other error ends the
 // request, and so does a request whose caller has gone, checked before each
-// row's transaction opens (the rows already run stay as they are).
+// row's transaction opens (the rows already run stay as they are). An error
+// comes with the tally so far, which the caller records.
 func (s *server) importFile(ctx context.Context, file csvFile, l importLayout, o importOptions) (importTally, error) {
 	tally := importTally{rows: len(file.Rows), errs: []importError{}}
 	plans := make([]importPlan, len(file.Rows))
@@ -911,7 +971,7 @@ func (s *server) importFile(ctx context.Context, file csvFile, l importLayout, o
 	for i, rec := range file.Rows {
 		p, err := s.planImportRow(l, rec)
 		if err != nil {
-			return importTally{}, err
+			return tally, err
 		}
 		plans[i] = p
 	}
@@ -927,7 +987,7 @@ func (s *server) importFile(ctx context.Context, file csvFile, l importLayout, o
 		errs := p.errs
 		if len(errs) == 0 {
 			if err := ctx.Err(); err != nil {
-				return importTally{}, err
+				return tally, err
 			}
 			outcome, err := s.importRow(ctx, l, p, o)
 			var refused *importRowRefusal
@@ -935,7 +995,7 @@ func (s *server) importFile(ctx context.Context, file csvFile, l importLayout, o
 			case errors.As(err, &refused):
 				errs = refused.errs
 			case err != nil:
-				return importTally{}, err
+				return tally, err
 			case outcome == importCreated:
 				tally.created++
 			default:
@@ -963,7 +1023,9 @@ func (s *server) importFile(ctx context.Context, file csvFile, l importLayout, o
 // the file's bytes, then its header against the table and the caller —
 // every one a 400 before a single row is read — and only then the rows,
 // whose problems are the result rather than a refusal. A real run is
-// recorded as the installation's people_imported event (reading 11).
+// recorded as the installation's people_imported event (reading 11) — also
+// one a caller who went away cut short, with the counts so far
+// (recordPeopleImported).
 func (s *server) PostStaffPeopleImport(ctx context.Context, req gen.PostStaffPeopleImportRequestObject) (gen.PostStaffPeopleImportResponseObject, error) {
 	dryRun := true
 	if v := req.Params.DryRun; v != nil {
@@ -999,17 +1061,30 @@ func (s *server) PostStaffPeopleImport(ctx context.Context, req gen.PostStaffPeo
 		return nil, err
 	}
 	tally, err := s.importFile(ctx, file, layout, importOptions{who: who, dryRun: dryRun, vocab: vocab})
+	if !dryRun {
+		err = errors.Join(err, s.recordPeopleImported(ctx, who, tally))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("staff: import people: %w", err)
 	}
-	if !dryRun {
-		if err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-			return s.recordEvent(ctx, txq, nil, eventPeopleImported, who, map[string]any{
-				"rows": tally.rows, "created": tally.created, "updated": tally.updated, "failed": tally.failed,
-			}, nil)
-		}); err != nil {
-			return nil, err
-		}
-	}
 	return gen.PostStaffPeopleImport200JSONResponse(tally.result(dryRun)), nil
+}
+
+// importEventTimeout bounds the people_imported event's write, which runs on
+// a context detached from the request's.
+const importEventTimeout = 10 * time.Second
+
+// recordPeopleImported records a real run's people_imported event with
+// tally's counts. The rows a run committed stay committed whatever ends it,
+// so the event is written on a context the request's end does not cancel —
+// a caller who went away mid-file still leaves the history saying what the
+// file did — and bounded, as the module's other writes after the fact are.
+func (s *server) recordPeopleImported(ctx context.Context, who actor, tally importTally) error {
+	detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), importEventTimeout)
+	defer cancel()
+	return s.withLockedTx(detached, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		return s.recordEvent(ctx, txq, nil, eventPeopleImported, who, map[string]any{
+			"rows": tally.rows, "created": tally.created, "updated": tally.updated, "failed": tally.failed,
+		}, nil)
+	})
 }

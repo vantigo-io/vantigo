@@ -154,11 +154,13 @@ func TestExport_Cap(t *testing.T) {
 // A file the export wrote re-imports unchanged (reading 9): every row an
 // update that changes nothing — no revision moves, no event is written — the
 // guarded cells read back as they were typed, the export-only columns ignored.
+// An erased person is in the export too, and their unchanged row is no
+// write, so the read-only rule has nothing to refuse.
 func TestExport_ReimportsUnchanged(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	hr, _ := signIn(t, h, "staff:manage")
-	company(t, hr)
+	hr, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	seedErased(t, h, hr)
 	createPerson(t, hr, with(newPerson("Kari", "Nordmann"), "birthDate", "1990-01-01", "gender", "female",
 		"phoneWork", "+47 22 33 44 55", "phoneMobile", "=1+1", "street", `Storgata 1; "bakgården"`, "postalCode", "0150",
 		"city", "Oslo", "country", "NO", "privateEmail", "kari@privat.no", "workEmail", "kari@example.no",
@@ -175,8 +177,8 @@ func TestExport_ReimportsUnchanged(t *testing.T) {
 		t.Fatalf("export: %d %s", r.Status, r.Body)
 	}
 	res := importCSV(t, hr, string(r.Body), false)
-	if res.Rows != 3 || res.Updated != 3 || res.Created != 0 || res.Failed != 0 {
-		t.Fatalf("re-import = %+v %v, want three unchanged updates", res, rowErrors(res))
+	if res.Rows != 4 || res.Updated != 4 || res.Created != 0 || res.Failed != 0 {
+		t.Fatalf("re-import = %+v %v, want four unchanged updates, the erased person's among them", res, rowErrors(res))
 	}
 	if after := revisions(); !slices.Equal(after, before) {
 		t.Errorf("revisions %v → %v, want unchanged", before, after)

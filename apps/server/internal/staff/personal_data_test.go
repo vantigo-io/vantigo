@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -169,10 +168,11 @@ func TestPersonalData_MyOwnCopy(t *testing.T) {
 
 	r := p.self.Do(http.MethodGet, meExportPath, nil)
 	file := exportOf(t, r)
-	// The user ids are taken out first: their random digits could match one
-	// of leaks' four-digit runs by chance. The bank account's last four may
-	// be there (they are the person's to read); its first seven may not.
-	hay := regexp.MustCompile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}").ReplaceAllString(string(r.Body), "")
+	// The user ids are taken out first (scrubRandom): their random digits
+	// could match one of leaks' four-digit runs by chance. The bank account's
+	// last four may be there (they are the person's to read); its first seven
+	// may not.
+	hay := scrubRandom(string(r.Body))
 	if leaks(hay, p.nationalID) || strings.Contains(hay, exportedBankAccount) || strings.Contains(hay, exportedBankAccount[:7]) {
 		t.Fatalf("the person's own copy carries a sealed value: %s", r.Body)
 	}

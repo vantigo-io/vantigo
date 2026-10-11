@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"regexp"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -105,6 +106,18 @@ func (m *mailbox) messages() []mail.Outbound {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return slices.Clone(m.sent)
+}
+
+// randomInLogs is what a response, an event or a log line carries that no
+// request chose — a log line's time, duration, size and trace id, and any
+// uuid (a user id) — whose random digits could match one of leaks' four-digit
+// runs by chance.
+var randomInLogs = regexp.MustCompile(`"(time|duration|bytes|trace_id)":("[^"]*"|[0-9]+)|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+
+// scrubRandom is text with randomInLogs taken out: the haystack a leak check
+// searches, so it fails on a sealed value's digits and never on chance.
+func scrubRandom(text string) string {
+	return randomInLogs.ReplaceAllString(text, "")
 }
 
 // lockedContractCalls is every call out of the module made from inside one of

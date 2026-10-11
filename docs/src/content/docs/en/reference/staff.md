@@ -1030,15 +1030,28 @@ rather than being skipped: a skipped column is a change the sender believes was 
   `national_id_duplicate` and `national_id_birth_date_mismatch` rules — and a blank one
   changes nothing (spec §9). A bank account that changes mails the person, as
   `PUT /people/{id}/bank-account` does, **once that row has committed**, and never in a
-  dry run.
+  dry run. The mail is sent there and then, row by row and synchronously, so an
+  onboarding import of N people with bank accounts sends N mails and takes as much
+  longer as N sends do — a first account mails too, as by hand.
+- An update row that changes **`birthDate` and `nationalId` together** is refused
+  `national_id_birth_date_mismatch`: the person's columns are written first, and a
+  birth date that changes is judged against the number on file, which still encodes the
+  old one. Make the change in two steps, as by hand: a row with the new `nationalId` and
+  `birthDate` blank (a birth date cleared is judged against nothing, and a number set on
+  a person without one is judged against nothing), then a row with the new `birthDate`,
+  which the new number now encodes.
 
 Each row is **its own transaction** through the endpoints' own validation, statements
 and events — `person_created`, `person_updated`, `employment_created`, `terms_added`,
 `national_id_set`, `bank_account_set` — the importer as their actor. An update takes the
-person's lock with the [read-only rule](#the-erased-state), so an erased person's row is
-refused `person_erased`. A row that fails writes nothing and does not stop the file.
-Two rows of one file with the same employee number, however cased, or the same work
-email refuse the second, in a dry run as in a real one.
+person's lock, and an [erased person](#the-erased-state) is read-only: their row is
+refused `person_erased` when it would change a person column or a sealed value, and the
+row an export wrote for them, unchanged, writes nothing and counts as `updated` like any
+unchanged row — so an export taken after a retention run still imports back. A row that
+fails writes nothing and does not stop the file. Two rows of one file with the same
+employee number, however cased, the same work email or the same national identity
+number (compared by its MAC, the refusal naming the earlier row and no digit) refuse
+the second, in a dry run as in a real one.
 
 A **dry run** is the real run rolled back row by row: the same statements, locks and
 events, none kept — no person, no employee number, no event and no mail. It cannot see
@@ -1052,7 +1065,10 @@ row that matched a person, changed or not, and each error is `{row, column, mess
 skipped and counted not at all), `column` the header's own spelling, absent for a
 problem with the row as a whole. **No message carries a digit of a national identity
 number or a bank account**, and neither does a log line or an event. A real run is
-recorded as the installation's `people_imported` event carrying the four counts.
+recorded as the installation's `people_imported` event carrying the four counts — also
+a real run cut short because its caller went away, with the counts so far: the rows it
+ran stay committed, so the event is written on a context the request's end does not
+cancel, bounded by a timeout of its own. A dry run records nothing.
 
 ## The erased state
 

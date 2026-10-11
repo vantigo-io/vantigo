@@ -251,7 +251,10 @@ type Config struct {
 	// Staff export writes (STAFF_IMPORT_MAX_ROWS, staff records plan Task 3),
 	// default 5000 and never fewer — one number for both, so a file the
 	// export wrote always fits the import, and never under the five thousand
-	// the import template promises. At most 100000: every row is its own
+	// the import template promises. At most 20000: the import's body is
+	// capped at 5 MiB, and an export row runs to some 150 to 250 bytes, so
+	// past about twenty thousand people the export would outgrow the file the
+	// import takes and no longer import back. Every row is also its own
 	// transaction, and a run at five thousand already takes most of the
 	// minute and a half a proxy in front of a hosted installation allows.
 	StaffImportMaxRows int
@@ -429,7 +432,7 @@ func Load(env map[string]string) (*Config, error) {
 	customersRegistryWorkers(&p, env, c)
 	customersAnonymisation(&p, env, c)
 	invoicesEhf(&p, env, c)
-	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 100000)
+	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 20000)
 
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)
