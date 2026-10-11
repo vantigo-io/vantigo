@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
@@ -98,15 +99,37 @@ type audience struct {
 }
 
 // audienceOn is the caller's audience on personID. manager is whether the
-// caller manages the person today, which managerOf answers.
-func (c *callerContext) audienceOn(personID int64, manager bool) audience {
+// caller manages the person today, which managesPerson answers; active is
+// whether the person is active today, without which staff:view is no
+// audience on them (plan reading 15: an unannounced hire or a leaver stays
+// out of the colleague directory, and ids are sequential).
+func (c *callerContext) audienceOn(personID int64, manager, active bool) audience {
 	return audience{
 		Self:         c.Person != nil && *c.Person == personID,
 		Manager:      manager,
-		Colleague:    c.View,
+		Colleague:    c.View && active,
 		Manage:       c.Manage,
 		PersonalData: c.PersonalData,
 	}
+}
+
+// personAudience resolves the caller's audience on personID on q: whether
+// they manage the person today, and — for staff:view — whether the person is
+// active today in the business zone.
+func personAudience(ctx context.Context, q *store.Queries, c *callerContext, personID int64) (audience, error) {
+	manager, err := managesPerson(ctx, q, c, personID)
+	if err != nil {
+		return audience{}, err
+	}
+	active := false
+	if c.View {
+		if active, err = q.PersonActiveOn(ctx, store.PersonActiveOnParams{
+			PersonID: personID, Today: pgtype.Date{Time: c.Today, Valid: true},
+		}); err != nil {
+			return audience{}, fmt.Errorf("staff: is person %d active today: %w", personID, err)
+		}
+	}
+	return c.audienceOn(personID, manager, active), nil
 }
 
 // managesPerson reports whether the caller is a manager of personID today:

@@ -26,6 +26,22 @@ func (q *Queries) AdvanceEmployeeNumber(ctx context.Context, nextEmployeeNumber 
 	return err
 }
 
+const bumpPersonRevision = `-- name: BumpPersonRevision :exec
+UPDATE staff.people SET revision = revision + 1, updated_at = $1::timestamptz WHERE id = $2
+`
+
+type BumpPersonRevisionParams struct {
+	Now time.Time
+	ID  int64
+}
+
+// BumpPersonRevision moves a person's revision on for a change to a list of
+// theirs — next of kin, roles — which the person's revision guards.
+func (q *Queries) BumpPersonRevision(ctx context.Context, arg BumpPersonRevisionParams) error {
+	_, err := q.db.Exec(ctx, bumpPersonRevision, arg.Now, arg.ID)
+	return err
+}
+
 const countPeople = `-- name: CountPeople :one
 SELECT count(*)
 FROM staff.people p
@@ -39,14 +55,27 @@ WHERE NOT EXISTS (
         coalesce(p.work_email, '') ILIKE s.pattern
     )
 )
+AND (NOT $2::boolean OR EXISTS (
+    SELECT 1 FROM staff.employments e
+    WHERE e.person_id = p.id AND e.start_date <= $3::date
+      AND (e.end_date IS NULL OR e.end_date >= $3::date)
+))
 `
+
+type CountPeopleParams struct {
+	Patterns   []string
+	ActiveOnly bool
+	Today      pgtype.Date
+}
 
 // CountPeople is ListPeople's total. @patterns holds one ILIKE-escaped
 // "%word%" per word of the search; a person passes when every pattern
 // matches at least one of the searched fields, and everyone passes when there
-// is no search (unnest of an empty array yields no rows).
-func (q *Queries) CountPeople(ctx context.Context, patterns []string) (int64, error) {
-	row := q.db.QueryRow(ctx, countPeople, patterns)
+// is no search (unnest of an empty array yields no rows). @active_only keeps
+// the people active on @today — the colleague's directory (plan reading 15),
+// judged as PersonActiveOn judges one person.
+func (q *Queries) CountPeople(ctx context.Context, arg CountPeopleParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPeople, arg.Patterns, arg.ActiveOnly, arg.Today)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -90,20 +119,34 @@ func (q *Queries) DeletePersonRoles(ctx context.Context, personID int64) error {
 	return err
 }
 
-const employeeNumberTaken = `-- name: EmployeeNumberTaken :one
-SELECT EXISTS (
-    SELECT 1 FROM staff.people WHERE upper(employee_number) = upper($1::text)
-) AS taken
+const firstFreeEmployeeNumber = `-- name: FirstFreeEmployeeNumber :one
+WITH probe AS (
+    SELECT $1::bigint AS first, $2::text AS prefix, (SELECT count(*) FROM staff.people) AS people
+)
+SELECT candidate.n::bigint AS n
+FROM probe, generate_series(probe.first, probe.first + probe.people) AS candidate(n)
+WHERE NOT EXISTS (
+    SELECT 1 FROM staff.people p WHERE upper(p.employee_number) = upper(probe.prefix || candidate.n::text)
+)
+ORDER BY candidate.n
+LIMIT 1
 `
 
-// EmployeeNumberTaken is whether a person has the number however it is
-// cased — the unique index's own question, asked before a generated number
-// is used so the sequence skips past a number HR assigned by hand.
-func (q *Queries) EmployeeNumberTaken(ctx context.Context, employeeNumber string) (bool, error) {
-	row := q.db.QueryRow(ctx, employeeNumberTaken, employeeNumber)
-	var taken bool
-	err := row.Scan(&taken)
-	return taken, err
+type FirstFreeEmployeeNumberParams struct {
+	NextNumber int64
+	Prefix     string
+}
+
+// FirstFreeEmployeeNumber is the first n from @next_number whose number —
+// the prefix and n, unpadded — no person has however it is cased: the unique
+// index's own question, asked in one statement so the sequence skips past
+// every number HR assigned by hand. Among next .. next + the number of
+// people at least one n is free, so the series is bounded by the table.
+func (q *Queries) FirstFreeEmployeeNumber(ctx context.Context, arg FirstFreeEmployeeNumberParams) (int64, error) {
+	row := q.db.QueryRow(ctx, firstFreeEmployeeNumber, arg.NextNumber, arg.Prefix)
+	var n int64
+	err := row.Scan(&n)
+	return n, err
 }
 
 const getPerson = `-- name: GetPerson :one
@@ -350,12 +393,19 @@ WHERE NOT EXISTS (
         coalesce(p.work_email, '') ILIKE s.pattern
     )
 )
+AND (NOT $2::boolean OR EXISTS (
+    SELECT 1 FROM staff.employments e
+    WHERE e.person_id = p.id AND e.start_date <= $3::date
+      AND (e.end_date IS NULL OR e.end_date >= $3::date)
+))
 ORDER BY p.display_name, p.id
-LIMIT $3 OFFSET $2
+LIMIT $5 OFFSET $4
 `
 
 type ListPeopleParams struct {
 	Patterns   []string
+	ActiveOnly bool
+	Today      pgtype.Date
 	PageOffset int32
 	PageSize   int32
 }
@@ -375,7 +425,13 @@ type ListPeopleRow struct {
 // ListPeople is one page of the directory, by display name, the work group's
 // columns only.
 func (q *Queries) ListPeople(ctx context.Context, arg ListPeopleParams) ([]ListPeopleRow, error) {
-	rows, err := q.db.Query(ctx, listPeople, arg.Patterns, arg.PageOffset, arg.PageSize)
+	rows, err := q.db.Query(ctx, listPeople,
+		arg.Patterns,
+		arg.ActiveOnly,
+		arg.Today,
+		arg.PageOffset,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -435,6 +491,30 @@ func (q *Queries) ListPersonRoles(ctx context.Context, personID int64) ([]ListPe
 		return nil, err
 	}
 	return items, nil
+}
+
+const personActiveOn = `-- name: PersonActiveOn :one
+SELECT EXISTS (
+    SELECT 1 FROM staff.employments e
+    WHERE e.person_id = $1 AND e.start_date <= $2::date
+      AND (e.end_date IS NULL OR e.end_date >= $2::date)
+) AS active
+`
+
+type PersonActiveOnParams struct {
+	PersonID int64
+	Today    pgtype.Date
+}
+
+// PersonActiveOn is whether a person has an employment in force on @today
+// — started, and not ended before it (the end day itself is still worked).
+// It decides the colleague audience (plan reading 15): staff:view alone
+// sees only the people active today.
+func (q *Queries) PersonActiveOn(ctx context.Context, arg PersonActiveOnParams) (bool, error) {
+	row := q.db.QueryRow(ctx, personActiveOn, arg.PersonID, arg.Today)
+	var active bool
+	err := row.Scan(&active)
+	return active, err
 }
 
 const personInUse = `-- name: PersonInUse :one

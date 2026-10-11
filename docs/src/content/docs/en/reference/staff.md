@@ -218,22 +218,27 @@ The national identity number, the bank account, the account flags and the self-s
 link are **not** on the request — they are written through their own operations under
 their own permissions. The schema is closed (`additionalProperties: false`), and the
 module enforces it: a property it does not name is a 400 naming that property, and
-nothing is written, so a client that sends `nationalId` learns it was not stored.
+nothing is written, so a client that sends `nationalId` learns it was not stored. The
+module refuses to mount if the contract loses the schema or opens it.
 
 **Next of kin** (`GET|PUT /people/{id}/next-of-kin`) are at most three, each a name
 (1–200), a relationship (`spouse`, `partner`, `parent`, `child`, `sibling`, `other`),
 an optional phone (32) and note (500), listed in the order HR gives them. **Roles**
 (`GET|PUT /people/{id}/roles`) are `verneombud`, `amu_member` or `hms_responsible`,
-each with optional `fromDate` and `toDate` (not before the from date). Both are
-replaced whole by `staff:manage`; an empty list removes them. A field error names the
-element: `nextOfKin[1].name`, `roles[0].toDate`.
+each with optional `fromDate` and `toDate` (not before the from date), at most twenty.
+Both are replaced whole by `staff:manage`; an empty list removes them. Both are guarded
+by **the person's revision**: the `PUT` requires `If-Match` with it, a replace that
+changes the list moves it on, and both the `GET` and the `PUT` answer the list with the
+person's current revision. A field error names the element: `nextOfKin[1].name`,
+`roles[0].toDate`.
 
 **The directory**, `GET /people`, lists people by display name with the work group
 only, paged (`page`, `pageSize` up to 100). `q` matches each of its words, however
 cased, against the names, the employee number and the work email — never a private
-field. It is listed for `staff:view` and `staff:manage`; anyone else is the uniform
-403. In this release `staff:view` lists everyone; with employments it is narrowed to
-the people active today, and `staff:manage` gains a status filter.
+field. `staff:manage` lists everyone; `staff:view` without it lists the people
+**active today** — with an employment that has started and not ended, judged on the
+business zone's day (the end day itself still counts). Anyone else is the uniform 403.
+With employments' own endpoints, `staff:manage` gains a status filter.
 
 ### Field groups and audiences
 
@@ -252,7 +257,9 @@ from the response — never null.
 | Link | `user { id, displayName, active }` | ✓ | — | ✓ | ✓ |
 
 - **Self** is the user a person's self-service link names, whatever state the link is
-  in. **Colleague** is `staff:view`. A caller holding several is every one of them at
+  in. **Colleague** is `staff:view`, and only for a person **active today**: an
+  unannounced hire, a leaver and someone with no employment stay out of the colleague
+  directory, and since ids are sequential they answer the unknown id's 404. A caller holding several is every one of them at
   once and reads what any may. `staff:approve` is no audience yet; the **manager**
   audience — the work group and the non-pay terms of their reports — arrives with
   employments.
@@ -337,7 +344,9 @@ A `PUT` requires `If-Match` carrying the revision the row was read at — bare (
 quoted (`"3"`). A revision that has moved on is `revision_conflict`, whose detail names
 both revisions; an `If-Match` that holds no revision is a 400 on `If-Match`. The
 revision is judged under the row's lock, so two writes at once queue and the second is
-told the first won. Archiving needs no revision: it is idempotent.
+told the first won. Archiving needs no revision: it is idempotent. A person's next of
+kin and roles carry no revision of their own: their replace is guarded by the
+person's, which it moves on when the list changes.
 
 ## Locks
 

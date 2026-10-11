@@ -383,6 +383,14 @@ type StaffNextOfKin struct {
 	Relationship StaffNextOfKinRelationship `json:"relationship"`
 }
 
+// StaffNextOfKinList A person's next of kin in their order, with the person's revision — the one a replace sends back in If-Match.
+type StaffNextOfKinList struct {
+	NextOfKin []StaffNextOfKin `json:"nextOfKin"`
+
+	// Revision The person's revision.
+	Revision int32 `json:"revision"`
+}
+
 // StaffNextOfKinRelationship defines model for StaffNextOfKinRelationship.
 type StaffNextOfKinRelationship string
 
@@ -572,7 +580,14 @@ type StaffPersonRole struct {
 // StaffPersonRoleKind verneombud (the safety representative), amu_member (a member of the working environment committee) or hms_responsible.
 type StaffPersonRoleKind string
 
-// StaffPersonRolesRequest A person's roles, all of them — a full replace. An empty list removes them all.
+// StaffPersonRoleList A person's roles, with the person's revision — the one a replace sends back in If-Match.
+type StaffPersonRoleList struct {
+	// Revision The person's revision.
+	Revision int32             `json:"revision"`
+	Roles    []StaffPersonRole `json:"roles"`
+}
+
+// StaffPersonRolesRequest A person's roles, all of them, at most twenty — a full replace. An empty list removes them all.
 type StaffPersonRolesRequest struct {
 	Roles []StaffPersonRole `json:"roles"`
 }
@@ -685,6 +700,18 @@ type PutStaffPeopleByIdParams struct {
 type GetStaffPeopleByIdEventsParams struct {
 	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
 	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// PutStaffPeopleByIdNextOfKinParams defines parameters for PutStaffPeopleByIdNextOfKin.
+type PutStaffPeopleByIdNextOfKinParams struct {
+	// IfMatch The person's revision as read — bare (3) or quoted ("3"). A replace that changes the list moves the person's revision on; a revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// PutStaffPeopleByIdRolesParams defines parameters for PutStaffPeopleByIdRoles.
+type PutStaffPeopleByIdRolesParams struct {
+	// IfMatch The person's revision as read — bare (3) or quoted ("3"). A replace that changes the list moves the person's revision on; a revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
 }
 
 // PutStaffSettingsParams defines parameters for PutStaffSettings.
@@ -808,13 +835,13 @@ type ServerInterface interface {
 	GetStaffPeopleByIdNextOfKin(w http.ResponseWriter, r *http.Request, id int64)
 	// PutStaffPeopleByIdNextOfKin Replace a person's next of kin
 	// (PUT /api/v1/staff/people/{id}/next-of-kin)
-	PutStaffPeopleByIdNextOfKin(w http.ResponseWriter, r *http.Request, id int64)
+	PutStaffPeopleByIdNextOfKin(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPeopleByIdNextOfKinParams)
 	// GetStaffPeopleByIdRoles List a person's roles
 	// (GET /api/v1/staff/people/{id}/roles)
 	GetStaffPeopleByIdRoles(w http.ResponseWriter, r *http.Request, id int64)
 	// PutStaffPeopleByIdRoles Replace a person's roles
 	// (PUT /api/v1/staff/people/{id}/roles)
-	PutStaffPeopleByIdRoles(w http.ResponseWriter, r *http.Request, id int64)
+	PutStaffPeopleByIdRoles(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPeopleByIdRolesParams)
 	// GetStaffSettings Get the Staff settings
 	// (GET /api/v1/staff/settings)
 	GetStaffSettings(w http.ResponseWriter, r *http.Request)
@@ -1553,8 +1580,36 @@ func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdNextOfKin(w http.ResponseWr
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffPeopleByIdNextOfKinParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PutStaffPeopleByIdNextOfKin(w, r, id)
+		siw.Handler.PutStaffPeopleByIdNextOfKin(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1605,8 +1660,36 @@ func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdRoles(w http.ResponseWriter
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffPeopleByIdRolesParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PutStaffPeopleByIdRoles(w, r, id)
+		siw.Handler.PutStaffPeopleByIdRoles(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3390,7 +3473,7 @@ type GetStaffPeopleByIdNextOfKinResponseObject interface {
 	VisitGetStaffPeopleByIdNextOfKinResponse(w http.ResponseWriter) error
 }
 
-type GetStaffPeopleByIdNextOfKin200JSONResponse []StaffNextOfKin
+type GetStaffPeopleByIdNextOfKin200JSONResponse StaffNextOfKinList
 
 func (response GetStaffPeopleByIdNextOfKin200JSONResponse) VisitGetStaffPeopleByIdNextOfKinResponse(w http.ResponseWriter) error {
 
@@ -3441,15 +3524,16 @@ func (response GetStaffPeopleByIdNextOfKin404Response) VisitGetStaffPeopleByIdNe
 }
 
 type PutStaffPeopleByIdNextOfKinRequestObject struct {
-	Id   int64 `json:"id"`
-	Body *PutStaffPeopleByIdNextOfKinJSONRequestBody
+	Id     int64 `json:"id"`
+	Params PutStaffPeopleByIdNextOfKinParams
+	Body   *PutStaffPeopleByIdNextOfKinJSONRequestBody
 }
 
 type PutStaffPeopleByIdNextOfKinResponseObject interface {
 	VisitPutStaffPeopleByIdNextOfKinResponse(w http.ResponseWriter) error
 }
 
-type PutStaffPeopleByIdNextOfKin200JSONResponse []StaffNextOfKin
+type PutStaffPeopleByIdNextOfKin200JSONResponse StaffNextOfKinList
 
 func (response PutStaffPeopleByIdNextOfKin200JSONResponse) VisitPutStaffPeopleByIdNextOfKinResponse(w http.ResponseWriter) error {
 
@@ -3513,6 +3597,20 @@ func (response PutStaffPeopleByIdNextOfKin404Response) VisitPutStaffPeopleByIdNe
 	return nil
 }
 
+type PutStaffPeopleByIdNextOfKin409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdNextOfKin409ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdNextOfKinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStaffPeopleByIdRolesRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -3521,7 +3619,7 @@ type GetStaffPeopleByIdRolesResponseObject interface {
 	VisitGetStaffPeopleByIdRolesResponse(w http.ResponseWriter) error
 }
 
-type GetStaffPeopleByIdRoles200JSONResponse []StaffPersonRole
+type GetStaffPeopleByIdRoles200JSONResponse StaffPersonRoleList
 
 func (response GetStaffPeopleByIdRoles200JSONResponse) VisitGetStaffPeopleByIdRolesResponse(w http.ResponseWriter) error {
 
@@ -3572,15 +3670,16 @@ func (response GetStaffPeopleByIdRoles404Response) VisitGetStaffPeopleByIdRolesR
 }
 
 type PutStaffPeopleByIdRolesRequestObject struct {
-	Id   int64 `json:"id"`
-	Body *PutStaffPeopleByIdRolesJSONRequestBody
+	Id     int64 `json:"id"`
+	Params PutStaffPeopleByIdRolesParams
+	Body   *PutStaffPeopleByIdRolesJSONRequestBody
 }
 
 type PutStaffPeopleByIdRolesResponseObject interface {
 	VisitPutStaffPeopleByIdRolesResponse(w http.ResponseWriter) error
 }
 
-type PutStaffPeopleByIdRoles200JSONResponse []StaffPersonRole
+type PutStaffPeopleByIdRoles200JSONResponse StaffPersonRoleList
 
 func (response PutStaffPeopleByIdRoles200JSONResponse) VisitPutStaffPeopleByIdRolesResponse(w http.ResponseWriter) error {
 
@@ -3642,6 +3741,20 @@ type PutStaffPeopleByIdRoles404Response struct {
 func (response PutStaffPeopleByIdRoles404Response) VisitPutStaffPeopleByIdRolesResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PutStaffPeopleByIdRoles409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdRoles409ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetStaffSettingsRequestObject struct {
@@ -4583,10 +4696,11 @@ func (sh *strictHandler) GetStaffPeopleByIdNextOfKin(w http.ResponseWriter, r *h
 }
 
 // PutStaffPeopleByIdNextOfKin operation middleware
-func (sh *strictHandler) PutStaffPeopleByIdNextOfKin(w http.ResponseWriter, r *http.Request, id int64) {
+func (sh *strictHandler) PutStaffPeopleByIdNextOfKin(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPeopleByIdNextOfKinParams) {
 	var request PutStaffPeopleByIdNextOfKinRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body PutStaffPeopleByIdNextOfKinJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -4642,10 +4756,11 @@ func (sh *strictHandler) GetStaffPeopleByIdRoles(w http.ResponseWriter, r *http.
 }
 
 // PutStaffPeopleByIdRoles operation middleware
-func (sh *strictHandler) PutStaffPeopleByIdRoles(w http.ResponseWriter, r *http.Request, id int64) {
+func (sh *strictHandler) PutStaffPeopleByIdRoles(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPeopleByIdRolesParams) {
 	var request PutStaffPeopleByIdRolesRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body PutStaffPeopleByIdRolesJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

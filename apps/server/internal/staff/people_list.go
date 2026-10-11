@@ -5,16 +5,18 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
 
-// This file is GET /people, the directory: listed for staff:view and
-// staff:manage, the work group only, searched by name, employee number and
-// work email. Task 4 adds the structure filters, staff:manage's status filter
-// and column, the manager and department summaries — and narrows staff:view to
-// the people active today (plan reading 15), which needs employments.
+// This file is GET /people, the directory: listed for staff:manage (everyone)
+// and staff:view (the people active today, plan reading 15), the work group
+// only, searched by name, employee number and work email. Task 4 adds the
+// structure filters, staff:manage's status filter and column, and the
+// manager and department summaries.
 
 // likeReplacer escapes ILIKE's special characters, backslash first so the
 // escaping of % and _ never doubles a backslash it just wrote (customers'
@@ -53,6 +55,10 @@ func (s *server) GetStaffPeople(ctx context.Context, req gen.GetStaffPeopleReque
 	}
 	page, pageSize := pageParams(req.Params.Page, req.Params.PageSize)
 	patterns := searchPatterns(req.Params.Q)
+	// staff:view without staff:manage lists the people active today only
+	// (plan reading 15); HR lists everyone.
+	activeOnly := !caller.Manage
+	today := pgtype.Date{Time: caller.Today, Valid: true}
 
 	var (
 		rows  []store.ListPeopleRow
@@ -60,11 +66,11 @@ func (s *server) GetStaffPeople(ctx context.Context, req gen.GetStaffPeopleReque
 	)
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
-		if total, err = q.CountPeople(ctx, patterns); err != nil {
+		if total, err = q.CountPeople(ctx, store.CountPeopleParams{Patterns: patterns, ActiveOnly: activeOnly, Today: today}); err != nil {
 			return fmt.Errorf("staff: count people: %w", err)
 		}
 		rows, err = q.ListPeople(ctx, store.ListPeopleParams{
-			Patterns: patterns, PageSize: pageSize, PageOffset: (page - 1) * pageSize,
+			Patterns: patterns, ActiveOnly: activeOnly, Today: today, PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 		})
 		if err != nil {
 			return fmt.Errorf("staff: list people: %w", err)
@@ -74,6 +80,8 @@ func (s *server) GetStaffPeople(ctx context.Context, req gen.GetStaffPeopleReque
 	if err != nil {
 		return nil, err
 	}
+	// Every listed person is one the caller reads the work group of: HR's
+	// everyone, the colleague's the people the filter kept as active today.
 	a := audience{Colleague: caller.View, Manage: caller.Manage}
 	return gen.GetStaffPeople200JSONResponse(gen.PaginatedResponseOfStaffPersonListItem{
 		Data:       mapRows(rows, func(r store.ListPeopleRow) gen.StaffPersonListItem { return personListItemResponse(r, a) }),

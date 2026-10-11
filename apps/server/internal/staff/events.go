@@ -165,11 +165,11 @@ func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffP
 		} else if err != nil {
 			return fmt.Errorf("staff: read person %d: %w", req.Id, err)
 		}
-		manager, err := managesPerson(ctx, q, caller, req.Id)
-		if err != nil {
+		var err error
+		if a, err = personAudience(ctx, q, caller, req.Id); err != nil {
 			return err
 		}
-		if a = caller.audienceOn(req.Id, manager); !a.seesEvents() {
+		if !a.seesEvents() {
 			return notFound()
 		}
 		if total, err = q.CountPersonEvents(ctx, &req.Id); err != nil {

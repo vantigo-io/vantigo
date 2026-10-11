@@ -52,8 +52,9 @@ func seedShapedPerson(t *testing.T, h *harness, hr *modtest.Client) shapedPerson
 	h.Exec(t, `UPDATE staff.people SET national_id_kind = 'fodselsnummer', national_id_mac = '\x01'::bytea,
 		national_id_sealed = '\x02'::bytea, bank_account_kind = 'bban', bank_account_last4 = '1234',
 		bank_account_sealed = '\x03'::bytea WHERE id = $1`, p.Id)
-	do(t, hr, http.MethodPut, nextOfKinPath(p.Id), map[string]any{"nextOfKin": []any{kin("Ola", "spouse")}}, http.StatusOK, nil)
-	do(t, hr, http.MethodPut, rolesPath(p.Id), map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}}, http.StatusOK, nil)
+	putNextOfKin(t, h, hr, p.Id, map[string]any{"nextOfKin": []any{kin("Ola", "spouse")}})
+	putRoles(t, h, hr, p.Id, map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}})
+	seedEmployment(t, h, p.Id, 0) // active today, so the colleague audience holds
 	self, user := signInNamed(t, h, "Kari the user")
 	link(t, h, p.Id, user)
 	return shapedPerson{id: p.Id, self: self, user: user}

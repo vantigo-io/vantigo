@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -44,6 +45,25 @@ func personWriteError(err error, title string) error {
 		})
 	}
 	return err
+}
+
+// bumpPersonRevision moves a person's revision on for a change to one of the
+// lists their revision guards — next of kin, roles — and answers the new one.
+func bumpPersonRevision(ctx context.Context, txq *store.Queries, id int64, now time.Time) (int32, error) {
+	if err := txq.BumpPersonRevision(ctx, store.BumpPersonRevisionParams{ID: id, Now: now}); err != nil {
+		return 0, fmt.Errorf("staff: move person %d's revision on: %w", id, err)
+	}
+	row, err := readPerson(ctx, txq, id)
+	if err != nil {
+		return 0, err
+	}
+	return row.Revision, nil
+}
+
+// refusedWithCode reports whether err is a refusal carrying code.
+func refusedWithCode(err error, code string) bool {
+	r, ok := asRefusal(err)
+	return ok && r.problem.Code != nil && *r.problem.Code == code
 }
 
 // readPerson is one person on q, or the 404 refusal.
@@ -97,11 +117,10 @@ func (s *server) linkedUser(ctx context.Context, externalID *string) (*gen.Staff
 // transaction: the audience resolved on the pool and the linked user read
 // from the directory when the audience reads the link.
 func (s *server) respondPerson(ctx context.Context, caller *callerContext, row store.GetPersonRow, link *string) (gen.StaffPerson, error) {
-	manager, err := managesPerson(ctx, store.New(s.deps.Pool), caller, row.ID)
+	a, err := personAudience(ctx, store.New(s.deps.Pool), caller, row.ID)
 	if err != nil {
 		return gen.StaffPerson{}, err
 	}
-	a := caller.audienceOn(row.ID, manager)
 	var user *gen.StaffPersonUser
 	if a.show("user") {
 		if user, err = s.linkedUser(ctx, link); err != nil {
@@ -114,38 +133,44 @@ func (s *server) respondPerson(ctx context.Context, caller *callerContext, row s
 // generateEmployeeNumber is the next number of the settings' sequence — the
 // prefix and the next number, unpadded (plan reading 3) — skipping past every
 // number a person already has however it is cased, so a number HR typed by
-// hand never collides. It holds the settings row for the rest of the
-// transaction, so two creators take numbers one after the other. A number the
-// skip carries past sixteen characters is refused employee_number_too_long:
-// the settings' own check holds only for the number they name.
+// hand never collides; the first free one is found in one statement. It holds
+// the settings row for the rest of the transaction, so two creators take
+// numbers one after the other. A number the skip carries past sixteen
+// characters is refused employee_number_too_long: the settings' own check
+// holds only for the number they name.
 func generateEmployeeNumber(ctx context.Context, txq *store.Queries) (string, error) {
 	row, err := txq.LockSettings(ctx)
 	if err != nil {
 		return "", fmt.Errorf("staff: lock the settings: %w", err)
 	}
-	for n := row.NextEmployeeNumber; ; n++ {
-		number := row.EmployeeNumberPrefix + strconv.FormatInt(n, 10)
-		if len(number) > employeeNumberMax {
-			return "", refuseInvalid(invalidPersonTitle, fieldErrors{
-				errs: fieldError("employeeNumber", fmt.Sprintf(
-					"The next free employee number would be '%s', longer than %d characters; give one, or change the prefix or the next number in the settings",
-					number, employeeNumberMax)),
-				code: codeEmployeeNumberTooLong,
-			})
-		}
-		taken, err := txq.EmployeeNumberTaken(ctx, number)
-		if err != nil {
-			return "", fmt.Errorf("staff: check employee number %s: %w", number, err)
-		}
-		if taken {
-			continue
-		}
-		if err := txq.AdvanceEmployeeNumber(ctx, n+1); err != nil {
-			return "", fmt.Errorf("staff: advance the employee number sequence: %w", err)
-		}
-		return number, nil
+	n, err := txq.FirstFreeEmployeeNumber(ctx, store.FirstFreeEmployeeNumberParams{
+		NextNumber: row.NextEmployeeNumber, Prefix: row.EmployeeNumberPrefix,
+	})
+	if err != nil {
+		return "", fmt.Errorf("staff: find the next free employee number: %w", err)
 	}
+	number := row.EmployeeNumberPrefix + strconv.FormatInt(n, 10)
+	if len(number) > employeeNumberMax {
+		return "", refuseInvalid(invalidPersonTitle, fieldErrors{
+			errs: fieldError("employeeNumber", fmt.Sprintf(
+				"The next free employee number would be '%s', longer than %d characters; give one, or change the prefix or the next number in the settings",
+				number, employeeNumberMax)),
+			code: codeEmployeeNumberTooLong,
+		})
+	}
+	if err := txq.AdvanceEmployeeNumber(ctx, n+1); err != nil {
+		return "", fmt.Errorf("staff: advance the employee number sequence: %w", err)
+	}
+	return number, nil
 }
+
+// generationAttempts is how many times a create with a generated number is
+// tried. The sequence's check cannot see a typed create that has not
+// committed yet; when that create takes the same number, the generation's
+// insert trips the unique index, and one more try — which now sees it — takes
+// the next free number. A typed number that is taken is the caller's to
+// change, and is never retried.
+const generationAttempts = 2
 
 // PostStaffPeople Add a person
 // (POST /api/v1/staff/people)
@@ -171,36 +196,42 @@ func (s *server) PostStaffPeople(ctx context.Context, req gen.PostStaffPeopleReq
 	}
 
 	var created store.GetPersonRow
-	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		number := ""
-		if parsed.EmployeeNumber != nil {
-			number = *parsed.EmployeeNumber
-		} else {
-			generated, err := generateEmployeeNumber(ctx, txq)
+	for attempt := 1; ; attempt++ {
+		err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+			number := ""
+			if parsed.EmployeeNumber != nil {
+				number = *parsed.EmployeeNumber
+			} else {
+				generated, err := generateEmployeeNumber(ctx, txq)
+				if err != nil {
+					return err
+				}
+				number = generated
+			}
+			row := parsed.applyTo(store.GetPersonRow{EmployeeNumber: number})
+			id, err := txq.InsertPerson(ctx, store.InsertPersonParams{
+				EmployeeNumber: row.EmployeeNumber, GivenName: row.GivenName, FamilyName: row.FamilyName,
+				DisplayName: row.DisplayName, BirthDate: row.BirthDate, Gender: row.Gender,
+				WorkEmail: row.WorkEmail, PhoneWork: row.PhoneWork, PhoneMobile: row.PhoneMobile,
+				PhonePrivate: row.PhonePrivate, PrivateEmail: row.PrivateEmail, Street: row.Street,
+				PostalCode: row.PostalCode, City: row.City, Country: row.Country, WorkCountry: row.WorkCountry,
+				PreferredLanguage: row.PreferredLanguage, Notes: row.Notes, Now: s.deps.Clock(),
+			})
+			if err != nil {
+				return personWriteError(err, invalidPersonTitle)
+			}
+			read, err := readPerson(ctx, txq, id)
 			if err != nil {
 				return err
 			}
-			number = generated
-		}
-		row := parsed.applyTo(store.GetPersonRow{EmployeeNumber: number})
-		id, err := txq.InsertPerson(ctx, store.InsertPersonParams{
-			EmployeeNumber: row.EmployeeNumber, GivenName: row.GivenName, FamilyName: row.FamilyName,
-			DisplayName: row.DisplayName, BirthDate: row.BirthDate, Gender: row.Gender,
-			WorkEmail: row.WorkEmail, PhoneWork: row.PhoneWork, PhoneMobile: row.PhoneMobile,
-			PhonePrivate: row.PhonePrivate, PrivateEmail: row.PrivateEmail, Street: row.Street,
-			PostalCode: row.PostalCode, City: row.City, Country: row.Country, WorkCountry: row.WorkCountry,
-			PreferredLanguage: row.PreferredLanguage, Notes: row.Notes, Now: s.deps.Clock(),
+			created = read
+			return s.recordChanges(ctx, txq, id, eventPersonCreated, who, diffPerson(nil, created))
 		})
-		if err != nil {
-			return personWriteError(err, invalidPersonTitle)
+		if parsed.EmployeeNumber == nil && attempt < generationAttempts && refusedWithCode(err, codeEmployeeNumberTaken) {
+			continue
 		}
-		read, err := readPerson(ctx, txq, id)
-		if err != nil {
-			return err
-		}
-		created = read
-		return s.recordChanges(ctx, txq, id, eventPersonCreated, who, diffPerson(nil, created))
-	})
+		break
+	}
 	if r, ok := asRefusal(err); ok {
 		return gen.PostStaffPeople400ApplicationProblemPlusJSONResponse(r.problem), nil
 	}
@@ -233,11 +264,11 @@ func (s *server) GetStaffPeopleById(ctx context.Context, req gen.GetStaffPeopleB
 		if err != nil {
 			return err
 		}
-		manager, err := managesPerson(ctx, q, caller, req.Id)
+		a, err := personAudience(ctx, q, caller, req.Id)
 		if err != nil {
 			return err
 		}
-		if !caller.audienceOn(req.Id, manager).seesPerson() {
+		if !a.seesPerson() {
 			return notFound()
 		}
 		row = read
