@@ -1166,3 +1166,68 @@ func TestPrintBatch_RatesSharedBeforeTheJudgement(t *testing.T) {
 		t.Errorf("Postgres broke %d deadlock(s)", after-before)
 	}
 }
+
+// A store that is down holds no request for long (Task 13's confirm
+// review): each store call may wait up to its timeout, so the batch, the
+// posting and the batch's PDF each try the store once — the first letter's
+// PDF — and stop there, answering as they would otherwise; the letters left
+// are stored by the next posting or download once the store is back.
+func TestPrintBatch_AStoreOutageStopsAtTheFirstFailure(t *testing.T) {
+	h := paperHarness(t, "")
+	var letters []int64
+	for n := range 3 {
+		_, l := paperDue(t, h, int64(n+1))
+		letters = append(letters, l)
+	}
+	c := payer(t, h)
+	h.objects.failPuts(errors.New("the store is down"))
+	attempts := func() int { return len(contractCalls.byMethod("ObjectStore.Put")) }
+	before := attempts()
+	r := printFor(t, h, "2026-09-12", letters...)
+	if n := attempts() - before; n != 1 || len(r.Batch.Letters) != 3 {
+		t.Errorf("the batch tried the store %d times and printed %d letters, want once and all three", n, len(r.Batch.Letters))
+	}
+	before = attempts()
+	posted(t, "the posting", c.Do(http.MethodPost, batchPath(r.Batch.ID, "posted"), postedOn("2026-09-12")))
+	if n := attempts() - before; n != 1 {
+		t.Errorf("the posting tried the store %d times, want once", n)
+	}
+	before = attempts()
+	if res := c.Do(http.MethodGet, r.PdfURL, nil); res.Status != http.StatusOK {
+		t.Errorf("the batch's PDF = %d, want 200", res.Status)
+	}
+	if n := attempts() - before; n != 1 {
+		t.Errorf("the download tried the store %d times, want once", n)
+	}
+	h.objects.failPuts(nil)
+	if res := c.Do(http.MethodGet, r.PdfURL, nil); res.Status != http.StatusOK {
+		t.Fatalf("the batch's PDF = %d, want 200", res.Status)
+	}
+	for _, l := range letters {
+		if row := letterOf(t, h, l); row.Status != "sent" || row.PdfObjectKey == nil {
+			t.Errorf("letter %d = %s key %v, want sent with its PDF stored once the store is back", l, row.Status, row.PdfObjectKey)
+		}
+	}
+}
+
+// What a letter prints as credited is what the credit notes had taken off
+// the invoice when it was printed (Task 13's confirm review, D1): a credit
+// note of 200 issued before printing is the letter's credited, its principal
+// open 800 and nothing paid.
+func TestPrintBatch_CreditedIsThePrintsOwn(t *testing.T) {
+	h := paperHarness(t, "")
+	id, letter := paperDue(t, h, 1)
+	plantCreditNote(t, h, id, 200)
+	r := printFor(t, h, "2026-09-12", letter)
+	row := letterOf(t, h, letter)
+	if amountText(row.Credited) != "200.00" || amountText(row.PrincipalOpen) != "800.00" {
+		t.Errorf("the letter's credited %s, principal open %s; want 200.00 and 800.00", amountText(row.Credited), amountText(row.PrincipalOpen))
+	}
+	var text []string
+	restore := invoices.SetReminderPDFModelText(func(_ int64, lines []string) { text = lines })
+	res := payer(t, h).Do(http.MethodGet, r.PdfURL, nil)
+	restore()
+	if res.Status != http.StatusOK || !slices.Contains(text, "Kreditert: 200,00") || !slices.Contains(text, "Betalt: 0,00") {
+		t.Errorf("the letter says %q, want Kreditert: 200,00 and Betalt: 0,00", text)
+	}
+}
