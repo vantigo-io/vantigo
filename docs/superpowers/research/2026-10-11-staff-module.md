@@ -1110,3 +1110,66 @@ these, not from §9.
     setting `delete_external_after_days` defaults to never and respects the legal
     hold flag; identity never deletes a user Staff created (retention class C);
     rehire re-enables. Mailbox conversion and OneDrive transfer are a roadmap line.
+14. **Groups are a Staff concept that providers translate.** The first Entra version
+    adds the new user to groups. Staff owns `groups` (name, description, kind,
+    members either listed or derived from a rule such as "everyone in department
+    X"); a provider module declares the **traits** a group can carry for it (key,
+    type, label, description, link to the vendor's documentation), Staff stores the
+    trait values per group per provider and renders them dynamically in its UI, and
+    the provider creates and maintains the external group — for Entra a security
+    group or a Microsoft 365 group, optionally with a Team — and its membership.
+    Membership is explicit (Staff decides), never Entra dynamic membership.
+15. **Client secrets first, in the plural**: several secrets with their expiry
+    dates, the newest valid one used, warnings ahead of expiry, rotation by adding
+    then removing. Certificate and federated credential follow later.
+16. **The owner provides an Entra test tenant**; what it needs is listed in §11.
+17. **OIDC and SCIM configuration moves from environment variables to the
+    database in one go** (nothing is in production). The boundary-respecting split:
+    identity owns an SSO-and-SCIM settings table and the endpoints that edit it,
+    read at request time through a short cache the way maintenance mode is; the
+    Entra module owns the Graph connection; the host renders both on one Entra
+    tile, so the operator sees one place and the backend keeps its boundaries.
+    Google SSO settings live in the same identity table.
+18. **The leave date is written to Entra** in the first version, with the extra
+    permission.
+19. **Field mapping is explicit and visible.** Every Staff field that a provider
+    writes, and the attribute it lands in for Entra and (later) Google, is a fixed
+    table shown in the Staff UI on the person's directory-profile section, with a
+    per-installation toggle per field (private contact details off by default).
+    The fields providers expect — company or legal entity, department, job title,
+    employee type, office location, work address, business and mobile phone, cost
+    centre, division, manager, preferred language, country — are all editable in
+    Staff by HR, so the directory never needs a second place to type.
+
+## 11. What the Entra test tenant needs
+
+For the tagged integration test (the Storecove sandbox pattern: everything runs
+against an `httptest` fake, and one tagged test runs against the real thing when
+its environment variables are set). A **dedicated** tenant, never the company's
+own: the test creates, updates, disables and deletes users and groups.
+
+- A tenant (a Microsoft 365 trial or a pay-as-you-go tenant is enough; the
+  Microsoft 365 Developer Program sandbox now requires a Visual Studio Enterprise
+  subscription — **UNCERTAIN**, verify before relying on it). Entra ID Free covers
+  user and group creation through Graph; P1 is only needed if the tenant's own
+  provisioning or dynamic groups are tested; Teams creation needs a licence for
+  members to use the Team but not to create the group.
+- An **app registration** with application (not delegated) permissions, admin
+  consented: `User.ReadWrite.All`, `User-LifeCycleInfo.ReadWrite.All`,
+  `User.RevokeSessions.All`, `LicenseAssignment.ReadWrite.All`,
+  `Group.ReadWrite.All` (create groups and manage members), `GroupMember.ReadWrite.All`,
+  `Team.Create` and `TeamSettings.ReadWrite.All` if Teams are created,
+  `Domain.Read.All` to list verified domains in the wizard, `Organization.Read.All`
+  for the connection test. Whether `User.EnableDisableAccount.All` is additionally
+  required for `accountEnabled` is to be verified in the spec.
+- Two **client secrets** on that registration (to exercise rotation), with their
+  expiry dates.
+- The tenant id, the client id, and the **verified domain** test UPNs are created
+  under (the `onmicrosoft.com` default domain is fine).
+- For the SSO and SCIM side later: an enterprise application configured for OIDC
+  sign-in with a redirect to a reachable Vantigo (a tunnel for local runs), and
+  its provisioning configured against Vantigo's SCIM endpoint with a bearer token.
+- Environment variables for the tagged test, named like the Storecove ones:
+  `ENTRA_TEST_TENANT_ID`, `ENTRA_TEST_CLIENT_ID`, `ENTRA_TEST_CLIENT_SECRET`,
+  `ENTRA_TEST_DOMAIN`. The spec's plan will add a contributing page that repeats
+  this list with the portal paths.
