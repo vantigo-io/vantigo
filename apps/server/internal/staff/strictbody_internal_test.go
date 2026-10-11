@@ -13,10 +13,10 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
 )
 
-// keepRawBody keeps a copy of a JSON body only — application/json, with or
-// without parameters — and passes every other body to the handler untouched
-// and unread, so a multipart upload is never held in memory by it.
-func TestKeepRawBody_KeepsJSONOnly(t *testing.T) {
+// keepRawBody keeps a copy of every body but a multipart or an octet-stream
+// one, which it passes to the handler untouched and unread, so an upload is
+// never held in memory by it.
+func TestKeepRawBody_KeepsAllButUploads(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
 		name, contentType, body string
@@ -25,8 +25,11 @@ func TestKeepRawBody_KeepsJSONOnly(t *testing.T) {
 		{"json", "application/json", `{"givenName":"Kari"}`, true},
 		{"json with a charset", "application/json; charset=utf-8", `{"givenName":"Kari"}`, true},
 		{"multipart", "multipart/form-data; boundary=x", "--x\r\n\r\nfile\r\n--x--", false},
-		{"plain text", "text/plain", "hello", false},
-		{"no content type", "", "hello", false},
+		{"octet-stream", "application/octet-stream", "\x00\x01", false},
+		// The generated decoder parses JSON whatever the Content-Type, so
+		// every other body is captured — fetch sends a string as text/plain.
+		{"plain text", "text/plain;charset=UTF-8", `{"givenName":"Kari"}`, true},
+		{"no content type", "", `{"givenName":"Kari"}`, true},
 	} {
 		var sawKept bool
 		var sawBody string
