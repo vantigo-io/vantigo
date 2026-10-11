@@ -164,14 +164,17 @@ using this role may change." — because everyone who held it loses what it gran
 Permissions are additive: a person holds the union of their roles' permissions. What
 each permission unlocks in an app is listed in that app's reference page, for example
 [Customers](/en/reference/customers/), [Projects](/en/reference/projects/),
-[Time](/en/reference/time/), [Expenses](/en/reference/expenses/) and
-[Invoices](/en/reference/invoices/). The descriptions in the catalog say what a title
-does not: in Invoices, **Issue invoices** also sends a document by e-mail or as EHF
+[Time](/en/reference/time/), [Expenses](/en/reference/expenses/),
+[Invoices](/en/reference/invoices/) and [Staff](/en/reference/staff/). The descriptions
+in the catalog say what a title does not: in Invoices, **Issue invoices** also sends a document by e-mail or as EHF
 and cancels or resolves its EHF transmissions, and records that an invoice was handed
 over; **Manage invoicing** also holds the Peppol id, the KID agreement, the e-invoicing
 access point, the reminder settings and the collection rates; and **Register payments**
 covers all of credit control — bank imports and the exception queue, reminder runs and
-letters, holds, hand-offs to collection and a customer's reminder policy. **Manage identity**
+letters, holds, hand-offs to collection and a customer's reminder policy. In Staff,
+**Reveal and erase personal data** is the only permission that shows a national identity
+number or a bank account — **Manage staff** does not — and **Decide absence** can be
+granted already but allows nothing until absence arrives in Staff. **Manage identity**
 (`identity:manage`) is the one permission of the identity module itself.
 
 ### Assignments

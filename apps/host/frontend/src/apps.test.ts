@@ -1,3 +1,5 @@
+import { IconUsersGroup } from "@tabler/icons-react";
+import { staffNavItems } from "@vantigo/staff-ui";
 import { describe, expect, it } from "vitest";
 import {
   activeAppKey,
@@ -20,6 +22,7 @@ const allModules = [
   "invoices",
   "products",
   "projects",
+  "staff",
   "time",
 ] as const;
 
@@ -33,6 +36,7 @@ describe("the app registry", () => {
       "projects",
       "time",
       "expenses",
+      "staff",
       "invoices",
       "communications",
       "products",
@@ -69,6 +73,9 @@ describe("the app registry", () => {
       "/expenses/approvals",
       "/expenses/reimbursements",
       "/expenses/settings",
+      "/staff/me",
+      "/staff/people",
+      "/staff/settings",
       "/invoices",
       "/invoices/journal",
       "/invoices/overdue",
@@ -273,6 +280,51 @@ describe("the app registry", () => {
     ]);
   });
 
+  // Staff's destinations are the package's own (`staffNavItems`): where each
+  // is, which permission offers it and which the guard asks for are the
+  // module's to say, so the host adds only the label and the icon. People is
+  // offered to the directory (`staff:view`) and to HR without it
+  // (`staff:manage`), and guarded by the app alone — the server judges the
+  // rest. Its label is not Time's bare "People": Spotlight flattens every
+  // app's destinations into one list, as Expense approvals' comment says.
+  it("gives Staff My page, the staff directory and the settings, from the package's destinations", () => {
+    const staff = appForKey("staff");
+    expect(staff).toMatchObject({ module: "staff", label: "navigation.staff", home: "/staff" });
+    expect(staff.icon).toBe(IconUsersGroup);
+    expect(staff.requiredPermissions).toEqual(["staff:access", "staff:view", "staff:manage"]);
+    const items = staff.navSections.flatMap((section) => section.items);
+    expect(items.map((item) => [item.label, item.to, item.requiredPermissions, item.guardPermissions])).toEqual([
+      ["navigation.staffMyPage", "/staff/me", ["staff:access"], undefined],
+      ["navigation.staffPeople", "/staff/people", ["staff:view", "staff:manage"], ["staff:access"]],
+      ["navigation.staffSettings", "/staff/settings", ["staff:manage"], undefined],
+    ]);
+    expect(items.map((item) => item.to)).toEqual(staffNavItems.map((item) => item.to));
+  });
+
+  it("shows the Staff tile for staff:access, hides it without, and mutes it when the module is off", () => {
+    const keys = (permissions: string[], enabled: readonly (typeof allModules)[number][]) =>
+      switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
+    expect(keys(["staff:access"], allModules)).toContainEqual(["staff", true]);
+    expect(keys(["customers:view", "expenses:access"], allModules).map(([key]) => key)).not.toContain("staff");
+    expect(keys(["staff:access"], ["customers"])).toContainEqual(["staff", false]);
+  });
+
+  it("shows a staff:access holder My page alone, and the directory and settings with their permissions", () => {
+    const paths = (permissions: string[]) =>
+      appNavSections(appForKey("staff"), allModules, {
+        permissions,
+        isOwner: false,
+        canManageAuthorization: false,
+        enabledModules: allModules,
+      }).flatMap((section) => section.items.map((item) => item.to));
+    expect(paths(["staff:access"])).toEqual(["/staff/me"]);
+    expect(paths(["staff:access", "staff:approve"])).toEqual(["/staff/me"]);
+    expect(paths(["staff:access", "staff:personal-data"])).toEqual(["/staff/me"]);
+    expect(paths(["staff:access", "staff:view"])).toEqual(["/staff/me", "/staff/people"]);
+    expect(paths(["staff:access", "staff:manage"])).toEqual(["/staff/me", "/staff/people", "/staff/settings"]);
+    expect(paths(["*"])).toEqual(["/staff/me", "/staff/people", "/staff/settings"]);
+  });
+
   it("treats Home as always enabled and module apps as enabled when their module is", () => {
     expect(isAppEnabled(appForKey("home"), [])).toBe(true);
     expect(isAppEnabled(appForKey("energy"), ["customers"])).toBe(false);
@@ -292,6 +344,7 @@ describe("the administration areas", () => {
       "projects",
       "time",
       "expenses",
+      "staff",
       "invoices",
       "communications",
       "products",
@@ -383,6 +436,7 @@ describe("switcherTiles", () => {
       ["projects", false],
       ["time", false],
       ["expenses", false],
+      ["staff", false],
       ["invoices", false],
       ["communications", false],
       ["products", false],

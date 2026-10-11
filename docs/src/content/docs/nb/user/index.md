@@ -15,9 +15,10 @@ rollene dine gir deg. En modul du ikke har rettighet til vises rett og slett ikk
 ## Apper og app-velgeren
 
 Hver modul er en **app** med sin egen sidemeny: Kunder, Prosjekter, Timer, Utlegg,
-Fakturaer, Kommunikasjon, Produkter og Energi. App-velgeren i toppfeltet lister appene
+Ansatte, Fakturaer, Kommunikasjon, Produkter og Energi. App-velgeren i toppfeltet lister appene
 du kan åpne; **Hjem** er dashbordet, der hver app du bruker viser sitt eget kort med
-tallene som trenger oppmerksomheten din. Listen **Trenger oppfølging** samler det i appene
+tallene som trenger oppmerksomheten din — Ansatte, som ikke har noen tall ennå, bare
+under **Moduler** nederst. Listen **Trenger oppfølging** samler det i appene
 som venter på noen — også fra Fakturaer: forfalte fakturaer, penger som skal tilbake på en
 faktura, og, med `invoices:payments`, banklinjer i avvikskøen, purringer som feilet eller
 venter på en sats eller en gjennomgang, og utskriftsbunker som ikke er bekreftet postlagt,
@@ -33,7 +34,7 @@ din:
 | [Prosjekter](/nb/user/projects/) | Prosjekter, Mine oppgaver, Prosjektøkonomi |
 | [Timer](/nb/user/time/) | Min uke, Godkjenning, Personer, Timeinnstillinger |
 | [Utlegg](/nb/user/expenses/) | Mine utlegg, Godkjenning av utlegg, Refusjoner, Utleggsinnstillinger |
-| [Ansatte](/nb/user/staff/) | Min side, Personer, Ansatteinnstillinger |
+| [Ansatte](/nb/user/staff/) | Min side, Ansattoversikt, Ansatteinnstillinger |
 | [Fakturaer](/nb/user/invoices/) | Fakturaer, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |

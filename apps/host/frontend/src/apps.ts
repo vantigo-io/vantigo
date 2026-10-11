@@ -12,6 +12,7 @@ import {
   IconClockExclamation,
   IconFileInvoice,
   IconFlag,
+  IconId,
   IconInbox,
   IconLayoutDashboard,
   IconListCheck,
@@ -26,7 +27,9 @@ import {
   IconUser,
   IconUserPlus,
   IconUsers,
+  IconUsersGroup,
 } from "@tabler/icons-react";
+import { type StaffNavItem, staffNavItems } from "@vantigo/staff-ui";
 import { accountMenuSections } from "./account-menu";
 import {
   hasPermissions,
@@ -100,6 +103,20 @@ const moduleApp = (
     navSections: [{ items: tagged }],
     requiredPermissions: permissionsUnlocking(tagged),
   };
+};
+
+/**
+ * The host's half of a Staff sidebar entry. Where each destination is and
+ * which permissions offer and guard it are the package's (`staffNavItems`),
+ * so its pages' links and this sidebar cannot drift apart; the label and the
+ * icon are the host's, as every app's are. People is "Staff directory" here
+ * rather than Time's bare "People" for the reason Expense approvals' comment
+ * gives: Spotlight flattens every app's destinations into one list.
+ */
+const staffNavPresentation: Record<StaffNavItem["key"], Pick<NavItem, "label" | "icon">> = {
+  myPage: { label: "navigation.staffMyPage", icon: IconId },
+  people: { label: "navigation.staffPeople", icon: IconUsersGroup },
+  settings: { label: "navigation.staffSettings", icon: IconAdjustments },
 };
 
 /** Every app, in switcher order. Home has no module and no sidebar. */
@@ -235,6 +252,18 @@ export const apps: readonly AppDefinition[] = [
       requiredPermissions: ["expenses:manage"],
     },
   ]),
+  moduleApp(
+    "staff",
+    "navigation.staff",
+    IconUsersGroup,
+    "/staff",
+    staffNavItems.map(({ key, to, requiredPermissions, guardPermissions }) => ({
+      ...staffNavPresentation[key],
+      to,
+      requiredPermissions,
+      guardPermissions,
+    })),
+  ),
   moduleApp("invoices", "navigation.invoices", IconFileInvoice, "/invoices", [
     {
       // Invoicing is a finance job, not per-customer (invoices foundation

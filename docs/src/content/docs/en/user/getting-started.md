@@ -181,7 +181,8 @@ After signing in you land on the dashboard — **Home** in the app switcher at t
 of the page. It greets you by name and shows a card for each app you have access to,
 with its key numbers for the chosen date range (**7d**, **30d**, **90d**, **12m** or
 **Custom**), a **Needs attention** list of things waiting for you, and **Quick
-actions** for the things you do most. A new workspace also shows **Finish your
+actions** for the things you do most. Staff has no numbers yet, so it is listed only
+under **Modules** at the bottom of the page. A new workspace also shows **Finish your
 setup**, a short list of first steps (the first customer, a mailbox, a product, a
 project…) that disappears once they are all done.
 

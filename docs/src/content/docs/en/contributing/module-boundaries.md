@@ -467,6 +467,23 @@ and `invoices:access`, and renders `CustomerInvoicesPanel` from `@vantigo/invoic
 which reads only the invoices API (`GET /invoices?customerId=`); the customers package
 and the invoices package never import each other (rule 7). See [Invoices](/en/reference/invoices/).
 
+**Staff depends on nobody but identity**, as Expenses does: `MODULES=staff` alone is a
+valid installation, and no other module's state changes what Staff answers. It reads
+two things from outside its schema, both identity's: `Deps.Users`
+(`contracts.UserDirectory`, always set: `User`, `Users`, `SearchUsers`) for the name of
+whoever writes a history event, the user a self-service link names and the picker HR
+links a person with, and
+the platform's mail seam (`Deps.SMTPSend`) for the one mail it sends — the notice of a
+changed bank account. It reads no business module, provides no contract and fills no
+slot, so switching it off strands nothing in another module. It keeps rule 10's
+restatement strictly: both are reached **before a transaction opens or after it
+commits, never inside one** — neither under a person's lock nor inside a read-only
+snapshot, which holds a pool connection just the same. Each goes through one accessor
+in `internal/staff/contractscalls.go` that refuses a call made inside one of the
+module's transactions (the marking Invoices introduced, copied rather than imported),
+and the harness records every call and fails a test that makes one under an open
+transaction. See [Staff](/en/reference/staff/#locks).
+
 ## Adding a module
 
 **Backend**

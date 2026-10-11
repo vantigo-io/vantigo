@@ -978,3 +978,99 @@ The register itself (basket, product grid, payment screen, shifts and cash count
 receipts, X/Z reports, the product declaration) · gift cards and deposits · a
 customer-facing display.
 
+
+## Staff
+
+A new module, researched in
+[`docs/superpowers/research/2026-10-11-staff-module.md`](docs/superpowers/research/2026-10-11-staff-module.md)
+and designed in
+[`docs/superpowers/specs/2026-10-11-staff-foundation-design.md`](docs/superpowers/specs/2026-10-11-staff-foundation-design.md):
+one record of every person who works for the company, which everything else about the
+person hangs on — the employment the a-melding and the written contract describe, the
+absence, the user account, the documents. Like Expenses it **depends on nobody but
+identity**. Payroll itself (the a-melding, skattekort, feriepenger) stays out: Staff
+keeps the fields payroll needs and exports them. The owner's sequence (research §10.11):
+**this phase → the Entra module → Staff phase 2 → Staffing.**
+
+### Phase 1 — The register, absence and the account flag (A1 done; A2, B and C next)
+
+Four deliveries, four pull requests, one migration each.
+
+**A1 — People and employments, delivered** on `feat/staff-foundation`
+([`docs/src/content/docs/en/reference/staff.md`](docs/src/content/docs/en/reference/staff.md)):
+the `staff` module and `@vantigo/staff-ui`; people with identity, contact, next of kin
+and the sealed national identity number and bank account (encrypted, found by a keyed
+MAC, revealed one at a time behind `staff:personal-data`); employments as Norwegian
+arbeidsforhold with dated terms that never overwrite history, carrying the a-melding's
+codes and the § 14-6 contract fields, and the seventeen-item contract check; the
+company's structure (legal entities, business units, departments, locations); managers
+from the terms or the department, with a cycle check serialised across people; the
+self-service link from a person to an existing user, which gives My page and the
+manager's view; five permissions with responses shaped per field group by audience; a
+history of every change; the People, person, Settings and My page screens, the tile,
+the dashboard card and the search's New person.
+
+*Unblocks:* one register the rest of the phase hangs on — absence needs the employment
+and the manager, the account flag needs the person and the link, the payroll export
+needs the a-melding fields.
+
+**A2 — Records.** Documents per person and their categories; import and export; the payroll CSV behind an adapter port, so a
+Tripletex or PowerOffice adapter plugs in later without touching the register; the
+personal-data export; the retention worker that erases what the law no longer lets the
+company keep; the dashboard's stats and attention items.
+
+**B — Absence.** The public-holiday calendar moved to the platform; absence types with
+their a-melding mapping; holiday schemes above the statutory minimum and the accounts
+they drive; requests, decisions and notifications; sick-leave cases with the statutory
+follow-up milestones; care days; the calendar and the approvals inbox; My page's
+absence. `staff:approve`, registered in A1, starts granting here.
+
+**C — Accounts.** Identity's provisioning contract and managed users; the employee
+role; the authority mode; the flag on the person and its dates, the account created
+disabled ahead of the start, enabled on the day and disabled after the end, never
+deleted; the managed link; the accounts worker; the adoption of existing users; the
+Account tab.
+
+*Unblocks:* a hire who exists before their first day and can sign in on it, a leaver
+who cannot sign in the day after, and an employee who requests holiday from a phone.
+
+### Later
+
+**The Entra module.** Entra ID as the first external identity provider, in a module of
+its own (`entra`) that fills an `IdentityProvisioner` slot Staff consumes, so identity
+stays the owner of local accounts only. The account Staff's flag creates becomes an
+Entra user — created without licences, enabled on the start date, disabled with its
+licences, groups and sessions stripped at the end — and the Vantigo login follows
+through SSO, correlated on the employee number. **Groups** are a Staff concept that
+providers translate: Staff owns the group and its members, listed or derived from a
+rule, and a provider declares the **traits** a group can carry for it, which Staff
+stores and renders, while the provider creates and maintains the external group. The
+OIDC and SCIM configuration moves from environment variables into the database in one
+go — identity's SSO-and-SCIM settings table, read at request time — with the Graph
+connection the module's own, both on one setup wizard that carries the portal steps.
+
+*Unblocks:* Staff as the authority for who exists in the company's Microsoft tenant;
+the joiner, mover and leaver without a second place to type.
+
+**Staff phase 2 — Competence and preferences.** What competence must mean for this
+company is discussed before the phase is specified; the starting proposal is flat
+categories and competences with an optional level and expiry, a person's competences
+with their evidence and verification, interests ("wants to work with"), requirements
+on a project role, a task or a shift template, availability declarations and weighted
+preferences — and the matching contract written down, implemented with Staffing.
+
+*Unblocks:* "who can do this, and who wants to"; certificates that expire before the
+work does.
+
+**Staffing.** One module owning every booking of a person's time — allocations,
+assignments with their notice periods and customer terms, and shifts — with staffing
+requests, move wishes, matching and shift trades, and employee pages beside the
+manager's. It reads Projects through `contracts.ProjectDirectory` and Staff through a
+new read contract (the employment on a date, competences valid on a date, preferences
+and wishes), the first module to consume two business modules at once; whether
+Projects phase 5's allocations move into it or are read by it is its spec's first
+question. The statutory limits are warnings an installation can mark as hard, never
+built-in refusals.
+
+*Unblocks:* capacity at intake, the unbooked list, and shifts every employee can see
+and trade.

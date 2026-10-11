@@ -28,6 +28,7 @@ import {
   IconReceipt2,
   IconRefreshAlert,
   IconUsers,
+  IconUsersGroup,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -232,6 +233,14 @@ const moduleCards = [
     module: "invoices" as ModuleKey,
     requiredPermissions: ["invoices:access"],
   },
+  {
+    title: "dashboard.staff",
+    description: "dashboard.manageStaff",
+    path: "/staff",
+    icon: IconUsersGroup,
+    module: "staff" as ModuleKey,
+    requiredPermissions: ["staff:access"],
+  },
 ] as const;
 
 /** The module cards the caller may see: module enabled for the tenant and permission granted. */
@@ -239,6 +248,14 @@ export const visibleModuleCards = (enabledModules: readonly ModuleKey[], permiss
   moduleCards.filter(
     (card) => enabledModules.includes(card.module) && hasPermissions(permissions, card.requiredPermissions),
   );
+
+/**
+ * The cards of the KPI row: every visible module card but Staff's, which has
+ * no figures until its stats arrive (delivery A2) — its card in the module
+ * list below is all it has, and nothing here asks its stats endpoints.
+ */
+export const kpiModuleCards = <Card extends { module: ModuleKey }>(cards: readonly Card[]) =>
+  cards.filter((card) => card.module !== "staff");
 
 const presetDays: Record<Exclude<DashboardPreset, "custom">, number> = {
   "7d": 7,
@@ -655,6 +672,7 @@ const DashboardPage = () => {
   const enabledModules = enabledModuleKeys();
   const permissions = authorization.data?.permissions;
   const modules = visibleModuleCards(enabledModules, permissions);
+  const kpiModules = kpiModuleCards(modules);
   const allowed = (module: ModuleKey) => modules.some((item) => item.module === module);
   const range =
     search.preset === "custom" && search.from && search.to
@@ -1009,8 +1027,8 @@ const DashboardPage = () => {
 
       {/* One column per card up to four; a fifth module wraps rather than
           squeezing every card past reading width. */}
-      <SimpleGrid cols={{ base: 1, xs: 2, md: Math.min(modules.length, 4) || 1 }} spacing="md">
-        {modules.map((module) => {
+      <SimpleGrid cols={{ base: 1, xs: 2, md: Math.min(kpiModules.length, 4) || 1 }} spacing="md">
+        {kpiModules.map((module) => {
           const href = module.path;
           if (module.module === "customers") {
             return (

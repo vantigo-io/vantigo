@@ -8,7 +8,16 @@ import { spotlightNavSections } from "../apps";
 import { type ModuleKey, visibleNavSections } from "../navigation";
 import { AppSpotlight } from "./app-spotlight";
 
-const allModules: ModuleKey[] = ["communications", "customers", "energy", "expenses", "products", "projects", "time"];
+const allModules: ModuleKey[] = [
+  "communications",
+  "customers",
+  "energy",
+  "expenses",
+  "products",
+  "projects",
+  "staff",
+  "time",
+];
 
 const navigateMock = vi.hoisted(() => vi.fn());
 
@@ -208,6 +217,57 @@ describe("AppSpotlight navigation authorization", () => {
     ]);
     await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
     expect(screen.queryByText("New expense", { exact: true })).not.toBeInTheDocument();
+  });
+
+  // New person is HR's: the People list opens the two-step form on arrival
+  // (`?create=person`, the package's own search seam), the way the other
+  // apps' create actions land on their list with the form already open.
+  it("opens the New person form from the quick action for staff:manage", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["staff:access", "staff:manage"], false, false, onNavigate);
+
+    fireEvent.click(await waitFor(() => screen.getByText("New person", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/staff/people", search: { create: "person" } }),
+    );
+  });
+
+  it("hides New person without staff:manage and when the staff module is not enabled", async () => {
+    renderSpotlight(["staff:access", "staff:view", "staff:personal-data"], false, false);
+    await waitFor(() => expect(screen.getByText("My page", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("New person", { exact: true })).not.toBeInTheDocument();
+
+    // The server asks for the app and staff:manage both.
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["staff:manage"], false, false);
+    await waitFor(() => expect(screen.getByText("Staff settings", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("New person", { exact: true })).not.toBeInTheDocument();
+
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["*"], true, true, undefined, ["customers", "communications", "products", "energy", "projects"]);
+    await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("New person", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("My page", { exact: true })).not.toBeInTheDocument();
+  });
+
+  // The Staff destinations are the sidebar's: My page for everyone in the app,
+  // the directory for staff:view or staff:manage, the settings for staff:manage.
+  it("offers a staff:access holder My page alone, and HR the directory and the settings", async () => {
+    renderSpotlight(["staff:access"], false, false);
+    await waitFor(() => expect(screen.getByText("My page", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("Staff directory", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("Staff settings", { exact: true })).not.toBeInTheDocument();
+
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["staff:access", "staff:manage"], false, false);
+    await expectNavigationParity(["staff:access", "staff:manage"], false, false);
+    expect(screen.getByText("Staff directory", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("Staff settings", { exact: true })).toBeInTheDocument();
   });
 
   it("hides Create task when the projects module is not enabled", async () => {

@@ -10,6 +10,7 @@ import {
   expensesUnreimbursedValue,
   invoicesKpi,
   invoicesOverdueHint,
+  kpiModuleCards,
   metrics,
   projectsCardHint,
   readyMilestonesHint,
@@ -543,6 +544,45 @@ describe("the dashboard's invoices card", () => {
  * here from a catalog — in the reader's language, with the count where one is
  * sent — and every item leads to the page that deals with it.
  */
+/**
+ * Staff's module card (plan Task 6, the pre-flight's answer 6): the card every
+ * module has, and nothing more in delivery A1 — its stats and attention items
+ * arrive with A2, so it has no KPI card, no activity metric, and nothing the
+ * dashboard would ask `/api/v1/staff/stats/*` for.
+ */
+describe("the dashboard's staff card", () => {
+  it("names the app in both languages", () => {
+    for (const key of ["dashboard.staff", "dashboard.manageStaff"] as const) {
+      expect(dashboardCatalog.en[key]).toBeTruthy();
+      expect(dashboardCatalog.nb[key]).toBeTruthy();
+      expect(dashboardCatalog.nb[key]).not.toBe(dashboardCatalog.en[key]);
+    }
+  });
+
+  it("shows the card with the staff module and staff:access, and not otherwise", () => {
+    const staffCard = (modules: Parameters<typeof visibleModuleCards>[0], permissions: string[] | undefined) =>
+      visibleModuleCards(modules, permissions).find((card) => card.module === "staff");
+
+    expect(staffCard(["customers", "staff"], ["staff:access"])).toMatchObject({
+      title: "dashboard.staff",
+      description: "dashboard.manageStaff",
+      path: "/staff",
+      requiredPermissions: ["staff:access"],
+    });
+    expect(staffCard(["customers", "staff"], ["*"])).toBeDefined();
+    expect(staffCard(["customers", "staff"], ["customers:view", "staff:view"])).toBeUndefined();
+    expect(staffCard(["customers", "staff"], undefined)).toBeUndefined();
+    expect(staffCard(["customers", "projects"], ["*"])).toBeUndefined();
+  });
+
+  it("keeps Staff out of the KPI row and the activity chart", () => {
+    const cards = visibleModuleCards(["customers", "expenses", "staff"], ["*"]);
+    expect(cards.map((card) => card.module)).toEqual(["customers", "expenses", "staff"]);
+    expect(kpiModuleCards(cards).map((card) => card.module)).toEqual(["customers", "expenses"]);
+    expect(metrics.some((metric) => (metric.module as string) === "staff")).toBe(false);
+  });
+});
+
 describe("Dashboard_InvoicesAttentionSentencesAndLinks", () => {
   const day = (value: string) => `«${value.slice(0, 10)}»`;
   const item = (type: string, entityId: string, title: string, count?: number) => ({

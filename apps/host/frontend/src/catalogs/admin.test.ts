@@ -33,6 +33,18 @@ const invoicesPermissionKeys = [
   "invoices:payments",
 ] as const;
 
+// Hand-kept in step with `apps/server/internal/staff/module.go` (`var
+// permissions`), for the same reason. staff:approve is registered in delivery
+// A1 although it grants nothing until absence arrives, so the role editor
+// names it from the start.
+const staffPermissionKeys = [
+  "staff:access",
+  "staff:view",
+  "staff:approve",
+  "staff:manage",
+  "staff:personal-data",
+] as const;
+
 describe("the admin permission catalog", () => {
   it("has a display name and a description, in English and Norwegian, for these six projects permissions", () => {
     for (const key of projectsPermissionKeys) {
@@ -91,6 +103,48 @@ describe("the admin permission catalog", () => {
     expect(en["admin.permission.invoicesPayments"]).toBe("Register payments");
     expect(en["admin.permission.invoicesPaymentsDescription"]).toBe(
       "Register payments against issued invoices and remove a registration with a reason; import bank files, read the imported files, the bank accounts and their lines, and work the exception queue; make and read reminder runs, print paper letters and confirm them posted or reprint them, and withdraw and retry letters; hold a disputed invoice, hand one to collection and export the collection file; register and remove charge payments and waive charges; set a customer's reminder policy; and see the attention items about the bank lines, the letters and the print batches.",
+    );
+  });
+
+  it("has a display name and a description, in English and Norwegian, for the five staff permissions", () => {
+    for (const key of staffPermissionKeys) {
+      const translation = hostPermissionTranslationKeys[key as keyof typeof hostPermissionTranslationKeys];
+      expect(translation, `no catalog entry for ${key}`).toBeDefined();
+      expect(translation.moduleKey).toBe("admin.permission.module.staff");
+      expect(translation.categoryKey).toBe("admin.permission.category.staff");
+      for (const lng of ["en", "nb"] as const) {
+        const catalog = adminCatalog[lng] as Record<string, string>;
+        expect(catalog[translation.displayNameKey], `${key} display name (${lng})`).toBeTruthy();
+        expect(catalog[translation.descriptionKey], `${key} description (${lng})`).toBeTruthy();
+        expect(catalog[translation.moduleKey], `${key} module (${lng})`).toBeTruthy();
+        expect(catalog[translation.categoryKey], `${key} category (${lng})`).toBeTruthy();
+      }
+    }
+  });
+
+  it("matches the server's exact English display names and descriptions for staff permissions", () => {
+    const en = adminCatalog.en as Record<string, string>;
+    expect(en["admin.permission.module.staff"]).toBe("Staff");
+    expect(en["admin.permission.category.staff"]).toBe("Staff");
+    expect(en["admin.permission.staffAccess"]).toBe("Use Staff");
+    expect(en["admin.permission.staffAccessDescription"]).toBe(
+      "Use the Staff app: your own record, your own absence, your own documents and your own export.",
+    );
+    expect(en["admin.permission.staffView"]).toBe("View the staff directory");
+    expect(en["admin.permission.staffViewDescription"]).toBe(
+      "See everyone's work details, employments and terms without pay, the company's structure, and the calendar with absence types hidden.",
+    );
+    expect(en["admin.permission.staffApprove"]).toBe("Decide absence");
+    expect(en["admin.permission.staffApproveDescription"]).toBe(
+      "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, and mark their milestones.",
+    );
+    expect(en["admin.permission.staffManage"]).toBe("Manage staff");
+    expect(en["admin.permission.staffManageDescription"]).toBe(
+      "Create and edit people (not their national identity number or bank account), employments and terms with pay, the company's structure, absence types and holiday schemes, the settings, documents other than health documents, the account flag, imports, exports and the payroll export.",
+    );
+    expect(en["admin.permission.staffPersonalData"]).toBe("Reveal and erase personal data");
+    expect(en["admin.permission.staffPersonalDataDescription"]).toBe(
+      "Reveal and change national identity numbers and bank accounts, read health documents and sick-leave notes, see HR-only absence types, export anyone's personal data, set legal holds, and erase and re-assess people.",
     );
   });
 
