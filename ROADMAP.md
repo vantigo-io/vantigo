@@ -978,7 +978,6 @@ The register itself (basket, product grid, payment screen, shifts and cash count
 receipts, X/Z reports, the product declaration) · gift cards and deposits · a
 customer-facing display.
 
-
 ## Staff
 
 A new module, researched in
@@ -1005,8 +1004,8 @@ arbeidsforhold with dated terms that never overwrite history, carrying the a-mel
 codes and the § 14-6 contract fields, and the seventeen-item contract check; the
 company's structure (legal entities, business units, departments, locations); managers
 from the terms or the department, with a cycle check serialised across people; the
-self-service link from a person to an existing user, which gives My page and the
-manager's view; five permissions with responses shaped per field group by audience; a
+self-service link from a person to an existing user, which gives My page and a
+manager's reading of their own reports' records; five permissions with responses shaped per field group by audience; a
 history of every change; the People, person, Settings and My page screens, the tile,
 the dashboard card and the search's New person.
 

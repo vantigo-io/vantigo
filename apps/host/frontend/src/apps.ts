@@ -252,18 +252,24 @@ export const apps: readonly AppDefinition[] = [
       requiredPermissions: ["expenses:manage"],
     },
   ]),
-  moduleApp(
-    "staff",
-    "navigation.staff",
-    IconUsersGroup,
-    "/staff",
-    staffNavItems.map(({ key, to, requiredPermissions, guardPermissions }) => ({
-      ...staffNavPresentation[key],
-      to,
-      requiredPermissions,
-      guardPermissions,
-    })),
-  ),
+  {
+    ...moduleApp(
+      "staff",
+      "navigation.staff",
+      IconUsersGroup,
+      "/staff",
+      staffNavItems.map(({ key, to, requiredPermissions, guardPermissions }) => ({
+        ...staffNavPresentation[key],
+        to,
+        requiredPermissions,
+        guardPermissions,
+      })),
+    ),
+    // The tile asks for the app itself, not any entry's permission: the
+    // server refuses every Staff call without staff:access, so a role with
+    // staff:view or staff:manage alone would open an app that answers 403.
+    requiredPermissions: ["staff:access"],
+  },
   moduleApp("invoices", "navigation.invoices", IconFileInvoice, "/invoices", [
     {
       // Invoicing is a finance job, not per-customer (invoices foundation

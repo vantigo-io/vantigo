@@ -15,7 +15,9 @@ about what you do on each screen.
 
 ## Who sees what
 
-The sidebar shows the areas your permissions give you:
+The Staff tile is shown to everyone with `staff:access`; the app opens on People for
+those who see it and on My page for everyone else. The sidebar shows the areas your
+permissions give you:
 
 | Area in the sidebar | Who sees it |
 | --- | --- |
