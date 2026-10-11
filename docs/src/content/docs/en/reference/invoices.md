@@ -987,8 +987,11 @@ seam its tests pin.
 | a charge payment, a waiver, a manual delivery and its removal | the invoice alone (the children's insert triggers share it) |
 | a hold, a lift, a hand-off and its withdrawal | the invoice, then its letters (withdrawn), and on a barring lift the waivers inserted |
 | a reminder run's item | the invoice, then the letter inserted |
-| the reminder worker's dispatch, a print batch's letter | the invoice, then its letter |
-| a batch posted or reprinted | the batch `FOR NO KEY UPDATE`, then its letters' invoices in descending id, then the letters |
+| the reminder worker's dispatch | the invoice, then its letter |
+| a print batch's letter | its own batch `FOR SHARE`, then the invoice, then the letter, then the collection rates of its day `FOR SHARE` |
+| a batch posted | the batch `FOR NO KEY UPDATE`, then its letters' invoices in descending id, then the letters |
+| a batch reprinted | the batch `FOR NO KEY UPDATE`, then its printed letters — no invoice ([Paper and posting](#paper-and-posting)) |
+| a collection rate's delete | the rate row alone |
 | a letter's withdraw or retry | the letter alone |
 | a policy `PUT` | the customer's documents `FOR SHARE`, newest first, then the policy row; the merge: the documents, then the policy rows by customer id |
 | the erase | the person's documents `FOR UPDATE`, newest first, then their letters, then their children's notes, then the resolved bank lines (below) |
@@ -3406,7 +3409,7 @@ request's Oslo day.
 | `bankTransactionsOpen` | bank file with lines `pending` (matching stopped early), `exception` or `duplicate` | the file; its booking days (`2026-10-01`, or `2026-10-01 – 2026-10-07`); its upload; the open lines, as the queue counts them | every line is matched or resolved ([The exception queue](#the-exception-queue)) |
 | `reminderFailed` | letter whose e-mail failed for good | the letter's invoice (the item's `id` names the letter, `reminderFailed/<letterId>`); the buyer's name; its failure; — | it is retried or withdrawn |
 | `remindersHeld` | cause queued letters wait on (`held_reason`, plan reading 46): `collectionRatesOutdated` — a collection rate missing for a half-year a letter needs — or `collectionRegimeUnreviewed` — the 1988 regime past its review | the cause, as `entityId` and `title`; the oldest waiting letter's creation; the letters waiting | the rate is added or the review made, and the worker sends them |
-| `reminderBatchUnposted` | print batch neither confirmed posted nor reprinted from **two days** after its posting day | the batch; its posting day; that day plus two at UTC midnight; its printed letters | it is confirmed posted or reprinted ([Printing and posting](#letters)) |
+| `reminderBatchUnposted` | print batch neither confirmed posted nor reprinted from **two days** after its posting day | the batch; its posting day; that day plus two at UTC midnight; its printed letters | it is confirmed posted or reprinted ([Paper and posting](#paper-and-posting)) |
 
 `id` is `<type>/<entityId>` but for `reminderFailed`. A credited invoice whose letters'
 charges are still outstanding is in none of them: it owes nothing back, and the overdue

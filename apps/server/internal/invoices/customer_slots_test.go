@@ -856,9 +856,9 @@ func plantReceivables(t *testing.T, h *harness, customer int32, number int64, re
 			VALUES ($1, $2, $3, 'reminder', $4, $5, 'nb', $6, gen_random_uuid(), $7`+extraVals+`)
 			RETURNING id`, append([]any{r.invoice, run, sequence, channel, to, at, status}, args...)...)
 	}
-	facts := `, sent_on, deadline, regime, principal_open, fee_kind, fee, charges_earlier, interest, interest_waived,
-		interest_paid, total`
-	factValues := `, DATE '2026-08-20', DATE '2026-09-03', 'inkassolov_1988', 1000, 'reminder_fee', 35, 0, 0, 0, 0, 1035`
+	facts := `, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, charges_earlier, interest,
+		interest_waived, interest_paid, total`
+	factValues := `, DATE '2026-08-20', DATE '2026-09-03', 'inkassolov_1988', 1000, 0, 'reminder_fee', 35, 0, 0, 0, 0, 1035`
 	r.queued = letter(1, "queued", "email", recipient, "", "")
 	r.withdrawnEarlier = letter(2, "withdrawn", "email", recipient, ", withdrawn_at, withdrawal_reason", ", $6, 'on_hold'")
 	r.sentLetter = letter(3, "sent", "email", recipient, facts+", sent_at", factValues+", $6")

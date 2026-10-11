@@ -83,9 +83,9 @@ func itemCount(i attentionItemJSON) int32 {
 	return *i.Count
 }
 
-// plantCreditNote plants an issued credit note of invoice id of gross,
+// plantCreditNoteAt plants an issued credit note of invoice id of gross,
 // issued at at, and answers its id.
-func plantCreditNote(t *testing.T, h *harness, id int64, number int64, gross string, at time.Time) int64 {
+func plantCreditNoteAt(t *testing.T, h *harness, id int64, number int64, gross string, at time.Time) int64 {
 	t.Helper()
 	return plantID(t, h, `
 		INSERT INTO invoices.invoices (kind, status, number, customer_id, credits_invoice_id, issue_date, exchange_rate_date,
@@ -104,10 +104,10 @@ func plantBatch(t *testing.T, h *harness, id int64, sequence int, postOn string)
 		VALUES ($1::date, now(), gen_random_uuid()) RETURNING id`, postOn)
 	plantID(t, h, `
 		INSERT INTO invoices.reminders (invoice_id, run_id, print_batch_id, sequence, level, channel, language, created_at,
-		    created_by_user_id, status, sent_on, deadline, regime, principal_open, fee_kind, charges_earlier, interest,
-		    interest_waived, interest_paid, total)
+		    created_by_user_id, status, sent_on, deadline, regime, principal_open, credited, fee_kind, charges_earlier,
+		    interest, interest_waived, interest_paid, total)
 		VALUES ($1, $2, $3, $4, 'reminder', 'paper', 'nb', now(), gen_random_uuid(), 'printed', $5::date, $5::date + 14,
-		    'inkassolov_1988', 1000, 'none', 0, 0, 0, 0, 1000)
+		    'inkassolov_1988', 1000, 0, 'none', 0, 0, 0, 0, 1000)
 		RETURNING id`, id, plantRun(t, h), batch, sequence, postOn)
 	return batch
 }
@@ -123,7 +123,7 @@ func TestAttention_PerPermission(t *testing.T) {
 	overdue := deliveredOn(t, h, 1, customerAcme, "2026-08-03")
 	refund := plantOverdue(t, h, overdueSpec{number: 2, customer: customerAcme, issue: "2026-09-01", due: "2026-10-01"})
 	plantPayment(t, h, refund, "1000", "2026-09-05")
-	plantCreditNote(t, h, refund, 3, "1000", h.Now())
+	plantCreditNoteAt(t, h, refund, 3, "1000", h.Now())
 	plantBankFile(t, h, "2026-09-10")
 	h.Exec(t, `INSERT INTO invoices.bank_transactions (bank_file_id, line_ref, format, account, direction, booked_on, amount,
 		    currency, fingerprint, ordinal, status, reason)
@@ -182,7 +182,7 @@ func TestAttention_EachTypeAndItsClearing(t *testing.T) {
 			t.Errorf("due Monday 3 and Tuesday 4 = %s and %s, want the 4th and the 5th", got[2].OccurredAt, got[3].OccurredAt)
 		}
 		plantPayment(t, h, ids[0], "1000", "2026-09-10")
-		plantCreditNote(t, h, ids[1], 100, "1000", h.Now())
+		plantCreditNoteAt(t, h, ids[1], 100, "1000", h.Now())
 		if got := entitiesOf(ofType(attentionOf(t, reader(t, h)), "invoiceOverdue")); !slices.Equal(got, want(2, 21)) {
 			t.Errorf("after a payment and a credit note = %v, want %v", got, want(2, 21))
 		}
@@ -222,7 +222,7 @@ func TestAttention_EachTypeAndItsClearing(t *testing.T) {
 			t.Fatalf("a paid invoice = %+v, want no refund due", got)
 		}
 		h.Advance(time.Hour)
-		plantCreditNote(t, h, credited, 2, "1000", h.Now())
+		plantCreditNoteAt(t, h, credited, 2, "1000", h.Now())
 		got := ofType(attentionOf(t, c), "invoiceRefundDue")
 		if len(got) != 1 || got[0].ID != "invoiceRefundDue/"+entity(credited) || got[0].EntityID != entity(credited) ||
 			got[0].Title != "Kunde 1" || got[0].OccurredAt != h.Now().Format(time.RFC3339) {
