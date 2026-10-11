@@ -1004,9 +1004,13 @@ erase** ([Retention and personal data](#retention-and-personal-data)): holding t
 person's documents, it blanks the `resolution_note` of the bank lines linked to their
 payments — but only **`resolved`** lines with a **non-empty** note. No path locks a
 resolved line before an invoice — `apply` and `handle-reversal` lock `exception` lines,
-`reopen` locks its line alone — and the erase's statement skips, without waiting, a line
-that is not resolved, so the documents-then-line order can never meet a line-then-invoice
-order on the same line. Likewise its recipient blanking touches only a letter whose
+`dismiss` and `confirm-duplicate` lock an `exception` or `duplicate` line and then the
+invoices its payments were registered against, `reopen` locks its line alone; the line
+any of them holds is never `resolved` while it takes an invoice lock, since it resolves
+the line only after — and the erase's statement skips, without waiting, a line that is
+not resolved, so the documents-then-line order can never meet a line-then-invoice order
+on the same line. Its blanking of the lines' event notes locks only event rows, which
+nothing else locks — the queue only inserts them — and no line row. Likewise its recipient blanking touches only a letter whose
 recipient is not blank already, so it never waits on a printed paper letter a reprint
 holds without its invoice. A removal of an imported payment locks only the invoice and
 never writes its line. Every directory read, object-store call and SMTP send is made
