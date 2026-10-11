@@ -138,6 +138,42 @@ func TestPayrollRows_TheTermsInForceOnTheLastDayOrTheEnd(t *testing.T) {
 	}
 }
 
+// Salary changed is blank when the terms row in force has no pay components
+// — NULL, as the class A erase leaves them, or an empty list — rather than
+// the first row's date that salaryChangedAt would give over a chain with no
+// pay left; a chain with pay gives the date its pay last changed.
+func TestPayrollRows_SalaryChangedBlankWithoutPay(t *testing.T) {
+	t.Parallel()
+	m := september(t)
+	base := `[{"name":"Base","amount":50000,"currency":"NOK","period":"monthly"}]`
+	raised := `[{"name":"Base","amount":52000,"currency":"NOK","period":"monthly"}]`
+	withPay := func(id int64, validFrom, pay string) store.StaffEmploymentTerm {
+		r := payrollTermsRow(t, id, validFrom, 100)
+		if pay != "" {
+			r.PayComponents = []byte(pay)
+		}
+		return r
+	}
+	for _, c := range []struct {
+		name  string
+		chain []store.StaffEmploymentTerm
+		want  string
+	}{
+		{"pay erased", []store.StaffEmploymentTerm{withPay(1, "2026-01-01", ""), withPay(2, "2026-06-01", "")}, ""},
+		{"an empty list in force", []store.StaffEmploymentTerm{withPay(1, "2026-01-01", base), withPay(2, "2026-06-01", "[]")}, ""},
+		{"pay", []store.StaffEmploymentTerm{withPay(1, "2026-01-01", base), withPay(2, "2026-06-01", raised)}, "2026-06-01"},
+	} {
+		e := payrollEmployment(t, 1, "2026-01-01", "")
+		rows := payrollOf([]store.StaffEmployment{e}, map[int64][]store.StaffEmploymentTerm{1: c.chain}, nil, m)
+		if len(rows) != 1 {
+			t.Fatalf("%s: rows = %d, want 1", c.name, len(rows))
+		}
+		if got := rows[0].SalaryChanged; got != c.want {
+			t.Errorf("%s: Salary changed = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // End and End reason are filled only in the month the employment ends: the
 // same employment exported for the month before has them blank.
 func TestPayrollRows_TheEndOnlyInTheEndMonth(t *testing.T) {

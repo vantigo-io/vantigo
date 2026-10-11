@@ -146,7 +146,10 @@ func payrollRows(in payrollInput, m payrollMonth) []payrollRow {
 
 // payrollTerms fills r's terms cells from t, the row of chain in force on
 // on: the derived dates judged on the same day, the cost centre the terms'
-// own else the department's.
+// own else the department's. Salary changed is blank when t has no pay
+// components (NULL, as the class A erase leaves them, or an empty list):
+// salaryChangedAt would give the first row's date over a chain with no pay
+// left, and a file reporting a pay change there is not would mislead payroll.
 func payrollTerms(r *payrollRow, t store.StaffEmploymentTerm, chain []store.StaffEmploymentTerm, on time.Time, departments map[int64]store.StaffDepartment) {
 	text := func(v *string) string {
 		if v == nil {
@@ -171,7 +174,9 @@ func payrollTerms(r *payrollRow, t store.StaffEmploymentTerm, chain []store.Staf
 	r.WorkingHoursScheme = workingHoursSchemeCodes[t.WorkingHoursScheme]
 	r.AppointmentForm = appointmentFormCodes[t.AppointmentForm]
 	r.RemunerationType = text(t.RemunerationType)
-	r.SalaryChanged = date(salaryChangedAt(chain, on))
+	if len(payKey(t.PayComponents)) > 0 {
+		r.SalaryChanged = date(salaryChangedAt(chain, on))
+	}
 	r.CostCentre = text(t.CostCentre)
 	if t.DepartmentID != nil {
 		if d, ok := departments[*t.DepartmentID]; ok {

@@ -1870,8 +1870,8 @@ type GetStaffMeEventsParams struct {
 
 // GetStaffPayrollExportParams defines parameters for GetStaffPayrollExport.
 type GetStaffPayrollExportParams struct {
-	// Month The month, as YYYY-MM; anything else is payroll_month_invalid.
-	Month string `form:"month" json:"month"`
+	// Month The month, as YYYY-MM — required; a request without one, an empty one or anything else is payroll_month_invalid.
+	Month *string `form:"month,omitempty" json:"month,omitempty"`
 
 	// Format The file's format; csv, the default, is the one there is. Anything else is payroll_format_unsupported.
 	Format *string `form:"format,omitempty" json:"format,omitempty"`
@@ -3281,9 +3281,9 @@ func (siw *ServerInterfaceWrapper) GetStaffPayrollExport(w http.ResponseWriter, 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetStaffPayrollExportParams
 
-	// ------------- Required query parameter "month" -------------
+	// ------------- Optional query parameter "month" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "month", r.URL.Query(), &params.Month, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "month", r.URL.Query(), &params.Month, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {

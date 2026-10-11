@@ -282,7 +282,9 @@ only in the month the employment ends. An employment with no terms on that day k
 its row with the terms columns blank. The form is the Expenses payroll file's —
 semicolons, a byte order mark and the decimal comma — so a Norwegian Excel opens it
 as it is. The full column list and the codes are in
-[the reference](/en/reference/staff/#the-payroll-export).
+[the reference](/en/reference/staff/#the-payroll-export). The codes of the three
+appointment forms added in 2025 (hired out, and on call) are not verified against
+Skatteetaten's code list: check them with your payroll system before you rely on them.
 
 The national identity number and the bank account are **not** in the file: payroll
 already holds them, so the export never reads them.
