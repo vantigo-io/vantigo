@@ -820,6 +820,32 @@ date, competences valid on a date, preferences and wishes), and is the first mod
 that consumes two business modules at once. Whether Phase 5's allocations move
 there from Projects, or Staffing reads them, is the first question of that spec.
 
+**Two decisions taken by the owner on 2026-10-11, after the above.** First, the
+feature is **legally agnostic**: it supports every scenario in §6.7, including a
+firm that hires its people out, and whether a given use is lawful is the using
+company's responsibility. For the design that means the statutory limits in §4.2
+and §4.3 (innleie grounds, the three-year counter, the geographic ban, overtime
+caps, rest) are **warnings the installation can mark as hard**, never built-in
+refusals — the Quinyx split in §6.4 — and the data those warnings need (innleier
+identity, likebehandling terms, the work's location and category) is still modelled,
+because a company that does hire out needs it for its contracts and the a-melding's
+"utleid" forms. Second, **shifts are in scope**: employees see their own shifts and
+can **trade** them with a colleague (a dentist appointment, a day off) under the
+market's flow — swap or hand-over request, the colleague accepts, the manager
+approves or an auto-approval rule passes (same required competence, no rest or
+hours breach, same position), notifications both ways (Planday, Quinyx §6.1, §6.4).
+A shift is a booking of a person's time at a specific start and stop on a date for a
+position or location, distinct from an allocation (a share of a period on a
+project) and an assignment (a contracted placement); all three are what the
+employee timeline (§6.7 case 2) and the capacity calculation subtract from the
+contract's hours. Two consequences: every shift worker needs an account, which
+moves provisioning (§5) earlier than "later" in the phase order, and the employee
+view must work on a phone. The § 10-7 working-time record then has two sources —
+Time's entries for project hours and the shift plan for attendance — and reconciling
+them (punches, deviations) is a time-and-attendance feature of its own, not Staff's
+or Staffing's first version. Whether shifts and project staffing are one app or two
+is still open; §9 question 1 lists the options.
+
 ## 7. Where the codebase stands
 
 ### 7.1 Identity, and the SCIM gap
@@ -980,11 +1006,20 @@ Phase 5 rather than living in Staff.
 ## 9. Open questions for the owner
 
 1. **What does bemanning mean here** — answered 2026-10-11: project staffing across
-   customer projects (§6.7), not shift scheduling. Two sub-questions remain: do
-   assignments ever mean the firm is the bemanningsforetak (hiring staff out under
-   § 14-12, with likebehandling and the construction ban), or only that its own
-   employees work on customer projects under an oppdragsavtale? And does the
-   staffing feature become a third module (Staffing) or extend Projects Phase 5?
+   customer projects **and** shifts with employee trading (§6.7), legally agnostic
+   with statutory limits as configurable warnings. Still open: **one module or
+   two.** (a) One `staffing` module owning every booking of a person's time —
+   allocation, assignment, shift — plus requests, wishes, matching and trades, with
+   one capacity calculation and one timeline, and an employee-facing page set
+   gated by `staffing:access` beside the manager pages, the way Expenses serves
+   submitters and approvers from one app. (b) Two modules, Resourcing (project
+   allocations, assignments, requests, matching) and Shifts (rota, trades), each
+   smaller, but with two capacity models that the timeline and the intake check
+   must sum through a contract. (c) Allocations stay in Projects Phase 5 and shifts
+   go into Staff, which leaves the assignment and the matcher without a home.
+   Recommended: (a), with the frontend split by audience if the single app grows
+   unwieldy; Vantigo's one-module-one-app convention (§7.5) would then need a
+   first exception, which is a host decision rather than a backend one.
 2. **Store the fødselsnummer?** Customers refuses it by design; Staff cannot work
    without it for payroll, HMS-kort and pension. Recommended: yes, encrypted, behind
    `staff:personal-data`, never displayed in full.
