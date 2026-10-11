@@ -195,9 +195,15 @@ var (
 // each ansettelsesform (the five the a-melding has carried since 2025, the
 // hired-out and on-call forms their own codes): the codes the payroll export
 // (delivery A2) reports, pinned in a table test so a rename on either side is
-// a failing test rather than a rejected a-melding. The remuneration type has
-// no map: the a-melding dropped avlønningstype from 2019, so there is no code
-// to report it by, and the export writes it as stored.
+// a failing test rather than a rejected a-melding. The three 2025 forms'
+// strings are unverified against Skatteetaten's kodeliste: its guidance
+// names the five forms in prose only
+// (https://www.skatteetaten.no/bedrift-og-organisasjon/arbeidsgiver/a-meldingen/veiledning/arbeidsforholdet/opplysninger-om-arbeidsforholdet/ansettelsesform),
+// and these strings are as payroll vendors and NAV's Aa-registeret data use
+// them; the two original ones are the a-melding's. The remuneration type has
+// no map: Skatteetaten says not to report avlønningstype from 2019
+// (https://www.skatteetaten.no/en/business-and-organisation/employer/the-a-melding/the-a-melding-guide/employment/information-on-employment/remuneration-type/),
+// so there is no code to report it by, and the export writes it as stored.
 var (
 	workingHoursSchemeCodes = map[string]string{
 		"not_shift":           "ikkeSkift",

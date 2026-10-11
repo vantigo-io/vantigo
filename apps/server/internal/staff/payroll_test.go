@@ -124,8 +124,8 @@ func TestPayroll_TheGoldenMonth(t *testing.T) {
 	if len(payload) != 4 {
 		t.Errorf("payroll_exported payload = %v, want month, format, rows and sha256 alone", payload)
 	}
-	if classes := modtest.One[[]string](t, h.Harness, `SELECT payload_classes FROM staff.events WHERE kind = 'payroll_exported'`); len(classes) != 1 || classes[0] != "A" {
-		t.Errorf("payroll_exported classes = %v, want [A]: the export's lineage is class A", classes)
+	if classes := modtest.One[[]string](t, h.Harness, `SELECT payload_classes FROM staff.events WHERE kind = 'payroll_exported'`); len(classes) != 0 {
+		t.Errorf("payroll_exported classes = %v, want none: the event carries no personal data", classes)
 	}
 }
 
@@ -171,17 +171,17 @@ func TestPayroll_AnEmptyMonthIsTheHeaderAlone(t *testing.T) {
 	}
 }
 
-// A month that is not YYYY-MM with a month 01–12 is payroll_month_invalid,
-// a format other than csv payroll_format_unsupported; neither is an export,
-// so neither is recorded.
+// A month that is not YYYY-MM with a month 01–12 is payroll_month_invalid —
+// an empty month and no month at all alike — a format other than csv
+// payroll_format_unsupported; neither is an export, so neither is recorded.
 func TestPayroll_RefusesAMonthOrAFormatItCannotWrite(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	hr, _ := signIn(t, h, "staff:manage")
-	for _, month := range []string{"2026-1", "2026-13", "2026-00", "abcd", "", "2026-09-01"} {
-		p := refused(t, hr.Do(http.MethodGet, payrollPath("month="+month), nil), http.StatusBadRequest, "payroll_month_invalid")
+	for _, query := range []string{"month=2026-1", "month=2026-13", "month=2026-00", "month=abcd", "month=", "month=2026-09-01", "format=csv"} {
+		p := refused(t, hr.Do(http.MethodGet, payrollPath(query), nil), http.StatusBadRequest, "payroll_month_invalid")
 		if len(p.Errors["month"]) == 0 {
-			t.Errorf("%q: errors %v, want one on month", month, p.Errors)
+			t.Errorf("%q: errors %v, want one on month", query, p.Errors)
 		}
 	}
 	for _, format := range []string{"xlsx", "CSV", ""} {

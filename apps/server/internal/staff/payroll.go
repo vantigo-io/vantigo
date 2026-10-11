@@ -72,7 +72,11 @@ func (d payrollDownload) VisitGetStaffPayrollExportResponse(w http.ResponseWrite
 
 // readPayroll reads what a month's file is built from on q, a snapshot's:
 // every person's number and names, every employment with its terms chain,
-// the business units and the departments. It reads no sealed column.
+// the business units and the departments. It reads no sealed column. The
+// terms come as the store's full rows, the class D note and pay_components
+// with them, because the chain helpers (termsInForce, fteChangedAt,
+// salaryChangedAt) take that row; neither is written to the file, so no D
+// value — and no pay amount — reaches it.
 func readPayroll(ctx context.Context, q *store.Queries) (payrollInput, error) {
 	in := payrollInput{
 		People:      map[int64]payrollPerson{},
@@ -126,11 +130,19 @@ func readPayroll(ctx context.Context, q *store.Queries) (payrollInput, error) {
 // the file, built in memory; (4) the export recorded after the snapshot in a
 // transaction of its own, with the hash of the bytes about to be answered — a
 // file whose export could not be recorded is not answered; (5) the download.
+// The event carries no personal data, so it has no payload class, as
+// people_exported has none: no erase has anything to reach in it.
 func (s *server) GetStaffPayrollExport(ctx context.Context, req gen.GetStaffPayrollExportRequestObject) (gen.GetStaffPayrollExportResponseObject, error) {
 	var f fieldErrors
-	month, ok := parsePayrollMonth(req.Params.Month)
+	// The contract leaves month optional so that a request without one
+	// reaches this check and is answered with its code, as an empty one is.
+	var rawMonth string
+	if req.Params.Month != nil {
+		rawMonth = *req.Params.Month
+	}
+	month, ok := parsePayrollMonth(rawMonth)
 	if !ok {
-		f.addCoded("month", codePayrollMonthInvalid, fmt.Sprintf("A month is YYYY-MM with a month from 01 to 12, but was '%s'", req.Params.Month))
+		f.addCoded("month", codePayrollMonthInvalid, fmt.Sprintf("A month is YYYY-MM with a month from 01 to 12, but was '%s'", rawMonth))
 	}
 	format := payrollFormatCSV
 	if req.Params.Format != nil {
@@ -163,7 +175,7 @@ func (s *server) GetStaffPayrollExport(ctx context.Context, req gen.GetStaffPayr
 	sum := sha256.Sum256(body)
 	payload := map[string]any{"month": month.Name, "format": format, "rows": len(rows), "sha256": hex.EncodeToString(sum[:])}
 	if err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		return s.recordEvent(ctx, txq, nil, eventPayrollExported, who, payload, []string{"A"})
+		return s.recordEvent(ctx, txq, nil, eventPayrollExported, who, payload, nil)
 	}); err != nil {
 		return nil, err
 	}

@@ -395,7 +395,7 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `person_rehired` | `fields.erasedAt` and, when set, `fields.reassessedAt`, each as `from`. |
 | `people_imported` | Installation-level (no person): `rows`, `created`, `updated`, `failed` of a real [import](#the-registers-import-and-export); each row's own events name the people it wrote. |
 | `people_exported` | Installation-level (no person): `rows`, the people the [export](#the-registers-import-and-export) wrote. |
-| `payroll_exported` | Installation-level (no person): `month`, `format`, `rows` and `sha256` (hex) of the [payroll file](#the-payroll-export) answered; classes `A`. |
+| `payroll_exported` | Installation-level (no person): `month`, `format`, `rows` and `sha256` (hex) of the [payroll file](#the-payroll-export) answered; no personal data, so no payload class. |
 
 `GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
 the person themselves, a manager of theirs today, `staff:manage` and
@@ -514,8 +514,13 @@ to Skatteetaten's a-melding codes in `values.go`, pinned by a table test for the
 | `midlertidig_tilkallingsvikar` | `midlertidigAnsattSomTilkallingsvikar` |
 
 The hired-out and on-call forms have had codes of their own in the a-melding since
-2025. The remuneration type has none: the a-melding dropped avlønningstype from 2019,
-and the payroll export writes it as stored.
+2025. `fast` and `midlertidig` are the a-melding's codes; the strings of the three
+2025 forms (`fastAnsattUtleid`, `midlertidigAnsattUtleid`,
+`midlertidigAnsattSomTilkallingsvikar`) are **unverified against the kodeliste** —
+[Skatteetaten's guidance](https://www.skatteetaten.no/bedrift-og-organisasjon/arbeidsgiver/a-meldingen/veiledning/arbeidsforholdet/opplysninger-om-arbeidsforholdet/ansettelsesform) names the five forms in prose only — so check them
+before wiring a payroll system to them. The remuneration type has none: Skatteetaten
+says [not to report avlønningstype from 2019](https://www.skatteetaten.no/en/business-and-organisation/employer/the-a-melding/the-a-melding-guide/employment/information-on-employment/remuneration-type/), and the payroll export writes it as
+stored.
 
 ### Terms
 
@@ -1097,7 +1102,8 @@ interface inside the module with one implementation today, `csvExporter`, chosen
 not a change to the rows.
 
 **The parameters.** `month` is required and is `YYYY-MM` with a month from `01` to
-`12`; anything else is the 400 `payroll_month_invalid` on `month`. `format` defaults to
+`12`; anything else — an empty `month` and a request without one included — is the 400
+`payroll_month_invalid` on `month`. `format` defaults to
 `csv`, the one there is; any other value, `CSV` and an empty one included, is the 400
 `payroll_format_unsupported` on `format`. Neither refusal is an export, so neither is
 recorded.
@@ -1116,8 +1122,9 @@ practice).
 **The file** (`format=csv`) is the Expenses form: UTF-8 with a byte order mark,
 semicolon-separated, CRLF line ends, RFC 4180 quoting, ISO dates and the decimal comma
 (`37,50`), each cell through the same formula guard as [the register's
-file](#the-registers-import-and-export). The header is sentence-case English (reading
-12), in this order:
+file](#the-registers-import-and-export) — so an employee number that starts with `-`
+(which the number's pattern allows) is written `'-12`, and payroll will not strip the
+apostrophe. The header is sentence-case English (reading 12), in this order:
 
 | Column | Source |
 | --- | --- |
@@ -1133,9 +1140,9 @@ file](#the-registers-import-and-export). The header is sentence-case English (re
 | `FTE percent` | The position percentage. |
 | `FTE changed` | [`fteChangedAt`](#the-derived-dates), judged on the same day as the terms. |
 | `Working hours scheme` | Skatteetaten's arbeidstidsordning code (below). |
-| `Appointment form` | Skatteetaten's ansettelsesform code (below). |
-| `Remuneration type` | As stored: `monthly`, `hourly`, `commission`, `fee` or `piecework`. The a-melding has not carried an avlønningstype since 2019, so there is no code to translate it to. |
-| `Salary changed` | [`salaryChangedAt`](#the-derived-dates), judged on the same day as the terms. |
+| `Appointment form` | Skatteetaten's ansettelsesform code (below); the three 2025 forms' strings are unverified against the kodeliste — check before wiring a payroll system to them. |
+| `Remuneration type` | As stored: `monthly`, `hourly`, `commission`, `fee` or `piecework`. Skatteetaten says [not to report avlønningstype from 2019](https://www.skatteetaten.no/en/business-and-organisation/employer/the-a-melding/the-a-melding-guide/employment/information-on-employment/remuneration-type/), so there is no code to translate it to. |
+| `Salary changed` | [`salaryChangedAt`](#the-derived-dates), judged on the same day as the terms; blank when the terms in force have no pay components (none recorded, or erased). |
 | `Department` | The department's **code**. |
 | `Cost centre` | The terms' own cost centre, **else the department's**, else blank. |
 | `Seniority date` | When set. |
@@ -1156,9 +1163,9 @@ business units and the departments — is read in **one REPEATABLE READ snapshot
 rows and the file are built in memory; then the export is recorded as the
 installation's **`payroll_exported`** event, naming the exporter, with `month`,
 `format`, `rows` and `sha256` — the hex SHA-256 of the very bytes answered, so the file
-payroll received can be recognised later (reading 13). The event's classes are `A`: the
-payroll exports' lineage is pay documentation, kept five years past the end year
-(S15). A file whose export could not be recorded is not answered. The file is served as
+payroll received can be recognised later (reading 13). The event carries no personal
+data, so it has no payload class, and it is kept as the export's lineage: its hash. A
+file whose export could not be recorded is not answered. The file is served as
 an attachment named `staff-payroll-YYYY-MM.csv`, with `Cache-Control: private,
 no-store` and `X-Content-Type-Options: nosniff`.
 

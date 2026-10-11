@@ -290,6 +290,9 @@ bare ut i måneden arbeidsforholdet slutter. Et arbeidsforhold uten vilkår den 
 beholder raden sin med tomme vilkårskolonner. Formen er Utlegg-modulens lønnsfil —
 semikolon, byte order mark og desimalkomma — så et norsk Excel åpner den som den er.
 Hele kolonnelisten og kodene står i [referansen](/en/reference/staff/#the-payroll-export).
+Kodene for de tre ansettelsesformene som kom i 2025 (utleid, og tilkallingsvikar) er
+ikke verifisert mot Skatteetatens kodeliste: sjekk dem med lønnssystemet før du stoler
+på dem.
 
 Fødselsnummeret og kontonummeret er **ikke** med i filen: lønnssystemet har dem
 allerede, så eksporten leser dem aldri.
