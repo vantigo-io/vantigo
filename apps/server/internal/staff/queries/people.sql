@@ -352,3 +352,9 @@ SELECT
 FROM staff.people
 ORDER BY id
 LIMIT @max_rows;
+
+-- name: ListPeopleForPayroll :many
+-- ListPeopleForPayroll is what the payroll file reads of every person: the
+-- employee number and the names, erased people included — never a sealed
+-- column, which payroll already holds (design reading 9).
+SELECT id, employee_number, given_name, family_name FROM staff.people ORDER BY id;

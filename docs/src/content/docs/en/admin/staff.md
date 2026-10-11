@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, the bank-change mail, and the settings — the business time zone and the employee number sequence.
+description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, the bank-change mail, and the settings — the business time zone and the employee number sequence.
 sidebar:
   order: 44
 sources:
@@ -15,6 +15,7 @@ sources:
   - apps/server/internal/staff/people_import.go
   - apps/server/internal/staff/people_export.go
   - apps/server/internal/staff/csvfile.go
+  - apps/server/internal/staff/payroll.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -256,6 +257,43 @@ An export imports back unchanged: the columns after the private group are ignore
 editing the person's columns in an export and importing it is a way to change many
 people at once. An erased person's row comes back too and writes nothing; edit it, and
 the row is refused `person_erased`.
+
+## Export a month for payroll
+
+The payroll file hands a month's employments to your payroll system. You need
+`staff:manage`.
+
+1. Ask for the month, as `YYYY-MM`:
+   `GET /api/v1/staff/payroll/export?month=2026-09`. The Staff app's Settings page gains
+   a month picker for it in a later release; until then, call the endpoint. `format`
+   may be left out — `csv` is the one format there is.
+2. Save the download, `staff-payroll-2026-09.csv`, and import it into payroll.
+
+What the file holds: one row per employment that was in the month — started by its last
+day and not ended before its first — erased people's included, with the terms in force
+on the month's last day (or on the end day, for an employment that ended during the
+month). Each row carries the employee and employment numbers, the name, the business
+unit's org number, the start, the occupation code, the full-time hours, the position
+percentage and when it last changed, the working hours scheme and the appointment form
+as Skatteetaten's a-melding codes, the remuneration type, when the pay last changed,
+the department's code, the cost centre (the terms' own, else the department's), and
+the seniority date and pay grade when set. The end date and its reason are filled in
+only in the month the employment ends. An employment with no terms on that day keeps
+its row with the terms columns blank. The form is the Expenses payroll file's —
+semicolons, a byte order mark and the decimal comma — so a Norwegian Excel opens it
+as it is. The full column list and the codes are in
+[the reference](/en/reference/staff/#the-payroll-export).
+
+The national identity number and the bank account are **not** in the file: payroll
+already holds them, so the export never reads them.
+
+Every export is recorded in the installation's history with your name, the month, the
+format, the number of rows and the file's SHA-256 hash, so the file payroll received
+can be recognised later — compute the hash of a file you hold
+(`shasum -a 256 staff-payroll-2026-09.csv`) and compare. A month that is not
+`YYYY-MM` is refused `payroll_month_invalid`, a format other than `csv`
+`payroll_format_unsupported`; neither is recorded. The file holds everyone's pay terms:
+keep it where you keep payroll's own records, and delete your copy when payroll has it.
 
 ## The bank-change mail
 

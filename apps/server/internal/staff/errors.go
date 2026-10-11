@@ -84,6 +84,13 @@ const (
 	codeExportTooMany       = "export_too_many"
 )
 
+// The refusal codes of the payroll export (delivery A2, Task 4): each a 400
+// on the parameter it names.
+const (
+	codePayrollMonthInvalid      = "payroll_month_invalid"
+	codePayrollFormatUnsupported = "payroll_format_unsupported"
+)
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.
@@ -108,6 +115,7 @@ const (
 	invalidCategoryTitle     = "Invalid document category"
 	invalidLegalHoldTitle    = "Invalid legal hold"
 	invalidImportFileTitle   = "Invalid import file"
+	invalidPayrollTitle      = "Invalid payroll export"
 )
 
 // withFieldError adds one message to a map another rule may already have put

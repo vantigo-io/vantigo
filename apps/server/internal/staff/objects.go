@@ -106,7 +106,7 @@ var limits = map[string]ratelimit.Policy{
 // touches a document — starts without storage and fails only what needs it.
 func newServer(d module.Deps) *server {
 	objects, err := moduleObjectStore(d)
-	return &server{deps: d, objects: objects, objectsErr: err}
+	return &server{deps: d, objects: objects, objectsErr: err, payroll: map[string]PayrollExporter{payrollFormatCSV: csvExporter{}}}
 }
 
 // moduleObjectStore is this module's object store: d.ObjectStore when a

@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, e-posten om endret kontonummer, og innstillingene — forretningstidssonen og ansattnummerserien.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, e-posten om endret kontonummer, og innstillingene — forretningstidssonen og ansattnummerserien.
 sidebar:
   order: 44
 sources:
@@ -15,6 +15,7 @@ sources:
   - apps/server/internal/staff/people_import.go
   - apps/server/internal/staff/people_export.go
   - apps/server/internal/staff/csvfile.go
+  - apps/server/internal/staff/payroll.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -265,6 +266,41 @@ En eksport importeres tilbake uendret: kolonnene etter privatgruppen ignoreres, 
 endre personens kolonner i en eksport og importere den er en måte å endre mange
 personer på én gang. Raden til en slettet person kommer også tilbake og skriver
 ingenting; endrer du den, avvises raden med `person_erased`.
+
+## Eksporter en måned til lønn
+
+Lønnsfilen gir lønnssystemet en måneds arbeidsforhold. Du trenger `staff:manage`.
+
+1. Be om måneden, som `YYYY-MM`:
+   `GET /api/v1/staff/payroll/export?month=2026-09`. Innstillinger-siden i Ansatte-appen
+   får en månedsvelger for dette i en senere versjon; til da kaller du endepunktet.
+   `format` kan utelates — `csv` er det eneste formatet som finnes.
+2. Lagre nedlastingen, `staff-payroll-2026-09.csv`, og importer den i lønnssystemet.
+
+Hva filen inneholder: én rad per arbeidsforhold som var i måneden — startet senest den
+siste dagen og ikke avsluttet før den første — også slettede personers, med vilkårene
+som gjaldt den siste dagen i måneden (eller sluttdagen, for et arbeidsforhold som
+sluttet i løpet av måneden). Hver rad har ansatt- og arbeidsforholdsnummeret, navnet,
+virksomhetens organisasjonsnummer, startdatoen, yrkeskoden, timene i full stilling,
+stillingsprosenten og når den sist ble endret, arbeidstidsordningen og
+ansettelsesformen som Skatteetatens a-meldingskoder, avlønningstypen, når lønnen sist
+ble endret, avdelingens kode, kostnadsstedet (vilkårenes eget, ellers avdelingens), og
+lønnsansienniteten og lønnstrinnet når de er satt. Sluttdatoen og sluttårsaken fylles
+bare ut i måneden arbeidsforholdet slutter. Et arbeidsforhold uten vilkår den dagen
+beholder raden sin med tomme vilkårskolonner. Formen er Utlegg-modulens lønnsfil —
+semikolon, byte order mark og desimalkomma — så et norsk Excel åpner den som den er.
+Hele kolonnelisten og kodene står i [referansen](/en/reference/staff/#the-payroll-export).
+
+Fødselsnummeret og kontonummeret er **ikke** med i filen: lønnssystemet har dem
+allerede, så eksporten leser dem aldri.
+
+Hver eksport registreres i installasjonens historikk med ditt navn, måneden, formatet,
+antall rader og filens SHA-256-sjekksum, så filen lønnssystemet fikk kan kjennes igjen
+senere — regn ut sjekksummen til en fil du har (`shasum -a 256 staff-payroll-2026-09.csv`)
+og sammenlign. En måned som ikke er `YYYY-MM` avvises med `payroll_month_invalid`, et
+annet format enn `csv` med `payroll_format_unsupported`; ingen av dem registreres.
+Filen inneholder alles lønnsvilkår: oppbevar den der du oppbevarer lønnssystemets egne
+opplysninger, og slett din kopi når lønnssystemet har den.
 
 ## E-posten om endret kontonummer
 

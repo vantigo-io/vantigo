@@ -191,9 +191,13 @@ var (
 )
 
 // workingHoursSchemeCodes is each arbeidstidsordning as Skatteetaten's
-// a-melding names it, and endReasonCodes each sluttårsak: the codes the
-// payroll export (delivery A2) reports, pinned in a table test so a rename on
-// either side is a failing test rather than a rejected a-melding.
+// a-melding names it, endReasonCodes each sluttårsak and appointmentFormCodes
+// each ansettelsesform (the five the a-melding has carried since 2025, the
+// hired-out and on-call forms their own codes): the codes the payroll export
+// (delivery A2) reports, pinned in a table test so a rename on either side is
+// a failing test rather than a rejected a-melding. The remuneration type has
+// no map: the a-melding dropped avlønningstype from 2019, so there is no code
+// to report it by, and the export writes it as stored.
 var (
 	workingHoursSchemeCodes = map[string]string{
 		"not_shift":           "ikkeSkift",
@@ -210,6 +214,13 @@ var (
 		"wrongly_reported":      "arbeidsforholdetSkulleAldriVaertRapportert",
 		"internal_change":       "endringIOrganisasjonsstrukturEllerByttetJobbInternt",
 		"payroll_system_change": "byttetLoenssystemEllerRegnskapsfoerer",
+	}
+	appointmentFormCodes = map[string]string{
+		"fast":                         "fast",
+		"midlertidig":                  "midlertidig",
+		"fast_utleid":                  "fastAnsattUtleid",
+		"midlertidig_utleid":           "midlertidigAnsattUtleid",
+		"midlertidig_tilkallingsvikar": "midlertidigAnsattSomTilkallingsvikar",
 	}
 )
 
