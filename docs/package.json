@@ -20,6 +20,6 @@
     "@astrojs/markdown-remark": "^7.3.1"
   },
   "devDependencies": {
-    "wrangler": "^4.147.0"
+    "wrangler": "^4.149.0"
   }
 }
