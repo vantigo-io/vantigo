@@ -367,7 +367,36 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     // right for any of them.
     return "/expenses";
   }
+  if (item.module === "invoices") {
+    // Three types carry an invoice id; a file's open lines its bank file; an
+    // unposted batch is printed and posted on the paper letters' page. Held
+    // letters carry their cause, and the overdue list says what each needs.
+    if (["invoiceOverdue", "invoiceRefundDue", "reminderFailed"].includes(item.type)) {
+      return `/invoices/${encodeURIComponent(item.entityId)}`;
+    }
+    if (item.type === "bankTransactionsOpen") return `/invoices/payments/files/${encodeURIComponent(item.entityId)}`;
+    if (item.type === "remindersHeld") return "/invoices/overdue";
+    if (item.type === "reminderBatchUnposted") return "/invoices/reminders/print";
+    return "/invoices";
+  }
   return "/communications/inbox";
+};
+
+/**
+ * Invoices' sentences (invoices payments and reminders design D12): the
+ * server's title is a buyer's name, a file's booking days, a cause or a
+ * posting day, never a sentence, so each type is worded here.
+ */
+const invoicesAttentionTitleKeys: Record<string, string> = {
+  invoiceOverdue: "dashboard.invoiceOverdue",
+  invoiceRefundDue: "dashboard.invoiceRefundDue",
+  reminderFailed: "dashboard.invoiceReminderFailed",
+  reminderBatchUnposted: "dashboard.invoiceBatchUnposted",
+};
+
+const invoicesHeldTitleKeys: Record<string, string> = {
+  collectionRatesOutdated: "dashboard.invoiceRemindersHeldRates",
+  collectionRegimeUnreviewed: "dashboard.invoiceRemindersHeldRegime",
 };
 
 const projectAttentionTitleKeys: Record<string, string> = {
@@ -400,7 +429,13 @@ const customerAttentionTitleKeys: Record<string, string> = {
  * so they take the same treatment,
  * this time with the name filled into the sentence rather than a date.
  */
-export const attentionTitleKey = (item: { module: ModuleKey; type: string; count?: number; entityId?: string }) => {
+export const attentionTitleKey = (item: {
+  module: ModuleKey;
+  type: string;
+  count?: number;
+  entityId?: string;
+  title?: string;
+}) => {
   if (item.module === "time") {
     if (item.type === "weekUnsubmitted") return "dashboard.timeWeekUnsubmitted";
     if (item.type === "approvalWaiting") return "dashboard.timeApprovalWaiting";
@@ -408,6 +443,16 @@ export const attentionTitleKey = (item: { module: ModuleKey; type: string; count
   }
   if (item.module === "projects") return projectAttentionTitleKeys[item.type];
   if (item.module === "customers") return customerAttentionTitleKeys[item.type];
+  if (item.module === "invoices") {
+    // A file with no booked line has no booking days to name.
+    if (item.type === "bankTransactionsOpen") {
+      return item.entityId !== undefined && item.title === ""
+        ? "dashboard.invoiceBankLinesOpenUndated"
+        : "dashboard.invoiceBankLinesOpen";
+    }
+    if (item.type === "remindersHeld") return item.entityId ? invoicesHeldTitleKeys[item.entityId] : undefined;
+    return invoicesAttentionTitleKeys[item.type];
+  }
   if (item.module === "expenses") {
     // A rejected unit is an expense or a whole trip, and the two are called
     // different things. The link already keys on the `claim/` prefix; so does
@@ -455,6 +500,16 @@ export const attentionTitle = (
   // is about, not a name.
   if (item.module === "projects" || item.module === "expenses" || item.module === "customers") {
     return t(key, { name: item.title, count: item.count });
+  }
+  if (item.module === "invoices") {
+    // The title is a buyer's name, or a day or two — a file's first and last
+    // booking day, a batch's posting day — written as dates (in UTC: they
+    // are calendar days); the count is the server's, one when it sends none.
+    const asDate = (value: string) => formatDate(value, { dateStyle: "medium", timeZone: "UTC" });
+    const days = /^\d{4}-\d{2}-\d{2}( – \d{4}-\d{2}-\d{2})?$/.test(item.title)
+      ? item.title.split(" – ").map(asDate).join(" – ")
+      : "";
+    return t(key, { name: item.title, days, date: days, count: item.count ?? 1 });
   }
   return t(key, { date: formatDate(attentionWeek(item.entityId), { dateStyle: "medium", timeZone: "UTC" }) });
 };
@@ -645,7 +700,8 @@ const DashboardPage = () => {
     retry: false,
   });
 
-  // Invoices serves a summary only: no timeseries and no attention list (D7).
+  // Invoices serves a summary and an attention list, no timeseries (payments
+  // and delivery design D7; payments and reminders design D12).
   const invoicesSummary = useQuery({
     queryKey: ["dashboard", "invoices", "summary", range.from.toISOString(), range.to.toISOString()],
     queryFn: ({ signal }) => fetchSummary<InvoicesSummary>("invoices", range, signal),
@@ -759,6 +815,13 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const invoicesAttention = useQuery({
+    queryKey: ["dashboard", "invoices", "attention"],
+    queryFn: ({ signal }) => fetchAttention("invoices", signal),
+    enabled: allowed("invoices"),
+    retry: false,
+  });
+
   const timeseriesByMetric: Record<string, DailyPoint[] | undefined> = {
     "customers:newCustomers": customersTimeseries.data,
     "communications:newConversations": communicationsTimeseries.data,
@@ -797,7 +860,8 @@ const DashboardPage = () => {
     (allowed("energy") && energyAttention.isPending) ||
     (allowed("projects") && projectsAttention.isPending) ||
     (allowed("time") && timeAttention.isPending) ||
-    (allowed("expenses") && expensesAttention.isPending);
+    (allowed("expenses") && expensesAttention.isPending) ||
+    (allowed("invoices") && invoicesAttention.isPending);
   const activityLoading =
     (allowed("customers") && customersTimeseries.isPending) ||
     (allowed("communications") && communicationsTimeseries.isPending) ||
@@ -815,6 +879,7 @@ const DashboardPage = () => {
     ...(projectsAttention.data ?? []).map((item) => ({ ...item, module: "projects" as ModuleKey })),
     ...(timeAttention.data ?? []).map((item) => ({ ...item, module: "time" as ModuleKey })),
     ...(expensesAttention.data ?? []).map((item) => ({ ...item, module: "expenses" as ModuleKey })),
+    ...(invoicesAttention.data ?? []).map((item) => ({ ...item, module: "invoices" as ModuleKey })),
   ]
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
     .slice(0, 8);
@@ -1236,7 +1301,7 @@ const DashboardPage = () => {
                 const Icon =
                   item.type === "supplyPeriodExpiring" || item.module === "time"
                     ? IconClock
-                    : item.type === "failedDelivery"
+                    : item.type === "failedDelivery" || item.type === "reminderFailed"
                       ? IconRefreshAlert
                       : IconAlertCircle;
                 // Every other module writes its own title; time's is named
@@ -1251,7 +1316,11 @@ const DashboardPage = () => {
                     underline="never"
                   >
                     <Group gap="sm" wrap="nowrap">
-                      <ThemeIcon variant="light" color={item.type === "failedDelivery" ? "red" : "yellow"} size="sm">
+                      <ThemeIcon
+                        variant="light"
+                        color={item.type === "failedDelivery" || item.type === "reminderFailed" ? "red" : "yellow"}
+                        size="sm"
+                      >
                         <Icon size={14} />
                       </ThemeIcon>
                       <Stack gap={0} style={{ minWidth: 0 }} flex={1}>

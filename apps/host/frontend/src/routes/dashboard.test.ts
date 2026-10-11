@@ -520,3 +520,79 @@ describe("the dashboard's invoices card", () => {
     expect(metrics.some((metric) => (metric.module as string) === "invoices")).toBe(false);
   });
 });
+
+/**
+ * Invoices' attention items (invoices payments and reminders design D12):
+ * the server writes a buyer's name, a file's booking days, a cause or a
+ * posting day in `title`, and the count apart, so every sentence is built
+ * here from a catalog — in the reader's language, with the count where one is
+ * sent — and every item leads to the page that deals with it.
+ */
+describe("Dashboard_InvoicesAttentionSentencesAndLinks", () => {
+  const day = (value: string) => `«${value.slice(0, 10)}»`;
+  const item = (type: string, entityId: string, title: string, count?: number) => ({
+    module: "invoices" as const,
+    type,
+    entityId,
+    title,
+    ...(count === undefined ? {} : { count }),
+  });
+  const items = [
+    item("invoiceOverdue", "1001", "Acme AS"),
+    item("invoiceRefundDue", "1002", "Kari Nordmann"),
+    item("bankTransactionsOpen", "17", "2026-09-01 – 2026-09-10", 3),
+    item("bankTransactionsOpen", "18", "2026-09-11", 1),
+    item("bankTransactionsOpen", "19", "", 2),
+    item("reminderFailed", "1003", "Bygg AS"),
+    item("remindersHeld", "collectionRatesOutdated", "collectionRatesOutdated", 4),
+    item("remindersHeld", "collectionRegimeUnreviewed", "collectionRegimeUnreviewed", 1),
+    item("reminderBatchUnposted", "7", "2026-09-10", 5),
+  ];
+  const sentences = (lng: "en" | "nb") =>
+    items.map((it) => attentionTitle(it, (key, values) => i18n.t(key, { ns: "host", lng, ...values }), day));
+
+  it("says every type in English", () => {
+    expect(sentences("en")).toEqual([
+      "An invoice to Acme AS is overdue",
+      "Money is owed back to Kari Nordmann on an invoice",
+      "3 bank lines booked «2026-09-01» – «2026-09-10» wait in the exception queue",
+      "1 bank line booked «2026-09-11» waits in the exception queue",
+      "2 bank lines wait in the exception queue",
+      "A reminder to Bygg AS could not be sent",
+      "4 reminders wait for a collection rate",
+      "1 reminder waits for the review of the collection-law regime",
+      "The print batch for «2026-09-10» (5 letters) is not confirmed posted",
+    ]);
+  });
+
+  it("says every type in Norwegian", () => {
+    expect(sentences("nb")).toEqual([
+      "En faktura til Acme AS har forfalt",
+      "Kari Nordmann skal ha penger tilbake på en faktura",
+      "3 banklinjer bokført «2026-09-01» – «2026-09-10» venter i avvikskøen",
+      "1 banklinje bokført «2026-09-11» venter i avvikskøen",
+      "2 banklinjer venter i avvikskøen",
+      "En purring til Bygg AS kunne ikke sendes",
+      "4 purringer venter på en sats",
+      "1 purring venter på gjennomgangen av inkassoregelverket",
+      "Utskriftsbunken for «2026-09-10» (5 brev) er ikke bekreftet postlagt",
+    ]);
+  });
+
+  it("leads each item to the page that deals with it", () => {
+    expect(items.map((it) => attentionHref(it))).toEqual([
+      "/invoices/1001",
+      "/invoices/1002",
+      "/invoices/payments/files/17",
+      "/invoices/payments/files/18",
+      "/invoices/payments/files/19",
+      "/invoices/1003",
+      "/invoices/overdue",
+      "/invoices/overdue",
+      "/invoices/reminders/print",
+    ]);
+    // A type this build does not know: the app's home, and the server's own title.
+    expect(attentionHref(item("somethingNew", "1", "x"))).toBe("/invoices");
+    expect(attentionTitleKey(item("somethingNew", "1", "x"))).toBeUndefined();
+  });
+});
