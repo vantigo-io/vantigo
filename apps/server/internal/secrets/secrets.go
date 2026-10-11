@@ -26,11 +26,19 @@
 // OpenString are the same operations for text contexts such as cookies,
 // encoded with unpadded base64url. The box never logs, and none of its
 // errors carry plaintext or key material.
+//
+// MAC is the box's other use of a derived key: HMAC-SHA256 under the
+// purpose's key, deterministic where Seal is not, so a column of MACs can be
+// unique and searched without opening anything. A MAC purpose is a purpose
+// like any other and must never be one Seal also uses — "staff/national-id"
+// seals, "staff/national-id-index" MACs — so no key both encrypts and
+// authenticates. MACEqual compares two MACs in constant time.
 package secrets
 
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -75,6 +83,12 @@ var maxPlaintextBytes = 64 << 20
 // of APP_SECRET.
 const hkdfSalt = "vantigo-secrets-v1"
 
+// newHKDF is the key derivation keyFor reads from. It is a var rather than a
+// call for one reason, as maxPlaintextBytes is: HKDF-SHA256 cannot fail for a
+// 32-byte key, so the test that proves MAC passes keyFor's error through has to
+// substitute a derivation that does. Nothing outside that test writes to it.
+var newHKDF = hkdf.New
+
 const (
 	keySize   = 32 // AES-256 key size, in bytes.
 	nonceSize = 12 // AES-GCM standard nonce size, in bytes.
@@ -111,7 +125,7 @@ func (b *Box) keyFor(purpose string) ([]byte, error) {
 	}
 
 	key := make([]byte, keySize)
-	r := hkdf.New(sha256.New, b.appSecret, []byte(hkdfSalt), []byte(purpose))
+	r := newHKDF(sha256.New, b.appSecret, []byte(hkdfSalt), []byte(purpose))
 	if _, err := io.ReadFull(r, key); err != nil {
 		return nil, err
 	}
@@ -186,6 +200,28 @@ func (b *Box) Open(purpose string, sealed []byte) ([]byte, error) {
 		return nil, ErrInvalid
 	}
 	return plaintext, nil
+}
+
+// MAC returns the HMAC-SHA256 of data under purpose's derived key: 32 bytes,
+// the same for the same purpose, data and APP_SECRET, and unrelated otherwise.
+// It is what lets a sealed value be found or refused as a duplicate without
+// opening it. Callers domain-separate data themselves when one purpose MACs
+// values of several kinds. The only error is the key derivation's.
+func (b *Box) MAC(purpose string, data []byte) ([]byte, error) {
+	key, err := b.keyFor(purpose)
+	if err != nil {
+		return nil, err
+	}
+	h := hmac.New(sha256.New, key)
+	h.Write(data)
+	return h.Sum(nil), nil
+}
+
+// MACEqual reports whether two MACs are equal in time that does not depend on
+// where they first differ, so comparing a guess against a stored MAC cannot
+// be used to learn it byte by byte.
+func MACEqual(a, b []byte) bool {
+	return hmac.Equal(a, b)
 }
 
 // SealString is Seal for string plaintexts, encoded as unpadded base64url
