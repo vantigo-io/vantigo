@@ -173,17 +173,19 @@ DELETE FROM staff.employment_terms WHERE id = @id;
 
 -- name: GraphEmployments :many
 -- GraphEmployments is the spans of the employments of @person_ids — of
--- everyone when it is NULL — the manager graph's nodes over time. The cycle
--- check reads everyone's under the manager-graph lock; the org view and the
--- Manager audience read outside it.
-SELECT id, person_id, start_date, end_date FROM staff.employments
+-- everyone when it is NULL — the manager graph's nodes over time, with the
+-- business unit a person's place today names. The cycle check reads
+-- everyone's under the manager-graph lock; the org view, the placement and
+-- the Manager audience read outside it.
+SELECT id, person_id, business_unit_id, start_date, end_date FROM staff.employments
 WHERE sqlc.narg('person_ids')::bigint[] IS NULL OR person_id = ANY(sqlc.narg('person_ids')::bigint[]);
 
 -- name: GraphTerms :many
 -- GraphTerms is the edges of the terms rows of @person_ids' employments —
 -- of everyone's when it is NULL: the manager each names, and the department
--- whose manager is the fallback.
-SELECT t.employment_id, t.valid_from, t.department_id, t.manager_person_id
+-- whose manager is the fallback — with the title and the location a
+-- person's place today names.
+SELECT t.employment_id, t.valid_from, t.department_id, t.manager_person_id, t.title, t.location_id
 FROM staff.employment_terms t JOIN staff.employments e ON e.id = t.employment_id
 WHERE sqlc.narg('person_ids')::bigint[] IS NULL OR e.person_id = ANY(sqlc.narg('person_ids')::bigint[]);
 

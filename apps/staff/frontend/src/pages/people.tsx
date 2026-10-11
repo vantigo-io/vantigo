@@ -173,6 +173,7 @@ export const PeoplePage = () => {
                   <Table.Tr>
                     <Table.Th>{t("name")}</Table.Th>
                     <Table.Th>{t("employeeNumber")}</Table.Th>
+                    <Table.Th>{t("jobTitle")}</Table.Th>
                     <Table.Th>{t("department")}</Table.Th>
                     <Table.Th>{t("manager")}</Table.Th>
                     <Table.Th>{t("workEmail")}</Table.Th>
@@ -188,6 +189,7 @@ export const PeoplePage = () => {
                         </Anchor>
                       </Table.Td>
                       <Table.Td>{person.employeeNumber}</Table.Td>
+                      <Table.Td>{person.title ?? t("notSet")}</Table.Td>
                       <Table.Td>{person.department?.name ?? t("notSet")}</Table.Td>
                       <Table.Td>{person.manager?.displayName ?? t("notSet")}</Table.Td>
                       <Table.Td>{person.workEmail ?? t("notSet")}</Table.Td>

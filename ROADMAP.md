@@ -995,7 +995,7 @@ keeps the fields payroll needs and exports them. The owner's sequence (research 
 
 Four deliveries, four pull requests, one migration each.
 
-**A1 — People and employments, delivered** on `feat/staff-foundation`
+**A1 — People and employments, built** on `feat/staff-foundation` (PR #135)
 ([`docs/src/content/docs/en/reference/staff.md`](docs/src/content/docs/en/reference/staff.md)):
 the `staff` module and `@vantigo/staff-ui`; people with identity, contact, next of kin
 and the sealed national identity number and bank account (encrypted, found by a keyed

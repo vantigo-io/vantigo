@@ -543,6 +543,12 @@ type StaffBusinessUnitRequest struct {
 	OrgNumber *string `json:"orgNumber,omitempty"`
 }
 
+// StaffBusinessUnitSummary A business unit as the work group names it.
+type StaffBusinessUnitSummary struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 // StaffCapabilities What the caller may do in Staff, so the app never re-derives a rule this module owns. The access layer still decides every request.
 type StaffCapabilities struct {
 	// CanEdit staff:manage — HR: people, employments and terms, the structure and the settings.
@@ -823,6 +829,12 @@ type StaffLocationRequest struct {
 	Street *string `json:"street,omitempty"`
 }
 
+// StaffLocationSummary A location as the work group names it.
+type StaffLocationSummary struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 // StaffMeRequest What a person edits on their own record (design S17): their private phones and email, their home address and their next of kin — a full replace of exactly these, every optional field left out cleared. Everything else — the work group, the birth date and gender, the national identity number, the bank account — is HR's; a property this schema does not name is refused as a 400 naming it.
 type StaffMeRequest struct {
 	// City Up to 100 characters.
@@ -945,13 +957,16 @@ type StaffPayComponent struct {
 // StaffPayPeriod defines model for StaffPayPeriod.
 type StaffPayPeriod string
 
-// StaffPerson A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager and department among it — each from the terms in force today, the manager the terms' own or else the department's (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person.
+// StaffPerson A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the terms' own or else the department's (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person.
 type StaffPerson struct {
 	// BankAccount The bank account on file, as its kind and its last four digits. Present for the person themselves, staff:manage and staff:personal-data, when one is on file.
 	BankAccount *StaffPersonBankAccount `json:"bankAccount,omitempty"`
 
 	// BirthDate Private. Absent when not set.
 	BirthDate *openapi_types.Date `json:"birthDate,omitempty"`
+
+	// BusinessUnit A business unit as the work group names it.
+	BusinessUnit *StaffBusinessUnitSummary `json:"businessUnit,omitempty"`
 
 	// Capabilities What the caller may do with this person. The access layer still decides every request.
 	Capabilities StaffPersonCapabilities `json:"capabilities"`
@@ -972,6 +987,9 @@ type StaffPerson struct {
 	Gender    *StaffGender `json:"gender,omitempty"`
 	GivenName string       `json:"givenName"`
 	Id        int64        `json:"id"`
+
+	// Location A location as the work group names it.
+	Location *StaffLocationSummary `json:"location,omitempty"`
 
 	// Manager A person as the work group names them.
 	Manager *StaffPersonSummary `json:"manager,omitempty"`
@@ -1008,6 +1026,9 @@ type StaffPerson struct {
 
 	// Street Private. Absent when not set.
 	Street *string `json:"street,omitempty"`
+
+	// Title The job title of the terms in force today. Absent when there is none.
+	Title *string `json:"title,omitempty"`
 
 	// User The user the person is linked to for self-service, as the user directory names them. Present for the person themselves, staff:manage and staff:personal-data, when a link exists. A user the directory no longer knows is "Unknown user", not active.
 	User        *StaffPersonUser `json:"user,omitempty"`
@@ -1057,8 +1078,11 @@ type StaffPersonLinkRequest struct {
 	UserId *openapi_types.UUID `json:"userId"`
 }
 
-// StaffPersonListItem A person in the directory — the work group, with the manager and the department from the terms in force today (absent when there is none; to a caller holding staff:view alone the manager is absent too when not active today), and where the person stands today.
+// StaffPersonListItem A person in the directory — the work group, with the manager, the department, the title and the location from the terms in force today and the business unit of their employment (each absent when there is none; to a caller holding staff:view alone the manager is absent too when not active today), and where the person stands today.
 type StaffPersonListItem struct {
+	// BusinessUnit A business unit as the work group names it.
+	BusinessUnit *StaffBusinessUnitSummary `json:"businessUnit,omitempty"`
+
 	// Department A department as the work group names it.
 	Department     *StaffDepartmentSummary `json:"department,omitempty"`
 	DisplayName    string                  `json:"displayName"`
@@ -1066,6 +1090,9 @@ type StaffPersonListItem struct {
 	FamilyName     string                  `json:"familyName"`
 	GivenName      string                  `json:"givenName"`
 	Id             int64                   `json:"id"`
+
+	// Location A location as the work group names it.
+	Location *StaffLocationSummary `json:"location,omitempty"`
 
 	// Manager A person as the work group names them.
 	Manager *StaffPersonSummary `json:"manager,omitempty"`
@@ -1077,8 +1104,11 @@ type StaffPersonListItem struct {
 	PreferredLanguage StaffLanguage `json:"preferredLanguage"`
 
 	// Status Where the person stands today, in the business time zone: active (an employment has started and not ended — the end day itself is still worked), upcoming (none active, one starting later; date is the earliest such start), ended (every employment ended before today; date is the latest end) or none (no employment yet).
-	Status      StaffPersonStatus `json:"status"`
-	WorkCountry string            `json:"workCountry"`
+	Status StaffPersonStatus `json:"status"`
+
+	// Title The job title of the terms in force today. Absent when there is none.
+	Title       *string `json:"title,omitempty"`
+	WorkCountry string  `json:"workCountry"`
 
 	// WorkEmail Absent when not set.
 	WorkEmail *string `json:"workEmail,omitempty"`

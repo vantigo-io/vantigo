@@ -5,6 +5,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { assignableUsersQueryOptions, type StaffAssignableUser } from "../api/people";
 import "../i18n";
+import { SEARCH_DEBOUNCE_MS } from "../lib/search";
 
 export interface UserPickerProps {
   value: string | null;
@@ -25,7 +26,7 @@ export const UserPicker = ({ value, onChange, error }: UserPickerProps) => {
   const [picked, setPicked] = useState<StaffAssignableUser | null>(null);
   // Picking writes the user's name into the box; that is not a new search.
   const term = picked && search === picked.displayName ? "" : search.trim();
-  const [debounced] = useDebouncedValue(term, 250);
+  const [debounced] = useDebouncedValue(term, SEARCH_DEBOUNCE_MS);
   const { data, isFetching } = useQuery({ ...assignableUsersQueryOptions(debounced), enabled: debounced !== "" });
 
   const found = debounced === "" ? [] : (data ?? []);

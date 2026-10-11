@@ -206,21 +206,23 @@ func (q *Queries) GetTerms(ctx context.Context, id int64) (StaffEmploymentTerm, 
 }
 
 const graphEmployments = `-- name: GraphEmployments :many
-SELECT id, person_id, start_date, end_date FROM staff.employments
+SELECT id, person_id, business_unit_id, start_date, end_date FROM staff.employments
 WHERE $1::bigint[] IS NULL OR person_id = ANY($1::bigint[])
 `
 
 type GraphEmploymentsRow struct {
-	ID        int64
-	PersonID  int64
-	StartDate pgtype.Date
-	EndDate   pgtype.Date
+	ID             int64
+	PersonID       int64
+	BusinessUnitID int64
+	StartDate      pgtype.Date
+	EndDate        pgtype.Date
 }
 
 // GraphEmployments is the spans of the employments of @person_ids — of
-// everyone when it is NULL — the manager graph's nodes over time. The cycle
-// check reads everyone's under the manager-graph lock; the org view and the
-// Manager audience read outside it.
+// everyone when it is NULL — the manager graph's nodes over time, with the
+// business unit a person's place today names. The cycle check reads
+// everyone's under the manager-graph lock; the org view, the placement and
+// the Manager audience read outside it.
 func (q *Queries) GraphEmployments(ctx context.Context, personIds []int64) ([]GraphEmploymentsRow, error) {
 	rows, err := q.db.Query(ctx, graphEmployments, personIds)
 	if err != nil {
@@ -233,6 +235,7 @@ func (q *Queries) GraphEmployments(ctx context.Context, personIds []int64) ([]Gr
 		if err := rows.Scan(
 			&i.ID,
 			&i.PersonID,
+			&i.BusinessUnitID,
 			&i.StartDate,
 			&i.EndDate,
 		); err != nil {
@@ -247,7 +250,7 @@ func (q *Queries) GraphEmployments(ctx context.Context, personIds []int64) ([]Gr
 }
 
 const graphTerms = `-- name: GraphTerms :many
-SELECT t.employment_id, t.valid_from, t.department_id, t.manager_person_id
+SELECT t.employment_id, t.valid_from, t.department_id, t.manager_person_id, t.title, t.location_id
 FROM staff.employment_terms t JOIN staff.employments e ON e.id = t.employment_id
 WHERE $1::bigint[] IS NULL OR e.person_id = ANY($1::bigint[])
 `
@@ -257,11 +260,14 @@ type GraphTermsRow struct {
 	ValidFrom       pgtype.Date
 	DepartmentID    *int64
 	ManagerPersonID *int64
+	Title           *string
+	LocationID      *int64
 }
 
 // GraphTerms is the edges of the terms rows of @person_ids' employments —
 // of everyone's when it is NULL: the manager each names, and the department
-// whose manager is the fallback.
+// whose manager is the fallback — with the title and the location a
+// person's place today names.
 func (q *Queries) GraphTerms(ctx context.Context, personIds []int64) ([]GraphTermsRow, error) {
 	rows, err := q.db.Query(ctx, graphTerms, personIds)
 	if err != nil {
@@ -276,6 +282,8 @@ func (q *Queries) GraphTerms(ctx context.Context, personIds []int64) ([]GraphTer
 			&i.ValidFrom,
 			&i.DepartmentID,
 			&i.ManagerPersonID,
+			&i.Title,
+			&i.LocationID,
 		); err != nil {
 			return nil, err
 		}

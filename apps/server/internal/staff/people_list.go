@@ -116,13 +116,17 @@ func (s *server) GetStaffPeople(ctx context.Context, req gen.GetStaffPeopleReque
 }
 
 // placement is where a person stands today and whom their terms in force
-// place them under: the status, and the manager and the department of their
-// earliest employment in force today — the manager its terms name, else the
-// department's (design §4 Managers) — nil when there is none.
+// place them under: the status, and the manager, the department, the title,
+// the location and the business unit of their earliest employment in force
+// today — the manager its terms name, else the department's (design §4
+// Managers) — each nil when there is none.
 type placement struct {
-	status     gen.StaffPersonStatus
-	manager    *gen.StaffPersonSummary
-	department *gen.StaffDepartmentSummary
+	status       gen.StaffPersonStatus
+	manager      *gen.StaffPersonSummary
+	department   *gen.StaffDepartmentSummary
+	title        *string
+	businessUnit *gen.StaffBusinessUnitSummary
+	location     *gen.StaffLocationSummary
 	// managerActive is whether the manager is active today, without which a
 	// colleague alone is not shown them (shownManager).
 	managerActive bool
@@ -172,6 +176,22 @@ func placementsOf(ctx context.Context, q *store.Queries, ids []int64, today time
 	for _, d := range departments {
 		byID[d.ID] = d
 	}
+	units, err := q.ListBusinessUnits(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("staff: read the business units: %w", err)
+	}
+	unitNames := make(map[int64]string, len(units))
+	for _, u := range units {
+		unitNames[u.ID] = u.Name
+	}
+	locations, err := q.ListLocations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("staff: read the locations: %w", err)
+	}
+	locationNames := make(map[int64]string, len(locations))
+	for _, l := range locations {
+		locationNames[l.ID] = l.Name
+	}
 	managers := map[int64]int64{}
 	var managerIDs []int64
 	for _, id := range ids {
@@ -184,6 +204,15 @@ func placementsOf(ctx context.Context, q *store.Queries, ids []int64, today time
 			if t.DepartmentID != nil {
 				if d, ok := byID[*t.DepartmentID]; ok {
 					p.department = &gen.StaffDepartmentSummary{Id: d.ID, Code: d.Code, Name: d.Name}
+				}
+			}
+			p.title = t.Title
+			if name, ok := unitNames[e.BusinessUnitID]; ok {
+				p.businessUnit = &gen.StaffBusinessUnitSummary{Id: e.BusinessUnitID, Name: name}
+			}
+			if t.LocationID != nil {
+				if name, ok := locationNames[*t.LocationID]; ok {
+					p.location = &gen.StaffLocationSummary{Id: *t.LocationID, Name: name}
 				}
 			}
 			m := t.Manager

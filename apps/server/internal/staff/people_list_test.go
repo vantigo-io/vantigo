@@ -201,3 +201,41 @@ func TestPeopleList_AColleagueSeesOnlyAnActiveManager(t *testing.T) {
 		}
 	}
 }
+
+// Every row of the directory carries the work group's place today (design
+// §5's Work row): the title and the location of the terms in force and the
+// employment's business unit, each named — for a colleague holding
+// staff:view as for HR — while the colleague's terms rows stay the dates, the
+// type and the percentage.
+func TestPeopleList_TheTitleUnitAndLocationToday(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	unit := company(t, hr)
+	office := createLocation(t, hr, "Oslo HQ")
+	p := createPerson(t, hr, with(newPerson("Titled", "Today"), "employeeNumber", "S-TTL"))
+	e := createEmployment(t, hr, p.Id, newEmployment(shiftDay(t, today(t, h), -10), terms("title", "Developer", "locationId", office.Id)))
+
+	colleague, _ := signIn(t, h, "staff:view")
+	for name, c := range map[string]*modtest.Client{"staff:manage": hr, "staff:view": colleague} {
+		data, _ := raw(t, c.Do(http.MethodGet, peoplePath+"?q=S-TTL", nil))["data"].([]any)
+		if len(data) != 1 {
+			t.Fatalf("%s lists %v, want the one person", name, data)
+		}
+		row, _ := data[0].(map[string]any)
+		if row["title"] != "Developer" {
+			t.Errorf("%s: title = %v, want Developer", name, row["title"])
+		}
+		if u, _ := row["businessUnit"].(map[string]any); u["id"] != float64(unit.Id) || u["name"] != "Oslo" {
+			t.Errorf("%s: businessUnit = %v, want the employment's", name, row["businessUnit"])
+		}
+		if l, _ := row["location"].(map[string]any); l["id"] != float64(office.Id) || l["name"] != "Oslo HQ" {
+			t.Errorf("%s: location = %v, want the terms'", name, row["location"])
+		}
+	}
+	for _, row := range rawList(t, colleague.Do(http.MethodGet, termsPath(e.Id), nil)) {
+		if _, ok := row["title"]; ok {
+			t.Errorf("a colleague reads a terms row's title: %v", row)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package staff
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
@@ -19,6 +20,9 @@ const (
 	itemMissing       = "missing"
 	itemNotApplicable = "not_applicable"
 )
+
+// payItem is the item that says whether the pay is recorded (§ 14-6 (1) i).
+const payItem = "i"
 
 // contractItem is one item of the check.
 type contractItem struct{ Item, State, Source string }
@@ -62,7 +66,7 @@ func contractCheck(e store.StaffEmployment, t *store.StaffEmploymentTerm, pensio
 		{"f", applies(row.ProbationEndDate.Valid, true), "terms.probationEndDate"},
 		{"g", state(set(row.HolidayTermsText)), "terms.holidayTermsText"},
 		{"h", state(row.NoticeEmployee != nil && row.NoticeEmployer != nil && row.NoticeUnit != nil), "terms.noticeEmployee, terms.noticeEmployer, terms.noticeUnit"},
-		{"i", state(len(payKey(row.PayComponents)) > 0 && set(row.PayMethod) && set(row.PaydayText)), "terms.payComponents, terms.payMethod, terms.paydayText"},
+		{payItem, state(len(payKey(row.PayComponents)) > 0 && set(row.PayMethod) && set(row.PaydayText)), "terms.payComponents, terms.payMethod, terms.paydayText"},
 		{"j", state(set(row.WorkingTimeText)), "terms.workingTimeText"},
 		{"k", state(row.BreakMinutes != nil), "terms.breakMinutes"},
 		{"l", applies(special, set(row.SpecialHoursText)), "terms.specialHoursText"},
@@ -79,9 +83,11 @@ func contractCheck(e store.StaffEmployment, t *store.StaffEmploymentTerm, pensio
 //
 // Judged on the row in force today, held inside the employment's days — its
 // first row before the start, its last at the end. Whether an item is
-// present says something about the non-pay terms and the pay alike, so it is
-// the audience that reads the employment group's: the person, a manager of
-// theirs and HR; a colleague, who reads the dates alone, gets the 404.
+// present says something about the non-pay terms, so it is the audience that
+// reads the employment group's: the person, a manager of theirs and HR; a
+// colleague, who reads the dates alone, gets the 404. Item i says whether the
+// pay is recorded, so an audience that does not read the pay — a manager —
+// gets the list without it, not marked not applicable.
 func (s *server) GetStaffEmploymentsByIdContractCheck(ctx context.Context, req gen.GetStaffEmploymentsByIdContractCheckRequestObject) (gen.GetStaffEmploymentsByIdContractCheckResponseObject, error) {
 	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
 	if err != nil {
@@ -102,6 +108,9 @@ func (s *server) GetStaffEmploymentsByIdContractCheck(ctx context.Context, req g
 		}
 		t := termsInForce(e, chain, judgedOn(e, caller.Today))
 		items := contractCheck(e, t, caller.Settings.PensionProvider)
+		if !a.reads(groupPay) {
+			items = slices.DeleteFunc(items, func(i contractItem) bool { return i.Item == payItem })
+		}
 		out = gen.StaffContractCheck{
 			EmploymentId:     e.ID,
 			ContractSigned:   e.ContractSignedAt.Valid,

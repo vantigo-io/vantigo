@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { employments } from "../test/fixtures";
+import { jsonResponse } from "../test/api";
+import { employments, terms } from "../test/fixtures";
 import { choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
@@ -50,6 +51,33 @@ describe("Employments — the card and the terms timeline", () => {
     expect(within(row).queryByText(/Hourly wage/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New terms" })).not.toBeInTheDocument();
     expect(await region("Contract check")).toBeInTheDocument();
+    // The manager holds no structure: the unit and the location are named
+    // from the person's place today.
+    const card = await region("Employment E-2-1");
+    expect(within(card).getByText("Bergen office")).toBeInTheDocument();
+    expect(within(row).getByText("Bergen")).toBeInTheDocument();
+  });
+
+  it("shows no pay to a reader who may not see it, whatever the response carries", async () => {
+    const full = { ...terms().find((one) => one.id === 303), payMethod: "Bank transfer", payGrade: "L3" };
+    const employment = employments().find((one) => one.id === 202);
+    stubStaffApi({
+      role: "access",
+      me: 101,
+      read: (path) =>
+        path === "/api/v1/staff/employments/202/terms"
+          ? jsonResponse(200, [full])
+          : path === "/api/v1/staff/people/102/employments"
+            ? jsonResponse(200, [employment])
+            : undefined,
+    });
+    renderRoute("/staff/people/102?tab=employments");
+
+    const row = await region("Terms from Jan 15, 2026");
+    expect(within(row).getByText("Operator")).toBeInTheDocument();
+    for (const text of [/Hourly wage/, "Bank transfer", "L3"])
+      expect(within(row).queryByText(text)).not.toBeInTheDocument();
+    expect(screen.queryByText("Pay in force since")).not.toBeInTheDocument();
   });
 
   it("shows a colleague the dates, the type and the percentage — no title, pay, check or actions", async () => {

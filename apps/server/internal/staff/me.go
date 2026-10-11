@@ -272,7 +272,8 @@ func (s *server) PutStaffMe(ctx context.Context, req gen.PutStaffMeRequestObject
 // (GET /api/v1/staff/me/events)
 //
 // The person's history as they read it: each payload shaped by the Self
-// audience, so HR's notes show "changed" here even to a caller who is HR.
+// audience, so a change to HR's notes is left out here — the field dropped,
+// not "changed" — even for a caller who is HR.
 func (s *server) GetStaffMeEvents(ctx context.Context, req gen.GetStaffMeEventsRequestObject) (gen.GetStaffMeEventsResponseObject, error) {
 	if f := validatePageParams(req.Params.Page, req.Params.PageSize); f.failed() {
 		return gen.GetStaffMeEvents400ApplicationProblemPlusJSONResponse(invalid(invalidPagingTitle, f)), nil

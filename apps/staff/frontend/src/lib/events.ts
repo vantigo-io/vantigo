@@ -1,13 +1,16 @@
 /**
- * The kinds of change a person's history holds in this delivery (design
- * S21), each named by a catalog key `event_<kind>`. A kind the server adds
- * later still renders — as its code — rather than vanishing.
+ * The kinds of event the server writes in this delivery (design S21), one to
+ * one with `events.go`, each named by a catalog key `event_<kind>`. A kind
+ * the server adds later still renders — as its code — rather than vanishing.
  */
 export const eventKinds = [
   "person_created",
   "person_updated",
   "next_of_kin_updated",
   "roles_updated",
+  // Installation-level: a deleted person has no history to show it in, so it
+  // is never in a person's history; it is here so the kinds match the server's.
+  "person_deleted",
   "national_id_set",
   "national_id_revealed",
   "bank_account_set",

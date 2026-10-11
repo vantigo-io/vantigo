@@ -5,6 +5,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { peopleQueryOptions, type StaffPersonSummary } from "../api/people";
 import "../i18n";
+import { SEARCH_DEBOUNCE_MS } from "../lib/search";
 
 export interface PersonPickerProps {
   label: string;
@@ -44,7 +45,7 @@ export const PersonPicker = ({ label, description, value, onChange, selected, er
   // Picking an option writes its label into the search box; that is not a
   // search for somebody called "Ada Lovelace (E-1)".
   const term = picked && search === labelOf(picked) ? "" : search.trim();
-  const [debounced] = useDebouncedValue(term, 250);
+  const [debounced] = useDebouncedValue(term, SEARCH_DEBOUNCE_MS);
   const { data, isFetching } = useQuery({
     ...peopleQueryOptions({ q: debounced, pageSize: 20 }),
     enabled: debounced !== "",

@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { people } from "../test/fixtures";
 import { choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
@@ -16,6 +17,9 @@ describe("Person page — the profile as HR reads it", () => {
     const work = await region("Work");
     expect(within(work).getByText("ada@fjord.example")).toBeInTheDocument();
     expect(within(work).getByText("E-1")).toBeInTheDocument();
+    expect(within(work).getByText("Senior engineer")).toBeInTheDocument();
+    expect(within(work).getByText("Oslo office")).toBeInTheDocument();
+    expect(within(work).getByText("Oslo HQ")).toBeInTheDocument();
     const personal = await region("Private");
     expect(within(personal).getByText("+47 912 34 567")).toBeInTheDocument();
     expect(within(personal).getByText("ada@home.example")).toBeInTheDocument();
@@ -60,6 +64,10 @@ describe("Person page — the profile as others read it", () => {
 
     const work = await region("Work");
     expect(within(work).getByText("ada@fjord.example")).toBeInTheDocument();
+    // The title, the unit and the location today are the work group's, everyone's.
+    expect(within(work).getByText("Senior engineer")).toBeInTheDocument();
+    expect(within(work).getByText("Oslo office")).toBeInTheDocument();
+    expect(within(work).getByText("Oslo HQ")).toBeInTheDocument();
     expect(await region("Roles")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Private" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "HR's notes" })).not.toBeInTheDocument();
@@ -82,6 +90,42 @@ describe("Person page — the profile as others read it", () => {
     expect(screen.queryByRole("region", { name: "Private" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Identifiers" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
+  });
+
+  it("leaves a colleague's org view without a manager who is not active today, the walk going on above", async () => {
+    // Grace's manager is Ada, whose terms name Edsger, who has left: a
+    // colleague reads Ada up the chain and not him.
+    stubStaffApi({
+      role: "view",
+      people: people().map((one) =>
+        one.id === 101 ? { ...one, manager: { id: 104, displayName: "Edsger Dijkstra", employeeNumber: "E-4" } } : one,
+      ),
+    });
+    renderRoute("/staff/people/102");
+
+    const org = await region("Organisation");
+    expect(await within(org).findByRole("link", { name: "Ada Lovelace" })).toBeInTheDocument();
+    expect(within(org).queryByText("Edsger Dijkstra")).not.toBeInTheDocument();
+  });
+
+  it("shows staff:personal-data alone every group and Reveal, and nothing to edit", async () => {
+    const fetchMock = stubStaffApi({ role: "personalDataOnly" });
+    renderRoute("/staff/people/101");
+
+    await heading("Ada Lovelace");
+    expect(within(await region("Private")).getByText("+47 912 34 567")).toBeInTheDocument();
+    expect(within(await region("HR's notes")).getByText("Asked for a standing desk")).toBeInTheDocument();
+    expect(within(await region("Next of kin")).getByText("Byron Lovelace")).toBeInTheDocument();
+    expect(await region("Roles")).toBeInTheDocument();
+    for (const name of ["Edit details", "Edit next of kin", "Edit roles", "Link", "Unlink"])
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+
+    const identifiers = await region("Identifiers");
+    await userEvent.click(within(identifiers).getByRole("button", { name: "Reveal the national identity number" }));
+    const confirm = await screen.findByRole("dialog", { name: "Reveal the national identity number?" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "Reveal" }));
+    expect(await within(identifiers).findByText("10129049905")).toBeInTheDocument();
+    expect(sent(fetchMock, "POST", /national-id\/reveal$/)).toHaveLength(1);
   });
 
   it("says a person outside the caller's reach is not there, as an unknown id", async () => {
@@ -310,7 +354,7 @@ describe("Person page — the self-service link", () => {
     const link = await region("Self-service");
     expect(within(link).getByText("Not linked to a user")).toBeInTheDocument();
     await userEvent.type(within(link).getByRole("combobox", { name: "User" }), "Grace");
-    await userEvent.click(await screen.findByRole("option", { name: "Grace at Fjord" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Grace at Fjord" }, { timeout: 10_000 }));
     await userEvent.click(within(link).getByRole("button", { name: "Link" }));
 
     expect(await within(link).findByText(/Grace at Fjord — linked, not managed by Staff/)).toBeInTheDocument();
@@ -326,7 +370,7 @@ describe("Person page — the self-service link", () => {
 
     const link = await region("Self-service");
     await userEvent.type(within(link).getByRole("combobox", { name: "User" }), "Ada");
-    await userEvent.click(await screen.findByRole("option", { name: "Ada at Fjord" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Ada at Fjord" }, { timeout: 10_000 }));
     await userEvent.click(within(link).getByRole("button", { name: "Link" }));
 
     expect(

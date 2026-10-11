@@ -23,8 +23,9 @@ export interface PersonHistoryProps {
  * The History tab (design S21): every change, newest first, paged, each
  * with who made it and when, and its fields as the server shaped them for
  * this reader — values before and after, "changed" where the group is not
- * theirs, or the kind alone when nothing of it is (a pay correction to a
- * manager). The page never decides what a reader may see of a change.
+ * theirs, or the kind said to be without its details when nothing of it is
+ * (a pay correction to a manager). The page never decides what a reader may
+ * see of a change.
  */
 export const PersonHistory = ({ page: pageQuery, person, structure }: PersonHistoryProps) => {
   const { t, i18n, formatters } = useI18n("staff");
@@ -70,12 +71,17 @@ export const PersonHistory = ({ page: pageQuery, person, structure }: PersonHist
       {data.data.map((event) => {
         const lines = eventLines(event.payload, formatting);
         const kind = i18n.exists(`event_${event.kind}`, { ns: "staff" }) ? t(`event_${event.kind}`) : event.kind;
+        // A change whose every field is withheld from this reader — a pay
+        // correction to a manager — is still listed, saying so; a reveal
+        // names no field for anyone and is its kind alone.
+        const withheld = lines.length === 0 && typeof event.payload.fields === "object";
+        const heading = withheld ? t("eventDetailsHidden", { kind }) : kind;
         return (
           <Paper key={event.id} component="article" withBorder radius="md" p="md" aria-label={kind}>
             <Stack gap={4}>
               <Group justify="space-between" wrap="wrap" gap="xs">
                 <Text size="sm" fw={600}>
-                  {kind}
+                  {heading}
                 </Text>
                 <Text size="xs" c="dimmed">
                   {formatters.formatDate(new Date(event.at), { dateStyle: "medium", timeStyle: "short" })}

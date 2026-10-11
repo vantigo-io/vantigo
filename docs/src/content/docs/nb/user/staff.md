@@ -32,9 +32,9 @@ tabellen står under [rettighetene](/en/reference/staff/#permissions) i referans
 
 ## Finn noen under Personer
 
-**Personer** (i sidemenyen: **Ansattoversikt**) lister selskapets personer etter navn, med ansattnummer, avdeling, leder
-og e-post på jobb. Avdelingen og lederen er de som står i vilkårene som gjelder i dag;
-en strek betyr at det ikke finnes noen.
+**Personer** (i sidemenyen: **Ansattoversikt**) lister selskapets personer etter navn, med ansattnummer, tittel, avdeling,
+leder og e-post på jobb. Tittelen, avdelingen og lederen er de som står i vilkårene som
+gjelder i dag; en strek betyr at det ikke finnes noen.
 
 - **Søk** matcher hvert ord du skriver mot navnene, ansattnummeret og e-posten på
   jobb. Listen oppdateres et øyeblikk etter at du slutter å skrive.
@@ -77,8 +77,9 @@ referansen. En person du ikke kan se, svarer akkurat som en som ikke finnes.
 
 ### Profil
 
-- **Jobb** — navnene, ansattnummeret, e-post og telefon på jobb, avdelingen og lederen
-  som gjelder i dag, språket og arbeidslandet. Alle som kan åpne siden, ser den.
+- **Jobb** — navnene, ansattnummeret, e-post og telefon på jobb, tittelen, avdelingen,
+  virksomheten, arbeidsstedet og lederen som gjelder i dag, språket og arbeidslandet.
+  Alle som kan åpne siden, ser den.
 - **Privat** — fødselsdato, kjønn, mobil og privat telefon, privat e-post og
   hjemmeadresse. Personen selv og HR.
 - **HRs notater** — bare HR (`staff:manage`, `staff:personal-data`).
@@ -115,7 +116,9 @@ endringen din på nytt ut fra det som står der nå.
 
 #### Vis eller registrer fødselsnummeret og bankkontoen
 
-Med `staff:personal-data` tilbyr gruppen Identifikatorer **Vis** og **Registrer**:
+Med `staff:personal-data` tilbyr gruppen Identifikatorer **Vis** og **Registrer**. Alene
+viser `staff:personal-data` hver gruppe av personen, men endrer ikke noe annet:
+endreknappene hører til `staff:manage`.
 
 - **Vis** spør først, og viser så nummeret i 30 sekunder med nedtelling (*Skjules om
   … s*); **Skjul** skjuler det før. Hver visning registreres i personens historikk med
@@ -182,7 +185,7 @@ vilkår datert etter slutten på **Siste arbeidsdag**.
 arbeidsavtale inneholder, a) til q), hvert som **Finnes**, **Mangler** eller **Gjelder
 ikke** — vurdert ut fra vilkårene som gjelder i dag — og sier om en signert avtale er
 registrert. Den informerer; den stopper aldri en lagring. Personen, en leder av dem og
-HR ser den. Se [§ 14-6-kontrollen](/en/reference/staff/#the--14-6-check) i referansen for hvor
+HR ser den; en leder, som ikke ser lønnen, ser den uten punkt i), lønnen. Se [§ 14-6-kontrollen](/en/reference/staff/#the--14-6-check) i referansen for hvor
 hvert punkt leses fra.
 
 ### Historikk
@@ -191,7 +194,8 @@ hvert punkt leses fra.
 endret, hvem som endret det og når. Et felt viser verdien før og etter (*E-post på
 jobb: gammel → ny*); et felt i en gruppe du ikke kan lese, bare at det ble endret
 (*Fødselsdato endret*); en lønnsendring holdes utenfor for en leder, så en
-lønnskorrigering vises bare som typen endring. Personen selv, en leder av dem og HR ser
+lønnskorrigering vises bare som typen endring, merket *(detaljene er ikke synlige for
+deg)*. Personen selv, en leder av dem og HR ser
 fanen Historikk; en kollega gjør det ikke.
 
 ## Legg til en ny person

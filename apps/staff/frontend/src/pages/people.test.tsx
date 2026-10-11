@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { person } from "../test/fixtures";
+import { people, person } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { type StaffStub, stubStaffApi } from "../test/server";
 
@@ -37,7 +37,7 @@ describe("PeoplePage — HR", () => {
     expect(within(await peopleTable()).getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
   });
 
-  it("shows the manager and the department in force today", async () => {
+  it("shows the manager, the department and the title in force today", async () => {
     stubStaffApi({ role: "manage" });
     renderRoute("/staff/people");
 
@@ -45,6 +45,9 @@ describe("PeoplePage — HR", () => {
     expect(grace).toHaveTextContent("E-2");
     expect(grace).toHaveTextContent("Operations");
     expect(grace).toHaveTextContent("Ada Lovelace");
+    expect(within(await peopleTable()).getByRole("columnheader", { name: "Title" })).toBeInTheDocument();
+    expect(grace).toHaveTextContent("Operator");
+    expect(await row("Ada Lovelace")).toHaveTextContent("Senior engineer");
   });
 
   it("filters by status into the URL and asks the server for it", async () => {
@@ -134,6 +137,22 @@ describe("PeoplePage — a colleague", () => {
     expect(screen.queryByRole("button", { name: "New person" })).not.toBeInTheDocument();
     // A status in a pasted link is HR's filter: a colleague's page never sends it.
     expect(lastListQuery(fetchMock).has("status")).toBe(false);
+  });
+
+  it("shows the title, and leaves out a manager who is not active today", async () => {
+    // Grace's terms still name Edsger, who has left: a colleague sees only
+    // the people active today, so the row names no manager.
+    stubStaffApi({
+      role: "view",
+      people: people().map((one) =>
+        one.id === 102 ? { ...one, manager: { id: 104, displayName: "Edsger Dijkstra", employeeNumber: "E-4" } } : one,
+      ),
+    });
+    renderRoute("/staff/people");
+
+    const grace = await row("Grace Hopper");
+    expect(grace).toHaveTextContent("Operator");
+    expect(grace).not.toHaveTextContent("Edsger Dijkstra");
   });
 
   it("never opens New person from a pasted link", async () => {

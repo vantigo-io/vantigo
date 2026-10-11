@@ -26,6 +26,13 @@ export interface TermsTimelineProps {
   personName: (id: number) => string;
   /** A name for a department the structure does not hold for this reader. */
   departmentName?: (id: number) => string | undefined;
+  /** A name for a location the structure does not hold for this reader. */
+  locationName?: (id: number) => string | undefined;
+  /**
+   * Whether the reader may see the pay (the person's `canSeePay`): the pay is
+   * drawn only then, whatever a row carries.
+   */
+  canSeePay: boolean;
   /** HR's actions on a row; left out, the timeline only reads. */
   onCorrect?: (row: StaffTerms) => void;
   onDelete?: (row: StaffTerms) => void;
@@ -46,6 +53,8 @@ export const TermsTimeline = ({
   structure,
   personName,
   departmentName,
+  locationName,
+  canSeePay,
   onCorrect,
   onDelete,
 }: TermsTimelineProps) => {
@@ -61,7 +70,8 @@ export const TermsTimeline = ({
   const department = (id?: number) =>
     id === undefined ? undefined : (structure?.departments.find((row) => row.id === id)?.name ?? departmentName?.(id));
   const location = (id?: number) =>
-    id === undefined ? undefined : structure?.locations.find((row) => row.id === id)?.name;
+    id === undefined ? undefined : (structure?.locations.find((row) => row.id === id)?.name ?? locationName?.(id));
+  const payOnly = <T,>(value: T) => (canSeePay ? value : undefined);
 
   const fieldsOf = (row: StaffTerms): FieldItem[] => [
     [t("employmentType"), label("employmentType", row.employmentType)],
@@ -94,16 +104,16 @@ export const TermsTimeline = ({
     [t("holidayTermsText"), row.holidayTermsText],
     [t("competenceDevelopmentText"), row.competenceDevelopmentText],
     [t("socialSecurityText"), row.socialSecurityText],
-    [t("remunerationType"), label("remunerationType", row.remunerationType)],
-    [t("payMethod"), row.payMethod],
-    [t("paydayText"), row.paydayText],
-    [t("seniorityDate"), date(row.seniorityDate)],
-    [t("payGrade"), row.payGrade],
+    [t("remunerationType"), payOnly(label("remunerationType", row.remunerationType))],
+    [t("payMethod"), payOnly(row.payMethod)],
+    [t("paydayText"), payOnly(row.paydayText)],
+    [t("seniorityDate"), payOnly(date(row.seniorityDate))],
+    [t("payGrade"), payOnly(row.payGrade)],
     [t("termsNote"), asSelf ? undefined : row.note],
   ];
 
   const pay = (row: StaffTerms): ReactNode =>
-    row.payComponents && row.payComponents.length > 0 ? (
+    canSeePay && row.payComponents && row.payComponents.length > 0 ? (
       <Stack gap={2}>
         <Text size="xs" c="dimmed">
           {t("payComponents")}

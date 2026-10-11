@@ -249,7 +249,9 @@ describe("SettingsPage — the structure", () => {
     await userEvent.type(within(dialog).getByRole("textbox", { name: "Name" }), "Sales");
     const manager = within(dialog).getByRole("combobox", { name: "Manager" });
     await userEvent.type(manager, "grace");
-    await userEvent.click(await screen.findByRole("option", { name: "Grace Hopper (E-2)" }));
+    // The picker searches the server as one types: wait on its answer, which
+    // a slow runner gives late, rather than on the default second.
+    await userEvent.click(await screen.findByRole("option", { name: "Grace Hopper (E-2)" }, { timeout: 10_000 }));
     await choose(dialog, "Parent department", "Engineering (ENG)");
     await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 

@@ -105,6 +105,18 @@ components:
                 - isDefault
                 - revision
             type: object
+        StaffBusinessUnitSummary:
+            description: A business unit as the work group names it.
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+                - name
+            type: object
         StaffBusinessUnitRequest:
             properties:
                 isDefault:
@@ -539,6 +551,18 @@ components:
                 - country
                 - revision
             type: object
+        StaffLocationSummary:
+            description: A location as the work group names it.
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+                - name
+            type: object
         StaffLocationRequest:
             properties:
                 city:
@@ -768,7 +792,7 @@ components:
                 - once
             type: string
         StaffPerson:
-            description: 'A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR''s notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone''s who may see the person, manager and department among it — each from the terms in force today, the manager the terms'' own or else the department''s (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person''s own and HR''s (staff:manage, staff:personal-data); notes are HR''s alone. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person.'
+            description: 'A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR''s notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone''s who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the terms'' own or else the department''s (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person''s own and HR''s (staff:manage, staff:personal-data); notes are HR''s alone. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person.'
             properties:
                 bankAccount:
                     $ref: '#/components/schemas/StaffPersonBankAccount'
@@ -776,6 +800,8 @@ components:
                     description: Private. Absent when not set.
                     format: date
                     type: string
+                businessUnit:
+                    $ref: '#/components/schemas/StaffBusinessUnitSummary'
                 capabilities:
                     $ref: '#/components/schemas/StaffPersonCapabilities'
                 city:
@@ -799,6 +825,8 @@ components:
                 id:
                     format: int64
                     type: integer
+                location:
+                    $ref: '#/components/schemas/StaffLocationSummary'
                 manager:
                     $ref: '#/components/schemas/StaffPersonSummary'
                 nationalId:
@@ -831,6 +859,9 @@ components:
                     $ref: '#/components/schemas/StaffPersonStatus'
                 street:
                     description: Private. Absent when not set.
+                    type: string
+                title:
+                    description: The job title of the terms in force today. Absent when there is none.
                     type: string
                 user:
                     $ref: '#/components/schemas/StaffPersonUser'
@@ -910,8 +941,10 @@ components:
                 - userId
             type: object
         StaffPersonListItem:
-            description: A person in the directory — the work group, with the manager and the department from the terms in force today (absent when there is none; to a caller holding staff:view alone the manager is absent too when not active today), and where the person stands today.
+            description: A person in the directory — the work group, with the manager, the department, the title and the location from the terms in force today and the business unit of their employment (each absent when there is none; to a caller holding staff:view alone the manager is absent too when not active today), and where the person stands today.
             properties:
+                businessUnit:
+                    $ref: '#/components/schemas/StaffBusinessUnitSummary'
                 department:
                     $ref: '#/components/schemas/StaffDepartmentSummary'
                 displayName:
@@ -925,6 +958,8 @@ components:
                 id:
                     format: int64
                     type: integer
+                location:
+                    $ref: '#/components/schemas/StaffLocationSummary'
                 manager:
                     $ref: '#/components/schemas/StaffPersonSummary'
                 phoneWork:
@@ -934,6 +969,9 @@ components:
                     $ref: '#/components/schemas/StaffLanguage'
                 status:
                     $ref: '#/components/schemas/StaffPersonStatus'
+                title:
+                    description: The job title of the terms in force today. Absent when there is none.
+                    type: string
                 workCountry:
                     type: string
                 workEmail:
@@ -2100,7 +2138,7 @@ paths:
             x-vantigo-access: permission:staff:access+staff:manage
     /api/v1/staff/employments/{id}/contract-check:
         get:
-            description: The seventeen items aml. § 14-6 (1) a–q asks a written employment contract to hold, each present, missing or not_applicable, judged from the employment and the terms in force today (the first row before the start, the last before the end), with the column each comes from; and whether the contract is recorded as signed. Informative, never blocking. The person themselves, a manager of theirs and HR read it; anyone else gets a 404 identical to an unknown id.
+            description: The seventeen items aml. § 14-6 (1) a–q asks a written employment contract to hold, each present, missing or not_applicable, judged from the employment and the terms in force today (the first row before the start, the last before the end), with the column each comes from; and whether the contract is recorded as signed. Informative, never blocking. The person themselves, a manager of theirs and HR read it; anyone else gets a 404 identical to an unknown id. Item i is the pay's, so a reader who does not read the pay (a manager) gets the list without it.
             operationId: getStaffEmploymentsByIdContractCheck
             parameters:
                 - in: path

@@ -82,11 +82,15 @@ var fieldGroups = map[string]fieldGroup{
 	"bankAccount": groupBankAccount,
 	"user":        groupLinks,
 
-	// The person's place today, from their terms: the manager and the
-	// department are the work group's (§5), where they stand its dates'.
-	"manager":    groupWork,
-	"department": groupWork,
-	"status":     groupEmploymentDates,
+	// The person's place today, from their terms in force and their
+	// employment: the manager, the department, the business unit and the
+	// location are the work group's (§5's Work row), where they stand its
+	// dates'. The title is too, on the person — personFieldGroups.
+	"manager":      groupWork,
+	"department":   groupWork,
+	"businessUnit": groupWork,
+	"location":     groupWork,
+	"status":       groupEmploymentDates,
 
 	// An employment and its terms (§5's "Employment and non-pay terms" and
 	// "Pay terms, seniority, grade" rows). A colleague reads the dates, the
@@ -152,6 +156,32 @@ func groupOf(field string) fieldGroup {
 		return g
 	}
 	return groupNobody
+}
+
+// personFieldGroups is where the person's response names a field as a terms
+// row does yet reads it by another group: the title in force today is the
+// work group's (§5's Work row), read by everyone who sees the person, while a
+// terms row's title — the history of titles, and its events — stays the
+// employment group's, which a colleague does not read (§5: a colleague's
+// terms are "dates, type, fte").
+var personFieldGroups = map[string]fieldGroup{"title": groupWork}
+
+// personGroupOf is a field's group on the person's response and the
+// directory's row.
+func personGroupOf(field string) fieldGroup {
+	if g, ok := personFieldGroups[field]; ok {
+		return g
+	}
+	return groupOf(field)
+}
+
+// shownOnPerson is shown for a field of the person's response or the
+// directory's row, judged by personGroupOf.
+func shownOnPerson[T any](a audience, field string, v *T) *T {
+	if !a.reads(personGroupOf(field)) {
+		return nil
+	}
+	return v
 }
 
 // reads reports whether the audience reads group g — §5's matrix. The work
@@ -222,6 +252,9 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 		Status:            p.status,
 		Manager:           shownManager(a, p),
 		Department:        shown(a, "department", p.department),
+		Title:             shownOnPerson(a, "title", p.title),
+		BusinessUnit:      shown(a, "businessUnit", p.businessUnit),
+		Location:          shown(a, "location", p.location),
 		Id:                row.ID,
 		EmployeeNumber:    row.EmployeeNumber,
 		GivenName:         row.GivenName,
@@ -272,6 +305,9 @@ func personListItemResponse(row store.ListPeopleRow, p placement, a audience) ge
 		Status:            p.status,
 		Manager:           shownManager(a, p),
 		Department:        shown(a, "department", p.department),
+		Title:             shownOnPerson(a, "title", p.title),
+		BusinessUnit:      shown(a, "businessUnit", p.businessUnit),
+		Location:          shown(a, "location", p.location),
 		Id:                row.ID,
 		EmployeeNumber:    row.EmployeeNumber,
 		GivenName:         row.GivenName,

@@ -74,6 +74,38 @@ func TestContractCheck_ThroughTheAPI(t *testing.T) {
 	}
 }
 
+// Whether the pay item is present says something about the pay, so an
+// audience that does not read the pay — a manager of the person — gets the
+// list without item i at all, not marked not applicable; the person and HR
+// get all seventeen.
+func TestContractCheck_ThePayItemIsThePayReaders(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	company(t, hr)
+	start := shiftDay(t, today(t, h), -30)
+	boss := createPerson(t, hr, newPerson("Berit", "Boss"))
+	createEmployment(t, hr, boss.Id, newEmployment(start, terms()))
+	manager, managerUser := signIn(t, h)
+	link(t, h, boss.Id, managerUser)
+	p, e := employed(t, hr, "Kari", start, terms("managerPersonId", boss.Id))
+	self, selfUser := signIn(t, h)
+	link(t, h, p.Id, selfUser)
+
+	for name, c := range map[string]*modtest.Client{"manager": manager, "self": self, "staff:manage": hr} {
+		var check gen.StaffContractCheck
+		do(t, c, http.MethodGet, contractCheckPath(e.Id), nil, http.StatusOK, &check)
+		_, hasPay := contractStates(check)["i"]
+		want, wantPay := 17, true
+		if name == "manager" {
+			want, wantPay = 16, false
+		}
+		if len(check.Items) != want || hasPay != wantPay {
+			t.Errorf("%s reads %d items, item i %v; want %d, %v", name, len(check.Items), hasPay, want, wantPay)
+		}
+	}
+}
+
 // createLocation adds a location and answers it.
 func createLocation(t *testing.T, c *modtest.Client, name string) gen.StaffLocation {
 	t.Helper()
