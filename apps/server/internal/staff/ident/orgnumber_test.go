@@ -17,6 +17,7 @@ func TestValidateOrgNumber(t *testing.T) {
 	}{
 		{"Equinor ASA is accepted", "923609016", "923609016"},
 		{"Brønnøysundregistrene is accepted", "974760673", "974760673"},
+		{"a weighted sum divisible by 11 has the check digit 0", "923609040", "923609040"},
 		{"a number written in groups is read as its digits", " 923 609 016 ", "923609016"},
 		{"Equinor's number with the check digit flipped is refused", "923609017", ""},
 		{"eight digits are refused", "92360901", ""},

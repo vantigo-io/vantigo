@@ -42,48 +42,67 @@ var ErrInvalidNationalID = errors.New("not a valid national identity number")
 const maxForeignIDLength = 40
 
 // Normalised is a national identity number that passed ParseNationalID, in
-// the form it is sealed and indexed in. It prints as a redaction under fmt and
-// log/slog, so a stray log line cannot carry the number; Value hands it out.
-type Normalised struct {
+// the form it is sealed and indexed in; Value hands the number out. It prints
+// as a redaction under fmt and log/slog, so a stray log line cannot carry the
+// number. Format and LogValue only cover a Normalised printed at the top, or
+// in an exported field: in an unexported field of another struct fmt reflects
+// into the value without calling either. The fields are therefore held behind
+// a pointer, which fmt prints below the top level as an address and never
+// follows. The zero value is no number: every accessor answers empty.
+type Normalised struct{ p *normalised }
+
+type normalised struct {
 	kind    NationalIDKind
 	country string    // upper-case alpha-2 for a foreign id, empty for a Norwegian one
 	value   string    // eleven digits, or the upper-cased foreign id
 	birth   time.Time // the birth date a Norwegian number encodes; zero for a foreign one
 }
 
+// fields is the number's fields, or the zero fields for the zero Normalised.
+func (n Normalised) fields() normalised {
+	if n.p == nil {
+		return normalised{}
+	}
+	return *n.p
+}
+
 // Kind is the number's kind.
-func (n Normalised) Kind() NationalIDKind { return n.kind }
+func (n Normalised) Kind() NationalIDKind { return n.fields().kind }
 
 // Country is a foreign id's upper-case alpha-2 country, and empty for a
 // fødselsnummer or d-nummer, whose country is the kind itself.
-func (n Normalised) Country() string { return n.country }
+func (n Normalised) Country() string { return n.fields().country }
 
 // Value is the normalised number: eleven digits for a Norwegian number, the
 // upper-cased identifier for a foreign one. It is what is sealed.
-func (n Normalised) Value() string { return n.value }
+func (n Normalised) Value() string { return n.fields().value }
 
 // BirthDate is the birth date a fødselsnummer or d-nummer encodes, as a civil
 // date (midnight UTC), so it can be compared with a birth date typed beside
 // it. A foreign id encodes none and answers false.
-func (n Normalised) BirthDate() (time.Time, bool) { return n.birth, !n.birth.IsZero() }
+func (n Normalised) BirthDate() (time.Time, bool) {
+	birth := n.fields().birth
+	return birth, !birth.IsZero()
+}
 
 // Format writes a redaction for every verb, so fmt never prints the number.
 func (n Normalised) Format(f fmt.State, _ rune) {
-	_, _ = fmt.Fprintf(f, "ident.Normalised{%s, redacted}", n.kind)
+	_, _ = fmt.Fprintf(f, "ident.Normalised{%s, redacted}", n.Kind())
 }
 
 // LogValue keeps log/slog handlers from reflecting into the number.
 func (n Normalised) LogValue() slog.Value {
-	return slog.StringValue("ident.Normalised{" + string(n.kind) + ", redacted}")
+	return slog.StringValue("ident.Normalised{" + string(n.Kind()) + ", redacted}")
 }
 
 // IndexInput is the domain-separated input of the national id's MAC:
 // kind | country | value. The kind and the country keep the same characters
-// under two kinds — eleven digits as a fødselsnummer and as a foreign id —
-// from indexing alike, and "|" occurs in none of the three. Its form is part of
-// every MAC stored; changing it orphans them all.
+// under two kinds — eleven digits as a fødselsnummer and as a foreign id of
+// another country — from indexing alike, and "|" occurs in none of the three.
+// Its form is part of every MAC stored; changing it orphans them all.
 func IndexInput(n Normalised) []byte {
-	return []byte(string(n.kind) + "|" + n.country + "|" + n.value)
+	f := n.fields()
+	return []byte(string(f.kind) + "|" + f.country + "|" + f.value)
 }
 
 // ParseNationalID checks raw as a national identity number of kind and returns
@@ -106,7 +125,9 @@ func IndexInput(n Normalised) []byte {
 // widen to it, as customers' refusal must.
 //
 // A foreign id is 1–40 characters of A–Z, 0–9 and the hyphen, upper-cased,
-// with an alpha-2 country, also upper-cased.
+// with an alpha-2 country, also upper-cased, that is not NO: Norway's own
+// numbers are a fødselsnummer or a d-nummer, and one kept again as a foreign
+// id of Norway would index apart from itself and slip past the duplicate check.
 func ParseNationalID(kind NationalIDKind, country, raw string) (Normalised, error) {
 	switch kind {
 	case Fodselsnummer, DNummer:
@@ -166,7 +187,7 @@ func parseNorwegian(kind NationalIDKind, country, raw string) (Normalised, error
 	if !ok {
 		return Normalised{}, fmt.Errorf("%w: the digits name no birth date", ErrInvalidNationalID)
 	}
-	return Normalised{kind: kind, value: digits, birth: birth}, nil
+	return Normalised{&normalised{kind: kind, value: digits, birth: birth}}, nil
 }
 
 // norwegianBirthDate reads the birth date from eleven checked digits: DDMMYY,
@@ -220,21 +241,28 @@ func norwegianBirthDate(kind NationalIDKind, digits string) (time.Time, bool) {
 	return birth, true
 }
 
+// parseForeign checks the ASCII classes on the trimmed input before anything
+// is upper-cased: strings.ToUpper maps some letters outside A–Z onto it (ſ to
+// S, ı to I), so a check after it would let them through as their images.
 func parseForeign(country, raw string) (Normalised, error) {
-	c := strings.ToUpper(strings.TrimSpace(country))
-	if len(c) != 2 || !isUpperLetter(c[0]) || !isUpperLetter(c[1]) {
+	c := strings.TrimSpace(country)
+	if len(c) != 2 || !isASCIILetter(c[0]) || !isASCIILetter(c[1]) {
 		return Normalised{}, fmt.Errorf("%w: a foreign id needs its country as two letters", ErrInvalidNationalID)
 	}
-	v := strings.ToUpper(strings.TrimSpace(raw))
+	c = strings.ToUpper(c)
+	if c == "NO" {
+		return Normalised{}, fmt.Errorf("%w: a Norwegian number is a fødselsnummer or a d-nummer", ErrInvalidNationalID)
+	}
+	v := strings.TrimSpace(raw)
 	if v == "" || len(v) > maxForeignIDLength {
 		return Normalised{}, fmt.Errorf("%w: a foreign id is one to forty characters", ErrInvalidNationalID)
 	}
 	for i := 0; i < len(v); i++ {
-		if !isUpperLetter(v[i]) && !isDigit(v[i]) && v[i] != '-' {
+		if !isASCIILetter(v[i]) && !isDigit(v[i]) && v[i] != '-' {
 			return Normalised{}, fmt.Errorf("%w: a foreign id is letters, digits and hyphens", ErrInvalidNationalID)
 		}
 	}
-	return Normalised{kind: Foreign, country: c, value: v}, nil
+	return Normalised{&normalised{kind: Foreign, country: c, value: strings.ToUpper(v)}}, nil
 }
 
 func twoDigits(s string) int { return 10*int(s[0]-'0') + int(s[1]-'0') }
@@ -242,6 +270,8 @@ func twoDigits(s string) int { return 10*int(s[0]-'0') + int(s[1]-'0') }
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 func isUpperLetter(c byte) bool { return c >= 'A' && c <= 'Z' }
+
+func isASCIILetter(c byte) bool { return isUpperLetter(c) || (c >= 'a' && c <= 'z') }
 
 func allDigits(s string) bool {
 	for i := 0; i < len(s); i++ {
