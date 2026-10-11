@@ -225,19 +225,20 @@ WHERE t.status = 'resolved' AND t.resolution_note <> ''
 RETURNING t.id;
 
 -- name: BlankCustomerBankEventNotes :many
--- BlankCustomerBankEventNotes blanks the note of every event of the resolved
--- bank lines BlankCustomerBankLineNotes reads (D19; the one write
--- tr_bank_transaction_events_immutable allows, B1), and answers each
+-- BlankCustomerBankEventNotes blanks the note of every event of a bank line
+-- the customer's payments or charge payments, live or removed, came from —
+-- the line resolved or not, a reopened line's earlier applied event among
+-- them (D19; the one write tr_bank_transaction_events_immutable allows, B1)
+-- — but a reversed event's, which is the system's own words naming the
+-- reversal, the audit trail a payment's removal reason is. It answers each
 -- event's line. The lines are read, never locked, and an event row is
 -- locked by nothing else: the queue only ever inserts them.
 UPDATE invoices.bank_transaction_events e SET note = ''
-WHERE e.note <> ''
+WHERE e.note <> '' AND e.event <> 'reversed'
   AND e.bank_transaction_id IN (
-    SELECT t.id FROM invoices.bank_transactions t
-    WHERE t.status = 'resolved' AND t.id IN (
-        SELECT p.bank_transaction_id FROM invoices.payments p JOIN invoices.invoices i ON i.id = p.invoice_id
-        WHERE i.customer_id = @customer_id AND p.bank_transaction_id IS NOT NULL
-        UNION
-        SELECT c.bank_transaction_id FROM invoices.charge_payments c JOIN invoices.invoices i ON i.id = c.invoice_id
-        WHERE i.customer_id = @customer_id AND c.bank_transaction_id IS NOT NULL))
+    SELECT p.bank_transaction_id FROM invoices.payments p JOIN invoices.invoices i ON i.id = p.invoice_id
+    WHERE i.customer_id = @customer_id AND p.bank_transaction_id IS NOT NULL
+    UNION
+    SELECT c.bank_transaction_id FROM invoices.charge_payments c JOIN invoices.invoices i ON i.id = c.invoice_id
+    WHERE i.customer_id = @customer_id AND c.bank_transaction_id IS NOT NULL)
 RETURNING e.bank_transaction_id;

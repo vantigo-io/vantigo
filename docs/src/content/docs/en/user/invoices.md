@@ -1239,9 +1239,11 @@ the queue that Vantigo never tried to hand to the access point is cancelled; the
 buyer they name and their timesheets, stay. Their reminder letters still on their way —
 queued, waiting to be printed, or failed — are withdrawn, and every letter's address is
 blanked, a sent one's too; a letter already printed is left for you to pull from the
-post and withdraw by hand, and the log names it. The notes on charge payments, waived
+post and withdraw by hand — it still shows as printed on the invoice's **Reminders**
+card, and your administrator's server log names it. The notes on charge payments, waived
 charges, recorded deliveries, holds and hand-offs are emptied, and so are the notes on
-the bank lines the customer's payments came from once those lines are handled; the
+the bank lines the customer's payments came from; a line handled in the exception queue
+afterwards keeps no note either. The
 letters, the bank lines and their payer details stay, as the bank's and the claim's
 record. No document is sent to an anonymised customer again, though a
 credit note can still be issued, naming the buyer the original named.

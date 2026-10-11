@@ -736,7 +736,7 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 	if refusal, err := duplicateOfReversed(ctx, txq, line, cannotApplyTitle); refusal != nil || err != nil {
 		return refusal, err
 	}
-	invs, err := lockInvoicesDescending(ctx, txq, ids)
+	invs, note, err := lockForNote(ctx, txq, line.ID, ids, note)
 	if err != nil {
 		return nil, err
 	}
@@ -842,6 +842,45 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 	return nil, resolveLine(ctx, txq, line, resolutionApplied, deref(line.Reason), eventApplied, note, []string{lineException}, caller, now)
 }
 
+// lockForNote is the invoice locks of a queue action that writes a staff
+// note on a line (D5, D18, D19): the invoices named by also, and every
+// invoice the line's payments and charge payments — live or removed — were
+// registered against, taken together in descending id after the line, the
+// queue's own order. It answers them and note, or "" when any belongs to a
+// customer this module has anonymised: the erase blanked such a line's notes
+// once (BlankCustomerBankLineNotes), and a line resolved after it must not
+// take a new one. Read after the locks, the marker of an erase that held
+// these invoices has committed; an erase that comes later finds the line
+// resolved and blanks it itself. A line linked to nothing and named with
+// nothing locks nothing more.
+func lockForNote(ctx context.Context, txq *store.Queries, lineID int64, also []int64, note string) ([]store.InvoicesInvoice, string, error) {
+	linked, err := txq.LineLinkedInvoices(ctx, &lineID)
+	if err != nil {
+		return nil, "", fmt.Errorf("invoices: read the invoices bank line %d paid: %w", lineID, err)
+	}
+	ids := slices.Clone(also)
+	for _, id := range linked {
+		if !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, note, nil
+	}
+	invs, err := lockInvoicesDescending(ctx, txq, ids)
+	if err != nil {
+		return nil, "", err
+	}
+	erased, err := txq.AnyCustomerErased(ctx, ids)
+	if err != nil {
+		return nil, "", fmt.Errorf("invoices: read whether bank line %d's customers are anonymised: %w", lineID, err)
+	}
+	if erased {
+		note = ""
+	}
+	return invs, note, nil
+}
+
 // duplicateOfReversed is bank_transaction_reversed for title when line was
 // kept as a duplicate of a line a reversal took a payment back from: an
 // identical fingerprint is the same transaction, whose money went back, so
@@ -935,6 +974,10 @@ func (s *server) PostInvoicesBankTransactionsByIdDismiss(ctx context.Context, re
 	}
 	caller, now := callerID(ctx), s.deps.Clock()
 	refusal, err := s.queueAction(ctx, req.Id, judge, func(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction) (*gen.InvoicesConflictProblem, error) {
+		_, note, err := lockForNote(ctx, txq, line.ID, nil, note)
+		if err != nil {
+			return nil, err
+		}
 		return nil, resolveLine(ctx, txq, line, resolutionNotCustomerPayment, deref(line.Reason), eventDismissed, note, []string{lineException}, caller, now)
 	})
 	if resp, done, err := lineRefusal(refusal, err,
@@ -998,10 +1041,9 @@ func (s *server) PostInvoicesBankTransactionsByIdHandleReversal(ctx context.Cont
 				ids = append(ids, p.InvoiceId)
 			}
 		}
-		if len(ids) > 0 {
-			if _, err := lockInvoicesDescending(ctx, txq, ids); err != nil {
-				return nil, err
-			}
+		_, note, err := lockForNote(ctx, txq, line.ID, ids, note)
+		if err != nil {
+			return nil, err
 		}
 		ordered := slices.Clone(named)
 		slices.SortFunc(ordered, func(a, b gen.InvoicesBankTransactionReversalPayment) int {
@@ -1084,6 +1126,10 @@ func (s *server) PostInvoicesBankTransactionsByIdConfirmDuplicate(ctx context.Co
 	}
 	caller, now := callerID(ctx), s.deps.Clock()
 	refusal, err := s.queueAction(ctx, req.Id, judge, func(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction) (*gen.InvoicesConflictProblem, error) {
+		_, note, err := lockForNote(ctx, txq, line.ID, nil, note)
+		if err != nil {
+			return nil, err
+		}
 		return nil, resolveLine(ctx, txq, line, resolutionDuplicateConfirmed, reasonPossibleDuplicate, eventDuplicateConfirmed, note,
 			[]string{lineException, lineDuplicate}, caller, now)
 	})

@@ -982,8 +982,9 @@ seam its tests pin.
 | a bank import | the file's account rows, in account order (`FOR SHARE`), then the inserts |
 | an account's format change | the account row alone |
 | a bank match | the line `FOR NO KEY UPDATE`, then its invoice (a deadline-met waiver inserted) |
-| the queue's apply and handle-reversal | the line, then its invoices in descending id |
-| dismiss, confirm-duplicate, treat-as-distinct, reopen | the line alone |
+| the queue's apply and handle-reversal | the line, then its invoices — those it names and those its payments were registered against — in descending id |
+| dismiss, confirm-duplicate | the line, then — when its payments or charge payments were registered against any — those invoices in descending id, to judge its note after an erase |
+| treat-as-distinct, reopen | the line alone |
 | a charge payment, a waiver, a manual delivery and its removal | the invoice alone (the children's insert triggers share it) |
 | a hold, a lift, a hand-off and its withdrawal | the invoice, then its letters (withdrawn), and on a barring lift the waivers inserted |
 | a reminder run's item | the invoice, then the letter inserted |
@@ -2260,10 +2261,15 @@ few statements a line, on the queue's list and each action's answer only.
 COMMITTED transaction whose first lock is the line**, `FOR NO KEY UPDATE`, under which the
 line is judged again — a line another person dealt with meanwhile is refused as the pool
 would have refused it. The apply and the reversal then lock their invoices **`FOR
-UPDATE` in descending id** — the module's invariant; the other actions lock the line
-alone. Never an invoice and then a line. A refusal rolls the whole action back. Every
-action writes the line's event — what, the reason, the note, by the caller at the
-request's one clock read — and answers the line as it now stands.
+UPDATE` in descending id** — the module's invariant — together with every invoice the
+line's payments and charge payments were ever registered against; a dismissal and a
+duplicate's confirmation lock those too, when there are any; the treat-as-distinct and
+the reopen lock the line alone. Never an invoice and then a line. A refusal rolls the
+whole action back. Every action writes the line's event — what, the reason, the note, by
+the caller at the request's one clock read — and answers the line as it now stands. **An
+action that writes a note writes none when any of those invoices belongs to an
+anonymised customer** ([Retention and personal data](#retention-and-personal-data)): the
+note on the line and on its event is `""`, read after the invoices' locks.
 
 - **Apply** — `POST /invoices/bank-transactions/{id}/apply` `{allocations: [{invoiceId,
   amount, chargesAmount?}], note?}`. In order: 400 on the fields — 1 to 20 allocations
@@ -3534,8 +3540,10 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   of the charge payments, the waivers, the manual deliveries, the holds and their lifts,
   and the hand-offs are blanked. The `resolution_note` of every **resolved** bank line
   the person's payments or charge payments (live or removed) came from, when it is not
-  empty, is blanked, with the notes of those lines' events — the [lock
-  order](#issuing)'s one named exception. Last the customer's reminder policy is
+  empty, is blanked — the [lock order](#issuing)'s one named exception — and so is the
+  note of every event of every line their payments came from, resolved or not (a
+  reopened line's earlier `applied` event among them), but a `reversed` event's: an event
+  row is locked by nothing, so the line's status does not matter. Last the customer's reminder policy is
   deleted. It reports thirteen kinds, in this order:
   - `invoices.drafts` — the drafts deleted, invoice and credit-note drafts alike, their
     line sources and timesheet rows with them by the cascade: a draft is not a sales
@@ -3575,9 +3583,10 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   - `invoices.bankTransactions` — the bank lines whose note, or an event's note, was
     blanked. The lines and their events are kept with the payer data the bank wrote —
     debtor name, account and text — the bank's record of money received. A line not
-    resolved keeps its notes: an open line has none, and a matched line's `reversed`
-    event carries the reason its payment was removed, the audit trail a payment's
-    removal reason is;
+    resolved keeps its `resolution_note` — an open line has none (a reopen clears it) —
+    and every line keeps its `reversed` events' notes: the system's own words naming
+    the reversal that took its payment back, the audit trail a payment's removal reason
+    is;
   - `invoices.customerReminderPolicies` — the reminder policy deleted (0 or 1): staff's
     decision and note about the person, which no retention rule keeps. A later PUT for
     the anonymised customer is a 404.
@@ -3590,7 +3599,11 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   run item that held the invoice while the erase waited — is written with no
   recipient. A child row — a charge payment, a waiver, a manual delivery, a hold, a
   hand-off — inserted after it keeps no note, and a lift keeps no lift note. A queue
-  action that resolves a line after the erase writes its note: the erase ran once. The
+  action that writes a note on a line — apply, dismiss, handle-reversal,
+  confirm-duplicate — locks, after the line, the invoices it applies to and those the
+  line's payments and charge payments were ever registered against, in descending id,
+  and when any is an anonymised customer's it writes no note, on the line or on its
+  event; an erase that comes after it finds the line resolved and blanks it. The
   marker is read by this module only and never removed — anonymisation is never undone.
   `contracts.ErasedData` carries no reason field; this paragraph is where the reasons
   are written.

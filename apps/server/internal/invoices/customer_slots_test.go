@@ -861,12 +861,13 @@ func plantReceivables(t *testing.T, h *harness, customer int32, number int64, re
 	factValues := `, DATE '2026-08-20', DATE '2026-09-03', 'inkassolov_1988', 1000, 0, 'reminder_fee', 35, 0, 0, 0, 0, 1035`
 	r.queued = letter(1, "queued", "email", recipient, "", "")
 	r.withdrawnEarlier = letter(2, "withdrawn", "email", recipient, ", withdrawn_at, withdrawal_reason", ", $6, 'on_hold'")
-	r.sentLetter = letter(3, "sent", "email", recipient, facts+", sent_at", factValues+", $6")
+	r.sentLetter = letter(3, "sent", "email", recipient, facts+", sent_at, message_id, pdf_object_key, pdf_sha256",
+		factValues+", $6, 'reminder-secret-message@vantigo.invalid', 'reminders/secret-object-key.pdf', repeat('f', 64)")
 	batch := plantID(t, h, `INSERT INTO invoices.reminder_print_batches (post_on, created_at, created_by_user_id)
 		VALUES (DATE '2026-09-14', $1, gen_random_uuid()) RETURNING id`, at)
 	r.printed = letter(4, "printed", "paper", "", facts+", print_batch_id", factValues+", $8", batch)
 	r.awaiting = letter(5, "awaiting_print", "paper", "", "", "")
-	r.failed = letter(6, "failed", "email", recipient, ", failed_at", ", $6")
+	r.failed = letter(6, "failed", "email", recipient, ", failed_at, last_error", ", $6, '554 secret mailbox full'")
 	r.sending = letter(7, "queued", "email", recipient, facts+", lease_id, lease_until", factValues+", 'lease-1', $6::timestamptz + interval '2 hours'")
 
 	file := plantID(t, h, `
@@ -961,7 +962,7 @@ func TestExport_CarriesEveryReceivable(t *testing.T) {
 			`{"kind":"posted","deliveredOn":"2026-07-02","note":"Feil dag","recordedAt":` + at + `,"removedAt":` + at + `,"removalReason":"Feil dag"}]`,
 		`{"sequence":3,"level":"reminder","announcesCollection":false,"channel":"email","recipient":"kari@example.org","language":"nb",` +
 			`"status":"sent","createdAt":` + at + `,"sentOn":"2026-08-20","deadline":"2026-09-03","regime":"inkassolov_1988",` +
-			`"principalOpen":"1000.00","feeKind":"reminder_fee","fee":"35.00","chargesEarlier":"0.00","interest":"0.00",` +
+			`"principalOpen":"1000.00","credited":"0.00","feeKind":"reminder_fee","fee":"35.00","chargesEarlier":"0.00","interest":"0.00",` +
 			`"interestWaived":"0.00","interestPaid":"0.00","total":"1035.00","sentAt":` + at + `}`,
 		`{"sequence":2,"level":"reminder","announcesCollection":false,"channel":"email","recipient":"kari@example.org","language":"nb",` +
 			`"status":"withdrawn","createdAt":` + at + `,"withdrawnAt":` + at + `,"withdrawalReason":"on_hold"}`,
@@ -979,6 +980,11 @@ func TestExport_CarriesEveryReceivable(t *testing.T) {
 	}
 	if n := strings.Count(raw, `"sequence":`); n != 7 {
 		t.Errorf("the export has %d letters, want all seven, in every status", n)
+	}
+	for _, kept := range []string{"secret-message", "secret-object-key", "ffffffff", "secret mailbox", "messageId", "pdf", "lastError"} {
+		if strings.Contains(raw, kept) {
+			t.Errorf("the export carries %q: a letter's Message-ID, PDF key and hash and SMTP error are never exported", kept)
+		}
 	}
 }
 
@@ -1278,5 +1284,96 @@ func TestErase_ALetterRacingTheEraseIsInsertedBlank(t *testing.T) {
 	}
 	if after := deadlocks(t, probeConn); after != before {
 		t.Errorf("Postgres broke %d deadlock(s)", after-before)
+	}
+}
+
+// eventNotes is line id's events as "event note", oldest first.
+func eventNotes(t *testing.T, h *harness, id int64) []string {
+	t.Helper()
+	return texts(t, h, `SELECT event || ' ' || note FROM invoices.bank_transaction_events WHERE bank_transaction_id = $1 ORDER BY id`, id)
+}
+
+// appliedThenReopened applies a no-KID line of 300 to inv with staff's
+// note, removes the payment it registered and reopens the line: an
+// exception again, still linked to the person's (removed) payment, its
+// applied event keeping the note.
+func appliedThenReopened(t *testing.T, h *harness, c *modtest.Client, inv invoiceJSON, msgID string) int64 {
+	t.Helper()
+	_, ids := camtLines(t, h, c, msgID, noKidEntry(6, 300, "Til faktura", msgID))
+	line := ids[msgID]
+	body := applyBody(allocate(inv, 300))
+	body["note"] = "Acme ringte om denne"
+	acted(t, c, line, "apply", body)
+	if res := payer(t, h).Do(http.MethodPost, removalPath(inv.ID, paymentOf(t, h, line)), map[string]any{"reason": "Feil faktura"}); res.Status != http.StatusOK {
+		t.Fatalf("remove the payment = %d %s", res.Status, res.Body)
+	}
+	if l := acted(t, c, line, "reopen", nil); l.Status != "exception" {
+		t.Fatalf("the reopened line = %s, want an exception", l.Status)
+	}
+	return line
+}
+
+// TestErase_BlanksAReopenedLinesEarlierEventNote: a line applied with a
+// note, its payment removed and the line reopened is an exception again —
+// open, its resolution note cleared by the reopen — but linked to the
+// person's removed payment, and its applied event keeps staff's words. The
+// erase blanks them: events are locked by nothing, so the line's status
+// does not matter; only a reversed event, the system's own words, is kept.
+func TestErase_BlanksAReopenedLinesEarlierEventNote(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	inv := kidInvoice(t, h)
+	toMatchDay(h)
+	c := importer(t, h)
+	line := appliedThenReopened(t, h, c, inv, "REOPEN-1")
+	if got := eventNotes(t, h, line); !slices.Contains(got, "applied Acme ringte om denne") {
+		t.Fatalf("the line's events = %v, want the applied one with its note", got)
+	}
+	erased := eraseOf(t, h, disabledDeps(h), customerAcme)
+	if got := eventNotes(t, h, line); slices.ContainsFunc(got, func(e string) bool { return strings.HasSuffix(e, "Acme ringte om denne") }) {
+		t.Errorf("the reopened line's events after the erase = %v, want every note blank", got)
+	}
+	if !slices.Contains(erased, contracts.ErasedData{Kind: "invoices.bankTransactions", Count: 1}) {
+		t.Errorf("erased = %+v, want the line counted", erased)
+	}
+	if got := stateOf(t, h, line); got != "exception no_kid" {
+		t.Errorf("the line = %s, want still the queue's", got)
+	}
+}
+
+// TestErase_AQueueActionAfterTheEraseWritesNoNote: once the person is
+// anonymised, a queue action resolving a line linked to their invoices —
+// an apply to their invoice, a dismissal of a reopened line their removed
+// payment came from — keeps no note on the line nor on its event: the erase
+// blanked such notes once, and a later action does not write one back.
+// A line linked to nobody keeps its note.
+func TestErase_AQueueActionAfterTheEraseWritesNoNote(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	inv := kidInvoice(t, h)
+	toMatchDay(h)
+	c := importer(t, h)
+	reopened := appliedThenReopened(t, h, c, inv, "LATER-1")
+	_, ids := camtLines(t, h, c, "LATER-2", noKidEntry(6, 200, "Til faktura", "APPLY"), noKidEntry(6, 50, "Renter", "OTHER"))
+	eraseOf(t, h, disabledDeps(h), customerAcme)
+
+	body := applyBody(allocate(inv, 200))
+	body["note"] = "Acme ringte etterpå"
+	acted(t, c, ids["APPLY"], "apply", body)
+	acted(t, c, reopened, "dismiss", map[string]any{"note": "Acme sa den var feil"})
+	acted(t, c, ids["OTHER"], "dismiss", map[string]any{"note": "Renter fra banken"})
+	notes := `SELECT resolution_note FROM invoices.bank_transactions WHERE id = $1`
+	for _, l := range []int64{ids["APPLY"], reopened} {
+		if got := modtest.One[string](t, h.Harness, notes, l); got != "" {
+			t.Errorf("line %d's note after the erase = %q, want none", l, got)
+		}
+		for _, e := range eventNotes(t, h, l) {
+			if strings.Contains(e, "Acme") {
+				t.Errorf("line %d's events = %v, want no note of staff's after the erase", l, eventNotes(t, h, l))
+			}
+		}
+	}
+	if got := modtest.One[string](t, h.Harness, notes, ids["OTHER"]); got != "Renter fra banken" {
+		t.Errorf("a line linked to nobody = %q, want its note kept", got)
 	}
 }

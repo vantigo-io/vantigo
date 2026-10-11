@@ -260,7 +260,8 @@ func TestAttention_EachTypeAndItsClearing(t *testing.T) {
 		}
 	})
 
-	// A file with lines open — an exception, a line matching left pending —
+	// A file with lines open — an exception, a line matching left pending, a
+	// duplicate —
 	// is one item counted in lines, the queue's own count, until each is
 	// resolved or matched; a file whose lines all matched is none.
 	t.Run("bank file", func(t *testing.T) {
@@ -275,23 +276,34 @@ func TestAttention_EachTypeAndItsClearing(t *testing.T) {
 			    currency, kid, fingerprint, ordinal)
 			VALUES ($1, 'late', 'camt054', $2, 'credit', DATE '2026-10-06', 1000, 'NOK', $3, md5('pending'), 1)`,
 			r.File.ID, sellerAccount, *later.Kid)
+		duplicate := plantID(t, h, `INSERT INTO invoices.bank_transactions (bank_file_id, line_ref, format, account, direction,
+			    booked_on, amount, currency, fingerprint, ordinal, status, duplicate_of_id)
+			VALUES ($1, 'twice', 'camt054', $2, 'credit', DATE '2026-10-05', 300, 'NOK', md5('twice'), 2, 'duplicate', $3)
+			RETURNING id`, r.File.ID, sellerAccount, ids["NOKID"])
 		got := ofType(attentionOf(t, c), "bankTransactionsOpen")
 		if len(got) != 1 || got[0].ID != "bankTransactionsOpen/"+entity(r.File.ID) || got[0].EntityID != entity(r.File.ID) ||
-			itemCount(got[0]) != 2 || got[0].Title != "2026-10-05" {
-			t.Fatalf("the open lines = %+v, want file %d with 2 lines and its booking day, not the matched file %d", got, r.File.ID, matched.File.ID)
+			itemCount(got[0]) != 3 || got[0].Title != "2026-10-05" {
+			t.Fatalf("the open lines = %+v, want file %d with 3 lines and its booking day, not the matched file %d", got, r.File.ID, matched.File.ID)
 		}
-		_, exceptions := queueList(t, h, fmt.Sprintf("bankFileId=%d&status=exception", r.File.ID))
-		_, pending := queueList(t, h, fmt.Sprintf("bankFileId=%d&status=pending", r.File.ID))
-		if exceptions+pending != 2 {
-			t.Errorf("the queue counts %d exception and %d pending, want the item's 2", exceptions, pending)
+		counted := 0
+		for _, status := range []string{"exception", "pending", "duplicate"} {
+			_, n := queueList(t, h, fmt.Sprintf("bankFileId=%d&status=%s", r.File.ID, status))
+			counted += n
+		}
+		if counted != 3 {
+			t.Errorf("the queue counts %d open lines, want the item's 3", counted)
 		}
 		if res := c.Do(http.MethodPost, matchPath(r.File.ID), nil); res.Status != http.StatusOK {
 			t.Fatalf("match = %d %s", res.Status, res.Body)
 		}
-		if got := ofType(attentionOf(t, c), "bankTransactionsOpen"); len(got) != 1 || itemCount(got[0]) != 1 {
-			t.Errorf("the pending line matched = %+v, want the one exception left", got)
+		if got := ofType(attentionOf(t, c), "bankTransactionsOpen"); len(got) != 1 || itemCount(got[0]) != 2 {
+			t.Errorf("the pending line matched = %+v, want the exception and the duplicate left", got)
 		}
 		acted(t, c, ids["NOKID"], "dismiss", map[string]any{"note": "Ikke en kundebetaling"})
+		if got := ofType(attentionOf(t, c), "bankTransactionsOpen"); len(got) != 1 || itemCount(got[0]) != 1 {
+			t.Errorf("the exception dismissed = %+v, want the duplicate left", got)
+		}
+		acted(t, c, duplicate, "confirm-duplicate", map[string]any{"note": "Samme linje"})
 		if got := ofType(attentionOf(t, c), "bankTransactionsOpen"); len(got) != 0 {
 			t.Errorf("every line resolved = %+v, want none", got)
 		}

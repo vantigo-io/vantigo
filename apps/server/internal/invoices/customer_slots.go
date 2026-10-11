@@ -269,7 +269,7 @@ type exportedManualDelivery struct {
 
 // exportedReminder is one letter (D10, D19) — its level, channel, recipient
 // ("" for paper and once the customer is anonymised), status, dates,
-// amounts and regime — never its PDF's key, its Message-ID or an SMTP
+// amounts (what credit notes had taken off it among them) and regime — never its PDF's key, its Message-ID or an SMTP
 // error, which may quote the address.
 type exportedReminder struct {
 	Sequence            int16      `json:"sequence"`
@@ -284,6 +284,7 @@ type exportedReminder struct {
 	Deadline            *string    `json:"deadline,omitempty"`
 	Regime              string     `json:"regime,omitempty"`
 	PrincipalOpen       *string    `json:"principalOpen,omitempty"`
+	Credited            *string    `json:"credited,omitempty"`
 	FeeKind             string     `json:"feeKind,omitempty"`
 	Fee                 *string    `json:"fee,omitempty"`
 	Compensation        *string    `json:"compensation,omitempty"`
@@ -749,7 +750,7 @@ func readReceivables(ctx context.Context, q *store.Queries, ids []int64) (export
 			dst **string
 			n   pgtype.Numeric
 		}{
-			{&e.PrincipalOpen, l.PrincipalOpen}, {&e.Fee, l.Fee}, {&e.Compensation, l.Compensation},
+			{&e.PrincipalOpen, l.PrincipalOpen}, {&e.Credited, l.Credited}, {&e.Fee, l.Fee}, {&e.Compensation, l.Compensation},
 			{&e.ChargesEarlier, l.ChargesEarlier}, {&e.Interest, l.Interest}, {&e.InterestWaived, l.InterestWaived},
 			{&e.InterestPaid, l.InterestPaid}, {&e.Total, l.Total},
 		} {

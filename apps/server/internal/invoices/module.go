@@ -47,9 +47,9 @@ var permissions = []contracts.Permission{
 	{
 		Key: "invoices:access", Display: "Use Invoices",
 		Description: "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, " +
-			"the CSV export and the stats; the overdue list and an invoice's reminders, hold, hand-off, manual deliveries " +
-			"and charges; the collection rates, the reminder settings and a customer's reminder policy; and the attention " +
-			"items about overdue invoices and refunds due.",
+			"the CSV export and the stats; the overdue list and an invoice's reminder letters and their PDFs, " +
+			"hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings and a " +
+			"customer's reminder policy; and the attention items about overdue invoices and refunds due.",
 		Category: "Invoices", Sensitive: false, Delegable: true,
 	},
 	{
@@ -60,25 +60,26 @@ var permissions = []contracts.Permission{
 	{
 		Key: "invoices:issue", Display: "Issue invoices",
 		Description: "Issue a draft into a numbered document that can never be changed, create credit notes, send an " +
-			"issued document by e-mail or as EHF, cancel or resolve its EHF transmissions, and record that an invoice " +
-			"was handed over or posted, or remove such a record.",
+			"issued document by e-mail or as EHF, cancel or resolve its EHF transmissions, and record that an " +
+			"invoice was handed over or posted, or remove such a record.",
 		Category: "Invoices", Sensitive: true, Delegable: true,
 	},
 	{
 		Key: "invoices:manage", Display: "Manage invoicing",
 		Description: "Change the seller record and its Peppol id, the number series start, the KID agreement, the " +
 			"e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the " +
-			"regime review, the collection rates added ahead of a release, and the format a bank account's files are " +
-			"imported in.",
+			"regime review, the collection rates — add one ahead of a release, or delete one nothing has relied " +
+			"on — and the format a bank account's files are imported in.",
 		Category: "Invoices", Sensitive: true, Delegable: true,
 	},
 	{
 		Key: "invoices:payments", Display: "Register payments",
 		Description: "Register payments against issued invoices and remove a registration with a reason; import bank " +
-			"files and work the exception queue; make reminder runs, and print, post, withdraw and retry the letters; " +
-			"hold a disputed invoice, hand one to collection and export the collection file; register and remove " +
-			"charge payments and waive charges; set a customer's reminder policy; and see the attention items about " +
-			"the bank lines and the letters.",
+			"files, read the imported files, the bank accounts and their lines, and work the exception queue; " +
+			"make and read reminder runs, print paper letters and confirm them posted or reprint them, and " +
+			"withdraw and retry letters; hold a disputed invoice, hand one to collection and export the " +
+			"collection file; register and remove charge payments and waive charges; set a customer's reminder " +
+			"policy; and see the attention items about the bank lines, the letters and the print batches.",
 		Category: "Invoices", Sensitive: true, Delegable: true,
 	},
 }
