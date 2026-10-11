@@ -957,8 +957,14 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           200,
           chainOf(row.id).map((one) => shape(audience, one, ["id", "employmentId", "revision"])),
         );
-      if (method === "GET" && sub === "contract-check")
-        return reads(audience, "employment") ? jsonResponse(200, contractCheckOf(row)) : notFound();
+      if (method === "GET" && sub === "contract-check") {
+        if (!reads(audience, "employment")) return notFound();
+        // The server leaves item i (pay) out for a reader who cannot read pay, so the
+        // stub does the same: a manager gets sixteen items, not seventeen.
+        const check = contractCheckOf(row);
+        const items = reads(audience, "pay") ? check.items : check.items.filter((one) => one.item !== "i");
+        return jsonResponse(200, { ...check, items });
+      }
       if (!audience.hr) return forbidden();
       if (method === "PUT" && sub === undefined) {
         const stale = staleRevision(init, row.revision, "employment");
