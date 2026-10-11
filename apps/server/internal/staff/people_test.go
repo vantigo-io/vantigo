@@ -367,6 +367,31 @@ func TestPeople_AnUnknownPropertyIsRefused(t *testing.T) {
 	}
 }
 
+// The generated decoder reads JSON whatever the Content-Type, so the
+// unknown-property refusal holds for a body sent as text/plain or with none
+// (fetch sends a string as text/plain); a body the check could not read —
+// an octet-stream — is refused outright on a closed request rather than
+// written unchecked.
+func TestPeople_TheUnknownPropertyCheckHoldsForAnyContentType(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	body := []byte(`{"givenName":"Kari","familyName":"Nordmann","nationalId":"x"}`)
+	for _, ct := range []string{"text/plain;charset=UTF-8", ""} {
+		pr := refused(t, hr.Do(http.MethodPost, peoplePath, nil, modtest.RawBody(ct, body)), http.StatusBadRequest, "")
+		if len(pr.Errors["nationalId"]) == 0 {
+			t.Errorf("Content-Type %q: errors = %v, want nationalId named", ct, pr.Errors)
+		}
+	}
+	valid := []byte(`{"givenName":"Kari","familyName":"Nordmann"}`)
+	if r := hr.Do(http.MethodPost, peoplePath, nil, modtest.RawBody("application/octet-stream", valid)); r.Status != http.StatusBadRequest {
+		t.Errorf("an octet-stream body: %d %s, want 400", r.Status, r.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.people`); n != 0 {
+		t.Errorf("people = %d, want none written", n)
+	}
+}
+
 // Writes are staff:manage's; a reader of every other kind is the uniform 403.
 func TestPeople_WritesAreStaffManage(t *testing.T) {
 	t.Parallel()

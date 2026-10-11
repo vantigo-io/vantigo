@@ -219,7 +219,10 @@ link are **not** on the request — they are written through their own operation
 their own permissions. The schema is closed (`additionalProperties: false`), and the
 module enforces it: a property it does not name is a 400 naming that property, and
 nothing is written, so a client that sends `nationalId` learns it was not stored. The
-module refuses to mount if the contract loses the schema or opens it.
+check holds whatever the `Content-Type` (the body is read as JSON either way); a
+multipart or octet-stream body, which the module never reads ahead of the handler, is
+refused on such a request. The module refuses to mount if the contract loses the schema
+or opens it.
 
 **Next of kin** (`GET|PUT /people/{id}/next-of-kin`) are at most three, each a name
 (1–200), a relationship (`spouse`, `partner`, `parent`, `child`, `sibling`, `other`),

@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -26,19 +27,30 @@ import (
 // raw bytes are kept for the handler by keepRawBody, which every operation
 // runs through after the router has authenticated, authorised and capped it.
 
-// rawBodyKey is the context key keepRawBody stores a request's body under.
-type rawBodyKey struct{}
+// rawBodyKey is the context key keepRawBody stores a request's body under,
+// and uploadBodyKey the mark it leaves on a body it did not read.
+type (
+	rawBodyKey    struct{}
+	uploadBodyKey struct{}
+)
 
-// keepRawBody keeps a copy of a JSON request's body in its context and hands
-// the generated decoder an identical reader. Only application/json is read:
-// any other body — a multipart upload above all — reaches the handler
-// untouched, never held in memory or drained here. The router has already
-// capped the body, so the copy is bounded; a read that fails is handed on as
-// the same failure, which the decoder answers as it would have.
+// keepRawBody keeps a copy of the request's body in its context and hands the
+// generated decoder an identical reader. The decoder parses JSON whatever the
+// Content-Type says — a fetch with a string body sends text/plain — so every
+// body is copied except an upload's: a multipart/* or application/octet-stream
+// body reaches the handler untouched, never held in memory or drained here,
+// and marked as unread so a closed request refuses it (unknownProperties).
+// The router has already capped the body, so the copy is bounded; a read that
+// fails is handed on as the same failure, which the decoder answers as it
+// would have.
 func keepRawBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Body == nil || r.Body == http.NoBody || !isJSON(r.Header.Get("Content-Type")) {
+		if r.Body == nil || r.Body == http.NoBody {
 			next.ServeHTTP(w, r)
+			return
+		}
+		if isUpload(r.Header.Get("Content-Type")) {
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), uploadBodyKey{}, true)))
 			return
 		}
 		body, err := io.ReadAll(r.Body)
@@ -51,11 +63,11 @@ func keepRawBody(next http.Handler) http.Handler {
 	})
 }
 
-// isJSON reports whether a Content-Type is application/json, parameters
-// aside.
-func isJSON(contentType string) bool {
+// isUpload reports whether a Content-Type is one keepRawBody leaves unread:
+// multipart/* or application/octet-stream, parameters aside.
+func isUpload(contentType string) bool {
 	media, _, err := mime.ParseMediaType(contentType)
-	return err == nil && media == "application/json"
+	return err == nil && (strings.HasPrefix(media, "multipart/") || media == "application/octet-stream")
 }
 
 // failingReader answers err, for the part of a body that could not be read.
@@ -69,6 +81,13 @@ func (f *failingReader) Read([]byte) (int, error) { return 0, f.err }
 // the schema admits any property.
 func (s *server) unknownProperties(ctx context.Context, schema string) fieldErrors {
 	var f fieldErrors
+	if upload, _ := ctx.Value(uploadBodyKey{}).(bool); upload {
+		// The decoder took this body as JSON, but keepRawBody left it unread,
+		// so its properties cannot be judged: refused rather than written
+		// unchecked.
+		f.add("Content-Type", "This request's body is JSON; send it as application/json")
+		return f
+	}
 	body, _ := ctx.Value(rawBodyKey{}).([]byte)
 	if len(body) == 0 || s.deps.Doc == nil {
 		return f
