@@ -361,9 +361,12 @@ kjøringen for hånd nedenfor virker fortsatt.
 
 `POST /api/v1/staff/retention/run` (`staff:manage`) kjører arbeiderens sletting og en
 runde i sletteloggen nå, med deg som forfatter av slettehendelsene. Svaret sier hva som
-ble slettet per type, og hvor mange filer som ble slettet fra objektlageret. Mens
-arbeideren kjører, svarer den `retention_busy` (409); prøv igjen om et minutt.
-Innstillinger-siden i Ansatte-appen tilbyr det samme som *Kjør oppbevaring nå*.
+ble slettet per type, og hvor mange filer som ble slettet fra objektlageret. Runden i
+sletteloggen stopper etter tretti sekunder, så et tregt objektlager ikke holder igjen
+forespørselen; arbeideren sletter resten neste gang den ser etter. Mens arbeideren
+kjører, svarer den `retention_busy` (409); prøv igjen om et minutt. Foreløpig startes
+kjøringen gjennom dette endepunktet; Innstillinger-siden i Ansatte-appen får en knapp
+for den i en senere versjon.
 
 ### Slettesperren
 

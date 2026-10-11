@@ -388,7 +388,10 @@ type fakeObjectStore struct {
 	putErr    error
 	getErr    error
 	deleteErr error
-	deletes   []string
+	// hangDeletes makes every Delete wait for its context to end and answer
+	// its error: a store that has stopped answering.
+	hangDeletes bool
+	deletes     []string
 	// onDelete runs at the start of every Delete, outside the lock: the way
 	// a test sees what the caller holds at the moment it calls the store.
 	onDelete func(key string)
@@ -434,12 +437,16 @@ func (s *fakeObjectStore) Exists(_ context.Context, key string) (bool, error) {
 	return ok, nil
 }
 
-func (s *fakeObjectStore) Delete(_ context.Context, key string) error {
+func (s *fakeObjectStore) Delete(ctx context.Context, key string) error {
 	s.mu.Lock()
-	hook := s.onDelete
+	hook, hang := s.onDelete, s.hangDeletes
 	s.mu.Unlock()
 	if hook != nil {
 		hook(key)
+	}
+	if hang {
+		<-ctx.Done()
+		return ctx.Err()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -455,6 +462,12 @@ func (s *fakeObjectStore) whenDeleting(fn func(key string)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onDelete = fn
+}
+
+func (s *fakeObjectStore) hang() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hangDeletes = true
 }
 
 func (s *fakeObjectStore) failPut(err error) {

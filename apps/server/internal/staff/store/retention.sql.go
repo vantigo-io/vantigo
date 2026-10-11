@@ -63,18 +63,32 @@ WHERE NOT p.legal_hold
             AND ev.payload ->> 'employmentId' = e.id::text
             AND EXISTS (
                 SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
-                WHERE f.key = ANY($4::text[]) AND f.value <> to_jsonb($5::text))))
+                WHERE f.key = ANY($4::text[]) AND f.value <> to_jsonb($5::text)))
+      OR (e.id = (
+              SELECT l.id FROM staff.employments l WHERE l.person_id = e.person_id
+              ORDER BY l.start_date DESC, l.id DESC LIMIT 1)
+          AND EXISTS (
+              SELECT 1 FROM staff.events ev
+              WHERE ev.person_id = e.person_id AND 'A' = ANY(ev.payload_classes)
+                AND ev.kind = ANY($6::text[])
+                AND ev.payload ->> 'documentId' IS NOT NULL
+                AND NOT EXISTS (
+                    SELECT 1 FROM staff.documents d WHERE d.id = (ev.payload ->> 'documentId')::bigint)
+                AND EXISTS (
+                    SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
+                    WHERE f.value <> to_jsonb($5::text)))))
 ORDER BY e.end_date, e.id
-LIMIT $6
+LIMIT $7
 `
 
 type DueEmploymentsAParams struct {
-	BeforeYear int32
-	PersonID   *int64
-	AColumns   []string
-	AFields    []string
-	Blanked    string
-	RowLimit   int32
+	BeforeYear    int32
+	PersonID      *int64
+	AColumns      []string
+	AFields       []string
+	Blanked       string
+	DocumentKinds []string
+	RowLimit      int32
 }
 
 type DueEmploymentsARow struct {
@@ -89,7 +103,10 @@ type DueEmploymentsARow struct {
 // (@a_columns, the terms' class A columns), a document of class A filed
 // against it — or filed against no employment while it is the person's last
 // one — or a field of class A (@a_fields) in one of its events' payloads not
-// yet replaced by "changed". Oldest end first.
+// yet replaced by "changed" — or, while it is the person's last one, a value
+// not yet replaced in an event of class A about a document (@document_kinds)
+// that is gone: a contract or an attest deleted by hand, which no longer says
+// which employment it was filed against. Oldest end first.
 func (q *Queries) DueEmploymentsA(ctx context.Context, arg DueEmploymentsAParams) ([]DueEmploymentsARow, error) {
 	rows, err := q.db.Query(ctx, dueEmploymentsA,
 		arg.BeforeYear,
@@ -97,6 +114,7 @@ func (q *Queries) DueEmploymentsA(ctx context.Context, arg DueEmploymentsAParams
 		arg.AColumns,
 		arg.AFields,
 		arg.Blanked,
+		arg.DocumentKinds,
 		arg.RowLimit,
 	)
 	if err != nil {
@@ -305,6 +323,46 @@ func (q *Queries) EmploymentDocumentsA(ctx context.Context, arg EmploymentDocume
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const goneDocumentsWithEventsA = `-- name: GoneDocumentsWithEventsA :many
+SELECT DISTINCT (ev.payload ->> 'documentId')::bigint AS document_id
+FROM staff.events ev
+WHERE ev.person_id = $1 AND 'A' = ANY(ev.payload_classes)
+  AND ev.kind = ANY($2::text[])
+  AND ev.payload ->> 'documentId' IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM staff.documents d WHERE d.id = (ev.payload ->> 'documentId')::bigint)
+ORDER BY document_id
+`
+
+type GoneDocumentsWithEventsAParams struct {
+	PersonID      *int64
+	DocumentKinds []string
+}
+
+// GoneDocumentsWithEventsA is the documents a person's events of class A
+// about a document (@document_kinds) name that no longer exist — a contract
+// or an attest deleted by hand — whose values the A erase of the person's
+// last employment replaces.
+func (q *Queries) GoneDocumentsWithEventsA(ctx context.Context, arg GoneDocumentsWithEventsAParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, goneDocumentsWithEventsA, arg.PersonID, arg.DocumentKinds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var document_id int64
+		if err := rows.Scan(&document_id); err != nil {
+			return nil, err
+		}
+		items = append(items, document_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -48,7 +48,10 @@ const (
 // most, the longest waiting first — claimed by a conditional update and
 // given one attempt. It answers the rows attempted and the attempts the store
 // confirmed. A row another pass won between the selection and the claim is
-// left to it.
+// left to it. Each claim is timed when it is taken, not when the pass began,
+// so a slow store does not leave a late row's window already run out. A pass
+// whose ctx ends — a run by hand's budget — stops where it is, the attempt
+// under way ended with it, and answers what it attempted.
 func (s *server) runLedger(ctx context.Context) (attempted, succeeded int, err error) {
 	now := s.deps.Clock()
 	q := store.New(s.deps.Pool)
@@ -60,11 +63,15 @@ func (s *server) runLedger(ctx context.Context) (attempted, succeeded int, err e
 		if ctx.Err() != nil {
 			break
 		}
+		claimedAt := s.deps.Clock()
 		failed, err := q.ClaimObjectDeletion(ctx, store.ClaimObjectDeletionParams{
-			ClaimedUntil: now.Add(ledgerClaimWindow), ObjectKey: key, Now: now,
+			ClaimedUntil: claimedAt.Add(ledgerClaimWindow), ObjectKey: key, Now: claimedAt,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			continue
+		}
+		if err != nil && ctx.Err() != nil {
+			break
 		}
 		if err != nil {
 			return attempted, succeeded, fmt.Errorf("staff: claim a ledger row: %w", err)
@@ -80,7 +87,9 @@ func (s *server) runLedger(ctx context.Context) (attempted, succeeded int, err e
 // finishObjectDeletion is one attempt at a ledger row's object — the hand
 // delete's one attempt after its commit, and each of the ledger's — on a
 // context detached from the caller's and bounded by objectCleanupTimeout,
-// holding no connection while the store is asked. When the store confirms
+// holding no connection while the store is asked. The store's call keeps the
+// caller's deadline, when it has one — a run by hand's ledger budget — though
+// not its cancellation; the outcome is recorded on the detached context. When the store confirms
 // (a key it no longer has is confirmed too: Delete is idempotent by
 // storage's contract), the row is cleared; when it refuses, the attempt is
 // recorded on the row — counted, its reason, the next attempt after
@@ -93,7 +102,13 @@ func (s *server) finishObjectDeletion(ctx context.Context, key string, failedBef
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), objectCleanupTimeout)
 	defer cancel()
 	q := store.New(s.deps.Pool)
-	err := s.objectDelete(cleanup, key)
+	attempt := cleanup
+	if deadline, ok := ctx.Deadline(); ok {
+		var stop context.CancelFunc
+		attempt, stop = context.WithDeadline(cleanup, deadline)
+		defer stop()
+	}
+	err := s.objectDelete(attempt, key)
 	if err == nil {
 		if err := q.DeleteObjectDeletion(cleanup, key); err != nil {
 			s.logger().ErrorContext(cleanup, "staff: a removed object's ledger row could not be cleared; the next pass clears it",

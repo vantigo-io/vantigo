@@ -98,8 +98,9 @@ const (
 // kind and how many items it removed — {kinds: [{kind, count}]}, no fields.
 // Its actor is the installation's system actor when the worker ran it, and
 // the caller when POST /retention/run did. It touches no class itself (its
-// payload_classes are empty, so no later erase rewrites it), and the
-// documents group reads its kinds (shapePayload).
+// payload_classes are empty, so no later erase rewrites it). It is listed as
+// one of the hold's kinds (holdEventKinds), and the hold group reads its
+// kinds — the health entry staff:personal-data alone (shapePayload).
 const (
 	eventErased = "erased"
 )
@@ -110,8 +111,9 @@ const (
 // has a right to know a hold is on them and that their data was exported,
 // and who reads each as its kind, its fields "changed" (seesHoldEvents). To
 // anyone else they are left out of the history and its count, as a health
-// event is.
-var holdEventKinds = []string{eventPersonalDataExported, eventLegalHoldSet, eventLegalHoldLifted, eventReassessed, eventPersonRehired}
+// event is. The retention run's erased event is one of them: about the
+// record's retention, its kinds HR's.
+var holdEventKinds = []string{eventPersonalDataExported, eventLegalHoldSet, eventLegalHoldLifted, eventReassessed, eventPersonRehired, eventErased}
 
 const (
 	actorKindUser          = "user"

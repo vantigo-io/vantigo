@@ -407,7 +407,7 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `people_imported` | Installation-level (no person): `rows`, `created`, `updated`, `failed` of a real [import](#the-registers-import-and-export); each row's own events name the people it wrote. |
 | `people_exported` | Installation-level (no person): `rows`, the people the [export](#the-registers-import-and-export) wrote. |
 | `payroll_exported` | Installation-level (no person): `month`, `format`, `rows` and `sha256` (hex) of the [payroll file](#the-payroll-export) answered; no personal data, so no payload class. |
-| `erased` | No fields: `kinds`, `[{kind, count}]` — what one [erase](#what-an-erase-does) removed per kind (`D`, `health`, `A`); the actor is the installation's `system` for the worker, the caller for a run by hand; no payload class. |
+| `erased` | No fields: `kinds`, `[{kind, count}]` — what one [erase](#what-an-erase-does) removed per kind (`D`, `health`, `A`), read by `staff:manage` and `staff:personal-data`, the `health` entry by `staff:personal-data` alone; listed as the hold's kinds are; the actor is the installation's `system` for the worker, the caller for a run by hand; no payload class. |
 
 `GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
 the person themselves, a manager of theirs today, `staff:manage` and
@@ -427,8 +427,10 @@ history. A sealed value is never in a payload. Each event also stores the retent
 classes its payload touches (`payload_classes`), which the erase uses; a document's
 event takes its classes from the category it was filed under (before and after, for a
 move). A value the [retention run](#what-an-erase-does) has erased reads `"changed"`
-to everyone, HR included; an `erased` event's `kinds` are read by the documents
-group and are an empty payload to anyone else.
+to everyone, HR included; an `erased` event's `kinds` are read by the hold group —
+`staff:manage` and `staff:personal-data` — its `health` entry by the health group's HR
+alone, `staff:personal-data`, so HR without it does not learn that there was health
+content to erase; to anyone else it is an empty payload.
 
 A **document's event** is shaped by one group for the whole event, not per field: the
 **documents** group (the person, `staff:manage`, `staff:personal-data`), or — when its
@@ -440,12 +442,13 @@ audience without the health group, HR without `staff:personal-data` included: th
 not learn that one happened.
 
 The **hold's kinds** — `legal_hold_set`, `legal_hold_lifted`, `reassessed`,
-`person_rehired` and `personal_data_exported` — are left out of the list, and out of its
-`totalCount`, for an audience that is neither the person nor HR: a manager does not
-learn that a hold was set or the person's data exported. The person themselves is
-shown them — they have a right to know a hold is on them and that their data was
-exported — as the kind, each field `"changed"`; `staff:manage` and
-`staff:personal-data` read the values.
+`person_rehired`, `personal_data_exported` and `erased` — are left out of the list, and
+out of its `totalCount`, for an audience that is neither the person nor HR: a manager
+does not learn that a hold was set, the person's data exported or the record erased.
+The person themselves is shown them — they have a right to know a hold is on them and
+that their data was exported or erased — as the kind, each field `"changed"` (an
+`erased` event's payload empty); `staff:manage` and `staff:personal-data` read the
+values.
 
 ### Deleting a person
 
@@ -1248,8 +1251,10 @@ time zone's civil day:
   (ended in 2020, due from 1 January 2026; ended in 2021, not before 2027), of a person
   not held, erased or not, with something of class A still there — a pay column set on
   one of its terms rows, a document of class A filed against it (or filed against no
-  employment while it is the person's last one — the latest to start), or a pay field
-  in one of its events not yet replaced.
+  employment while it is the person's last one — the latest to start), a pay field
+  in one of its events not yet replaced, or — while it is the person's last one — a
+  value not yet replaced in an event (`document_added`, `document_updated`,
+  `document_removed`) of class A about a document that no longer exists.
 
 ### What an erase does
 
@@ -1265,7 +1270,11 @@ since the cycle chose the person is seen there:
   of their health documents' events.
 - **A**, for each due employment, nulls its pay columns on every terms row, deletes its
   documents of class A, and replaces the values of class A in its events and every
-  value of the deleted documents' events. A rehired person's old employment loses its
+  value of the deleted documents' events. The erase of the person's **last**
+  employment also replaces every value of the events of class A about a document that
+  no longer exists — a contract or an attest deleted by hand before its erase, which
+  no longer says which employment it was filed against, so its file name and dates do
+  not outlive the pay documentation. A rehired person's old employment loses its
   pay while the current one keeps its own.
 
 A value replaced in a payload keeps its field's name and reads `"changed"` — what a
@@ -1285,9 +1294,10 @@ installation (`system`) when the worker ran it and the caller when
 removed: each column value nulled, each row deleted (a next of kin, a document) and
 each event payload rewritten. A D erase is always reported, since it marks the
 person, even when it found nothing to remove (count 0); an A count sums the person's
-due employments. The event touches no class, so no later erase rewrites it; its kinds
-are read by the documents group (the person, `staff:manage`, `staff:personal-data`)
-and are an empty payload to anyone else.
+due employments. The event touches no class, so no later erase rewrites it. It is
+listed as the [hold's kinds](#the-history) are — not to a manager, to the person as its
+kind with an empty payload — and its kinds are read by `staff:manage` and
+`staff:personal-data`, the `health` entry by `staff:personal-data` alone.
 
 The run is **idempotent**: a second run finds nothing due and writes nothing. That is
 what makes "once per civil day" hold whatever the poll and the clock do.
@@ -1299,8 +1309,8 @@ the store has not yet confirmed gone (`object_key`, `attempts`, `next_attempt_at
 `claimed_until`, `last_error`, `created_at`). A pass takes the due rows —
 `next_attempt_at` reached, not claimed or claimed by a pass whose window has run out —
 a hundred at a time, the longest waiting first, and claims each by a conditional update
-for five minutes; a row another replica won between the selection and the claim is
-left to it. Each claimed row gets one attempt:
+for five minutes from the moment it is claimed, just before its attempt; a row another
+replica won between the selection and the claim is left to it. Each claimed row gets one attempt:
 
 - the store confirms — a key it no longer has counts as confirmed — and the row is
   deleted;
@@ -1341,9 +1351,12 @@ configuration, and an unconfigured one fails only the ledger's attempts.
 `POST /retention/run` (`staff:manage`) runs both steps now, by the same code with the
 same connection disciplines, the caller as the `erased` events' actor. It answers 200
 `{"erased": {"kinds": [{"kind", "count"}]}, "deletions": {"attempted", "succeeded"}}` —
-the kinds summed over the people erased, a kind no erase ran for absent. While another
-holder has the lease — the worker, here or on another replica, or another run by hand —
-it is **`retention_busy`** (409) and runs nothing.
+the kinds summed over the people erased, a kind no erase ran for absent. Its ledger
+pass is bounded at **thirty seconds** in all, so a store that has stopped answering
+does not hold the request: an attempt still under way then ends as a refusal, the pass
+stops, `deletions` counts what it attempted, and the worker finishes the rest. While
+another holder has the lease — the worker, here or on another replica, or another run
+by hand — it is **`retention_busy`** (409) and runs nothing.
 
 ### The settings and the retention block
 

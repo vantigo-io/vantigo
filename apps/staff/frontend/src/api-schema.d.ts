@@ -1039,7 +1039,7 @@ export interface paths {
         put?: never;
         /**
          * Run retention now
-         * @description Runs the staff-retention worker's two steps once, now (design S15): an erase cycle — at most fifty people, under the worker's lease, each person's erases in one transaction with one erased event naming the caller as its actor — and one pass over the deletion ledger, at most a hundred objects. Exactly what the worker does every poll, by the same code.
+         * @description Runs the staff-retention worker's two steps once, now (design S15): an erase cycle — at most fifty people, under the worker's lease, each person's erases in one transaction with one erased event naming the caller as its actor — and one pass over the deletion ledger, at most a hundred objects and at most thirty seconds in all — what it does not reach, the worker finishes. Exactly what the worker does every poll, by the same code.
          *
          *     The erase cycle takes what is due today in the settings' time zone and not under a legal hold: D — a person not yet erased, with at least one employment and every one ended more than retentionGraceDays ago, loses the personnel administration (contact and address, the sealed identifiers, the care-day fields, HR's notes, the terms' notes, the next of kin, the documents of class D, and those values in the history's payloads) and is marked erased; health — a person whose last employment ended more than healthRetentionDays ago loses the documents in restricted categories; A — an employment that ended in a year more than five years past loses its pay terms, its documents of class A and the pay in its events. What remains — the names, the birth date, the employee number, the employments and their other terms, the roles, the link, the history's kinds and dates — stays.
          */
@@ -1501,7 +1501,7 @@ export interface components {
             id: number;
             /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; the kinds grow with the module. */
             kind: string;
-            /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A", "count": n}]}, read by the documents group (the person and HR). A value the retention run erased reads "changed" to everyone. */
+            /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A", "count": n}]}, read by HR — the health entry by staff:personal-data alone — and is listed as the hold's kinds are: not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone. */
             payload: {
                 [key: string]: unknown;
             };

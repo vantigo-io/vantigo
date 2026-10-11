@@ -61,7 +61,10 @@ LIMIT @row_limit;
 -- (@a_columns, the terms' class A columns), a document of class A filed
 -- against it — or filed against no employment while it is the person's last
 -- one — or a field of class A (@a_fields) in one of its events' payloads not
--- yet replaced by "changed". Oldest end first.
+-- yet replaced by "changed" — or, while it is the person's last one, a value
+-- not yet replaced in an event of class A about a document (@document_kinds)
+-- that is gone: a contract or an attest deleted by hand, which no longer says
+-- which employment it was filed against. Oldest end first.
 SELECT e.id, e.person_id
 FROM staff.employments e
 JOIN staff.people p ON p.id = e.person_id
@@ -87,7 +90,20 @@ WHERE NOT p.legal_hold
             AND ev.payload ->> 'employmentId' = e.id::text
             AND EXISTS (
                 SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
-                WHERE f.key = ANY(@a_fields::text[]) AND f.value <> to_jsonb(@blanked::text))))
+                WHERE f.key = ANY(@a_fields::text[]) AND f.value <> to_jsonb(@blanked::text)))
+      OR (e.id = (
+              SELECT l.id FROM staff.employments l WHERE l.person_id = e.person_id
+              ORDER BY l.start_date DESC, l.id DESC LIMIT 1)
+          AND EXISTS (
+              SELECT 1 FROM staff.events ev
+              WHERE ev.person_id = e.person_id AND 'A' = ANY(ev.payload_classes)
+                AND ev.kind = ANY(@document_kinds::text[])
+                AND ev.payload ->> 'documentId' IS NOT NULL
+                AND NOT EXISTS (
+                    SELECT 1 FROM staff.documents d WHERE d.id = (ev.payload ->> 'documentId')::bigint)
+                AND EXISTS (
+                    SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
+                    WHERE f.value <> to_jsonb(@blanked::text)))))
 ORDER BY e.end_date, e.id
 LIMIT @row_limit;
 
@@ -118,6 +134,20 @@ JOIN staff.document_categories c ON c.id = d.category_id
 WHERE d.person_id = @person_id AND c.retention_class = 'A'
   AND (d.employment_id = @employment_id OR (d.employment_id IS NULL AND @is_last::boolean))
 ORDER BY d.id;
+
+-- name: GoneDocumentsWithEventsA :many
+-- GoneDocumentsWithEventsA is the documents a person's events of class A
+-- about a document (@document_kinds) name that no longer exist — a contract
+-- or an attest deleted by hand — whose values the A erase of the person's
+-- last employment replaces.
+SELECT DISTINCT (ev.payload ->> 'documentId')::bigint AS document_id
+FROM staff.events ev
+WHERE ev.person_id = @person_id AND 'A' = ANY(ev.payload_classes)
+  AND ev.kind = ANY(@document_kinds::text[])
+  AND ev.payload ->> 'documentId' IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM staff.documents d WHERE d.id = (ev.payload ->> 'documentId')::bigint)
+ORDER BY document_id;
 
 -- name: PersonEventsOfClass :many
 -- PersonEventsOfClass is a person's events whose payload touches one

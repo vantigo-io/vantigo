@@ -216,8 +216,7 @@ func TestRetention_TheDEraseNullsEveryDColumn(t *testing.T) {
 	if len(rows) < 3 {
 		t.Fatalf("events touching class D = %d, want the creation, the next of kin, the terms with notes at least", len(rows))
 	}
-	dFields := []string{"workEmail", "phoneWork", "phoneMobile", "phonePrivate", "privateEmail", "street", "postalCode",
-		"city", "country", "notes", "nextOfKin", "nationalId", "bankAccount", "note"}
+	dFields := staff.FieldsOfClass("D")
 	for _, r := range rows {
 		var payload struct {
 			Fields map[string]any `json:"fields"`
@@ -529,6 +528,107 @@ func TestRetention_TheAErase(t *testing.T) {
 	}
 	if n := payLive(now.Id); n != len(aColumns) {
 		t.Errorf("the current employment keeps %d pay values in 2027, want its %d", n, len(aColumns))
+	}
+}
+
+// A contract or an attest deleted by hand before its employment's A erase
+// leaves its events behind, of class A, and no document to say which
+// employment it was filed against: the erase of the person's last employment
+// replaces their values, and the A due query finds that employment due on
+// them alone — here its terms carry no pay. A second cycle writes nothing.
+func TestRetention_TheAEraseReachesAHandDeletedDocumentsEvents(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	company(t, hr)
+	p := createPerson(t, hr, newPerson("Lenge", "Siden"))
+	pastEmployment(t, hr, p.Id, "2016-01-01", "2020-06-30", terms())
+	contract := uploadDocument(t, hr, p.Id, pdfUpload(documentCategoryID(t, h, "contract")))
+	do(t, hr, http.MethodDelete, documentPath(contract.Id), nil, http.StatusNoContent, nil)
+	stored := func() []string {
+		return modtest.One[[]string](t, h.Harness, `
+			SELECT coalesce(array_agg(payload::text ORDER BY id), '{}') FROM staff.events
+			WHERE person_id = $1 AND kind IN ('document_added', 'document_removed')`, p.Id)
+	}
+	if before := stored(); len(before) != 2 || !strings.Contains(before[0], "avtale.pdf") {
+		t.Fatalf("the hand-deleted contract's events = %v, want its added and removed, naming the file", before)
+	}
+
+	runCycle(t, h)
+	after := stored()
+	for _, r := range after {
+		if strings.Contains(r, "avtale.pdf") || !strings.Contains(r, `"changed"`) {
+			t.Errorf("the hand-deleted contract's event %s, want its values replaced by \"changed\"", r)
+		}
+	}
+	if counts := kindCounts(firstErased(t, h, p.Id)); counts["A"] != 2 {
+		t.Errorf("erased kinds = %v, want A: 2 (the two payloads)", counts)
+	}
+
+	events := h.Count(t, `SELECT count(*) FROM staff.events`)
+	runCycle(t, h)
+	if n := h.Count(t, `SELECT count(*) FROM staff.events`); n != events || !slices.Equal(stored(), after) {
+		t.Errorf("a second cycle wrote events (%d → %d) or payloads, want nothing", events, n)
+	}
+}
+
+// The erased event per audience: it is one of the hold's kinds for the list
+// (holdEventKinds) — left out of a manager's history and its count, shown to
+// the person as its kind alone; its kinds are HR's, the health entry
+// staff:personal-data's alone, so HR without it does not learn that health
+// content existed.
+func TestRetention_TheErasedEventPerAudience(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage", "staff:view")
+	pd, _ := signIn(t, h, "staff:personal-data")
+	manager := createPerson(t, hr, newPerson("Mona", "Leder"))
+	boss, bossID := signIn(t, h)
+	link(t, h, manager.Id, bossID)
+	seedEmployment(t, h, manager.Id, 0)
+	p := createPerson(t, hr, newPerson("Tove", "Tvist"))
+	seedEmployment(t, h, p.Id, manager.Id)
+	self, selfID := signIn(t, h)
+	link(t, h, p.Id, selfID)
+
+	var before gen.PaginatedResponseOfStaffEvent
+	do(t, boss, http.MethodGet, eventsPath(p.Id), nil, http.StatusOK, &before)
+	h.Exec(t, `INSERT INTO staff.events (person_id, kind, actor_kind, at, payload, payload_classes) VALUES
+		($1, 'erased', 'system', $2, '{"kinds":[{"kind":"D","count":3},{"kind":"health","count":2}]}', '{}')`, p.Id, h.Now())
+
+	kindsOf := func(c *modtest.Client) []string {
+		t.Helper()
+		e := eventOfKind(t, listEvents(t, c, p.Id), "erased")
+		var out []string
+		list, _ := e.Payload["kinds"].([]any)
+		for _, item := range list {
+			k, _ := item.(map[string]any)
+			out = append(out, fmt.Sprint(k["kind"]))
+		}
+		return out
+	}
+	if got := kindsOf(hr); !slices.Equal(got, []string{"D"}) {
+		t.Errorf("staff:manage reads the erased kinds %v, want D alone", got)
+	}
+	if got := kindsOf(pd); !slices.Equal(got, []string{"D", "health"}) {
+		t.Errorf("staff:personal-data reads the erased kinds %v, want D and health", got)
+	}
+
+	var managed gen.PaginatedResponseOfStaffEvent
+	do(t, boss, http.MethodGet, eventsPath(p.Id), nil, http.StatusOK, &managed)
+	if slices.Contains(kinds(managed.Data), "erased") {
+		t.Error("the manager reads an erased event")
+	}
+	if managed.Pagination.TotalCount != before.Pagination.TotalCount || len(managed.Data) != len(before.Data) {
+		t.Errorf("the manager's history counts %d (lists %d), want %d as before", managed.Pagination.TotalCount, len(managed.Data), before.Pagination.TotalCount)
+	}
+
+	var mine gen.PaginatedResponseOfStaffEvent
+	do(t, self, http.MethodGet, meEventsPath, nil, http.StatusOK, &mine)
+	for _, list := range [][]gen.StaffEvent{mine.Data, listEvents(t, self, p.Id)} {
+		if e := eventOfKind(t, list, "erased"); len(e.Payload) != 0 {
+			t.Errorf("the person reads the erased event as %v, want its kind alone", e.Payload)
+		}
 	}
 }
 
