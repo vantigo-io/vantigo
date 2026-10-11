@@ -719,7 +719,8 @@ duplicates and not yet matched.
 for: its format — **OCR giro** or **camt.054**, set by the account's first file — its latest
 file and latest booking day, and, after a change, the earlier format with its cutover. A
 file of the other format for an account is refused. To switch an account — say from OCR
-giro to camt.054 — someone with `invoices:manage` clicks **Change the format** beside it,
+giro to camt.054 — someone with `invoices:manage` (and `invoices:payments`, which opens
+**Payments**) clicks **Change the format** beside it,
 chooses the **New format** and clicks **Change the format**. The dialog explains the
 **cutover** first: Vantigo records the latest booking day of the account's payments in the
 old format, and holds back a payment of the new format booked on or before that day as a
@@ -1352,7 +1353,7 @@ No built-in role holds these; an Owner holds everything
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one | `invoices:issue` |
 | Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; see the dashboard's notices about bank lines, letters and print batches | `invoices:payments` |
-| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments** | `invoices:manage` |
+| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments**, which also needs `invoices:payments` to open | `invoices:manage` |
 
 Payments and reminders add no permission of their own. Reminders, the exception queue,
 holds and hand-offs need `invoices:payments`, not `invoices:issue`: a reminder is not a
