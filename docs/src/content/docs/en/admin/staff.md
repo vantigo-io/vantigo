@@ -90,7 +90,7 @@ When a bank account is set or changed, the person is mailed — at their private
 when they have one, else at their work email, in their preferred language — naming the
 account's last four digits and nothing more, so a change somebody else made does not go
 unnoticed. The mail goes through the installation's own SMTP server after the change is
-saved.
+saved. Sending the account already on file again changes nothing and mails nobody.
 
 - It needs `MAIL_DRIVER=smtp` and the `SMTP_*` settings
   ([Installation](/en/admin/installation/#email-and-observability)). With any other

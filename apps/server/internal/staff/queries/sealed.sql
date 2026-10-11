@@ -5,9 +5,9 @@
 
 -- name: PersonNationalID :one
 -- PersonNationalID is a person's national identity number as stored: its
--- kind, a foreign id's country and the sealed value, each NULL when none is
--- on file.
-SELECT national_id_kind, national_id_country, national_id_sealed
+-- kind, a foreign id's country, the sealed value and its MAC, each NULL when
+-- none is on file.
+SELECT national_id_kind, national_id_country, national_id_sealed, national_id_mac
 FROM staff.people
 WHERE id = @id;
 

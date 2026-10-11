@@ -527,3 +527,91 @@ func TestBankAccount_RevealAndRefusal(t *testing.T) {
 		t.Error("a log line carries the account")
 	}
 }
+
+// A send that fails never fails the change: the account is stored, the
+// answer is 200, and the warning names the person's id and not their
+// address — however the mail server cased it when it quoted it back.
+func TestBankAccount_AFailedMailKeepsTheChange(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.WithSMTPSend(func(_ context.Context, _ config.MailConfig, out mail.Outbound) error {
+		return fmt.Errorf("550 mailbox <%s> refused", strings.ToUpper(out.To[0]))
+	}))
+	hr, _ := signIn(t, h, "staff:manage")
+	pd, _ := signIn(t, h, "staff:personal-data")
+	p := createPerson(t, hr, with(newPerson("Kari", "Nordmann"), "workEmail", "kari@example.no"))
+	do(t, pd, http.MethodPut, bankAccountPath(p.Id), map[string]any{"kind": "bban", "value": "12345678903"}, http.StatusOK, nil)
+	if last4 := modtest.One[string](t, h.Harness, `SELECT bank_account_last4 FROM staff.people WHERE id = $1`, p.Id); last4 != "8903" {
+		t.Errorf("last4 = %q, want the change stored", last4)
+	}
+	logs := h.Logs()
+	if !strings.Contains(logs, "could not be sent") {
+		t.Errorf("no warning says the mail could not be sent:\n%s", logs)
+	}
+	if strings.Contains(strings.ToLower(logs), "kari@example.no") {
+		t.Errorf("a log line carries the address:\n%s", logs)
+	}
+}
+
+// Re-sending the value on file — written another way — is no change: no
+// event, and for the bank account no mail. A different value is one.
+func TestSealed_AnUnchangedValueWritesNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	pd, _ := signIn(t, h, "staff:personal-data")
+	p := createPerson(t, hr, with(newPerson("Kari", "Nordmann"), "workEmail", "kari@example.no"))
+	number := testNationalID("018190", 347)
+	count := func(kind string) int {
+		return h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1 AND kind = $2`, p.Id, kind)
+	}
+	for _, value := range []string{number, number[:6] + " " + number[6:]} {
+		do(t, pd, http.MethodPut, nationalIDPath(p.Id), map[string]any{"kind": "fodselsnummer", "value": value}, http.StatusOK, nil)
+	}
+	if n := count("national_id_set"); n != 1 {
+		t.Errorf("national_id_set events = %d, want one for one change", n)
+	}
+	do(t, pd, http.MethodPut, nationalIDPath(p.Id), map[string]any{"kind": "fodselsnummer", "value": testNationalID("018190", 400)}, http.StatusOK, nil)
+	if n := count("national_id_set"); n != 2 {
+		t.Errorf("national_id_set events = %d after another number, want two", n)
+	}
+	for _, value := range []string{"12345678903", "1234.56.78903"} {
+		do(t, pd, http.MethodPut, bankAccountPath(p.Id), map[string]any{"kind": "bban", "value": value}, http.StatusOK, nil)
+	}
+	if n, mails := count("bank_account_set"), len(h.mail.messages()); n != 1 || mails != 1 {
+		t.Errorf("bank_account_set events = %d, mails = %d, want one of each for one change", n, mails)
+	}
+	do(t, pd, http.MethodPut, bankAccountPath(p.Id), map[string]any{"kind": "iban", "value": "NO9386011117947"}, http.StatusOK, nil)
+	if n, mails := count("bank_account_set"), len(h.mail.messages()); n != 2 || mails != 2 {
+		t.Errorf("after another account: events = %d, mails = %d, want two of each", n, mails)
+	}
+}
+
+// Reading 17 holds on both paths: HR changing the birth date of a person
+// whose national id encodes another is refused national_id_birth_date_mismatch
+// on birthDate, and nothing is written; the matching date, clearing it, and
+// any date beside a foreign id are accepted.
+func TestPeople_BirthDateAgreesWithTheNationalID(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	pd, _ := signIn(t, h, "staff:personal-data")
+	p := createPerson(t, hr, with(newPerson("Kari", "Nordmann"), "birthDate", "1990-01-01"))
+	do(t, pd, http.MethodPut, nationalIDPath(p.Id), map[string]any{"kind": "fodselsnummer", "value": testNationalID("018190", 347)}, http.StatusOK, nil)
+
+	rev := personRevision(t, h, p.Id)
+	pr := refused(t, hr.Do(http.MethodPut, personPath(p.Id), with(newPerson("Kari", "Nordmann"), "birthDate", "1990-01-02"), ifMatch(rev)),
+		http.StatusBadRequest, "national_id_birth_date_mismatch")
+	if len(pr.Errors["birthDate"]) == 0 {
+		t.Errorf("errors = %v, want birthDate named", pr.Errors)
+	}
+	if got := personRevision(t, h, p.Id); got != rev {
+		t.Errorf("the refused change moved the revision to %d", got)
+	}
+	do(t, hr, http.MethodPut, personPath(p.Id), with(newPerson("Kari", "Hansen"), "birthDate", "1990-01-01"), http.StatusOK, nil, ifMatch(rev))
+	do(t, hr, http.MethodPut, personPath(p.Id), newPerson("Kari", "Hansen"), http.StatusOK, nil, ifMatch(personRevision(t, h, p.Id)))
+	do(t, hr, http.MethodPut, personPath(p.Id), with(newPerson("Kari", "Hansen"), "birthDate", "1990-01-01"), http.StatusOK, nil, ifMatch(personRevision(t, h, p.Id)))
+
+	foreign := createPerson(t, hr, with(newPerson("Ola", "Hansen"), "birthDate", "1975-06-30"))
+	do(t, pd, http.MethodPut, nationalIDPath(foreign.Id), map[string]any{"kind": "foreign", "country": "DK", "value": "ABC-123"}, http.StatusOK, nil)
+	do(t, hr, http.MethodPut, personPath(foreign.Id), with(newPerson("Ola", "Hansen"), "birthDate", "1976-01-01"), http.StatusOK, nil, ifMatch(foreign.Revision))
+}

@@ -153,3 +153,31 @@ func TestMe_PutChangesThePrivateGroupOnly(t *testing.T) {
 		t.Error("the person reads HR's notes in their history")
 	}
 }
+
+// /me is pure Self whatever else the caller holds: HR linked to their own
+// person reads their record on My page without HR's notes, which
+// GET /people/{id} shows them as staff:manage, and their own history there
+// shows a notes change as "changed".
+func TestMe_IsPureSelfForHR(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, hrID := signInNamed(t, h, "Hanne HR", "staff:manage")
+	p := createPerson(t, hr, with(newPerson("Hanne", "Hansen"), "notes", "HR's own"))
+	linkThroughAPI(t, hr, p.Id, hrID)
+
+	if _, ok := raw(t, hr.Do(http.MethodGet, mePath, nil))["notes"]; ok {
+		t.Error("GET /me answers notes to HR reading their own record, want pure Self")
+	}
+	if raw(t, hr.Do(http.MethodGet, personPath(p.Id), nil))["notes"] != "HR's own" {
+		t.Error("GET /people/{id} hides notes from staff:manage")
+	}
+	do(t, hr, http.MethodPut, personPath(p.Id), with(newPerson("Hanne", "Hansen"), "notes", "Changed"), http.StatusOK, nil, ifMatch(personRevision(t, h, p.Id)))
+	var history gen.PaginatedResponseOfStaffEvent
+	do(t, hr, http.MethodGet, meEventsPath, nil, http.StatusOK, &history)
+	if got := fieldsOf(history.Data[0])["notes"]; got != "changed" {
+		t.Errorf("/me/events shows notes as %v, want \"changed\"", got)
+	}
+	if f, ok := fieldsOf(listEvents(t, hr, p.Id)[0])["notes"].(map[string]any); !ok || f["to"] != "Changed" {
+		t.Errorf("/people/{id}/events shows HR notes as %v, want the value", f)
+	}
+}

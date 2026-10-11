@@ -345,6 +345,11 @@ func (s *server) PutStaffPeopleById(ctx context.Context, req gen.PutStaffPeopleB
 			saved = current
 			return nil
 		}
+		if _, changes := diff["birthDate"]; changes {
+			if err := s.checkBirthDateAgainstNationalID(ctx, txq, req.Id, next.BirthDate); err != nil {
+				return err
+			}
+		}
 		if err := txq.UpdatePerson(ctx, store.UpdatePersonParams{
 			ID: req.Id, GivenName: next.GivenName, FamilyName: next.FamilyName, DisplayName: next.DisplayName,
 			BirthDate: next.BirthDate, Gender: next.Gender, WorkEmail: next.WorkEmail, PhoneWork: next.PhoneWork,

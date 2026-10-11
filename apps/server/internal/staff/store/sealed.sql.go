@@ -32,7 +32,7 @@ func (q *Queries) PersonBankAccount(ctx context.Context, id int64) (PersonBankAc
 
 const personNationalID = `-- name: PersonNationalID :one
 
-SELECT national_id_kind, national_id_country, national_id_sealed
+SELECT national_id_kind, national_id_country, national_id_sealed, national_id_mac
 FROM staff.people
 WHERE id = $1
 `
@@ -41,6 +41,7 @@ type PersonNationalIDRow struct {
 	NationalIDKind    *string
 	NationalIDCountry *string
 	NationalIDSealed  []byte
+	NationalIDMac     []byte
 }
 
 // The sealed identifiers (design S4, §4 Sealed fields): the national identity
@@ -48,12 +49,17 @@ type PersonNationalIDRow struct {
 // clear, and read sealed only by the reveal that opens it. Nothing else in
 // this module reads a sealed column.
 // PersonNationalID is a person's national identity number as stored: its
-// kind, a foreign id's country and the sealed value, each NULL when none is
-// on file.
+// kind, a foreign id's country, the sealed value and its MAC, each NULL when
+// none is on file.
 func (q *Queries) PersonNationalID(ctx context.Context, id int64) (PersonNationalIDRow, error) {
 	row := q.db.QueryRow(ctx, personNationalID, id)
 	var i PersonNationalIDRow
-	err := row.Scan(&i.NationalIDKind, &i.NationalIDCountry, &i.NationalIDSealed)
+	err := row.Scan(
+		&i.NationalIDKind,
+		&i.NationalIDCountry,
+		&i.NationalIDSealed,
+		&i.NationalIDMac,
+	)
 	return i, err
 }
 

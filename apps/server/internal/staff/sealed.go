@@ -4,13 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
+	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/ident"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
@@ -105,6 +109,40 @@ func sameDay(stored time.Time, birth time.Time) bool {
 	return stored.Format(time.DateOnly) == birth.Format(time.DateOnly)
 }
 
+// checkBirthDateAgainstNationalID is reading 17 on HR's path: a birth date
+// set on a person whose fødselsnummer or d-nummer encodes another is refused
+// national_id_birth_date_mismatch on birthDate, as the national id's own
+// write refuses it the other way round. The number is opened under the
+// person's lock — local work, no call out — and never leaves this function.
+// A foreign id encodes no date; a cleared birth date agrees with anything.
+func (s *server) checkBirthDateAgainstNationalID(ctx context.Context, txq *store.Queries, personID int64, birth pgtype.Date) error {
+	if !birth.Valid {
+		return nil
+	}
+	row, err := txq.PersonNationalID(ctx, personID)
+	if err != nil {
+		return fmt.Errorf("staff: read person %d's national identity number: %w", personID, err)
+	}
+	if row.NationalIDKind == nil || *row.NationalIDKind == string(ident.Foreign) || len(row.NationalIDSealed) == 0 {
+		return nil
+	}
+	value, err := s.deps.Secrets.Open(purposeNationalID, row.NationalIDSealed)
+	if err != nil {
+		return fmt.Errorf("staff: open person %d's national identity number: %w", personID, err)
+	}
+	n, err := ident.ParseNationalID(ident.NationalIDKind(*row.NationalIDKind), "", string(value))
+	if err != nil {
+		return fmt.Errorf("staff: person %d's stored national identity number no longer parses: %w", personID, ident.ErrInvalidNationalID)
+	}
+	if encoded, ok := n.BirthDate(); ok && !sameDay(birth.Time, encoded) {
+		return refuseInvalid(invalidPersonTitle, fieldErrors{
+			errs: fieldError("birthDate", "The person's national identity number encodes another birth date; correct whichever is wrong"),
+			code: codeNationalIDBirthDateMismatch,
+		})
+	}
+	return nil
+}
+
 // PutStaffPeopleByIdNationalId Set a person's national identity number
 // (PUT /api/v1/staff/people/{id}/national-id)
 //
@@ -168,6 +206,13 @@ func (s *server) PutStaffPeopleByIdNationalId(ctx context.Context, req gen.PutSt
 		if err != nil {
 			return fmt.Errorf("staff: read person %d's national identity number: %w", req.Id, err)
 		}
+		// The MAC covers the kind, the country and the value, so an equal one
+		// is the number on file, however it was typed: no change, no event.
+		if len(before.NationalIDMac) > 0 && secrets.MACEqual(before.NationalIDMac, mac) {
+			saved = current
+			link, err = linkedUserID(ctx, txq, req.Id)
+			return err
+		}
 		if err := txq.SetPersonNationalID(ctx, store.SetPersonNationalIDParams{
 			Kind: &kind, Country: countryCode, Sealed: sealed, Mac: mac, Now: s.deps.Clock(), ID: req.Id,
 		}); err != nil {
@@ -188,6 +233,9 @@ func (s *server) PutStaffPeopleByIdNationalId(ctx context.Context, req gen.PutSt
 		return gen.PutStaffPeopleByIdNationalId404Response{}, nil
 	}
 	if r, ok := asRefusal(err); ok {
+		if r.status == http.StatusNotFound {
+			return gen.PutStaffPeopleByIdNationalId404Response{}, nil
+		}
 		return gen.PutStaffPeopleByIdNationalId400ApplicationProblemPlusJSONResponse(r.problem), nil
 	}
 	if err != nil {
@@ -274,23 +322,42 @@ func (s *server) PutStaffPeopleByIdBankAccount(ctx context.Context, req gen.PutS
 
 	kind, last4 := string(body.Kind), ident.Last4(value)
 	var (
-		saved store.GetPersonRow
-		link  *string
+		saved   store.GetPersonRow
+		link    *string
+		changed bool
 	)
 	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := readPerson(ctx, txq, req.Id)
 		if err != nil {
 			return err
 		}
+		if link, err = linkedUserID(ctx, txq, req.Id); err != nil {
+			return err
+		}
+		// The account on file, opened to compare — local work under the lock,
+		// no call out: the same account again is no change, so no event and
+		// no mail telling the person it changed.
+		stored, err := txq.PersonBankAccount(ctx, req.Id)
+		if err != nil {
+			return fmt.Errorf("staff: read person %d's bank account: %w", req.Id, err)
+		}
+		if stored.BankAccountKind != nil && *stored.BankAccountKind == kind && len(stored.BankAccountSealed) > 0 {
+			opened, err := s.deps.Secrets.Open(purposeBankAccount, stored.BankAccountSealed)
+			if err != nil {
+				return fmt.Errorf("staff: open person %d's bank account: %w", req.Id, err)
+			}
+			if string(opened) == value {
+				saved = current
+				return nil
+			}
+		}
+		changed = true
 		if err := txq.SetPersonBankAccount(ctx, store.SetPersonBankAccountParams{
 			Kind: &kind, Last4: &last4, Sealed: sealed, Now: s.deps.Clock(), ID: req.Id,
 		}); err != nil {
 			return fmt.Errorf("staff: write person %d's bank account: %w", req.Id, err)
 		}
 		if saved, err = readPerson(ctx, txq, req.Id); err != nil {
-			return err
-		}
-		if link, err = linkedUserID(ctx, txq, req.Id); err != nil {
 			return err
 		}
 		return s.recordChanges(ctx, txq, req.Id, eventBankAccountSet, who, changes{"bankAccount": fieldChange{
@@ -301,13 +368,18 @@ func (s *server) PutStaffPeopleByIdBankAccount(ctx context.Context, req gen.PutS
 	if errors.Is(err, errPersonNotFound) {
 		return gen.PutStaffPeopleByIdBankAccount404Response{}, nil
 	}
-	if _, ok := asRefusal(err); ok {
-		return gen.PutStaffPeopleByIdBankAccount404Response{}, nil
+	if r, ok := asRefusal(err); ok {
+		if r.status == http.StatusNotFound {
+			return gen.PutStaffPeopleByIdBankAccount404Response{}, nil
+		}
+		return gen.PutStaffPeopleByIdBankAccount400ApplicationProblemPlusJSONResponse(r.problem), nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	s.mailBankAccountChanged(ctx, saved)
+	if changed {
+		s.mailBankAccountChanged(ctx, saved)
+	}
 	out, err := s.respondPerson(ctx, caller, saved, link)
 	if err != nil {
 		return nil, err
@@ -382,10 +454,12 @@ func (s *server) mailBankAccountChanged(ctx context.Context, person store.GetPer
 	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bankChangeMailTimeout)
 	defer cancel()
 	if err := s.smtpSend(sendCtx, s.deps.Config.Mail, mail.Outbound{To: []string{*to}, Subject: subject, TextBody: body}); err != nil {
-		// The error with the address taken out: a mail server's refusal often
-		// quotes it, and it is the person's.
+		// The error with the address taken out, however it is cased: a mail
+		// server's refusal often quotes it, upper-cased as often as not, and
+		// it is the person's.
+		redact := regexp.MustCompile("(?i)" + regexp.QuoteMeta(*to))
 		logger.WarnContext(ctx, "staff: the bank-account change mail could not be sent", "person_id", person.ID,
-			"error", strings.ReplaceAll(err.Error(), *to, "<recipient>"))
+			"error", redact.ReplaceAllLiteralString(err.Error(), "<recipient>"))
 	}
 }
 
