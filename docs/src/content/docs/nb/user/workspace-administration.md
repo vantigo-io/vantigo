@@ -174,8 +174,11 @@ tillatelse låser opp i en app, er listet på appens referanseside, for eksempel
 [Time](/en/reference/time/), [Expenses](/en/reference/expenses/) og
 [Invoices](/en/reference/invoices/). Beskrivelsene i katalogen sier det navnet ikke
 sier: I Fakturaer sender **Utstede fakturaer** også et dokument på e-post eller som
-EHF og avbryter eller avklarer EHF-sendingene, og **Administrere fakturering**
-omfatter også Peppol-ID-en, KID-avtalen og aksesspunktet for e-faktura. **Administrer
+EHF, avbryter eller avklarer EHF-sendingene og registrerer at en faktura er levert;
+**Administrere fakturering** omfatter også Peppol-ID-en, KID-avtalen, aksesspunktet for
+e-faktura, purreinnstillingene og inkassosatsene; og **Registrere betalinger** dekker
+hele kredittstyringen — bankimport og avvikskøen, purrekjøringer og brev, vent,
+overlevering til inkasso og en kundes purreregel. **Administrer
 identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse.
 
 ### Tildelinger

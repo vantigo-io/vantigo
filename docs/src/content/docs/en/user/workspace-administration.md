@@ -167,8 +167,11 @@ each permission unlocks in an app is listed in that app's reference page, for ex
 [Time](/en/reference/time/), [Expenses](/en/reference/expenses/) and
 [Invoices](/en/reference/invoices/). The descriptions in the catalog say what a title
 does not: in Invoices, **Issue invoices** also sends a document by e-mail or as EHF
-and cancels or resolves its EHF transmissions, and **Manage invoicing** also holds the
-Peppol id, the KID agreement and the e-invoicing access point. **Manage identity**
+and cancels or resolves its EHF transmissions, and records that an invoice was handed
+over; **Manage invoicing** also holds the Peppol id, the KID agreement, the e-invoicing
+access point, the reminder settings and the collection rates; and **Register payments**
+covers all of credit control — bank imports and the exception queue, reminder runs and
+letters, holds, hand-offs to collection and a customer's reminder policy. **Manage identity**
 (`identity:manage`) is the one permission of the identity module itself.
 
 ### Assignments
