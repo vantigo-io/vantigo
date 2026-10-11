@@ -26,7 +26,7 @@ export interface DeliveriesCardProps {
 }
 
 /**
- * Every e-mail that handed an issued document over (D4, D10): when it went,
+ * The Deliveries card (invoices payments and reminders design D22): every e-mail that handed an issued document over (D4, D10): when it went,
  * to whom and under which subject. The address is the server's to give — only
  * a caller with `invoices:issue` gets it — so a reader sees no address column
  * at all; one the anonymisation blanked says "(anonymised)". On an invoice,

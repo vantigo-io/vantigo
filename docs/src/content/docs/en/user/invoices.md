@@ -925,7 +925,7 @@ said.
 
 A reminder may claim a fee, compensation or interest only on an invoice delivered by its due
 date: by e-mail, as EHF, or recorded by hand. When you handed the invoice over or posted it,
-click **Record a delivery** on the card **Sent by e-mail** (`invoices:issue`), choose **Handed
+click **Record a delivery** on the **Deliveries** card (`invoices:issue`), choose **Handed
 over** or **Posted**, the day — from the issue date to today — and a note, and click
 **Record**. The card lists the records under **Recorded by hand**, with who recorded each. A
 mistaken record is removed with a reason and stays, struck through; Vantigo refuses the
@@ -1040,7 +1040,7 @@ text — *Faktura 1001 fra <seller>* or *Invoice 1001 from <seller>* in the buye
 language — asking for the open amount to the seller's account, marked with the invoice's KID when
 it has one and with its number otherwise; replies go to the e-mail
 in the settings ([the texts](/en/reference/invoices/#sending-a-document)). A message
-confirms *Sent to …*, and the card **Sent by e-mail** on the document gains a row with
+confirms *Sent to …*, and the **Deliveries** card on the document gains a row with
 **Sent**, **To** and **Subject**. The **To** column is shown only to people with
 `invoices:issue`; others see when and under which subject each send went.
 
@@ -1049,7 +1049,7 @@ anonymised and is not contacted again*), when there is no address, when the docu
 store is unavailable, or after more than 60 sends in ten minutes from one place. If the
 mail server does not confirm the send, the dialog says *The mail server did not confirm
 the e-mail. Nothing was recorded; it may still have arrived. Check with the customer
-before sending again.* A row under **Sent by e-mail** means the mail server accepted the
+before sending again.* A row under **Deliveries** means the mail server accepted the
 mail, not that it arrived: a bounce goes to the installation's sender address and is not
 recorded here. Sending the same document again is allowed and logged again.
 
@@ -1114,7 +1114,7 @@ A send can be refused; the dialog then says *Could not send as EHF* and why:
 
 ### Following it on the E-invoice card
 
-Every issued document has the card **E-invoice (EHF)** beside **Sent by e-mail**. It
+Every issued document has the card **E-invoice (EHF)** beside **Deliveries**. It
 shows the latest state in words, with when it was queued, submitted, delivered or
 failed, and — to people with `invoices:issue` — the provider's reference and the reason
 a transmission failed. Below, **Transmissions** lists every attempt, newest first, with

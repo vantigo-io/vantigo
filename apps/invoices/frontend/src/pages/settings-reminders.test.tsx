@@ -129,6 +129,30 @@ describe("SettingsReminders_EveryFieldAndTheReview", () => {
     expect(await screen.findByText("Saved")).toBeInTheDocument();
   });
 
+  it("saves with the revision it read, even after a refetch brought a newer one while editing", async () => {
+    const world = { reminders: reminderSettings(), rates: collectionRates() };
+    const fetchMock = server({}, world);
+    const { queryClient } = renderPage();
+
+    const card = await screen.findByTestId("reminder-settings");
+    await userEvent.click(await within(card).findByRole("checkbox", { name: /Claim late interest/ }));
+    // Someone else saves meanwhile, and a background refetch brings their revision in.
+    world.reminders = reminderSettings({ revision: 2, graceDays: 7 });
+    await queryClient.invalidateQueries();
+    expect(await within(card).findByText("The reminder settings changed")).toBeInTheDocument();
+    // The edit is kept, and saving it is not passed off as an edit of revision 2.
+    expect(within(card).getByRole("checkbox", { name: /Claim late interest/ })).toBeChecked();
+    await userEvent.click(within(card).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(requestTo(fetchMock, "PUT", "/api/v1/invoices/settings/reminders")).toMatchObject({
+        lateInterest: true,
+        graceDays: 3,
+        revision: 1,
+      }),
+    );
+    expect(world.reminders.revision).toBe(2);
+  });
+
   it("says the settings changed on a stale save, and reloads the latest on request", async () => {
     const world = { reminders: reminderSettings(), rates: collectionRates() };
     server({}, world);
@@ -211,6 +235,33 @@ describe("SettingsRates_AddDeleteAndWarn", () => {
       usable: true,
       createdBy: undefined,
     });
+    // A manager's future row a printed letter already relied on, and a manager's row in the past.
+    rates.rates.push(
+      {
+        ...rates.rates[2],
+        id: 1021,
+        seeded: false,
+        createdBy: CURRENT_USER_ID,
+        kind: "inkassosats",
+        validFrom: "2027-07-01",
+        value: 800,
+        inForce: false,
+        usable: false,
+        releaseValue: undefined,
+      },
+      {
+        ...rates.rates[2],
+        id: 1022,
+        seeded: false,
+        createdBy: CURRENT_USER_ID,
+        kind: "inkassosats",
+        validFrom: "2026-03-01",
+        value: 760,
+        usable: true,
+        inForce: false,
+        releaseValue: undefined,
+      },
+    );
     server({}, { reminders: reminderSettings(), rates });
     renderPage();
 
@@ -219,6 +270,9 @@ describe("SettingsRates_AddDeleteAndWarn", () => {
       await within(card).findByRole("button", { name: "Delete Late interest rate from Jan 1, 2027" }),
     ).toBeInTheDocument();
     expect(within(card).getByRole("table", { name: "Business compensation" })).toHaveTextContent("FOR-2026-12-18-3333");
+    const inkassosats = within(card).getByRole("table", { name: "Inkassosats" });
+    expect(inkassosats).toHaveTextContent("Jul 1, 2027");
+    expect(inkassosats).toHaveTextContent("Mar 1, 2026");
     expect(within(card).getAllByRole("button", { name: /^Delete / })).toHaveLength(1);
   });
 

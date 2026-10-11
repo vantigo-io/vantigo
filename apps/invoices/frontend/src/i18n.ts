@@ -362,7 +362,7 @@ export const invoicesCatalog = {
     sendPartlyNote: "Part of the invoice is paid or credited, so the e-mail asks only for the outstanding {{open}}.",
     sendSettledNote: "The invoice is settled, so the e-mail says nothing is due.",
 
-    deliveries: "Sent by e-mail",
+    deliveries: "Deliveries",
     notSentYet: "Not sent by e-mail yet.",
     sentAt: "Sent",
     sentToColumn: "To",
@@ -1232,6 +1232,7 @@ export const invoicesCatalog = {
     "handoff.agencyReference": "The agency's case number",
     "handoff.recorded": "The hand-off is recorded",
     "handoff.couldNotRecord": "Could not record the hand-off",
+    "handoff.settled": "Nothing of this invoice is open: it is paid or credited, so there is no claim to hand off.",
     "handoff.wasDelivered": "It was delivered: record the delivery",
     "handoff.acknowledgeNotDelivered": "Hand it off anyway, without a delivery by the due date",
     "handoff.withdraw": "Withdraw the hand-off",
@@ -1753,7 +1754,7 @@ export const invoicesCatalog = {
       "Deler av fakturaen er betalt eller kreditert, så e-posten ber bare om det utestående beløpet {{open}}.",
     sendSettledNote: "Fakturaen er gjort opp, så e-posten sier at det ikke er noe å betale.",
 
-    deliveries: "Sendt på e-post",
+    deliveries: "Leveringer",
     notSentYet: "Ikke sendt på e-post ennå.",
     sentAt: "Sendt",
     sentToColumn: "Til",
@@ -1897,8 +1898,8 @@ export const invoicesCatalog = {
     "refusal.paid_before_issue":
       "Banken bokførte denne linjen før fakturaen ble utstedt, så den kan ikke være en betaling av den.",
     "refusal.invoice_on_hold":
-      "Denne fakturaen står allerede på vent. Opphev den ventingen før du setter den på vent igjen.",
-    "refusal.invoice_not_on_hold": "Denne fakturaen står ikke på vent, så det er ingen venting å oppheve.",
+      "Denne fakturaen står allerede på vent. Fjern den fra vent før du setter den på vent igjen.",
+    "refusal.invoice_not_on_hold": "Denne fakturaen står ikke på vent, så det er ingenting å fjerne fra vent.",
     "refusal.invoice_handed_off":
       "Denne fakturaen er allerede overlevert til et inkassoselskap. Trekk den overleveringen tilbake før du registrerer en ny.",
     "refusal.invoice_not_handed_off":
@@ -2522,7 +2523,7 @@ export const invoicesCatalog = {
     "reminder.chargeNote.not_delivered":
       "Verken gebyr, kompensasjon eller renter: ingen levering innen forfall er registrert.",
     "reminder.chargeNote.charges_barred":
-      "Verken gebyr eller kompensasjon: de er utelukket på denne fakturaen siden en venting ble opphevet med innsigelsen tatt til følge.",
+      "Verken gebyr eller kompensasjon: de er utelukket på denne fakturaen siden den ble fjernet fra vent med innsigelsen tatt til følge.",
     "reminder.chargeNote.fee_cap_reached": "Ikke gebyr: fakturaen har hatt så mange gebyrer som loven tillater.",
     "reminder.chargeNote.fee_before_14_days": "Ikke gebyr: det har gått under 14 dager siden forrige brev.",
     "reminder.chargeNote.fee_deadline_not_missed": "Ikke gebyr: fristen i forrige brev er ikke oversittet.",
@@ -2600,7 +2601,7 @@ export const invoicesCatalog = {
     "hold.note": "Hva kunden bestrider",
     "hold.placed": "Fakturaen står på vent",
     "hold.couldNotPlace": "Kunne ikke sette fakturaen på vent",
-    "hold.lift": "Opphev ventingen",
+    "hold.lift": "Fjern fra vent",
     "hold.groundless": "Var innsigelsen åpenbart grunnløs?",
     "hold.groundlessNo": "Nei — den hadde rimelig grunn",
     "hold.groundlessYes": "Ja — den var åpenbart grunnløs",
@@ -2608,14 +2609,14 @@ export const invoicesCatalog = {
       "Alle gebyrer og all kompensasjon som er krevd på denne fakturaen, ettergis (innsigelsen tatt til følge), og ingen kreves på den igjen. Forsinkelsesrentene løper videre.",
     "hold.liftKeeps": "Ingenting ettergis: kravene står, og senere brev kan kreve mer.",
     "hold.liftNote": "Merknad",
-    "hold.lifted": "Ventingen er opphevet",
-    "hold.couldNotLift": "Kunne ikke oppheve ventingen",
+    "hold.lifted": "Fjernet fra vent",
+    "hold.couldNotLift": "Kunne ikke fjerne fra vent",
     "hold.onHold": "På vent",
     "hold.placedBy": "Satt {{at}} av {{who}}",
     "hold.disputes": "Bestridt: {{note}}",
     "hold.whileHeld":
       "Ingen purring går mens den står på vent. Forsinkelsesrentene løper, og betalinger registreres fortsatt.",
-    "hold.liftedBy": "Bestridt: {{note}}. Ventingen ble opphevet {{at}} av {{who}}.",
+    "hold.liftedBy": "Bestridt: {{note}}. Fjernet fra vent {{at}} av {{who}}.",
     "hold.liftNoteIs": "Merknad: {{note}}",
     "hold.chargesBarred":
       "Innsigelsen hadde rimelig grunn: gebyrer og kompensasjon er utelukket på denne fakturaen for godt.",
@@ -2630,6 +2631,8 @@ export const invoicesCatalog = {
     "handoff.agencyReference": "Inkassoselskapets saksnummer",
     "handoff.recorded": "Overleveringen er registrert",
     "handoff.couldNotRecord": "Kunne ikke registrere overleveringen",
+    "handoff.settled":
+      "Ingenting av denne fakturaen står åpent: den er betalt eller kreditert, så det er ikke noe krav å overlevere.",
     "handoff.wasDelivered": "Den ble levert: registrer leveringen",
     "handoff.acknowledgeNotDelivered": "Overlever likevel, uten levering innen forfall",
     "handoff.withdraw": "Trekk tilbake overleveringen",
