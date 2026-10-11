@@ -41,11 +41,14 @@ func loadManagerGraphAndDepartments(ctx context.Context, q *store.Queries, perso
 	}
 	ge := make([]graphEmployment, 0, len(employments))
 	for _, e := range employments {
-		ge = append(ge, graphEmployment{ID: e.ID, PersonID: e.PersonID, Start: civil(e.StartDate), End: civilPtr(e.EndDate)})
+		ge = append(ge, graphEmployment{ID: e.ID, PersonID: e.PersonID, BusinessUnitID: e.BusinessUnitID, Start: civil(e.StartDate), End: civilPtr(e.EndDate)})
 	}
 	gt := make([]graphTerms, 0, len(terms))
 	for _, t := range terms {
-		gt = append(gt, graphTerms{EmploymentID: t.EmploymentID, ValidFrom: civil(t.ValidFrom), DepartmentID: t.DepartmentID, Manager: t.ManagerPersonID})
+		gt = append(gt, graphTerms{
+			EmploymentID: t.EmploymentID, ValidFrom: civil(t.ValidFrom), DepartmentID: t.DepartmentID, Manager: t.ManagerPersonID,
+			Title: t.Title, LocationID: t.LocationID,
+		})
 	}
 	gd := make([]graphDepartment, 0, len(departments))
 	for _, d := range departments {

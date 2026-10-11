@@ -31,9 +31,9 @@ The full table is under [Permissions](/en/reference/staff/#permissions).
 
 ## Find someone in People
 
-**People** (sidebar: **Staff directory**) lists the company's people by name, with their employee number, department,
-manager and work email. The department and the manager are the ones in the terms in
-force today; a dash means there is none.
+**People** (sidebar: **Staff directory**) lists the company's people by name, with their employee number, title, department,
+manager and work email. The title, the department and the manager are the ones in the
+terms in force today; a dash means there is none.
 
 - **Search** matches every word you type against the names, the employee number and
   the work email. The list follows a moment after you stop typing.
@@ -76,9 +76,9 @@ you may not see answers exactly as one who does not exist.
 
 ### Profile
 
-- **Work** — the names, the employee number, the work email and phone, the department
-  and the manager in force today, the language and the work country. Everyone who may
-  open the page sees it.
+- **Work** — the names, the employee number, the work email and phone, the title, the
+  department, the business unit, the location and the manager in force today, the
+  language and the work country. Everyone who may open the page sees it.
 - **Private** — the birth date, gender, mobile and private phone, private email and home
   address. The person and HR.
 - **HR's notes** — HR alone (`staff:manage`, `staff:personal-data`).
@@ -115,7 +115,9 @@ again on what is there now.
 
 #### Reveal or set the national identity number and the bank account
 
-With `staff:personal-data`, the Identifiers group offers **Reveal** and **Set**:
+With `staff:personal-data`, the Identifiers group offers **Reveal** and **Set**. Held
+alone, `staff:personal-data` shows every group of the person but changes nothing else:
+the edit buttons are `staff:manage`'s.
 
 - **Reveal** asks first, then shows the number for 30 seconds with a countdown
   (*Hidden in … s*); **Hide** hides it sooner. Each reveal is recorded in the person's
@@ -181,7 +183,8 @@ and terms dated after the end on **Last day worked**.
 The **Contract check** lists the seventeen items aml. § 14-6 asks a written contract to
 hold, a) to q), each **Present**, **Missing** or **Not applicable** — judged on the
 terms in force today — and says whether a signed contract is recorded. It informs; it
-never stops a save. The person, a manager of theirs and HR see it. See
+never stops a save. The person, a manager of theirs and HR see it; a manager, who does
+not see the pay, sees it without item i), the pay. See
 [the § 14-6 check](/en/reference/staff/#the--14-6-check) for where each item is read from.
 
 ### History
@@ -190,7 +193,7 @@ never stops a save. The person, a manager of theirs and HR see it. See
 who changed it and when. A field shows its value before and after (*Work email:
 old → new*); a field of a group you may not read only that it changed (*Birth date
 changed*); a change of the pay is left out for a manager, so a pay correction shows as
-the kind of change alone. The person, a manager of theirs and HR see the History tab;
+the kind of change alone, marked *(details not visible to you)*. The person, a manager of theirs and HR see the History tab;
 a colleague does not.
 
 ## Add a new person

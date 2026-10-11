@@ -41,6 +41,10 @@ describe("My page — my own record", () => {
     const latest = await region("Terms from Mar 1, 2026");
     expect(within(latest).getByText(/Base salary/)).toBeInTheDocument();
     expect(within(latest).queryByRole("button")).not.toBeInTheDocument();
+    // My page holds no structure: the unit and the location are named from
+    // my place today.
+    expect(within(await region("Employment E-1-1")).getByText("Oslo office")).toBeInTheDocument();
+    expect(within(latest).getByText("Oslo HQ")).toBeInTheDocument();
     expect(screen.queryByText("Hired through the referral programme")).not.toBeInTheDocument();
   });
 

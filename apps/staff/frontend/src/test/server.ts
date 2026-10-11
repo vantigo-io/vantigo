@@ -25,9 +25,11 @@ import {
   peopleWithRecords as defaultPeople,
   settings as defaultSettings,
   terms as defaultTerms,
+  holdsPersonalData,
   manages,
   type PersonRecord,
   type Role,
+  readsDirectory,
   type StoredPerson,
   TODAY,
 } from "./fixtures";
@@ -153,6 +155,8 @@ const groupOf: Record<string, Group> = {
       "roles",
       "manager",
       "department",
+      "businessUnit",
+      "location",
     ].map((field) => [field, "work" as Group]),
   ),
   ...Object.fromEntries(
@@ -192,30 +196,99 @@ const groupOf: Record<string, Group> = {
   user: "sealed",
 };
 
+/**
+ * The person's own response where it names a field as a terms row does: the
+ * title in force today is the work group's, while a terms row's title stays
+ * the employment group's (`shaping.go`'s personFieldGroups).
+ */
+const personGroupOf: Record<string, Group> = { ...groupOf, title: "work" };
+
 const reads = (audience: Audience, group: Group): boolean => {
+  // HR's reading: staff:manage, or staff:personal-data alone.
+  const hr = audience.hr || audience.personalData;
   switch (group) {
     case "work":
     case "dates":
       return true;
     case "employment":
-      return audience.self || audience.manager || audience.hr;
+      return audience.self || audience.manager || hr;
     case "pay":
     case "private":
     case "sealed":
-      return audience.self || audience.hr;
+      return audience.self || hr;
     case "notes":
-      return audience.hr;
+      return hr;
   }
 };
 
+/** Whether the audience is `staff:view` and nothing more: shown only the people active today. */
+const colleagueOnly = (audience: Audience) =>
+  audience.colleague && !audience.self && !audience.manager && !audience.hr && !audience.personalData;
+
 /** A row with every field the audience may not read left out — never null. */
-const shape = <T extends object>(audience: Audience, row: T, keep: readonly string[] = []): T =>
+const shape = <T extends object>(
+  audience: Audience,
+  row: T,
+  keep: readonly string[] = [],
+  groups: Record<string, Group> = groupOf,
+): T =>
   Object.fromEntries(
     Object.entries(row).filter(
       ([field, value]) =>
-        value !== undefined && (keep.includes(field) || reads(audience, groupOf[field] ?? "employment")),
+        value !== undefined && (keep.includes(field) || reads(audience, groups[field] ?? "employment")),
     ),
   ) as T;
+
+/** The request properties `PUT /people/{id}` and `POST /people` take (`StaffPersonRequest`). */
+const personRequestProperties = [
+  "birthDate",
+  "city",
+  "country",
+  "displayName",
+  "employeeNumber",
+  "familyName",
+  "gender",
+  "givenName",
+  "notes",
+  "phoneMobile",
+  "phonePrivate",
+  "phoneWork",
+  "postalCode",
+  "preferredLanguage",
+  "privateEmail",
+  "street",
+  "workCountry",
+  "workEmail",
+];
+
+/** The request properties `PUT /me` takes (`StaffMeRequest`). */
+const meRequestProperties = [
+  "city",
+  "country",
+  "nextOfKin",
+  "phoneMobile",
+  "phonePrivate",
+  "postalCode",
+  "privateEmail",
+  "street",
+];
+
+/**
+ * The server's strict body (`strictbody.go`): a top-level property the
+ * request does not take is refused, named, and nothing is applied.
+ */
+const unknownProperties = (body: unknown, allowed: readonly string[]): Response | undefined => {
+  const unknown = Object.keys((body ?? {}) as Record<string, unknown>)
+    .filter((key) => !allowed.includes(key))
+    .sort();
+  if (unknown.length === 0) return undefined;
+  return staffProblem(400, {
+    title: "Invalid person",
+    errors: Object.fromEntries(
+      unknown.map((key) => [key, ["This property is not one this request takes; the request was not applied"]]),
+    ),
+  });
+};
 
 /**
  * An event's payload as the audience reads it (design S21): a field of a
@@ -247,8 +320,12 @@ const shapeEvent = (audience: Audience, event: StaffEvent): StaffEvent => {
  * lists the people active today whatever `status` says), the generated
  * employee and employment numbers, the required terms fields and the hours
  * rule; the person page's reads shaped per audience (Self and Manager by
- * the `me` link, the colleague, HR, personal data) with the field groups of
- * design §5, the next of kin, roles and link with the person's revision,
+ * the `me` link, the colleague, HR, personal data alone) with the field
+ * groups of design §5 — a colleague alone shown no manager who is not active
+ * today, on a row, a person or up the org chain — every write but the
+ * sealed fields' refused without `staff:manage` (the uniform 403), a request
+ * property `PUT /me` or a person's write does not take refused by name, the
+ * next of kin, roles and link with the person's revision,
  * the sealed fields' set and reveal, the org view, the history shaped per
  * field, the terms chain's dated rules, end and reopen, a § 14-6 check from
  * the row in force, and `/me`. **What it does not model**: the
@@ -376,11 +453,26 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       self: server.me === stored.id,
       manager: server.me !== undefined && stored.manager?.id === server.me,
       hr: manages(role),
-      personalData: role === "personalData",
+      personalData: holdsPersonalData(role),
       // Reading 15: the directory reaches the people active today alone.
       colleague: capabilitiesOf(role).canViewDirectory && stored.status.state === "active",
     };
-    return audience.self || audience.manager || audience.hr || audience.colleague ? audience : undefined;
+    return audience.self || audience.manager || audience.hr || audience.personalData || audience.colleague
+      ? audience
+      : undefined;
+  };
+
+  const activeToday = (id: number) => state.people.find((one) => one.id === id)?.status.state === "active";
+
+  /**
+   * A stored person's wire row with the manager as the audience reads them:
+   * a colleague alone is not shown a manager who is not active today
+   * (`shaping.go`'s shownManager).
+   */
+  const placed = (stored: StoredPerson, onlyColleague: boolean) => {
+    const item = listItem(stored);
+    if (onlyColleague && item.manager && !activeToday(item.manager.id)) delete item.manager;
+    return item;
   };
 
   /** A person as the audience reads them, with what the caller may do with them. */
@@ -392,7 +484,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     delete fields.nextOfKin;
     delete fields.roles;
     const whole: StaffPerson = {
-      ...listItem(stored),
+      ...placed(stored, colleagueOnly(audience)),
       ...fields,
       nationalId: sealed?.nationalId ? { kind: sealed.nationalId.kind, onFile: true } : { onFile: false },
       ...(sealed?.bankAccount
@@ -404,10 +496,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         canEdit: audience.hr,
         canManageAccount: audience.hr,
         canRevealIdentifiers: audience.personalData,
-        canSeePay: audience.self || audience.hr,
+        canSeePay: audience.self || audience.hr || audience.personalData,
       },
     };
-    return shape(audience, whole, ["id", "revision", "capabilities", "status"]);
+    return shape(audience, whole, ["id", "revision", "capabilities", "status"], personGroupOf);
   };
 
   const findPerson = (id: number) => state.people.find((one) => one.id === id);
@@ -506,13 +598,15 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     employeeNumber: stored.employeeNumber,
   });
 
-  const orgOf = (stored: StoredPerson) => {
+  const orgOf = (stored: StoredPerson, audience: Audience) => {
     const chain = [];
     const visited = new Set([stored.id]);
     let manager = stored.manager ? findPerson(stored.manager.id) : undefined;
     while (manager && !visited.has(manager.id)) {
       visited.add(manager.id);
-      chain.push(summaryOf(manager));
+      // A colleague alone is not shown a manager who is not active today;
+      // the walk goes on above them (`org.go`).
+      if (!colleagueOnly(audience) || manager.status.state === "active") chain.push(summaryOf(manager));
       manager = manager.manager ? findPerson(manager.manager.id) : undefined;
     }
     const reports = state.people.filter((one) => one.manager?.id === stored.id).map(summaryOf);
@@ -611,6 +705,11 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     stored.locationId = terms.locationId ?? undefined;
     const department = state.departments.find((one) => one.id === terms.departmentId);
     stored.department = department ? { id: department.id, code: department.code, name: department.name } : undefined;
+    stored.title = terms.title ?? undefined;
+    const unit = state.businessUnits.find((one) => one.id === employment.businessUnitId);
+    stored.businessUnit = unit ? { id: unit.id, name: unit.name } : undefined;
+    const location = state.locations.find((one) => one.id === terms.locationId);
+    stored.location = location ? { id: location.id, name: location.name } : undefined;
     return jsonResponse(201, employment);
   };
 
@@ -643,7 +742,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       .filter((one) => departmentId === undefined || one.department?.id === departmentId)
       .filter((one) => locationId === undefined || one.locationId === locationId)
       .sort((a, b) => a.displayName.localeCompare(b.displayName))
-      .map(listItem);
+      // The directory's audience is the role alone: staff:view without
+      // staff:manage is the colleague.
+      .map((one) => placed(one, !manages(role)));
     return jsonResponse(200, page(rows, Math.max(1, Number(params.get("page")) || 1), pageSize));
   };
 
@@ -669,6 +770,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     }
 
     if (path === "/api/v1/staff/me" || path === "/api/v1/staff/me/events") {
+      const strict = method === "PUT" ? unknownProperties(body, meRequestProperties) : undefined;
+      if (strict) return strict;
       const stored = server.me === undefined ? undefined : findPerson(server.me);
       if (!stored) return meProblem();
       // Whatever else the caller holds, My page reads them as themselves.
@@ -706,6 +809,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (sub === undefined) {
         if (method === "GET") return jsonResponse(200, personOf(stored, audience));
         if (method === "PUT") {
+          const strict = unknownProperties(body, personRequestProperties);
+          if (strict) return strict;
           const stale = staleRevision(init, record.revision ?? 1, "person");
           if (stale) return stale;
           const { givenName, familyName, displayName, workEmail, phoneWork, workCountry, preferredLanguage, ...rest } =
@@ -776,10 +881,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           return jsonResponse(200, linkOf());
         }
       }
-      if (sub === "org" && method === "GET") return jsonResponse(200, orgOf(stored));
+      if (sub === "org" && method === "GET") return jsonResponse(200, orgOf(stored, audience));
       if (sub === "events" && method === "GET") {
         // §5's Events row: the person, a manager of theirs and HR — a colleague gets the unknown id's 404.
-        if (!audience.self && !audience.manager && !audience.hr) return notFound();
+        if (!audience.self && !audience.manager && !audience.hr && !audience.personalData) return notFound();
         const all = (state.events[stored.id] ?? []).map((event) => shapeEvent(audience, event));
         return jsonResponse(200, page(all, Math.max(1, Number(url.searchParams.get("page")) || 1), pageSize));
       }
@@ -998,6 +1103,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     }
 
     if (path === "/api/v1/staff/settings") {
+      if (!manages(role)) return Promise.resolve(forbidden());
       if (method === "GET") return Promise.resolve(jsonResponse(200, state.settings));
       if (method === "PUT") {
         const refused = staleRevision(init, state.settings.revision, "settings") ?? settingsRefusal(body);
@@ -1012,7 +1118,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     if (structure) {
       // The server's own judgment: the lists are staff:view's and
       // staff:manage's, and anyone else is the uniform 403.
-      if (method === "GET" && role === "access") return Promise.resolve(forbidden());
+      if (method === "GET" && !readsDirectory(role)) return Promise.resolve(forbidden());
+      if (method !== "GET" && !manages(role)) return Promise.resolve(forbidden());
       const table = tables[structure[1] as keyof typeof tables];
       const rows = table.rows() as Row[];
       if (!structure[2]) {
@@ -1051,11 +1158,15 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     }
 
     if (path === "/api/v1/staff/people") {
-      if (method === "GET") return Promise.resolve(role === "access" ? forbidden() : listPeople(url));
-      if (method === "POST") return Promise.resolve(createPerson(body));
+      if (method === "GET") return Promise.resolve(readsDirectory(role) ? listPeople(url) : forbidden());
+      if (method === "POST") {
+        if (!manages(role)) return Promise.resolve(forbidden());
+        return Promise.resolve(unknownProperties(body, personRequestProperties) ?? createPerson(body));
+      }
     }
     const employments = /^\/api\/v1\/staff\/people\/(\d+)\/employments$/.exec(path);
-    if (employments && method === "POST") return Promise.resolve(createEmployment(Number(employments[1]), body));
+    if (employments && method === "POST")
+      return Promise.resolve(manages(role) ? createEmployment(Number(employments[1]), body) : forbidden());
 
     return Promise.resolve(personRoutes(method, path, url, init, body) ?? notFound());
   }) as StaffStub;

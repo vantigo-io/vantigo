@@ -108,8 +108,8 @@ ingenting og sender ingen e-post.
 ## Innstillingene
 
 Innstillingene er `staff:manage` sine, og leses og erstattes gjennom `GET` og
-`PUT /api/v1/staff/settings`; Innstillinger-siden i Ansatte-appen kommer med resten av
-modulen. En erstatning bærer revisjonen den leste i `If-Match`, så to personer som
+`PUT /api/v1/staff/settings`, og endres på Innstillinger-siden i Ansatte-appen
+([Endre innstillingene](/nb/user/staff/#endre-innstillingene)). En erstatning bærer revisjonen den leste i `If-Match`, så to personer som
 endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
 
 - **Forretningstidssone** (`timeZone`, standard `Europe/Oslo`). Hver dato i Ansatte —

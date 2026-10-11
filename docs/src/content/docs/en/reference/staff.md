@@ -50,11 +50,11 @@ writes.
 
 | Key | Name | Grants | Sensitive |
 | --- | --- | --- | --- |
-| `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** | no |
-| `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the calendar with types hidden. | no |
-| `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. Registered now; grants nothing until absence arrives. | no |
-| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, the settings, documents other than health, the account flag, imports and exports. | yes |
-| `staff:personal-data` | Reveal and erase personal data | The national identity number and the bank account, health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. | yes |
+| `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** Your absence arrives with delivery B, your documents and export with A2. | no |
+| `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the calendar with types hidden. The calendar arrives with B. | no |
+| `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. Registered now; grants nothing until absence arrives with B. | no |
+| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, the settings, documents other than health, the account flag, imports and exports. The documents, imports and exports arrive with A2, the account flag with C. | yes |
+| `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person — that is `staff:manage`'s. The health documents, the export, legal holds and erasure arrive with A2, the milestones' notes and the HR-only types with B. | yes |
 
 All five are in the category "Staff" and delegable. The Owner holds them through the
 wildcard; anyone else needs a role that grants them. Each operation's rule is in the
@@ -87,6 +87,11 @@ make `EMP-7`. An employee number is at most 16 characters (Entra's `employeeId`
 bound), so a prefix and a next number that together make a longer one are refused with
 `employee_number_too_long`, named on both fields. A company that wants `EMP007` sets
 the prefix to `EMP00` while it lasts.
+
+Finding the first free number probes the numbers from the next one on against the
+people table, so a generation reads the table — O(N) in the people, which at a
+company's size is nothing and is accepted as such; an employment's `-n` is found the
+same way among the employments.
 
 `PUT /settings` is a full replace guarded by `If-Match` (below). Every bad field is a
 400 naming it; the whole request is judged before anything is written.
@@ -285,14 +290,14 @@ from the response — never null.
 
 | Group | Fields | Self | Colleague (`staff:view`) | Manager | `staff:manage` | `staff:personal-data` |
 | --- | --- | --- | --- | --- | --- | --- |
-| Work | name, employee number, work email and phone, work country, language, roles, `manager`, `department` | ✓ | ✓ | ✓ | ✎ | ✎ |
-| Employment dates | `status`; an employment's `startDate`, `endDate`, `fteChangedAt`; a terms row's `validFrom`, `validTo`, `employmentType`, `ftePercent` | ✓ | ✓ | ✓ | ✎ | ✎ |
-| Employment | every other field of an employment and its terms but the pay | ✓ | — | ✓ | ✎ | ✎ |
-| Pay | `remunerationType`, `payComponents`, `payMethod`, `paydayText`, `seniorityDate`, `payGrade`, `salaryChangedAt` | ✓ | — | — | ✎ | ✎ |
-| Private | birth date, gender, mobile, private phone and email, home address, next of kin | ✓ | — | — | ✎ | ✎ |
-| HR notes | `notes`; a terms row's `note` | — | — | — | ✎ | ✎ |
-| National identity number | `nationalId { kind, onFile }` | ✓ | — | — | ✓ | ✓ |
-| Bank account | `bankAccount { kind, last4 }` | ✓ | — | — | ✓ | ✓ |
+| Work | name, employee number, work email and phone, work country, language, roles; the person's place today — `manager`, `department`, `title`, `businessUnit`, `location` | ✓ | ✓ | ✓ | ✎ | ✓ |
+| Employment dates | `status`; an employment's `startDate`, `endDate`, `fteChangedAt`; a terms row's `validFrom`, `validTo`, `employmentType`, `ftePercent` | ✓ | ✓ | ✓ | ✎ | ✓ |
+| Employment | every other field of an employment and its terms but the pay | ✓ | — | ✓ | ✎ | ✓ |
+| Pay | `remunerationType`, `payComponents`, `payMethod`, `paydayText`, `seniorityDate`, `payGrade`, `salaryChangedAt` | ✓ | — | — | ✎ | ✓ |
+| Private | birth date, gender, mobile, private phone and email, home address, next of kin | ✓ | — | — | ✎ | ✓ |
+| HR notes | `notes`; a terms row's `note` | — | — | — | ✎ | ✓ |
+| National identity number | `nationalId { kind, onFile }` | ✓ | — | — | ✓ | ✎ reveal and set |
+| Bank account | `bankAccount { kind, last4 }` | ✓ | — | — | ✓ | ✎ reveal and set |
 | Link | `user { id, displayName, active }` | ✓ | — | — | ✓ | ✓ |
 
 - **Self** is the user a person's self-service link names, whatever state the link is
@@ -305,6 +310,14 @@ from the response — never null.
   concurrent employments may give two. It needs no permission. A caller holding several
   is every one of them at once and reads what any may. `staff:approve` is no audience
   yet (it decides absence, which arrives later).
+- **The place today** — the manager, the department, the title and the location of the
+  terms in force today, and their employment's business unit, each as an id and a
+  name — is the work group's, everyone's who sees the person. A terms row's own
+  `title`, `departmentId` and `locationId` stay the employment group's: a colleague
+  reads today's title on the person and the list, never the history of titles.
+- **`staff:personal-data` alone writes nothing but the sealed fields**: it reads every
+  group and reveals and sets the national identity number and the bank account; a
+  change to anything else is `staff:manage`'s (the [operations](#endpoints)).
 - **The national identity number** is never answered as a digit: only its kind and
   whether one is on file, since the last digits with the birth date reconstruct the
   whole number. **The bank account** is its kind and last four digits.
@@ -356,8 +369,10 @@ field of the **pay** or of **HR's notes**, which is left out altogether: the day
 field changed is itself a pay date (the `salaryChangedAt` a manager does not read), and
 HR's notes are HR's alone. So a manager reads a birth-date change as `"changed"`, a
 work-email change with its values, and a correction of the pay alone as a
-`terms_corrected` event with no field; a change to HR's notes is not in the person's
-own history at all, and HR reads it as `{"notes": {"from": …, "to": …}}`. An employment's and
+`terms_corrected` event whose `fields` is empty: the event is still listed, without its
+fields, and the app says its details are not visible to the reader. A change to HR's
+notes alone is likewise listed to the person without its field, and HR reads it as
+`{"notes": {"from": …, "to": …}}`. An employment's and
 a terms row's `employmentId` and `termsId` are kept for everyone who reads the
 history. A sealed value is never in a payload. Each event also stores the retention
 classes its payload touches (`payload_classes`), which the erase uses and nothing
@@ -537,7 +552,7 @@ before the start, its last at the end), and `contractSigned` from the employment
 | f probation | `probationEndDate` | only when a probation is set |
 | g holiday | `holidayTermsText` | always |
 | h notice | `noticeEmployee`, `noticeEmployer` and `noticeUnit` | always |
-| i pay | `payComponents`, `payMethod` and `paydayText` — all three | always |
+| i pay | `payComponents`, `payMethod` and `paydayText` — all three | always, for a reader of the pay |
 | j working time | `workingTimeText` | always |
 | k breaks | `breakMinutes` | always |
 | l special arrangement | `specialHoursText` | not when the scheme is `not_shift` and the text is empty |
@@ -547,9 +562,11 @@ before the start, its last at the end), and `contractSigned` from the employment
 | p competence development | `competenceDevelopmentText` | always |
 | q social security and pension | `socialSecurityText`, or the settings' `pensionProvider` | always |
 
-Whether an item is present says something about the pay, so the check is read by those
-who read the employment group — the person, a manager of theirs and HR; a colleague
-gets the unknown id's 404.
+Whether an item is present says something about the terms, so the check is read by
+those who read the employment group — the person, a manager of theirs and HR; a
+colleague gets the unknown id's 404. Item i says whether the pay is recorded, so a
+reader who does not read the pay — a manager — gets the list **without item i**, not
+marked not applicable: sixteen items.
 
 ## Managers and the org view
 

@@ -1,6 +1,12 @@
 import type { PeopleStatusFilter } from "../api/people";
 
 /**
+ * How long a picker waits after the last keystroke before it searches. The
+ * tests run with none, so what they wait on is the stub's answer, not a timer.
+ */
+export const SEARCH_DEBOUNCE_MS = import.meta.env.MODE === "test" ? 0 : 250;
+
+/**
  * People's URL search params. Every filter lives in the URL so the list
  * survives a refresh and travels in a pasted link; the page reads them with
  * `useSearch` and writes them with `navigate`.

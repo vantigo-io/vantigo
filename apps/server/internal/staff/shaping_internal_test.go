@@ -36,6 +36,14 @@ func TestFieldGroups_CoverEveryPersonField(t *testing.T) {
 			}
 		}
 	}
+	for _, typ := range []reflect.Type{reflect.TypeOf(gen.StaffPerson{}), reflect.TypeOf(gen.StaffPersonListItem{})} {
+		for i := range typ.NumField() {
+			name, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
+			if !own[name] && personGroupOf(name) == groupNobody {
+				t.Errorf("%s.%s has no field group", typ.Name(), name)
+			}
+		}
+	}
 	for _, name := range []string{"nextOfKin", "roles"} {
 		if _, ok := fieldGroups[name]; !ok {
 			t.Errorf("the event field %s has no field group", name)
@@ -81,6 +89,35 @@ func TestAudience_ReadsItsGroups(t *testing.T) {
 		if got := c.a.seesPerson(); got != (len(c.reads) > 0) {
 			t.Errorf("%s seesPerson = %v, want %v", c.name, got, len(c.reads) > 0)
 		}
+	}
+}
+
+// The person's place today is the work group's (design §5's Work row): the
+// title, the business unit and the location are read by every audience that
+// sees the person, while a terms row's title stays the employment group's,
+// which a colleague does not read.
+func TestPersonFieldGroups_ThePlaceTodayIsWork(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"title", "businessUnit", "location", "department", "manager"} {
+		if g := personGroupOf(field); g != groupWork {
+			t.Errorf("the person's %s is %v, want work", field, g)
+		}
+	}
+	if g := groupOf("title"); g != groupEmployment {
+		t.Errorf("a terms row's title is %v, want employment", g)
+	}
+	for name, a := range map[string]audience{
+		"self": {Self: true}, "manager": {Manager: true}, "colleague": {Colleague: true},
+		"staff:manage": {Manage: true}, "staff:personal-data": {PersonalData: true},
+	} {
+		title := "Developer"
+		if got := shownOnPerson(a, "title", &title); got == nil {
+			t.Errorf("%s does not read the person's title", name)
+		}
+	}
+	title := "Developer"
+	if got := shown(audience{Colleague: true}, "title", &title); got != nil {
+		t.Errorf("a colleague reads a terms row's title %q", *got)
 	}
 }
 

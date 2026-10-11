@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import eventsGo from "../../../server/internal/staff/events.go?raw";
 import { staffCatalog } from "./i18n";
 import { eventFieldLabelKey, eventFields, eventKinds } from "./lib/events";
 import { staffNavItems } from "./lib/navigation";
@@ -72,6 +73,12 @@ describe("the staff catalog", () => {
       ...eventKinds.map((value) => `event_${value}`),
     ];
     for (const key of keys) expect(en[key], `no label for ${key}`).toBeDefined();
+  });
+
+  it("knows every kind of event the server writes, and no other", () => {
+    const written = [...eventsGo.matchAll(/^\s*event\w+\s*=\s*"(\w+)"/gm)].map((m) => m[1]).sort();
+    expect(written.length).toBeGreaterThan(0);
+    expect([...eventKinds].sort()).toEqual(written);
   });
 
   it("names every field a history entry can name", () => {

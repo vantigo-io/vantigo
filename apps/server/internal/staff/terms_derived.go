@@ -117,19 +117,24 @@ func payKey(stored []byte) []payLine {
 // ---- The manager graph ------------------------------------------------------
 
 // graphEmployment is an employment as the manager graph reads it: whose it is
-// and the days it lasts (End nil while open-ended).
+// and the days it lasts (End nil while open-ended), and the business unit a
+// person's place today names.
 type graphEmployment struct {
-	ID, PersonID int64
-	Start        time.Time
-	End          *time.Time
+	ID, PersonID   int64
+	BusinessUnitID int64
+	Start          time.Time
+	End            *time.Time
 }
 
 // graphTerms is a terms row's edges: the manager it names, and the
-// department whose manager is the fallback.
+// department whose manager is the fallback — and the title and the location
+// a person's place today names, which no walk reads.
 type graphTerms struct {
 	EmploymentID          int64
 	ValidFrom             time.Time
 	DepartmentID, Manager *int64
+	Title                 *string
+	LocationID            *int64
 }
 
 // graphDepartment is a department's own edges: its manager and its parent.

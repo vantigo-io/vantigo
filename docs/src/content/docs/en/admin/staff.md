@@ -104,8 +104,8 @@ saved. Sending the account already on file again changes nothing and mails nobod
 ## The settings
 
 The settings are `staff:manage`'s, read and replaced through `GET` and
-`PUT /api/v1/staff/settings`; the Staff app's Settings page arrives with the rest of
-the module. A replace carries the revision it read in `If-Match`, so two people
+`PUT /api/v1/staff/settings`, and changed on the Staff app's Settings page
+([Change the settings](/en/user/staff/#change-the-settings)). A replace carries the revision it read in `If-Match`, so two people
 changing the settings at once cannot overwrite each other unseen.
 
 - **Business time zone** (`timeZone`, default `Europe/Oslo`). Every date in Staff —

@@ -41,7 +41,8 @@ describe("History", () => {
     renderRoute("/staff/people/101?tab=history");
 
     const [revealed, corrected, updated] = await events();
-    expect(revealed).toHaveTextContent("National identity number revealed");
+    // A reveal names no field for anyone: it is the kind itself, nothing withheld.
+    expect(within(revealed).getByText("National identity number revealed")).toBeInTheDocument();
     expect(revealed).toHaveTextContent("Hilde HR");
     expect(revealed).toHaveTextContent("Oct 10, 2026");
     expect(within(corrected).getByText("Pay grade: L6 → L7")).toBeInTheDocument();
@@ -56,8 +57,9 @@ describe("History", () => {
     renderRoute("/staff/people/102?tab=history");
 
     const [corrected, updated] = await events();
-    // The pay correction is there as a kind-only line: the day a pay field changed is pay.
-    expect(corrected).toHaveTextContent("Terms corrected");
+    // The pay correction is there as its kind alone, said to be so: the day
+    // a pay field changed is pay.
+    expect(within(corrected).getByText("Terms corrected (details not visible to you)")).toBeInTheDocument();
     expect(corrected).not.toHaveTextContent(/Pay grade|L3/);
     expect(within(updated).getByText("Birth date changed")).toBeInTheDocument();
     expect(updated).not.toHaveTextContent("1985");

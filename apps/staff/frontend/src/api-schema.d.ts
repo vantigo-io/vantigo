@@ -183,7 +183,7 @@ export interface paths {
         };
         /**
          * Check an employment against § 14-6
-         * @description The seventeen items aml. § 14-6 (1) a–q asks a written employment contract to hold, each present, missing or not_applicable, judged from the employment and the terms in force today (the first row before the start, the last before the end), with the column each comes from; and whether the contract is recorded as signed. Informative, never blocking. The person themselves, a manager of theirs and HR read it; anyone else gets a 404 identical to an unknown id.
+         * @description The seventeen items aml. § 14-6 (1) a–q asks a written employment contract to hold, each present, missing or not_applicable, judged from the employment and the terms in force today (the first row before the start, the last before the end), with the column each comes from; and whether the contract is recorded as signed. Informative, never blocking. The person themselves, a manager of theirs and HR read it; anyone else gets a 404 identical to an unknown id. Item i is the pay's, so a reader who does not read the pay (a manager) gets the list without it.
          */
         get: operations["getStaffEmploymentsByIdContractCheck"];
         put?: never;
@@ -822,6 +822,12 @@ export interface components {
             /** Format: int32 */
             revision: number;
         };
+        /** @description A business unit as the work group names it. */
+        StaffBusinessUnitSummary: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
         StaffBusinessUnitRequest: {
             /** @description True makes this the default business unit. False is refused on the default; left out, nothing changes. */
             isDefault?: boolean;
@@ -1118,6 +1124,12 @@ export interface components {
             /** @description Absent when not set. */
             street?: string;
         };
+        /** @description A location as the work group names it. */
+        StaffLocationSummary: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
         StaffLocationRequest: {
             /** @description Up to 100 characters. */
             city?: string;
@@ -1227,7 +1239,7 @@ export interface components {
         };
         /** @enum {string} */
         StaffPayPeriod: "monthly" | "yearly" | "hourly" | "once";
-        /** @description A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager and department among it — each from the terms in force today, the manager the terms' own or else the department's (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person. */
+        /** @description A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the terms' own or else the department's (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person. */
         StaffPerson: {
             bankAccount?: components["schemas"]["StaffPersonBankAccount"];
             /**
@@ -1235,6 +1247,7 @@ export interface components {
              * @description Private. Absent when not set.
              */
             birthDate?: string;
+            businessUnit?: components["schemas"]["StaffBusinessUnitSummary"];
             capabilities: components["schemas"]["StaffPersonCapabilities"];
             /** @description Private. Absent when not set. */
             city?: string;
@@ -1248,6 +1261,7 @@ export interface components {
             givenName: string;
             /** Format: int64 */
             id: number;
+            location?: components["schemas"]["StaffLocationSummary"];
             manager?: components["schemas"]["StaffPersonSummary"];
             nationalId?: components["schemas"]["StaffPersonNationalId"];
             /** @description HR's notes — staff:manage and staff:personal-data only. Absent when not set. */
@@ -1271,6 +1285,8 @@ export interface components {
             status: components["schemas"]["StaffPersonStatus"];
             /** @description Private. Absent when not set. */
             street?: string;
+            /** @description The job title of the terms in force today. Absent when there is none. */
+            title?: string;
             user?: components["schemas"]["StaffPersonUser"];
             workCountry: string;
             /** @description Absent when not set. */
@@ -1306,8 +1322,9 @@ export interface components {
             /** Format: uuid */
             userId: string | null;
         };
-        /** @description A person in the directory — the work group, with the manager and the department from the terms in force today (absent when there is none; to a caller holding staff:view alone the manager is absent too when not active today), and where the person stands today. */
+        /** @description A person in the directory — the work group, with the manager, the department, the title and the location from the terms in force today and the business unit of their employment (each absent when there is none; to a caller holding staff:view alone the manager is absent too when not active today), and where the person stands today. */
         StaffPersonListItem: {
+            businessUnit?: components["schemas"]["StaffBusinessUnitSummary"];
             department?: components["schemas"]["StaffDepartmentSummary"];
             displayName: string;
             employeeNumber: string;
@@ -1315,11 +1332,14 @@ export interface components {
             givenName: string;
             /** Format: int64 */
             id: number;
+            location?: components["schemas"]["StaffLocationSummary"];
             manager?: components["schemas"]["StaffPersonSummary"];
             /** @description Absent when not set. */
             phoneWork?: string;
             preferredLanguage: components["schemas"]["StaffLanguage"];
             status: components["schemas"]["StaffPersonStatus"];
+            /** @description The job title of the terms in force today. Absent when there is none. */
+            title?: string;
             workCountry: string;
             /** @description Absent when not set. */
             workEmail?: string;

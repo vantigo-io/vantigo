@@ -142,7 +142,14 @@ const EmploymentCard = ({
   const title = employment.employmentNumber
     ? t("employmentTitle", { number: employment.employmentNumber })
     : t("employmentFrom", { date: format.date(employment.startDate) });
-  const unit = structure?.businessUnits.find((row) => row.id === employment.businessUnitId)?.name;
+  // Named from the structure when the reader holds it, else from the
+  // person's place today, which every reader of the person reads.
+  const unit =
+    structure?.businessUnits.find((row) => row.id === employment.businessUnitId)?.name ??
+    (person.businessUnit && person.businessUnit.id === employment.businessUnitId
+      ? person.businessUnit.name
+      : undefined);
+  const canSeePay = person.capabilities.canSeePay;
   // New terms start from the row in force today; when none is — before the
   // start, the first row; after the end, the last.
   const inForce =
@@ -232,7 +239,7 @@ const EmploymentCard = ({
             ],
             [t("contractSignedAt"), employment.contractSignedAt && format.date(employment.contractSignedAt)],
             [t("fteChangedAt"), employment.fteChangedAt && format.date(employment.fteChangedAt)],
-            [t("salaryChangedAt"), employment.salaryChangedAt && format.date(employment.salaryChangedAt)],
+            [t("salaryChangedAt"), canSeePay && employment.salaryChangedAt && format.date(employment.salaryChangedAt)],
           ]}
         />
 
@@ -248,6 +255,8 @@ const EmploymentCard = ({
             structure={structure}
             personName={personName}
             departmentName={(id) => (person.department?.id === id ? person.department.name : undefined)}
+            locationName={(id) => (person.location?.id === id ? person.location.name : undefined)}
+            canSeePay={canSeePay}
             onCorrect={canEdit ? (row) => setDialog({ kind: "terms", mode: { kind: "correct", row } }) : undefined}
             onDelete={canEdit ? confirmDelete : undefined}
           />
@@ -265,7 +274,7 @@ const EmploymentCard = ({
             terms={terms}
             mode={dialog?.kind === "terms" ? dialog.mode : undefined}
             structure={structure}
-            canSeePay={person.capabilities.canSeePay}
+            canSeePay={canSeePay}
             manager={(id) => known.get(id) ?? managers[unknown.indexOf(id)]?.data}
             onClose={() => setDialog(undefined)}
           />

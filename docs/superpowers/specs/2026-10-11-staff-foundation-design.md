@@ -843,11 +843,11 @@ requests.
 
 | Group | Self | Colleague (`staff:view`) | Manager | `staff:approve` | `staff:manage` | `staff:personal-data` |
 |---|---|---|---|---|---|---|
-| Work: name, employee number, title, department, unit, location, manager, work email and phone, language | ✓ | ✓ | ✓ | ✓ | ✎ | ✎ |
-| Employment and non-pay terms | ✓ | ✓ (dates, type, fte) | ✓ | ✓ | ✎ | ✎ |
-| Pay terms, seniority, grade | ✓ | — | — | — | ✎ | ✎ |
-| Private: mobile, private phone and email, home address, next of kin, birth date, gender | ✎ (birth date, gender ✓) | — | — | — | ✎ | ✎ |
-| Care-day fields, self-cert withdrawal | ✓ | — | — | — | ✎ | ✎ |
+| Work: name, employee number, title, department, unit, location, manager, work email and phone, language (**closing wave**: personal-data ✓, not ✎ — it writes only the sealed fields, as its grant says) | ✓ | ✓ | ✓ | ✓ | ✎ | ✓ |
+| Employment and non-pay terms (**closing wave**: personal-data ✓) | ✓ | ✓ (dates, type, fte) | ✓ | ✓ | ✎ | ✓ |
+| Pay terms, seniority, grade (**closing wave**: personal-data ✓) | ✓ | — | — | — | ✎ | ✓ |
+| Private: mobile, private phone and email, home address, next of kin, birth date, gender (**closing wave**: personal-data ✓) | ✎ (birth date, gender ✓) | — | — | — | ✎ | ✓ |
+| Care-day fields, self-cert withdrawal (**closing wave**: personal-data ✓) | ✓ | — | — | — | ✎ | ✓ |
 | National id | kind, on file | — | — | — | kind, on file | ✎ reveal |
 | Bank account | last four | — | — | — | last four | ✎ reveal |
 | Absence: dates, status | ✓ | "absent" | ✓ | ✓ | ✎ | ✎ |

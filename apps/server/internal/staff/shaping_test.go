@@ -20,6 +20,10 @@ var (
 	sealedFields  = []string{"nationalId", "bankAccount"}
 	linkFields    = []string{"user"}
 	hrFields      = []string{"notes"}
+	// placedFields is the work group's place today, from the terms in force
+	// and their employment (design §5's Work row): the title, the business
+	// unit and the location, read by every audience that sees the person.
+	placedFields = []string{"title", "businessUnit", "location"}
 )
 
 func fields(groups ...[]string) []string {
@@ -56,7 +60,10 @@ func seedShapedPerson(t *testing.T, h *harness, hr *modtest.Client) shapedPerson
 		bank_account_sealed = '\x03'::bytea WHERE id = $1`, p.Id)
 	putNextOfKin(t, h, hr, p.Id, map[string]any{"nextOfKin": []any{kin("Ola", "spouse")}})
 	putRoles(t, h, hr, p.Id, map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}})
-	seedEmployment(t, h, p.Id, 0) // active today, so the colleague audience holds
+	employment := seedEmployment(t, h, p.Id, 0) // active today, so the colleague audience holds
+	location := modtest.One[int64](t, h.Harness, `INSERT INTO staff.locations (name, created_at, updated_at)
+		VALUES ('Oslo HQ', $1, $1) RETURNING id`, h.Now())
+	h.Exec(t, `UPDATE staff.employment_terms SET title = 'Developer', location_id = $2 WHERE employment_id = $1`, employment, location)
 	self, user := signInNamed(t, h, "Kari the user")
 	link(t, h, p.Id, user)
 	return shapedPerson{id: p.Id, self: self, user: user}
@@ -84,10 +91,10 @@ func TestShaping_PersonPerAudience(t *testing.T) {
 		want   []string
 		caps   caps
 	}{
-		{"self", p.self, fields(workFields, privateFields, sealedFields, linkFields), caps{pay: true}},
-		{"colleague", colleague, fields(workFields), caps{}},
-		{"staff:manage", manage, fields(workFields, privateFields, sealedFields, linkFields, hrFields), caps{edit: true, pay: true, account: true}},
-		{"staff:personal-data", personalData, fields(workFields, privateFields, sealedFields, linkFields, hrFields), caps{reveal: true, pay: true}},
+		{"self", p.self, fields(workFields, placedFields, privateFields, sealedFields, linkFields), caps{pay: true}},
+		{"colleague", colleague, fields(workFields, placedFields), caps{}},
+		{"staff:manage", manage, fields(workFields, placedFields, privateFields, sealedFields, linkFields, hrFields), caps{edit: true, pay: true, account: true}},
+		{"staff:personal-data", personalData, fields(workFields, placedFields, privateFields, sealedFields, linkFields, hrFields), caps{reveal: true, pay: true}},
 	} {
 		body := raw(t, c.client.Do(http.MethodGet, personPath(p.id), nil))
 		got := slices.Sorted(maps.Keys(body))
@@ -104,6 +111,15 @@ func TestShaping_PersonPerAudience(t *testing.T) {
 		}
 		if account, ok := body["bankAccount"].(map[string]any); ok && (len(account) != 2 || account["kind"] != "bban" || account["last4"] != "1234") {
 			t.Errorf("%s bankAccount = %v, want kind and last4 only", c.name, account)
+		}
+		if body["title"] != "Developer" {
+			t.Errorf("%s title = %v, want the terms' in force today", c.name, body["title"])
+		}
+		if unit, _ := body["businessUnit"].(map[string]any); unit["name"] != "Oslo" || len(unit) != 2 {
+			t.Errorf("%s businessUnit = %v, want the employment's, id and name", c.name, body["businessUnit"])
+		}
+		if location, _ := body["location"].(map[string]any); location["name"] != "Oslo HQ" || len(location) != 2 {
+			t.Errorf("%s location = %v, want the terms', id and name", c.name, body["location"])
 		}
 		if user, ok := body["user"].(map[string]any); ok && (user["id"] != p.user.String() || user["displayName"] != "Kari the user" || user["active"] != true) {
 			t.Errorf("%s user = %v, want the linked user", c.name, user)
@@ -196,7 +212,8 @@ func TestShaping_ManagerAudience(t *testing.T) {
 	link(t, h, boss.Id, managerUser)
 
 	p := createPerson(t, hr, with(newPerson("Kari", "Nordmann"), "birthDate", "1990-02-28", "workEmail", "kari@example.no"))
-	e := createEmployment(t, hr, p.Id, newEmployment(start, terms("title", "Developer", "managerPersonId", boss.Id,
+	office := createLocation(t, hr, "Oslo HQ").Id
+	e := createEmployment(t, hr, p.Id, newEmployment(start, terms("title", "Developer", "managerPersonId", boss.Id, "locationId", office,
 		"payComponents", []any{map[string]any{"name": "Base", "amount": 50000, "currency": "NOK", "period": "monthly"}},
 		"payMethod", "Bank transfer", "remunerationType", "monthly", "note", "HR only")))
 	putNextOfKin(t, h, hr, p.Id, map[string]any{"nextOfKin": []any{kin("Ola", "spouse")}})
@@ -209,8 +226,11 @@ func TestShaping_ManagerAudience(t *testing.T) {
 	person := raw(t, manager.Do(http.MethodGet, personPath(p.Id), nil))
 	// No work phone was set, so it is absent for everyone.
 	unset := func(name string) bool { return name == "phoneWork" }
-	if got, want := keysOf(person), slices.DeleteFunc(fields(workFields, []string{"manager"}), unset); !slices.Equal(got, want) {
+	if got, want := keysOf(person), slices.DeleteFunc(fields(workFields, placedFields, []string{"manager"}), unset); !slices.Equal(got, want) {
 		t.Errorf("manager reads the person as %v, want %v", got, want)
+	}
+	if location, _ := person["location"].(map[string]any); person["title"] != "Developer" || location["name"] != "Oslo HQ" {
+		t.Errorf("manager reads title %v and location %v, want the terms' in force today", person["title"], person["location"])
 	}
 	if m, _ := person["manager"].(map[string]any); m["id"] != float64(boss.Id) {
 		t.Errorf("manager = %v, want Berit", person["manager"])
@@ -298,7 +318,7 @@ func TestShaping_ManagerAudience(t *testing.T) {
 	// the pay changed, or on which day, which the employment's
 	// salaryChangedAt keeps from them.
 	first := rawList(t, hr.Do(http.MethodGet, termsPath(e.Id), nil))[0]
-	do(t, hr, http.MethodPut, termsRowPath(int64(first["id"].(float64))), terms("validFrom", start, "title", "Developer", "managerPersonId", boss.Id,
+	do(t, hr, http.MethodPut, termsRowPath(int64(first["id"].(float64))), terms("validFrom", start, "title", "Developer", "managerPersonId", boss.Id, "locationId", office,
 		"payComponents", []any{map[string]any{"name": "Base", "amount": 55000, "currency": "NOK", "period": "monthly"}},
 		"payMethod", "Bank transfer", "remunerationType", "monthly", "note", "HR only", "correction", true),
 		http.StatusOK, nil, ifMatch(int32(first["revision"].(float64))))

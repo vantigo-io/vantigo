@@ -20,20 +20,30 @@ export const TODAY = "2026-10-11";
  * Who is asking. `manage` is HR (`staff:manage` with `staff:view`), `view` a
  * colleague holding `staff:view` alone, `manageOnly` an HR role without
  * `staff:view` — it still lists people and reads the structure —
- * `personalData` HR who also holds `staff:personal-data`, and `access`
- * somebody holding `staff:access` alone, who reads neither. Being the person
+ * `personalData` HR who also holds `staff:personal-data`,
+ * `personalDataOnly` a role holding `staff:personal-data` alone — it reads
+ * every group of anyone and reveals and sets the sealed fields, but edits
+ * nothing else, lists nobody and reads no structure — and `access` somebody
+ * holding `staff:access` alone, who reads neither. Being the person
  * themselves or their manager is not a role but a link (the stub's `me`).
  */
-export type Role = "manage" | "view" | "manageOnly" | "personalData" | "access";
+export type Role = "manage" | "view" | "manageOnly" | "personalData" | "personalDataOnly" | "access";
 
+/** Whether the role holds `staff:manage`: the one that writes a person, an employment and the structure. */
 export const manages = (role: Role) => role === "manage" || role === "manageOnly" || role === "personalData";
+
+/** Whether the role holds `staff:personal-data`. */
+export const holdsPersonalData = (role: Role) => role === "personalData" || role === "personalDataOnly";
 
 export const capabilitiesOf = (role: Role): StaffCapabilities => ({
   canEdit: manages(role),
-  canSeePay: manages(role),
-  canRevealIdentifiers: role === "personalData",
+  canSeePay: manages(role) || holdsPersonalData(role),
+  canRevealIdentifiers: holdsPersonalData(role),
   canViewDirectory: role === "manage" || role === "view" || role === "personalData",
 });
+
+/** Whether the role lists people and reads the structure: `staff:view`'s and `staff:manage`'s. */
+export const readsDirectory = (role: Role) => capabilitiesOf(role).canViewDirectory || manages(role);
 
 export const legalEntities = (): StaffLegalEntity[] => [
   { id: 1, name: "Fjord Systems AS", orgNumber: "914778271", isDefault: true, revision: 1 },
@@ -83,7 +93,7 @@ export const meta = (role: Role = "manage", overrides: Partial<StaffMeta> = {}):
   timeZone: "Europe/Oslo",
   today: TODAY,
   // The structure is staff:view's and staff:manage's (plan reading 15).
-  ...(role === "access" ? {} : { structure: structure() }),
+  ...(readsDirectory(role) ? { structure: structure() } : {}),
   ...overrides,
 });
 
@@ -97,9 +107,9 @@ export const settings = (overrides: Partial<StaffSettings> = {}): StaffSettings 
 });
 
 /**
- * A person as the directory lists them, plus where their employment in
- * force sits — the business unit and the location are not on the wire, but
- * the server filters on them, so the fake has to know them.
+ * A person as the directory lists them, plus where their employment sits for
+ * the structure filters — today's, or a starter's first terms' — which the
+ * server filters on but does not answer, so the fake has to know them.
  */
 export interface StoredPerson extends StaffPersonListItem {
   unitId?: number;
@@ -146,10 +156,16 @@ export const person = (overrides: Partial<StoredPerson> = {}): StoredPerson => (
   preferredLanguage: "en",
   status: { state: "active" },
   department: { id: 21, code: "ENG", name: "Engineering" },
+  title: "Senior engineer",
+  businessUnit: { id: 11, name: "Oslo office" },
+  location: { id: 31, name: "Oslo HQ" },
   unitId: 11,
   locationId: 31,
   ...overrides,
 });
+
+/** Nothing in force today: no place to name. */
+const unplaced = { title: undefined, businessUnit: undefined, location: undefined } as const;
 
 /** One of each standing: active with a manager, upcoming, ended, and nobody's employee yet. */
 export const people = (): StoredPerson[] => [
@@ -163,6 +179,9 @@ export const people = (): StoredPerson[] => [
     workEmail: "grace@fjord.example",
     manager: { id: 101, displayName: "Ada Lovelace", employeeNumber: "E-1" },
     department: { id: 22, code: "OPS", name: "Operations" },
+    title: "Operator",
+    businessUnit: { id: 12, name: "Bergen office" },
+    location: { id: 32, name: "Bergen" },
     unitId: 12,
     locationId: 32,
   }),
@@ -174,6 +193,7 @@ export const people = (): StoredPerson[] => [
     employeeNumber: "E-3",
     workEmail: "alan@fjord.example",
     status: { state: "upcoming", date: "2026-11-01" },
+    ...unplaced,
   }),
   person({
     id: 104,
@@ -184,6 +204,7 @@ export const people = (): StoredPerson[] => [
     workEmail: undefined,
     status: { state: "ended", date: "2026-06-30" },
     department: undefined,
+    ...unplaced,
   }),
   person({
     id: 105,
@@ -194,6 +215,7 @@ export const people = (): StoredPerson[] => [
     workEmail: undefined,
     status: { state: "none" },
     department: undefined,
+    ...unplaced,
     unitId: undefined,
     locationId: undefined,
   }),
@@ -324,6 +346,7 @@ export const terms = (): StaffTerms[] => [
     fullTimeHoursPerWeek: 37.5,
     title: "Operator",
     departmentId: 22,
+    locationId: 32,
     managerPersonId: 101,
     payComponents: [{ name: "Hourly wage", amount: 320, currency: "NOK", period: "hourly" }],
     revision: 1,

@@ -50,6 +50,8 @@ func TestMe_TheSelfViewThroughTheRealLink(t *testing.T) {
 		"street": "Storgata 1", "postalCode": "0155", "city": "Oslo", "country": "NO", "notes": "HR's own",
 	})
 	do(t, pd, http.MethodPut, bankAccountPath(p.Id), map[string]any{"kind": "bban", "value": "12345678903"}, http.StatusOK, nil)
+	company(t, hr)
+	createEmployment(t, hr, p.Id, newEmployment(shiftDay(t, today(t, h), -10), terms("title", "Developer", "locationId", createLocation(t, hr, "Oslo HQ").Id)))
 	self, user := signInNamed(t, h, "Kari the user", "staff:view")
 	linkThroughAPI(t, hr, p.Id, user)
 
@@ -58,8 +60,11 @@ func TestMe_TheSelfViewThroughTheRealLink(t *testing.T) {
 		t.Fatalf("GET /me: %d %s, want 200", me.Status, me.Body)
 	}
 	body := raw(t, me)
-	if got, want := slices.Sorted(maps.Keys(body)), fields(workFields, privateFields, sealedFields, linkFields); !slices.Equal(got, want) {
+	if got, want := slices.Sorted(maps.Keys(body)), fields(workFields, placedFields, privateFields, sealedFields, linkFields); !slices.Equal(got, want) {
 		t.Errorf("GET /me answers %v, want %v", got, want)
+	}
+	if unit, _ := body["businessUnit"].(map[string]any); body["title"] != "Developer" || unit["name"] != "Oslo" {
+		t.Errorf("GET /me title %v, businessUnit %v, want the terms' in force today and their employment's unit", body["title"], body["businessUnit"])
 	}
 	if string(me.Body) != string(self.Do(http.MethodGet, personPath(p.Id), nil).Body) {
 		t.Errorf("GET /me differs from the person's own GET /people/{id}:\n%s", me.Body)
