@@ -137,6 +137,14 @@ func TestDocuments_TheFileIsJudgedByItsBytes(t *testing.T) {
 		t.Errorf("the store holds %v, want nothing written for a refused file", keys)
 	}
 
+	// A file too large is that alone: the fields after it are never read, and
+	// their absence is not reported beside it.
+	late := upload{fileName: "stor.pdf", contentType: "application/pdf", data: testPDF(10 * 1024 * 1024), categoryID: other, fieldsAfterFile: true}
+	p := refused(t, postDocument(t, hr, person, late), http.StatusBadRequest, "document_too_large")
+	if len(p.Errors) != 1 || len(p.Errors["file"]) == 0 {
+		t.Errorf("errors = %v, want the file alone", p.Errors)
+	}
+
 	just := testPDF(10*1024*1024 - 1024)
 	if got := uploadDocument(t, hr, person, upload{fileName: "stor.pdf", contentType: "application/pdf", data: just, categoryID: other}); got.SizeBytes != int64(len(just)) {
 		t.Errorf("sizeBytes = %d, want %d", got.SizeBytes, len(just))
@@ -507,14 +515,20 @@ func TestDocuments_Update(t *testing.T) {
 	refused(t, hr.Do(http.MethodPut, documentPath(doc), map[string]any{"categoryId": health}, ifMatch(2)), http.StatusForbidden, "category_restricted")
 	got = gen.StaffDocument{}
 	do(t, pd, http.MethodPut, documentPath(doc), map[string]any{"categoryId": health}, http.StatusOK, &got, ifMatch(2))
-	if got.Category.Key != "health" || got.ValidTo != nil || got.EmploymentId != nil {
-		t.Errorf("moved = %+v, want health with the left-out fields cleared", got)
+	if got.Category.Key != "health" || got.ValidTo != nil || got.EmploymentId == nil || *got.EmploymentId != employment {
+		t.Errorf("moved = %+v, want health, validTo cleared, the employment kept since it was left out", got)
+	}
+	// An explicit null clears the employment; left out, it stays.
+	got = gen.StaffDocument{}
+	do(t, pd, http.MethodPut, documentPath(doc), map[string]any{"categoryId": health, "employmentId": nil}, http.StatusOK, &got, ifMatch(3))
+	if got.EmploymentId != nil {
+		t.Errorf("employmentId null = %+v, want the employment cleared", got)
 	}
 	// Now a health document, it is the bare 404 to HR — and so is a write.
-	if r := hr.Do(http.MethodPut, documentPath(doc), map[string]any{"categoryId": certificate}, ifMatch(3)); r.Status != http.StatusNotFound {
+	if r := hr.Do(http.MethodPut, documentPath(doc), map[string]any{"categoryId": certificate}, ifMatch(4)); r.Status != http.StatusNotFound {
 		t.Errorf("HR moving a health document out: status %d, want 404", r.Status)
 	}
-	do(t, pd, http.MethodPut, documentPath(doc), map[string]any{"categoryId": certificate}, http.StatusOK, nil, ifMatch(3))
+	do(t, pd, http.MethodPut, documentPath(doc), map[string]any{"categoryId": certificate}, http.StatusOK, nil, ifMatch(4))
 	do(t, hr, http.MethodPut, documentPath(9_999_999), body, http.StatusNotFound, nil, ifMatch(1))
 }
 
@@ -553,6 +567,20 @@ func TestDocuments_Delete(t *testing.T) {
 		t.Errorf("after a refused object delete: %d rows, object %v, %d ledger rows, want the row gone and the ledger row kept",
 			n, h.objects.has(keptKey), ledger(keptKey))
 	}
+	// The failed attempt is on the ledger row, so it counts as failing: one
+	// attempt, the reason, and the next attempt due after the first backoff.
+	var (
+		attempts  int32
+		lastError *string
+		next      time.Time
+	)
+	if err := h.Pool().QueryRow(context.Background(), `
+		SELECT attempts, last_error, next_attempt_at FROM staff.object_deletions WHERE object_key = $1`, keptKey).Scan(&attempts, &lastError, &next); err != nil {
+		t.Fatalf("read the ledger row: %v", err)
+	}
+	if attempts != 1 || lastError == nil || *lastError != "the object store refused the delete" || !next.Equal(h.Now().Add(2*time.Second)) {
+		t.Errorf("ledger row = attempts %d, last_error %v, next %s, want 1, the reason, now + 2s", attempts, lastError, next)
+	}
 	h.objects.failDelete(nil)
 
 	healthDoc := seedDocument(t, h, person, "health")
@@ -564,7 +592,31 @@ func TestDocuments_Delete(t *testing.T) {
 	// deleted, and a document names them.
 	other := seedPerson(t, h, "Ola", "Hansen")
 	seedDocument(t, h, other, "other")
-	refused(t, hr.Do(http.MethodDelete, personPath(other), nil), http.StatusConflict, "person_in_use")
+	r := hr.Do(http.MethodDelete, personPath(other), nil)
+	refused(t, r, http.StatusConflict, "person_in_use")
+	if !strings.Contains(string(r.Body), "has documents") {
+		t.Errorf("person_in_use body = %s, want it to say the person has documents", r.Body)
+	}
+}
+
+// A holder of staff:manage alone who is the person themselves reads their own
+// health document, as the person does — and a change or a removal of it is
+// category_restricted (403), not the 404 of a document they cannot see.
+func TestDocuments_HROwnHealthDocument(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, hrID := signIn(t, h, "staff:manage")
+	person := seedPerson(t, h, "Hanne", "HR")
+	link(t, h, person, hrID)
+	doc := seedDocument(t, h, person, "health")
+
+	do(t, hr, http.MethodGet, documentPath(doc), nil, http.StatusOK, nil)
+	refused(t, hr.Do(http.MethodPut, documentPath(doc), map[string]any{"categoryId": documentCategoryID(t, h, "health")}, ifMatch(1)),
+		http.StatusForbidden, "category_restricted")
+	refused(t, hr.Do(http.MethodDelete, documentPath(doc), nil), http.StatusForbidden, "category_restricted")
+	if n := h.Count(t, `SELECT count(*) FROM staff.documents WHERE id = $1`, doc); n != 1 {
+		t.Errorf("%d rows, want the document kept", n)
+	}
 }
 
 // The upload carries the platform's rate limit, 600 an hour per client

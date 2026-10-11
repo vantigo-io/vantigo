@@ -123,6 +123,15 @@ INSERT INTO staff.object_deletions (object_key, next_attempt_at, created_at)
 VALUES (@object_key, @now::timestamptz, @now::timestamptz)
 ON CONFLICT (object_key) DO NOTHING;
 
+-- name: RecordObjectDeletionFailure :exec
+-- RecordObjectDeletionFailure records one failed attempt at removing an
+-- object on its ledger row: the attempt counted, why, and when the next is due.
+UPDATE staff.object_deletions SET
+    attempts = attempts + 1,
+    last_error = @last_error,
+    next_attempt_at = @next_attempt_at::timestamptz
+WHERE object_key = @object_key;
+
 -- name: DeleteObjectDeletion :exec
 -- DeleteObjectDeletion clears an object's ledger row once the store has
 -- confirmed the object is gone.

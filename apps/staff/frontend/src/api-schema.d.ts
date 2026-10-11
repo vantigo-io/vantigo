@@ -208,13 +208,13 @@ export interface paths {
         get: operations["getStaffDocumentsById"];
         /**
          * Change a document
-         * @description Replaces a document's category, dates and employment; the file never changes. A document in a non-restricted category needs staff:manage or staff:personal-data, and moving one into or out of a restricted category staff:personal-data (403 category_restricted); anyone else gets the uniform 403.
+         * @description Replaces a document's category and dates, and its employment when the body names it; the file never changes. A document in a non-restricted category needs staff:manage or staff:personal-data, and moving one into or out of a restricted category staff:personal-data (403 category_restricted); anyone else gets the uniform 403.
          */
         put: operations["putStaffDocumentsById"];
         post?: never;
         /**
          * Delete a document
-         * @description Removes a document. Its row goes and its object is queued for removal in one transaction; the object is removed once that has committed, and a removal the store refuses stays queued until it succeeds. A document in a non-restricted category needs staff:manage or staff:personal-data, one in a restricted category staff:personal-data; anyone else gets the uniform 403. A document the caller may not read is the bare 404 an unknown id is.
+         * @description Removes a document. Its row goes and its object is queued for removal in one transaction; the object is removed once that has committed, and a removal the store refuses stays queued, recorded as a failed attempt, until it succeeds. A document in a non-restricted category needs staff:manage or staff:personal-data, one in a restricted category staff:personal-data (category_restricted to a reader of it without — HR's own health document); anyone else gets the uniform 403. A document the caller may not read is the bare 404 an unknown id is.
          */
         delete: operations["deleteStaffDocumentsById"];
         options?: never;
@@ -1090,7 +1090,7 @@ export interface components {
              */
             validTo?: string;
         };
-        /** @description A document category (design S14) — one of the six seeds or the company's own. Its retention class is fixed when it is created; restricted (a health category, readable only by the person and staff:personal-data) is true exactly when the class is E. A seeded category never changes; an archived one is offered for no new document and keeps the documents filed under it. */
+        /** @description A document category (design S14) — one of the six seeds or the company's own. Its retention class is fixed when it is created; restricted (a health category, readable only by the person and staff:personal-data) is true exactly when the class is E. A seeded category never changes; an archived one is offered for no new document, and only a category no document is filed under is archived. */
         StaffDocumentCategory: {
             /**
              * Format: date-time
@@ -1138,12 +1138,15 @@ export interface components {
             names: components["schemas"]["StaffDocumentCategoryNames"];
             restricted: boolean;
         };
-        /** @description A document's category and dates, replaced whole — a field left out is cleared. Moving a document into or out of a restricted category needs staff:personal-data (category_restricted). employmentId must name one of the person's employments. */
+        /** @description A document's category and dates, replaced whole — a date left out is cleared. employmentId is replaced only when the body names it — null clears it, and left out it stays as it is — since the upload derived it. Moving a document into or out of a restricted category needs staff:personal-data (category_restricted). employmentId must name one of the person's employments. */
         StaffDocumentChangeRequest: {
             /** Format: int64 */
             categoryId: number;
-            /** Format: int64 */
-            employmentId?: number;
+            /**
+             * Format: int64
+             * @description One of the person's employments; null clears it; left out, the document keeps its own.
+             */
+            employmentId?: number | null;
             /** Format: date */
             signedAt?: string;
             /** Format: date */
@@ -2795,13 +2798,14 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden — neither staff:manage nor staff:personal-data. */
+            /** @description Forbidden — neither staff:manage nor staff:personal-data (the uniform 403), or category_restricted (a health document the caller reads as its person, without staff:personal-data). */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["StaffProblem"];
                 };
             };
             /** @description Not Found — no document has that id, or the caller may not read it. The body is empty. */

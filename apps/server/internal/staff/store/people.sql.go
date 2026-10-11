@@ -645,6 +645,7 @@ const personInUse = `-- name: PersonInUse :one
 SELECT
     EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = $1) AS has_employment,
     EXISTS (SELECT 1 FROM staff.identity_links l WHERE l.person_id = $1) AS has_link,
+    EXISTS (SELECT 1 FROM staff.documents doc WHERE doc.person_id = $1) AS has_documents,
     EXISTS (SELECT 1 FROM staff.departments d WHERE d.manager_person_id = $1) AS manages_department,
     EXISTS (SELECT 1 FROM staff.employment_terms t WHERE t.manager_person_id = $1) AS named_as_manager
 `
@@ -652,13 +653,14 @@ SELECT
 type PersonInUseRow struct {
 	HasEmployment     bool
 	HasLink           bool
+	HasDocuments      bool
 	ManagesDepartment bool
 	NamedAsManager    bool
 }
 
 // PersonInUse is why a person may not be deleted as created in error (plan
-// reading 5): an employment, a user link, a department naming them as its
-// manager, or any terms naming them as the manager. It is read under the
+// reading 5): an employment, a user link, a document, a department naming
+// them as its manager, or any terms naming them as the manager. It is read under the
 // person's lock and the manager-graph lock, which every write of those edges
 // takes, so nothing can start naming the person between this and the delete.
 func (q *Queries) PersonInUse(ctx context.Context, id int64) (PersonInUseRow, error) {
@@ -667,6 +669,7 @@ func (q *Queries) PersonInUse(ctx context.Context, id int64) (PersonInUseRow, er
 	err := row.Scan(
 		&i.HasEmployment,
 		&i.HasLink,
+		&i.HasDocuments,
 		&i.ManagesDepartment,
 		&i.NamedAsManager,
 	)

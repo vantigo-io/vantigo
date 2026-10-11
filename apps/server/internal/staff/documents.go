@@ -140,10 +140,12 @@ func (s *server) visibleDocument(ctx context.Context, caller *callerContext, id 
 	return row, err
 }
 
-// lockVisibleDocument takes a document's row under its person's lock and
-// judges it again as it is now: gone, or moved since into a category the
-// caller may not read, it is the 404.
-func lockVisibleDocument(ctx context.Context, txq *store.Queries, caller *callerContext, id int64) (store.StaffDocument, store.StaffDocumentCategory, error) {
+// lockWritableDocument takes a document's row under its person's lock for a
+// change or a removal and judges it again as it is now, as visibleDocument
+// does: gone, or moved since into a category the caller may not read, it is
+// the 404. One the caller reads but may not write — a health document of
+// their own, to HR without staff:personal-data — is category_restricted.
+func lockWritableDocument(ctx context.Context, txq *store.Queries, caller *callerContext, id int64) (store.StaffDocument, store.StaffDocumentCategory, error) {
 	d, err := txq.LockDocument(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, store.StaffDocumentCategory{}, notFound()
@@ -154,24 +156,32 @@ func lockVisibleDocument(ctx context.Context, txq *store.Queries, caller *caller
 	if err != nil {
 		return d, c, fmt.Errorf("staff: read document %d's category: %w", id, err)
 	}
-	if c.Restricted && !caller.PersonalData {
+	a, err := personAudience(ctx, txq, caller, d.PersonID)
+	if err != nil {
+		return d, c, err
+	}
+	if !a.readsDocument(c.Restricted) {
 		return d, c, notFound()
+	}
+	if c.Restricted && !caller.PersonalData {
+		return d, c, categoryRestricted()
 	}
 	return d, c, nil
 }
 
 // fileableCategory is the category a document is about to be filed under,
 // held against an archive until the transaction ends: unknown or archived is
-// a field error on categoryId — unless it is the category the document is
-// already in, which it may stay in.
-func fileableCategory(ctx context.Context, txq *store.Queries, id, current int64) (store.StaffDocumentCategory, error) {
+// a field error on categoryId. A document's own category is never archived —
+// a category documents are filed under is not (category_in_use) — so the
+// rule holds for a change as for an upload.
+func fileableCategory(ctx context.Context, txq *store.Queries, id int64) (store.StaffDocumentCategory, error) {
 	c, err := txq.ShareDocumentCategory(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, refuseInvalid(invalidDocumentTitle, fieldErrors{errs: fieldError(documentCategoryField, fmt.Sprintf("No document category has id %d", id))})
 	} else if err != nil {
 		return c, fmt.Errorf("staff: read document category %d: %w", id, err)
 	}
-	if c.ArchivedAt != nil && c.ID != current {
+	if c.ArchivedAt != nil {
 		return c, refuseInvalid(invalidDocumentTitle, fieldErrors{errs: fieldError(documentCategoryField,
 			fmt.Sprintf("The category %s is archived; no new document is filed under it", c.NameEn))})
 	}
@@ -317,7 +327,7 @@ func (s *server) PostStaffPeopleByIdDocuments(ctx context.Context, req gen.PostS
 			return refuseConflict(conflict(codeDocumentCountExceeded, "Too many documents",
 				fmt.Sprintf("A person has at most %d documents, counted whatever you may read. Remove one first.", maxDocumentsPerPerson)))
 		}
-		if category, err = fileableCategory(ctx, txq, parsed.categoryID, 0); err != nil {
+		if category, err = fileableCategory(ctx, txq, parsed.categoryID); err != nil {
 			return err
 		}
 		employmentID, err := s.fileForEmployment(ctx, txq, req.Id, category, parsed.signedAt, caller, who)
@@ -455,8 +465,10 @@ func (s *server) GetStaffDocumentsById(ctx context.Context, req gen.GetStaffDocu
 // PutStaffDocumentsById Change a document
 // (PUT /api/v1/staff/documents/{id})
 //
-// A full replace of the category, the dates and the employment. A move into
-// or out of a restricted category is staff:personal-data's; a document the
+// A replace of the category and the dates; the employment is replaced only
+// when the body names it — null clears it — since the upload derived it and
+// a client that never shows it must not lose it by saving. A move into or
+// out of a restricted category is staff:personal-data's; a document the
 // caller may not read is the 404 before anything is judged.
 func (s *server) PutStaffDocumentsById(ctx context.Context, req gen.PutStaffDocumentsByIdRequestObject) (gen.PutStaffDocumentsByIdResponseObject, error) {
 	var body gen.StaffDocumentChangeRequest
@@ -491,18 +503,22 @@ func (s *server) PutStaffDocumentsById(ctx context.Context, req gen.PutStaffDocu
 		to    store.StaffDocumentCategory
 	)
 	err = s.withPersonLock(ctx, row.StaffDocument.PersonID, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		d, from, err := lockVisibleDocument(ctx, txq, caller, req.Id)
+		d, from, err := lockWritableDocument(ctx, txq, caller, req.Id)
 		if err != nil {
 			return err
 		}
 		if err := checkRevision("document", d.Revision, revision); err != nil {
 			return err
 		}
-		if to, err = fileableCategory(ctx, txq, body.CategoryId, from.ID); err != nil {
+		if to, err = fileableCategory(ctx, txq, body.CategoryId); err != nil {
 			return err
 		}
-		if to.Restricted != from.Restricted && !caller.PersonalData {
+		if to.Restricted && !caller.PersonalData {
 			return categoryRestricted()
+		}
+		employmentID := d.EmploymentID
+		if bodyHas(ctx, "employmentId") {
+			employmentID = body.EmploymentId
 		}
 		if body.EmploymentId != nil {
 			has, err := txq.PersonHasEmployment(ctx, store.PersonHasEmploymentParams{ID: *body.EmploymentId, PersonID: d.PersonID})
@@ -515,7 +531,7 @@ func (s *server) PutStaffDocumentsById(ctx context.Context, req gen.PutStaffDocu
 			}
 		}
 		saved, err = txq.UpdateDocument(ctx, store.UpdateDocumentParams{
-			ID: d.ID, CategoryID: to.ID, EmploymentID: body.EmploymentId,
+			ID: d.ID, CategoryID: to.ID, EmploymentID: employmentID,
 			ValidTo: pgDate(civilDate(body.ValidTo)), SignedAt: pgDate(civilDate(body.SignedAt)), Now: s.deps.Clock(),
 		})
 		if err != nil {
@@ -584,7 +600,7 @@ func (s *server) DeleteStaffDocumentsById(ctx context.Context, req gen.DeleteSta
 	personID := row.StaffDocument.PersonID
 	var removed store.StaffDocument
 	err = s.withPersonLock(ctx, personID, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		d, category, err := lockVisibleDocument(ctx, txq, caller, req.Id)
+		d, category, err := lockWritableDocument(ctx, txq, caller, req.Id)
 		if err != nil {
 			return err
 		}
@@ -604,19 +620,45 @@ func (s *server) DeleteStaffDocumentsById(ctx context.Context, req gen.DeleteSta
 	if errors.Is(err, errPersonNotFound) {
 		return gen.DeleteStaffDocumentsById404Response{}, nil
 	}
-	if _, ok := asRefusal(err); ok {
+	if r, ok := asRefusal(err); ok {
+		if r.status == http.StatusForbidden {
+			return gen.DeleteStaffDocumentsById403ApplicationProblemPlusJSONResponse(r.problem), nil
+		}
 		return gen.DeleteStaffDocumentsById404Response{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if s.removeObject(ctx, personID, removed.ObjectKey) {
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), objectCleanupTimeout)
-		defer cancel()
-		if err := store.New(s.deps.Pool).DeleteObjectDeletion(cleanup, removed.ObjectKey); err != nil {
-			s.deps.Logger.ErrorContext(cleanup, "staff: a removed document's ledger row could not be cleared",
-				"person_id", personID, "error", err.Error())
-		}
-	}
+	s.finishObjectDeletion(ctx, personID, removed.ObjectKey)
 	return gen.DeleteStaffDocumentsById204Response{}, nil
+}
+
+// objectDeleteRefused is what a failed attempt records on its ledger row:
+// the store's own error stays in the log, since it may name the key.
+const objectDeleteRefused = "the object store refused the delete"
+
+// finishObjectDeletion makes the one attempt a delete makes after its
+// commit: when the store confirms, the ledger row is cleared; when it
+// refuses, the attempt is recorded on the row — counted, its reason, and the
+// next attempt due after retryBackoff — so the row is a failing one to
+// whoever reads the ledger, and the retention worker picks it up when due.
+// Both run on a context detached from the request's and bounded.
+func (s *server) finishObjectDeletion(ctx context.Context, personID int64, key string) {
+	removed := s.removeObject(ctx, personID, key)
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), objectCleanupTimeout)
+	defer cancel()
+	q := store.New(s.deps.Pool)
+	var err error
+	if removed {
+		err = q.DeleteObjectDeletion(cleanup, key)
+	} else {
+		reason := objectDeleteRefused
+		err = q.RecordObjectDeletionFailure(cleanup, store.RecordObjectDeletionFailureParams{
+			ObjectKey: key, LastError: &reason, NextAttemptAt: s.deps.Clock().Add(retryBackoff(1)),
+		})
+	}
+	if err != nil {
+		s.deps.Logger.ErrorContext(cleanup, "staff: a removed document's ledger row could not be updated",
+			"person_id", personID, "error", err.Error())
+	}
 }

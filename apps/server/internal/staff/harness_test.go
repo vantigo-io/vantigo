@@ -514,6 +514,9 @@ type upload struct {
 	categoryID            int64
 	validTo, signedAt     string
 	noFile                bool
+	// fieldsAfterFile sends the text fields after the file part rather than
+	// before it.
+	fieldsAfterFile bool
 }
 
 // form is u as multipart/form-data: its content type and its body.
@@ -526,14 +529,19 @@ func (u upload) form(t *testing.T) (string, []byte) {
 			t.Fatalf("write the %q field: %v", name, err)
 		}
 	}
-	if u.categoryID != 0 {
-		field("categoryId", strconv.FormatInt(u.categoryID, 10))
+	fields := func() {
+		if u.categoryID != 0 {
+			field("categoryId", strconv.FormatInt(u.categoryID, 10))
+		}
+		if u.validTo != "" {
+			field("validTo", u.validTo)
+		}
+		if u.signedAt != "" {
+			field("signedAt", u.signedAt)
+		}
 	}
-	if u.validTo != "" {
-		field("validTo", u.validTo)
-	}
-	if u.signedAt != "" {
-		field("signedAt", u.signedAt)
+	if !u.fieldsAfterFile {
+		fields()
 	}
 	if !u.noFile {
 		header := textproto.MIMEHeader{}
@@ -548,6 +556,9 @@ func (u upload) form(t *testing.T) (string, []byte) {
 		if _, err := part.Write(u.data); err != nil {
 			t.Fatalf("write the file part: %v", err)
 		}
+	}
+	if u.fieldsAfterFile {
+		fields()
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("close the multipart writer: %v", err)

@@ -114,13 +114,18 @@ const (
 
 // parseUpload judges f: the file is there once, within the bound, one of the
 // four types and not contradicted by its name or declared type; the category
-// is an id; each date is a date. Every failure is collected.
+// is an id; each date is a date. Every failure is collected — but a file
+// too large is answered alone, since the fields after it were never read.
 func parseUpload(f documentForm) (parsedUpload, fieldErrors) {
 	var out parsedUpload
 	var errs fieldErrors
-	switch {
-	case f.tooLarge:
+	if f.tooLarge {
+		// The read stopped at the file, so a field after it was never read:
+		// its absence is not the caller's mistake, and the size is the answer.
 		errs.addCoded(documentFormField, codeDocumentTooLarge, documentSizeMessage)
+		return out, errs
+	}
+	switch {
 	case f.unreadable:
 		errs.add(documentFormField, "The request's body could not be read as a multipart form")
 	case f.files > 1:

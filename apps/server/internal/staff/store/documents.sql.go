@@ -485,6 +485,27 @@ func (q *Queries) PersonHasEmployment(ctx context.Context, arg PersonHasEmployme
 	return has, err
 }
 
+const recordObjectDeletionFailure = `-- name: RecordObjectDeletionFailure :exec
+UPDATE staff.object_deletions SET
+    attempts = attempts + 1,
+    last_error = $1,
+    next_attempt_at = $2::timestamptz
+WHERE object_key = $3
+`
+
+type RecordObjectDeletionFailureParams struct {
+	LastError     *string
+	NextAttemptAt time.Time
+	ObjectKey     string
+}
+
+// RecordObjectDeletionFailure records one failed attempt at removing an
+// object on its ledger row: the attempt counted, why, and when the next is due.
+func (q *Queries) RecordObjectDeletionFailure(ctx context.Context, arg RecordObjectDeletionFailureParams) error {
+	_, err := q.db.Exec(ctx, recordObjectDeletionFailure, arg.LastError, arg.NextAttemptAt, arg.ObjectKey)
+	return err
+}
+
 const setEmploymentContractSigned = `-- name: SetEmploymentContractSigned :one
 UPDATE staff.employments SET
     contract_signed_at = $1,

@@ -120,8 +120,8 @@ Slik legger du til en egen, som en bruker med `staff:manage`:
 
 For å gi en nytt navn, eller slutte å tilby den, sender du `names` og `archived` til
 `PUT /api/v1/staff/document-categories/{id}` med revisjonen i `If-Match`. En arkivert
-kategori tilbys ikke for nye dokumenter; dokumentene som allerede er arkivert under den,
-beholder den. De seks standardkategoriene endres aldri.
+kategori tilbys ikke for nye dokumenter, og bare en kategori ingen dokumenter er arkivert
+under, kan arkiveres. De seks standardkategoriene endres aldri.
 
 ## E-posten om endret kontonummer
 
