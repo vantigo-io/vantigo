@@ -484,6 +484,14 @@ func TestBankFileCamt_Parse(t *testing.T) {
 		if got := mustCamt(t, swap(t, r4, "<Ref>0010017</Ref>", "<Ref>"+strings.Repeat("1", 25)+"</Ref>", 1)).Transactions[0]; got.KID != strings.Repeat("1", 25) {
 			t.Errorf("a SCOR reference of 25: KID %q", got.KID)
 		}
+		// A too-long SCOR reference before a KID in the same TxDtls does
+		// not hide the KID: the KID is read, the long reference still
+		// leads the text.
+		tooLongFirst := swap(t, r4, "<RmtInf>", "<RmtInf><Strd><CdtrRefInf><Tp><CdOrPrtry><Cd>SCOR</Cd></CdOrPrtry></Tp><Ref>"+
+			strings.Repeat("1", 26)+"</Ref></CdtrRefInf></Strd>", 1)
+		if got := mustCamt(t, tooLongFirst).Transactions[0]; got.KID != "0010017" || got.RemittanceText != "SCOR "+strings.Repeat("1", 26) {
+			t.Errorf("a too-long SCOR reference before a KID: KID %q, text %q", got.KID, got.RemittanceText)
+		}
 		// A reference is measured in characters, as varchar(n) is: 35 of
 		// them in 70 bytes is an archive reference.
 		if got := mustCamt(t, swap(t, r4, "<AcctSvcrRef>123456789</AcctSvcrRef>", "<AcctSvcrRef>"+strings.Repeat("æ", 35)+"</AcctSvcrRef>", 1)).Transactions[0]; got.ArchiveRef != strings.Repeat("æ", 35) {
