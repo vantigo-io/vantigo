@@ -483,7 +483,7 @@ func (q *Queries) PrintCandidates(ctx context.Context, ids []int64) ([]InvoicesR
 const reprintBatch = `-- name: ReprintBatch :many
 UPDATE invoices.reminders
 SET status = 'awaiting_print', print_batch_id = NULL,
-    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, fee_kind = NULL, fee = NULL,
+    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
     interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
@@ -582,7 +582,7 @@ func (q *Queries) SetBatchReprinted(ctx context.Context, arg SetBatchReprintedPa
 
 const setPrintedPDF = `-- name: SetPrintedPDF :execrows
 UPDATE invoices.reminders SET pdf_object_key = $1::text, pdf_sha256 = $2::text
-WHERE id = $3 AND print_batch_id = $4::bigint AND status = 'printed' AND pdf_object_key IS NULL
+WHERE id = $3 AND print_batch_id = $4::bigint AND status IN ('printed', 'sent') AND pdf_object_key IS NULL
 `
 
 type SetPrintedPDFParams struct {
@@ -593,8 +593,11 @@ type SetPrintedPDFParams struct {
 }
 
 // SetPrintedPDF records the PDF a batch rendered and stored for one of its
-// letters, outside any lock: only while the letter is still printed in that
-// batch and has no PDF yet, so a reprint in between records nothing.
+// letters, outside any lock: only while the letter is still in that batch,
+// printed or — posted since — sent, and has no PDF yet, so a reprint in
+// between records nothing, and a posting in between does not leave a sent
+// letter without its PDF (the immutability trigger lets a sent letter's key
+// and hash be set once).
 func (q *Queries) SetPrintedPDF(ctx context.Context, arg SetPrintedPDFParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setPrintedPDF,
 		arg.PdfObjectKey,

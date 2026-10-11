@@ -76,6 +76,28 @@ FOR UPDATE;
 -- waited for, and its letter seen.
 SELECT * FROM invoices.collection_rates WHERE id = @id FOR UPDATE;
 
+-- name: ShareOwnPrintBatch :one
+-- ShareOwnPrintBatch reads a print batch FOR SHARE, the first statement of
+-- each of its letters' transactions while it is printed, and answers whether
+-- it is closed — posted or reprinted. FOR SHARE waits on the posting's and
+-- the reprint's FOR NO KEY UPDATE, and they on it, so a batch is never
+-- posted or reprinted while one of its letters is being printed into it: a
+-- letter printed first is seen by the posting or the reprint, and one whose
+-- turn comes after finds the batch closed and is left out.
+SELECT (posted_on IS NOT NULL OR reprinted_at IS NOT NULL)::boolean AS closed
+FROM invoices.reminder_print_batches WHERE id = @id FOR SHARE;
+
+-- name: CollectionRatesInForce :many
+-- CollectionRatesInForce is ShareCollectionRatesInForce without the lock:
+-- read again after a letter was judged, it tells whether a rate came into
+-- force on the day since the share was taken — a row added meanwhile, which
+-- the share did not lock — so the letter is judged again.
+SELECT r.id FROM invoices.collection_rates r
+WHERE r.valid_from <= @day::date
+  AND NOT EXISTS (SELECT 1 FROM invoices.collection_rates n
+      WHERE n.kind = r.kind AND n.valid_from > r.valid_from AND n.valid_from <= @day::date)
+ORDER BY r.id;
+
 -- name: ShareCollectionRatesInForce :many
 -- ShareCollectionRatesInForce reads FOR KEY SHARE, in id order, the rows a
 -- letter dated @day relies on as the DELETE judges "used" (rates.sql's

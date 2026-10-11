@@ -39,7 +39,7 @@ RETURNING *;
 -- status and lease under those locks.
 UPDATE invoices.reminders
 SET sent_on = @sent_on::date, deadline = @deadline::date, regime = @regime::text,
-    principal_open = @principal_open, fee_kind = @fee_kind::text,
+    principal_open = @principal_open, credited = @credited, fee_kind = @fee_kind::text,
     fee = sqlc.narg(fee)::numeric, compensation = sqlc.narg(compensation)::numeric,
     charges_earlier = @charges_earlier, interest = @interest, interest_waived = @interest_waived,
     interest_paid = @interest_paid, interest_from = sqlc.narg(interest_from)::date,
@@ -61,7 +61,7 @@ RETURNING *;
 UPDATE invoices.reminders
 SET next_attempt_at = @next_attempt_at::timestamptz, held_reason = sqlc.narg(held_reason)::text,
     lease_id = NULL, lease_until = NULL,
-    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, fee_kind = NULL, fee = NULL,
+    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
     interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
@@ -75,7 +75,7 @@ WHERE id = @id AND lease_id = @lease_id::text AND status = 'queued';
 UPDATE invoices.reminders
 SET status = 'withdrawn', withdrawn_at = @withdrawn_at::timestamptz, withdrawal_reason = @withdrawal_reason::text,
     lease_id = NULL, lease_until = NULL, held_reason = NULL,
-    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, fee_kind = NULL, fee = NULL,
+    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
     interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
@@ -107,7 +107,7 @@ UPDATE invoices.reminders
 SET attempts = attempts + 1, next_attempt_at = @next_attempt_at::timestamptz, last_error = sqlc.narg(last_error)::text,
     first_attempt_at = coalesce(first_attempt_at, @now::timestamptz),
     lease_id = NULL, lease_until = NULL,
-    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, fee_kind = NULL, fee = NULL,
+    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
     interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
@@ -120,7 +120,7 @@ WHERE id = @id AND lease_id = @lease_id::text AND status = 'queued';
 UPDATE invoices.reminders
 SET status = 'failed', failed_at = @failed_at::timestamptz, attempts = attempts + 1,
     last_error = sqlc.narg(last_error)::text, lease_id = NULL, lease_until = NULL,
-    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, fee_kind = NULL, fee = NULL,
+    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
     interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
@@ -147,14 +147,6 @@ RETURNING *;
 
 -- name: GetReminder :one
 SELECT * FROM invoices.reminders WHERE id = @id;
-
--- name: CreditedOn :one
--- CreditedOn is what the invoice's issued credit notes took off it up to and
--- including a letter's day: the letter prints it beside the principal, from
--- its own row and the documents, the same every time it is rendered.
-SELECT coalesce(sum(gross_total), 0)::numeric AS credited
-FROM invoices.invoices
-WHERE credits_invoice_id = @invoice_id::bigint AND kind = 'credit_note' AND status = 'issued' AND issue_date <= @day::date;
 
 -- name: CountReminders :one
 -- CountReminders is how many letters ListReminders' filters match.

@@ -34,10 +34,13 @@ RETURNING *;
 
 -- name: SetPrintedPDF :execrows
 -- SetPrintedPDF records the PDF a batch rendered and stored for one of its
--- letters, outside any lock: only while the letter is still printed in that
--- batch and has no PDF yet, so a reprint in between records nothing.
+-- letters, outside any lock: only while the letter is still in that batch,
+-- printed or — posted since — sent, and has no PDF yet, so a reprint in
+-- between records nothing, and a posting in between does not leave a sent
+-- letter without its PDF (the immutability trigger lets a sent letter's key
+-- and hash be set once).
 UPDATE invoices.reminders SET pdf_object_key = @pdf_object_key::text, pdf_sha256 = @pdf_sha256::text
-WHERE id = @id AND print_batch_id = @print_batch_id::bigint AND status = 'printed' AND pdf_object_key IS NULL;
+WHERE id = @id AND print_batch_id = @print_batch_id::bigint AND status IN ('printed', 'sent') AND pdf_object_key IS NULL;
 
 -- name: GetPrintBatch :one
 SELECT * FROM invoices.reminder_print_batches WHERE id = @id;
@@ -74,7 +77,7 @@ RETURNING *;
 -- never changes.
 UPDATE invoices.reminders
 SET status = 'awaiting_print', print_batch_id = NULL,
-    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, fee_kind = NULL, fee = NULL,
+    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
     interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL

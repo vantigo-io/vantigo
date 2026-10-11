@@ -126,21 +126,39 @@ func lockCollectionRate(ctx context.Context, txq *store.Queries, id int64) (stor
 	return row, nil
 }
 
+// shareOwnPrintBatch reads print batch id FOR SHARE, reported
+// "print_batch", and answers whether it is closed — posted or reprinted: the
+// first lock of each of the batch's letters' transactions while it is
+// printed, so a posting or a reprint (FOR NO KEY UPDATE) never runs while a
+// letter is being printed into the batch (D18).
+func shareOwnPrintBatch(ctx context.Context, txq *store.Queries, id int64) (closed bool, err error) {
+	if closed, err = txq.ShareOwnPrintBatch(ctx, id); err != nil {
+		return false, fmt.Errorf("invoices: share print batch %d: %w", id, err)
+	}
+	noteLock(ctx, "print_batch", strconv.FormatInt(id, 10))
+	return closed, nil
+}
+
 // shareCollectionRates reads FOR KEY SHARE the collection rates a letter
 // dated day relies on — of each kind, the row in force on day, the rows
 // DeleteInvoicesCollectionRatesById judges "used" — each reported
 // "collection_rate" in id order (a print batch's letter, D6, plan reading
 // 6). A DELETE takes its row FOR UPDATE, which waits for this share until
 // the letter's transaction commits, and then sees the letter printed.
-func shareCollectionRates(ctx context.Context, txq *store.Queries, day time.Time) error {
+//
+// It answers the rows it shared: the statement decides "in force" on its own
+// snapshot, so a row added after it is not shared, and the caller reads the
+// rows in force again once it has judged (CollectionRatesInForce) and judges
+// again when they differ.
+func shareCollectionRates(ctx context.Context, txq *store.Queries, day time.Time) ([]int64, error) {
 	ids, err := txq.ShareCollectionRatesInForce(ctx, pgDate(day))
 	if err != nil {
-		return fmt.Errorf("invoices: share the collection rates in force on %s: %w", day.Format(time.DateOnly), err)
+		return nil, fmt.Errorf("invoices: share the collection rates in force on %s: %w", day.Format(time.DateOnly), err)
 	}
 	for _, id := range ids {
 		noteLock(ctx, "collection_rate", strconv.FormatInt(id, 10))
 	}
-	return nil
+	return ids, nil
 }
 
 // shareCustomerDocuments reads one customer's documents FOR SHARE, newest

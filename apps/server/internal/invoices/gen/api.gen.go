@@ -712,6 +712,7 @@ const (
 	InvoicesPrintBatchLeftOutReasonNotAwaitingPrint           InvoicesPrintBatchLeftOutReason = "not_awaiting_print"
 	InvoicesPrintBatchLeftOutReasonOnHold                     InvoicesPrintBatchLeftOutReason = "on_hold"
 	InvoicesPrintBatchLeftOutReasonPolicyNone                 InvoicesPrintBatchLeftOutReason = "policy_none"
+	InvoicesPrintBatchLeftOutReasonPrintBatchClosed           InvoicesPrintBatchLeftOutReason = "print_batch_closed"
 	InvoicesPrintBatchLeftOutReasonSettled                    InvoicesPrintBatchLeftOutReason = "settled"
 )
 
@@ -733,6 +734,8 @@ func (e InvoicesPrintBatchLeftOutReason) Valid() bool {
 	case InvoicesPrintBatchLeftOutReasonOnHold:
 		return true
 	case InvoicesPrintBatchLeftOutReasonPolicyNone:
+		return true
+	case InvoicesPrintBatchLeftOutReasonPrintBatchClosed:
 		return true
 	case InvoicesPrintBatchLeftOutReasonSettled:
 		return true
@@ -2572,7 +2575,7 @@ type InvoicesPrintBatch struct {
 	ReprintedAt *time.Time          `json:"reprintedAt,omitempty"`
 }
 
-// InvoicesPrintBatchLeftOut A letter a print batch left out (D10): not_awaiting_print — withdrawn meanwhile, or printed by another batch — and still as it was; collection_rates_outdated (with outdated) or collection_regime_unreviewed — on the posting day it needs a rate with no row for a half-year, or would carry a fee or be a collection notice past the regime review — kept awaiting print (m9); or withdrawn by the batch's re-judge with the reason it now has: settled, on_hold, handed_off, policy_none, customer_anonymised or action_changed.
+// InvoicesPrintBatchLeftOut A letter a print batch left out (D10): not_awaiting_print — withdrawn meanwhile, or printed by another batch — and still as it was; print_batch_closed — the batch was posted or reprinted while it was still printing, so the letter stays awaiting print; collection_rates_outdated (with outdated) or collection_regime_unreviewed — on the posting day it needs a rate with no row for a half-year, or would carry a fee or be a collection notice past the regime review — kept awaiting print (m9); or withdrawn by the batch's re-judge with the reason it now has: settled, on_hold, handed_off, policy_none, customer_anonymised or action_changed.
 type InvoicesPrintBatchLeftOut struct {
 	InvoiceId int64 `json:"invoiceId"`
 

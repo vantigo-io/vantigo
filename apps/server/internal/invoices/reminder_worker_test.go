@@ -199,12 +199,14 @@ func amountText(n pgtype.Numeric) string {
 	return fmt.Sprintf("%.2f", f.Float64)
 }
 
-// factsCleared reports whether a letter carries none of its facts, nor a
-// lease.
+// factsCleared reports whether a letter carries none of its facts — every
+// one of them — nor its PDF, nor a lease.
 func factsCleared(r store.InvoicesReminder) bool {
-	return !r.SentOn.Valid && !r.Deadline.Valid && r.Regime == nil && !r.PrincipalOpen.Valid && r.FeeKind == nil &&
+	return !r.SentOn.Valid && !r.Deadline.Valid && r.Regime == nil && !r.PrincipalOpen.Valid && !r.Credited.Valid &&
+		r.FeeKind == nil && !r.Fee.Valid && !r.Compensation.Valid && !r.ChargesEarlier.Valid && !r.Interest.Valid &&
+		!r.InterestWaived.Valid && !r.InterestPaid.Valid && !r.InterestFrom.Valid && !r.Inkassosats.Valid &&
 		!r.Total.Valid && r.InterestSegments == nil && r.ChargeNotes == nil && r.PdfObjectKey == nil &&
-		r.LeaseID == nil && r.LeaseUntil == nil
+		r.PdfSha256 == nil && r.LeaseID == nil && r.LeaseUntil == nil
 }
 
 // runOne makes a run of invoice id's action as a payer, the stale bank data

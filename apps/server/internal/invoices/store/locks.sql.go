@@ -13,6 +13,38 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const collectionRatesInForce = `-- name: CollectionRatesInForce :many
+SELECT r.id FROM invoices.collection_rates r
+WHERE r.valid_from <= $1::date
+  AND NOT EXISTS (SELECT 1 FROM invoices.collection_rates n
+      WHERE n.kind = r.kind AND n.valid_from > r.valid_from AND n.valid_from <= $1::date)
+ORDER BY r.id
+`
+
+// CollectionRatesInForce is ShareCollectionRatesInForce without the lock:
+// read again after a letter was judged, it tells whether a rate came into
+// force on the day since the share was taken — a row added meanwhile, which
+// the share did not lock — so the letter is judged again.
+func (q *Queries) CollectionRatesInForce(ctx context.Context, day pgtype.Date) ([]int64, error) {
+	rows, err := q.db.Query(ctx, collectionRatesInForce, day)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockBankTransaction = `-- name: LockBankTransaction :one
 
 SELECT id, bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on, amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code, fingerprint, ordinal, duplicate_of_id, status, reason, suggested_invoice_id, resolution, resolved_by_user_id, resolved_at, resolution_note FROM invoices.bank_transactions WHERE id = $1 FOR NO KEY UPDATE
@@ -425,6 +457,25 @@ func (q *Queries) ShareImportAccounts(ctx context.Context, accounts []string) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const shareOwnPrintBatch = `-- name: ShareOwnPrintBatch :one
+SELECT (posted_on IS NOT NULL OR reprinted_at IS NOT NULL)::boolean AS closed
+FROM invoices.reminder_print_batches WHERE id = $1 FOR SHARE
+`
+
+// ShareOwnPrintBatch reads a print batch FOR SHARE, the first statement of
+// each of its letters' transactions while it is printed, and answers whether
+// it is closed — posted or reprinted. FOR SHARE waits on the posting's and
+// the reprint's FOR NO KEY UPDATE, and they on it, so a batch is never
+// posted or reprinted while one of its letters is being printed into it: a
+// letter printed first is seen by the posting or the reprint, and one whose
+// turn comes after finds the batch closed and is left out.
+func (q *Queries) ShareOwnPrintBatch(ctx context.Context, id int64) (bool, error) {
+	row := q.db.QueryRow(ctx, shareOwnPrintBatch, id)
+	var closed bool
+	err := row.Scan(&closed)
+	return closed, err
 }
 
 const upsertImportAccounts = `-- name: UpsertImportAccounts :exec
