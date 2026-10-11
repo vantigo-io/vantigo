@@ -83,8 +83,15 @@ func inOpenTx(ctx context.Context) bool {
 // directory is read before the transaction, and a mail is sent after it has
 // committed. contractscalls.go is where that is checked.
 func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) error {
+	return withLockedTxOn(ctx, s.deps.Pool, fn)
+}
+
+// withLockedTxOn is withLockedTx on a connection the caller chose: the pool,
+// or the one connection the retention worker's lease holds
+// (withPersonLockOn), whose cycle must never ask the pool for a second.
+func withLockedTxOn(ctx context.Context, on db.TxBeginner, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) error {
 	locked := context.WithValue(ctx, lockedTxKey{}, true)
-	return db.WithTx(locked, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+	return db.WithTx(locked, on, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		return fn(locked, tx, store.New(tx))
 	})
 }

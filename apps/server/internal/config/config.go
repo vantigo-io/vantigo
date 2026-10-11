@@ -258,6 +258,23 @@ type Config struct {
 	// transaction, and a run at five thousand already takes most of the
 	// minute and a half a proxy in front of a hosted installation allows.
 	StaffImportMaxRows int
+	// StaffRetentionEnabled is the on/off switch for the Staff module's
+	// retention worker, staff-retention (STAFF_RETENTION_ENABLED, staff
+	// foundation design S15 and §8.5). Default ON, as the customers
+	// anonymisation worker's is and for its reason: the erase is what the law
+	// asks of the register, and an installation that says nothing must still
+	// keep it. A 0 means the worker is never handed to the runner: nothing is
+	// erased on a schedule, and objects queued for deletion wait — POST
+	// /retention/run still runs both by hand.
+	StaffRetentionEnabled bool
+	// StaffWorkersPoll is how often the Staff workers run a cycle
+	// (STAFF_WORKERS_POLL, default 1 hour, never under a minute): each poll
+	// takes the retention lease for an erase cycle — at most fifty people, a
+	// constant — and makes a pass over the deletion ledger. The erase is
+	// idempotent, so an hourly poll is "once per civil day" kept however the
+	// clock changes; a minute is the floor because every poll asks the object
+	// store about every due row.
+	StaffWorkersPoll time.Duration
 
 	// StorageProvider selects the internal/storage backend: "" (unset,
 	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
@@ -433,6 +450,7 @@ func Load(env map[string]string) (*Config, error) {
 	customersAnonymisation(&p, env, c)
 	invoicesEhf(&p, env, c)
 	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 20000)
+	staffWorkers(&p, env, c)
 
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)
@@ -630,6 +648,27 @@ func customersRegistryWorkers(p *problems, env map[string]string, c *Config) {
 func customersAnonymisation(p *problems, env map[string]string, c *Config) {
 	c.CustomersAnonymisationEnabled = boolean(p, env, "CUSTOMERS_ANONYMISATION_ENABLED", true)
 	c.CustomersAnonymisationPoll = duration(p, env, "CUSTOMERS_ANONYMISATION_POLL", 24*time.Hour)
+}
+
+// staffWorkersMinPoll is the shortest STAFF_WORKERS_POLL accepted.
+const staffWorkersMinPoll = time.Minute
+
+// staffWorkers loads the Staff retention worker's settings (staff foundation
+// design §8.5): its switch, on by default, and the poll it shares with the
+// module's later workers, an hour by default and at least a minute. The batch —
+// at most fifty people an erase cycle and a hundred objects a ledger pass — is
+// a constant in the worker, not a knob.
+func staffWorkers(p *problems, env map[string]string, c *Config) {
+	c.StaffRetentionEnabled = boolean(p, env, "STAFF_RETENTION_ENABLED", true)
+	c.StaffWorkersPoll = time.Hour
+	if v := env["STAFF_WORKERS_POLL"]; v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < staffWorkersMinPoll {
+			p.add("STAFF_WORKERS_POLL", "must be a duration of at least 1m, such as 1h")
+			return
+		}
+		c.StaffWorkersPoll = d
+	}
 }
 
 // defaultStorecoveBaseURL is Storecove's production API (EHF and KID design

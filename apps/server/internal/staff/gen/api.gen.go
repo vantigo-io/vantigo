@@ -180,6 +180,27 @@ func (e StaffEndReason) Valid() bool {
 	}
 }
 
+// Defines values for StaffErasedKindKind.
+const (
+	StaffErasedKindKindA      StaffErasedKindKind = "A"
+	StaffErasedKindKindD      StaffErasedKindKind = "D"
+	StaffErasedKindKindHealth StaffErasedKindKind = "health"
+)
+
+// Valid indicates whether the value is a known member of the StaffErasedKindKind enum.
+func (e StaffErasedKindKind) Valid() bool {
+	switch e {
+	case StaffErasedKindKindA:
+		return true
+	case StaffErasedKindKindD:
+		return true
+	case StaffErasedKindKindHealth:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StaffGender.
 const (
 	StaffGenderFemale      StaffGender = "female"
@@ -857,6 +878,17 @@ type StaffEmploymentType string
 // StaffEndReason The a-melding's six end reasons (sluttårsak): employee_resigned, employer_terminated, contract_ended (a contract, engagement or temporary employment ran out), wrongly_reported (the employment should never have been reported), internal_change (a change in the organisation or an internal move), payroll_system_change (a change of payroll system or accountant).
 type StaffEndReason string
 
+// StaffErasedKind What one kind of erase removed (design S15). count is the number of items it removed — each column value nulled, each row deleted (a next of kin, a document) and each event payload rewritten.
+type StaffErasedKind struct {
+	Count int64 `json:"count"`
+
+	// Kind D — the personnel administration, a grace period after the last employment ended; health — the health documents, healthRetentionDays after it; A — one employment's pay terms, its contract and attest documents and the pay in its events, five years after the year it ended.
+	Kind StaffErasedKindKind `json:"kind"`
+}
+
+// StaffErasedKindKind D — the personnel administration, a grace period after the last employment ended; health — the health documents, healthRetentionDays after it; A — one employment's pay terms, its contract and attest documents and the pay in its events, five years after the year it ended.
+type StaffErasedKindKind string
+
 // StaffErasedPerson An erased person whose names and birth date match a new person's (POST /people/similar-erased), so a rehire is a choice rather than a duplicate made by accident.
 type StaffErasedPerson struct {
 	DisplayName    string `json:"displayName"`
@@ -874,10 +906,10 @@ type StaffEvent struct {
 	At    time.Time       `json:"at"`
 	Id    int64           `json:"id"`
 
-	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed or person_rehired; the kinds grow with the module.
+	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; the kinds grow with the module.
 	Kind string `json:"kind"`
 
-	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId.
+	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A", "count": n}]}, read by the documents group (the person and HR). A value the retention run erased reads "changed" to everyone.
 	Payload map[string]interface{} `json:"payload"`
 }
 
@@ -1502,7 +1534,7 @@ type StaffPersonalDataPerson struct {
 	WorkEmail   *string           `json:"workEmail,omitempty"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold and reassessment_not_due. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold, reassessment_not_due and retention_busy. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1519,10 +1551,51 @@ type StaffRelationshipType string
 // StaffRemunerationType defines model for StaffRemunerationType.
 type StaffRemunerationType string
 
-// StaffSettings The Staff settings delivery A1 exposes (design §3.6). The other columns of the settings row reach the contract with the deliveries that use them.
+// StaffRetentionDeletions One pass over the deletion ledger — the objects the erases and the document deletes queued for removal from the object store.
+type StaffRetentionDeletions struct {
+	// Attempted The ledger rows due and claimed, each one attempt at its object.
+	Attempted int32 `json:"attempted"`
+
+	// Succeeded The attempts the store confirmed; each such row is gone from the ledger.
+	Succeeded int32 `json:"succeeded"`
+}
+
+// StaffRetentionErased What one erase cycle removed, per kind, summed over the people it erased; a kind no erase ran for is absent.
+type StaffRetentionErased struct {
+	Kinds []StaffErasedKind `json:"kinds"`
+}
+
+// StaffRetentionRun One run of the retention worker's two steps — an erase cycle and a pass over the deletion ledger — made by hand.
+type StaffRetentionRun struct {
+	// Deletions One pass over the deletion ledger — the objects the erases and the document deletes queued for removal from the object store.
+	Deletions StaffRetentionDeletions `json:"deletions"`
+
+	// Erased What one erase cycle removed, per kind, summed over the people it erased; a kind no erase ran for is absent.
+	Erased StaffRetentionErased `json:"erased"`
+}
+
+// StaffRetentionState The retention run's state, derived from the deletion ledger and the history (no column of its own).
+type StaffRetentionState struct {
+	// FailingDeletions Ledger rows whose object the store has refused at least once; each is retried with a growing wait, without end, until the store confirms.
+	FailingDeletions int64 `json:"failingDeletions"`
+
+	// LastErasedAt When the retention run last erased anything — the latest erased event. Absent when it never has.
+	LastErasedAt *time.Time `json:"lastErasedAt,omitempty"`
+
+	// OldestPendingSince When the oldest object still in the ledger was queued. Absent when the ledger is empty.
+	OldestPendingSince *time.Time `json:"oldestPendingSince,omitempty"`
+
+	// PendingDeletions Objects queued for removal from the object store and not yet confirmed gone.
+	PendingDeletions int64 `json:"pendingDeletions"`
+}
+
+// StaffSettings The Staff settings (design §3.6) as far as the deliveries so far expose them, and the retention run's state, derived. The other columns of the settings row reach the contract with the deliveries that use them.
 type StaffSettings struct {
 	// EmployeeNumberPrefix What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none.
 	EmployeeNumberPrefix string `json:"employeeNumberPrefix"`
+
+	// HealthRetentionDays How many days after a person's last employment ended their health documents (those in a restricted category) are deleted by the retention run (design S15); 30 to 3650, 365 by default.
+	HealthRetentionDays int32 `json:"healthRetentionDays"`
 
 	// InjuryInsurer The occupational injury (yrkesskade) insurer. Absent when not set.
 	InjuryInsurer *string `json:"injuryInsurer,omitempty"`
@@ -1533,6 +1606,12 @@ type StaffSettings struct {
 	// PensionProvider The occupational pension (OTP) provider, which the § 14-6 check reads when a term names no social-security reference. Absent when not set.
 	PensionProvider *string `json:"pensionProvider,omitempty"`
 
+	// Retention The retention run's state, derived from the deletion ledger and the history (no column of its own).
+	Retention StaffRetentionState `json:"retention"`
+
+	// RetentionGraceDays How many days after a person's last employment ended the retention run erases their personnel administration (class D, design S15); 0 to 3650, 90 by default.
+	RetentionGraceDays int32 `json:"retentionGraceDays"`
+
 	// Revision The revision a change sends back in If-Match.
 	Revision int32 `json:"revision"`
 
@@ -1540,10 +1619,13 @@ type StaffSettings struct {
 	TimeZone string `json:"timeZone"`
 }
 
-// StaffSettingsRequest A full replace of the settings delivery A1 exposes.
+// StaffSettingsRequest A replace of the settings. The two retention periods left out keep the values they have; everything else is replaced.
 type StaffSettingsRequest struct {
 	// EmployeeNumberPrefix Up to eight letters, digits or hyphens. Left out, there is none.
 	EmployeeNumberPrefix *string `json:"employeeNumberPrefix,omitempty"`
+
+	// HealthRetentionDays 30 to 3650 days. Left out, it keeps its value.
+	HealthRetentionDays *int32 `json:"healthRetentionDays,omitempty"`
 
 	// InjuryInsurer Up to 200 characters. Left out, it is cleared.
 	InjuryInsurer *string `json:"injuryInsurer,omitempty"`
@@ -1553,6 +1635,9 @@ type StaffSettingsRequest struct {
 
 	// PensionProvider Up to 200 characters. Left out, it is cleared.
 	PensionProvider *string `json:"pensionProvider,omitempty"`
+
+	// RetentionGraceDays 0 to 3650 days. Left out, it keeps its value.
+	RetentionGraceDays *int32 `json:"retentionGraceDays,omitempty"`
 
 	// TimeZone An IANA name such as Europe/Oslo, which this server and its database must read the same way.
 	TimeZone string `json:"timeZone"`
@@ -2239,6 +2324,9 @@ type ServerInterface interface {
 	// PutStaffPeopleByIdUser Link a person to a user
 	// (PUT /api/v1/staff/people/{id}/user)
 	PutStaffPeopleByIdUser(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffRetentionRun Run retention now
+	// (POST /api/v1/staff/retention/run)
+	PostStaffRetentionRun(w http.ResponseWriter, r *http.Request)
 	// GetStaffSettings Get the Staff settings
 	// (GET /api/v1/staff/settings)
 	GetStaffSettings(w http.ResponseWriter, r *http.Request)
@@ -4203,6 +4291,20 @@ func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdUser(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// PostStaffRetentionRun operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffRetentionRun(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffRetentionRun(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStaffSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -4527,6 +4629,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/roles", wrapper.PutStaffPeopleByIdRoles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/user", wrapper.GetStaffPeopleByIdUser)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/user", wrapper.PutStaffPeopleByIdUser)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/retention/run", wrapper.PostStaffRetentionRun)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/settings", wrapper.GetStaffSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/settings", wrapper.PutStaffSettings)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/terms/{id}", wrapper.DeleteStaffTermsById)
@@ -9142,6 +9245,69 @@ func (response PutStaffPeopleByIdUser409ApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type PostStaffRetentionRunRequestObject struct {
+}
+
+type PostStaffRetentionRunResponseObject interface {
+	VisitPostStaffRetentionRunResponse(w http.ResponseWriter) error
+}
+
+type PostStaffRetentionRun200JSONResponse StaffRetentionRun
+
+func (response PostStaffRetentionRun200JSONResponse) VisitPostStaffRetentionRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffRetentionRun401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffRetentionRun401JSONResponse) VisitPostStaffRetentionRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffRetentionRun403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffRetentionRun403JSONResponse) VisitPostStaffRetentionRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffRetentionRun409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffRetentionRun409ApplicationProblemPlusJSONResponse) VisitPostStaffRetentionRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStaffSettingsRequestObject struct {
 }
 
@@ -9621,6 +9787,9 @@ type StrictServerInterface interface {
 	// PutStaffPeopleByIdUser Link a person to a user
 	// (PUT /api/v1/staff/people/{id}/user)
 	PutStaffPeopleByIdUser(ctx context.Context, request PutStaffPeopleByIdUserRequestObject) (PutStaffPeopleByIdUserResponseObject, error)
+	// PostStaffRetentionRun Run retention now
+	// (POST /api/v1/staff/retention/run)
+	PostStaffRetentionRun(ctx context.Context, request PostStaffRetentionRunRequestObject) (PostStaffRetentionRunResponseObject, error)
 	// GetStaffSettings Get the Staff settings
 	// (GET /api/v1/staff/settings)
 	GetStaffSettings(ctx context.Context, request GetStaffSettingsRequestObject) (GetStaffSettingsResponseObject, error)
@@ -11521,6 +11690,30 @@ func (sh *strictHandler) PutStaffPeopleByIdUser(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutStaffPeopleByIdUserResponseObject); ok {
 		if err := validResponse.VisitPutStaffPeopleByIdUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffRetentionRun operation middleware
+func (sh *strictHandler) PostStaffRetentionRun(w http.ResponseWriter, r *http.Request) {
+	var request PostStaffRetentionRunRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffRetentionRun(ctx, request.(PostStaffRetentionRunRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffRetentionRun")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffRetentionRunResponseObject); ok {
+		if err := validResponse.VisitPostStaffRetentionRunResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -91,6 +91,11 @@ const (
 	codePayrollFormatUnsupported = "payroll_format_unsupported"
 )
 
+// The refusal code of the retention run (delivery A2, Task 5): a 409.
+const (
+	codeRetentionBusy = "retention_busy"
+)
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.
@@ -239,4 +244,12 @@ func categoryRestricted() error {
 	code, title := codeCategoryRestricted, "Restricted category"
 	detail := "Documents in this category are health documents, which only staff:personal-data files, moves or removes."
 	return &refusal{status: http.StatusForbidden, problem: gen.StaffProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}}
+}
+
+// retentionBusy is the 409 POST /retention/run answers while the retention
+// worker's lease is held — by the worker on this replica or another, or by
+// another run by hand: one erase cycle at a time, and this one ran nothing.
+func retentionBusy() gen.StaffProblem {
+	return conflict(codeRetentionBusy, "Retention is running",
+		"The retention run is already running, here or on another server. Nothing was run; try again when it has finished.")
 }

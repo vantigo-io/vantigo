@@ -119,8 +119,10 @@ UPDATE staff.settings SET
     next_employee_number = $3,
     pension_provider = $4,
     injury_insurer = $5,
+    retention_grace_days = coalesce($6::smallint, retention_grace_days),
+    health_retention_days = coalesce($7::smallint, health_retention_days),
     revision = revision + 1,
-    updated_at = $6::timestamptz
+    updated_at = $8::timestamptz
 WHERE id = 1
 RETURNING id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at
 `
@@ -131,11 +133,14 @@ type UpdateSettingsParams struct {
 	NextEmployeeNumber   int64
 	PensionProvider      *string
 	InjuryInsurer        *string
+	RetentionGraceDays   *int16
+	HealthRetentionDays  *int16
 	Now                  time.Time
 }
 
-// UpdateSettings replaces the settings delivery A1 exposes and moves the
-// revision on. The columns later deliveries expose are left as they are.
+// UpdateSettings replaces the settings the contract exposes and moves the
+// revision on; a retention period left out (NULL) keeps its value. The
+// columns later deliveries expose are left as they are.
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (StaffSetting, error) {
 	row := q.db.QueryRow(ctx, updateSettings,
 		arg.TimeZone,
@@ -143,6 +148,8 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.NextEmployeeNumber,
 		arg.PensionProvider,
 		arg.InjuryInsurer,
+		arg.RetentionGraceDays,
+		arg.HealthRetentionDays,
 		arg.Now,
 	)
 	var i StaffSetting

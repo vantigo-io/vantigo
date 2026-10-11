@@ -16,20 +16,46 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
 
-// This file is the installation's Staff settings (design §3.6) as delivery A1
-// exposes them: the business time zone, the employee number sequence, the
-// pension provider and the injury insurer (plan reading 2: the contract grows
-// with the deliveries; the self-certification, account and retention columns
-// are already on the row). There is exactly one row, written by the
+// This file is the installation's Staff settings (design §3.6): the business
+// time zone, the employee number sequence, the pension provider and the
+// injury insurer (delivery A1), and the two retention periods with the
+// retention run's state, derived (delivery A2; plan reading 2: the contract
+// grows with the deliveries; the self-certification and account columns are
+// already on the row). There is exactly one row, written by the
 // migration, and a replace is guarded by its revision.
 
-// parsedSettings is one validated settings body.
+// parsedSettings is one validated settings body. A retention period left
+// out is nil, and keeps its value.
 type parsedSettings struct {
-	TimeZone        string
-	Prefix          string
-	Next            int64
-	PensionProvider *string
-	InjuryInsurer   *string
+	TimeZone            string
+	Prefix              string
+	Next                int64
+	PensionProvider     *string
+	InjuryInsurer       *string
+	RetentionGraceDays  *int16
+	HealthRetentionDays *int16
+}
+
+// The retention periods' bounds (design S15, plan "Exact values"): the grace
+// before the D erase may be nothing — an installation that erases at once —
+// and the health period at least a month; neither past ten years.
+const (
+	retentionGraceDaysMin  = 0
+	healthRetentionDaysMin = 30
+	retentionDaysMax       = 3650
+)
+
+// retentionPeriod is an optional period within [low, retentionDaysMax], or
+// the message refusing it.
+func retentionPeriod(what string, v *int32, low int) (*int16, string) {
+	if v == nil {
+		return nil, ""
+	}
+	if *v < int32(low) || *v > retentionDaysMax {
+		return nil, fmt.Sprintf("%s is %d to %d days", what, low, retentionDaysMax)
+	}
+	out := int16(*v)
+	return &out, ""
 }
 
 // parseSettings runs the settings' rules over a body and collects every
@@ -85,6 +111,10 @@ func parseSettings(body gen.StaffSettingsRequest) (parsedSettings, fieldErrors) 
 	f.add("pensionProvider", msg)
 	out.InjuryInsurer, msg = optionalText("An injury insurer", body.InjuryInsurer, providerMaxLength)
 	f.add("injuryInsurer", msg)
+	out.RetentionGraceDays, msg = retentionPeriod("The grace period before the D erase", body.RetentionGraceDays, retentionGraceDaysMin)
+	f.add("retentionGraceDays", msg)
+	out.HealthRetentionDays, msg = retentionPeriod("The health documents' period", body.HealthRetentionDays, healthRetentionDaysMin)
+	f.add("healthRetentionDays", msg)
 	return out, f
 }
 
@@ -104,11 +134,39 @@ func settings(ctx context.Context, q *store.Queries) (store.StaffSetting, error)
 // staff:manage only, which the contract's access rule enforces: the app reads
 // the zone from GET /meta, and nothing else here is anyone else's business.
 func (s *server) GetStaffSettings(ctx context.Context, _ gen.GetStaffSettingsRequestObject) (gen.GetStaffSettingsResponseObject, error) {
-	row, err := settings(ctx, store.New(s.deps.Pool))
+	q := store.New(s.deps.Pool)
+	row, err := settings(ctx, q)
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetStaffSettings200JSONResponse(settingsResponse(row)), nil
+	state, err := retentionState(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetStaffSettings200JSONResponse(settingsResponse(row, state)), nil
+}
+
+// retentionState is the retention block of the settings (plan reading 8),
+// derived from the deletion ledger and the history — no column holds it:
+// the objects waiting, those the store has refused at least once, the oldest
+// queued and the latest erased event.
+func retentionState(ctx context.Context, q *store.Queries) (gen.StaffRetentionState, error) {
+	ledger, err := q.RetentionLedgerState(ctx)
+	if err != nil {
+		return gen.StaffRetentionState{}, fmt.Errorf("staff: read the deletion ledger: %w", err)
+	}
+	out := gen.StaffRetentionState{PendingDeletions: ledger.Pending, FailingDeletions: ledger.Failing}
+	if oldest, err := q.OldestPendingDeletion(ctx); err == nil {
+		out.OldestPendingSince = &oldest
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return gen.StaffRetentionState{}, fmt.Errorf("staff: read the oldest ledger row: %w", err)
+	}
+	if last, err := q.LastErasedAt(ctx); err == nil {
+		out.LastErasedAt = &last
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return gen.StaffRetentionState{}, fmt.Errorf("staff: read the last erase: %w", err)
+	}
+	return out, nil
 }
 
 // PutStaffSettings Change the Staff settings
@@ -165,6 +223,8 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 			NextEmployeeNumber:   parsed.Next,
 			PensionProvider:      parsed.PensionProvider,
 			InjuryInsurer:        parsed.InjuryInsurer,
+			RetentionGraceDays:   parsed.RetentionGraceDays,
+			HealthRetentionDays:  parsed.HealthRetentionDays,
 			Now:                  s.deps.Clock(),
 		})
 		if err != nil {
@@ -178,7 +238,11 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 	if stale != nil {
 		return gen.PutStaffSettings409ApplicationProblemPlusJSONResponse(revisionConflict("settings", *stale, revision)), nil
 	}
-	return gen.PutStaffSettings200JSONResponse(settingsResponse(saved)), nil
+	state, err := retentionState(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutStaffSettings200JSONResponse(settingsResponse(saved, state)), nil
 }
 
 // badIfMatch is the field error an If-Match that carries no revision answers.

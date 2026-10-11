@@ -14,11 +14,11 @@ import (
 
 const similarErasedPath = "/api/v1/staff/people/similar-erased"
 
-// erasedRecord is a former employee the retention run has erased: an
-// employment ended at the end of 2024 with its terms, a document, a national
-// identity number still sealed (so a reveal has something to read), a
-// self-service link — every kind of row a write could touch — and erased_at
-// set as the run sets it.
+// erasedRecord is a former employee the retention run has erased — by the
+// worker's D erase itself, so what an erase nulls is null: an employment
+// ended at the end of 2024 with its terms, a contract document (class A,
+// kept), the national identity number HR had typed (erased with the rest of
+// class D), a self-service link — every kind of row a write could touch.
 type erasedRecord struct {
 	person     gen.StaffPerson
 	employment gen.StaffEmployment
@@ -38,7 +38,10 @@ func seedErased(t *testing.T, h *harness, hr *modtest.Client) erasedRecord {
 	doc := uploadDocument(t, hr, p.Id, pdfUpload(documentCategoryID(t, h, "contract")))
 	self, selfID := signIn(t, h)
 	link(t, h, p.Id, selfID)
-	h.Exec(t, `UPDATE staff.people SET erased_at = $2 WHERE id = $1`, p.Id, h.Now())
+	// Erased for real, by the retention worker's D erase: the employment
+	// ended more than the grace period ago (Task 3's review: the round trip
+	// must meet a really erased person, whose class D columns are null).
+	runCycle(t, h)
 	var person gen.StaffPerson
 	do(t, hr, http.MethodGet, personPath(p.Id), nil, http.StatusOK, &person)
 	return erasedRecord{person: person, employment: e, terms: listTerms(t, hr, e.Id)[0], document: doc, self: self, selfID: selfID}
@@ -146,8 +149,8 @@ func TestErased_EveryWriteIsRefused(t *testing.T) {
 
 // What an erased person still allows (plan reading 7): every read — the
 // record, the history, the documents and their downloads, the employments,
-// a reveal, both exports — and the unlink of their user, so the user can be
-// linked elsewhere.
+// a reveal (which finds nothing: the erase took the number), both exports —
+// and the unlink of their user, so the user can be linked elsewhere.
 func TestErased_ReadsAndTheUnlinkStayOpen(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -164,8 +167,8 @@ func TestErased_ReadsAndTheUnlinkStayOpen(t *testing.T) {
 			t.Errorf("GET %s: %d %s, want 200", path, got.Status, got.Body)
 		}
 	}
-	if got := hr.Do(http.MethodPost, nationalIDRevealPath(id), nil); got.Status != http.StatusOK {
-		t.Errorf("reveal: %d %s, want 200", got.Status, got.Body)
+	if got := hr.Do(http.MethodPost, nationalIDRevealPath(id), nil); got.Status != http.StatusNotFound {
+		t.Errorf("reveal: %d %s, want the 404 of nothing on file — not person_erased", got.Status, got.Body)
 	}
 	if got := r.self.Do(http.MethodGet, meExportPath, nil); got.Status != http.StatusOK {
 		t.Errorf("GET /me/export: %d %s, want 200", got.Status, got.Body)

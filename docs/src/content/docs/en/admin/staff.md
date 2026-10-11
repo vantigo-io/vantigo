@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, the bank-change mail, and the settings — the business time zone and the employee number sequence.
+description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
 sidebar:
   order: 44
 sources:
@@ -16,6 +16,9 @@ sources:
   - apps/server/internal/staff/people_export.go
   - apps/server/internal/staff/csvfile.go
   - apps/server/internal/staff/payroll.go
+  - apps/server/internal/staff/retention.go
+  - apps/server/internal/staff/retention_worker.go
+  - apps/server/internal/staff/object_deletions.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -297,6 +300,88 @@ can be recognised later — compute the hash of a file you hold
 `payroll_format_unsupported`; neither is recorded. The file holds everyone's pay terms:
 keep it where you keep payroll's own records, and delete your copy when payroll has it.
 
+## Retention
+
+Staff keeps a former employee's record only as long as the law lets it, and erases the
+rest on its own: the `staff-retention` worker looks every hour and erases what has
+become due. What is due, and what each erase removes, is in
+[the reference](/en/reference/staff/#retention); in short:
+
+- **Personnel administration** — contact details and address, the national identity
+  number and the bank account, the care-day fields, HR's notes and the terms' notes, the
+  next of kin, and the documents in categories of class D (certificates,
+  correspondence, other) — is erased **`retentionGraceDays`** (default 90) after the
+  person's last employment ended. The person is then marked erased, and the record is
+  read-only.
+- **Health documents** — those in a restricted category — are deleted
+  **`healthRetentionDays`** (default 365) after the last employment ended.
+- **Pay** — an employment's pay terms, seniority date and pay grade, its contracts and
+  attests, and the pay in its history — is erased **five years after the year the
+  employment ended**, employment by employment: a person who has come back keeps the
+  pay of their current employment while the old one's goes.
+
+**What an erase leaves**: the names, the birth date, the gender, the employee number,
+the employments and their terms other than pay, the roles, the link to a user, and the
+history's kinds and dates. So the record still answers who worked here, when and in
+what job; the history shows a value that was erased as *changed*, and an **Erased under
+the retention rules** entry names what went, by kind and count. A person with no
+employment, or one still employed, is never erased.
+
+### Set the periods
+
+1. As a user with `staff:manage`, read the settings: `GET /api/v1/staff/settings`.
+2. `PUT /api/v1/staff/settings` with the revision you read in `If-Match` and
+   `retentionGraceDays` (0 to 3650 days) and `healthRetentionDays` (30 to 3650). A body
+   that leaves either out keeps it.
+3. Verify: the answer carries the new periods. The next run judges by them; a period
+   made shorter can make many people due at once, and the worker takes fifty a run.
+
+### Turn the worker off, or change how often it looks
+
+The worker runs unless `STAFF_RETENTION_ENABLED=0`, every `STAFF_WORKERS_POLL` (default
+`1h`, at least `1m`) — in worker mode, and in api mode with `WORKERS_IN_PROCESS=1`
+([Installation](/en/admin/installation/)). An erase finds nothing due a second time, so
+an hourly look erases each day's due people once. Several replicas take turns through a
+lock; one runs the erase at a time.
+
+Turned off, nothing is erased on a schedule and the objects queued for deletion wait;
+the run by hand below still works.
+
+### Run it by hand
+
+`POST /api/v1/staff/retention/run` (`staff:manage`) runs the worker's erase and a pass
+over the deletion ledger now, with you as the erased entries' author. The answer says
+what was erased per kind and how many objects were deleted from the store. While the
+worker is running, it answers `retention_busy` (409); try again in a minute. The Staff
+app's Settings page offers the same as *Run retention now*.
+
+### The legal hold
+
+A person under a [legal hold](#put-a-person-under-a-legal-hold) is passed over by every
+erase, of every kind, for as long as the hold stands. Lift the hold when the matter is
+closed, and the next run erases what has been due meanwhile.
+
+### The deletion ledger
+
+An erase deletes a document's record at once and queues its file for deletion from the
+object store; so does deleting a document by hand, when the store does not confirm at
+once. The worker asks the store again on every look, waiting longer after each refusal
+(at most an hour), and never gives up — a legal erase is not best-effort.
+
+`GET /api/v1/staff/settings` reports the ledger in its `retention` block:
+`pendingDeletions` (files waiting), `failingDeletions` (files the store has refused at
+least once), `oldestPendingSince` and `lastErasedAt` (the last erase). A
+`failingDeletions` that stays above zero means the object store is refusing: check that
+storage is configured and reachable ([Object storage](/en/admin/object-storage/)) and
+the server log, which names the store's error. Once the store answers, the queued files
+go at the next look.
+
+### After an erase
+
+An erased person who comes back is [rehired](#rehire-an-erased-person) on the same
+record: what the erase removed stays empty until you type it again, and the rehired
+employment's pay is untouched by the old one's erase.
+
 ## The bank-change mail
 
 When a bank account is set or changed, the person is mailed — at their private email
@@ -333,6 +418,13 @@ changing the settings at once cannot overwrite each other unseen.
 - **Pension provider** and **injury insurer** (`pensionProvider`,
   `injuryInsurer`). The occupational pension (OTP) provider and the occupational
   injury insurer, which the employment contract check reads.
+- **Retention periods** (`retentionGraceDays`, 90, from 0 to 3650, and
+  `healthRetentionDays`, 365, from 30 to 3650): how many days after a person's last
+  employment ended their personnel administration and their health documents are
+  erased ([Retention](#retention)). Left out of a replace, each keeps its value.
+- **Retention state** (`retention`, read-only): the deletion ledger's pending and
+  failing files, the oldest pending, and the last erase ([The deletion
+  ledger](#the-deletion-ledger)).
 
 ## What can go wrong
 
@@ -380,3 +472,12 @@ changing the settings at once cannot overwrite each other unseen.
   ignored. Correct it to one of the template's names.
 - **`export_too_many`.** The register holds more people than `STAFF_IMPORT_MAX_ROWS`.
   Raise it, within its bounds, and restart.
+- **`retention_busy`.** The retention worker is running, on this server or another.
+  Wait a minute and run it again.
+- **`failingDeletions` above zero.** The object store refuses to delete the queued
+  files. Fix the storage; the worker retries without end.
+- **A retention period refused.** `retentionGraceDays` is 0 to 3650 days,
+  `healthRetentionDays` 30 to 3650.
+- **Nobody is erased.** The worker is off (`STAFF_RETENTION_ENABLED=0`), the person
+  is under a legal hold, still has an employment that has not ended, or has none at
+  all; or the period has not run yet.

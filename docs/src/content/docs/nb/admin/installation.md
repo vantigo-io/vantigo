@@ -428,7 +428,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   og KID-avtalen — er en egen prosedyre ([E-faktura](/nb/admin/e-invoicing/)).
 - `vantigo.env.example` dokumenterer også `STAFF_IMPORT_MAX_ROWS`, hvor mange personer
   én import i Ansatte tar og én eksport skriver
-  ([Ansatte](/nb/admin/staff/#importer-og-eksporter-registeret)).
+  ([Ansatte](/nb/admin/staff/#importer-og-eksporter-registeret)), og
+  oppbevaringsarbeiderens `STAFF_RETENTION_ENABLED` (standard på) og
+  `STAFF_WORKERS_POLL` (standard `1h`, minst `1m`), som sletter det oppbevaringsreglene
+  ikke lenger lar registeret beholde, og fullfører slettingen av dokumentenes filer
+  ([Ansatte](/nb/admin/staff/#oppbevaring)).
 - `vantigo.env.example` dokumenterer de statiske OIDC- og SCIM-innstillingene.
   Konfigurasjonen er bundet til utrullingen, og endringer krever omstart. Ikke legg
   leverandør- eller SCIM-hemmeligheter i filer under versjonskontroll — injiser

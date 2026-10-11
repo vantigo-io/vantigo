@@ -421,7 +421,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   procedure ([E-invoicing](/en/admin/e-invoicing/)).
 - `vantigo.env.example` also documents `STAFF_IMPORT_MAX_ROWS`, how many people one
   Staff import takes and one Staff export writes
-  ([Staff](/en/admin/staff/#import-and-export-the-register)).
+  ([Staff](/en/admin/staff/#import-and-export-the-register)), and the Staff retention
+  worker's `STAFF_RETENTION_ENABLED` (default on) and `STAFF_WORKERS_POLL` (default
+  `1h`, at least `1m`), which erase what the retention rules no longer let the register
+  keep and finish the deletion of documents' files ([Staff](/en/admin/staff/#retention)).
 - `vantigo.env.example` documents the static OIDC and SCIM settings. Configuration is
   deployment-bound and changes require a restart. Do not put provider or SCIM secrets
   in source-controlled files — inject `OIDC_CLIENT_SECRET`, `SCIM_TOKEN`,

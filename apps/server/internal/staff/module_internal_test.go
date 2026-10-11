@@ -58,8 +58,8 @@ func TestPermissions_AreTheCatalogTheDesignNames(t *testing.T) {
 }
 
 // Staff depends on nobody but identity (design S1): it names itself, provides
-// no contract and fills no slot, and contributes no background worker in
-// delivery A1. A change that quietly made it provide or require one fails
+// no contract and fills no slot; its one background worker is its own
+// retention run (TestModule_ContributesItsWorkers names it). A change that quietly made it provide or require one fails
 // here as well as in internal/config.
 func TestModule_DependsOnNobody(t *testing.T) {
 	t.Parallel()
@@ -74,7 +74,7 @@ func TestModule_DependsOnNobody(t *testing.T) {
 	if m.CustomerReferences != nil || m.CustomerPersonalData != nil || m.InvoicedWork != nil {
 		t.Error("the module fills a many-provider slot, want none: it holds no customer and no invoiced work")
 	}
-	if m.Workers != nil {
-		t.Error("the module contributes a background worker, want none in delivery A1")
+	if m.Workers == nil {
+		t.Error("the module contributes no background worker, want staff-retention (delivery A2)")
 	}
 }

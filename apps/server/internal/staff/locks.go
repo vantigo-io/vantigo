@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
@@ -52,7 +53,25 @@ const (
 // runs — judged on the row the lock now holds, so no erase can slip in
 // between the check and the write.
 func (s *server) withPersonLock(ctx context.Context, personID int64, rule erasedRule, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) error {
-	return s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+	return s.withLockedTx(ctx, lockingPerson(personID, rule, fn))
+}
+
+// withPersonLockOn is withPersonLock on conn — the retention worker's lease
+// connection (design §4 Locking, the plan's first worker discipline): the
+// erase cycle holds that one connection for its lease and runs every
+// person's transaction on it, so it never waits on the pool for a second
+// while holding the first (the deadlock customers met at startup, PR #124).
+// The transaction is marked locked as withPersonLock's is, so no call out of
+// the module is made from inside it either.
+func (s *server) withPersonLockOn(ctx context.Context, conn *pgxpool.Conn, personID int64, rule erasedRule, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) error {
+	return withLockedTxOn(ctx, conn, lockingPerson(personID, rule, fn))
+}
+
+// lockingPerson is fn behind the person's lock and the read-only rule: the
+// person's row taken FOR NO KEY UPDATE, a person who does not exist
+// errPersonNotFound, an erased one person_erased when rule refuses it.
+func lockingPerson(personID int64, rule erasedRule, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+	return func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		row, err := txq.LockPerson(ctx, personID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errPersonNotFound
@@ -63,7 +82,7 @@ func (s *server) withPersonLock(ctx context.Context, personID int64, rule erased
 			return personErased()
 		}
 		return fn(ctx, tx, txq)
-	})
+	}
 }
 
 // lockManagerGraph takes the manager-graph advisory lock for the rest of the

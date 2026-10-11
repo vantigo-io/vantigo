@@ -389,6 +389,9 @@ type fakeObjectStore struct {
 	getErr    error
 	deleteErr error
 	deletes   []string
+	// onDelete runs at the start of every Delete, outside the lock: the way
+	// a test sees what the caller holds at the moment it calls the store.
+	onDelete func(key string)
 }
 
 var _ storage.ObjectStore = (*fakeObjectStore)(nil)
@@ -433,6 +436,12 @@ func (s *fakeObjectStore) Exists(_ context.Context, key string) (bool, error) {
 
 func (s *fakeObjectStore) Delete(_ context.Context, key string) error {
 	s.mu.Lock()
+	hook := s.onDelete
+	s.mu.Unlock()
+	if hook != nil {
+		hook(key)
+	}
+	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.deletes = append(s.deletes, key)
 	if s.deleteErr != nil {
@@ -440,6 +449,12 @@ func (s *fakeObjectStore) Delete(_ context.Context, key string) error {
 	}
 	delete(s.objects, key)
 	return nil
+}
+
+func (s *fakeObjectStore) whenDeleting(fn func(key string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onDelete = fn
 }
 
 func (s *fakeObjectStore) failPut(err error) {

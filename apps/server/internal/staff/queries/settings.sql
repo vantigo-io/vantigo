@@ -11,14 +11,17 @@ SELECT * FROM staff.settings WHERE id = 1;
 SELECT * FROM staff.settings WHERE id = 1 FOR UPDATE;
 
 -- name: UpdateSettings :one
--- UpdateSettings replaces the settings delivery A1 exposes and moves the
--- revision on. The columns later deliveries expose are left as they are.
+-- UpdateSettings replaces the settings the contract exposes and moves the
+-- revision on; a retention period left out (NULL) keeps its value. The
+-- columns later deliveries expose are left as they are.
 UPDATE staff.settings SET
     time_zone = @time_zone,
     employee_number_prefix = @employee_number_prefix,
     next_employee_number = @next_employee_number,
     pension_provider = @pension_provider,
     injury_insurer = @injury_insurer,
+    retention_grace_days = coalesce(sqlc.narg(retention_grace_days)::smallint, retention_grace_days),
+    health_retention_days = coalesce(sqlc.narg(health_retention_days)::smallint, health_retention_days),
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = 1

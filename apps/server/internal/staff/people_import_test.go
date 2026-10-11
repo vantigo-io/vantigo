@@ -503,7 +503,7 @@ func TestImport_ErasedPersonsSealedOnlyRowIsRefused(t *testing.T) {
 	erased := seedErased(t, h, pd)
 	id, number := erased.person.Id, erased.person.EmployeeNumber
 	stored := func() (string, string) {
-		return modtest.One[string](t, h.Harness, `SELECT encode(national_id_mac, 'hex') FROM staff.people WHERE id = $1`, id),
+		return modtest.One[string](t, h.Harness, `SELECT coalesce(encode(national_id_mac, 'hex'), '') FROM staff.people WHERE id = $1`, id),
 			modtest.One[string](t, h.Harness, `SELECT coalesce(encode(bank_account_sealed, 'hex'), '') FROM staff.people WHERE id = $1`, id)
 	}
 	mac, account := stored()
