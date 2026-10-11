@@ -120,11 +120,13 @@ ON CONFLICT (object_key) DO NOTHING;
 
 -- name: RecordObjectDeletionFailure :exec
 -- RecordObjectDeletionFailure records one failed attempt at removing an
--- object on its ledger row: the attempt counted, why, and when the next is due.
+-- object on its ledger row: the attempt counted, why, and when the next is
+-- due; the claim is given up, so the row is the next due pass's.
 UPDATE staff.object_deletions SET
     attempts = attempts + 1,
     last_error = @last_error,
-    next_attempt_at = @next_attempt_at::timestamptz
+    next_attempt_at = @next_attempt_at::timestamptz,
+    claimed_until = NULL
 WHERE object_key = @object_key;
 
 -- name: DeleteObjectDeletion :exec

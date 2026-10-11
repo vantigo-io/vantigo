@@ -118,6 +118,16 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 		"withPersonLock": func(fn func(context.Context) error) error {
 			return s.withPersonLock(ctx, personID, refuseErased, func(ctx context.Context, _ pgx.Tx, _ *store.Queries) error { return fn(ctx) })
 		},
+		// The retention erase's lock, on a connection of its own (the
+		// lease's): the same mark, the same refusal.
+		"withPersonLockOn": func(fn func(context.Context) error) error {
+			conn, err := pool.Acquire(ctx)
+			if err != nil {
+				return err
+			}
+			defer conn.Release()
+			return s.withPersonLockOn(ctx, conn, personID, allowErased, func(ctx context.Context, _ pgx.Tx, _ *store.Queries) error { return fn(ctx) })
+		},
 		"withReadTx": func(fn func(context.Context) error) error {
 			return s.withReadTx(ctx, func(ctx context.Context, _ *store.Queries) error { return fn(ctx) })
 		},

@@ -1028,6 +1028,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/retention/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run retention now
+         * @description Runs the staff-retention worker's two steps once, now (design S15): an erase cycle — at most fifty people, under the worker's lease, each person's erases in one transaction with one erased event naming the caller as its actor — and one pass over the deletion ledger, at most a hundred objects. Exactly what the worker does every poll, by the same code.
+         *
+         *     The erase cycle takes what is due today in the settings' time zone and not under a legal hold: D — a person not yet erased, with at least one employment and every one ended more than retentionGraceDays ago, loses the personnel administration (contact and address, the sealed identifiers, the care-day fields, HR's notes, the terms' notes, the next of kin, the documents of class D, and those values in the history's payloads) and is marked erased; health — a person whose last employment ended more than healthRetentionDays ago loses the documents in restricted categories; A — an employment that ended in a year more than five years past loses its pay terms, its documents of class A and the pay in its events. What remains — the names, the birth date, the employee number, the employments and their other terms, the roles, the link, the history's kinds and dates — stays.
+         */
+        post: operations["postStaffRetentionRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/settings": {
         parameters: {
             query?: never;
@@ -1037,12 +1059,12 @@ export interface paths {
         };
         /**
          * Get the Staff settings
-         * @description The installation's Staff settings as delivery A1 exposes them: the business time zone, the employee number sequence, the pension provider and the occupational injury insurer.
+         * @description The installation's Staff settings: the business time zone, the employee number sequence, the pension provider, the occupational injury insurer and the two retention periods — and the retention run's state, derived from the deletion ledger and the history.
          */
         get: operations["getStaffSettings"];
         /**
          * Change the Staff settings
-         * @description Replaces the settings delivery A1 exposes; pensionProvider and injuryInsurer left out are cleared. The time zone must be an IANA name both this server and its database read the same way. The prefix and the next number must together make an employee number of at most 16 characters.
+         * @description Replaces the settings; pensionProvider and injuryInsurer left out are cleared, retentionGraceDays and healthRetentionDays left out keep their values. The time zone must be an IANA name both this server and its database read the same way. The prefix and the next number must together make an employee number of at most 16 characters. retentionGraceDays is 0 to 3650 days, healthRetentionDays 30 to 3650.
          */
         put: operations["putStaffSettings"];
         post?: never;
@@ -1477,9 +1499,9 @@ export interface components {
             at: string;
             /** Format: int64 */
             id: number;
-            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed or person_rehired; the kinds grow with the module. */
+            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; the kinds grow with the module. */
             kind: string;
-            /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. */
+            /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A", "count": n}]}, read by the documents group (the person and HR). A value the retention run erased reads "changed" to everyone. */
             payload: {
                 [key: string]: unknown;
             };
@@ -1998,7 +2020,7 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold and reassessment_not_due. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold, reassessment_not_due and retention_busy. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -2018,7 +2040,62 @@ export interface components {
         StaffRelationshipType: "ordinary" | "maritime" | "freelancer" | "pension_or_other";
         /** @enum {string} */
         StaffRemunerationType: "monthly" | "hourly" | "commission" | "fee" | "piecework";
-        /** @description The Staff settings delivery A1 exposes (design §3.6). The other columns of the settings row reach the contract with the deliveries that use them. */
+        /** @description What one kind of erase removed (design S15). count is the number of items it removed — each column value nulled, each row deleted (a next of kin, a document) and each event payload rewritten. */
+        StaffErasedKind: {
+            /** Format: int64 */
+            count: number;
+            /**
+             * @description D — the personnel administration, a grace period after the last employment ended; health — the health documents, healthRetentionDays after it; A — one employment's pay terms, its contract and attest documents and the pay in its events, five years after the year it ended.
+             * @enum {string}
+             */
+            kind: "D" | "health" | "A";
+        };
+        /** @description One pass over the deletion ledger — the objects the erases and the document deletes queued for removal from the object store. */
+        StaffRetentionDeletions: {
+            /**
+             * Format: int32
+             * @description The ledger rows due and claimed, each one attempt at its object.
+             */
+            attempted: number;
+            /**
+             * Format: int32
+             * @description The attempts the store confirmed; each such row is gone from the ledger.
+             */
+            succeeded: number;
+        };
+        /** @description What one erase cycle removed, per kind, summed over the people it erased; a kind no erase ran for is absent. */
+        StaffRetentionErased: {
+            kinds: components["schemas"]["StaffErasedKind"][];
+        };
+        /** @description One run of the retention worker's two steps — an erase cycle and a pass over the deletion ledger — made by hand. */
+        StaffRetentionRun: {
+            deletions: components["schemas"]["StaffRetentionDeletions"];
+            erased: components["schemas"]["StaffRetentionErased"];
+        };
+        /** @description The retention run's state, derived from the deletion ledger and the history (no column of its own). */
+        StaffRetentionState: {
+            /**
+             * Format: int64
+             * @description Ledger rows whose object the store has refused at least once; each is retried with a growing wait, without end, until the store confirms.
+             */
+            failingDeletions: number;
+            /**
+             * Format: date-time
+             * @description When the retention run last erased anything — the latest erased event. Absent when it never has.
+             */
+            lastErasedAt?: string;
+            /**
+             * Format: date-time
+             * @description When the oldest object still in the ledger was queued. Absent when the ledger is empty.
+             */
+            oldestPendingSince?: string;
+            /**
+             * Format: int64
+             * @description Objects queued for removal from the object store and not yet confirmed gone.
+             */
+            pendingDeletions: number;
+        };
+        /** @description The Staff settings (design §3.6) as far as the deliveries so far expose them, and the retention run's state, derived. The other columns of the settings row reach the contract with the deliveries that use them. */
         StaffSettings: {
             /** @description What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none. */
             employeeNumberPrefix: string;
@@ -2029,8 +2106,19 @@ export interface components {
              * @description The number the next generated employee number carries after the prefix, unpadded.
              */
             nextEmployeeNumber: number;
+            /**
+             * Format: int32
+             * @description How many days after a person's last employment ended their health documents (those in a restricted category) are deleted by the retention run (design S15); 30 to 3650, 365 by default.
+             */
+            healthRetentionDays: number;
             /** @description The occupational pension (OTP) provider, which the § 14-6 check reads when a term names no social-security reference. Absent when not set. */
             pensionProvider?: string;
+            retention: components["schemas"]["StaffRetentionState"];
+            /**
+             * Format: int32
+             * @description How many days after a person's last employment ended the retention run erases their personnel administration (class D, design S15); 0 to 3650, 90 by default.
+             */
+            retentionGraceDays: number;
             /**
              * Format: int32
              * @description The revision a change sends back in If-Match.
@@ -2039,10 +2127,15 @@ export interface components {
             /** @description The business time zone, an IANA name. */
             timeZone: string;
         };
-        /** @description A full replace of the settings delivery A1 exposes. */
+        /** @description A replace of the settings. The two retention periods left out keep the values they have; everything else is replaced. */
         StaffSettingsRequest: {
             /** @description Up to eight letters, digits or hyphens. Left out, there is none. */
             employeeNumberPrefix?: string;
+            /**
+             * Format: int32
+             * @description 30 to 3650 days. Left out, it keeps its value.
+             */
+            healthRetentionDays?: number;
             /** @description Up to 200 characters. Left out, it is cleared. */
             injuryInsurer?: string;
             /**
@@ -2052,6 +2145,11 @@ export interface components {
             nextEmployeeNumber: number;
             /** @description Up to 200 characters. Left out, it is cleared. */
             pensionProvider?: string;
+            /**
+             * Format: int32
+             * @description 0 to 3650 days. Left out, it keeps its value.
+             */
+            retentionGraceDays?: number;
             /** @description An IANA name such as Europe/Oslo, which this server and its database must read the same way. */
             timeZone: string;
         };
@@ -5953,6 +6051,53 @@ export interface operations {
             };
         };
     };
+    postStaffRetentionRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — what the cycle erased and what the ledger pass attempted; a run that found nothing due answers no kinds. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffRetentionRun"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — retention_busy: the worker, on this replica or another, is running an erase cycle now; nothing was run. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
     getStaffSettings: {
         parameters: {
             query?: never;
@@ -6016,7 +6161,7 @@ export interface operations {
                     "application/json": components["schemas"]["StaffSettings"];
                 };
             };
-            /** @description Bad Request — a field did not pass; employee_number_too_long when the prefix and the next number make a number longer than 16 characters. */
+            /** @description Bad Request — a field did not pass (a retention period out of its bounds among them); employee_number_too_long when the prefix and the next number make a number longer than 16 characters. */
             400: {
                 headers: {
                     [name: string]: unknown;

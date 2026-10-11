@@ -1289,3 +1289,31 @@ func TestLoad_StaffImportMaxRows(t *testing.T) {
 		}
 	}
 }
+
+// The Staff retention worker's two settings (staff records plan, Task 5): its
+// switch, on unless turned off — a legal erase is the delivery, not an extra,
+// and an installation that says nothing must still keep it — and its poll,
+// an hour by default and never under a minute: every poll takes a pool
+// connection for the lease and runs a pass over the deletion ledger, and a
+// cadence of seconds would be a hot loop against the store, not a schedule.
+func TestLoad_StaffRetentionWorker(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.StaffRetentionEnabled {
+		t.Error("STAFF_RETENTION_ENABLED unset did not default to on")
+	}
+	if cfg.StaffWorkersPoll != time.Hour {
+		t.Errorf("StaffWorkersPoll = %v, want 1h", cfg.StaffWorkersPoll)
+	}
+	tuned := mustLoad(t, with(validEnv(), "STAFF_RETENTION_ENABLED", "0", "STAFF_WORKERS_POLL", "1m"))
+	if tuned.StaffRetentionEnabled || tuned.StaffWorkersPoll != time.Minute {
+		t.Errorf("tuned = %v/%v, want off and 1m", tuned.StaffRetentionEnabled, tuned.StaffWorkersPoll)
+	}
+	if msg := loadError(t, with(validEnv(), "STAFF_RETENTION_ENABLED", "yes")); !strings.Contains(msg, `STAFF_RETENTION_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	for _, v := range []string{"0s", "soon", "-1h", "59s"} {
+		if msg := loadError(t, with(validEnv(), "STAFF_WORKERS_POLL", v)); !strings.Contains(msg, "STAFF_WORKERS_POLL: must be a duration of at least 1m") {
+			t.Errorf("%s: error = %q", v, msg)
+		}
+	}
+}

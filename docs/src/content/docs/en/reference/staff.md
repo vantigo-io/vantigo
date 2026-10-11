@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the erased state, the legal hold and the reassessment, the settings, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the settings, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -32,7 +32,8 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 [documents](#documents) and their [categories](#categories-and-classes), the
 [personal-data exports](#the-personal-data-exports), the register's
 [import and export](#the-registers-import-and-export), the
-[payroll export](#the-payroll-export), the [erased state](#the-erased-state),
+[payroll export](#the-payroll-export), [retention](#retention) and its
+[deletion ledger](#the-deletion-ledger), the [erased state](#the-erased-state),
 the [legal hold](#the-legal-hold) and the [reassessment](#the-reassessment), [how a refusal
 looks](#refusals-and-revisions), the [locks](#locks) and the [endpoints](#endpoints).
 
@@ -57,7 +58,8 @@ Delivery A2's migration, `00043_staff_records.sql`, adds three tables and no col
 `documents` (unique `object_key`; indexed by person and by category; a nullable
 `employment_id`; no `deleted_at` — a document's row is deleted, never marked) and
 `object_deletions`, the ledger of objects still to be removed from the store (unique
-`object_key`; indexed by `next_attempt_at`).
+`object_key`; indexed by `next_attempt_at`). Every column of the tables a person's
+erase reaches has a retention class, listed [under Retention](#the-classes-column-by-column).
 
 ## Permissions
 
@@ -66,8 +68,8 @@ Delivery A2's migration, `00043_staff_records.sql`, adds three tables and no col
 | `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** Your absence arrives with delivery B. | no |
 | `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the calendar with types hidden. The calendar arrives with B. | no |
 | `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. Registered now; grants nothing until absence arrives with B. | no |
-| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, the settings, documents other than health and their categories, the account flag, imports and exports. The imports and exports arrive later in A2, the account flag with C. | yes |
-| `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. Erasure arrives later in A2, the milestones' notes and the HR-only types with B. | yes |
+| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, the settings, documents other than health and their categories, the account flag, imports and exports, the retention run by hand. The imports and exports arrive later in A2, the account flag with C. | yes |
+| `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. Erasure is the [retention run](#retention)'s, on its schedule (run by hand by `staff:manage`); the milestones' notes and the HR-only types arrive with B. | yes |
 
 All five are in the category "Staff" and delegable. The Owner holds them through the
 wildcard; anyone else needs a role that grants them. Each operation's rule is in the
@@ -83,9 +85,9 @@ rule. The capability absence adds (`canDecide`) arrives with it.
 ## Settings
 
 One row, written by the migration. `GET /settings` and `PUT /settings` are
-`staff:manage`'s. This delivery's contract exposes five fields; the others on the row —
-the self-certification policy, the account and retention days, the thresholds — reach
-the contract with the deliveries that use them.
+`staff:manage`'s. The contract exposes seven fields and a derived block; the others on
+the row — the self-certification policy, the account days, the thresholds — reach the
+contract with the deliveries that use them.
 
 | Field | Default | Rule |
 | --- | --- | --- |
@@ -94,6 +96,13 @@ the contract with the deliveries that use them.
 | `nextEmployeeNumber` | 1 | 1 or more. With the prefix, at most 16 characters. |
 | `pensionProvider` | — | Up to 200 characters; left out, cleared. |
 | `injuryInsurer` | — | Up to 200 characters; left out, cleared. |
+| `retentionGraceDays` | 90 | 0 to 3650 days from the last employment's end to the [D erase](#what-is-due); left out, kept. |
+| `healthRetentionDays` | 365 | 30 to 3650 days from the last employment's end to the [health erase](#what-is-due); left out, kept. |
+
+`GET /settings` and the answer of `PUT /settings` also carry the read-only
+[`retention` block](#the-settings-and-the-retention-block), derived from the deletion
+ledger and the history: `pendingDeletions`, `failingDeletions`, `oldestPendingSince`,
+`lastErasedAt`.
 
 A generated employee number is the prefix and the next number, unpadded: `EMP-` and 7
 make `EMP-7`. An employee number is at most 16 characters (Entra's `employeeId`
@@ -106,8 +115,10 @@ people table, so a generation reads the table — O(N) in the people, which at a
 company's size is nothing and is accepted as such; an employment's `-n` is found the
 same way among the employments.
 
-`PUT /settings` is a full replace guarded by `If-Match` (below). Every bad field is a
-400 naming it; the whole request is judged before anything is written.
+`PUT /settings` is a full replace guarded by `If-Match` (below) — but for the two
+retention periods, which a body that leaves them out keeps. Every bad field is a 400
+naming it (a period out of its bounds is a plain field error); the whole request is
+judged before anything is written.
 
 ## The business time zone
 
@@ -396,6 +407,7 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `people_imported` | Installation-level (no person): `rows`, `created`, `updated`, `failed` of a real [import](#the-registers-import-and-export); each row's own events name the people it wrote. |
 | `people_exported` | Installation-level (no person): `rows`, the people the [export](#the-registers-import-and-export) wrote. |
 | `payroll_exported` | Installation-level (no person): `month`, `format`, `rows` and `sha256` (hex) of the [payroll file](#the-payroll-export) answered; no personal data, so no payload class. |
+| `erased` | No fields: `kinds`, `[{kind, count}]` — what one [erase](#what-an-erase-does) removed per kind (`D`, `health`, `A`); the actor is the installation's `system` for the worker, the caller for a run by hand; no payload class. |
 
 `GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
 the person themselves, a manager of theirs today, `staff:manage` and
@@ -414,7 +426,9 @@ a terms row's `employmentId` and `termsId` are kept for everyone who reads the
 history. A sealed value is never in a payload. Each event also stores the retention
 classes its payload touches (`payload_classes`), which the erase uses; a document's
 event takes its classes from the category it was filed under (before and after, for a
-move).
+move). A value the [retention run](#what-an-erase-does) has erased reads `"changed"`
+to everyone, HR included; an `erased` event's `kinds` are read by the documents
+group and are an empty payload to anyone else.
 
 A **document's event** is shaped by one group for the whole event, not per field: the
 **documents** group (the person, `staff:manage`, `staff:personal-data`), or — when its
@@ -892,15 +906,19 @@ person never writes their own documents, and anyone else gets the uniform 403.
   ledger row for the retention worker to finish, with the attempt recorded on it —
   `attempts` 1, `last_error`, and `next_attempt_at` two seconds on (the ledger's
   backoff: doubling from two seconds, at most an hour) — so it counts as failing; the
-  request still answers 204: the document is gone. Deleting by hand and the retention erase share this path.
+  request still answers 204: the document is gone. Deleting by hand and the retention
+  erase share this path: the same [ledger](#the-deletion-ledger) row, finished by the
+  same attempt.
 
 ### Categories and classes
 
 Every document is filed under a category, whose **retention class** decides when it is
-erased: **A** (pay and contract documentation: five years after the year the
-employment ended), **D** (personnel administration: with the record, after the
-grace) or **E** (health). A category of class E is **restricted** — its documents are
-health documents — and only class E is. Six are seeded:
+erased ([Retention](#what-is-due)): **A** (pay and contract documentation: five years
+after the year of the employment it is filed against — or, filed against none, of the
+person's last employment), **D** (personnel administration: with the record, after
+`retentionGraceDays`) or **E** (health: `healthRetentionDays` after the last
+employment ended). A category of class E is **restricted** — its documents are health
+documents — and only class E is. Six are seeded:
 
 | Key | English | Norwegian | Class | Restricted |
 | --- | --- | --- | --- | --- |
@@ -1169,10 +1187,178 @@ file whose export could not be recorded is not answered. The file is served as
 an attachment named `staff-payroll-YYYY-MM.csv`, with `Cache-Control: private,
 no-store` and `X-Content-Type-Options: nosniff`.
 
+## Retention
+
+The register keeps what the law lets it keep, and the retention run erases the rest
+(design S15). Every column of the tables the erase reaches has a **retention class**:
+
+- **A** — pay and contract documentation: an employment's pay terms, its contract and
+  attest documents and the pay in its events, kept five years after the year the
+  employment ended.
+- **C** — who was employed when: names, birth date, gender, employee number,
+  employments, terms other than pay, roles, the link, the history's kinds and dates.
+  Kept.
+- **D** — personnel administration: contact and address, the sealed identifiers, the
+  care-day fields, HR's notes, the terms' notes, the next of kin, and documents of
+  class D. Erased a grace period after the last employment ended.
+- **E** — health: health documents (a restricted category) and the values of their
+  events. Erased a longer period after the last employment ended, until delivery B
+  gives health documents a sick case's schedule; the self-certification withdrawal is
+  E on B's schedule, and no erase reaches it before B.
+- **F** — the legal hold, which stops every erase and is erased by none.
+
+### The classes, column by column
+
+The module's `columnClasses` (`retention.go`) is the erase's one source: the
+statements that null a class are built from it, a test walks the database's columns of
+these tables and fails on one it does not know (or a key no column has), a second
+holds every payload field to its column's class, and a third holds this table to it.
+
+| Table | Class | Columns |
+| --- | --- | --- |
+| `people` | C | `id`, `employee_number`, `given_name`, `family_name`, `display_name`, `birth_date`, `gender`, `national_id_kind`, `work_country`, `preferred_language`, `provision_account`, `provision_from`, `account_email_kind`, `erased_at`, `reassessed_at`, `reassessed_by_user_id`, `revision`, `created_at`, `updated_at` |
+| `people` | D | `national_id_sealed`, `national_id_mac`, `national_id_country`, `work_email`, `phone_work`, `phone_mobile`, `phone_private`, `private_email`, `street`, `postal_code`, `city`, `country`, `bank_account_sealed`, `bank_account_last4`, `bank_account_kind`, `children_under_12`, `sole_carer`, `chronically_ill_children`, `notes` |
+| `people` | E | `self_cert_withdrawn_until`, `self_cert_withdrawn_reason` |
+| `people` | F | `legal_hold`, `legal_hold_reason`, `legal_hold_by_user_id`, `legal_hold_at` |
+| `next_of_kin` | D | every column: `id`, `person_id`, `position`, `name`, `relationship`, `phone`, `note`, `created_at`, `updated_at` |
+| `person_roles` | C | every column: `id`, `person_id`, `role`, `from_date`, `to_date`, `created_at`, `updated_at` |
+| `employments` | C | every column: `id`, `person_id`, `employment_number`, `relationship_type`, `business_unit_id`, `start_date`, `end_date`, `end_reason`, `contract_signed_at`, `revision`, `created_at`, `updated_at` |
+| `employment_terms` | C | `id`, `employment_id`, `valid_from`, `employment_type`, `temporary_ground`, `expected_end_date`, `appointment_form`, `hired_out_to`, `fte_percent`, `working_hours_scheme`, `full_time_hours_per_week`, `occupation_code`, `title`, `employee_type`, `department_id`, `location_id`, `manager_person_id`, `cost_centre`, `division`, `working_time_text`, `break_minutes`, `special_hours_text`, `overtime_rule_text`, `probation_end_date`, `probation_extension_agreed`, `probation_extended_to`, `probation_extension_reason`, `notice_employee`, `notice_employer`, `notice_unit`, `tariff_reference`, `holiday_terms_text`, `competence_development_text`, `social_security_text`, `revision`, `created_at`, `updated_at` |
+| `employment_terms` | A | `remuneration_type`, `pay_components`, `pay_method`, `payday_text`, `seniority_date`, `pay_grade` |
+| `employment_terms` | D | `note` |
+| `identity_links` | C | every column: `id`, `person_id`, `provider`, `external_id`, `state`, `managed`, `blocked_reason`, `last_error`, `attempts`, `next_attempt_at`, `lease_id`, `lease_until`, `last_synced_at`, `last_spec_hash`, `created_at`, `updated_at` |
+| `documents` | the category's | every column: `id`, `person_id`, `category_id`, `employment_id`, `object_key`, `file_name`, `content_type`, `size_bytes`, `valid_to`, `signed_at`, `uploaded_by_user_id`, `revision`, `created_at`, `updated_at` — a document is erased whole, by its [category's](#categories-and-classes) class |
+
+Ids, foreign keys, revisions and timestamps are C: they say that a row existed and
+when. An event's `payload_classes` are its fields' classes (`fieldClasses` in
+`events.go`, held to the columns above); a document's event takes its category's.
+
+### What is due
+
+The run asks three questions, each over what remains, "today" being the settings'
+time zone's civil day:
+
+- **D** — a person not yet erased, not held, with **at least one employment and every
+  one ended before today minus `retentionGraceDays`** (default 90). A person with no
+  employment, or with one that has not ended, is never erased.
+- **health** — a person, erased or not, not held, whose every employment ended before
+  today minus `healthRetentionDays` (default 365), with a document in a restricted
+  category still on file, or a value of class E in an event not yet replaced.
+- **A** — per **employment**: ended in a year more than five years before this one
+  (ended in 2020, due from 1 January 2026; ended in 2021, not before 2027), of a person
+  not held, erased or not, with something of class A still there — a pay column set on
+  one of its terms rows, a document of class A filed against it (or filed against no
+  employment while it is the person's last one — the latest to start), or a pay field
+  in one of its events not yet replaced.
+
+### What an erase does
+
+One person's erases run in **one transaction**, under the person's lock, each question
+asked again on the row the lock holds — a hold set, an employment reopened or a rehire
+since the cycle chose the person is seen there:
+
+- **D** nulls every D column of the person and of their terms rows, deletes their next
+  of kin, deletes their documents of class D, replaces every value of class D in their
+  history's payloads, and sets `erased_at` — the person is then
+  [read-only](#the-erased-state).
+- **health** deletes their documents in restricted categories and replaces the values
+  of their health documents' events.
+- **A**, for each due employment, nulls its pay columns on every terms row, deletes its
+  documents of class A, and replaces the values of class A in its events and every
+  value of the deleted documents' events. A rehired person's old employment loses its
+  pay while the current one keeps its own.
+
+A value replaced in a payload keeps its field's name and reads `"changed"` — what a
+reader who may not see the field was already shown, now shown to everyone, HR
+included. The event keeps its kind, actor, instant and `payload_classes`. Nothing of
+class C is touched: names, birth date, gender, employee number, employments, non-pay
+terms, roles, the link, the history's kinds and dates.
+
+A deleted document's row goes and its object's key is queued in the
+[deletion ledger](#the-deletion-ledger) in the same transaction; the erase never calls
+the object store.
+
+When anything was erased, the transaction records one **`erased`** event for the
+person, `{"kinds": [{"kind": "D" | "health" | "A", "count": n}]}`, its actor the
+installation (`system`) when the worker ran it and the caller when
+[`POST /retention/run`](#running-it-by-hand) did. `count` is the items the kind
+removed: each column value nulled, each row deleted (a next of kin, a document) and
+each event payload rewritten. A D erase is always reported, since it marks the
+person, even when it found nothing to remove (count 0); an A count sums the person's
+due employments. The event touches no class, so no later erase rewrites it; its kinds
+are read by the documents group (the person, `staff:manage`, `staff:personal-data`)
+and are an empty payload to anyone else.
+
+The run is **idempotent**: a second run finds nothing due and writes nothing. That is
+what makes "once per civil day" hold whatever the poll and the clock do.
+
+### The deletion ledger
+
+`object_deletions` holds the objects whose rows a delete or an erase removed and that
+the store has not yet confirmed gone (`object_key`, `attempts`, `next_attempt_at`,
+`claimed_until`, `last_error`, `created_at`). A pass takes the due rows —
+`next_attempt_at` reached, not claimed or claimed by a pass whose window has run out —
+a hundred at a time, the longest waiting first, and claims each by a conditional update
+for five minutes; a row another replica won between the selection and the claim is
+left to it. Each claimed row gets one attempt:
+
+- the store confirms — a key it no longer has counts as confirmed — and the row is
+  deleted;
+- the store refuses, and the row keeps: `attempts` one more, `last_error` a constant
+  (`the object store refused the delete`; the store's own words go to the log, since
+  they may name the key), `next_attempt_at` after the backoff — two seconds, doubling,
+  at most an hour — and the claim given up. There is **no ceiling** on the attempts: a
+  legal erase is never best-effort;
+- no object store is configured, or it could not be built: the same, with `last_error`
+  `storage_unavailable: …`, and the rows wait for storage.
+
+No connection is held while the store is asked: every claim and every outcome is a
+statement of its own on the pool. A hand [delete](#reading-changing-and-removing) makes
+its one attempt through the same code.
+
+### The worker
+
+`staff-retention` runs every `STAFF_WORKERS_POLL` (default `1h`, at least `1m`) unless
+`STAFF_RETENTION_ENABLED=0`, in worker mode and in api mode with
+`WORKERS_IN_PROCESS=1`. Each poll:
+
+1. **An erase cycle under the lease**: the session advisory lock
+   `0x5354414646524554` (the ASCII `STAFFRET`), taken with `pg_try_advisory_lock` on one
+   pooled connection. Another replica holding it means this one skips the cycle. The
+   due queries and every person's transaction run **on that connection** — the person's
+   lock included — never on the pool, so a cycle never waits for a second connection
+   while holding the first. At most fifty people a cycle, each schedule's oldest end
+   first; a backlog drains over cycles. One person failing is logged by id, rolled back,
+   and due again next cycle. The lease is released on a context stripped of
+   cancellation; an unlock that fails closes the connection.
+2. **A ledger pass**, with no lease.
+
+The worker starts without storage: in worker mode its object store is built from the
+configuration, and an unconfigured one fails only the ledger's attempts.
+
+### Running it by hand
+
+`POST /retention/run` (`staff:manage`) runs both steps now, by the same code with the
+same connection disciplines, the caller as the `erased` events' actor. It answers 200
+`{"erased": {"kinds": [{"kind", "count"}]}, "deletions": {"attempted", "succeeded"}}` —
+the kinds summed over the people erased, a kind no erase ran for absent. While another
+holder has the lease — the worker, here or on another replica, or another run by hand —
+it is **`retention_busy`** (409) and runs nothing.
+
+### The settings and the retention block
+
+`retentionGraceDays` (0–3650, default 90) and `healthRetentionDays` (30–3650, default
+365) are [settings](#settings). `GET /settings` also answers a read-only `retention`
+block, derived from the ledger and the history — no column holds it (plan reading 8):
+`pendingDeletions` (rows in the ledger), `failingDeletions` (rows the store has refused
+at least once), `oldestPendingSince` (when the oldest row was queued; absent when the
+ledger is empty) and `lastErasedAt` (the latest `erased` event; absent when nothing was
+ever erased).
+
 ## The erased state
 
-The retention run (later in A2) erases a former employee's personnel administration
-(class D) and sets `erased_at`. What is left is **read-only** (design S15): every write
+The retention run's [D erase](#what-an-erase-does) erases a former employee's personnel
+administration (class D) and sets `erased_at`. What is left is **read-only** (design S15): every write
 of the person answers `person_erased` (409) — the record (`PUT /people/{id}`,
 `DELETE`), the next of kin, the roles, the national identity number and the bank
 account, a link to a user, an employment and its terms (`PUT`, end, reopen, terms
@@ -1195,7 +1381,12 @@ The **exceptions**:
   until HR types it.
 
 **Reads stay open**: the record, the history, the documents and their downloads (class
-A documents live five years for claims), the employments, a reveal, both exports.
+A documents live five years for claims), the employments, a reveal (which finds
+nothing: the erase took the number), both exports. The retention run's own health and
+A erases still reach an erased person: they take the person's lock allowing an erased
+one, and the D erase's due question is what passes over a person already erased. An
+export of an erased person writes their erased columns empty, and that row imports
+back unchanged.
 
 **The rehire warning.** The erase removes the national identity number and its index,
 so a person who comes back cannot be recognised by it. `POST /people/similar-erased`
@@ -1295,6 +1486,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `export_too_many` | 400 | An export of more people than `STAFF_IMPORT_MAX_ROWS`. |
 | `payroll_month_invalid` | 400 | A payroll export's `month` that is not `YYYY-MM` with a month from `01` to `12`. |
 | `payroll_format_unsupported` | 400 | A payroll export's `format` other than `csv`. |
+| `retention_busy` | 409 | `POST /retention/run` while the retention lease is held — by the worker, here or on another replica, or another run by hand. Nothing ran. |
 
 An unknown id is a bare 404 with no body.
 
@@ -1344,6 +1536,11 @@ person's, which it moves on when the list changes.
   until it commits, so two creators take numbers one after the other.
 - **The delete.** `DELETE /people/{id}` takes the person's row, then the manager graph,
   before it judges whether anyone names the person as a manager.
+- **The retention lease.** The erase cycle holds the session advisory lock
+  `0x5354414646524554` on one pooled connection and runs every person's transaction on
+  that connection (`withPersonLockOn`, the person's lock as above, marked as locked as
+  any other); the ledger takes no lease and holds no connection while it asks the
+  store ([the worker](#the-worker)).
 
 ## Endpoints
 
@@ -1366,6 +1563,7 @@ All under `/api/v1/staff`.
 | `POST /people/similar-erased` | `staff:manage` |
 | `POST /people/import`, `GET /people/export.csv`, `GET /people/import-template.csv` | `staff:manage`; an import file's sealed columns `staff:personal-data` too (`import_sealed_columns`) |
 | `GET /payroll/export` | `staff:manage` |
+| `POST /retention/run` | `staff:manage` |
 | `GET /people/{id}/documents`, `GET /documents/{id}` | `staff:access`, then the person, `staff:manage` (not health documents) or `staff:personal-data` (otherwise 404) |
 | `POST /people/{id}/documents`, `PUT /documents/{id}`, `DELETE /documents/{id}` | `staff:access`, then `staff:manage` or `staff:personal-data`, a health document `staff:personal-data` (judged in the module; otherwise 403) |
 | `GET /document-categories` | `staff:view`, `staff:manage` or `staff:personal-data` (judged in the module; otherwise 403) |

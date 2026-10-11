@@ -568,7 +568,8 @@ func (s *server) PutStaffDocumentsById(ctx context.Context, req gen.PutStaffDocu
 // clears the ledger row. A store that refuses leaves the row for the
 // retention worker (delivery A2's ledger) — the document is gone either way,
 // which is what was asked. Deleting by hand and erasing share this path
-// (plan reading 22).
+// (plan reading 22): the same ledger row, finished by the same attempt
+// (finishObjectDeletion, object_deletions.go).
 func (s *server) DeleteStaffDocumentsById(ctx context.Context, req gen.DeleteStaffDocumentsByIdRequestObject) (gen.DeleteStaffDocumentsByIdResponseObject, error) {
 	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
 	if err != nil {
@@ -623,36 +624,6 @@ func (s *server) DeleteStaffDocumentsById(ctx context.Context, req gen.DeleteSta
 	if err != nil {
 		return nil, err
 	}
-	s.finishObjectDeletion(ctx, personID, removed.ObjectKey)
+	s.finishObjectDeletion(ctx, removed.ObjectKey, 0, "person_id", personID)
 	return gen.DeleteStaffDocumentsById204Response{}, nil
-}
-
-// objectDeleteRefused is what a failed attempt records on its ledger row:
-// the store's own error stays in the log, since it may name the key.
-const objectDeleteRefused = "the object store refused the delete"
-
-// finishObjectDeletion makes the one attempt a delete makes after its
-// commit: when the store confirms, the ledger row is cleared; when it
-// refuses, the attempt is recorded on the row — counted, its reason, and the
-// next attempt due after retryBackoff — so the row is a failing one to
-// whoever reads the ledger, and the retention worker picks it up when due.
-// Both run on a context detached from the request's and bounded.
-func (s *server) finishObjectDeletion(ctx context.Context, personID int64, key string) {
-	removed := s.removeObject(ctx, personID, key)
-	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), objectCleanupTimeout)
-	defer cancel()
-	q := store.New(s.deps.Pool)
-	var err error
-	if removed {
-		err = q.DeleteObjectDeletion(cleanup, key)
-	} else {
-		reason := objectDeleteRefused
-		err = q.RecordObjectDeletionFailure(cleanup, store.RecordObjectDeletionFailureParams{
-			ObjectKey: key, LastError: &reason, NextAttemptAt: s.deps.Clock().Add(retryBackoff(1)),
-		})
-	}
-	if err != nil {
-		s.deps.Logger.ErrorContext(cleanup, "staff: a removed document's ledger row could not be updated",
-			"person_id", personID, "error", err.Error())
-	}
 }

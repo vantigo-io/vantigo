@@ -476,7 +476,8 @@ const recordObjectDeletionFailure = `-- name: RecordObjectDeletionFailure :exec
 UPDATE staff.object_deletions SET
     attempts = attempts + 1,
     last_error = $1,
-    next_attempt_at = $2::timestamptz
+    next_attempt_at = $2::timestamptz,
+    claimed_until = NULL
 WHERE object_key = $3
 `
 
@@ -487,7 +488,8 @@ type RecordObjectDeletionFailureParams struct {
 }
 
 // RecordObjectDeletionFailure records one failed attempt at removing an
-// object on its ledger row: the attempt counted, why, and when the next is due.
+// object on its ledger row: the attempt counted, why, and when the next is
+// due; the claim is given up, so the row is the next due pass's.
 func (q *Queries) RecordObjectDeletionFailure(ctx context.Context, arg RecordObjectDeletionFailureParams) error {
 	_, err := q.db.Exec(ctx, recordObjectDeletionFailure, arg.LastError, arg.NextAttemptAt, arg.ObjectKey)
 	return err

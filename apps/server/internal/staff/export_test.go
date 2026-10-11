@@ -58,3 +58,12 @@ func MailAvailable(d module.Deps) bool {
 // DocumentUploadsPerHour is the upload's rate limit, for the test that runs
 // into it.
 const DocumentUploadsPerHour = documentUploadsPerHour
+
+// ColumnClasses is the retention class of every column the erase reaches,
+// keyed table.column, for the external tests that assert an erase column by
+// column.
+func ColumnClasses() map[string]string { return columnClasses }
+
+// RetentionLeaseKey is the retention worker's advisory lease, for the test
+// that holds it from outside to see the run refused as busy.
+const RetentionLeaseKey = retentionLeaseKey

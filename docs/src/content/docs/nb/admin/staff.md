@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, e-posten om endret kontonummer, og innstillingene — forretningstidssonen og ansattnummerserien.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
 sidebar:
   order: 44
 sources:
@@ -16,6 +16,9 @@ sources:
   - apps/server/internal/staff/people_export.go
   - apps/server/internal/staff/csvfile.go
   - apps/server/internal/staff/payroll.go
+  - apps/server/internal/staff/retention.go
+  - apps/server/internal/staff/retention_worker.go
+  - apps/server/internal/staff/object_deletions.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -305,6 +308,90 @@ annet format enn `csv` med `payroll_format_unsupported`; ingen av dem registrere
 Filen inneholder alles lønnsvilkår: oppbevar den der du oppbevarer lønnssystemets egne
 opplysninger, og slett din kopi når lønnssystemet har den.
 
+## Oppbevaring
+
+Ansatte beholder en tidligere ansatts opplysninger bare så lenge loven tillater det, og
+sletter resten selv: arbeideren `staff-retention` ser etter hver time og sletter det som
+er blitt forfalt. Hva som forfaller, og hva hver sletting fjerner, står i
+[referansen](/en/reference/staff/#retention); kort fortalt:
+
+- **Personaladministrasjon** — kontaktopplysninger og adresse, fødselsnummeret og
+  kontonummeret, feltene for omsorgsdager, HRs notater og notatene på vilkårene,
+  pårørende, og dokumentene i kategorier av klasse D (sertifikater, korrespondanse,
+  annet) — slettes **`retentionGraceDays`** (standard 90) dager etter at personens siste
+  arbeidsforhold sluttet. Personen merkes da som slettet, og opplysningene blir
+  skrivebeskyttet.
+- **Helsedokumenter** — de i en begrenset kategori — slettes **`healthRetentionDays`**
+  (standard 365) dager etter at det siste arbeidsforholdet sluttet.
+- **Lønn** — et arbeidsforholds lønnsvilkår, ansiennitetsdato og lønnstrinn,
+  arbeidsavtalene og attestene, og lønnen i historikken — slettes **fem år etter året
+  arbeidsforholdet sluttet**, arbeidsforhold for arbeidsforhold: en person som har kommet
+  tilbake, beholder lønnen i det nåværende arbeidsforholdet mens det gamles forsvinner.
+
+**Hva en sletting lar stå**: navnene, fødselsdatoen, kjønnet, ansattnummeret,
+arbeidsforholdene og vilkårene deres utenom lønn, rollene, koblingen til en bruker, og
+historikkens hendelsestyper og datoer. Opplysningene svarer altså fortsatt på hvem som
+jobbet her, når og i hvilken stilling; historikken viser en verdi som er slettet som
+*endret*, og en hendelse **Slettet etter oppbevaringsreglene** sier hva som forsvant,
+etter type og antall. En person uten arbeidsforhold, eller som fortsatt er ansatt,
+slettes aldri.
+
+### Sett tidene
+
+1. Som en bruker med `staff:manage`, les innstillingene: `GET /api/v1/staff/settings`.
+2. `PUT /api/v1/staff/settings` med revisjonen du leste i `If-Match`, og
+   `retentionGraceDays` (0 til 3650 dager) og `healthRetentionDays` (30 til 3650). En
+   forespørsel som utelater en av dem, beholder den.
+3. Kontroller: svaret har de nye tidene. Neste kjøring bedømmer etter dem; en tid som
+   gjøres kortere kan gjøre mange personer forfalt på én gang, og arbeideren tar femti
+   per kjøring.
+
+### Slå av arbeideren, eller endre hvor ofte den ser etter
+
+Arbeideren kjører med mindre `STAFF_RETENTION_ENABLED=0`, hver `STAFF_WORKERS_POLL`
+(standard `1h`, minst `1m`) — i worker-modus, og i api-modus med
+`WORKERS_IN_PROCESS=1` ([Installasjon](/nb/admin/installation/)). En sletting finner
+ingenting forfalt andre gang, så å se etter hver time sletter hver dags forfalte personer
+én gang. Flere replikaer bytter på gjennom en lås; én kjører slettingen om gangen.
+
+Slått av slettes ingenting etter tidsplanen, og filene som venter på sletting, venter;
+kjøringen for hånd nedenfor virker fortsatt.
+
+### Kjør den for hånd
+
+`POST /api/v1/staff/retention/run` (`staff:manage`) kjører arbeiderens sletting og en
+runde i sletteloggen nå, med deg som forfatter av slettehendelsene. Svaret sier hva som
+ble slettet per type, og hvor mange filer som ble slettet fra objektlageret. Mens
+arbeideren kjører, svarer den `retention_busy` (409); prøv igjen om et minutt.
+Innstillinger-siden i Ansatte-appen tilbyr det samme som *Kjør oppbevaring nå*.
+
+### Slettesperren
+
+En person med [slettesperre](#sett-en-slettesperre-på-en-person) hoppes over av hver
+sletting, av hver type, så lenge sperren står. Opphev sperren når saken er avsluttet, så
+sletter neste kjøring det som har forfalt i mellomtiden.
+
+### Sletteloggen
+
+En sletting fjerner et dokuments oppføring med en gang og setter filen i kø for sletting
+fra objektlageret; det gjør også en sletting for hånd, når lageret ikke bekrefter med en
+gang. Arbeideren spør lageret på nytt hver gang den ser etter, venter lenger etter hver
+avvisning (høyst en time), og gir aldri opp — en lovpålagt sletting er ikke et forsøk.
+
+`GET /api/v1/staff/settings` rapporterer sletteloggen i blokken `retention`:
+`pendingDeletions` (filer som venter), `failingDeletions` (filer lageret har avvist minst
+én gang), `oldestPendingSince` og `lastErasedAt` (den siste slettingen). En
+`failingDeletions` som blir stående over null, betyr at objektlageret avviser: sjekk at
+lagring er konfigurert og kan nås ([Objektlagring](/nb/admin/object-storage/)), og
+serverloggen, som navngir lagerets feil. Når lageret svarer, forsvinner filene i køen
+neste gang arbeideren ser etter.
+
+### Etter en sletting
+
+En slettet person som kommer tilbake, [ansettes på nytt](#ansett-en-slettet-person-på-nytt)
+på de samme opplysningene: det slettingen fjernet, blir stående tomt til du skriver det
+inn igjen, og lønnen i det nye arbeidsforholdet røres ikke av slettingen av det gamle.
+
 ## E-posten om endret kontonummer
 
 Når et kontonummer settes eller endres, får personen en e-post — til den private
@@ -340,6 +427,13 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
 - **Pensjonsleverandør** og **yrkesskadeforsikrer** (`pensionProvider`,
   `injuryInsurer`). Leverandøren av obligatorisk tjenestepensjon (OTP) og
   yrkesskadeforsikringen, som kontrollen av arbeidsavtalen leser.
+- **Oppbevaringstider** (`retentionGraceDays`, 90, fra 0 til 3650, og
+  `healthRetentionDays`, 365, fra 30 til 3650): hvor mange dager etter at personens siste
+  arbeidsforhold sluttet, personaladministrasjonen og helsedokumentene slettes
+  ([Oppbevaring](#oppbevaring)). Utelatt fra en erstatning beholder hver sin verdi.
+- **Oppbevaringsstatus** (`retention`, skrivebeskyttet): sletteloggens ventende og
+  avviste filer, den eldste ventende, og den siste slettingen
+  ([Sletteloggen](#sletteloggen)).
 
 ## Hva som kan gå galt
 
@@ -385,3 +479,12 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   for å ignoreres. Rett den til et av navnene i malen.
 - **`export_too_many`.** Registeret har flere personer enn `STAFF_IMPORT_MAX_ROWS`. Hev
   det, innenfor grensene, og start på nytt.
+- **`retention_busy`.** Oppbevaringsarbeideren kjører, på denne serveren eller en annen.
+  Vent et minutt og kjør den igjen.
+- **`failingDeletions` over null.** Objektlageret nekter å slette filene i køen. Rett opp
+  lagringen; arbeideren prøver igjen uten ende.
+- **En oppbevaringstid avvist.** `retentionGraceDays` er 0 til 3650 dager,
+  `healthRetentionDays` 30 til 3650.
+- **Ingen blir slettet.** Arbeideren er slått av (`STAFF_RETENTION_ENABLED=0`), personen
+  har slettesperre, har fortsatt et arbeidsforhold som ikke har sluttet, eller har ingen;
+  eller tiden har ikke gått ennå.

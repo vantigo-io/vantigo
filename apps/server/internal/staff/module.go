@@ -68,15 +68,17 @@ var permissions = []contracts.Permission{
 }
 
 // Module is staff as a platform module: its contract mounted under
-// /api/v1/staff/ and its five permissions in the composed catalog. It provides
-// no contract and fills no slot — nothing in another module reads the
-// register yet (design reading 17 defers contracts.StaffDirectory to its first
+// /api/v1/staff/, its five permissions in the composed catalog and its one
+// background worker, staff-retention (retention_worker.go). It provides no
+// contract and fills no slot — nothing in another module reads the register
+// yet (design reading 17 defers contracts.StaffDirectory to its first
 // consumer).
 func Module() module.Module {
 	return module.Module{
 		Name:        "staff",
 		Permissions: permissions,
 		Mount:       mount,
+		Workers:     workers,
 	}
 }
 

@@ -13,13 +13,16 @@ import (
 // string — a nil pointer is what omitempty leaves out.
 
 // settingsResponse is the settings delivery A1 exposes.
-func settingsResponse(row store.StaffSetting) gen.StaffSettings {
+func settingsResponse(row store.StaffSetting, retention gen.StaffRetentionState) gen.StaffSettings {
 	return gen.StaffSettings{
 		TimeZone:             row.TimeZone,
 		EmployeeNumberPrefix: row.EmployeeNumberPrefix,
 		NextEmployeeNumber:   row.NextEmployeeNumber,
 		PensionProvider:      row.PensionProvider,
 		InjuryInsurer:        row.InjuryInsurer,
+		RetentionGraceDays:   int32(row.RetentionGraceDays),
+		HealthRetentionDays:  int32(row.HealthRetentionDays),
+		Retention:            retention,
 		Revision:             row.Revision,
 	}
 }

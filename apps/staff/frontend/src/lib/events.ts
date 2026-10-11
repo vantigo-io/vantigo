@@ -38,6 +38,9 @@ export const eventKinds = [
   "people_exported",
   // Installation-level too: a month's payroll file (plan reading 13).
   "payroll_exported",
+  // The retention run's erase of a person (design S15): its payload names
+  // no field, only the kinds erased and their counts.
+  "erased",
 ] as const;
 
 /**

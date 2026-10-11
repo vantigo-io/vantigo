@@ -397,9 +397,15 @@ const changed = "changed"
 // documents group. A reader of neither sees each field as "changed"; a health
 // event is not listed at all to an audience without the health group
 // (ListPersonEvents), so this is its second line, not its first.
+//
+// The erased event names no field: its kinds — what each erase removed, by
+// count — are the documents group's, and an empty payload to anyone else.
 func shapePayload(stored []byte, classes []string, a audience) map[string]any {
 	var payload struct {
 		Fields map[string]any `json:"fields"`
+		// What the retention run erased (an erased event): the kinds and
+		// their counts, read by the documents group — the person and HR.
+		Kinds []any `json:"kinds"`
 		// Which employment, terms row or document an event is about: ids, not
 		// data about the person, kept for everyone who reads the history.
 		EmploymentID *int64 `json:"employmentId"`
@@ -407,7 +413,13 @@ func shapePayload(stored []byte, classes []string, a audience) map[string]any {
 		DocumentID   *int64 `json:"documentId"`
 	}
 	out := map[string]any{}
-	if err := json.Unmarshal(stored, &payload); err != nil || payload.Fields == nil {
+	if err := json.Unmarshal(stored, &payload); err != nil {
+		return out
+	}
+	if payload.Fields == nil {
+		if payload.Kinds != nil && a.reads(groupDocuments) {
+			out["kinds"] = payload.Kinds
+		}
 		return out
 	}
 	if payload.EmploymentID != nil {

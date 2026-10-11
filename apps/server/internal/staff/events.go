@@ -93,6 +93,17 @@ const (
 	eventPayrollExported = "payroll_exported"
 )
 
+// eventErased is the retention run's record of one person's erase (design
+// S15, plan Task 5): one per transaction that erased anything, naming each
+// kind and how many items it removed — {kinds: [{kind, count}]}, no fields.
+// Its actor is the installation's system actor when the worker ran it, and
+// the caller when POST /retention/run did. It touches no class itself (its
+// payload_classes are empty, so no later erase rewrites it), and the
+// documents group reads its kinds (shapePayload).
+const (
+	eventErased = "erased"
+)
+
 // holdEventKinds are the hold's kinds: about the record's retention and who
 // exported it rather than about the person's work, so they are listed only to
 // an audience that reads the hold group — and to the person themselves, who
@@ -184,16 +195,22 @@ var fieldClasses = map[string]string{
 	"legalHold": "F", "legalHoldReason": "F", "erasedAt": "C", "reassessedAt": "C",
 }
 
+// classOfField is a payload field's retention class. A field the table does
+// not know counts as D, the class the erase blanks, so an unknown field is
+// erased rather than kept.
+func classOfField(name string) string {
+	if class, ok := fieldClasses[name]; ok {
+		return class
+	}
+	return "D"
+}
+
 // classes is the retention classes c's fields belong to, sorted and each
-// once. A field the table does not know counts as D, the class the erase
-// blanks, so an unknown field is erased rather than kept.
+// once (classOfField).
 func (c changes) classes() []string {
 	var out []string
 	for name := range c {
-		class, ok := fieldClasses[name]
-		if !ok {
-			class = "D"
-		}
+		class := classOfField(name)
 		if !slices.Contains(out, class) {
 			out = append(out, class)
 		}

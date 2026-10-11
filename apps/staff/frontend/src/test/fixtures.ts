@@ -103,6 +103,9 @@ export const settings = (overrides: Partial<StaffSettings> = {}): StaffSettings 
   nextEmployeeNumber: 8,
   timeZone: "Europe/Oslo",
   pensionProvider: "Storebrand",
+  retentionGraceDays: 90,
+  healthRetentionDays: 365,
+  retention: { pendingDeletions: 0, failingDeletions: 0 },
   revision: 3,
   ...overrides,
 });
