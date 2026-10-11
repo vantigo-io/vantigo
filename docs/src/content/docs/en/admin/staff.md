@@ -116,8 +116,8 @@ To add one of your own, as a user with `staff:manage`:
 
 To rename one, or stop offering it, send its `names` and `archived` to
 `PUT /api/v1/staff/document-categories/{id}` with its revision in `If-Match`. An
-archived category is offered for no new document; the documents already filed under it
-keep it. The six seeds never change.
+archived category is offered for no new document, and only a category no document is
+filed under can be archived. The six seeds never change.
 
 ## The bank-change mail
 

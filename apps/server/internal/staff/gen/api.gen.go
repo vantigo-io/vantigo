@@ -697,7 +697,7 @@ type StaffDocument struct {
 	ValidTo *openapi_types.Date `json:"validTo,omitempty"`
 }
 
-// StaffDocumentCategory A document category (design S14) — one of the six seeds or the company's own. Its retention class is fixed when it is created; restricted (a health category, readable only by the person and staff:personal-data) is true exactly when the class is E. A seeded category never changes; an archived one is offered for no new document and keeps the documents filed under it.
+// StaffDocumentCategory A document category (design S14) — one of the six seeds or the company's own. Its retention class is fixed when it is created; restricted (a health category, readable only by the person and staff:personal-data) is true exactly when the class is E. A seeded category never changes; an archived one is offered for no new document, and only a category no document is filed under is archived.
 type StaffDocumentCategory struct {
 	// ArchivedAt When the category was archived. Absent while it is in use.
 	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
@@ -755,9 +755,11 @@ type StaffDocumentCategorySummary struct {
 	Restricted bool                       `json:"restricted"`
 }
 
-// StaffDocumentChangeRequest A document's category and dates, replaced whole — a field left out is cleared. Moving a document into or out of a restricted category needs staff:personal-data (category_restricted). employmentId must name one of the person's employments.
+// StaffDocumentChangeRequest A document's category and dates, replaced whole — a date left out is cleared. employmentId is replaced only when the body names it — null clears it, and left out it stays as it is — since the upload derived it. Moving a document into or out of a restricted category needs staff:personal-data (category_restricted). employmentId must name one of the person's employments.
 type StaffDocumentChangeRequest struct {
-	CategoryId   int64               `json:"categoryId"`
+	CategoryId int64 `json:"categoryId"`
+
+	// EmploymentId One of the person's employments; null clears it; left out, the document keeps its own.
 	EmploymentId *int64              `json:"employmentId,omitempty"`
 	SignedAt     *openapi_types.Date `json:"signedAt,omitempty"`
 	ValidTo      *openapi_types.Date `json:"validTo,omitempty"`
@@ -4953,6 +4955,20 @@ func (response DeleteStaffDocumentsById403JSONResponse) VisitDeleteStaffDocument
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteStaffDocumentsById403ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response DeleteStaffDocumentsById403ApplicationProblemPlusJSONResponse) VisitDeleteStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err

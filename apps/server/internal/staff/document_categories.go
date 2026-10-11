@@ -23,9 +23,9 @@ import (
 // restricted — a health category — is true exactly when the class is E,
 // which only this file writes. A seed never changes (seed_immutable); a
 // company category is renamed, or archived, which takes it out of the upload
-// and keeps it on the documents already filed — and while any document is
-// filed under it, it is not archived (category_in_use), so the archive never
-// hides a category a document still names from the picker HR moves it with.
+// — but only once no document is filed under it (category_in_use), so the
+// archive never hides a category a document still names from the picker HR
+// moves it with.
 
 // categoryKeyIndex is the unique index on a category's key.
 const categoryKeyIndex = "ux_document_categories_key"

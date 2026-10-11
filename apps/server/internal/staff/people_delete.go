@@ -14,8 +14,8 @@ import (
 )
 
 // This file is DELETE /people/{id}: the hard delete of a person created in
-// error (plan reading 5) — no employment, no link, named as nobody's manager
-// — with their next of kin, their roles and their own history, in one
+// error (plan reading 5) — no employment, no link, no document, named as
+// nobody's manager — with their next of kin, their roles and their own history, in one
 // transaction. It is the one exception to the events table's append-only
 // rule, and it leaves one installation-level event behind carrying the
 // employee number and nothing else. Anything that names the person keeps
@@ -24,9 +24,10 @@ import (
 // personInUse is the 409 a person something names answers. reasons are what
 // names them, in words; nothing about another person is said.
 func personInUse(reasons []string) error {
-	detail := "This person is in use, and only a person created in error — with no employment, no user link, and named as nobody's manager — is deleted."
+	const rule = "only a person created in error — with no employment, no user link, no document, and named as nobody's manager — is deleted."
+	detail := "This person is in use, and " + rule
 	if len(reasons) > 0 {
-		detail = "This person " + strings.Join(reasons, ", ") + ", and only a person created in error — with no employment, no user link, and named as nobody's manager — is deleted."
+		detail = "This person " + strings.Join(reasons, ", ") + ", and " + rule
 	}
 	return refuseConflict(conflict(codePersonInUse, "Person in use", detail))
 }
@@ -73,6 +74,7 @@ func (s *server) DeleteStaffPeopleById(ctx context.Context, req gen.DeleteStaffP
 		}{
 			{use.HasEmployment, "has an employment"},
 			{use.HasLink, "is linked to a user"},
+			{use.HasDocuments, "has documents"},
 			{use.ManagesDepartment, "manages a department"},
 			{use.NamedAsManager, "is the manager on someone's terms"},
 		} {

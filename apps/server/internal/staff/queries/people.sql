@@ -224,13 +224,14 @@ LIMIT @page_size OFFSET @page_offset;
 
 -- name: PersonInUse :one
 -- PersonInUse is why a person may not be deleted as created in error (plan
--- reading 5): an employment, a user link, a department naming them as its
--- manager, or any terms naming them as the manager. It is read under the
+-- reading 5): an employment, a user link, a document, a department naming
+-- them as its manager, or any terms naming them as the manager. It is read under the
 -- person's lock and the manager-graph lock, which every write of those edges
 -- takes, so nothing can start naming the person between this and the delete.
 SELECT
     EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = @id) AS has_employment,
     EXISTS (SELECT 1 FROM staff.identity_links l WHERE l.person_id = @id) AS has_link,
+    EXISTS (SELECT 1 FROM staff.documents doc WHERE doc.person_id = @id) AS has_documents,
     EXISTS (SELECT 1 FROM staff.departments d WHERE d.manager_person_id = @id) AS manages_department,
     EXISTS (SELECT 1 FROM staff.employment_terms t WHERE t.manager_person_id = @id) AS named_as_manager;
 

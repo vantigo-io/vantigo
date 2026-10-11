@@ -26,7 +26,8 @@ var staffRecordsTables = []string{"document_categories", "documents", "object_de
 // nullable employment and no deleted_at — rows are deleted, never marked);
 // the three unique indexes (a category's key, a document's object key, a
 // ledger row's object key), the three foreign keys of documents and the
-// indexes beside them; the six seeds with their classes, restricted exactly
+// indexes beside them — the employment's among them, which the class A erase
+// goes by; the six seeds with their classes, restricted exactly
 // for class E; every identity starting at 1001. The Down removes the three
 // tables and leaves 00042's schema as it was.
 func TestStaffRecords_AppliesAndIsIdempotent(t *testing.T) {
@@ -106,6 +107,7 @@ func TestStaffRecords_AppliesAndIsIdempotent(t *testing.T) {
 		ORDER BY indexname`, staffRecordsTables)
 	wantIndexes := []string{
 		"CREATE INDEX ix_documents_category ON staff.documents USING btree (category_id)",
+		"CREATE INDEX ix_documents_employment ON staff.documents USING btree (employment_id)",
 		"CREATE INDEX ix_documents_person ON staff.documents USING btree (person_id)",
 		"CREATE INDEX ix_object_deletions_next_attempt ON staff.object_deletions USING btree (next_attempt_at)",
 		"CREATE UNIQUE INDEX ux_document_categories_key ON staff.document_categories USING btree (key)",

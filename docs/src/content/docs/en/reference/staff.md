@@ -407,7 +407,8 @@ not learn that one happened.
 error**: one with no employment, no user link, no document, and named as nobody's
 manager — neither a department's nor on anyone's terms. Anything else is
 `person_in_use` (409), whose
-detail says what names the person; the person stays. The delete takes the person's row
+detail says what names the person — "has documents" among the reasons; the person
+stays. The delete takes the person's row
 and then the manager-graph lock before it judges, so no write can start naming the
 person between the check and the delete, and a foreign key that refuses anyway is still
 `person_in_use`. In one transaction it removes the next of kin, the roles and the
@@ -774,8 +775,9 @@ newest first; `GET /documents/{id}` streams the bytes.
 
 **Who writes.** Filing, changing and removing a document in a category that is not
 restricted needs `staff:manage` or `staff:personal-data`; in a restricted one,
-`staff:personal-data` (`category_restricted`, 403, to HR without it). The person never
-writes their own documents, and anyone else gets the uniform 403.
+`staff:personal-data` (`category_restricted`, 403, to HR without it — HR's own health
+document included, which they read as its person but do not change or remove). The
+person never writes their own documents, and anyone else gets the uniform 403.
 
 ### Filing a document
 
@@ -821,18 +823,21 @@ writes their own documents, and anyone else gets the uniform 403.
   `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff` and
   `Content-Security-Policy: default-src 'none'; sandbox` — the 404 and the 503 carry
   the same headers. An object the store cannot read is 503 `storage_unavailable`.
-- **`PUT /documents/{id}`** replaces `categoryId`, `validTo`, `signedAt` and
-  `employmentId` under `If-Match` — a field left out is cleared; the file never
-  changes. The category must exist and not be archived (unless the document is already
-  in it); the employment must be one of the person's. Moving a document into or out of
+- **`PUT /documents/{id}`** replaces `categoryId`, `validTo` and `signedAt` under
+  `If-Match` — a date left out is cleared; the file never changes. `employmentId` is
+  replaced only when the body names it: `null` clears it, and left out the document
+  keeps the one the upload derived. The category must exist and not be archived; the
+  employment must be one of the person's. Moving a document into or out of
   a restricted category is `staff:personal-data`'s (`category_restricted`). It records
   `document_updated`.
 - **`DELETE /documents/{id}`** deletes the row and inserts the object's
   `object_deletions` row in one transaction under the person's lock, with a
   `document_removed` event; after the commit it makes one attempt to remove the object
   and clears the ledger row when the store confirms. A store that refuses leaves the
-  ledger row for the retention worker to finish, and the request still answers 204: the
-  document is gone. Deleting by hand and the retention erase share this path.
+  ledger row for the retention worker to finish, with the attempt recorded on it —
+  `attempts` 1, `last_error`, and `next_attempt_at` two seconds on (the ledger's
+  backoff: doubling from two seconds, at most an hour) — so it counts as failing; the
+  request still answers 204: the document is gone. Deleting by hand and the retention erase share this path.
 
 ### Categories and classes
 
@@ -860,10 +865,10 @@ health documents — and only class E is. Six are seeded:
   follows from it.
 - **`PUT /document-categories/{id}`** (`staff:manage`, `If-Match`) replaces a company
   category's `names` and sets `archived`. A seeded category never changes
-  (`seed_immutable`, 409). An archived category is offered for no new document and
-  keeps those filed under it; archiving one that documents are still filed under is
-  `category_in_use` (409) — move them first — so the archive never takes from the
-  picker a category a document still names.
+  (`seed_immutable`, 409). An archived category is offered for no new document;
+  archiving one that documents are still filed under is `category_in_use` (409) —
+  move them first — so the archive never takes from the picker a category a document
+  still names.
 
 ## Refusals and revisions
 
@@ -882,7 +887,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `employee_number_too_long` | 400 | The prefix and the next number make a number longer than 16; a typed employee number longer than 16; a generation the skip carries past 16. |
 | `employee_number_taken` | 400 | Another person has the employee number, however it is cased. |
 | `work_email_taken` | 400 | Another person has the work email. |
-| `person_in_use` | 409 | Deleting a person with an employment or a user link, or named as a manager. |
+| `person_in_use` | 409 | Deleting a person with an employment, a user link or documents, or named as a manager. |
 | `structure_archived` | 409 | A write newly names an archived row, or makes one the default. |
 | `structure_default` | 409 | Archiving the default, or the legal entity the default business unit sits under, or taking the flag off the default in place. |
 | `department_cycle` | 409 | A parent that is the department itself or below it. |

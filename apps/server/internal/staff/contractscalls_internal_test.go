@@ -107,7 +107,17 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 		t.Errorf("outside a transaction the hook saw %v outside and %v inside, want %v outside", outside, inside, want)
 	}
 
+	person := uuid.NewString()[:16]
+	var personID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO staff.people (employee_number, given_name, family_name, display_name, created_at, updated_at)
+		VALUES ($1, 'Kari', 'Nordmann', 'Kari Nordmann', now(), now()) RETURNING id`, person).Scan(&personID); err != nil {
+		t.Fatalf("seed a person: %v", err)
+	}
 	for name, run := range map[string]func(func(context.Context) error) error{
+		"withPersonLock": func(fn func(context.Context) error) error {
+			return s.withPersonLock(ctx, personID, func(ctx context.Context, _ pgx.Tx, _ *store.Queries) error { return fn(ctx) })
+		},
 		"withReadTx": func(fn func(context.Context) error) error {
 			return s.withReadTx(ctx, func(ctx context.Context, _ *store.Queries) error { return fn(ctx) })
 		},

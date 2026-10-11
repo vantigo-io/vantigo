@@ -64,6 +64,8 @@ CREATE TABLE staff.documents (
 CREATE UNIQUE INDEX ux_documents_object_key ON staff.documents (object_key);
 CREATE INDEX ix_documents_person ON staff.documents (person_id);
 CREATE INDEX ix_documents_category ON staff.documents (category_id);
+-- The class A erase finds an employment's documents by it (S15).
+CREATE INDEX ix_documents_employment ON staff.documents (employment_id);
 
 -- The objects still to be removed from the store (S15, M7): a delete or an
 -- erase removes the row and inserts its object's key here in one transaction,
