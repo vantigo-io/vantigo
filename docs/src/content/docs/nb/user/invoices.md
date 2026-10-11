@@ -962,9 +962,9 @@ inkasso. For tre setter du **Purringer før inkassovarselet** til 2 i purreinnst
 etter inkassoloven av 1988 er det tredje brevet inkassovarselet, som krever at **Send
 inkassovarsel** er slått på; etter den nye loven er det purringen som varsler overlevering
 til inkasso. Tre brev nås først når en levering innen forfallsdagen er registrert: uten
-en slik sender Vantigo høyst to purringer, begge uten gebyr, og fakturaen merkes **Ikke
-levert innen forfall**. Brevene alene er ikke nødvendigvis nok: i KMVA 8156 la
-Klagenemnda for merverdiavgift vekt på at
+en slik sender Vantigo høyst to purringer, begge uten gebyr, kompensasjon eller renter, og
+fakturaen merkes **Ikke levert innen forfall** på **Forfalt**. Brevene alene er ikke
+nødvendigvis nok: i KMVA 8156 la Klagenemnda for merverdiavgift vekt på at
 to inkassovarsler ikke ble fulgt opp med inndriving, så dokumenter hva mer du gjorde for å
 få inn kravet. Brevene på kortet **Purringer** på hver faktura viser hva som er sendt.
 
