@@ -33,13 +33,15 @@ what everything else about the person hangs on:
 
 The sequence decided (R §10.11): **this phase** (register, absence, the account flag
 with the local path) → the Entra module → Staff phase 2 (competence and preferences)
-→ Staffing. Four deliveries, four PRs, **one migration each** (numbers assigned at
-plan time; the invoices phase 4 PR 2 branch is in flight): A1's creates `people` and
-`settings` with every §3 column they will ever need in this phase plus the A1
-tables; A2's adds documents, deletions and the retention columns; B's adds the
-absence tables and the absence rate's inputs; C's spans `identity` and `staff` in one
-file (the precedent of `00024` and `00040`) for the columns of S24, the invitation's
-`user_id`, `provisioning_roles` and `identity_links`. A2's payroll export ships without
+→ Staffing. Four deliveries, four PRs, **one migration each** (each number assigned
+when its delivery's first task lands; the invoices phase 4 PR 2 branch is in flight):
+A1's creates `people` and `settings` with every §3 column they will ever need in this
+phase (the retention and account columns included) plus the A1 tables,
+`identity_links` among them; A2's adds `documents`, `document_categories` and
+`object_deletions`; B's adds the absence tables, `employments.holiday_scheme_id` with
+its key, and the absence rate's inputs; C's spans `identity` and `staff` in one file
+(the precedent of `00024` and `00040`) for the columns of S24, the invitation's
+`user_id` and `provisioning_roles`. A2's payroll export ships without
 leave and absence columns, which B adds; A2's stats ship without the absence rate,
 which B adds.
 
@@ -559,7 +561,7 @@ column (S15).
 | Column | Type | Notes | Class |
 |---|---|---|---|
 | `id` | bigint | | C |
-| `employee_number` | varchar(16) not null unique | S3 | C |
+| `employee_number` | varchar(16) not null, unique on `upper()` | S3 | C |
 | `given_name`, `family_name`, `display_name` | varchar | display defaults to given + family | C |
 | `birth_date` | date | | C |
 | `gender` | varchar(12) | `female`, `male`, `other`, `unspecified`; ARP (R §4.12) | C |
@@ -864,7 +866,7 @@ employee role (S26) is the Owner's to create and is the one that carries
 | Area | Operations |
 |---|---|
 | Meta | `GET /meta` — capabilities, structure, absence types visible to the caller, schemes, the zone, `accountMode`, whether identity's provisioning roles are set |
-| People | `GET /people` (q, unitId, departmentId, locationId, status, paged) · `POST /people` · `GET|PUT /people/{id}` · `DELETE /people/{id}` (created in error: no employment, no absence, no link, named as nobody's manager) · `PUT /people/{id}/user` (the self-service link, pre-flight) · `GET /assignable-users?q=` (the picker over `Deps.Users`) · `PUT /people/{id}/national-id` · `POST /people/{id}/national-id/reveal` · `PUT /people/{id}/bank-account` · `POST /people/{id}/bank-account/reveal` · `GET|PUT /people/{id}/next-of-kin` · `GET|PUT /people/{id}/roles` · `GET /people/{id}/events` · `GET /people/{id}/personal-data` · `PUT /people/{id}/legal-hold` · `POST /people/{id}/reassessed` · `GET /people/{id}/org` |
+| People | `GET /people` (q, unitId, departmentId, locationId, status, paged) · `POST /people` · `GET|PUT /people/{id}` · `DELETE /people/{id}` (created in error: no employment, no absence, no link, named as nobody's manager) · `GET|PUT /people/{id}/user` (the self-service link, pre-flight) · `GET /assignable-users?q=` (the picker over `Deps.Users`) · `PUT /people/{id}/national-id` · `POST /people/{id}/national-id/reveal` · `PUT /people/{id}/bank-account` · `POST /people/{id}/bank-account/reveal` · `GET|PUT /people/{id}/next-of-kin` · `GET|PUT /people/{id}/roles` · `GET /people/{id}/events` · `GET /people/{id}/personal-data` · `PUT /people/{id}/legal-hold` · `POST /people/{id}/reassessed` · `GET /people/{id}/org` |
 | Employments | `GET|POST /people/{id}/employments` · `GET|PUT /employments/{id}` · `POST /employments/{id}/end` · `/reopen` · `GET|POST /employments/{id}/terms` · `PUT /terms/{id}` (latest, or a correction with `correction: true`) · `DELETE /terms/{id}` (latest) · `GET /employments/{id}/contract-check` |
 | Structure | `GET|POST`, `PUT /{id}`, `POST /{id}/archive` for `/legal-entities`, `/business-units`, `/departments`, `/locations` |
 | Documents | `GET /people/{id}/documents` · `POST /people/{id}/documents` · `GET /documents/{id}` · `PUT /documents/{id}` · `DELETE /documents/{id}` · `GET|POST /document-categories` · `PUT /document-categories/{id}` |
@@ -873,7 +875,7 @@ employee role (S26) is the Owner's to create and is the one that carries
 | Settings | `GET|PUT /settings` · `GET|POST /absence-types` · `PUT /absence-types/{id}` · `GET|POST /holiday-schemes` · `PUT /holiday-schemes/{id}` · `POST /thresholds/{key}/acknowledge` |
 | Accounts | `GET /people/{id}/account` · `PUT /people/{id}/account` (flag, from, email kind) · `POST /people/{id}/account/run` · `/disable` · `POST /accounts/run` |
 | Data | `POST /people/import` · `GET /people/export.csv` · `GET /people/import-template.csv` · `GET /payroll/export?month&format` · `POST /retention/run` |
-| Me | `GET /me` · `PUT /me` · `GET /me/absences` · `POST /me/absences` · `GET /me/holiday-account` · `GET /me/self-certification` · `GET /me/care-days` · `GET /me/documents` · `GET /me/export` |
+| Me | `GET /me` · `PUT /me` · `GET /me/events` · `GET /me/absences` · `POST /me/absences` · `GET /me/holiday-account` · `GET /me/self-certification` · `GET /me/care-days` · `GET /me/documents` · `GET /me/export` |
 | Dashboard | `GET /stats` · `GET /stats/attention` |
 
 Refusal codes: `national_id_invalid`, `national_id_duplicate`, `bank_account_invalid`,
