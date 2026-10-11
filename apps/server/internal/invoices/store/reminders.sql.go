@@ -49,7 +49,7 @@ INSERT INTO invoices.reminders (invoice_id, run_id, sequence, level, announces_c
     created_at, created_by_user_id, status, next_attempt_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
     $9, $10, $11, $12)
-RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
+RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
 `
 
 type InsertReminderParams struct {
@@ -102,6 +102,7 @@ func (q *Queries) InsertReminder(ctx context.Context, arg InsertReminderParams) 
 		&i.Deadline,
 		&i.Regime,
 		&i.PrincipalOpen,
+		&i.Credited,
 		&i.FeeKind,
 		&i.Fee,
 		&i.Compensation,
@@ -177,7 +178,7 @@ func (q *Queries) InsertReminderRun(ctx context.Context, arg InsertReminderRunPa
 }
 
 const lettersOfInvoice = `-- name: LettersOfInvoice :many
-SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE invoice_id = $1 ORDER BY sequence, id
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE invoice_id = $1 ORDER BY sequence, id
 `
 
 // LettersOfInvoice is every letter of an invoice, any status, by sequence.
@@ -207,6 +208,7 @@ func (q *Queries) LettersOfInvoice(ctx context.Context, invoiceID int64) ([]Invo
 			&i.Deadline,
 			&i.Regime,
 			&i.PrincipalOpen,
+			&i.Credited,
 			&i.FeeKind,
 			&i.Fee,
 			&i.Compensation,
@@ -247,7 +249,7 @@ func (q *Queries) LettersOfInvoice(ctx context.Context, invoiceID int64) ([]Invo
 }
 
 const lettersOfRun = `-- name: LettersOfRun :many
-SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE run_id = $1 ORDER BY id
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE run_id = $1 ORDER BY id
 `
 
 // LettersOfRun is a run's letters with their current status (plan reading
@@ -278,6 +280,7 @@ func (q *Queries) LettersOfRun(ctx context.Context, runID int64) ([]InvoicesRemi
 			&i.Deadline,
 			&i.Regime,
 			&i.PrincipalOpen,
+			&i.Credited,
 			&i.FeeKind,
 			&i.Fee,
 			&i.Compensation,

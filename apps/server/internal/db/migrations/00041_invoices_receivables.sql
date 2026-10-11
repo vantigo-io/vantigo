@@ -617,8 +617,11 @@ CREATE TRIGGER tr_reminder_print_batches_immutable
 -- e-mail or on paper. Its facts are written at sending — each dispatch
 -- attempt for e-mail, the print for paper — and frozen once sent, because the
 -- deadline runs from the sending and a fee is judged on its letter's date.
--- held_reason is why a queued letter waits on its rates or the review (plan
--- reading 46). recipient is '' for paper and once the customer is
+-- credited is what the invoice's issued credit notes had taken off it when
+-- the facts were written — the credit notes the principal_open beside it
+-- already left out — so the letter renders again exactly as it went, whatever
+-- is credited later. held_reason is why a queued letter waits on its rates or
+-- the review (plan reading 46). recipient is '' for paper and once the customer is
 -- anonymised. message_id is made at the first claim and reused on every
 -- retry (plan reading 52).
 CREATE TABLE invoices.reminders (
@@ -638,6 +641,7 @@ CREATE TABLE invoices.reminders (
     deadline             date,
     regime               varchar(15),
     principal_open       numeric(14,2),
+    credited             numeric(14,2),
     fee_kind             varchar(15),
     fee                  numeric(14,2),
     compensation         numeric(14,2),
@@ -754,8 +758,8 @@ CREATE FUNCTION invoices.refuse_reminder_change()
 RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
     changing_columns text[] := ARRAY['recipient', 'print_batch_id', 'announces_collection', 'sent_on',
-        'deadline', 'regime', 'principal_open', 'fee_kind', 'fee', 'compensation', 'charges_earlier', 'interest',
-        'interest_waived', 'interest_paid', 'interest_from', 'interest_segments', 'inkassosats', 'total',
+        'deadline', 'regime', 'principal_open', 'credited', 'fee_kind', 'fee', 'compensation', 'charges_earlier',
+        'interest', 'interest_waived', 'interest_paid', 'interest_from', 'interest_segments', 'inkassosats', 'total',
         'charge_notes', 'pdf_object_key', 'pdf_sha256', 'message_id', 'sent_at', 'status', 'held_reason',
         'attempts', 'next_attempt_at', 'first_attempt_at', 'lease_id', 'lease_until', 'last_error', 'failed_at',
         'withdrawn_at', 'withdrawn_by_user_id', 'withdrawal_reason'];

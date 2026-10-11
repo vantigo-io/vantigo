@@ -273,7 +273,7 @@ func (q *Queries) RuleInvoices(ctx context.Context, ids []int64) ([]RuleInvoices
 }
 
 const ruleLetters = `-- name: RuleLetters :many
-SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders
 WHERE invoice_id = ANY($1::bigint[])
 ORDER BY invoice_id, sequence, id
 `
@@ -306,6 +306,7 @@ func (q *Queries) RuleLetters(ctx context.Context, ids []int64) ([]InvoicesRemin
 			&i.Deadline,
 			&i.Regime,
 			&i.PrincipalOpen,
+			&i.Credited,
 			&i.FeeKind,
 			&i.Fee,
 			&i.Compensation,
