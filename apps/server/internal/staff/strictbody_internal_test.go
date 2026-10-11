@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -56,8 +57,8 @@ func TestKeepRawBody_KeepsAllButUploads(t *testing.T) {
 	}
 }
 
-// The mount fails unless the contract closes StaffPersonRequest
-// (additionalProperties false): the unknown-property refusal reads that, and
+// The mount fails unless the contract closes StaffPersonRequest and
+// StaffMeRequest (additionalProperties false): the unknown-property refusal reads that, and
 // a contract that lost it — or the schema — would silently accept anything.
 func TestCheckClosedSchemas_FailsTheMountOnAnOpenOrMissingSchema(t *testing.T) {
 	t.Parallel()
@@ -68,16 +69,21 @@ func TestCheckClosedSchemas_FailsTheMountOnAnOpenOrMissingSchema(t *testing.T) {
 	if err := checkClosedSchemas(doc); err != nil {
 		t.Errorf("the real contract: %v, want nil", err)
 	}
-	open := true
-	opened, _ := openapi.Load(context.Background(), "staff")
-	opened.Components.Schemas[personRequestSchema].Value.AdditionalProperties = openapi3.AdditionalProperties{Has: &open}
-	if err := checkClosedSchemas(opened); err == nil {
-		t.Error("an open StaffPersonRequest passed, want an error")
+	if !slices.Equal(closedSchemas, []string{personRequestSchema, meRequestSchema}) {
+		t.Errorf("closed schemas = %v, want StaffPersonRequest and StaffMeRequest", closedSchemas)
 	}
-	missing, _ := openapi.Load(context.Background(), "staff")
-	delete(missing.Components.Schemas, personRequestSchema)
-	if err := checkClosedSchemas(missing); err == nil {
-		t.Error("a contract without StaffPersonRequest passed, want an error")
+	open := true
+	for _, name := range closedSchemas {
+		opened, _ := openapi.Load(context.Background(), "staff")
+		opened.Components.Schemas[name].Value.AdditionalProperties = openapi3.AdditionalProperties{Has: &open}
+		if err := checkClosedSchemas(opened); err == nil {
+			t.Errorf("an open %s passed, want an error", name)
+		}
+		missing, _ := openapi.Load(context.Background(), "staff")
+		delete(missing.Components.Schemas, name)
+		if err := checkClosedSchemas(missing); err == nil {
+			t.Errorf("a contract without %s passed, want an error", name)
+		}
 	}
 	if err := checkClosedSchemas(nil); err == nil {
 		t.Error("no contract passed, want an error")

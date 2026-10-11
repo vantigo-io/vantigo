@@ -120,9 +120,29 @@ func (s *server) unknownProperties(ctx context.Context, schema string) fieldErro
 // fields.
 const personRequestSchema = "StaffPersonRequest"
 
+// meRequestSchema is the contract's name for what a person edits on their
+// own record (PUT /me): the private group less the birth date and gender. A
+// work-group field sent there is refused by this file's check rather than
+// dropped, so the person learns HR must change it.
+const meRequestSchema = "StaffMeRequest"
+
 // closedSchemas are the request schemas whose handlers refuse a property the
 // contract does not name.
-var closedSchemas = []string{personRequestSchema}
+var closedSchemas = []string{personRequestSchema, meRequestSchema}
+
+// bodyHas reports whether the request's JSON body names property at its top
+// level — for a required property the generated decoder cannot tell from
+// null, such as the link's userId, where null unlinks and a body without it
+// must not.
+func bodyHas(ctx context.Context, property string) bool {
+	body, _ := ctx.Value(rawBodyKey{}).([]byte)
+	var properties map[string]json.RawMessage
+	if json.Unmarshal(body, &properties) != nil {
+		return false
+	}
+	_, ok := properties[property]
+	return ok
+}
 
 // checkClosedSchemas fails the mount unless the contract has every schema of
 // closedSchemas and closes each (additionalProperties false): the refusal

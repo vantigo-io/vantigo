@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, the settings, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, the sealed national identity number and bank account, the self-service link and My page, the settings, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -22,10 +22,11 @@ This page grows with the module. What is here today: the [permissions](#permissi
 the [settings](#settings), the [business time zone](#the-business-time-zone), the
 [structure](#the-structure), [people](#people) — the record, its
 [field groups and audiences](#field-groups-and-audiences), the
-[history](#the-history) and [deletion](#deleting-a-person) — [how a refusal
+[history](#the-history) and [deletion](#deleting-a-person) — the
+[sealed identifiers](#the-sealed-identifiers), the
+[self-service link](#the-self-service-link), [My page](#my-page), [how a refusal
 looks](#refusals-and-revisions), the [locks](#locks) and the [endpoints](#endpoints).
-The sealed identifiers, the self-service link's endpoints, employments and terms
-arrive with the rest of the delivery.
+Employments and terms arrive with the rest of the delivery.
 
 ## The schema
 
@@ -216,7 +217,8 @@ recorded.
 
 The national identity number, the bank account, the account flags and the self-service
 link are **not** on the request — they are written through their own operations under
-their own permissions. The schema is closed (`additionalProperties: false`), and the
+their own permissions ([the sealed identifiers](#the-sealed-identifiers),
+[the self-service link](#the-self-service-link)). The schema is closed (`additionalProperties: false`), and the
 module enforces it: a property it does not name is a 400 naming that property, and
 nothing is written, so a client that sends `nationalId` learns it was not stored. The
 check holds whatever the `Content-Type` (the body is read as JSON either way); a
@@ -294,6 +296,12 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `next_of_kin_updated` | `fields.nextOfKin`: the list before and after. |
 | `roles_updated` | `fields.roles`: the list before and after. |
 | `person_deleted` | Installation-level (no person): `employeeNumber` only. |
+| `national_id_set` | `fields.nationalId`: `{kind, country}` before and after — never a digit. |
+| `national_id_revealed` | Empty; the actor is the viewer. |
+| `bank_account_set` | `fields.bankAccount`: `{kind, last4}` before and after. |
+| `bank_account_revealed` | Empty; the actor is the viewer. |
+| `user_linked` | `fields.user`: the user linked before (`{id}`), if any, and now (`{id, displayName}`). |
+| `user_unlinked` | `fields.user`: the user that was linked (`{id}`). |
 
 `GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
 the person themselves, `staff:manage` and `staff:personal-data` (and, with employments,
@@ -318,6 +326,123 @@ person's own history — the one exception to the history's append-only rule —
 records an installation-level `person_deleted` event carrying the employee number and
 nothing else. It answers 204.
 
+## The sealed identifiers
+
+The national identity number and the bank account are **sealed** (design S4): written
+through `apps/server/internal/secrets` — AES-256-GCM under a key derived from
+`APP_SECRET` for the purpose — and never stored, answered, logged or recorded in clear.
+Both are written and read under `staff:personal-data` only: not `staff:manage` alone,
+and never the person (a fraud boundary — changing where pay goes takes a second
+permission).
+
+| Purpose | Holds |
+| --- | --- |
+| `staff/national-id` | the national identity number, sealed |
+| `staff/national-id-index` | its MAC, in the unique column `national_id_mac` |
+| `staff/bank-account` | the bank account, sealed |
+
+**`PUT /people/{id}/national-id`** takes `{kind, value, country}`:
+
+- A **fødselsnummer** or **d-nummer** is eleven digits once spaces, hyphens and full
+  stops are dropped. Both control digits must hold, and the first six digits must be a
+  real date — a d-nummer's day raised by 40, the century read from the individual
+  number, and Skatteetaten's synthetic ranges (the month plus 40 or plus 80) accepted.
+  `country`, if given, is `NO`.
+- A **foreign** id is 1–40 letters, digits or hyphens, upper-cased, with its `country`
+  (ISO 3166-1 alpha-2, not `NO`).
+- Anything else is `national_id_invalid` (400) on `value`. The message says what is
+  wrong — "the second control digit does not hold" — and never repeats a digit; a body
+  the server cannot decode is a bare 400 that repeats nothing either.
+- A fødselsnummer or d-nummer encodes a birth date. When the person has a birth date
+  and the two differ, the write is `national_id_birth_date_mismatch` (400): one of them
+  is wrong, and HR corrects whichever it is.
+- The number is indexed by an HMAC-SHA256 under `staff/national-id-index` of
+  `kind | country | value`, in a unique column, so the same number on a second person
+  is `national_id_duplicate` (400) — found without opening anything, settled by the
+  unique constraint when two writes race, and **naming nobody**. The same digits as
+  another country's foreign id are another identifier and are accepted.
+- In clear the person keeps only the kind and a foreign id's country; responses carry
+  `nationalId { kind, onFile }`. The last digits are never shown, since with the birth
+  date they reconstruct the whole number. `q` on `GET /people` cannot match it.
+
+**`PUT /people/{id}/bank-account`** takes `{kind, value}`: a `bban` is eleven digits
+once spaces and full stops are dropped, with a valid MOD11 control digit; an `iban`
+has its spaces dropped, is upper-cased, and must hold its ISO 13616 check digits — a
+Norwegian one being fifteen characters around an eleven-digit account whose own MOD11
+holds. Anything else is `bank_account_invalid` (400). The kind and the last four digits
+are kept in clear and answered as `bankAccount { kind, last4 }`.
+
+A change of either is an event carrying the kind (and the bank account's last four
+digits) before and after. Neither write moves the person's revision: the revision
+guards the editable fields, which these are not.
+
+**The bank-change mail.** After a bank account is set and the change has committed,
+the person is mailed at their private email, else their work email, in their
+preferred language (`en` or `nb`), naming the account's last four digits and nothing
+more. It goes through `mail.SendOutbound` (the `Deps.SMTPSend` seam), outside every
+transaction, on a context the request's cancellation does not reach. It is skipped with
+a log line when the mail driver is not `smtp` or the person has no email, and a failed
+send is logged with the person's id; the change stands either way.
+
+**The reveals**, `POST /people/{id}/national-id/reveal` and
+`POST /people/{id}/bank-account/reveal`, open the value and answer it once —
+`{kind, country, value}` and `{kind, value}` — with `Cache-Control: no-store`. Each is
+recorded, in the same transaction, as a `national_id_revealed` or
+`bank_account_revealed` event whose actor is the viewer; a reveal that cannot be
+recorded answers nothing. A person with nothing on file is a 404.
+
+Changing `APP_SECRET` makes every sealed value unopenable and every stored MAC
+unmatchable; see
+[Platform packages → Rotating APP_SECRET](/en/contributing/platform-packages/#rotating-app_secret).
+
+## The self-service link
+
+A person is linked to the user they sign in as by HR (design S24 as amended): a row in
+`staff.identity_links` with `provider = 'identity'`, `external_id` the user's id,
+`state = 'linked'` and `managed = false`. The link makes the user the person's
+**Self** audience — My page and the person's own record — and nothing else: it grants
+no permission and never makes the user managed by Staff. Any active user may be
+linked, Owners included.
+
+- **`PUT /people/{id}/user`** (`staff:manage`) takes `{"userId": "<uuid>"}`, or
+  `{"userId": null}` to unlink; a body without `userId` is a 400. The user is read from
+  the user directory before the transaction opens: an id no user has is a field error
+  on `userId`, a disabled user `user_inactive` (400). Under the person's lock, a user
+  linked to another person is `user_linked_elsewhere` (400), and so is the unique
+  index's refusal when two links race. Linking to the user already linked writes
+  nothing; linking to another replaces the link. A change is a `user_linked` event, an
+  unlink a `user_unlinked` one. It answers the link.
+- **`GET /people/{id}/user`** answers `{linked, state, managed, user}` — `linked: false`
+  and nothing else for a person linked to nobody. The link is the person's and HR's to
+  read (`staff:manage`, `staff:personal-data`); anyone else gets the unknown id's 404.
+- **`GET /assignable-users?q=`** (`staff:manage`) is the picker: the user directory's
+  search over active users, at most twenty, `{id, displayName}`. A user already linked
+  elsewhere is listed; linking them answers why not.
+
+A linked person cannot be [deleted](#deleting-a-person) as created in error.
+
+## My page
+
+`/me` is the caller's own person, found through their self-service link and read as
+**Self** — whatever else the caller holds, so it shows what the person sees of
+themselves (`notes` never). A caller linked to nobody gets `no_person` (404) — a
+problem, not the bare 404 of an unknown id, since there is nothing to hide from the
+caller about themselves.
+
+- **`GET /me`** answers the person as `GET /people/{id}` answers them to Self.
+- **`PUT /me`** replaces what the person edits themselves (design S17): `phoneMobile`,
+  `phonePrivate`, `privateEmail`, `street`, `postalCode`, `city`, `country` and
+  `nextOfKin` (required, at most three), with `If-Match` carrying the person's
+  revision. It is a full replace of exactly these: an optional field left out is
+  cleared, and every other field stays. The schema, `StaffMeRequest`, is closed: a
+  field of the work group, the birth date, the gender, HR's notes or a sealed field is
+  a 400 naming it, and nothing is written. The values follow the same rules as HR's
+  replace. A change is a `person_updated` and a `next_of_kin_updated` event with the
+  person as actor; together they move the revision on once. The link is judged again
+  under the person's lock, so a person HR has just unlinked gets `no_person`.
+- **`GET /me/events`** is the person's own history, paged, shaped as Self reads it:
+  HR's notes show `"changed"`.
+
 ## Refusals and revisions
 
 Every refusal is an RFC 9457 problem, `StaffProblem`: `title`, `status`, `detail`,
@@ -339,6 +464,13 @@ element's field is named by its place: `nextOfKin[0].name`.
 | `structure_default` | 409 | Archiving the default, or the legal entity the default business unit sits under, or taking the flag off the default in place. |
 | `department_cycle` | 409 | A parent that is the department itself or below it. |
 | `revision_conflict` | 409 | The `If-Match` revision has moved on. |
+| `national_id_invalid` | 400 | Not a valid national identity number of its kind; a foreign id without its country. |
+| `national_id_birth_date_mismatch` | 400 | The number encodes another birth date than the person's. |
+| `national_id_duplicate` | 400 | Another person has the number. Names nobody. |
+| `bank_account_invalid` | 400 | Not a valid BBAN or IBAN. |
+| `user_inactive` | 400 | The user to link is disabled. |
+| `user_linked_elsewhere` | 400 | The user to link is linked to another person. |
+| `no_person` | 404 | `/me` for a caller linked to no person. |
 
 An unknown id is a bare 404 with no body.
 
@@ -390,6 +522,10 @@ All under `/api/v1/staff`.
 | `GET /people` | `staff:view` or `staff:manage` (judged in the module; otherwise 403) |
 | `GET /people/{id}`, `/next-of-kin`, `/roles`, `/events` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
 | `POST /people`, `PUT /people/{id}`, `DELETE /people/{id}`, `PUT /people/{id}/next-of-kin`, `PUT /people/{id}/roles` | `staff:manage` |
+| `GET /people/{id}/user` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
+| `PUT /people/{id}/user`, `GET /assignable-users` | `staff:manage` |
+| `PUT /people/{id}/national-id`, `POST /people/{id}/national-id/reveal`, `PUT /people/{id}/bank-account`, `POST /people/{id}/bank-account/reveal` | `staff:personal-data` |
+| `GET /me`, `PUT /me`, `GET /me/events` | `staff:access`, then a self-service link (otherwise `no_person`) |
 
 Every operation also requires `staff:access`. The request and response shapes are in
 the contract, [`openapi/staff.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/staff.yaml),

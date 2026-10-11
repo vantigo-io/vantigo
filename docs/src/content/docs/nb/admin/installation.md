@@ -156,7 +156,10 @@ gjenopprettingsprosedyrer, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).
   Generer den én gang med `openssl rand -base64 32`, lagre den i en
   hemmelighetsforvalter, og roter den aldri uten en migreringsplan: en rotasjon
   ugyldiggjør hver åpen sesjon og hver TOTP-hemmelighet kryptert under den gamle
-  verdien.
+  verdien. Med Ansatte gjør en rotasjon også hvert forseglede fødselsnummer og
+  kontonummer umulig å åpne, og etterlater indeksen over fødselsnumrene ute av stand
+  til å finne et nummer eller avvise et duplikat av et som ble skrevet før den — se
+  [Rotating APP_SECRET](/en/contributing/platform-packages/#rotating-app_secret).
 - **`APP_URL`** (`vantigo.env`) — bare det offentlige opphavet: skjema og vert, med
   port om nødvendig, ingen sti og ingen avsluttende skråstrek. E-postlenker, de
   godtatte `Host`-verdiene, cookie-attributtet `Secure` og den statiske

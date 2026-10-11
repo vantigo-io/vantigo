@@ -29,6 +29,14 @@ const (
 	codeEmployeeNumberTaken   = "employee_number_taken"
 	codeWorkEmailTaken        = "work_email_taken"
 	codePersonInUse           = "person_in_use"
+
+	codeNationalIDInvalid           = "national_id_invalid"
+	codeNationalIDDuplicate         = "national_id_duplicate"
+	codeNationalIDBirthDateMismatch = "national_id_birth_date_mismatch"
+	codeBankAccountInvalid          = "bank_account_invalid"
+	codeUserInactive                = "user_inactive"
+	codeUserLinkedElsewhere         = "user_linked_elsewhere"
+	codeNoPerson                    = "no_person"
 )
 
 // The titles this module's validation problems carry, one per thing a request
@@ -44,6 +52,9 @@ const (
 	invalidNextOfKinTitle    = "Invalid next of kin"
 	invalidRolesTitle        = "Invalid roles"
 	invalidPagingTitle       = "Invalid paging"
+	invalidNationalIDTitle   = "Invalid national identity number"
+	invalidBankAccountTitle  = "Invalid bank account"
+	invalidLinkTitle         = "Invalid user link"
 )
 
 // withFieldError adds one message to a map another rule may already have put
@@ -115,6 +126,16 @@ func conflict(code, title, detail string) gen.StaffProblem {
 func revisionConflict(what string, current, supplied int32) gen.StaffProblem {
 	return conflict(codeRevisionConflict, "Revision conflict",
 		fmt.Sprintf("The %s has revision %d; the supplied revision was %d.", what, current, supplied))
+}
+
+// noPerson is the 404 My page answers a caller linked to no person: a
+// problem with its code rather than the bare 404 of an unknown id, since the
+// caller is asking about themselves and there is nothing to hide from them.
+func noPerson() gen.StaffProblem {
+	status := int32(http.StatusNotFound)
+	code, title := codeNoPerson, "No person"
+	detail := "You are linked to no person in Staff. Ask HR to link your user to your record."
+	return gen.StaffProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}
 }
 
 // structureArchived is the 409 a write naming an archived row answers.

@@ -46,6 +46,9 @@ A purpose is a constant the calling module owns, never input from a request, wri
 | `identity/oidc-state`, `identity/oidc-external` | the OIDC flow's state and external-identity cookies |
 | `communications/channel-smtp-credential` | a channel's SMTP password |
 | `invoices/access-point-credential` | the e-invoicing access point's API key |
+| `staff/national-id` | a person's national identity number (sealed) |
+| `staff/national-id-index` | the MAC of a person's national identity number, in a unique column |
+| `staff/bank-account` | a person's bank account (sealed) |
 
 **A purpose either seals or MACs, never both**, so no key both encrypts and
 authenticates. A MAC purpose carries the suffix `-index`: a module that seals a value
