@@ -329,7 +329,7 @@ func (s *server) PutStaffPeopleById(ctx context.Context, req gen.PutStaffPeopleB
 		saved store.GetPersonRow
 		link  *string
 	)
-	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, req.Id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := readPerson(ctx, txq, req.Id)
 		if err != nil {
 			return err

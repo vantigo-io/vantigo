@@ -857,6 +857,16 @@ type StaffEmploymentType string
 // StaffEndReason The a-melding's six end reasons (sluttårsak): employee_resigned, employer_terminated, contract_ended (a contract, engagement or temporary employment ran out), wrongly_reported (the employment should never have been reported), internal_change (a change in the organisation or an internal move), payroll_system_change (a change of payroll system or accountant).
 type StaffEndReason string
 
+// StaffErasedPerson An erased person whose names and birth date match a new person's (POST /people/similar-erased), so a rehire is a choice rather than a duplicate made by accident.
+type StaffErasedPerson struct {
+	DisplayName    string `json:"displayName"`
+	EmployeeNumber string `json:"employeeNumber"`
+
+	// ErasedAt When the retention run erased the person.
+	ErasedAt time.Time `json:"erasedAt"`
+	Id       int64     `json:"id"`
+}
+
 // StaffEvent One change in a person's history (design S21). payload.fields names each field the change touched, with its value before (from) and after (to) — either absent when the field was empty — or, for a field of a group the caller may not read, the string "changed" in place of the values; a field of the pay or of HR's notes the caller may not read is left out altogether, since even the day it changed is not theirs to know. A sealed value is never in a payload.
 type StaffEvent struct {
 	// Actor Who made the change, as the user directory named them at the time.
@@ -864,7 +874,7 @@ type StaffEvent struct {
 	At    time.Time       `json:"at"`
 	Id    int64           `json:"id"`
 
-	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected or terms_deleted in this delivery; the kinds grow with it.
+	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed or person_rehired; the kinds grow with the module.
 	Kind string `json:"kind"`
 
 	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId.
@@ -913,6 +923,24 @@ type StaffLegalEntityRequest struct {
 
 	// OrgNumber Nine digits with a valid MOD11 check digit; spaces are ignored. Unique among legal entities. Left out, it is cleared.
 	OrgNumber *string `json:"orgNumber,omitempty"`
+}
+
+// StaffLegalHold The legal hold (design S15, class F) — while held, no retention erase touches the person. reason and at are absent when the person is not held.
+type StaffLegalHold struct {
+	// At When the hold was set.
+	At   *time.Time `json:"at,omitempty"`
+	Held bool       `json:"held"`
+
+	// Reason Why the person is held, as staff:personal-data wrote it.
+	Reason *string `json:"reason,omitempty"`
+}
+
+// StaffLegalHoldRequest Sets (held true, with a reason) or lifts (held false, no reason) the legal hold.
+type StaffLegalHoldRequest struct {
+	Held bool `json:"held"`
+
+	// Reason 1 to 500 characters when held is true; absent or null when it is false.
+	Reason *string `json:"reason,omitempty"`
 }
 
 // StaffLocation A location, the arbeidssted (design S6).
@@ -1082,7 +1110,7 @@ type StaffPayComponent struct {
 // StaffPayPeriod defines model for StaffPayPeriod.
 type StaffPayPeriod string
 
-// StaffPerson A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the terms' own or else the department's (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person.
+// StaffPerson A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the terms' own or else the department's (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone; erasedAt, legalHold and reassessedAt (the hold group) are staff:manage's and staff:personal-data's. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person.
 type StaffPerson struct {
 	// BankAccount The bank account on file, as its kind and its last four digits. Present for the person themselves, staff:manage and staff:personal-data, when one is on file.
 	BankAccount *StaffPersonBankAccount `json:"bankAccount,omitempty"`
@@ -1106,12 +1134,18 @@ type StaffPerson struct {
 	Department     *StaffDepartmentSummary `json:"department,omitempty"`
 	DisplayName    string                  `json:"displayName"`
 	EmployeeNumber string                  `json:"employeeNumber"`
-	FamilyName     string                  `json:"familyName"`
+
+	// ErasedAt When the retention run erased the person — staff:manage and staff:personal-data only (the hold group). Absent when not erased. An erased person is read-only but for the legal hold, the reassessment, an unlink and a rehire.
+	ErasedAt   *time.Time `json:"erasedAt,omitempty"`
+	FamilyName string     `json:"familyName"`
 
 	// Gender female, male, other or unspecified — what the equality report (ARP) counts.
 	Gender    *StaffGender `json:"gender,omitempty"`
 	GivenName string       `json:"givenName"`
 	Id        int64        `json:"id"`
+
+	// LegalHold The legal hold (design S15, class F) — while held, no retention erase touches the person. reason and at are absent when the person is not held.
+	LegalHold *StaffLegalHold `json:"legalHold,omitempty"`
 
 	// Location A location as the work group names it.
 	Location *StaffLocationSummary `json:"location,omitempty"`
@@ -1143,6 +1177,9 @@ type StaffPerson struct {
 	// PrivateEmail Private. Absent when not set.
 	PrivateEmail *string `json:"privateEmail,omitempty"`
 
+	// ReassessedAt When staff:personal-data recorded the reassessment of an erased person — the hold group. Absent when not reassessed.
+	ReassessedAt *time.Time `json:"reassessedAt,omitempty"`
+
 	// Revision The revision a change sends back in If-Match.
 	Revision int32 `json:"revision"`
 
@@ -1173,6 +1210,9 @@ type StaffPersonBankAccount struct {
 type StaffPersonCapabilities struct {
 	// CanEdit staff:manage — change the record, the next of kin and the roles, and delete a person created in error.
 	CanEdit bool `json:"canEdit"`
+
+	// CanHold staff:personal-data — set and lift the legal hold, record a reassessment and export the person's data.
+	CanHold bool `json:"canHold"`
 
 	// CanManageAccount staff:manage — the self-service link to a user.
 	CanManageAccount bool `json:"canManageAccount"`
@@ -1215,9 +1255,12 @@ type StaffPersonListItem struct {
 	Department     *StaffDepartmentSummary `json:"department,omitempty"`
 	DisplayName    string                  `json:"displayName"`
 	EmployeeNumber string                  `json:"employeeNumber"`
-	FamilyName     string                  `json:"familyName"`
-	GivenName      string                  `json:"givenName"`
-	Id             int64                   `json:"id"`
+
+	// ErasedAt When the retention run erased the person, for staff:manage; absent otherwise. An erased person is listed under status ended or all, their state ended.
+	ErasedAt   *time.Time `json:"erasedAt,omitempty"`
+	FamilyName string     `json:"familyName"`
+	GivenName  string     `json:"givenName"`
+	Id         int64      `json:"id"`
 
 	// Location A location as the work group names it.
 	Location *StaffLocationSummary `json:"location,omitempty"`
@@ -1357,7 +1400,87 @@ type StaffPersonUser struct {
 	Id          openapi_types.UUID `json:"id"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased and storage_unavailable. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffPersonalData A person's data in one file (design S16): the record, the next of kin, the roles, every employment with its terms, the self-service link, the documents' metadata (the files themselves are read through the documents' own downloads) and every event, read in one snapshot. exportedAt is when it was made. GET /people/{id}/personal-data's is the complete file, the sealed values opened and the events whole; GET /me/export's is the person's own, without the sealed values, HR's notes and the terms' notes, its events shaped as the person reads their history.
+type StaffPersonalData struct {
+	Documents   []StaffDocument               `json:"documents"`
+	Employments []StaffPersonalDataEmployment `json:"employments"`
+
+	// Events Every event of the person, oldest first.
+	Events     []StaffEvent `json:"events"`
+	ExportedAt time.Time    `json:"exportedAt"`
+
+	// Link A person's self-service link to a user (design S24, §3.6) — the link that makes the user the person themselves to this module, and nothing else. linked is false, and every other field absent, when the person is linked to nobody.
+	Link      StaffPersonLink  `json:"link"`
+	NextOfKin []StaffNextOfKin `json:"nextOfKin"`
+
+	// Person The person's record in a personal-data file — every field of theirs, each absent when not set. notes, erasedAt, legalHold and reassessedAt are in the complete file only.
+	Person StaffPersonalDataPerson `json:"person"`
+	Roles  []StaffPersonRole       `json:"roles"`
+}
+
+// StaffPersonalDataBankAccount The bank account on file. value, the whole number, is in the complete file only.
+type StaffPersonalDataBankAccount struct {
+	Kind  StaffBankAccountKind `json:"kind"`
+	Last4 string               `json:"last4"`
+	Value *string              `json:"value,omitempty"`
+}
+
+// StaffPersonalDataEmployment One employment and its terms, oldest first.
+type StaffPersonalDataEmployment struct {
+	// Employment An employment (design §3.2), shaped by who is asking (§5): the dates are everyone's who may see the person; the other fields are the employment group's — the person themselves, a manager of theirs and HR; salaryChangedAt is the pay group's — the person and HR. A field the caller may not read is absent, never null.
+	Employment StaffEmployment `json:"employment"`
+	Terms      []StaffTerms    `json:"terms"`
+}
+
+// StaffPersonalDataNationalId Whether a national identity number is on file, and its kind. country (a foreign id's) and value, the whole number, are in the complete file only.
+type StaffPersonalDataNationalId struct {
+	Country *string              `json:"country,omitempty"`
+	Kind    *StaffNationalIdKind `json:"kind,omitempty"`
+	OnFile  bool                 `json:"onFile"`
+	Value   *string              `json:"value,omitempty"`
+}
+
+// StaffPersonalDataPerson The person's record in a personal-data file — every field of theirs, each absent when not set. notes, erasedAt, legalHold and reassessedAt are in the complete file only.
+type StaffPersonalDataPerson struct {
+	// BankAccount The bank account on file. value, the whole number, is in the complete file only.
+	BankAccount    *StaffPersonalDataBankAccount `json:"bankAccount,omitempty"`
+	BirthDate      *openapi_types.Date           `json:"birthDate,omitempty"`
+	City           *string                       `json:"city,omitempty"`
+	Country        *string                       `json:"country,omitempty"`
+	DisplayName    string                        `json:"displayName"`
+	EmployeeNumber string                        `json:"employeeNumber"`
+	ErasedAt       *time.Time                    `json:"erasedAt,omitempty"`
+	FamilyName     string                        `json:"familyName"`
+
+	// Gender female, male, other or unspecified — what the equality report (ARP) counts.
+	Gender    *StaffGender `json:"gender,omitempty"`
+	GivenName string       `json:"givenName"`
+	Id        int64        `json:"id"`
+
+	// LegalHold The legal hold (design S15, class F) — while held, no retention erase touches the person. reason and at are absent when the person is not held.
+	LegalHold *StaffLegalHold `json:"legalHold,omitempty"`
+
+	// NationalId Whether a national identity number is on file, and its kind. country (a foreign id's) and value, the whole number, are in the complete file only.
+	NationalId   StaffPersonalDataNationalId `json:"nationalId"`
+	Notes        *string                     `json:"notes,omitempty"`
+	PhoneMobile  *string                     `json:"phoneMobile,omitempty"`
+	PhonePrivate *string                     `json:"phonePrivate,omitempty"`
+	PhoneWork    *string                     `json:"phoneWork,omitempty"`
+	PostalCode   *string                     `json:"postalCode,omitempty"`
+
+	// PreferredLanguage The language the person reads Vantigo and its mail in.
+	PreferredLanguage StaffLanguage `json:"preferredLanguage"`
+	PrivateEmail      *string       `json:"privateEmail,omitempty"`
+	ReassessedAt      *time.Time    `json:"reassessedAt,omitempty"`
+
+	// Status Where the person stands today, in the business time zone: active (an employment has started and not ended — the end day itself is still worked), upcoming (none active, one starting later; date is the earliest such start), ended (every employment ended before today; date is the latest end) or none (no employment yet).
+	Status      StaffPersonStatus `json:"status"`
+	Street      *string           `json:"street,omitempty"`
+	WorkCountry string            `json:"workCountry"`
+	WorkEmail   *string           `json:"workEmail,omitempty"`
+}
+
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold and reassessment_not_due. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1411,6 +1534,13 @@ type StaffSettingsRequest struct {
 
 	// TimeZone An IANA name such as Europe/Oslo, which this server and its database must read the same way.
 	TimeZone string `json:"timeZone"`
+}
+
+// StaffSimilarErasedRequest A new person's names and birth date, to find an erased person they may be (the rehire warning). Sent as a body, not a query, so the names stay out of access logs.
+type StaffSimilarErasedRequest struct {
+	BirthDate  openapi_types.Date `json:"birthDate"`
+	FamilyName string             `json:"familyName"`
+	GivenName  string             `json:"givenName"`
 }
 
 // StaffStructure The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out.
@@ -1831,6 +1961,9 @@ type PutStaffMeJSONRequestBody = StaffMeRequest
 // PostStaffPeopleJSONRequestBody defines body for PostStaffPeople for application/json ContentType.
 type PostStaffPeopleJSONRequestBody = StaffPersonRequest
 
+// PostStaffPeopleSimilarErasedJSONRequestBody defines body for PostStaffPeopleSimilarErased for application/json ContentType.
+type PostStaffPeopleSimilarErasedJSONRequestBody = StaffSimilarErasedRequest
+
 // PutStaffPeopleByIdJSONRequestBody defines body for PutStaffPeopleById for application/json ContentType.
 type PutStaffPeopleByIdJSONRequestBody = StaffPersonRequest
 
@@ -1842,6 +1975,9 @@ type PostStaffPeopleByIdDocumentsMultipartRequestBody PostStaffPeopleByIdDocumen
 
 // PostStaffPeopleByIdEmploymentsJSONRequestBody defines body for PostStaffPeopleByIdEmployments for application/json ContentType.
 type PostStaffPeopleByIdEmploymentsJSONRequestBody = StaffEmploymentRequest
+
+// PutStaffPeopleByIdLegalHoldJSONRequestBody defines body for PutStaffPeopleByIdLegalHold for application/json ContentType.
+type PutStaffPeopleByIdLegalHoldJSONRequestBody = StaffLegalHoldRequest
 
 // PutStaffPeopleByIdNationalIdJSONRequestBody defines body for PutStaffPeopleByIdNationalId for application/json ContentType.
 type PutStaffPeopleByIdNationalIdJSONRequestBody = StaffNationalIdRequest
@@ -1965,6 +2101,9 @@ type ServerInterface interface {
 	// GetStaffMeEvents List my own history
 	// (GET /api/v1/staff/me/events)
 	GetStaffMeEvents(w http.ResponseWriter, r *http.Request, params GetStaffMeEventsParams)
+	// GetStaffMeExport Export my own data
+	// (GET /api/v1/staff/me/export)
+	GetStaffMeExport(w http.ResponseWriter, r *http.Request)
 	// GetStaffMeta Get the Staff metadata
 	// (GET /api/v1/staff/meta)
 	GetStaffMeta(w http.ResponseWriter, r *http.Request)
@@ -1974,6 +2113,9 @@ type ServerInterface interface {
 	// PostStaffPeople Add a person
 	// (POST /api/v1/staff/people)
 	PostStaffPeople(w http.ResponseWriter, r *http.Request)
+	// PostStaffPeopleSimilarErased Find erased people with the same names and birth date
+	// (POST /api/v1/staff/people/similar-erased)
+	PostStaffPeopleSimilarErased(w http.ResponseWriter, r *http.Request)
 	// DeleteStaffPeopleById Delete a person created in error
 	// (DELETE /api/v1/staff/people/{id})
 	DeleteStaffPeopleById(w http.ResponseWriter, r *http.Request, id int64)
@@ -2004,6 +2146,9 @@ type ServerInterface interface {
 	// GetStaffPeopleByIdEvents List a person's history
 	// (GET /api/v1/staff/people/{id}/events)
 	GetStaffPeopleByIdEvents(w http.ResponseWriter, r *http.Request, id int64, params GetStaffPeopleByIdEventsParams)
+	// PutStaffPeopleByIdLegalHold Set or lift a person's legal hold
+	// (PUT /api/v1/staff/people/{id}/legal-hold)
+	PutStaffPeopleByIdLegalHold(w http.ResponseWriter, r *http.Request, id int64)
 	// PutStaffPeopleByIdNationalId Set a person's national identity number
 	// (PUT /api/v1/staff/people/{id}/national-id)
 	PutStaffPeopleByIdNationalId(w http.ResponseWriter, r *http.Request, id int64)
@@ -2019,6 +2164,12 @@ type ServerInterface interface {
 	// GetStaffPeopleByIdOrg Get a person's place in the organisation
 	// (GET /api/v1/staff/people/{id}/org)
 	GetStaffPeopleByIdOrg(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffPeopleByIdPersonalData Export a person's data
+	// (GET /api/v1/staff/people/{id}/personal-data)
+	GetStaffPeopleByIdPersonalData(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffPeopleByIdReassessed Record a reassessment
+	// (POST /api/v1/staff/people/{id}/reassessed)
+	PostStaffPeopleByIdReassessed(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffPeopleByIdRoles List a person's roles
 	// (GET /api/v1/staff/people/{id}/roles)
 	GetStaffPeopleByIdRoles(w http.ResponseWriter, r *http.Request, id int64)
@@ -3036,6 +3187,20 @@ func (siw *ServerInterfaceWrapper) GetStaffMeEvents(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffMeExport operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffMeExport(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffMeExport(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStaffMeta operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffMeta(w http.ResponseWriter, r *http.Request) {
 
@@ -3166,6 +3331,20 @@ func (siw *ServerInterfaceWrapper) PostStaffPeople(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostStaffPeople(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffPeopleSimilarErased operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleSimilarErased(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleSimilarErased(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3492,6 +3671,32 @@ func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdEvents(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// PutStaffPeopleByIdLegalHold operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdLegalHold(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffPeopleByIdLegalHold(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutStaffPeopleByIdNationalId operation middleware
 func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdNationalId(w http.ResponseWriter, r *http.Request) {
 
@@ -3641,6 +3846,58 @@ func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdOrg(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetStaffPeopleByIdOrg(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffPeopleByIdPersonalData operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdPersonalData(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdPersonalData(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffPeopleByIdReassessed operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdReassessed(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleByIdReassessed(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4075,9 +4332,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/me", wrapper.PutStaffMe)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/documents", wrapper.GetStaffMeDocuments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/events", wrapper.GetStaffMeEvents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/export", wrapper.GetStaffMeExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/meta", wrapper.GetStaffMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people", wrapper.GetStaffPeople)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people", wrapper.PostStaffPeople)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/similar-erased", wrapper.PostStaffPeopleSimilarErased)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.DeleteStaffPeopleById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.GetStaffPeopleById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.PutStaffPeopleById)
@@ -4088,11 +4347,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/employments", wrapper.GetStaffPeopleByIdEmployments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/employments", wrapper.PostStaffPeopleByIdEmployments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/events", wrapper.GetStaffPeopleByIdEvents)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/legal-hold", wrapper.PutStaffPeopleByIdLegalHold)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/national-id", wrapper.PutStaffPeopleByIdNationalId)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/national-id/reveal", wrapper.PostStaffPeopleByIdNationalIdReveal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/next-of-kin", wrapper.GetStaffPeopleByIdNextOfKin)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/next-of-kin", wrapper.PutStaffPeopleByIdNextOfKin)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/org", wrapper.GetStaffPeopleByIdOrg)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/personal-data", wrapper.GetStaffPeopleByIdPersonalData)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/reassessed", wrapper.PostStaffPeopleByIdReassessed)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/roles", wrapper.GetStaffPeopleByIdRoles)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/roles", wrapper.PutStaffPeopleByIdRoles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/user", wrapper.GetStaffPeopleByIdUser)
@@ -4980,6 +5242,20 @@ type DeleteStaffDocumentsById404Response struct {
 func (response DeleteStaffDocumentsById404Response) VisitDeleteStaffDocumentsByIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type DeleteStaffDocumentsById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response DeleteStaffDocumentsById409ApplicationProblemPlusJSONResponse) VisitDeleteStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetStaffDocumentsByIdRequestObject struct {
@@ -6500,6 +6776,69 @@ func (response GetStaffMeEvents404ApplicationProblemPlusJSONResponse) VisitGetSt
 	return err
 }
 
+type GetStaffMeExportRequestObject struct {
+}
+
+type GetStaffMeExportResponseObject interface {
+	VisitGetStaffMeExportResponse(w http.ResponseWriter) error
+}
+
+type GetStaffMeExport200JSONResponse StaffPersonalData
+
+func (response GetStaffMeExport200JSONResponse) VisitGetStaffMeExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeExport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMeExport401JSONResponse) VisitGetStaffMeExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeExport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMeExport403JSONResponse) VisitGetStaffMeExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeExport404ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffMeExport404ApplicationProblemPlusJSONResponse) VisitGetStaffMeExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStaffMetaRequestObject struct {
 }
 
@@ -6666,6 +7005,70 @@ func (response PostStaffPeople401JSONResponse) VisitPostStaffPeopleResponse(w ht
 type PostStaffPeople403JSONResponse externalRef0.AuthErrorResponse
 
 func (response PostStaffPeople403JSONResponse) VisitPostStaffPeopleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleSimilarErasedRequestObject struct {
+	Body *PostStaffPeopleSimilarErasedJSONRequestBody
+}
+
+type PostStaffPeopleSimilarErasedResponseObject interface {
+	VisitPostStaffPeopleSimilarErasedResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleSimilarErased200JSONResponse []StaffErasedPerson
+
+func (response PostStaffPeopleSimilarErased200JSONResponse) VisitPostStaffPeopleSimilarErasedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleSimilarErased400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleSimilarErased400ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleSimilarErasedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleSimilarErased401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleSimilarErased401JSONResponse) VisitPostStaffPeopleSimilarErasedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleSimilarErased403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleSimilarErased403JSONResponse) VisitPostStaffPeopleSimilarErasedResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6960,6 +7363,20 @@ type PutStaffPeopleByIdBankAccount404Response struct {
 func (response PutStaffPeopleByIdBankAccount404Response) VisitPutStaffPeopleByIdBankAccountResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PutStaffPeopleByIdBankAccount409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdBankAccount409ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PostStaffPeopleByIdBankAccountRevealRequestObject struct {
@@ -7445,6 +7862,79 @@ func (response GetStaffPeopleByIdEvents404Response) VisitGetStaffPeopleByIdEvent
 	return nil
 }
 
+type PutStaffPeopleByIdLegalHoldRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutStaffPeopleByIdLegalHoldJSONRequestBody
+}
+
+type PutStaffPeopleByIdLegalHoldResponseObject interface {
+	VisitPutStaffPeopleByIdLegalHoldResponse(w http.ResponseWriter) error
+}
+
+type PutStaffPeopleByIdLegalHold200JSONResponse StaffPerson
+
+func (response PutStaffPeopleByIdLegalHold200JSONResponse) VisitPutStaffPeopleByIdLegalHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdLegalHold400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdLegalHold400ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdLegalHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdLegalHold401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdLegalHold401JSONResponse) VisitPutStaffPeopleByIdLegalHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdLegalHold403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdLegalHold403JSONResponse) VisitPutStaffPeopleByIdLegalHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdLegalHold404Response struct {
+}
+
+func (response PutStaffPeopleByIdLegalHold404Response) VisitPutStaffPeopleByIdLegalHoldResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type PutStaffPeopleByIdNationalIdRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *PutStaffPeopleByIdNationalIdJSONRequestBody
@@ -7516,6 +8006,20 @@ type PutStaffPeopleByIdNationalId404Response struct {
 func (response PutStaffPeopleByIdNationalId404Response) VisitPutStaffPeopleByIdNationalIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PutStaffPeopleByIdNationalId409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdNationalId409ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdNationalIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PostStaffPeopleByIdNationalIdRevealRequestObject struct {
@@ -7788,6 +8292,136 @@ type GetStaffPeopleByIdOrg404Response struct {
 func (response GetStaffPeopleByIdOrg404Response) VisitGetStaffPeopleByIdOrgResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetStaffPeopleByIdPersonalDataRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdPersonalDataResponseObject interface {
+	VisitGetStaffPeopleByIdPersonalDataResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdPersonalData200JSONResponse StaffPersonalData
+
+func (response GetStaffPeopleByIdPersonalData200JSONResponse) VisitGetStaffPeopleByIdPersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdPersonalData401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdPersonalData401JSONResponse) VisitGetStaffPeopleByIdPersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdPersonalData403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdPersonalData403JSONResponse) VisitGetStaffPeopleByIdPersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdPersonalData404Response struct {
+}
+
+func (response GetStaffPeopleByIdPersonalData404Response) VisitGetStaffPeopleByIdPersonalDataResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdReassessedRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostStaffPeopleByIdReassessedResponseObject interface {
+	VisitPostStaffPeopleByIdReassessedResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleByIdReassessed200JSONResponse StaffPerson
+
+func (response PostStaffPeopleByIdReassessed200JSONResponse) VisitPostStaffPeopleByIdReassessedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdReassessed401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdReassessed401JSONResponse) VisitPostStaffPeopleByIdReassessedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdReassessed403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdReassessed403JSONResponse) VisitPostStaffPeopleByIdReassessedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdReassessed404Response struct {
+}
+
+func (response PostStaffPeopleByIdReassessed404Response) VisitPostStaffPeopleByIdReassessedResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdReassessed409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdReassessed409ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdReassessedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetStaffPeopleByIdRolesRequestObject struct {
@@ -8065,6 +8699,20 @@ type PutStaffPeopleByIdUser404Response struct {
 func (response PutStaffPeopleByIdUser404Response) VisitPutStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PutStaffPeopleByIdUser409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdUser409ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetStaffSettingsRequestObject struct {
@@ -8453,6 +9101,9 @@ type StrictServerInterface interface {
 	// GetStaffMeEvents List my own history
 	// (GET /api/v1/staff/me/events)
 	GetStaffMeEvents(ctx context.Context, request GetStaffMeEventsRequestObject) (GetStaffMeEventsResponseObject, error)
+	// GetStaffMeExport Export my own data
+	// (GET /api/v1/staff/me/export)
+	GetStaffMeExport(ctx context.Context, request GetStaffMeExportRequestObject) (GetStaffMeExportResponseObject, error)
 	// GetStaffMeta Get the Staff metadata
 	// (GET /api/v1/staff/meta)
 	GetStaffMeta(ctx context.Context, request GetStaffMetaRequestObject) (GetStaffMetaResponseObject, error)
@@ -8462,6 +9113,9 @@ type StrictServerInterface interface {
 	// PostStaffPeople Add a person
 	// (POST /api/v1/staff/people)
 	PostStaffPeople(ctx context.Context, request PostStaffPeopleRequestObject) (PostStaffPeopleResponseObject, error)
+	// PostStaffPeopleSimilarErased Find erased people with the same names and birth date
+	// (POST /api/v1/staff/people/similar-erased)
+	PostStaffPeopleSimilarErased(ctx context.Context, request PostStaffPeopleSimilarErasedRequestObject) (PostStaffPeopleSimilarErasedResponseObject, error)
 	// DeleteStaffPeopleById Delete a person created in error
 	// (DELETE /api/v1/staff/people/{id})
 	DeleteStaffPeopleById(ctx context.Context, request DeleteStaffPeopleByIdRequestObject) (DeleteStaffPeopleByIdResponseObject, error)
@@ -8492,6 +9146,9 @@ type StrictServerInterface interface {
 	// GetStaffPeopleByIdEvents List a person's history
 	// (GET /api/v1/staff/people/{id}/events)
 	GetStaffPeopleByIdEvents(ctx context.Context, request GetStaffPeopleByIdEventsRequestObject) (GetStaffPeopleByIdEventsResponseObject, error)
+	// PutStaffPeopleByIdLegalHold Set or lift a person's legal hold
+	// (PUT /api/v1/staff/people/{id}/legal-hold)
+	PutStaffPeopleByIdLegalHold(ctx context.Context, request PutStaffPeopleByIdLegalHoldRequestObject) (PutStaffPeopleByIdLegalHoldResponseObject, error)
 	// PutStaffPeopleByIdNationalId Set a person's national identity number
 	// (PUT /api/v1/staff/people/{id}/national-id)
 	PutStaffPeopleByIdNationalId(ctx context.Context, request PutStaffPeopleByIdNationalIdRequestObject) (PutStaffPeopleByIdNationalIdResponseObject, error)
@@ -8507,6 +9164,12 @@ type StrictServerInterface interface {
 	// GetStaffPeopleByIdOrg Get a person's place in the organisation
 	// (GET /api/v1/staff/people/{id}/org)
 	GetStaffPeopleByIdOrg(ctx context.Context, request GetStaffPeopleByIdOrgRequestObject) (GetStaffPeopleByIdOrgResponseObject, error)
+	// GetStaffPeopleByIdPersonalData Export a person's data
+	// (GET /api/v1/staff/people/{id}/personal-data)
+	GetStaffPeopleByIdPersonalData(ctx context.Context, request GetStaffPeopleByIdPersonalDataRequestObject) (GetStaffPeopleByIdPersonalDataResponseObject, error)
+	// PostStaffPeopleByIdReassessed Record a reassessment
+	// (POST /api/v1/staff/people/{id}/reassessed)
+	PostStaffPeopleByIdReassessed(ctx context.Context, request PostStaffPeopleByIdReassessedRequestObject) (PostStaffPeopleByIdReassessedResponseObject, error)
 	// GetStaffPeopleByIdRoles List a person's roles
 	// (GET /api/v1/staff/people/{id}/roles)
 	GetStaffPeopleByIdRoles(ctx context.Context, request GetStaffPeopleByIdRolesRequestObject) (GetStaffPeopleByIdRolesResponseObject, error)
@@ -9544,6 +10207,30 @@ func (sh *strictHandler) GetStaffMeEvents(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// GetStaffMeExport operation middleware
+func (sh *strictHandler) GetStaffMeExport(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffMeExportRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffMeExport(ctx, request.(GetStaffMeExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffMeExport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffMeExportResponseObject); ok {
+		if err := validResponse.VisitGetStaffMeExportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetStaffMeta operation middleware
 func (sh *strictHandler) GetStaffMeta(w http.ResponseWriter, r *http.Request) {
 	var request GetStaffMetaRequestObject
@@ -9618,6 +10305,37 @@ func (sh *strictHandler) PostStaffPeople(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostStaffPeopleResponseObject); ok {
 		if err := validResponse.VisitPostStaffPeopleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleSimilarErased operation middleware
+func (sh *strictHandler) PostStaffPeopleSimilarErased(w http.ResponseWriter, r *http.Request) {
+	var request PostStaffPeopleSimilarErasedRequestObject
+
+	var body PostStaffPeopleSimilarErasedJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleSimilarErased(ctx, request.(PostStaffPeopleSimilarErasedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleSimilarErased")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleSimilarErasedResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleSimilarErasedResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -9915,6 +10633,39 @@ func (sh *strictHandler) GetStaffPeopleByIdEvents(w http.ResponseWriter, r *http
 	}
 }
 
+// PutStaffPeopleByIdLegalHold operation middleware
+func (sh *strictHandler) PutStaffPeopleByIdLegalHold(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutStaffPeopleByIdLegalHoldRequestObject
+
+	request.Id = id
+
+	var body PutStaffPeopleByIdLegalHoldJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffPeopleByIdLegalHold(ctx, request.(PutStaffPeopleByIdLegalHoldRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffPeopleByIdLegalHold")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffPeopleByIdLegalHoldResponseObject); ok {
+		if err := validResponse.VisitPutStaffPeopleByIdLegalHoldResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PutStaffPeopleByIdNationalId operation middleware
 func (sh *strictHandler) PutStaffPeopleByIdNationalId(w http.ResponseWriter, r *http.Request, id int64) {
 	var request PutStaffPeopleByIdNationalIdRequestObject
@@ -10053,6 +10804,58 @@ func (sh *strictHandler) GetStaffPeopleByIdOrg(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetStaffPeopleByIdOrgResponseObject); ok {
 		if err := validResponse.VisitGetStaffPeopleByIdOrgResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleByIdPersonalData operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdPersonalData(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdPersonalDataRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdPersonalData(ctx, request.(GetStaffPeopleByIdPersonalDataRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdPersonalData")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdPersonalDataResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdPersonalDataResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleByIdReassessed operation middleware
+func (sh *strictHandler) PostStaffPeopleByIdReassessed(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffPeopleByIdReassessedRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleByIdReassessed(ctx, request.(PostStaffPeopleByIdReassessedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleByIdReassessed")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleByIdReassessedResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleByIdReassessedResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

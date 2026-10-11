@@ -257,10 +257,11 @@ func (s *server) GetStaffMeDocuments(ctx context.Context, _ gen.GetStaffMeDocume
 // category is theirs to file (category_restricted), then what was sent (400).
 // The object is written before the transaction — a store that cannot write
 // is 503 with nothing recorded — and under the person's lock the rest is
-// judged as it is now: the person not erased, fewer than 200 documents, the
-// category not archived. A signed contract covering exactly one employment
-// with no signing date sets it, the employment locked before the document is
-// written. Whatever refuses or fails after the write removes the object.
+// judged as it is now: the person not erased (the read-only rule, judged at
+// the lock), fewer than 200 documents, the category not archived. A signed
+// contract covering exactly one employment with no signing date sets it, the
+// employment locked before the document is written. Whatever refuses or fails
+// after the write removes the object.
 func (s *server) PostStaffPeopleByIdDocuments(ctx context.Context, req gen.PostStaffPeopleByIdDocumentsRequestObject) (gen.PostStaffPeopleByIdDocumentsResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	caller, err := s.callerFor(ctx, q)
@@ -308,17 +309,7 @@ func (s *server) PostStaffPeopleByIdDocuments(ctx context.Context, req gen.PostS
 		created  store.StaffDocument
 		category store.StaffDocumentCategory
 	)
-	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		// The local form of delivery A2's read-only guard, which Task 2
-		// places centrally.
-		erased, err := txq.PersonErased(ctx, req.Id)
-		if err != nil {
-			return fmt.Errorf("staff: read whether person %d is erased: %w", req.Id, err)
-		}
-		if erased {
-			return refuseConflict(conflict(codePersonErased, "Person erased",
-				"This person's record has been erased under the retention rules and is read-only."))
-		}
+	err = s.withPersonLock(ctx, req.Id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		count, err := txq.CountPersonDocuments(ctx, req.Id)
 		if err != nil {
 			return fmt.Errorf("staff: count person %d's documents: %w", req.Id, err)
@@ -502,7 +493,7 @@ func (s *server) PutStaffDocumentsById(ctx context.Context, req gen.PutStaffDocu
 		saved store.StaffDocument
 		to    store.StaffDocumentCategory
 	)
-	err = s.withPersonLock(ctx, row.StaffDocument.PersonID, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, row.StaffDocument.PersonID, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		d, from, err := lockWritableDocument(ctx, txq, caller, req.Id)
 		if err != nil {
 			return err
@@ -599,7 +590,7 @@ func (s *server) DeleteStaffDocumentsById(ctx context.Context, req gen.DeleteSta
 	}
 	personID := row.StaffDocument.PersonID
 	var removed store.StaffDocument
-	err = s.withPersonLock(ctx, personID, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, personID, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		d, category, err := lockWritableDocument(ctx, txq, caller, req.Id)
 		if err != nil {
 			return err
@@ -621,8 +612,11 @@ func (s *server) DeleteStaffDocumentsById(ctx context.Context, req gen.DeleteSta
 		return gen.DeleteStaffDocumentsById404Response{}, nil
 	}
 	if r, ok := asRefusal(err); ok {
-		if r.status == http.StatusForbidden {
+		switch r.status {
+		case http.StatusForbidden:
 			return gen.DeleteStaffDocumentsById403ApplicationProblemPlusJSONResponse(r.problem), nil
+		case http.StatusConflict:
+			return gen.DeleteStaffDocumentsById409ApplicationProblemPlusJSONResponse(r.problem), nil
 		}
 		return gen.DeleteStaffDocumentsById404Response{}, nil
 	}

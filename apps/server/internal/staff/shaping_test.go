@@ -20,6 +20,10 @@ var (
 	sealedFields  = []string{"nationalId", "bankAccount"}
 	linkFields    = []string{"user"}
 	hrFields      = []string{"notes"}
+	// holdFields is the hold group of a person neither erased nor
+	// reassessed: the legal hold, not held (erasedAt and reassessedAt are
+	// absent until set).
+	holdFields = []string{"legalHold"}
 	// placedFields is the work group's place today, from the terms in force
 	// and their employment (design §5's Work row): the title, the business
 	// unit and the location, read by every audience that sees the person.
@@ -93,8 +97,8 @@ func TestShaping_PersonPerAudience(t *testing.T) {
 	}{
 		{"self", p.self, fields(workFields, placedFields, privateFields, sealedFields, linkFields), caps{pay: true}},
 		{"colleague", colleague, fields(workFields, placedFields), caps{}},
-		{"staff:manage", manage, fields(workFields, placedFields, privateFields, sealedFields, linkFields, hrFields), caps{edit: true, pay: true, account: true}},
-		{"staff:personal-data", personalData, fields(workFields, placedFields, privateFields, sealedFields, linkFields, hrFields), caps{reveal: true, pay: true}},
+		{"staff:manage", manage, fields(workFields, placedFields, privateFields, sealedFields, linkFields, hrFields, holdFields), caps{edit: true, pay: true, account: true}},
+		{"staff:personal-data", personalData, fields(workFields, placedFields, privateFields, sealedFields, linkFields, hrFields, holdFields), caps{reveal: true, pay: true}},
 	} {
 		body := raw(t, c.client.Do(http.MethodGet, personPath(p.id), nil))
 		got := slices.Sorted(maps.Keys(body))

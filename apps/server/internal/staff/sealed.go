@@ -28,7 +28,8 @@ import (
 // anything. Only what may be shown is kept in clear: the national id's kind
 // (and a foreign id's country), the bank account's kind and last four
 // digits. A value is opened only by its reveal, answered once with
-// Cache-Control no-store and recorded as an event naming the viewer.
+// Cache-Control no-store and recorded as an event naming the viewer — or by
+// the personal-data export (personal_data.go), which is recorded the same way.
 //
 // No digit of either ever reaches a response other than its reveal, an event
 // payload, a problem detail or a log line: the refusals carry fixed
@@ -191,7 +192,7 @@ func (s *server) PutStaffPeopleByIdNationalId(ctx context.Context, req gen.PutSt
 		saved store.GetPersonRow
 		link  *string
 	)
-	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, req.Id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := readPerson(ctx, txq, req.Id)
 		if err != nil {
 			return err
@@ -233,8 +234,11 @@ func (s *server) PutStaffPeopleByIdNationalId(ctx context.Context, req gen.PutSt
 		return gen.PutStaffPeopleByIdNationalId404Response{}, nil
 	}
 	if r, ok := asRefusal(err); ok {
-		if r.status == http.StatusNotFound {
+		switch r.status {
+		case http.StatusNotFound:
 			return gen.PutStaffPeopleByIdNationalId404Response{}, nil
+		case http.StatusConflict:
+			return gen.PutStaffPeopleByIdNationalId409ApplicationProblemPlusJSONResponse(r.problem), nil
 		}
 		return gen.PutStaffPeopleByIdNationalId400ApplicationProblemPlusJSONResponse(r.problem), nil
 	}
@@ -259,7 +263,7 @@ func (s *server) PostStaffPeopleByIdNationalIdReveal(ctx context.Context, req ge
 		return nil, err
 	}
 	var out gen.StaffNationalIdReveal
-	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, req.Id, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		row, err := txq.PersonNationalID(ctx, req.Id)
 		if err != nil {
 			return fmt.Errorf("staff: read person %d's national identity number: %w", req.Id, err)
@@ -326,7 +330,7 @@ func (s *server) PutStaffPeopleByIdBankAccount(ctx context.Context, req gen.PutS
 		link    *string
 		changed bool
 	)
-	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, req.Id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := readPerson(ctx, txq, req.Id)
 		if err != nil {
 			return err
@@ -369,8 +373,11 @@ func (s *server) PutStaffPeopleByIdBankAccount(ctx context.Context, req gen.PutS
 		return gen.PutStaffPeopleByIdBankAccount404Response{}, nil
 	}
 	if r, ok := asRefusal(err); ok {
-		if r.status == http.StatusNotFound {
+		switch r.status {
+		case http.StatusNotFound:
 			return gen.PutStaffPeopleByIdBankAccount404Response{}, nil
+		case http.StatusConflict:
+			return gen.PutStaffPeopleByIdBankAccount409ApplicationProblemPlusJSONResponse(r.problem), nil
 		}
 		return gen.PutStaffPeopleByIdBankAccount400ApplicationProblemPlusJSONResponse(r.problem), nil
 	}
@@ -395,7 +402,7 @@ func (s *server) PostStaffPeopleByIdBankAccountReveal(ctx context.Context, req g
 		return nil, err
 	}
 	var out gen.StaffBankAccountReveal
-	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, req.Id, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		row, err := txq.PersonBankAccount(ctx, req.Id)
 		if err != nil {
 			return fmt.Errorf("staff: read person %d's bank account: %w", req.Id, err)

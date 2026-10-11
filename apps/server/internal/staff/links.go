@@ -191,8 +191,14 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 		return out
 	}
 
+	// An unlink is one of the writes an erased person still allows (plan
+	// reading 7), so the user can be linked to someone else; a link is not.
+	rule := refuseErased
+	if target == nil {
+		rule = allowErased
+	}
 	var row *store.PersonLinkRow
-	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, req.Id, rule, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := personLink(ctx, txq, req.Id)
 		if err != nil {
 			return err
@@ -233,8 +239,11 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 		return gen.PutStaffPeopleByIdUser404Response{}, nil
 	}
 	if r, ok := asRefusal(err); ok {
-		if r.status == http.StatusNotFound {
+		switch r.status {
+		case http.StatusNotFound:
 			return gen.PutStaffPeopleByIdUser404Response{}, nil
+		case http.StatusConflict:
+			return gen.PutStaffPeopleByIdUser409ApplicationProblemPlusJSONResponse(r.problem), nil
 		}
 		return gen.PutStaffPeopleByIdUser400ApplicationProblemPlusJSONResponse(r.problem), nil
 	}

@@ -498,6 +498,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         canRevealIdentifiers: audience.personalData,
         canSeePay: audience.self || audience.hr || audience.personalData,
         canSeeHealth: audience.self || audience.personalData,
+        canHold: audience.personalData,
       },
     };
     return shape(audience, whole, ["id", "revision", "capabilities", "status"], personGroupOf);

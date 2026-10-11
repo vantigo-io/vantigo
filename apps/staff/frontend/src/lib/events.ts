@@ -27,6 +27,11 @@ export const eventKinds = [
   "document_added",
   "document_updated",
   "document_removed",
+  "personal_data_exported",
+  "legal_hold_set",
+  "legal_hold_lifted",
+  "reassessed",
+  "person_rehired",
 ] as const;
 
 /**
@@ -47,6 +52,7 @@ const fieldLabelOverrides: Record<string, string> = {
   bankAccount: "bankAccount",
   nextOfKin: "nextOfKin",
   roles: "roles",
+  reason: "legalHoldReason",
 };
 
 export const eventFieldLabelKey = (field: string): string => fieldLabelOverrides[field] ?? field;
@@ -122,6 +128,10 @@ export const eventFields = [
   "seniorityDate",
   "payGrade",
   "note",
+  "legalHold",
+  "reason",
+  "erasedAt",
+  "reassessedAt",
 ] as const;
 
 /** What one field of a payload says: its values before and after, or only that it changed. */

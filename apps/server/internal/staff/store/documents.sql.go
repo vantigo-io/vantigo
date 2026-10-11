@@ -456,19 +456,6 @@ func (q *Queries) LockDocumentCategory(ctx context.Context, id int64) (StaffDocu
 	return i, err
 }
 
-const personErased = `-- name: PersonErased :one
-SELECT (erased_at IS NOT NULL)::boolean AS erased FROM staff.people WHERE id = $1
-`
-
-// PersonErased is whether the retention run has erased the person — the
-// record read-only but for the exceptions delivery A2's guard names.
-func (q *Queries) PersonErased(ctx context.Context, id int64) (bool, error) {
-	row := q.db.QueryRow(ctx, personErased, id)
-	var erased bool
-	err := row.Scan(&erased)
-	return erased, err
-}
-
 const personHasEmployment = `-- name: PersonHasEmployment :one
 SELECT EXISTS (SELECT 1 FROM staff.employments WHERE id = $1 AND person_id = $2) AS has
 `

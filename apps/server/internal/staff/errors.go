@@ -67,6 +67,13 @@ const (
 	codeStorageUnavailable      = "storage_unavailable"
 )
 
+// The refusal codes of the erased state, the legal hold and the
+// reassessment (delivery A2, Task 2).
+const (
+	codeLegalHold          = "legal_hold"
+	codeReassessmentNotDue = "reassessment_not_due"
+)
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.
@@ -89,6 +96,7 @@ const (
 	invalidTermsTitle        = "Invalid terms"
 	invalidDocumentTitle     = "Invalid document"
 	invalidCategoryTitle     = "Invalid document category"
+	invalidLegalHoldTitle    = "Invalid legal hold"
 )
 
 // withFieldError adds one message to a map another rule may already have put

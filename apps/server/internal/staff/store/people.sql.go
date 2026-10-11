@@ -9,6 +9,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -39,6 +40,28 @@ type BumpPersonRevisionParams struct {
 // theirs — next of kin, roles — which the person's revision guards.
 func (q *Queries) BumpPersonRevision(ctx context.Context, arg BumpPersonRevisionParams) error {
 	_, err := q.db.Exec(ctx, bumpPersonRevision, arg.Now, arg.ID)
+	return err
+}
+
+const clearErasure = `-- name: ClearErasure :exec
+UPDATE staff.people SET
+    erased_at = NULL,
+    reassessed_at = NULL,
+    reassessed_by_user_id = NULL,
+    updated_at = $1::timestamptz
+WHERE id = $2
+`
+
+type ClearErasureParams struct {
+	Now time.Time
+	ID  int64
+}
+
+// ClearErasure is a rehire's first write (design S15): the erased record is a
+// record again, its reassessment with it. What the erase blanked stays
+// blank until HR types it.
+func (q *Queries) ClearErasure(ctx context.Context, arg ClearErasureParams) error {
+	_, err := q.db.Exec(ctx, clearErasure, arg.Now, arg.ID)
 	return err
 }
 
@@ -208,7 +231,8 @@ SELECT
     national_id_kind, (national_id_mac IS NOT NULL)::boolean AS national_id_on_file,
     work_email, phone_work, phone_mobile, phone_private, private_email,
     street, postal_code, city, country, work_country, preferred_language,
-    bank_account_kind, bank_account_last4, notes, revision
+    bank_account_kind, bank_account_last4, notes, revision,
+    legal_hold, legal_hold_reason, legal_hold_at, erased_at, reassessed_at
 FROM staff.people
 WHERE id = $1
 `
@@ -238,6 +262,11 @@ type GetPersonRow struct {
 	BankAccountLast4  *string
 	Notes             *string
 	Revision          int32
+	LegalHold         bool
+	LegalHoldReason   *string
+	LegalHoldAt       *time.Time
+	ErasedAt          *time.Time
+	ReassessedAt      *time.Time
 }
 
 // The people (design S2, §3.1), their next of kin and their roles. No query
@@ -273,6 +302,11 @@ func (q *Queries) GetPerson(ctx context.Context, id int64) (GetPersonRow, error)
 		&i.BankAccountLast4,
 		&i.Notes,
 		&i.Revision,
+		&i.LegalHold,
+		&i.LegalHoldReason,
+		&i.LegalHoldAt,
+		&i.ErasedAt,
+		&i.ReassessedAt,
 	)
 	return i, err
 }
@@ -393,6 +427,29 @@ func (q *Queries) InsertPersonRole(ctx context.Context, arg InsertPersonRolePara
 	return err
 }
 
+const lastEmploymentEnd = `-- name: LastEmploymentEnd :one
+SELECT
+    (count(*) > 0 AND count(*) FILTER (WHERE end_date IS NULL) = 0)::boolean AS all_ended,
+    max(end_date)::date AS last_end
+FROM staff.employments
+WHERE person_id = $1
+`
+
+type LastEmploymentEndRow struct {
+	AllEnded bool
+	LastEnd  pgtype.Date
+}
+
+// LastEmploymentEnd is when a person's last employment ended — the latest
+// end — and whether every one of them has ended at all: an employment with
+// no end has not, and a person with none has no last end.
+func (q *Queries) LastEmploymentEnd(ctx context.Context, personID int64) (LastEmploymentEndRow, error) {
+	row := q.db.QueryRow(ctx, lastEmploymentEnd, personID)
+	var i LastEmploymentEndRow
+	err := row.Scan(&i.AllEnded, &i.LastEnd)
+	return i, err
+}
+
 const listNextOfKin = `-- name: ListNextOfKin :many
 SELECT name, relationship, phone, note FROM staff.next_of_kin
 WHERE person_id = $1
@@ -433,7 +490,7 @@ func (q *Queries) ListNextOfKin(ctx context.Context, personID int64) ([]ListNext
 
 const listPeople = `-- name: ListPeople :many
 SELECT p.id, p.employee_number, p.given_name, p.family_name, p.display_name,
-       p.work_email, p.phone_work, p.work_country, p.preferred_language
+       p.work_email, p.phone_work, p.work_country, p.preferred_language, p.erased_at
 FROM staff.people p
 WHERE NOT EXISTS (
     SELECT 1 FROM unnest($1::text[]) AS s(pattern)
@@ -507,6 +564,7 @@ type ListPeopleRow struct {
 	PhoneWork         *string
 	WorkCountry       string
 	PreferredLanguage string
+	ErasedAt          *time.Time
 }
 
 // ListPeople is one page of the directory, by display name, the work group's
@@ -540,6 +598,7 @@ func (q *Queries) ListPeople(ctx context.Context, arg ListPeopleParams) ([]ListP
 			&i.PhoneWork,
 			&i.WorkCountry,
 			&i.PreferredLanguage,
+			&i.ErasedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -689,6 +748,113 @@ func (q *Queries) PersonLinkedUser(ctx context.Context, personID int64) (string,
 	var external_id string
 	err := row.Scan(&external_id)
 	return external_id, err
+}
+
+const setLegalHold = `-- name: SetLegalHold :exec
+UPDATE staff.people SET
+    legal_hold = $1,
+    legal_hold_reason = $2,
+    legal_hold_by_user_id = $3,
+    legal_hold_at = $4,
+    updated_at = $5::timestamptz
+WHERE id = $6
+`
+
+type SetLegalHoldParams struct {
+	Held     bool
+	Reason   *string
+	ByUserID *uuid.UUID
+	At       *time.Time
+	Now      time.Time
+	ID       int64
+}
+
+// SetLegalHold sets or lifts a person's legal hold (design S15, class F): set,
+// with the reason, who set it and when; lifted, all three cleared. The
+// revision is left alone, as the sealed fields' writes leave it: it guards
+// HR's replace of the editable fields, which the hold is not among.
+func (q *Queries) SetLegalHold(ctx context.Context, arg SetLegalHoldParams) error {
+	_, err := q.db.Exec(ctx, setLegalHold,
+		arg.Held,
+		arg.Reason,
+		arg.ByUserID,
+		arg.At,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
+const setReassessed = `-- name: SetReassessed :exec
+UPDATE staff.people SET
+    reassessed_at = $1::timestamptz,
+    reassessed_by_user_id = $2,
+    updated_at = $1::timestamptz
+WHERE id = $3
+`
+
+type SetReassessedParams struct {
+	Now      time.Time
+	ByUserID *uuid.UUID
+	ID       int64
+}
+
+// SetReassessed records the reassessment of an erased person: when and by
+// whom. The revision is left alone, as SetLegalHold leaves it.
+func (q *Queries) SetReassessed(ctx context.Context, arg SetReassessedParams) error {
+	_, err := q.db.Exec(ctx, setReassessed, arg.Now, arg.ByUserID, arg.ID)
+	return err
+}
+
+const similarErasedPeople = `-- name: SimilarErasedPeople :many
+SELECT id, employee_number, display_name, erased_at::timestamptz AS erased_at
+FROM staff.people
+WHERE erased_at IS NOT NULL
+  AND lower(given_name) = lower($1::text)
+  AND lower(family_name) = lower($2::text)
+  AND birth_date = $3::date
+ORDER BY erased_at DESC, id
+`
+
+type SimilarErasedPeopleParams struct {
+	GivenName  string
+	FamilyName string
+	BirthDate  pgtype.Date
+}
+
+type SimilarErasedPeopleRow struct {
+	ID             int64
+	EmployeeNumber string
+	DisplayName    string
+	ErasedAt       time.Time
+}
+
+// SimilarErasedPeople is the erased people with these names, however cased,
+// and this birth date (the rehire warning, design S15), most recently erased
+// first.
+func (q *Queries) SimilarErasedPeople(ctx context.Context, arg SimilarErasedPeopleParams) ([]SimilarErasedPeopleRow, error) {
+	rows, err := q.db.Query(ctx, similarErasedPeople, arg.GivenName, arg.FamilyName, arg.BirthDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SimilarErasedPeopleRow
+	for rows.Next() {
+		var i SimilarErasedPeopleRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EmployeeNumber,
+			&i.DisplayName,
+			&i.ErasedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updatePerson = `-- name: UpdatePerson :exec

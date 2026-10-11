@@ -52,7 +52,7 @@ func TestWithPersonLock_HoldsThePersonRowForTheTransaction(t *testing.T) {
 	}
 
 	ran := false
-	err = s.withPersonLock(ctx, person, func(ctx context.Context, _ pgx.Tx, _ *store.Queries) error {
+	err = s.withPersonLock(ctx, person, refuseErased, func(ctx context.Context, _ pgx.Tx, _ *store.Queries) error {
 		ran = true
 		if !inOpenTx(ctx) || !inLockedTx(ctx) {
 			t.Error("fn's context is not marked as inside a locked transaction")
@@ -73,7 +73,7 @@ func TestWithPersonLock_HoldsThePersonRowForTheTransaction(t *testing.T) {
 		t.Errorf("the probe after the transaction: %v, want the lock released", err)
 	}
 
-	err = s.withPersonLock(ctx, person+1000, func(context.Context, pgx.Tx, *store.Queries) error {
+	err = s.withPersonLock(ctx, person+1000, refuseErased, func(context.Context, pgx.Tx, *store.Queries) error {
 		t.Error("fn ran for an unknown person")
 		return nil
 	})

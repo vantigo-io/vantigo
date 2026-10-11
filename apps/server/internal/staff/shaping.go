@@ -53,10 +53,15 @@ const (
 	// "Milestone notes, health documents" row): the person's and
 	// staff:personal-data's alone, HR without it included out.
 	groupHealth
+	// groupHold is the legal hold, the erasure and the reassessment (plan
+	// Task 2): HR's — staff:manage and staff:personal-data — and nobody
+	// else's, the person included. They are about the record's retention,
+	// not about the person.
+	groupHold
 )
 
 func (g fieldGroup) String() string {
-	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health"}[g]
+	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold"}[g]
 }
 
 // fieldGroups is the one table: every field of the person — as the contract
@@ -156,6 +161,11 @@ var fieldGroups = map[string]fieldGroup{
 	"salaryChangedAt":  groupPay,
 
 	"note": groupHRNotes,
+
+	"legalHold":    groupHold,
+	"reason":       groupHold,
+	"erasedAt":     groupHold,
+	"reassessedAt": groupHold,
 }
 
 // groupOf is a field's group, groupNobody for a field the table does not
@@ -199,7 +209,8 @@ func shownOnPerson[T any](a audience, field string, v *T) *T {
 // HR's; the private group, the pay, the national identity number's kind, the
 // bank account's last four digits, the link and the documents are the
 // person's own and HR's; HR's notes are HR's alone; the health documents and
-// health events are the person's and staff:personal-data's.
+// health events are the person's and staff:personal-data's; the hold group is
+// HR's, as the notes are.
 func (a audience) reads(g fieldGroup) bool {
 	hr := a.Manage || a.PersonalData
 	switch g {
@@ -209,7 +220,7 @@ func (a audience) reads(g fieldGroup) bool {
 		return a.Self || a.Manager || hr
 	case groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments:
 		return a.Self || hr
-	case groupHRNotes:
+	case groupHRNotes, groupHold:
 		return hr
 	case groupHealth:
 		return a.Self || a.PersonalData
@@ -291,6 +302,7 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 			CanSeePay:            a.reads(groupPay),
 			CanManageAccount:     a.Manage,
 			CanSeeHealth:         a.reads(groupHealth),
+			CanHold:              a.PersonalData,
 		},
 		WorkEmail:    shown(a, "workEmail", row.WorkEmail),
 		PhoneWork:    shown(a, "phoneWork", row.PhoneWork),
@@ -305,6 +317,9 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 		Country:      shown(a, "country", row.Country),
 		Notes:        shown(a, "notes", row.Notes),
 		User:         shown(a, "user", user),
+		ErasedAt:     shown(a, "erasedAt", row.ErasedAt),
+		ReassessedAt: shown(a, "reassessedAt", row.ReassessedAt),
+		LegalHold:    shown(a, "legalHold", legalHoldOf(row)),
 	}
 	if a.show("nationalId") {
 		out.NationalId = &gen.StaffPersonNationalId{
@@ -340,7 +355,17 @@ func personListItemResponse(row store.ListPeopleRow, p placement, a audience) ge
 		PreferredLanguage: gen.StaffLanguage(row.PreferredLanguage),
 		WorkEmail:         shown(a, "workEmail", row.WorkEmail),
 		PhoneWork:         shown(a, "phoneWork", row.PhoneWork),
+		ErasedAt:          shown(a, "erasedAt", row.ErasedAt),
 	}
+}
+
+// legalHoldOf is a person's legal hold as the contract answers it: held or
+// not, and when held, the reason and when it was set.
+func legalHoldOf(row store.GetPersonRow) *gen.StaffLegalHold {
+	if !row.LegalHold {
+		return &gen.StaffLegalHold{Held: false}
+	}
+	return &gen.StaffLegalHold{Held: true, Reason: row.LegalHoldReason, At: row.LegalHoldAt}
 }
 
 // changed is what a field of a group the audience may not read shows in an

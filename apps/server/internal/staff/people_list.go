@@ -19,7 +19,9 @@ import (
 // reading 15), the work group only, searched by name, employee number and
 // work email and filtered by the structure — and every person's placement
 // today, which GET /people/{id} answers too: where they stand, and the
-// manager and the department of their terms in force.
+// manager and the department of their terms in force. An erased person is
+// listed to HR as any leaver is, under ended and all, with erasedAt beside
+// the state (the hold group, shaping.go).
 
 // likeReplacer escapes ILIKE's special characters, backslash first so the
 // escaping of % and _ never doubles a backslash it just wrote (customers'

@@ -116,7 +116,7 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 	}
 	for name, run := range map[string]func(func(context.Context) error) error{
 		"withPersonLock": func(fn func(context.Context) error) error {
-			return s.withPersonLock(ctx, personID, func(ctx context.Context, _ pgx.Tx, _ *store.Queries) error { return fn(ctx) })
+			return s.withPersonLock(ctx, personID, refuseErased, func(ctx context.Context, _ pgx.Tx, _ *store.Queries) error { return fn(ctx) })
 		},
 		"withReadTx": func(fn func(context.Context) error) error {
 			return s.withReadTx(ctx, func(ctx context.Context, _ *store.Queries) error { return fn(ctx) })
