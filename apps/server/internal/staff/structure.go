@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
@@ -124,9 +125,21 @@ func orgNumberTaken(title string) error {
 	return refuseInvalid(title, fieldErrors{errs: fieldError("orgNumber", "Another row already has this organisation number")})
 }
 
+// readsStructure is the structure lists' judgment: the contract asks only
+// staff:access, and the lists are the directory's (staff:view) and HR's
+// (staff:manage) — an HR role without staff:view lists people (plan reading
+// 15) and must name their units and departments. Anyone else is the uniform
+// 403, the rule GET /people follows.
+func (s *server) readsStructure(ctx context.Context) bool {
+	return s.has(ctx, permView) || s.has(ctx, permManage)
+}
+
 // GetStaffLegalEntities List legal entities
 // (GET /api/v1/staff/legal-entities)
 func (s *server) GetStaffLegalEntities(ctx context.Context, _ gen.GetStaffLegalEntitiesRequestObject) (gen.GetStaffLegalEntitiesResponseObject, error) {
+	if !s.readsStructure(ctx) {
+		return gen.GetStaffLegalEntities403JSONResponse(apicommon.ForbiddenBody()), nil
+	}
 	rows, err := store.New(s.deps.Pool).ListLegalEntities(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staff: list the legal entities: %w", err)
@@ -345,6 +358,9 @@ func checkUnitLegalEntity(ctx context.Context, txq *store.Queries, id, current i
 // GetStaffBusinessUnits List business units
 // (GET /api/v1/staff/business-units)
 func (s *server) GetStaffBusinessUnits(ctx context.Context, _ gen.GetStaffBusinessUnitsRequestObject) (gen.GetStaffBusinessUnitsResponseObject, error) {
+	if !s.readsStructure(ctx) {
+		return gen.GetStaffBusinessUnits403JSONResponse(apicommon.ForbiddenBody()), nil
+	}
 	rows, err := store.New(s.deps.Pool).ListBusinessUnits(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staff: list the business units: %w", err)
@@ -595,6 +611,9 @@ func departmentWriteError(err error) error {
 // GetStaffDepartments List departments
 // (GET /api/v1/staff/departments)
 func (s *server) GetStaffDepartments(ctx context.Context, _ gen.GetStaffDepartmentsRequestObject) (gen.GetStaffDepartmentsResponseObject, error) {
+	if !s.readsStructure(ctx) {
+		return gen.GetStaffDepartments403JSONResponse(apicommon.ForbiddenBody()), nil
+	}
 	rows, err := store.New(s.deps.Pool).ListDepartments(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staff: list the departments: %w", err)
@@ -757,6 +776,9 @@ func parseLocation(body gen.StaffLocationRequest) (parsedLocation, fieldErrors) 
 // GetStaffLocations List locations
 // (GET /api/v1/staff/locations)
 func (s *server) GetStaffLocations(ctx context.Context, _ gen.GetStaffLocationsRequestObject) (gen.GetStaffLocationsResponseObject, error) {
+	if !s.readsStructure(ctx) {
+		return gen.GetStaffLocations403JSONResponse(apicommon.ForbiddenBody()), nil
+	}
 	rows, err := store.New(s.deps.Pool).ListLocations(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staff: list the locations: %w", err)

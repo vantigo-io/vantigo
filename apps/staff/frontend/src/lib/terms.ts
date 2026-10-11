@@ -2,6 +2,7 @@ import type {
   StaffAppointmentForm,
   StaffEmployeeType,
   StaffEmploymentType,
+  StaffGender,
   StaffNoticeUnit,
   StaffRelationshipType,
   StaffRemunerationType,
@@ -14,31 +15,61 @@ import type {
 // contract without a label fails the catalog's own test rather than showing
 // a raw code.
 
-export const employmentTypes: readonly StaffEmploymentType[] = ["fast", "midlertidig"];
-export const temporaryGrounds: readonly StaffTemporaryGround[] = ["a", "b", "c", "d", "e", "tariff"];
-export const workingHoursSchemes: readonly StaffWorkingHoursScheme[] = [
-  "not_shift",
-  "shift_365",
-  "offshore_336",
-  "continuous_336",
-  "round_the_clock_355",
-  "other_shift",
-];
-export const relationshipTypes: readonly StaffRelationshipType[] = [
-  "ordinary",
-  "maritime",
-  "freelancer",
-  "pension_or_other",
-];
-export const employeeTypes: readonly StaffEmployeeType[] = ["employee", "contractor", "consultant", "intern"];
-export const noticeUnits: readonly StaffNoticeUnit[] = ["days", "weeks", "months"];
-export const remunerationTypes: readonly StaffRemunerationType[] = [
-  "monthly",
-  "hourly",
-  "commission",
-  "fee",
-  "piecework",
-];
+// Each list is the keys of a record that `satisfies` the contract's union, so
+// a value the contract gains fails the typecheck here instead of going
+// unoffered; the order of the keys is the order a picker shows.
+const valuesOf = <T extends string>(record: Record<T, true>): readonly T[] => Object.keys(record) as T[];
+
+export const employmentTypes = valuesOf({ fast: true, midlertidig: true } satisfies Record<StaffEmploymentType, true>);
+export const temporaryGrounds = valuesOf({
+  a: true,
+  b: true,
+  c: true,
+  d: true,
+  e: true,
+  tariff: true,
+} satisfies Record<StaffTemporaryGround, true>);
+export const workingHoursSchemes = valuesOf({
+  not_shift: true,
+  shift_365: true,
+  offshore_336: true,
+  continuous_336: true,
+  round_the_clock_355: true,
+  other_shift: true,
+} satisfies Record<StaffWorkingHoursScheme, true>);
+export const relationshipTypes = valuesOf({
+  ordinary: true,
+  maritime: true,
+  freelancer: true,
+  pension_or_other: true,
+} satisfies Record<StaffRelationshipType, true>);
+export const employeeTypes = valuesOf({
+  employee: true,
+  contractor: true,
+  consultant: true,
+  intern: true,
+} satisfies Record<StaffEmployeeType, true>);
+export const noticeUnits = valuesOf({ days: true, weeks: true, months: true } satisfies Record<StaffNoticeUnit, true>);
+export const remunerationTypes = valuesOf({
+  monthly: true,
+  hourly: true,
+  commission: true,
+  fee: true,
+  piecework: true,
+} satisfies Record<StaffRemunerationType, true>);
+export const genders = valuesOf({
+  female: true,
+  male: true,
+  other: true,
+  unspecified: true,
+} satisfies Record<StaffGender, true>);
+export const appointmentForms = valuesOf({
+  fast: true,
+  fast_utleid: true,
+  midlertidig: true,
+  midlertidig_utleid: true,
+  midlertidig_tilkallingsvikar: true,
+} satisfies Record<StaffAppointmentForm, true>);
 
 /**
  * The appointment forms that go with a type (the a-melding's ansettelsesform):

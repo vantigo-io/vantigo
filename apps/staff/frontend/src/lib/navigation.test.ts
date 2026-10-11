@@ -8,6 +8,8 @@ describe("the Staff sidebar", () => {
   it("offers My page to everyone in the app, People to the directory, Settings to HR", () => {
     expect(offered(["staff:access"])).toEqual(["myPage"]);
     expect(offered(["staff:access", "staff:view"])).toEqual(["myPage", "people"]);
+    // HR without the directory lists people too (the server answers it), so the sidebar offers it.
+    expect(offered(["staff:access", "staff:manage"])).toEqual(["myPage", "people", "settings"]);
     expect(offered(["staff:access", "staff:view", "staff:manage"])).toEqual(["myPage", "people", "settings"]);
     expect(offered(["*"])).toEqual(["myPage", "people", "settings"]);
     expect(offered(undefined)).toEqual([]);
@@ -15,7 +17,7 @@ describe("the Staff sidebar", () => {
 
   it("guards People's URL by staff:access alone, so HR without the directory still lists", () => {
     const people = staffNavItems.find((item) => item.key === "people");
-    expect(people?.requiredPermissions).toEqual(["staff:view"]);
+    expect(people?.requiredPermissions).toEqual(["staff:view", "staff:manage"]);
     expect(people?.guardPermissions).toEqual(["staff:access"]);
   });
 

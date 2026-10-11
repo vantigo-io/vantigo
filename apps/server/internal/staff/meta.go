@@ -12,8 +12,8 @@ import (
 
 // This file is GET /meta: the one read the Staff app makes before it draws
 // anything. It answers what the caller may do, the business time zone with
-// today's date in it, and — for staff:view — the structure the pickers and
-// the labels need, so no client re-derives a rule this module owns. The
+// today's date in it, and — for staff:view or staff:manage — the structure the
+// pickers and the labels need, so no client re-derives a rule this module owns. The
 // capabilities delivery B and A2 add (canDecide, canSeeHealth) and C's
 // accountMode arrive additively with them.
 
@@ -34,7 +34,9 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 			CanSeePay:            caller.Manage || caller.PersonalData,
 		},
 	}
-	if caller.View {
+	// HR without the directory still names units and departments (plan
+	// reading 15), so the structure is staff:manage's to read too.
+	if caller.View || caller.Manage {
 		structure, err := s.structure(ctx)
 		if err != nil {
 			return nil, err

@@ -212,7 +212,9 @@ export const PeoplePage = () => {
       </Card>
 
       <NewPersonModal
-        opened={creating}
+        // A pasted ?create=person is a request, not a permission: the form
+        // is HR's, as the button is.
+        opened={creating && canEdit}
         onClose={() => {
           setCreating(false);
           if (create) navigate({ search: { ...search, create: undefined }, replace: true });

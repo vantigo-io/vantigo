@@ -1,4 +1,12 @@
-import { ApiValidationError } from "../api/request";
+import { ApiConflictError, ApiValidationError } from "../api/request";
+
+/**
+ * Whether a replace was refused because the row moved on since it was read
+ * (`revision_conflict`). The server's sentence names revision numbers, which
+ * mean nothing to the person; the page reloads and says so in their words.
+ */
+export const isRevisionConflict = (error: unknown): boolean =>
+  error instanceof ApiConflictError && error.code === "revision_conflict";
 
 /**
  * What to tell the person when the server refused a write. A validation

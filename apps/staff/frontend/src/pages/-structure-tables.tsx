@@ -16,7 +16,7 @@ import {
   updateStructureRow,
 } from "../api/structure";
 import "../i18n";
-import { refusalMessage } from "../lib/errors";
+import { isRevisionConflict, refusalMessage } from "../lib/errors";
 import { StructureFormModal, type StructureModalState } from "./-structure-form-modal";
 
 /**
@@ -66,12 +66,19 @@ const useRowActions = (kind: StructureKind) => {
       await refresh();
       notifications.show({ color: "teal", title: t("nowDefault", { name: row.name }), message: "" });
     },
-    onError: (error, { row }) =>
+    onError: async (error, { row }) => {
+      if (isRevisionConflict(error)) {
+        notifications.show({ color: "yellow", title: t("revisionConflict"), message: t("revisionConflictHint") });
+        await refresh();
+        return;
+      }
+      // structure_archived and the like: the server's own sentence says why.
       notifications.show({
         color: "red",
         title: t("couldNotMakeDefault", { name: row.name }),
         message: refusalMessage(error),
-      }),
+      });
+    },
   });
 
   const confirmArchive = (id: number, name: string) =>
@@ -319,7 +326,11 @@ export const DepartmentsTable = () => {
   const managers = useQueries({ queries: managerIds.map((id) => personQueryOptions(id)) });
   const managerName = (id?: number) => {
     if (!id) return t("notSet");
-    return managers.find((query) => query.data?.id === id)?.data?.displayName ?? t("loadingName");
+    const query = managers[managerIds.indexOf(id)];
+    if (query?.data) return query.data.displayName;
+    // A read that failed (a person deleted past the module, a 404) names the
+    // id rather than waiting for ever.
+    return query?.isError ? t("personById", { id }) : t("loadingName");
   };
   const departmentName = (id?: number) => {
     const found = rows.find((row) => row.id === id);

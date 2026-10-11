@@ -26,7 +26,7 @@ import {
   NUMBER_CHARACTERS,
   nextGeneratedNumber,
 } from "../lib/employee-number";
-import { fieldRefusals } from "../lib/errors";
+import { fieldRefusals, isRevisionConflict } from "../lib/errors";
 import { BusinessUnitsTable, DepartmentsTable, LegalEntitiesTable, LocationsTable } from "./-structure-tables";
 
 /**
@@ -152,7 +152,15 @@ const GeneralForm = ({ settings }: { settings: StaffSettings }) => {
       await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
       notifications.show({ color: "teal", title: t("settingsSaved"), message: "" });
     },
-    onError: (error) => {
+    onError: async (error) => {
+      if (isRevisionConflict(error)) {
+        // Somebody else saved first: the form takes the fresh row, which a
+        // form with unsaved edits would otherwise refuse to follow.
+        form.resetDirty();
+        notifications.show({ color: "yellow", title: t("revisionConflict"), message: t("revisionConflictHint") });
+        await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
+        return;
+      }
       const { fields, rest } = fieldRefusals(error, shownFields);
       form.setErrors(fields);
       if (rest.length > 0)

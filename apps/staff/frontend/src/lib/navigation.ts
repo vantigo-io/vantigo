@@ -16,9 +16,9 @@ export interface StaffNavItem {
   requiredPermissions: readonly string[];
   /**
    * What the route guard demands on the URL, when that is less than the
-   * sidebar asks for: People is offered to `staff:view`, but an HR role
-   * holding `staff:manage` without it still lists people (the server answers
-   * it, design reading 15), so the page itself is guarded by `staff:access`.
+   * sidebar asks for: People is offered to `staff:view` and to `staff:manage`
+   * (an HR role without the directory still lists, plan reading 15), and the
+   * page itself is guarded by `staff:access`, the server judging the rest.
    */
   guardPermissions?: readonly string[];
 }
@@ -29,7 +29,8 @@ export const staffNavItems: readonly StaffNavItem[] = [
     key: "people",
     label: "navPeople",
     to: PEOPLE_ROUTE_PATH,
-    requiredPermissions: ["staff:view"],
+    // Any of (the host's `hasPermissions`): the directory, or HR without it.
+    requiredPermissions: ["staff:view", "staff:manage"],
     guardPermissions: ["staff:access"],
   },
   { key: "settings", label: "navSettings", to: STAFF_SETTINGS_ROUTE_PATH, requiredPermissions: ["staff:manage"] },

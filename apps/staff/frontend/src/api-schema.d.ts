@@ -31,7 +31,7 @@ export interface paths {
         };
         /**
          * List business units
-         * @description Every business unit, archived ones included, by name.
+         * @description Every business unit, archived ones included, by name. Read by staff:view and by staff:manage (HR without the directory still names units and departments); anyone else gets the uniform 403.
          */
         get: operations["getStaffBusinessUnits"];
         put?: never;
@@ -95,7 +95,7 @@ export interface paths {
         };
         /**
          * List departments
-         * @description Every department, archived ones included, by code.
+         * @description Every department, archived ones included, by code. Read by staff:view and by staff:manage (HR without the directory still names units and departments); anyone else gets the uniform 403.
          */
         get: operations["getStaffDepartments"];
         put?: never;
@@ -267,7 +267,7 @@ export interface paths {
         };
         /**
          * List legal entities
-         * @description Every legal entity, archived ones included (so a stored reference can still be named), by name.
+         * @description Every legal entity, archived ones included (so a stored reference can still be named), by name. Read by staff:view and by staff:manage (HR without the directory still names units and departments); anyone else gets the uniform 403.
          */
         get: operations["getStaffLegalEntities"];
         put?: never;
@@ -331,7 +331,7 @@ export interface paths {
         };
         /**
          * List locations
-         * @description Every location, archived ones included, by name.
+         * @description Every location, archived ones included, by name. Read by staff:view and by staff:manage (HR without the directory still names units and departments); anyone else gets the uniform 403.
          */
         get: operations["getStaffLocations"];
         put?: never;
@@ -439,7 +439,7 @@ export interface paths {
         };
         /**
          * Get the Staff metadata
-         * @description The one read the Staff app makes before it draws anything: what the caller may do, the installation's business time zone — the zone every date of this module is a calendar day in — with today's date in it, and, for a caller holding staff:view, the company's structure for the pickers and the labels. Every staff:access holder reads it.
+         * @description The one read the Staff app makes before it draws anything: what the caller may do, the installation's business time zone — the zone every date of this module is a calendar day in — with today's date in it, and, for a caller holding staff:view or staff:manage, the company's structure for the pickers and the labels. Every staff:access holder reads it.
          */
         get: operations["getStaffMeta"];
         put?: never;
@@ -1483,7 +1483,7 @@ export interface components {
             /** @description An IANA name such as Europe/Oslo, which this server and its database must read the same way. */
             timeZone: string;
         };
-        /** @description The company's structure, present on GET /meta only for a caller holding staff:view. Archived rows are included so a stored reference can still be named; the pickers leave them out. */
+        /** @description The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out. */
         StaffStructure: {
             businessUnits: components["schemas"]["StaffBusinessUnit"][];
             departments: components["schemas"]["StaffDepartment"][];
@@ -1822,7 +1822,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — neither staff:view nor staff:manage. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2048,7 +2048,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — neither staff:view nor staff:manage. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2672,7 +2672,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — neither staff:view nor staff:manage. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2889,7 +2889,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — neither staff:view nor staff:manage. */
             403: {
                 headers: {
                     [name: string]: unknown;

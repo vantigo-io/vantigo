@@ -9,15 +9,18 @@ export const TODAY = "2026-10-11";
 /**
  * Who is asking. `manage` is HR (`staff:manage` with `staff:view`), `view` a
  * colleague holding `staff:view` alone, `manageOnly` an HR role without
- * `staff:view` — it still lists people but reads no structure.
+ * `staff:view` — it still lists people and reads the structure — and
+ * `access` somebody holding `staff:access` alone, who reads neither.
  */
-export type Role = "manage" | "view" | "manageOnly";
+export type Role = "manage" | "view" | "manageOnly" | "access";
+
+const manages = (role: Role) => role === "manage" || role === "manageOnly";
 
 export const capabilitiesOf = (role: Role): StaffCapabilities => ({
-  canEdit: role !== "view",
-  canSeePay: role !== "view",
+  canEdit: manages(role),
+  canSeePay: manages(role),
   canRevealIdentifiers: false,
-  canViewDirectory: role !== "manageOnly",
+  canViewDirectory: role === "manage" || role === "view",
 });
 
 export const legalEntities = (): StaffLegalEntity[] => [
@@ -67,7 +70,8 @@ export const meta = (role: Role = "manage", overrides: Partial<StaffMeta> = {}):
   capabilities: capabilitiesOf(role),
   timeZone: "Europe/Oslo",
   today: TODAY,
-  ...(role === "manageOnly" ? {} : { structure: structure() }),
+  // The structure is staff:view's and staff:manage's (plan reading 15).
+  ...(role === "access" ? {} : { structure: structure() }),
   ...overrides,
 });
 

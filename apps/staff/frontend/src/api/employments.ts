@@ -14,6 +14,7 @@ export type StaffRelationshipType = Schemas["StaffRelationshipType"];
 export type StaffEmployeeType = Schemas["StaffEmployeeType"];
 export type StaffNoticeUnit = Schemas["StaffNoticeUnit"];
 export type StaffRemunerationType = Schemas["StaffRemunerationType"];
+export type StaffGender = Schemas["StaffGender"];
 
 /**
  * The second step of New person: an employment with its first terms row,

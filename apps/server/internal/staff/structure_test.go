@@ -75,9 +75,11 @@ func defaultBusinessUnits(t *testing.T, c *modtest.Client) []int64 {
 		func(r gen.StaffBusinessUnit) int64 { return r.Id }, func(r gen.StaffBusinessUnit) bool { return r.IsDefault })
 }
 
-// The structure is the directory's to read (staff:view) and HR's to change
-// (staff:manage): either alone is the uniform 403 on the other's operations.
-func TestStructure_ReadIsStaffViewAndWriteIsStaffManage(t *testing.T) {
+// The structure is read by the directory (staff:view) and by HR
+// (staff:manage) — an HR role without staff:view still lists people and so
+// must name their units and departments (plan reading 15) — and changed by HR
+// alone. staff:access alone is the uniform 403 on the read, as on GET /people.
+func TestStructure_ReadIsTheDirectorysOrHRsAndWriteIsHRs(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	viewer, _ := signIn(t, h, "staff:view")
@@ -86,10 +88,9 @@ func TestStructure_ReadIsStaffViewAndWriteIsStaffManage(t *testing.T) {
 
 	for _, path := range []string{legalEntitiesPath, businessUnitsPath, departmentsPath, locationsPath} {
 		do(t, viewer, http.MethodGet, path, nil, http.StatusOK, nil)
-		for _, c := range []*modtest.Client{writer, member} {
-			if r := c.Do(http.MethodGet, path, nil); r.Status != http.StatusForbidden {
-				t.Errorf("GET %s without staff:view: %d, want 403", path, r.Status)
-			}
+		do(t, writer, http.MethodGet, path, nil, http.StatusOK, nil)
+		if r := member.Do(http.MethodGet, path, nil); r.Status != http.StatusForbidden || r.Code() != "forbidden" {
+			t.Errorf("GET %s with staff:access alone: status %d code %q, want the uniform 403", path, r.Status, r.Code())
 		}
 		if r := viewer.Do(http.MethodPost, path, map[string]any{"name": "X", "code": "X", "legalEntityId": 1}); r.Status != http.StatusForbidden {
 			t.Errorf("POST %s without staff:manage: %d, want 403", path, r.Status)

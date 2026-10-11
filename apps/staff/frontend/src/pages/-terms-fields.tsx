@@ -7,7 +7,7 @@ import type { StaffAppointmentForm, StaffEmploymentType, StaffWorkingHoursScheme
 import type { StaffStructure } from "../api/meta";
 import { PersonPicker } from "../components/person-picker";
 import "../i18n";
-import { useDecimalSeparator } from "../lib/format";
+import { useDecimalSeparator, useStaffFormat } from "../lib/format";
 import {
   appointmentFormsFor,
   defaultFullTimeHours,
@@ -51,6 +51,7 @@ export const TermsFields = <V extends { terms: TermsFormValues }>({
 }: TermsFieldsProps<V>) => {
   const { t } = useI18n("staff");
   const decimalSeparator = useDecimalSeparator();
+  const format = useStaffFormat();
   // The form's values are typed by the composing form; the terms part is what this edits.
   const terms = (form.values as { terms: TermsFormValues }).terms;
   const field = (name: keyof TermsFormValues) => form.getInputProps(`terms.${name}` as never);
@@ -58,7 +59,7 @@ export const TermsFields = <V extends { terms: TermsFormValues }>({
     form.setFieldValue(`terms.${name}` as never, value as never);
 
   const forms = appointmentFormsFor(terms.employmentType);
-  const mismatch = hoursMismatchMessage(t, terms);
+  const mismatch = hoursMismatchMessage(t, terms, format.number);
   // The rule is judged live against the scheme chosen now; a refusal the
   // server gave is shown when the form itself sees nothing wrong.
   const hoursError = mismatch ?? (form.errors["terms.fullTimeHoursPerWeek"] as string | undefined);

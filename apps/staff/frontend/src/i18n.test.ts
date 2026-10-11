@@ -5,6 +5,7 @@ import {
   appointmentFormsFor,
   employeeTypes,
   employmentTypes,
+  genders,
   noticeUnits,
   relationshipTypes,
   remunerationTypes,
@@ -48,6 +49,7 @@ describe("the staff catalog", () => {
       ...employeeTypes.map((value) => `employeeType_${value}`),
       ...noticeUnits.map((value) => `noticeUnit_${value}`),
       ...remunerationTypes.map((value) => `remunerationType_${value}`),
+      ...genders.map((value) => `gender_${value}`),
       ...staffNavItems.map((item) => item.label),
     ];
     for (const key of keys) expect(en[key], `no label for ${key}`).toBeDefined();

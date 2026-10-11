@@ -27,6 +27,7 @@ import { staffSettingsQueryOptions } from "../api/settings";
 import "../i18n";
 import { NUMBER_CHARACTERS, nextGeneratedNumber } from "../lib/employee-number";
 import { fieldRefusals } from "../lib/errors";
+import { useStaffFormat } from "../lib/format";
 import {
   emptyPerson,
   type PersonFormValues,
@@ -152,11 +153,13 @@ interface EmploymentFormValues {
   terms: TermsFormValues;
 }
 
-const employmentFields = ["businessUnitId", "startDate", "employmentNumber", "relationshipType", "contractSignedAt"];
+/** What "More terms" folds away: the rest of the terms, and the employment's own two rarely-set fields. */
+const foldedFields: readonly string[] = [...moreTermsFields, "relationshipType", "contractSignedAt"];
 
 const EmploymentStep = ({ person, onDone }: { person: StaffPerson; onDone: () => void }) => {
   const { t } = useI18n("staff");
   const queryClient = useQueryClient();
+  const format = useStaffFormat();
   const { data: meta } = useQuery(staffMetaQueryOptions());
   const [moreOpen, setMoreOpen] = useState(false);
   const [hoursTouched, setHoursTouched] = useState(false);
@@ -183,7 +186,7 @@ const EmploymentStep = ({ person, onDone }: { person: StaffPerson; onDone: () =>
         if (!value.trim()) return t("employmentNumberRequired");
         return value.trim().length > 40 || !NUMBER_CHARACTERS.test(value.trim()) ? t("employmentNumberInvalid") : null;
       },
-      terms: termsValidation(t),
+      terms: termsValidation(t, format.number),
     },
   });
 
@@ -205,15 +208,24 @@ const EmploymentStep = ({ person, onDone }: { person: StaffPerson; onDone: () =>
       onDone();
     },
     onError: (error) => {
-      const shown = [...employmentFields, ...termsFields.map((field) => `terms.${field}`)];
+      // A field error lands on a field the form can show: the folded ones
+      // unfold for it, and one the form never renders (the structure
+      // pickers without a structure) is said out loud instead.
+      const shown = [
+        ...(structure ? ["businessUnitId"] : []),
+        "startDate",
+        "employmentNumber",
+        "relationshipType",
+        "contractSignedAt",
+        ...termsFields
+          .filter((field) => structure || (field !== "departmentId" && field !== "locationId"))
+          .map((field) => `terms.${field}`),
+      ];
       const { fields, rest } = fieldRefusals(error, shown);
       form.setErrors(fields);
-      if (
-        Object.keys(fields).some((field) =>
-          (moreTermsFields as readonly string[]).includes(field.replace("terms.", "")),
-        )
-      )
-        setMoreOpen(true);
+      // The typed-number field exists only while the switch is on.
+      if (fields.employmentNumber) form.setFieldValue("assignOwnNumber", true);
+      if (Object.keys(fields).some((field) => foldedFields.includes(field.replace(/^terms\./, "")))) setMoreOpen(true);
       if (rest.length > 0)
         notifications.show({ color: "red", title: t("couldNotSaveEmployment"), message: rest.join(" ") });
     },
