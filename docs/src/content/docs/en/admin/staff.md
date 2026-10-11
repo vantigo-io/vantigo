@@ -351,9 +351,12 @@ the run by hand below still works.
 
 `POST /api/v1/staff/retention/run` (`staff:manage`) runs the worker's erase and a pass
 over the deletion ledger now, with you as the erased entries' author. The answer says
-what was erased per kind and how many objects were deleted from the store. While the
-worker is running, it answers `retention_busy` (409); try again in a minute. The Staff
-app's Settings page offers the same as *Run retention now*.
+what was erased per kind and how many objects were deleted from the store. Its pass
+over the deletion ledger stops after thirty seconds, so a slow object store does not
+hold the request; the worker deletes the rest on its next look. While the worker is
+running, it answers `retention_busy` (409); try again in a minute. For now the run is
+triggered through this endpoint; the Staff app's Settings page gains a button for it in
+a later release.
 
 ### The legal hold
 

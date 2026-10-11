@@ -3,12 +3,15 @@ package staff_test
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/staff"
+	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 )
 
 // queueObject puts an object in the fake store and its row in the ledger,
@@ -137,5 +140,59 @@ func TestLedger_CallsTheStoreHoldingNoConnection(t *testing.T) {
 	}
 	if n := h.Count(t, `SELECT count(*) FROM staff.object_deletions`); n != 0 {
 		t.Errorf("ledger rows = %d, want none", n)
+	}
+}
+
+// Each claim is timed when it is taken, not when the pass began: a store slow
+// enough that the clock moves between two claims still gives the second row
+// its whole five-minute window, so no other pass takes it while it is tried.
+func TestLedger_EachClaimIsTimedWhenTaken(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	first := queueObject(t, h, "first", h.Now().Add(-2*time.Second), nil)
+	second := queueObject(t, h, "second", h.Now().Add(-time.Second), nil)
+	var claimedAt, claimedUntil time.Time
+	h.objects.whenDeleting(func(key string) {
+		switch key {
+		case first:
+			h.Advance(10 * time.Minute)
+		case second:
+			claimedAt = h.Now()
+			claimedUntil = modtest.One[time.Time](t, h.Harness, `SELECT claimed_until FROM staff.object_deletions WHERE object_key = $1`, second)
+		}
+	})
+	if attempted, succeeded := runLedger(t, h); attempted != 2 || succeeded != 2 {
+		t.Fatalf("pass = %d attempted, %d confirmed; want 2 and 2", attempted, succeeded)
+	}
+	if want := claimedAt.Add(5 * time.Minute); !claimedUntil.Equal(want) {
+		t.Errorf("the second row's claim runs until %s, want five minutes after its own claim, %s", claimedUntil, want)
+	}
+}
+
+// POST /retention/run bounds its ledger pass (thirty seconds; a test's budget
+// here): a store that has stopped answering ends the attempt under way when
+// the budget runs out, the run answers 200 with what it attempted, and the
+// rows wait in the ledger for the worker. The budget is a package variable, so
+// this test does not run in parallel.
+func TestRetention_TheRunsLedgerPassIsBounded(t *testing.T) {
+	staff.SetRetentionRunLedgerBudget(t, 200*time.Millisecond)
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	keys := []string{queueObject(t, h, "a", h.Now(), nil), queueObject(t, h, "b", h.Now(), nil)}
+	h.objects.hang()
+
+	start := time.Now()
+	var run gen.StaffRetentionRun
+	do(t, hr, http.MethodPost, retentionRunPath, nil, http.StatusOK, &run)
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("the run answered after %s, want within its ledger budget", elapsed)
+	}
+	if run.Deletions.Attempted < 1 || run.Deletions.Succeeded != 0 {
+		t.Errorf("deletions = %+v, want at least one attempted, none confirmed", run.Deletions)
+	}
+	for _, key := range keys {
+		if _, _, _, ok := ledgerRow(t, h, key); !ok || !h.objects.has(key) {
+			t.Errorf("%s: the row or the object is gone, want both kept for the worker", key)
+		}
 	}
 }

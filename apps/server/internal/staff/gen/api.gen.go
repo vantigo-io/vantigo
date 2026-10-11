@@ -909,7 +909,7 @@ type StaffEvent struct {
 	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; the kinds grow with the module.
 	Kind string `json:"kind"`
 
-	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A", "count": n}]}, read by the documents group (the person and HR). A value the retention run erased reads "changed" to everyone.
+	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A", "count": n}]}, read by HR — the health entry by staff:personal-data alone — and is listed as the hold's kinds are: not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone.
 	Payload map[string]interface{} `json:"payload"`
 }
 

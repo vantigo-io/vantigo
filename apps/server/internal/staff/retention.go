@@ -139,6 +139,11 @@ const (
 // eraseKinds is the order the kinds are reported in.
 var eraseKinds = []string{eraseKindD, eraseKindHealth, eraseKindA}
 
+// documentEventKinds are the kinds of event about one document: the A erase
+// of a person's last employment finds those of a document that is gone by
+// them.
+var documentEventKinds = []string{eventDocumentAdded, eventDocumentUpdated, eventDocumentRemoved}
+
 // The schedules' constants (S15): the health class, and the years an
 // employment's pay documentation outlives the year it ended.
 const (
@@ -241,11 +246,12 @@ func employmentScope(table string) (string, error) {
 // arg): a table of that class whole has those rows deleted; otherwise the
 // class's columns are nulled where any holds a value, and the row's revision
 // and updated_at move on. The statements are built from columnClasses — no
-// request reaches them — and answer the items removed: rows deleted, or
-// values nulled.
+// request reaches them, and each identifier is quoted all the same — and
+// answer the items removed: rows deleted, or values nulled.
 func eraseColumns(ctx context.Context, tx pgx.Tx, table, class, scope string, arg int64, now time.Time) (int64, error) {
+	relation := pgx.Identifier{"staff", table}.Sanitize()
 	if wholeTable(table, class) {
-		tag, err := tx.Exec(ctx, "DELETE FROM staff."+table+" WHERE "+scope, arg)
+		tag, err := tx.Exec(ctx, "DELETE FROM "+relation+" WHERE "+scope, arg)
 		if err != nil {
 			return 0, fmt.Errorf("staff: erase %s's rows of class %s: %w", table, class, err)
 		}
@@ -255,16 +261,20 @@ func eraseColumns(ctx context.Context, tx pgx.Tx, table, class, scope string, ar
 	if len(columns) == 0 {
 		return 0, nil
 	}
-	list := strings.Join(columns, ", ")
+	quoted := make([]string, len(columns))
+	for i, column := range columns {
+		quoted[i] = pgx.Identifier{column}.Sanitize()
+	}
+	list := strings.Join(quoted, ", ")
 	var values int64
-	if err := tx.QueryRow(ctx, "SELECT coalesce(sum(num_nonnulls("+list+")), 0) FROM staff."+table+" WHERE "+scope, arg).Scan(&values); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT coalesce(sum(num_nonnulls("+list+")), 0) FROM "+relation+" WHERE "+scope, arg).Scan(&values); err != nil {
 		return 0, fmt.Errorf("staff: count %s's values of class %s: %w", table, class, err)
 	}
 	if values == 0 {
 		return 0, nil
 	}
 	sets := make([]string, 0, len(columns)+2)
-	for _, column := range columns {
+	for _, column := range quoted {
 		sets = append(sets, column+" = NULL")
 	}
 	if hasColumn(table, "revision") {
@@ -275,7 +285,7 @@ func eraseColumns(ctx context.Context, tx pgx.Tx, table, class, scope string, ar
 		sets = append(sets, "updated_at = $2::timestamptz")
 		args = append(args, now)
 	}
-	statement := "UPDATE staff." + table + " SET " + strings.Join(sets, ", ") + " WHERE (" + scope + ") AND num_nonnulls(" + list + ") > 0"
+	statement := "UPDATE " + relation + " SET " + strings.Join(sets, ", ") + " WHERE (" + scope + ") AND num_nonnulls(" + list + ") > 0"
 	if _, err := tx.Exec(ctx, statement, args...); err != nil {
 		return 0, fmt.Errorf("staff: erase %s's values of class %s: %w", table, class, err)
 	}
@@ -319,7 +329,7 @@ func (p retentionPlan) dueHealth(person *int64, limit int32) store.DuePeopleHeal
 func (p retentionPlan) dueA(person *int64, limit int32) store.DueEmploymentsAParams {
 	return store.DueEmploymentsAParams{
 		BeforeYear: p.thisYear - payYearsKept, PersonID: person,
-		AColumns: p.aColumns, AFields: p.aFields, Blanked: changed, RowLimit: limit,
+		AColumns: p.aColumns, AFields: p.aFields, Blanked: changed, DocumentKinds: documentEventKinds, RowLimit: limit,
 	}
 }
 
@@ -526,7 +536,10 @@ func (s *server) eraseHealth(ctx context.Context, txq *store.Queries, personID i
 // nulled on every terms row, its documents of class A deleted and queued —
 // filed against it, or against no employment while it is the person's last
 // — and the values of class A in its events replaced, with every value of
-// the deleted documents' events. The person's other employments keep theirs.
+// the deleted documents' events. While it is the last, the events of a
+// document of class A that is already gone — a contract or an attest deleted
+// by hand, which no longer says which employment it was filed against — are
+// replaced too. The person's other employments keep theirs.
 func (s *server) eraseA(ctx context.Context, tx pgx.Tx, txq *store.Queries, personID, employmentID int64, now time.Time) (int64, error) {
 	var count int64
 	for _, table := range tablesWith("A") {
@@ -557,9 +570,17 @@ func (s *server) eraseA(ctx context.Context, tx pgx.Tx, txq *store.Queries, pers
 		return 0, err
 	}
 	count += int64(len(removed))
+	var gone []int64
+	if last == employmentID {
+		if gone, err = txq.GoneDocumentsWithEventsA(ctx, store.GoneDocumentsWithEventsAParams{
+			PersonID: &personID, DocumentKinds: documentEventKinds,
+		}); err != nil {
+			return 0, fmt.Errorf("staff: read person %d's events of documents gone: %w", personID, err)
+		}
+	}
 	n, err := s.blankEvents(ctx, txq, personID, "A", func(ids eventIDs) bool {
 		if ids.DocumentID != nil {
-			return slices.Contains(removed, *ids.DocumentID)
+			return slices.Contains(removed, *ids.DocumentID) || slices.Contains(gone, *ids.DocumentID)
 		}
 		return ids.EmploymentID != nil && *ids.EmploymentID == employmentID
 	})

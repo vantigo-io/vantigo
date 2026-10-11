@@ -2,6 +2,8 @@ package staff
 
 import (
 	"context"
+	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -63,6 +65,19 @@ const DocumentUploadsPerHour = documentUploadsPerHour
 // keyed table.column, for the external tests that assert an erase column by
 // column.
 func ColumnClasses() map[string]string { return columnClasses }
+
+// FieldsOfClass is the payload fields of one retention class, for the test
+// that asserts an erase field by field.
+func FieldsOfClass(class string) []string { return fieldsOfClass(class) }
+
+// SetRetentionRunLedgerBudget bounds POST /retention/run's ledger pass at d
+// for one test, which must not run in parallel, and restores the budget
+// after it.
+func SetRetentionRunLedgerBudget(t *testing.T, d time.Duration) {
+	before := retentionRunLedgerBudget
+	retentionRunLedgerBudget = d
+	t.Cleanup(func() { retentionRunLedgerBudget = before })
+}
 
 // RetentionLeaseKey is the retention worker's advisory lease, for the test
 // that holds it from outside to see the run refused as busy.

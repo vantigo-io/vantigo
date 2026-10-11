@@ -49,6 +49,12 @@ const (
 	defaultWorkersPoll = time.Hour
 )
 
+// retentionRunLedgerBudget bounds the ledger pass of POST /retention/run, all
+// of it: the run answers within a request's time against a store that has
+// stopped answering, with what it attempted, and the worker finishes the
+// rest. A variable so a test can shorten it.
+var retentionRunLedgerBudget = 30 * time.Second
+
 // retentionActor is who the worker's erased events name: the installation.
 var retentionActor = actor{Kind: actorKindSystem, Display: systemActorDisplayName}
 
@@ -169,8 +175,10 @@ func (s *server) logger() *slog.Logger {
 //
 // The worker's two steps, now, by the same code and with the same
 // disciplines: an erase cycle under the lease — the caller as the erased
-// events' actor, resolved before any connection is held — and a ledger pass.
-// The lease held elsewhere is 409 retention_busy, and nothing runs.
+// events' actor, resolved before any connection is held — and a ledger pass,
+// bounded as a whole by retentionRunLedgerBudget: what it did not reach, the
+// worker finishes. The lease held elsewhere is 409 retention_busy, and nothing
+// runs.
 func (s *server) PostStaffRetentionRun(ctx context.Context, _ gen.PostStaffRetentionRunRequestObject) (gen.PostStaffRetentionRunResponseObject, error) {
 	who, err := s.actorFor(ctx)
 	if err != nil {
@@ -183,7 +191,9 @@ func (s *server) PostStaffRetentionRun(ctx context.Context, _ gen.PostStaffReten
 	if !ran {
 		return gen.PostStaffRetentionRun409ApplicationProblemPlusJSONResponse(retentionBusy()), nil
 	}
-	attempted, succeeded, err := s.runLedger(ctx)
+	ledger, cancel := context.WithTimeout(ctx, retentionRunLedgerBudget)
+	defer cancel()
+	attempted, succeeded, err := s.runLedger(ledger)
 	if err != nil {
 		return nil, err
 	}
