@@ -51,6 +51,16 @@ const (
 	eventTermsDeleted       = "terms_deleted"
 )
 
+// The event kinds delivery A2's document archive writes. Each names the
+// document (documentId) and carries its category's key, file name and dates
+// as fields; its classes are the category's, which also decide its group
+// (shapePayload): the documents group, or the health group for class E.
+const (
+	eventDocumentAdded   = "document_added"
+	eventDocumentUpdated = "document_updated"
+	eventDocumentRemoved = "document_removed"
+)
+
 const (
 	actorKindUser          = "user"
 	actorKindSystem        = "system"
@@ -245,7 +255,10 @@ func (s *server) recordRowChange(ctx context.Context, txq *store.Queries, person
 //
 // The person themselves, a manager of theirs today and HR read it; to anyone
 // else — a colleague holding staff:view included — the person's history is
-// the 404 an unknown id is.
+// the 404 an unknown id is. A health event — one whose payload touches class E,
+// a health document's — is left out of the page and the count for an
+// audience without the health group (HR without staff:personal-data, a
+// manager), so they do not learn that one happened.
 func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffPeopleByIdEventsRequestObject) (gen.GetStaffPeopleByIdEventsResponseObject, error) {
 	if f := validatePageParams(req.Params.Page, req.Params.PageSize); f.failed() {
 		return gen.GetStaffPeopleByIdEvents400ApplicationProblemPlusJSONResponse(invalid(invalidPagingTitle, f)), nil
@@ -273,11 +286,11 @@ func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffP
 		if !a.seesEvents() {
 			return notFound()
 		}
-		if total, err = q.CountPersonEvents(ctx, &req.Id); err != nil {
+		if total, err = q.CountPersonEvents(ctx, store.CountPersonEventsParams{PersonID: &req.Id, WithHealth: a.reads(groupHealth)}); err != nil {
 			return fmt.Errorf("staff: count person %d's events: %w", req.Id, err)
 		}
 		rows, err = q.ListPersonEvents(ctx, store.ListPersonEventsParams{
-			PersonID: &req.Id, PageSize: pageSize, PageOffset: (page - 1) * pageSize,
+			PersonID: &req.Id, WithHealth: a.reads(groupHealth), PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 		})
 		if err != nil {
 			return fmt.Errorf("staff: list person %d's events: %w", req.Id, err)

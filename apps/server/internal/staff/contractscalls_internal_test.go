@@ -3,7 +3,9 @@ package staff
 import (
 	"context"
 	"errors"
+	"io"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -14,6 +16,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
+	"github.com/vantigo-io/vantigo/server/internal/storage"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 )
 
@@ -36,6 +39,21 @@ func (silentUsers) SearchUsers(context.Context, string, int) ([]contracts.UserEn
 
 func silentMail(context.Context, config.MailConfig, mail.Outbound) error { return nil }
 
+// silentStore is an object store that keeps nothing and refuses nothing.
+type silentStore struct{}
+
+var _ storage.ObjectStore = silentStore{}
+
+func (silentStore) Put(context.Context, string, io.Reader, string) error { return nil }
+
+func (silentStore) Get(context.Context, string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+
+func (silentStore) Exists(context.Context, string) (bool, error) { return false, nil }
+
+func (silentStore) Delete(context.Context, string) error { return nil }
+
 // The whole point of routing every call out of the module through
 // contractscalls.go is that the suite can prove none is made inside one of
 // the module's transactions. That check is only worth having if it fires, so
@@ -51,7 +69,7 @@ func silentMail(context.Context, config.MailConfig, mail.Outbound) error { retur
 func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
-	s := &server{deps: module.Deps{Pool: pool, Users: silentUsers{}, SMTPSend: silentMail}}
+	s := &server{deps: module.Deps{Pool: pool, Users: silentUsers{}, SMTPSend: silentMail}, objects: silentStore{}}
 
 	var outside, inside []string
 	previous := contractCallHook
@@ -70,9 +88,15 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 		_, e2 := s.usersUsers(ctx, []uuid.UUID{user})
 		_, e3 := s.usersSearch(ctx, "kari", 20)
 		e4 := s.smtpSend(ctx, config.MailConfig{}, mail.Outbound{})
-		return []error{e1, e2, e3, e4}
+		e5 := s.objectPut(ctx, "people/1/a", strings.NewReader("x"), "application/pdf")
+		body, e6 := s.objectGet(ctx, "people/1/a")
+		if body != nil {
+			_ = body.Close()
+		}
+		e7 := s.objectDelete(ctx, "people/1/a")
+		return []error{e1, e2, e3, e4, e5, e6, e7}
 	}
-	want := []string{"Users.User", "Users.Users", "Users.SearchUsers", "SMTPSend"}
+	want := []string{"Users.User", "Users.Users", "Users.SearchUsers", "SMTPSend", "ObjectStore.Put", "ObjectStore.Get", "ObjectStore.Delete"}
 
 	for _, err := range call(ctx) {
 		if err != nil {

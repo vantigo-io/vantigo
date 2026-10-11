@@ -11,12 +11,18 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
+	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
 
 // server implements gen.StrictServerInterface, the module's contract
 // operations. Each area implements its operations as methods in its own file.
 type server struct {
 	deps module.Deps
+	// objects is where documents' bytes live, reached only through the
+	// accessors of objects.go; objectsErr is why it could not be built, which
+	// every one of them answers instead.
+	objects    storage.ObjectStore
+	objectsErr error
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)

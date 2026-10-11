@@ -150,6 +150,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/document-categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List document categories
+         * @description Every document category in its order, archived ones included so a document can still name its own. Read by staff:view, staff:manage and staff:personal-data; anyone else gets the uniform 403.
+         */
+        get: operations["getStaffDocumentCategories"];
+        put?: never;
+        /**
+         * Add a document category
+         * @description Adds a company category, after the seeds. Its class is fixed from now on, and a category of class E is restricted.
+         */
+        post: operations["postStaffDocumentCategories"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/document-categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a document category
+         * @description Replaces a company category's names and archives or restores it. A seeded category is refused seed_immutable; archiving one that documents are filed under is refused category_in_use. The key and the class never change.
+         */
+        put: operations["putStaffDocumentCategoriesById"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/documents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a document
+         * @description Streams a document's bytes with the type they were sniffed as on upload, named as uploaded (RFC 5987) — inline, except HEIC, which is a file to save — never cached and never sniffed. The person reads all of theirs; staff:manage reads every document but health documents; staff:personal-data reads all. To anyone else — a manager and a colleague included — and to a reader of a health document without the health group, it is the bare 404 an unknown id is.
+         */
+        get: operations["getStaffDocumentsById"];
+        /**
+         * Change a document
+         * @description Replaces a document's category, dates and employment; the file never changes. A document in a non-restricted category needs staff:manage or staff:personal-data, and moving one into or out of a restricted category staff:personal-data (403 category_restricted); anyone else gets the uniform 403.
+         */
+        put: operations["putStaffDocumentsById"];
+        post?: never;
+        /**
+         * Delete a document
+         * @description Removes a document. Its row goes and its object is queued for removal in one transaction; the object is removed once that has committed, and a removal the store refuses stays queued until it succeeds. A document in a non-restricted category needs staff:manage or staff:personal-data, one in a restricted category staff:personal-data; anyone else gets the uniform 403. A document the caller may not read is the bare 404 an unknown id is.
+         */
+        delete: operations["deleteStaffDocumentsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/employments/{id}": {
         parameters: {
             query?: never;
@@ -410,6 +482,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/me/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List my own documents
+         * @description The caller's own documents, health documents included, newest first. A caller linked to nobody gets the 404 no_person.
+         */
+        get: operations["getStaffMeDocuments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/me/events": {
         parameters: {
             query?: never;
@@ -536,6 +628,30 @@ export interface paths {
          * @description Opens the person's sealed bank account and answers it once, with Cache-Control no-store. Each reveal is a bank_account_revealed event naming the viewer.
          */
         post: operations["postStaffPeopleByIdBankAccountReveal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's documents
+         * @description A person's documents, newest first, each with its category. The person reads all of theirs; staff:manage reads every document but health documents (those in a restricted category); staff:personal-data reads all. To anyone else — a manager and a colleague included — the person's archive is the bare 404 an unknown id is.
+         */
+        get: operations["getStaffPeopleByIdDocuments"];
+        put?: never;
+        /**
+         * File a document
+         * @description Files one document in a person's archive: a PDF, JPEG, PNG or HEIC file of at most 10 MiB in the multipart field file, whose own bytes decide its type and must agree with the type and extension it is sent under, with categoryId and optional validTo and signedAt. At most 200 documents per person, counted whatever the caller may read. A non-restricted category needs staff:manage or staff:personal-data, a restricted one staff:personal-data (403 category_restricted); anyone else gets the uniform 403. A contract document with signedAt sets the covering employment's contractSignedAt when exactly one employment covers that day and it has none.
+         */
+        post: operations["postStaffPeopleByIdDocuments"];
         delete?: never;
         options?: never;
         head?: never;
@@ -847,6 +963,8 @@ export interface components {
             canEdit: boolean;
             /** @description staff:personal-data — reveal and write the national identity number and the bank account. */
             canRevealIdentifiers: boolean;
+            /** @description staff:personal-data — everyone's health documents. The person reads their own whatever this says. */
+            canSeeHealth: boolean;
             /** @description staff:manage or staff:personal-data — everyone's pay terms. */
             canSeePay: boolean;
             /** @description staff:view — the directory: everyone's work fields and the structure. */
@@ -936,6 +1054,106 @@ export interface components {
             id: number;
             name: string;
         };
+        /** @description One document in a person's archive (design S14, §3.6). The bytes are never in a JSON body: they are read from GET /documents/{id}, with the document's own visibility. Optional fields are absent when not recorded. */
+        StaffDocument: {
+            category: components["schemas"]["StaffDocumentCategorySummary"];
+            /** @description The type the file's own bytes were sniffed as on upload — application/pdf, image/jpeg, image/png or image/heic. */
+            contentType: string;
+            /**
+             * Format: int64
+             * @description The employment the document belongs to — the one covering signedAt, else the upload day, when exactly one does; HR may set it. It is what the erase of class A documents goes by. Absent when none.
+             */
+            employmentId?: number;
+            /** @description The name the file was uploaded under, without any path, at most 255 characters. */
+            fileName: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            personId: number;
+            /**
+             * Format: int32
+             * @description Send it back as If-Match on PUT /documents/{id}.
+             */
+            revision: number;
+            /**
+             * Format: date
+             * @description The day the document was signed. Absent when not recorded.
+             */
+            signedAt?: string;
+            /** Format: int64 */
+            sizeBytes: number;
+            /** Format: date-time */
+            uploadedAt: string;
+            /**
+             * Format: date
+             * @description The last day the document is valid — a certificate's expiry. Absent when not recorded.
+             */
+            validTo?: string;
+        };
+        /** @description A document category (design S14) — one of the six seeds or the company's own. Its retention class is fixed when it is created; restricted (a health category, readable only by the person and staff:personal-data) is true exactly when the class is E. A seeded category never changes; an archived one is offered for no new document and keeps the documents filed under it. */
+        StaffDocumentCategory: {
+            /**
+             * Format: date-time
+             * @description When the category was archived. Absent while it is in use.
+             */
+            archivedAt?: string;
+            class: components["schemas"]["StaffDocumentClass"];
+            /** Format: int64 */
+            id: number;
+            key: string;
+            names: components["schemas"]["StaffDocumentCategoryNames"];
+            restricted: boolean;
+            /**
+             * Format: int32
+             * @description Send it back as If-Match on PUT /document-categories/{id}.
+             */
+            revision: number;
+            /** @description One of the six categories every installation starts with — contract, attest, certificate, correspondence, health, other. */
+            seeded: boolean;
+            /** Format: int32 */
+            sort: number;
+        };
+        /** @description A category's names and whether it is archived. Its key and class never change. A seeded category is refused seed_immutable; archiving a category documents are still filed under is refused category_in_use. */
+        StaffDocumentCategoryChangeRequest: {
+            archived: boolean;
+            names: components["schemas"]["StaffDocumentCategoryNames"];
+        };
+        /** @description A category's name in English and in Norwegian bokmål, each 1 to 100 characters. */
+        StaffDocumentCategoryNames: {
+            en: string;
+            nb: string;
+        };
+        /** @description A company category. The key is 1 to 40 characters of a–z, 0–9 and hyphens, unique; the class is A (five years after the employment's end year), D (with the personnel record, after the grace) or E (health), and is fixed from now on; restricted follows from it. */
+        StaffDocumentCategoryRequest: {
+            class: components["schemas"]["StaffDocumentClass"];
+            key: string;
+            names: components["schemas"]["StaffDocumentCategoryNames"];
+        };
+        /** @description The category a document is filed under, as every document carries it. */
+        StaffDocumentCategorySummary: {
+            class: components["schemas"]["StaffDocumentClass"];
+            /** Format: int64 */
+            id: number;
+            key: string;
+            names: components["schemas"]["StaffDocumentCategoryNames"];
+            restricted: boolean;
+        };
+        /** @description A document's category and dates, replaced whole — a field left out is cleared. Moving a document into or out of a restricted category needs staff:personal-data (category_restricted). employmentId must name one of the person's employments. */
+        StaffDocumentChangeRequest: {
+            /** Format: int64 */
+            categoryId: number;
+            /** Format: int64 */
+            employmentId?: number;
+            /** Format: date */
+            signedAt?: string;
+            /** Format: date */
+            validTo?: string;
+        };
+        /**
+         * @description A document category's retention class (design S15) — A pay and contract documentation, five years after the year the employment ended; D personnel administration, with the record after the grace; E health.
+         * @enum {string}
+         */
+        StaffDocumentClass: "A" | "D" | "E";
         /**
          * @description The kind of worker, for an identity provider.
          * @enum {string}
@@ -1305,6 +1523,8 @@ export interface components {
             canManageAccount: boolean;
             /** @description staff:personal-data — reveal and write the national identity number and the bank account. */
             canRevealIdentifiers: boolean;
+            /** @description The person themselves or staff:personal-data — the person's health documents. */
+            canSeeHealth: boolean;
             /** @description The person themselves, staff:manage or staff:personal-data — the pay terms of the person's employments. */
             canSeePay: boolean;
         };
@@ -1446,7 +1666,7 @@ export interface components {
             /** Format: uuid */
             id: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager and manager_cycle. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased and storage_unavailable. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -2250,6 +2470,341 @@ export interface operations {
                 };
             };
             /** @description Not Found — no such row. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getStaffDocumentCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffDocumentCategory"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — none of staff:view, staff:manage and staff:personal-data. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postStaffDocumentCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffDocumentCategoryRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffDocumentCategory"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, a key another category has among them. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putStaffDocumentCategoriesById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the category was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffDocumentCategoryChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffDocumentCategory"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, or If-Match is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such category. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, seed_immutable (a seeded category) or category_in_use (archiving a category documents are filed under). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffDocumentsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id, or the caller may not read it. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — storage_unavailable, the object store could not be read. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    putStaffDocumentsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the document was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffDocumentChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffDocument"];
+                };
+            };
+            /** @description Bad Request — a field did not pass (an unknown or archived category, an employment that is not the person's), or If-Match is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — neither staff:manage nor staff:personal-data (the uniform 403), or category_restricted (a move into or out of a restricted category without staff:personal-data). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Not Found — no document has that id, or the caller may not read it. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    deleteStaffDocumentsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — neither staff:manage nor staff:personal-data. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id, or the caller may not read it. The body is empty. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -3209,6 +3764,53 @@ export interface operations {
             };
         };
     };
+    getStaffMeDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffDocument"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person, the caller is linked to no person. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
     getStaffMeEvents: {
         parameters: {
             query?: {
@@ -3696,6 +4298,151 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getStaffPeopleByIdDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffDocument"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no person has that id, or the caller may not read their documents. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postStaffPeopleByIdDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: int64 */
+                    categoryId: number;
+                    /** Format: binary */
+                    file: string;
+                    /** Format: date */
+                    signedAt?: string;
+                    /** Format: date */
+                    validTo?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffDocument"];
+                };
+            };
+            /** @description Bad Request — on file, document_type_unsupported (not one of the four types, or its bytes disagree with its declared type or extension) or document_too_large (over 10 MiB), and a plain field error when it is missing or empty; on categoryId, validTo or signedAt, a field error (an unknown or archived category, a date that is not one). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — neither staff:manage nor staff:personal-data (the uniform 403), or category_restricted (a restricted category without staff:personal-data). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Not Found — no person has that id. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — document_count_exceeded (the person has 200 documents) or person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Too Many Requests — at most 600 document uploads an hour from one client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable, the object store could not be written to; nothing was recorded. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
             };
         };
     };

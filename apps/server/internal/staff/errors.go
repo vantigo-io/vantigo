@@ -55,6 +55,18 @@ const (
 	codeManagerCycle            = "manager_cycle"
 )
 
+// The refusal codes delivery A2's document archive answers.
+const (
+	codeDocumentTypeUnsupported = "document_type_unsupported"
+	codeDocumentTooLarge        = "document_too_large"
+	codeDocumentCountExceeded   = "document_count_exceeded"
+	codeCategoryRestricted      = "category_restricted"
+	codeCategoryInUse           = "category_in_use"
+	codeSeedImmutable           = "seed_immutable"
+	codePersonErased            = "person_erased"
+	codeStorageUnavailable      = "storage_unavailable"
+)
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.
@@ -75,6 +87,8 @@ const (
 	invalidEmploymentTitle   = "Invalid employment"
 	invalidEndTitle          = "Invalid end of employment"
 	invalidTermsTitle        = "Invalid terms"
+	invalidDocumentTitle     = "Invalid document"
+	invalidCategoryTitle     = "Invalid document category"
 )
 
 // withFieldError adds one message to a map another rule may already have put
@@ -176,4 +190,26 @@ func structureDefault(what string) gen.StaffProblem {
 func managerCycle(day time.Time) error {
 	return refuseConflict(conflict(codeManagerCycle, "Manager cycle",
 		fmt.Sprintf("This would make someone their own manager, through the people above them, from %s.", day.Format(time.DateOnly))))
+}
+
+// storageUnavailable is the 503 an upload or a download answers when the
+// object store fails: the request was right and the installation could not
+// serve it — worth retrying and worth an operator seeing, rather than a 404
+// that would hide a fault as a missing document.
+func storageUnavailable() gen.StaffProblem {
+	status := int32(http.StatusServiceUnavailable)
+	code, title := codeStorageUnavailable, "Document storage is unavailable"
+	detail := "The document store could not be reached. Nothing was changed; try again."
+	return gen.StaffProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}
+}
+
+// categoryRestricted is the 403 HR without staff:personal-data answers for a
+// document in a restricted category — a health document — or a move into or
+// out of one. It is a problem with its code rather than the uniform 403: the
+// caller may file documents, just not this kind.
+func categoryRestricted() error {
+	status := int32(http.StatusForbidden)
+	code, title := codeCategoryRestricted, "Restricted category"
+	detail := "Documents in this category are health documents, which only staff:personal-data files, moves or removes."
+	return &refusal{status: http.StatusForbidden, problem: gen.StaffProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}}
 }

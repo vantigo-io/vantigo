@@ -37,6 +37,38 @@ type StaffDepartment struct {
 	UpdatedAt       time.Time
 }
 
+type StaffDocument struct {
+	ID               int64
+	PersonID         int64
+	CategoryID       int64
+	EmploymentID     *int64
+	ObjectKey        string
+	FileName         string
+	ContentType      string
+	SizeBytes        int64
+	ValidTo          pgtype.Date
+	SignedAt         pgtype.Date
+	UploadedByUserID uuid.UUID
+	Revision         int32
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type StaffDocumentCategory struct {
+	ID             int64
+	Key            string
+	NameEn         string
+	NameNb         string
+	RetentionClass string
+	Restricted     bool
+	Seeded         bool
+	ArchivedAt     *time.Time
+	Sort           int32
+	Revision       int32
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type StaffEmployment struct {
 	ID               int64
 	PersonID         int64
@@ -164,6 +196,16 @@ type StaffNextOfKin struct {
 	Note         *string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+type StaffObjectDeletion struct {
+	ID            int64
+	ObjectKey     string
+	Attempts      int32
+	NextAttemptAt time.Time
+	ClaimedUntil  *time.Time
+	LastError     *string
+	CreatedAt     time.Time
 }
 
 type StaffPerson struct {

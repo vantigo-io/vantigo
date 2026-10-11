@@ -550,6 +550,9 @@ export const staffCatalog = {
     event_terms_added: "New terms",
     event_terms_corrected: "Terms corrected",
     event_terms_deleted: "Terms deleted",
+    event_document_added: "Document added",
+    event_document_updated: "Document changed",
+    event_document_removed: "Document removed",
   },
   nb: {
     staff: "Ansatte",
@@ -1099,6 +1102,9 @@ export const staffCatalog = {
     event_terms_added: "Nye vilkår",
     event_terms_corrected: "Vilkår korrigert",
     event_terms_deleted: "Vilkår slettet",
+    event_document_added: "Dokument lagt til",
+    event_document_updated: "Dokument endret",
+    event_document_removed: "Dokument fjernet",
   },
 } satisfies CatalogResources;
 

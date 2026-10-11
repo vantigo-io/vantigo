@@ -39,6 +39,7 @@ export const capabilitiesOf = (role: Role): StaffCapabilities => ({
   canEdit: manages(role),
   canSeePay: manages(role) || holdsPersonalData(role),
   canRevealIdentifiers: holdsPersonalData(role),
+  canSeeHealth: holdsPersonalData(role),
   canViewDirectory: role === "manage" || role === "view" || role === "personalData",
 });
 

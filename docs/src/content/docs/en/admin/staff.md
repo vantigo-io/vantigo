@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission, the bank-change mail, and the settings — the business time zone and the employee number sequence.
+description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, the bank-change mail, and the settings — the business time zone and the employee number sequence.
 sidebar:
   order: 44
 sources:
@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/staff/settings.go
   - apps/server/internal/staff/sealed.go
   - apps/server/internal/staff/links.go
+  - apps/server/internal/staff/document_categories.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -24,6 +25,10 @@ it checks are in [the reference](/en/reference/staff/).
   turning it on later needs no migration. If the database runs a least-privilege
   application role, it needs the `staff` schema granted like every other
   ([Installation](/en/admin/installation/)).
+- People's documents are kept in the object store, so filing one needs
+  `STORAGE_PROVIDER=fs` and a storage root
+  ([Object storage](/en/admin/object-storage/)). Without it everything else works, and
+  an upload or a download answers 503 `storage_unavailable`.
 
 ## Enable the module
 
@@ -44,8 +49,8 @@ Every Staff operation requires `staff:access`, and four permissions sit above it
 | `staff:access` | Everyone who should see their own record. |
 | `staff:view` | Colleagues who should see the directory and the company's structure. |
 | `staff:approve` | Whoever decides absence (it grants nothing until absence arrives). |
-| `staff:manage` | HR: people, employments, the structure and the settings. Sensitive. |
-| `staff:personal-data` | Whoever may reveal national identity numbers and bank accounts. Sensitive. |
+| `staff:manage` | HR: people, employments, documents other than health documents, the document categories, the structure and the settings. Sensitive. |
+| `staff:personal-data` | Whoever may reveal national identity numbers and bank accounts, and read and file health documents. Sensitive. |
 
 The Owner holds them all already. Everyone else needs a role that grants them: under
 **Workspace admin → Roles & access**, create or edit a role and give it the
@@ -83,6 +88,38 @@ HR's on purpose, so that changing where someone's pay goes takes a second pair o
 The values are sealed under keys derived from `APP_SECRET`. Rotating it makes them
 unopenable and the national identity numbers' duplicate check blind — see
 [Installation](/en/admin/installation/#the-settings-you-must-decide-on).
+
+**Health documents** — a person's documents in a restricted category, `health` among
+the seeds — are `staff:personal-data`'s too. HR holding only `staff:manage` does not see
+them in a person's archive, cannot open, file, move or remove one, and does not see
+that one was added in the person's history; the person themselves reads their own.
+Give `staff:personal-data` to whoever handles sick notes and occupational-health
+correspondence, and nobody else.
+
+## Document categories
+
+Every document is filed under a category, and the category decides when the document
+is erased: its **retention class** — A for pay and contract documentation (five years
+after the year the employment ended), D for personnel administration (with the rest of
+the person's record), E for health. Six categories are there from the start: contract
+and attest (A), certificate, correspondence and other (D), and health (E). A category
+of class E is restricted: its documents are health documents.
+
+To add one of your own, as a user with `staff:manage`:
+
+1. `POST /api/v1/staff/document-categories` with a `key` (1–40 of `a–z`, `0–9` and
+   hyphens), `names` in English and Norwegian and a `class` of `A`, `D` or `E`, for
+   example `{"key": "courses", "names": {"en": "Courses", "nb": "Kurs"}, "class": "D"}`.
+   Choose the class carefully: it never changes, because the erase reads it from every
+   document filed under the category.
+2. Verify: `GET /api/v1/staff/document-categories` lists it after the seeds.
+
+To rename one, or stop offering it, send its `names` and `archived` to
+`PUT /api/v1/staff/document-categories/{id}` with its revision in `If-Match`. An
+archived category is offered for no new document; the documents already filed under it
+keep it. The six seeds never change.
+
+## The bank-change mail
 
 ## The bank-change mail
 
@@ -140,3 +177,13 @@ changing the settings at once cannot overwrite each other unseen.
   by revealing.
 - **No bank-change mail arrived.** Check the log for the skip line above, and that the
   person has an email.
+- **`storage_unavailable`.** The object store could not be written to or read from:
+  storage is not configured, or its root is not writable. Nothing was recorded; fix
+  the storage and try again ([Object storage](/en/admin/object-storage/)).
+- **`seed_immutable`.** One of the six seeded categories cannot be changed. Add a
+  category of your own instead.
+- **`category_in_use`.** Documents are still filed under the category you are
+  archiving. Move them to another category first.
+- **`document_count_exceeded`.** The person has 200 documents, the most one person may
+  have — counted whatever you may see, so it can include health documents you cannot.
+  Remove documents that are no longer needed.

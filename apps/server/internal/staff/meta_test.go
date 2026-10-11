@@ -48,9 +48,9 @@ func TestMeta_CapabilitiesAndTheStructureFollowTheCallersPermissions(t *testing.
 		{"staff:manage without staff:view", []string{"staff:manage"},
 			gen.StaffCapabilities{CanEdit: true, CanSeePay: true}, true},
 		{"staff:personal-data", []string{"staff:personal-data"},
-			gen.StaffCapabilities{CanRevealIdentifiers: true, CanSeePay: true}, false},
+			gen.StaffCapabilities{CanRevealIdentifiers: true, CanSeePay: true, CanSeeHealth: true}, false},
 		{"all five", []string{"staff:view", "staff:approve", "staff:manage", "staff:personal-data"},
-			gen.StaffCapabilities{CanViewDirectory: true, CanEdit: true, CanRevealIdentifiers: true, CanSeePay: true}, true},
+			gen.StaffCapabilities{CanViewDirectory: true, CanEdit: true, CanRevealIdentifiers: true, CanSeePay: true, CanSeeHealth: true}, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			caller, _ := signIn(t, h, c.perms...)

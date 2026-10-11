@@ -5,8 +5,9 @@
 // change — serving openapi/staff.yaml under /api/v1/staff/.
 //
 // It depends on nobody but identity (design S1): it reads users through
-// contracts.UserDirectory, which identity always provides, and sends its one
-// mail through the platform's SMTP seam. MODULES=staff alone is a valid
+// contracts.UserDirectory, which identity always provides, sends its one
+// mail through the platform's SMTP seam, and keeps its documents' bytes in
+// the platform's object store under its own scope. MODULES=staff alone is a valid
 // installation. Nothing here imports another module — depguard enforces it,
 // tests included — and no SQL of this module crosses a schema.
 //
@@ -70,7 +71,7 @@ var permissions = []contracts.Permission{
 // /api/v1/staff/ and its five permissions in the composed catalog. It provides
 // no contract and fills no slot — nothing in another module reads the
 // register yet (design reading 17 defers contracts.StaffDirectory to its first
-// consumer) — and it contributes no background worker in delivery A1.
+// consumer).
 func Module() module.Module {
 	return module.Module{
 		Name:        "staff",
@@ -80,22 +81,27 @@ func Module() module.Module {
 }
 
 // mount registers every contract operation on the platform router, which wraps
-// each in its access rule and request-body cap before the generated wrapper
-// decodes it. It fails when the contract does not close the request schemas
-// whose unknown properties are refused (strictbody.go), or when the router
-// reports a problem — an operation never registered, a rule that does not
-// parse, or a permission missing from the catalog.
+// each in its rate limit, access rule and request-body cap before the
+// generated wrapper decodes it — every body capped at the platform default
+// but the document upload's (objects.go's bodyLimits and limits). It fails
+// when the contract does not close the request schemas whose unknown
+// properties are refused (strictbody.go), or when the router reports a
+// problem — an operation never registered, a rule that does not parse, or a
+// permission missing from the catalog. An object store that cannot be built
+// does not fail it: newServer keeps the error for the calls that need one.
 func mount(d module.Deps) (http.Handler, error) {
 	if err := checkClosedSchemas(d.Doc); err != nil {
 		return nil, err
 	}
 	router := module.NewRouter(module.RouterOptions{
-		Doc:     d.Doc,
-		Access:  d.Access,
-		Limiter: d.Limiter,
-		Catalog: d.Catalog,
+		Doc:        d.Doc,
+		Access:     d.Access,
+		Limiter:    d.Limiter,
+		Limits:     limits,
+		Catalog:    d.Catalog,
+		BodyLimits: bodyLimits,
 	})
-	strict := gen.NewStrictHandlerWithOptions(&server{deps: d}, nil, gen.StrictHTTPServerOptions{
+	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})

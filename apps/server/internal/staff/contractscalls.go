@@ -11,12 +11,14 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 )
 
-// This file is the whole of this module's reach outside its own schema: the
-// user directory (deps.Users, identity's contracts.UserDirectory, always
-// composed) and the SMTP seam (deps.SMTPSend, or the platform's guarded
-// mail.SendOutbound). Every call is made through one of the thin accessors
-// below and through nowhere else, so "what does Staff ask of its neighbours,
-// and when" has one place to read the answer and one place to check it from.
+// This file and objects.go are the whole of this module's reach outside its
+// own schema: the user directory (deps.Users, identity's
+// contracts.UserDirectory, always composed) and the SMTP seam (deps.SMTPSend,
+// or the platform's guarded mail.SendOutbound) here, and the object store the
+// documents' bytes live in there (delivery A2). Every call is made through
+// one of the thin accessors and through nowhere else, so "what does Staff ask
+// of its neighbours, and when" has one place to read the answer and one place
+// to check it from.
 //
 // What is checked is the lock rule (design §4, Locking; module-boundaries rule
 // 10 restated): no call that takes its own connection or leaves the process

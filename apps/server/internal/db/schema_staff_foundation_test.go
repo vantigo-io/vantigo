@@ -58,8 +58,10 @@ func TestStaffFoundation_AppliesAndIsIdempotent(t *testing.T) {
 	}
 	defer pool.Close()
 
+	// Delivery A2's tables (00043) are the records test's; these are 00042's.
 	tables := staffCollect(t, ctx, pool, "tables", `
-		SELECT table_name FROM information_schema.tables WHERE table_schema = 'staff' ORDER BY 1`)
+		SELECT table_name FROM information_schema.tables
+		WHERE table_schema = 'staff' AND table_name <> ALL($1) ORDER BY 1`, staffRecordsTables)
 	if !equalStrings(tables, staffTables) {
 		t.Errorf("staff tables = %v, want %v", tables, staffTables)
 	}

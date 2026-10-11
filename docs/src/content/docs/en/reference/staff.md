@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the settings, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the settings, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -14,8 +14,9 @@ Vantigo binary (`apps/server/internal/staff`), owns the `staff` schema in the sh
 PostgreSQL database, and serves `openapi/staff.yaml` under `/api/v1/staff`.
 
 It depends on nobody but identity: it reads users through `contracts.UserDirectory`,
-which identity always provides, and sends its one mail through the platform's SMTP
-seam. `MODULES=staff` alone is a valid installation. It provides no contract and fills
+which identity always provides, sends its one mail through the platform's SMTP seam,
+and keeps its documents' bytes in the platform's object store under its own scope,
+`staff`. `MODULES=staff` alone is a valid installation. It provides no contract and fills
 no slot; nothing in another module reads the register yet.
 
 This page grows with the module. What is here today: the [permissions](#permissions),
@@ -27,7 +28,8 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 [derived dates](#the-derived-dates), the [§ 14-6 check](#the--14-6-check),
 [managers and the org view](#managers-and-the-org-view), the
 [sealed identifiers](#the-sealed-identifiers), the
-[self-service link](#the-self-service-link), [My page](#my-page), [how a refusal
+[self-service link](#the-self-service-link), [My page](#my-page), the
+[documents](#documents) and their [categories](#categories-and-classes), [how a refusal
 looks](#refusals-and-revisions), the [locks](#locks) and the [endpoints](#endpoints).
 
 ## The schema
@@ -46,15 +48,22 @@ holds exactly one row. The care-day inputs on a person and a terms row's pay com
 nullable with no default: NULL is "not recorded", and it is what the retention erase
 writes.
 
+Delivery A2's migration, `00043_staff_records.sql`, adds three tables and no column to
+`people` or `settings`: `document_categories` (unique `key`; the six seeds),
+`documents` (unique `object_key`; indexed by person and by category; a nullable
+`employment_id`; no `deleted_at` — a document's row is deleted, never marked) and
+`object_deletions`, the ledger of objects still to be removed from the store (unique
+`object_key`; indexed by `next_attempt_at`).
+
 ## Permissions
 
 | Key | Name | Grants | Sensitive |
 | --- | --- | --- | --- |
-| `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** Your absence arrives with delivery B, your documents and export with A2. | no |
+| `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** Your absence arrives with delivery B, your export later in A2. | no |
 | `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the calendar with types hidden. The calendar arrives with B. | no |
 | `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. Registered now; grants nothing until absence arrives with B. | no |
-| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, the settings, documents other than health, the account flag, imports and exports. The documents, imports and exports arrive with A2, the account flag with C. | yes |
-| `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person — that is `staff:manage`'s. The health documents, the export, legal holds and erasure arrive with A2, the milestones' notes and the HR-only types with B. | yes |
+| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, the settings, documents other than health and their categories, the account flag, imports and exports. The imports and exports arrive later in A2, the account flag with C. | yes |
+| `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. The export, legal holds and erasure arrive later in A2, the milestones' notes and the HR-only types with B. | yes |
 
 All five are in the category "Staff" and delegable. The Owner holds them through the
 wildcard; anyone else needs a role that grants them. Each operation's rule is in the
@@ -63,9 +72,9 @@ contract's `x-vantigo-access`; a caller without it gets the access layer's unifo
 
 `GET /meta` answers what the caller may do as capabilities — `canViewDirectory`
 (`staff:view`), `canEdit` (`staff:manage`), `canRevealIdentifiers`
-(`staff:personal-data`) and `canSeePay` (either of the last two) — so the app never
-re-derives a rule. The capabilities absence and the records add (`canDecide`,
-`canSeeHealth`) arrive with them.
+(`staff:personal-data`), `canSeePay` (either of the last two) and `canSeeHealth`
+(`staff:personal-data`: everyone's health documents) — so the app never re-derives a
+rule. The capability absence adds (`canDecide`) arrives with it.
 
 ## Settings
 
@@ -329,8 +338,9 @@ from the response — never null.
   404: a colleague reads a person's roles but not their next of kin.
 
 Each person carries `capabilities`: `canEdit` and `canManageAccount` (`staff:manage`),
-`canRevealIdentifiers` (`staff:personal-data`) and `canSeePay` (the person themselves,
-`staff:manage` or `staff:personal-data`).
+`canRevealIdentifiers` (`staff:personal-data`), `canSeePay` (the person themselves,
+`staff:manage` or `staff:personal-data`) and `canSeeHealth` (the person themselves or
+`staff:personal-data`: the person's health documents).
 
 ### The history
 
@@ -359,6 +369,9 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `terms_added` | `employmentId`, `termsId`; `fields`: each field of the new row. |
 | `terms_corrected` | `employmentId`, `termsId`; `fields`: each field of the row that changed, before and after. |
 | `terms_deleted` | `employmentId`, `termsId`; `fields`: each field of the deleted row, as `from`. |
+| `document_added` | `documentId`; `fields`: `category` (the key), `fileName`, `validTo`, `signedAt` as `to`. |
+| `document_updated` | `documentId`; `fields`: each of the four that changed, before and after. |
+| `document_removed` | `documentId`; `fields`: the four as `from`. |
 
 `GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
 the person themselves, a manager of theirs today, `staff:manage` and
@@ -375,14 +388,25 @@ notes alone is likewise listed to the person without its field, and HR reads it 
 `{"notes": {"from": …, "to": …}}`. An employment's and
 a terms row's `employmentId` and `termsId` are kept for everyone who reads the
 history. A sealed value is never in a payload. Each event also stores the retention
-classes its payload touches (`payload_classes`), which the erase uses and nothing
-else; who reads what is never decided by them.
+classes its payload touches (`payload_classes`), which the erase uses; a document's
+event takes its classes from the category it was filed under (before and after, for a
+move).
+
+A **document's event** is shaped by one group for the whole event, not per field: the
+**documents** group (the person, `staff:manage`, `staff:personal-data`), or — when its
+classes hold E, a health document's — the **health** group (the person,
+`staff:personal-data`). A manager reads that a document was added, changed or removed,
+with its `documentId` and each field `"changed"`. A **health event** — any event whose
+payload touches class E — is left out of the list, and out of its `totalCount`, for an
+audience without the health group, HR without `staff:personal-data` included: they do
+not learn that one happened.
 
 ### Deleting a person
 
 `DELETE /people/{id}` (`staff:manage`) is the hard delete of a person **created in
-error**: one with no employment, no user link, and named as nobody's manager — neither
-a department's nor on anyone's terms. Anything else is `person_in_use` (409), whose
+error**: one with no employment, no user link, no document, and named as nobody's
+manager — neither a department's nor on anyone's terms. Anything else is
+`person_in_use` (409), whose
 detail says what names the person; the person stays. The delete takes the person's row
 and then the manager-graph lock before it judges, so no write can start naming the
 person between the check and the delete, and a foreign key that refuses anyway is still
@@ -726,6 +750,120 @@ caller about themselves.
   under the person's lock, so a person HR has just unlinked gets `no_person`.
 - **`GET /me/events`** is the person's own history, paged, shaped as Self reads it:
   HR's notes are left out.
+- **`GET /me/documents`** is the person's own [documents](#documents), health
+  documents included, newest first.
+
+## Documents
+
+A person's archive (design S14): each document is a row in `staff.documents` and an
+object in the [object store](/en/admin/object-storage/) under the module's scope
+`staff`, at the relative key `people/<personId>/<uuid>` — a fresh random name, never
+derived from the file's name. A document has a [category](#categories-and-classes), an
+optional `validTo` (the last day it is valid, a certificate's expiry) and `signedAt`,
+the file's name, its type and size, and an `employmentId`: the employment covering
+`signedAt` — else the upload day — when exactly one does, which HR may change and which
+the class A erase goes by. Every document carries its category as
+`{id, key, names, class, restricted}`.
+
+**Who reads.** The person reads all of theirs; `staff:manage` reads every document but
+**health documents** — those in a restricted category; `staff:personal-data` reads all.
+To anyone else — a manager and a colleague included — a person's archive and each of
+their documents are the 404 an unknown id is, and a health document is that bare 404 to
+a reader without the health group. `GET /people/{id}/documents` lists the archive
+newest first; `GET /documents/{id}` streams the bytes.
+
+**Who writes.** Filing, changing and removing a document in a category that is not
+restricted needs `staff:manage` or `staff:personal-data`; in a restricted one,
+`staff:personal-data` (`category_restricted`, 403, to HR without it). The person never
+writes their own documents, and anyone else gets the uniform 403.
+
+### Filing a document
+
+`POST /people/{id}/documents` takes `multipart/form-data`: the file in the part
+`file`, `categoryId`, and optional `validTo` and `signedAt` (`YYYY-MM-DD`).
+
+- **The file.** A PDF, JPEG, PNG or HEIC of at most 10 MiB. Its own leading bytes
+  decide its type (HEIC by its ISO base media brand, which the standard sniffer does
+  not know); a declared type or a file extension that names one of the other three is
+  refused — a PNG named `.pdf`, a PDF sent as `image/png` — while one the four do not
+  claim (`application/octet-stream`, no type, no extension) is no evidence either way.
+  A type that is none of the four or disagrees is `document_type_unsupported`, a file
+  over 10 MiB `document_too_large`, both 400 on `file`; a missing or empty file is a
+  plain field error. The router caps the request at 10 MiB + 64 KiB.
+- **The name** is the client's without any path or control character, at most 255
+  characters, and never part of the key.
+- **At most 200 documents per person**, counted whatever the caller may read — so HR
+  without `staff:personal-data` refused with `document_count_exceeded` (409) learns
+  that the person has documents it cannot see. That is accepted: the cap protects the
+  store, and the alternative, a count per reader, would let a person's archive grow
+  without bound.
+- **The order.** The object is written **before** the row's transaction; a store that
+  cannot write is 503 `storage_unavailable` and nothing is recorded. Then, under the
+  person's lock: the person is not erased (`person_erased`, 409), the count is under
+  the cap, the category exists and is not archived (a field error on `categoryId`),
+  the row is written and a `document_added` event recorded. Whatever refuses or fails
+  after the write removes the object again, with one attempt on a context detached from
+  the request's and bounded to 30 seconds, logged when the store refuses.
+- **A signed contract** — a document of the seeded category `contract` with `signedAt`
+  — sets `contractSignedAt` on the employment covering that day when exactly one does
+  and it records none, with that employment's own `employment_updated` event; the
+  employment's row is locked before the document is written. With two covering
+  employments nothing is set — which one the contract is for is HR's to say — and a
+  date already recorded is kept. Typing the date on the employment stays possible.
+- **The rate limit**: 600 uploads an hour per client address (`StaffDocumentUpload`),
+  429 past it.
+
+### Reading, changing and removing
+
+- **`GET /documents/{id}`** reads the row in a read-only snapshot, then the object
+  outside it, and streams the bytes with the type they were sniffed as, `inline` (HEIC
+  `attachment`, since only Safari renders one) with the name RFC 5987 encoded,
+  `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: default-src 'none'; sandbox` — the 404 and the 503 carry
+  the same headers. An object the store cannot read is 503 `storage_unavailable`.
+- **`PUT /documents/{id}`** replaces `categoryId`, `validTo`, `signedAt` and
+  `employmentId` under `If-Match` — a field left out is cleared; the file never
+  changes. The category must exist and not be archived (unless the document is already
+  in it); the employment must be one of the person's. Moving a document into or out of
+  a restricted category is `staff:personal-data`'s (`category_restricted`). It records
+  `document_updated`.
+- **`DELETE /documents/{id}`** deletes the row and inserts the object's
+  `object_deletions` row in one transaction under the person's lock, with a
+  `document_removed` event; after the commit it makes one attempt to remove the object
+  and clears the ledger row when the store confirms. A store that refuses leaves the
+  ledger row for the retention worker to finish, and the request still answers 204: the
+  document is gone. Deleting by hand and the retention erase share this path.
+
+### Categories and classes
+
+Every document is filed under a category, whose **retention class** decides when it is
+erased: **A** (pay and contract documentation: five years after the year the
+employment ended), **D** (personnel administration: with the record, after the
+grace) or **E** (health). A category of class E is **restricted** — its documents are
+health documents — and only class E is. Six are seeded:
+
+| Key | English | Norwegian | Class | Restricted |
+| --- | --- | --- | --- | --- |
+| `contract` | Contract | Arbeidsavtale | A | no |
+| `attest` | Attest | Attest | A | no |
+| `certificate` | Certificate | Sertifikat | D | no |
+| `correspondence` | Correspondence | Korrespondanse | D | no |
+| `health` | Health | Helse | E | yes |
+| `other` | Other | Annet | D | no |
+
+- **`GET /document-categories`** lists them in order, archived ones included, to
+  `staff:view`, `staff:manage` and `staff:personal-data`; anyone else gets the uniform
+  403.
+- **`POST /document-categories`** (`staff:manage`) adds a company category after the
+  others: a `key` of 1–40 characters `[a-z0-9-]`, unique; `names` `{en, nb}`, each
+  1–100 characters; and a `class` of A, D or E, **fixed from then on** — `restricted`
+  follows from it.
+- **`PUT /document-categories/{id}`** (`staff:manage`, `If-Match`) replaces a company
+  category's `names` and sets `archived`. A seeded category never changes
+  (`seed_immutable`, 409). An archived category is offered for no new document and
+  keeps those filed under it; archiving one that documents are still filed under is
+  `category_in_use` (409) — move them first — so the archive never takes from the
+  picker a category a document still names.
 
 ## Refusals and revisions
 
@@ -770,6 +908,14 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `terms_not_latest` | 409 | Replacing a row that is not the latest without `correction`, or deleting one. |
 | `self_manager` | 409 | A terms row naming the person as their own manager. |
 | `manager_cycle` | 409 | A terms or department write that would make someone their own manager, through others. |
+| `document_type_unsupported` | 400 | A file that is not a PDF, JPEG, PNG or HEIC, or whose bytes disagree with its declared type or extension. |
+| `document_too_large` | 400 | A file over 10 MiB. |
+| `document_count_exceeded` | 409 | Filing a document for a person who has 200. |
+| `category_restricted` | 403 | Filing, moving into or out of, or removing a health document without `staff:personal-data`. |
+| `category_in_use` | 409 | Archiving a category documents are filed under. |
+| `seed_immutable` | 409 | Changing a seeded document category. |
+| `person_erased` | 409 | Filing a document for a person the retention run has erased. |
+| `storage_unavailable` | 503 | The object store could not be written to or read from. |
 
 An unknown id is a bare 404 with no body.
 
@@ -784,12 +930,13 @@ person's, which it moves on when the list changes.
 
 ## Locks
 
-- **No call out of a transaction.** The user directory and the mail are reached before
-  a transaction opens or after it commits, never inside one — neither a locked one nor
-  a read-only snapshot, which holds a pool connection just the same. Every such call
-  goes through one accessor in `contractscalls.go`, which refuses a call made inside
-  one of the module's transactions; the tests record every call and fail on any made
-  inside one.
+- **No call out of a transaction.** The user directory, the mail and the object store
+  are reached before a transaction opens or after it commits, never inside one —
+  neither a locked one nor a read-only snapshot, which holds a pool connection just the
+  same. Every such call goes through one accessor — in `contractscalls.go`, or
+  `objects.go` for the store (`objectPut`, `objectGet`, `objectDelete`) — which refuses
+  a call made inside one of the module's transactions; the tests record every call and
+  fail on any made inside one.
 - **A person's row first.** Every mutation of a person's rows takes the person's row
   first (`withPersonLock`), then their employments; nothing locks two people. The lock
   is `FOR NO KEY UPDATE`: it queues every writer of the person as `FOR UPDATE` would,
@@ -799,6 +946,11 @@ person's, which it moves on when the list changes.
   locks of its own.
 - **The employment's row next.** A write of an employment or its terms takes the
   person's row, then the employment's (`FOR NO KEY UPDATE` too).
+- **The document's row last.** A write of a document takes the person's row, then —
+  for a signed contract that sets an employment's signing date — the employment's,
+  then the document's: person → employment → document. The category is held `FOR
+  SHARE` while a document is filed under it, so an archive (`FOR NO KEY UPDATE` on the
+  category) and an upload into it are judged one after the other.
 - **The manager graph.** A write that changes an edge of the manager graph — a terms
   row naming, clearing or changing a manager or a department, a moved start, a
   reopening, a department's manager or parent — takes the transaction advisory lock
@@ -829,7 +981,11 @@ All under `/api/v1/staff`.
 | `GET /people/{id}/user` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
 | `PUT /people/{id}/user`, `GET /assignable-users` | `staff:manage` |
 | `PUT /people/{id}/national-id`, `POST /people/{id}/national-id/reveal`, `PUT /people/{id}/bank-account`, `POST /people/{id}/bank-account/reveal` | `staff:personal-data` |
-| `GET /me`, `PUT /me`, `GET /me/events` | `staff:access`, then a self-service link (otherwise `no_person`) |
+| `GET /me`, `PUT /me`, `GET /me/events`, `GET /me/documents` | `staff:access`, then a self-service link (otherwise `no_person`) |
+| `GET /people/{id}/documents`, `GET /documents/{id}` | `staff:access`, then the person, `staff:manage` (not health documents) or `staff:personal-data` (otherwise 404) |
+| `POST /people/{id}/documents`, `PUT /documents/{id}`, `DELETE /documents/{id}` | `staff:access`, then `staff:manage` or `staff:personal-data`, a health document `staff:personal-data` (judged in the module; otherwise 403) |
+| `GET /document-categories` | `staff:view`, `staff:manage` or `staff:personal-data` (judged in the module; otherwise 403) |
+| `POST /document-categories`, `PUT /document-categories/{id}` | `staff:manage` |
 | `GET /people/{id}/employments`, `GET /employments/{id}`, `GET /employments/{id}/terms`, `GET /people/{id}/org` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
 | `GET /employments/{id}/contract-check` | `staff:access`, then the person, a manager of theirs or HR (otherwise 404) |
 | `POST /people/{id}/employments`, `PUT /employments/{id}`, `POST /employments/{id}/end`, `POST /employments/{id}/reopen`, `POST /employments/{id}/terms`, `PUT /terms/{id}`, `DELETE /terms/{id}` | `staff:manage` |

@@ -1,10 +1,17 @@
 package staff_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -22,6 +29,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/staff"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
+	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
 
 // harness is one staff installation for one test: internal/modtest's shared
@@ -39,9 +47,14 @@ import (
 // Deps.Config is the harness's own: MAIL_DRIVER is smtp, so the module's mail
 // is available (mailAvailable) and every send reaches the mailbox through
 // Deps.SMTPSend rather than a server.
+//
+// The object store is a fake in memory (fakeObjectStore), set as
+// Deps.ObjectStore, so no test depends on a filesystem and each of its three
+// operations can be made to fail on demand.
 type harness struct {
 	*modtest.Harness
-	mail *mailbox
+	mail    *mailbox
+	objects *fakeObjectStore
 }
 
 // newHarness is a staff installation. Every harness carries the module's lock
@@ -53,8 +66,10 @@ type harness struct {
 func newHarness(t *testing.T, opts ...modtest.Option) *harness {
 	t.Helper()
 	box := &mailbox{}
+	objects := newFakeObjectStore()
 	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
+		modtest.WithObjectStore(objects),
 		modtest.WithModule(staff.Module()),
 		modtest.WithSMTPSend(box.send),
 		modtest.WithEnv("MAIL_DRIVER", "smtp"),
@@ -62,7 +77,7 @@ func newHarness(t *testing.T, opts ...modtest.Option) *harness {
 		modtest.WithEnv("SMTP_FROM", "hr@example.invalid"),
 	}
 	before := lockedContractCalls.count()
-	h := &harness{Harness: modtest.New(t, append(base, opts...)...), mail: box}
+	h := &harness{Harness: modtest.New(t, append(base, opts...)...), mail: box, objects: objects}
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
 			t.Errorf("a call outside this module's own database was made from inside one of its transactions:\n%s",
@@ -324,3 +339,252 @@ func do(t *testing.T, c *modtest.Client, method, path string, body any, want int
 		r.JSON(out)
 	}
 }
+
+// fakeObjectStore is storage.ObjectStore in memory: the documents this module
+// uploads go here rather than to a filesystem. Every harness installs one
+// (modtest.WithObjectStore). The module's accessors (objects.go) report every
+// call to the contract-call hook before it reaches the store, so the
+// whole-suite lock rule covers the object store as it covers the directory.
+//
+// Put, Get and Delete can each be made to fail on demand (failPut and its
+// siblings): the only way to drive a store failure — a write that fails
+// before the row, a read of an object that is gone, a delete the store
+// refuses — deterministically.
+type fakeObjectStore struct {
+	mu        sync.Mutex
+	objects   map[string][]byte
+	putErr    error
+	getErr    error
+	deleteErr error
+	deletes   []string
+}
+
+var _ storage.ObjectStore = (*fakeObjectStore)(nil)
+
+func newFakeObjectStore() *fakeObjectStore {
+	return &fakeObjectStore{objects: map[string][]byte{}}
+}
+
+func (s *fakeObjectStore) Put(_ context.Context, key string, r io.Reader, _ string) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.putErr != nil {
+		return s.putErr
+	}
+	s.objects[key] = data
+	return nil
+}
+
+func (s *fakeObjectStore) Get(_ context.Context, key string) (io.ReadCloser, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	data, ok := s.objects[key]
+	if !ok {
+		return nil, fmt.Errorf("staff test store: %q: %w", key, storage.ErrNotExist)
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+func (s *fakeObjectStore) Exists(_ context.Context, key string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.objects[key]
+	return ok, nil
+}
+
+func (s *fakeObjectStore) Delete(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deletes = append(s.deletes, key)
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+	delete(s.objects, key)
+	return nil
+}
+
+func (s *fakeObjectStore) failPut(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.putErr = err
+}
+
+func (s *fakeObjectStore) failGet(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.getErr = err
+}
+
+func (s *fakeObjectStore) failDelete(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deleteErr = err
+}
+
+// keys is every object the store holds, sorted.
+func (s *fakeObjectStore) keys() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.objects))
+	for k := range s.objects {
+		out = append(out, k)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// has reports whether the store holds key.
+func (s *fakeObjectStore) has(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.objects[key]
+	return ok
+}
+
+// documentCategoryID is the id of the category keyed key.
+func documentCategoryID(t *testing.T, h *harness, key string) int64 {
+	t.Helper()
+	return modtest.One[int64](t, h.Harness, `SELECT id FROM staff.document_categories WHERE key = $1`, key)
+}
+
+// seedDocument files one document directly — its row in the category keyed
+// category and its object in the fake store — for a test whose subject is who
+// reads or changes it rather than the upload, and answers its id.
+func seedDocument(t *testing.T, h *harness, personID int64, category string) int64 {
+	t.Helper()
+	key := fmt.Sprintf("people/%d/%s", personID, uuid.New())
+	data := testPDF(16)
+	if err := h.objects.Put(context.Background(), key, bytes.NewReader(data), "application/pdf"); err != nil {
+		t.Fatalf("seed the object: %v", err)
+	}
+	return modtest.One[int64](t, h.Harness, `
+		INSERT INTO staff.documents (person_id, category_id, object_key, file_name, content_type, size_bytes,
+			uploaded_by_user_id, created_at, updated_at)
+		SELECT $1, id, $2, $3, 'application/pdf', $4, $5, $6, $6 FROM staff.document_categories WHERE key = $7
+		RETURNING id`, personID, key, category+".pdf", len(data), uuid.New(), h.Now(), category)
+}
+
+// The document bytes every test uploads. No binary fixture is committed: the
+// images come from the standard library's own encoders, and the PDF and the
+// HEIC file are the magic bytes each format is sniffed by (Expenses' own).
+func testPNG(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 8, 8))); err != nil {
+		t.Fatalf("encode PNG: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func testJPEG(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 8, 8)), &jpeg.Options{Quality: 80}); err != nil {
+		t.Fatalf("encode JPEG: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// testPDF is the smallest thing http.DetectContentType calls a PDF, padded.
+func testPDF(padding int) []byte {
+	return append([]byte("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"), bytes.Repeat([]byte("x"), padding)...)
+}
+
+// testHEIC is an ISO base media file whose major brand is "heic".
+func testHEIC() []byte {
+	box := []byte{0, 0, 0, 24}
+	box = append(box, []byte("ftypheic")...)
+	box = append(box, 0, 0, 0, 0)
+	box = append(box, []byte("mif1")...)
+	return append(box, []byte("meta and the picture itself")...)
+}
+
+// upload is one document upload's form: the file part and the fields beside
+// it, each sent only when set.
+type upload struct {
+	fileName, contentType string
+	data                  []byte
+	categoryID            int64
+	validTo, signedAt     string
+	noFile                bool
+}
+
+// form is u as multipart/form-data: its content type and its body.
+func (u upload) form(t *testing.T) (string, []byte) {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	field := func(name, value string) {
+		if err := w.WriteField(name, value); err != nil {
+			t.Fatalf("write the %q field: %v", name, err)
+		}
+	}
+	if u.categoryID != 0 {
+		field("categoryId", strconv.FormatInt(u.categoryID, 10))
+	}
+	if u.validTo != "" {
+		field("validTo", u.validTo)
+	}
+	if u.signedAt != "" {
+		field("signedAt", u.signedAt)
+	}
+	if !u.noFile {
+		header := textproto.MIMEHeader{}
+		header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename=%q`, u.fileName))
+		if u.contentType != "" {
+			header.Set("Content-Type", u.contentType)
+		}
+		part, err := w.CreatePart(header)
+		if err != nil {
+			t.Fatalf("create the file part: %v", err)
+		}
+		if _, err := part.Write(u.data); err != nil {
+			t.Fatalf("write the file part: %v", err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close the multipart writer: %v", err)
+	}
+	return w.FormDataContentType(), buf.Bytes()
+}
+
+// pdfUpload is a small PDF filed under categoryID.
+func pdfUpload(categoryID int64) upload {
+	return upload{fileName: "avtale.pdf", contentType: "application/pdf", data: testPDF(32), categoryID: categoryID}
+}
+
+// postDocument sends one upload and answers the whole response.
+func postDocument(t *testing.T, c *modtest.Client, personID int64, u upload) *modtest.Response {
+	t.Helper()
+	ct, body := u.form(t)
+	return c.Do(http.MethodPost, documentsPath(personID), nil, modtest.RawBody(ct, body))
+}
+
+// uploadDocument files one document and fails the test unless it was created.
+func uploadDocument(t *testing.T, c *modtest.Client, personID int64, u upload) gen.StaffDocument {
+	t.Helper()
+	r := postDocument(t, c, personID, u)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("upload %s for person %d: status %d body %s, want 201", u.fileName, personID, r.Status, r.Body)
+	}
+	var out gen.StaffDocument
+	r.JSON(&out)
+	return out
+}
+
+// The documents' paths.
+const (
+	documentsBase          = "/api/v1/staff/documents"
+	documentCategoriesPath = "/api/v1/staff/document-categories"
+	meDocumentsPath        = "/api/v1/staff/me/documents"
+)
+
+func documentsPath(personID int64) string { return rowPath(peoplePath, personID) + "/documents" }
+func documentPath(id int64) string        { return rowPath(documentsBase, id) }
