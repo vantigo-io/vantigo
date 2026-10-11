@@ -13,11 +13,19 @@ import (
 )
 
 const countPersonEvents = `-- name: CountPersonEvents :one
-SELECT count(*) FROM staff.events WHERE person_id = $1
+SELECT count(*) FROM staff.events
+WHERE person_id = $1 AND ($2::boolean OR NOT ('E' = ANY(payload_classes)))
 `
 
-func (q *Queries) CountPersonEvents(ctx context.Context, personID *int64) (int64, error) {
-	row := q.db.QueryRow(ctx, countPersonEvents, personID)
+type CountPersonEventsParams struct {
+	PersonID   *int64
+	WithHealth bool
+}
+
+// CountPersonEvents counts what ListPersonEvents pages through, health events
+// (those whose payload touches class E) only when asked for.
+func (q *Queries) CountPersonEvents(ctx context.Context, arg CountPersonEventsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPersonEvents, arg.PersonID, arg.WithHealth)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -58,33 +66,43 @@ func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) error 
 }
 
 const listPersonEvents = `-- name: ListPersonEvents :many
-SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload
+SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload, payload_classes
 FROM staff.events
-WHERE person_id = $1
+WHERE person_id = $1 AND ($2::boolean OR NOT ('E' = ANY(payload_classes)))
 ORDER BY at DESC, id DESC
-LIMIT $3 OFFSET $2
+LIMIT $4 OFFSET $3
 `
 
 type ListPersonEventsParams struct {
 	PersonID   *int64
+	WithHealth bool
 	PageOffset int32
 	PageSize   int32
 }
 
 type ListPersonEventsRow struct {
-	ID           int64
-	Kind         string
-	ActorKind    string
-	ActorUserID  *uuid.UUID
-	ActorDisplay *string
-	At           time.Time
-	Payload      []byte
+	ID             int64
+	Kind           string
+	ActorKind      string
+	ActorUserID    *uuid.UUID
+	ActorDisplay   *string
+	At             time.Time
+	Payload        []byte
+	PayloadClasses []string
 }
 
 // ListPersonEvents is one page of a person's history, newest first; two
-// events of one instant keep the order they were written in, reversed.
+// events of one instant keep the order they were written in, reversed. A
+// health event — one whose payload touches class E, such as a health
+// document's — is left out unless asked for: an audience without the health
+// group does not learn that one happened.
 func (q *Queries) ListPersonEvents(ctx context.Context, arg ListPersonEventsParams) ([]ListPersonEventsRow, error) {
-	rows, err := q.db.Query(ctx, listPersonEvents, arg.PersonID, arg.PageOffset, arg.PageSize)
+	rows, err := q.db.Query(ctx, listPersonEvents,
+		arg.PersonID,
+		arg.WithHealth,
+		arg.PageOffset,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -100,6 +118,7 @@ func (q *Queries) ListPersonEvents(ctx context.Context, arg ListPersonEventsPara
 			&i.ActorDisplay,
 			&i.At,
 			&i.Payload,
+			&i.PayloadClasses,
 		); err != nil {
 			return nil, err
 		}

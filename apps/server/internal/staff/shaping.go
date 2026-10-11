@@ -2,6 +2,7 @@ package staff
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,10 +45,18 @@ const (
 	groupNationalID
 	groupBankAccount
 	groupLinks // the account flag and the self-service link
+	// groupDocuments is a person's documents but the health ones, and their
+	// events (§5's "Other documents" row): the person's and HR's.
+	groupDocuments
+	// groupHealth is a person's health documents — those in a restricted
+	// category — and every event whose payload touches class E (§5's
+	// "Milestone notes, health documents" row): the person's and
+	// staff:personal-data's alone, HR without it included out.
+	groupHealth
 )
 
 func (g fieldGroup) String() string {
-	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links"}[g]
+	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health"}[g]
 }
 
 // fieldGroups is the one table: every field of the person — as the contract
@@ -188,8 +197,9 @@ func shownOnPerson[T any](a audience, field string, v *T) *T {
 // group and an employment's dates are everyone's who may see the person; the
 // rest of the employment and its terms is the person's, their manager's and
 // HR's; the private group, the pay, the national identity number's kind, the
-// bank account's last four digits and the link are the person's own and HR's;
-// HR's notes are HR's alone.
+// bank account's last four digits, the link and the documents are the
+// person's own and HR's; HR's notes are HR's alone; the health documents and
+// health events are the person's and staff:personal-data's.
 func (a audience) reads(g fieldGroup) bool {
 	hr := a.Manage || a.PersonalData
 	switch g {
@@ -197,12 +207,24 @@ func (a audience) reads(g fieldGroup) bool {
 		return a.Self || a.Manager || a.Colleague || hr
 	case groupEmployment:
 		return a.Self || a.Manager || hr
-	case groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks:
+	case groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments:
 		return a.Self || hr
 	case groupHRNotes:
 		return hr
+	case groupHealth:
+		return a.Self || a.PersonalData
 	}
 	return false
+}
+
+// readsDocument is whether the audience reads a document in a category that
+// is restricted or not: a health document is the health group's, every other
+// the documents group's.
+func (a audience) readsDocument(restricted bool) bool {
+	if restricted {
+		return a.reads(groupHealth)
+	}
+	return a.reads(groupDocuments)
 }
 
 // colleagueOnly is whether the audience is staff:view and nothing more: the
@@ -268,6 +290,7 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 			CanRevealIdentifiers: a.PersonalData,
 			CanSeePay:            a.reads(groupPay),
 			CanManageAccount:     a.Manage,
+			CanSeeHealth:         a.reads(groupHealth),
 		},
 		WorkEmail:    shown(a, "workEmail", row.WorkEmail),
 		PhoneWork:    shown(a, "phoneWork", row.PhoneWork),
@@ -336,14 +359,22 @@ const changed = "changed"
 // payload is empty to everyone. A payload that is not the shape this module
 // writes is answered empty rather than passed through: what is not
 // understood is not shown.
-func shapePayload(stored []byte, a audience) map[string]any {
+//
+// A document's event (documentId set) is shaped by one group for the whole
+// event rather than per field, since its fields — the category, the file
+// name, the dates — say what the document is: the health group when classes,
+// the event's payload_classes, hold E (the category's class), else the
+// documents group. A reader of neither sees each field as "changed"; a health
+// event is not listed at all to an audience without the health group
+// (ListPersonEvents), so this is its second line, not its first.
+func shapePayload(stored []byte, classes []string, a audience) map[string]any {
 	var payload struct {
 		Fields map[string]any `json:"fields"`
-		// Which employment and which terms row an employment's or a terms
-		// row's event is about: ids, not data about the person, kept for
-		// everyone who reads the history.
+		// Which employment, terms row or document an event is about: ids, not
+		// data about the person, kept for everyone who reads the history.
 		EmploymentID *int64 `json:"employmentId"`
 		TermsID      *int64 `json:"termsId"`
+		DocumentID   *int64 `json:"documentId"`
 	}
 	out := map[string]any{}
 	if err := json.Unmarshal(stored, &payload); err != nil || payload.Fields == nil {
@@ -356,6 +387,21 @@ func shapePayload(stored []byte, a audience) map[string]any {
 		out["termsId"] = *payload.TermsID
 	}
 	fields := make(map[string]any, len(payload.Fields))
+	if payload.DocumentID != nil {
+		out["documentId"] = *payload.DocumentID
+		group := groupDocuments
+		if slices.Contains(classes, "E") {
+			group = groupHealth
+		}
+		for name, value := range payload.Fields {
+			fields[name] = changed
+			if a.reads(group) {
+				fields[name] = value
+			}
+		}
+		out["fields"] = fields
+		return out
+	}
 	for name, value := range payload.Fields {
 		switch g := groupOf(name); {
 		case a.reads(g):
@@ -380,7 +426,7 @@ func eventResponse(row store.ListPersonEventsRow, a audience) gen.StaffEvent {
 		Kind:    row.Kind,
 		At:      row.At,
 		Actor:   gen.StaffEventActor{Kind: row.ActorKind, DisplayName: display, UserId: row.ActorUserID},
-		Payload: shapePayload(row.Payload, a),
+		Payload: shapePayload(row.Payload, row.PayloadClasses, a),
 	}
 }
 

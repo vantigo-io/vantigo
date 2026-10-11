@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/invoices/bankimport.go
   - apps/server/internal/invoices/reminderpdf.go
   - apps/server/internal/invoices/print_batches.go
+  - apps/server/internal/staff/objects.go
 ---
 Objektlagring er applikasjonsporten Kommunikasjon mellomlagrer og serverer vedlegg
 gjennom. Moduler snakker aldri med en leverandør-SDK: de får et `ObjectStore` avgrenset
@@ -127,7 +128,9 @@ igjen under en ny nøkkel, og bunkens samlede PDF lages fra brevenes rader hver 
 lastes ned, og lagres aldri; et brev der PDF-en ikke kunne lagres da det ble skrevet ut,
 lagres neste gang bunken bekreftes postlagt eller lastes ned, og hver av dem stopper ved
 det første brevet lageret avviser, så et brudd koster en forespørsel bare ett tidsavbrudd
-([papir og postlegging](/en/reference/invoices/#paper-and-posting)). Et avgrenset lager
+([papir og postlegging](/en/reference/invoices/#paper-and-posting)). Ansatte bruker
+omfanget `staff`: et dokuments relative nøkkel er `people/<personId>/<uuid>`, så dets
+fysiske nøkkel er `staff/people/<personId>/<uuid>` ([Ansatte](/en/reference/staff/#documents)). Et avgrenset lager
 avviser en relativ nøkkel som er lik omfanget sitt eller allerede begynner med
 `{scope}/`: kallere sender bare relative nøkler og må aldri bygge prefikset selv.
 
@@ -144,6 +147,21 @@ bekreftelsen — det finnes ingen bakgrunnsopprydder i dag, så en kvittering so
 foreldreløs på den måten overlever forespørselen som forårsaket den. Se
 [Utgifter](/en/reference/expenses/#receipts) for opplastingsreglene (typer, størrelse,
 antall, sniffing) og hastighetsbegrensningen.
+
+**Ansattes dokumenter, spesielt.** En persons arkiv: arbeidsavtaler, attester,
+sertifikater, korrespondanse, helsedokumenter og virksomhetens egne kategorier, hver en
+PDF, JPEG, PNG eller HEIC på høyst 10 MiB. Et dokument leses av personen selv, av
+`staff:manage` (unntatt helsedokumenter) og av `staff:personal-data`, alltid gjennom
+Ansattes eget nedlastingsendepunkt. Objektet skrives før raden og fjernes igjen hvis
+raden avvises. En sletting — for hånd, eller av sletteregelens kjøring — fjerner raden og
+fører objektet inn i Ansattes logg over objekter som skal fjernes
+(`staff.object_deletions`) i én transaksjon; deretter fjernes objektet, og en fjerning
+lageret avviser blir stående i loggen til Ansattes slettearbeider fullfører den, så et
+dokument som skal slettes aldri overlates til tilfeldighetene. Loggradene et lagringsbrudd etterlater, er det man
+bør følge med på: de er objektene Ansatte fortsatt skylder en fjerning. Slås modulen av,
+blir objektene og loggradene liggende urørt til den slås på igjen. Se
+[Ansatte](/en/reference/staff/#documents) for opplastingsreglene og
+hastighetsbegrensningen.
 
 ## Nedlastinger
 
@@ -162,3 +180,7 @@ gjennom utgiften den hører til, laster den gjennom modulens eget `expenses`-avg
 lager, og strømmer bytene tilbake med innholdstypen de ble sniffet som ved opplasting
 og filnavnet slik det ble oppgitt — aldri en lagringsplassering av noe slag. Se
 [Utgifter](/en/reference/expenses/#receipts).
+
+Ansattes `GET /documents/{id}` gjør det samme gjennom sitt `staff`-avgrensede lager,
+med dokumentets egen synlighet; et dokument hvis objekt ikke kan leses, svarer 503
+`storage_unavailable`, ikke 404. Se [Ansatte](/en/reference/staff/#reading-changing-and-removing).

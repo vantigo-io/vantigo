@@ -60,7 +60,7 @@ func TestFieldGroups_CoverEveryPersonField(t *testing.T) {
 // so a change to who reads what is a change to this table.
 func TestAudience_ReadsItsGroups(t *testing.T) {
 	t.Parallel()
-	groups := []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupNobody}
+	groups := []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupNobody}
 	for _, c := range []struct {
 		name   string
 		a      audience
@@ -68,11 +68,11 @@ func TestAudience_ReadsItsGroups(t *testing.T) {
 		events bool
 	}{
 		{"nobody", audience{}, nil, false},
-		{"self", audience{Self: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks}, true},
+		{"self", audience{Self: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth}, true},
 		{"manager", audience{Manager: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment}, true},
 		{"colleague", audience{Colleague: true}, []fieldGroup{groupWork, groupEmploymentDates}, false},
-		{"staff:manage", audience{Manage: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks}, true},
-		{"staff:personal-data", audience{PersonalData: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks}, true},
+		{"staff:manage", audience{Manage: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments}, true},
+		{"staff:personal-data", audience{PersonalData: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth}, true},
 	} {
 		for _, g := range groups {
 			want := false
@@ -128,7 +128,7 @@ func TestPersonFieldGroups_ThePlaceTodayIsWork(t *testing.T) {
 func TestShapePayload_PerField(t *testing.T) {
 	t.Parallel()
 	stored := []byte(`{"fields":{"notes":{"from":"a","to":"b"},"givenName":{"to":"Kari"},"phoneMobile":{"from":"1"},"mystery":{"to":"x"}}}`)
-	self := shapePayload(stored, audience{Self: true})
+	self := shapePayload(stored, nil, audience{Self: true})
 	fields := self["fields"].(map[string]any)
 	if _, ok := fields["notes"]; ok || fields["mystery"] != "changed" {
 		t.Errorf("self: %v, want notes left out and mystery changed", fields)
@@ -136,7 +136,7 @@ func TestShapePayload_PerField(t *testing.T) {
 	if f, ok := fields["phoneMobile"].(map[string]any); !ok || f["from"] != "1" {
 		t.Errorf("self: phoneMobile = %v, want its value", fields["phoneMobile"])
 	}
-	hr := shapePayload(stored, audience{Manage: true})["fields"].(map[string]any)
+	hr := shapePayload(stored, nil, audience{Manage: true})["fields"].(map[string]any)
 	if f, ok := hr["notes"].(map[string]any); !ok || f["to"] != "b" {
 		t.Errorf("HR: notes = %v, want its value", hr["notes"])
 	}
@@ -155,19 +155,19 @@ func TestShapePayload_TheSealedAndLinkEvents(t *testing.T) {
 		`{"fields":{"user":{"to":{"id":"00000000-0000-0000-0000-000000000001","displayName":"Kari"}}}}`,
 	} {
 		for name, a := range map[string]audience{"self": {Self: true}, "staff:manage": {Manage: true}, "staff:personal-data": {PersonalData: true}} {
-			for field, value := range shapePayload([]byte(stored), a)["fields"].(map[string]any) {
+			for field, value := range shapePayload([]byte(stored), nil, a)["fields"].(map[string]any) {
 				if value == changed {
 					t.Errorf("%s reads %s as changed in %s, want its value", name, field, stored)
 				}
 			}
 		}
-		for field, value := range shapePayload([]byte(stored), audience{Manager: true})["fields"].(map[string]any) {
+		for field, value := range shapePayload([]byte(stored), nil, audience{Manager: true})["fields"].(map[string]any) {
 			if value != changed {
 				t.Errorf("a manager reads %s as %v in %s, want changed", field, value, stored)
 			}
 		}
 	}
-	if got := shapePayload([]byte(`{}`), audience{Self: true}); len(got) != 0 {
+	if got := shapePayload([]byte(`{}`), nil, audience{Self: true}); len(got) != 0 {
 		t.Errorf("a reveal's payload = %v, want empty", got)
 	}
 }
@@ -179,7 +179,7 @@ func TestShapePayload_TheSealedAndLinkEvents(t *testing.T) {
 func TestShapePayload_TermsEvents(t *testing.T) {
 	t.Parallel()
 	stored := []byte(`{"employmentId":1001,"termsId":1002,"fields":{"title":{"to":"Developer"},"ftePercent":{"from":100,"to":80},"payComponents":{"to":[]},"note":{"to":"x"}}}`)
-	manager := shapePayload(stored, audience{Manager: true})
+	manager := shapePayload(stored, nil, audience{Manager: true})
 	fields := manager["fields"].(map[string]any)
 	if _, ok := fields["payComponents"]; ok {
 		t.Errorf("manager: %v, want payComponents left out", fields)
@@ -195,8 +195,47 @@ func TestShapePayload_TermsEvents(t *testing.T) {
 	if manager["employmentId"] != int64(1001) || manager["termsId"] != int64(1002) {
 		t.Errorf("manager: %v, want the employment and the row named", manager)
 	}
-	hr := shapePayload(stored, audience{Manage: true})["fields"].(map[string]any)
+	hr := shapePayload(stored, nil, audience{Manage: true})["fields"].(map[string]any)
 	if _, ok := hr["payComponents"].(map[string]any); !ok {
 		t.Errorf("HR: payComponents = %v, want its value", hr["payComponents"])
+	}
+}
+
+// A document's event (design §3.6, plan Task 1) is shaped by one group for
+// the whole event, chosen by the classes the category gave it: the documents
+// group (Self, manage, personal-data), or the health group (Self,
+// personal-data) when the classes hold E. A reader of the group sees each
+// field; anyone else who reads the history sees "changed" — and the
+// documentId either way, an id rather than data about the person.
+func TestShapePayload_DocumentEvents(t *testing.T) {
+	t.Parallel()
+	stored := []byte(`{"documentId":7,"fields":{"category":{"to":"contract"},"fileName":{"to":"avtale.pdf"},"validTo":{"to":"2027-01-31"}}}`)
+	for _, c := range []struct {
+		name    string
+		classes []string
+		a       audience
+		shown   bool
+	}{
+		{"a contract to HR", []string{"A"}, audience{Manage: true}, true},
+		{"a contract to the person", []string{"A"}, audience{Self: true}, true},
+		{"a contract to their manager", []string{"A"}, audience{Manager: true}, false},
+		{"a health document to personal-data", []string{"E"}, audience{PersonalData: true}, true},
+		{"a health document to the person", []string{"E"}, audience{Self: true}, true},
+		{"a health document to HR", []string{"E"}, audience{Manage: true}, false},
+		{"a move out of health to HR", []string{"D", "E"}, audience{Manage: true}, false},
+	} {
+		got := shapePayload(stored, c.classes, c.a)
+		if got["documentId"] != int64(7) {
+			t.Errorf("%s: documentId = %v, want 7", c.name, got["documentId"])
+		}
+		fields, _ := got["fields"].(map[string]any)
+		if len(fields) != 3 {
+			t.Errorf("%s: fields = %v, want the three named", c.name, fields)
+		}
+		for name, value := range fields {
+			if isChanged := value == changed; isChanged == c.shown {
+				t.Errorf("%s: %s = %v, want shown %v", c.name, name, value, c.shown)
+			}
+		}
 	}
 }

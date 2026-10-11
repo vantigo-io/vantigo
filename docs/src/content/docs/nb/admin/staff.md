@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger, e-posten om endret kontonummer, og innstillingene — forretningstidssonen og ansattnummerserien.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, e-posten om endret kontonummer, og innstillingene — forretningstidssonen og ansattnummerserien.
 sidebar:
   order: 44
 sources:
@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/staff/settings.go
   - apps/server/internal/staff/sealed.go
   - apps/server/internal/staff/links.go
+  - apps/server/internal/staff/document_categories.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -24,6 +25,10 @@ står i [referansen](/en/reference/staff/).
   slå den på senere trenger ingen migrering. Hvis databasen kjører en
   applikasjonsrolle med minste privilegium, trenger den skjemaet `staff` tildelt som
   alle de andre ([Installasjon](/nb/admin/installation/)).
+- Personers dokumenter lagres i objektlageret, så å arkivere et dokument krever
+  `STORAGE_PROVIDER=fs` og en lagringsrot
+  ([Objektlagring](/nb/admin/object-storage/)). Uten det virker alt annet, og en
+  opplasting eller nedlasting svarer 503 `storage_unavailable`.
 
 ## Slå på modulen
 
@@ -44,8 +49,8 @@ Hver operasjon i Ansatte krever `staff:access`, og fire rettigheter ligger over 
 | `staff:access` | Alle som skal se sine egne opplysninger. |
 | `staff:view` | Kolleger som skal se katalogen og bedriftens struktur. |
 | `staff:approve` | Den som avgjør fravær (den gir ingenting før fravær kommer). |
-| `staff:manage` | HR: personer, arbeidsforhold, strukturen og innstillingene. Sensitiv. |
-| `staff:personal-data` | Den som får vise fødselsnumre og kontonumre. Sensitiv. |
+| `staff:manage` | HR: personer, arbeidsforhold, dokumenter unntatt helsedokumenter, dokumentkategoriene, strukturen og innstillingene. Sensitiv. |
+| `staff:personal-data` | Den som får vise fødselsnumre og kontonumre, og lese og arkivere helsedokumenter. Sensitiv. |
 
 Owner har dem alle allerede. Alle andre trenger en rolle som gir dem: under
 **Administrer arbeidsområde → Roller og tilgang** oppretter eller redigerer du en rolle og
@@ -86,6 +91,37 @@ slik at det trengs to par hender for å endre hvor noens lønn går.
 Verdiene er forseglet under nøkler utledet fra `APP_SECRET`. Å rotere den gjør dem
 umulige å åpne og duplikatsjekken for fødselsnumre blind — se
 [Installasjon](/nb/admin/installation/#innstillingene-du-må-ta-stilling-til).
+
+**Helsedokumenter** — en persons dokumenter i en begrenset kategori, blant
+standardkategoriene `health` — er også `staff:personal-data` sine. HR med bare
+`staff:manage` ser dem ikke i personens arkiv, kan ikke åpne, arkivere, flytte eller
+fjerne et, og ser ikke i personens historikk at et ble lagt til; personen selv leser
+sine egne. Gi `staff:personal-data` til den som håndterer sykmeldinger og korrespondanse
+med bedriftshelsetjenesten, og ingen andre.
+
+## Dokumentkategorier
+
+Hvert dokument arkiveres under en kategori, og kategorien avgjør når dokumentet slettes:
+dens **oppbevaringsklasse** — A for lønns- og avtaledokumentasjon (fem år etter året
+arbeidsforholdet sluttet), D for personaladministrasjon (sammen med resten av
+personens opplysninger), E for helse. Seks kategorier finnes fra start: arbeidsavtale og
+attest (A), sertifikat, korrespondanse og annet (D), og helse (E). En kategori i klasse
+E er begrenset: dokumentene i den er helsedokumenter.
+
+Slik legger du til en egen, som en bruker med `staff:manage`:
+
+1. `POST /api/v1/staff/document-categories` med en `key` (1–40 av `a–z`, `0–9` og
+   bindestreker), `names` på engelsk og norsk og en `class` som er `A`, `D` eller `E`,
+   for eksempel `{"key": "courses", "names": {"en": "Courses", "nb": "Kurs"}, "class": "D"}`.
+   Velg klassen med omhu: den endres aldri, fordi slettingen leser den fra hvert dokument
+   som er arkivert under kategorien.
+2. Kontroller: `GET /api/v1/staff/document-categories` lister den etter
+   standardkategoriene.
+
+For å gi en nytt navn, eller slutte å tilby den, sender du `names` og `archived` til
+`PUT /api/v1/staff/document-categories/{id}` med revisjonen i `If-Match`. En arkivert
+kategori tilbys ikke for nye dokumenter; dokumentene som allerede er arkivert under den,
+beholder den. De seks standardkategoriene endres aldri.
 
 ## E-posten om endret kontonummer
 
@@ -141,3 +177,13 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   numrene.
 - **Ingen e-post om endret kontonummer kom fram.** Se etter linjen over i loggen, og at
   personen har en e-postadresse.
+- **`storage_unavailable`.** Objektlageret kunne ikke skrives til eller leses fra:
+  lagring er ikke konfigurert, eller roten er ikke skrivbar. Ingenting ble registrert;
+  rett opp lagringen og prøv igjen ([Objektlagring](/nb/admin/object-storage/)).
+- **`seed_immutable`.** En av de seks standardkategoriene kan ikke endres. Legg til en
+  egen kategori i stedet.
+- **`category_in_use`.** Det er fortsatt dokumenter arkivert under kategorien du
+  arkiverer. Flytt dem til en annen kategori først.
+- **`document_count_exceeded`.** Personen har 200 dokumenter, det meste én person kan
+  ha — talt uansett hva du får se, så det kan omfatte helsedokumenter du ikke ser. Fjern
+  dokumenter som ikke lenger trengs.

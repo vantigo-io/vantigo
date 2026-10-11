@@ -24,6 +24,9 @@ export const eventKinds = [
   "terms_added",
   "terms_corrected",
   "terms_deleted",
+  "document_added",
+  "document_updated",
+  "document_removed",
 ] as const;
 
 /**

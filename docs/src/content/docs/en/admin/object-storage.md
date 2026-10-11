@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/invoices/bankimport.go
   - apps/server/internal/invoices/reminderpdf.go
   - apps/server/internal/invoices/print_batches.go
+  - apps/server/internal/staff/objects.go
 ---
 Object storage is the application port Communications stages and serves attachments
 through. Modules never talk to a provider SDK: they receive an `ObjectStore` scoped
@@ -125,7 +126,9 @@ the letters' rows each time it is downloaded, never stored; a letter whose PDF c
 be stored when it was printed is stored when the batch is next posted or downloaded, and
 each of those stops at the first letter the store fails, so an outage holds a request for
 one store timeout
-([paper and posting](/en/reference/invoices/#paper-and-posting)). A scoped store refuses a
+([paper and posting](/en/reference/invoices/#paper-and-posting)). Staff uses the scope
+`staff`: a document's relative key is `people/<personId>/<uuid>`, so its physical key is
+`staff/people/<personId>/<uuid>` ([Staff](/en/reference/staff/#documents)). A scoped store refuses a
 relative key that equals its scope or already begins with `{scope}/`: callers pass
 relative keys only and must never construct the prefix themselves.
 
@@ -141,6 +144,21 @@ between writing the object and that compensating removal or commit completing �
 there is no background sweeper today, so a receipt orphaned that way outlives the
 request that caused it. See [Expenses](/en/reference/expenses/#receipts) for the upload rules
 (types, size, count, sniffing) and the rate limit.
+
+**Staff's documents, specifically.** A person's archive: contracts, attests,
+certificates, correspondence, health documents and the company's own categories, each a
+PDF, JPEG, PNG or HEIC of at most 10 MiB. A document is read by the person, by
+`staff:manage` (health documents excepted) and by `staff:personal-data`, always through
+Staff's own download endpoint. The object is written before its row and removed again
+if the row is refused. A delete — by hand, or by the retention erase — removes the row
+and records the object in Staff's ledger of objects to remove (`staff.object_deletions`)
+in one transaction; the object is then removed, and a removal the store refuses stays in
+the ledger for Staff's retention worker to finish, so a document that has to be erased
+is never left to chance.
+The ledger rows a store outage leaves are what to watch: they are the objects Staff
+still owes a removal. Switching the module off leaves its objects and its ledger rows
+where they are, untouched, until it is switched on again. See
+[Staff](/en/reference/staff/#documents) for the upload rules and the rate limit.
 
 ## Downloads
 
@@ -158,3 +176,7 @@ receipt through the expense it belongs to, loads it through the module's own
 `expenses`-scoped store, and streams the bytes back with the content type they
 were sniffed as on upload and the file name as it was given — never a storage
 location of any kind. See [Expenses](/en/reference/expenses/#receipts).
+
+Staff's `GET /documents/{id}` does the same through its `staff`-scoped store, with
+the document's own visibility; a document whose object cannot be read answers 503
+`storage_unavailable`, not 404. See [Staff](/en/reference/staff/#reading-changing-and-removing).

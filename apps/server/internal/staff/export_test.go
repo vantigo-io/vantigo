@@ -54,3 +54,7 @@ func SMTPSend(ctx context.Context, d module.Deps, out mail.Outbound) error {
 func MailAvailable(d module.Deps) bool {
 	return (&server{deps: d}).mailAvailable()
 }
+
+// DocumentUploadsPerHour is the upload's rate limit, for the test that runs
+// into it.
+const DocumentUploadsPerHour = documentUploadsPerHour

@@ -469,19 +469,28 @@ and the invoices package never import each other (rule 7). See [Invoices](/en/re
 
 **Staff depends on nobody but identity**, as Expenses does: `MODULES=staff` alone is a
 valid installation, and no other module's state changes what Staff answers. It reaches
-two things outside its schema: identity's `Deps.Users` (`contracts.UserDirectory`,
+three things outside its schema: identity's `Deps.Users` (`contracts.UserDirectory`,
 always set: `User`, `Users`, `SearchUsers`) for names — whoever writes a history event,
-the user a self-service link names — and the picker HR links a person with, and the
+the user a self-service link names — and the picker HR links a person with; the
 platform's mail seam (`Deps.SMTPSend`, or `mail.SendOutbound` when unset) for the one
-mail it sends, the notice of a changed bank account. It reads no business module, provides no contract and fills no
-slot, so switching it off strands nothing in another module. It keeps rule 10's
-restatement strictly: both are reached **before a transaction opens or after it
-commits, never inside one** — neither under a person's lock nor inside a read-only
-snapshot, which holds a pool connection just the same. Each goes through one accessor
-in `internal/staff/contractscalls.go` that refuses a call made inside one of the
-module's transactions (the marking Invoices introduced, copied rather than imported),
-and the harness records every call and fails a test that makes one under an open
-transaction. See [Staff](/en/reference/staff/#locks).
+mail it sends, the notice of a changed bank account; and the object store
+(`Deps.ObjectStore` when a harness sets one, else its own `staff`-scoped store built
+from the configuration, in the API and a worker alike, with a construction error kept
+for the calls that need a store rather than failing the process) for the bytes of
+people's documents. It reads no business module, provides no contract and fills no
+slot, so switching it off strands nothing in another module — but it does strand its
+own objects and the rows of its ledger of objects still to remove
+(`staff.object_deletions`), which wait untouched until the module is on again. It keeps
+rule 10's restatement strictly: all three are reached **before a transaction opens or
+after it commits, never inside one** — neither under a person's lock nor inside a
+read-only snapshot, which holds a pool connection just the same. Each goes through one
+accessor — in `internal/staff/contractscalls.go`, or `internal/staff/objects.go` for the
+store (`objectPut`, `objectGet`, `objectDelete`) — that refuses a call made inside one of
+the module's transactions (the marking Invoices introduced, copied rather than
+imported), and the harness records every call and fails a test that makes one under an
+open transaction. So a document's object is written before its row's transaction and
+removed after a refusal, read after the row's snapshot, and removed after the delete
+commits. See [Staff](/en/reference/staff/#locks).
 
 ## Adding a module
 

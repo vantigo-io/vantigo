@@ -14,8 +14,9 @@ import (
 // anything. It answers what the caller may do, the business time zone with
 // today's date in it, and — for staff:view or staff:manage — the structure the
 // pickers and the labels need, so no client re-derives a rule this module owns. The
-// capabilities delivery B and A2 add (canDecide, canSeeHealth) and C's
-// accountMode arrive additively with them.
+// capability delivery B adds (canDecide) and C's accountMode arrive
+// additively with them; canSeeHealth is A2's — staff:personal-data, since the
+// person reads their own health documents whatever the global answer says.
 
 // GetStaffMeta Get the Staff metadata
 // (GET /api/v1/staff/meta)
@@ -32,6 +33,7 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 			CanEdit:              caller.Manage,
 			CanRevealIdentifiers: caller.PersonalData,
 			CanSeePay:            caller.Manage || caller.PersonalData,
+			CanSeeHealth:         caller.PersonalData,
 		},
 	}
 	// HR without the directory still names units and departments (plan

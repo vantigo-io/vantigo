@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -79,6 +81,27 @@ func (e StaffContractCheckItemState) Valid() bool {
 	case NotApplicable:
 		return true
 	case Present:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffDocumentClass.
+const (
+	StaffDocumentClassA StaffDocumentClass = "A"
+	StaffDocumentClassD StaffDocumentClass = "D"
+	StaffDocumentClassE StaffDocumentClass = "E"
+)
+
+// Valid indicates whether the value is a known member of the StaffDocumentClass enum.
+func (e StaffDocumentClass) Valid() bool {
+	switch e {
+	case StaffDocumentClassA:
+		return true
+	case StaffDocumentClassD:
+		return true
+	case StaffDocumentClassE:
 		return true
 	default:
 		return false
@@ -393,28 +416,28 @@ func (e StaffRemunerationType) Valid() bool {
 
 // Defines values for StaffTemporaryGround.
 const (
-	A      StaffTemporaryGround = "a"
-	B      StaffTemporaryGround = "b"
-	C      StaffTemporaryGround = "c"
-	D      StaffTemporaryGround = "d"
-	E      StaffTemporaryGround = "e"
-	Tariff StaffTemporaryGround = "tariff"
+	StaffTemporaryGroundA      StaffTemporaryGround = "a"
+	StaffTemporaryGroundB      StaffTemporaryGround = "b"
+	StaffTemporaryGroundC      StaffTemporaryGround = "c"
+	StaffTemporaryGroundD      StaffTemporaryGround = "d"
+	StaffTemporaryGroundE      StaffTemporaryGround = "e"
+	StaffTemporaryGroundTariff StaffTemporaryGround = "tariff"
 )
 
 // Valid indicates whether the value is a known member of the StaffTemporaryGround enum.
 func (e StaffTemporaryGround) Valid() bool {
 	switch e {
-	case A:
+	case StaffTemporaryGroundA:
 		return true
-	case B:
+	case StaffTemporaryGroundB:
 		return true
-	case C:
+	case StaffTemporaryGroundC:
 		return true
-	case D:
+	case StaffTemporaryGroundD:
 		return true
-	case E:
+	case StaffTemporaryGroundE:
 		return true
-	case Tariff:
+	case StaffTemporaryGroundTariff:
 		return true
 	default:
 		return false
@@ -557,6 +580,9 @@ type StaffCapabilities struct {
 	// CanRevealIdentifiers staff:personal-data — reveal and write the national identity number and the bank account.
 	CanRevealIdentifiers bool `json:"canRevealIdentifiers"`
 
+	// CanSeeHealth staff:personal-data — everyone's health documents. The person reads their own whatever this says.
+	CanSeeHealth bool `json:"canSeeHealth"`
+
 	// CanSeePay staff:manage or staff:personal-data — everyone's pay terms.
 	CanSeePay bool `json:"canSeePay"`
 
@@ -642,6 +668,103 @@ type StaffDepartmentSummary struct {
 	Id   int64  `json:"id"`
 	Name string `json:"name"`
 }
+
+// StaffDocument One document in a person's archive (design S14, §3.6). The bytes are never in a JSON body: they are read from GET /documents/{id}, with the document's own visibility. Optional fields are absent when not recorded.
+type StaffDocument struct {
+	// Category The category a document is filed under, as every document carries it.
+	Category StaffDocumentCategorySummary `json:"category"`
+
+	// ContentType The type the file's own bytes were sniffed as on upload — application/pdf, image/jpeg, image/png or image/heic.
+	ContentType string `json:"contentType"`
+
+	// EmploymentId The employment the document belongs to — the one covering signedAt, else the upload day, when exactly one does; HR may set it. It is what the erase of class A documents goes by. Absent when none.
+	EmploymentId *int64 `json:"employmentId,omitempty"`
+
+	// FileName The name the file was uploaded under, without any path, at most 255 characters.
+	FileName string `json:"fileName"`
+	Id       int64  `json:"id"`
+	PersonId int64  `json:"personId"`
+
+	// Revision Send it back as If-Match on PUT /documents/{id}.
+	Revision int32 `json:"revision"`
+
+	// SignedAt The day the document was signed. Absent when not recorded.
+	SignedAt   *openapi_types.Date `json:"signedAt,omitempty"`
+	SizeBytes  int64               `json:"sizeBytes"`
+	UploadedAt time.Time           `json:"uploadedAt"`
+
+	// ValidTo The last day the document is valid — a certificate's expiry. Absent when not recorded.
+	ValidTo *openapi_types.Date `json:"validTo,omitempty"`
+}
+
+// StaffDocumentCategory A document category (design S14) — one of the six seeds or the company's own. Its retention class is fixed when it is created; restricted (a health category, readable only by the person and staff:personal-data) is true exactly when the class is E. A seeded category never changes; an archived one is offered for no new document and keeps the documents filed under it.
+type StaffDocumentCategory struct {
+	// ArchivedAt When the category was archived. Absent while it is in use.
+	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
+
+	// Class A document category's retention class (design S15) — A pay and contract documentation, five years after the year the employment ended; D personnel administration, with the record after the grace; E health.
+	Class StaffDocumentClass `json:"class"`
+	Id    int64              `json:"id"`
+	Key   string             `json:"key"`
+
+	// Names A category's name in English and in Norwegian bokmål, each 1 to 100 characters.
+	Names      StaffDocumentCategoryNames `json:"names"`
+	Restricted bool                       `json:"restricted"`
+
+	// Revision Send it back as If-Match on PUT /document-categories/{id}.
+	Revision int32 `json:"revision"`
+
+	// Seeded One of the six categories every installation starts with — contract, attest, certificate, correspondence, health, other.
+	Seeded bool  `json:"seeded"`
+	Sort   int32 `json:"sort"`
+}
+
+// StaffDocumentCategoryChangeRequest A category's names and whether it is archived. Its key and class never change. A seeded category is refused seed_immutable; archiving a category documents are still filed under is refused category_in_use.
+type StaffDocumentCategoryChangeRequest struct {
+	Archived bool `json:"archived"`
+
+	// Names A category's name in English and in Norwegian bokmål, each 1 to 100 characters.
+	Names StaffDocumentCategoryNames `json:"names"`
+}
+
+// StaffDocumentCategoryNames A category's name in English and in Norwegian bokmål, each 1 to 100 characters.
+type StaffDocumentCategoryNames struct {
+	En string `json:"en"`
+	Nb string `json:"nb"`
+}
+
+// StaffDocumentCategoryRequest A company category. The key is 1 to 40 characters of a–z, 0–9 and hyphens, unique; the class is A (five years after the employment's end year), D (with the personnel record, after the grace) or E (health), and is fixed from now on; restricted follows from it.
+type StaffDocumentCategoryRequest struct {
+	// Class A document category's retention class (design S15) — A pay and contract documentation, five years after the year the employment ended; D personnel administration, with the record after the grace; E health.
+	Class StaffDocumentClass `json:"class"`
+	Key   string             `json:"key"`
+
+	// Names A category's name in English and in Norwegian bokmål, each 1 to 100 characters.
+	Names StaffDocumentCategoryNames `json:"names"`
+}
+
+// StaffDocumentCategorySummary The category a document is filed under, as every document carries it.
+type StaffDocumentCategorySummary struct {
+	// Class A document category's retention class (design S15) — A pay and contract documentation, five years after the year the employment ended; D personnel administration, with the record after the grace; E health.
+	Class StaffDocumentClass `json:"class"`
+	Id    int64              `json:"id"`
+	Key   string             `json:"key"`
+
+	// Names A category's name in English and in Norwegian bokmål, each 1 to 100 characters.
+	Names      StaffDocumentCategoryNames `json:"names"`
+	Restricted bool                       `json:"restricted"`
+}
+
+// StaffDocumentChangeRequest A document's category and dates, replaced whole — a field left out is cleared. Moving a document into or out of a restricted category needs staff:personal-data (category_restricted). employmentId must name one of the person's employments.
+type StaffDocumentChangeRequest struct {
+	CategoryId   int64               `json:"categoryId"`
+	EmploymentId *int64              `json:"employmentId,omitempty"`
+	SignedAt     *openapi_types.Date `json:"signedAt,omitempty"`
+	ValidTo      *openapi_types.Date `json:"validTo,omitempty"`
+}
+
+// StaffDocumentClass A document category's retention class (design S15) — A pay and contract documentation, five years after the year the employment ended; D personnel administration, with the record after the grace; E health.
+type StaffDocumentClass string
 
 // StaffEmployeeType The kind of worker, for an identity provider.
 type StaffEmployeeType string
@@ -1055,6 +1178,9 @@ type StaffPersonCapabilities struct {
 	// CanRevealIdentifiers staff:personal-data — reveal and write the national identity number and the bank account.
 	CanRevealIdentifiers bool `json:"canRevealIdentifiers"`
 
+	// CanSeeHealth The person themselves or staff:personal-data — the person's health documents.
+	CanSeeHealth bool `json:"canSeeHealth"`
+
 	// CanSeePay The person themselves, staff:manage or staff:personal-data — the pay terms of the person's employments.
 	CanSeePay bool `json:"canSeePay"`
 }
@@ -1229,7 +1355,7 @@ type StaffPersonUser struct {
 	Id          openapi_types.UUID `json:"id"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager and manager_cycle. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased and storage_unavailable. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1546,6 +1672,18 @@ type PutStaffDepartmentsByIdParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// PutStaffDocumentCategoriesByIdParams defines parameters for PutStaffDocumentCategoriesById.
+type PutStaffDocumentCategoriesByIdParams struct {
+	// IfMatch The revision the category was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// PutStaffDocumentsByIdParams defines parameters for PutStaffDocumentsById.
+type PutStaffDocumentsByIdParams struct {
+	// IfMatch The revision the document was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
 // PutStaffEmploymentsByIdParams defines parameters for PutStaffEmploymentsById.
 type PutStaffEmploymentsByIdParams struct {
 	// IfMatch The revision the employment was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
@@ -1605,6 +1743,14 @@ type PutStaffPeopleByIdParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// PostStaffPeopleByIdDocumentsMultipartBody defines parameters for PostStaffPeopleByIdDocuments.
+type PostStaffPeopleByIdDocumentsMultipartBody struct {
+	CategoryId int64               `json:"categoryId"`
+	File       openapi_types.File  `json:"file"`
+	SignedAt   *openapi_types.Date `json:"signedAt,omitempty"`
+	ValidTo    *openapi_types.Date `json:"validTo,omitempty"`
+}
+
 // GetStaffPeopleByIdEventsParams defines parameters for GetStaffPeopleByIdEvents.
 type GetStaffPeopleByIdEventsParams struct {
 	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
@@ -1647,6 +1793,15 @@ type PostStaffDepartmentsJSONRequestBody = StaffDepartmentRequest
 // PutStaffDepartmentsByIdJSONRequestBody defines body for PutStaffDepartmentsById for application/json ContentType.
 type PutStaffDepartmentsByIdJSONRequestBody = StaffDepartmentRequest
 
+// PostStaffDocumentCategoriesJSONRequestBody defines body for PostStaffDocumentCategories for application/json ContentType.
+type PostStaffDocumentCategoriesJSONRequestBody = StaffDocumentCategoryRequest
+
+// PutStaffDocumentCategoriesByIdJSONRequestBody defines body for PutStaffDocumentCategoriesById for application/json ContentType.
+type PutStaffDocumentCategoriesByIdJSONRequestBody = StaffDocumentCategoryChangeRequest
+
+// PutStaffDocumentsByIdJSONRequestBody defines body for PutStaffDocumentsById for application/json ContentType.
+type PutStaffDocumentsByIdJSONRequestBody = StaffDocumentChangeRequest
+
 // PutStaffEmploymentsByIdJSONRequestBody defines body for PutStaffEmploymentsById for application/json ContentType.
 type PutStaffEmploymentsByIdJSONRequestBody = StaffEmploymentChangeRequest
 
@@ -1679,6 +1834,9 @@ type PutStaffPeopleByIdJSONRequestBody = StaffPersonRequest
 
 // PutStaffPeopleByIdBankAccountJSONRequestBody defines body for PutStaffPeopleByIdBankAccount for application/json ContentType.
 type PutStaffPeopleByIdBankAccountJSONRequestBody = StaffBankAccountRequest
+
+// PostStaffPeopleByIdDocumentsMultipartRequestBody defines body for PostStaffPeopleByIdDocuments for multipart/form-data ContentType.
+type PostStaffPeopleByIdDocumentsMultipartRequestBody PostStaffPeopleByIdDocumentsMultipartBody
 
 // PostStaffPeopleByIdEmploymentsJSONRequestBody defines body for PostStaffPeopleByIdEmployments for application/json ContentType.
 type PostStaffPeopleByIdEmploymentsJSONRequestBody = StaffEmploymentRequest
@@ -1730,6 +1888,24 @@ type ServerInterface interface {
 	// PostStaffDepartmentsByIdArchive Archive a department
 	// (POST /api/v1/staff/departments/{id}/archive)
 	PostStaffDepartmentsByIdArchive(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffDocumentCategories List document categories
+	// (GET /api/v1/staff/document-categories)
+	GetStaffDocumentCategories(w http.ResponseWriter, r *http.Request)
+	// PostStaffDocumentCategories Add a document category
+	// (POST /api/v1/staff/document-categories)
+	PostStaffDocumentCategories(w http.ResponseWriter, r *http.Request)
+	// PutStaffDocumentCategoriesById Change a document category
+	// (PUT /api/v1/staff/document-categories/{id})
+	PutStaffDocumentCategoriesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffDocumentCategoriesByIdParams)
+	// DeleteStaffDocumentsById Delete a document
+	// (DELETE /api/v1/staff/documents/{id})
+	DeleteStaffDocumentsById(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffDocumentsById Download a document
+	// (GET /api/v1/staff/documents/{id})
+	GetStaffDocumentsById(w http.ResponseWriter, r *http.Request, id int64)
+	// PutStaffDocumentsById Change a document
+	// (PUT /api/v1/staff/documents/{id})
+	PutStaffDocumentsById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffDocumentsByIdParams)
 	// GetStaffEmploymentsById Get an employment
 	// (GET /api/v1/staff/employments/{id})
 	GetStaffEmploymentsById(w http.ResponseWriter, r *http.Request, id int64)
@@ -1781,6 +1957,9 @@ type ServerInterface interface {
 	// PutStaffMe Change my own record
 	// (PUT /api/v1/staff/me)
 	PutStaffMe(w http.ResponseWriter, r *http.Request, params PutStaffMeParams)
+	// GetStaffMeDocuments List my own documents
+	// (GET /api/v1/staff/me/documents)
+	GetStaffMeDocuments(w http.ResponseWriter, r *http.Request)
 	// GetStaffMeEvents List my own history
 	// (GET /api/v1/staff/me/events)
 	GetStaffMeEvents(w http.ResponseWriter, r *http.Request, params GetStaffMeEventsParams)
@@ -1808,6 +1987,12 @@ type ServerInterface interface {
 	// PostStaffPeopleByIdBankAccountReveal Reveal a person's bank account
 	// (POST /api/v1/staff/people/{id}/bank-account/reveal)
 	PostStaffPeopleByIdBankAccountReveal(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffPeopleByIdDocuments List a person's documents
+	// (GET /api/v1/staff/people/{id}/documents)
+	GetStaffPeopleByIdDocuments(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffPeopleByIdDocuments File a document
+	// (POST /api/v1/staff/people/{id}/documents)
+	PostStaffPeopleByIdDocuments(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffPeopleByIdEmployments List a person's employments
 	// (GET /api/v1/staff/people/{id}/employments)
 	GetStaffPeopleByIdEmployments(w http.ResponseWriter, r *http.Request, id int64)
@@ -2107,6 +2292,194 @@ func (siw *ServerInterfaceWrapper) PostStaffDepartmentsByIdArchive(w http.Respon
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostStaffDepartmentsByIdArchive(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffDocumentCategories operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffDocumentCategories(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffDocumentCategories(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffDocumentCategories operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffDocumentCategories(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffDocumentCategories(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffDocumentCategoriesById operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffDocumentCategoriesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffDocumentCategoriesByIdParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffDocumentCategoriesById(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteStaffDocumentsById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteStaffDocumentsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteStaffDocumentsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffDocumentsById operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffDocumentsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffDocumentsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffDocumentsById operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffDocumentsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffDocumentsByIdParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffDocumentsById(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2601,6 +2974,20 @@ func (siw *ServerInterfaceWrapper) PutStaffMe(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffMeDocuments operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffMeDocuments(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffMeDocuments(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStaffMeEvents operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffMeEvents(w http.ResponseWriter, r *http.Request) {
 
@@ -2935,6 +3322,58 @@ func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdBankAccountReveal(w http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostStaffPeopleByIdBankAccountReveal(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffPeopleByIdDocuments operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdDocuments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdDocuments(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffPeopleByIdDocuments operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdDocuments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleByIdDocuments(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3609,6 +4048,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/departments", wrapper.PostStaffDepartments)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/departments/{id}", wrapper.PutStaffDepartmentsById)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/departments/{id}/archive", wrapper.PostStaffDepartmentsByIdArchive)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/document-categories", wrapper.GetStaffDocumentCategories)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/document-categories", wrapper.PostStaffDocumentCategories)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/document-categories/{id}", wrapper.PutStaffDocumentCategoriesById)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/documents/{id}", wrapper.DeleteStaffDocumentsById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/documents/{id}", wrapper.GetStaffDocumentsById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/documents/{id}", wrapper.PutStaffDocumentsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/employments/{id}", wrapper.GetStaffEmploymentsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/employments/{id}", wrapper.PutStaffEmploymentsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/employments/{id}/contract-check", wrapper.GetStaffEmploymentsByIdContractCheck)
@@ -3626,6 +4071,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/locations/{id}/archive", wrapper.PostStaffLocationsByIdArchive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me", wrapper.GetStaffMe)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/me", wrapper.PutStaffMe)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/documents", wrapper.GetStaffMeDocuments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/events", wrapper.GetStaffMeEvents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/meta", wrapper.GetStaffMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people", wrapper.GetStaffPeople)
@@ -3635,6 +4081,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.PutStaffPeopleById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account", wrapper.PutStaffPeopleByIdBankAccount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account/reveal", wrapper.PostStaffPeopleByIdBankAccountReveal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/documents", wrapper.GetStaffPeopleByIdDocuments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/documents", wrapper.PostStaffPeopleByIdDocuments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/employments", wrapper.GetStaffPeopleByIdEmployments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/employments", wrapper.PostStaffPeopleByIdEmployments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/events", wrapper.GetStaffPeopleByIdEvents)
@@ -4263,6 +4711,440 @@ type PostStaffDepartmentsByIdArchive404Response struct {
 func (response PostStaffDepartmentsByIdArchive404Response) VisitPostStaffDepartmentsByIdArchiveResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetStaffDocumentCategoriesRequestObject struct {
+}
+
+type GetStaffDocumentCategoriesResponseObject interface {
+	VisitGetStaffDocumentCategoriesResponse(w http.ResponseWriter) error
+}
+
+type GetStaffDocumentCategories200JSONResponse []StaffDocumentCategory
+
+func (response GetStaffDocumentCategories200JSONResponse) VisitGetStaffDocumentCategoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffDocumentCategories401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffDocumentCategories401JSONResponse) VisitGetStaffDocumentCategoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffDocumentCategories403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffDocumentCategories403JSONResponse) VisitGetStaffDocumentCategoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffDocumentCategoriesRequestObject struct {
+	Body *PostStaffDocumentCategoriesJSONRequestBody
+}
+
+type PostStaffDocumentCategoriesResponseObject interface {
+	VisitPostStaffDocumentCategoriesResponse(w http.ResponseWriter) error
+}
+
+type PostStaffDocumentCategories201JSONResponse StaffDocumentCategory
+
+func (response PostStaffDocumentCategories201JSONResponse) VisitPostStaffDocumentCategoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffDocumentCategories400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffDocumentCategories400ApplicationProblemPlusJSONResponse) VisitPostStaffDocumentCategoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffDocumentCategories401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffDocumentCategories401JSONResponse) VisitPostStaffDocumentCategoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffDocumentCategories403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffDocumentCategories403JSONResponse) VisitPostStaffDocumentCategoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffDocumentCategoriesByIdRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutStaffDocumentCategoriesByIdParams
+	Body   *PutStaffDocumentCategoriesByIdJSONRequestBody
+}
+
+type PutStaffDocumentCategoriesByIdResponseObject interface {
+	VisitPutStaffDocumentCategoriesByIdResponse(w http.ResponseWriter) error
+}
+
+type PutStaffDocumentCategoriesById200JSONResponse StaffDocumentCategory
+
+func (response PutStaffDocumentCategoriesById200JSONResponse) VisitPutStaffDocumentCategoriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffDocumentCategoriesById400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffDocumentCategoriesById400ApplicationProblemPlusJSONResponse) VisitPutStaffDocumentCategoriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffDocumentCategoriesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffDocumentCategoriesById401JSONResponse) VisitPutStaffDocumentCategoriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffDocumentCategoriesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffDocumentCategoriesById403JSONResponse) VisitPutStaffDocumentCategoriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffDocumentCategoriesById404Response struct {
+}
+
+func (response PutStaffDocumentCategoriesById404Response) VisitPutStaffDocumentCategoriesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffDocumentCategoriesById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffDocumentCategoriesById409ApplicationProblemPlusJSONResponse) VisitPutStaffDocumentCategoriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteStaffDocumentsByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteStaffDocumentsByIdResponseObject interface {
+	VisitDeleteStaffDocumentsByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteStaffDocumentsById204Response struct {
+}
+
+func (response DeleteStaffDocumentsById204Response) VisitDeleteStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteStaffDocumentsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteStaffDocumentsById401JSONResponse) VisitDeleteStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteStaffDocumentsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteStaffDocumentsById403JSONResponse) VisitDeleteStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteStaffDocumentsById404Response struct {
+}
+
+func (response DeleteStaffDocumentsById404Response) VisitDeleteStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetStaffDocumentsByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffDocumentsByIdResponseObject interface {
+	VisitGetStaffDocumentsByIdResponse(w http.ResponseWriter) error
+}
+
+type GetStaffDocumentsById200AsteriskResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetStaffDocumentsById200AsteriskResponse) VisitGetStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetStaffDocumentsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffDocumentsById401JSONResponse) VisitGetStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffDocumentsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffDocumentsById403JSONResponse) VisitGetStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffDocumentsById404Response struct {
+}
+
+func (response GetStaffDocumentsById404Response) VisitGetStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetStaffDocumentsById503ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffDocumentsById503ApplicationProblemPlusJSONResponse) VisitGetStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffDocumentsByIdRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutStaffDocumentsByIdParams
+	Body   *PutStaffDocumentsByIdJSONRequestBody
+}
+
+type PutStaffDocumentsByIdResponseObject interface {
+	VisitPutStaffDocumentsByIdResponse(w http.ResponseWriter) error
+}
+
+type PutStaffDocumentsById200JSONResponse StaffDocument
+
+func (response PutStaffDocumentsById200JSONResponse) VisitPutStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffDocumentsById400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffDocumentsById400ApplicationProblemPlusJSONResponse) VisitPutStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffDocumentsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffDocumentsById401JSONResponse) VisitPutStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffDocumentsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffDocumentsById403JSONResponse) VisitPutStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffDocumentsById403ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffDocumentsById403ApplicationProblemPlusJSONResponse) VisitPutStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffDocumentsById404Response struct {
+}
+
+func (response PutStaffDocumentsById404Response) VisitPutStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffDocumentsById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffDocumentsById409ApplicationProblemPlusJSONResponse) VisitPutStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetStaffEmploymentsByIdRequestObject struct {
@@ -5461,6 +6343,69 @@ func (response PutStaffMe409ApplicationProblemPlusJSONResponse) VisitPutStaffMeR
 	return err
 }
 
+type GetStaffMeDocumentsRequestObject struct {
+}
+
+type GetStaffMeDocumentsResponseObject interface {
+	VisitGetStaffMeDocumentsResponse(w http.ResponseWriter) error
+}
+
+type GetStaffMeDocuments200JSONResponse []StaffDocument
+
+func (response GetStaffMeDocuments200JSONResponse) VisitGetStaffMeDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeDocuments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMeDocuments401JSONResponse) VisitGetStaffMeDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeDocuments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMeDocuments403JSONResponse) VisitGetStaffMeDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeDocuments404ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffMeDocuments404ApplicationProblemPlusJSONResponse) VisitGetStaffMeDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStaffMeEventsRequestObject struct {
 	Params GetStaffMeEventsParams
 }
@@ -6067,6 +7012,203 @@ type PostStaffPeopleByIdBankAccountReveal404Response struct {
 func (response PostStaffPeopleByIdBankAccountReveal404Response) VisitPostStaffPeopleByIdBankAccountRevealResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetStaffPeopleByIdDocumentsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdDocumentsResponseObject interface {
+	VisitGetStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdDocuments200JSONResponse []StaffDocument
+
+func (response GetStaffPeopleByIdDocuments200JSONResponse) VisitGetStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdDocuments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdDocuments401JSONResponse) VisitGetStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdDocuments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdDocuments403JSONResponse) VisitGetStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdDocuments404Response struct {
+}
+
+func (response GetStaffPeopleByIdDocuments404Response) VisitGetStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdDocumentsRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *multipart.Reader
+}
+
+type PostStaffPeopleByIdDocumentsResponseObject interface {
+	VisitPostStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleByIdDocuments201JSONResponse StaffDocument
+
+func (response PostStaffPeopleByIdDocuments201JSONResponse) VisitPostStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdDocuments400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdDocuments400ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdDocuments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdDocuments401JSONResponse) VisitPostStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdDocuments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdDocuments403JSONResponse) VisitPostStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdDocuments403ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdDocuments403ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdDocuments404Response struct {
+}
+
+func (response PostStaffPeopleByIdDocuments404Response) VisitPostStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdDocuments409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdDocuments409ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdDocuments429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostStaffPeopleByIdDocuments429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostStaffPeopleByIdDocuments429ResponseHeaders
+}
+
+func (response PostStaffPeopleByIdDocuments429JSONResponse) VisitPostStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdDocuments503ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdDocuments503ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetStaffPeopleByIdEmploymentsRequestObject struct {
@@ -7220,6 +8362,24 @@ type StrictServerInterface interface {
 	// PostStaffDepartmentsByIdArchive Archive a department
 	// (POST /api/v1/staff/departments/{id}/archive)
 	PostStaffDepartmentsByIdArchive(ctx context.Context, request PostStaffDepartmentsByIdArchiveRequestObject) (PostStaffDepartmentsByIdArchiveResponseObject, error)
+	// GetStaffDocumentCategories List document categories
+	// (GET /api/v1/staff/document-categories)
+	GetStaffDocumentCategories(ctx context.Context, request GetStaffDocumentCategoriesRequestObject) (GetStaffDocumentCategoriesResponseObject, error)
+	// PostStaffDocumentCategories Add a document category
+	// (POST /api/v1/staff/document-categories)
+	PostStaffDocumentCategories(ctx context.Context, request PostStaffDocumentCategoriesRequestObject) (PostStaffDocumentCategoriesResponseObject, error)
+	// PutStaffDocumentCategoriesById Change a document category
+	// (PUT /api/v1/staff/document-categories/{id})
+	PutStaffDocumentCategoriesById(ctx context.Context, request PutStaffDocumentCategoriesByIdRequestObject) (PutStaffDocumentCategoriesByIdResponseObject, error)
+	// DeleteStaffDocumentsById Delete a document
+	// (DELETE /api/v1/staff/documents/{id})
+	DeleteStaffDocumentsById(ctx context.Context, request DeleteStaffDocumentsByIdRequestObject) (DeleteStaffDocumentsByIdResponseObject, error)
+	// GetStaffDocumentsById Download a document
+	// (GET /api/v1/staff/documents/{id})
+	GetStaffDocumentsById(ctx context.Context, request GetStaffDocumentsByIdRequestObject) (GetStaffDocumentsByIdResponseObject, error)
+	// PutStaffDocumentsById Change a document
+	// (PUT /api/v1/staff/documents/{id})
+	PutStaffDocumentsById(ctx context.Context, request PutStaffDocumentsByIdRequestObject) (PutStaffDocumentsByIdResponseObject, error)
 	// GetStaffEmploymentsById Get an employment
 	// (GET /api/v1/staff/employments/{id})
 	GetStaffEmploymentsById(ctx context.Context, request GetStaffEmploymentsByIdRequestObject) (GetStaffEmploymentsByIdResponseObject, error)
@@ -7271,6 +8431,9 @@ type StrictServerInterface interface {
 	// PutStaffMe Change my own record
 	// (PUT /api/v1/staff/me)
 	PutStaffMe(ctx context.Context, request PutStaffMeRequestObject) (PutStaffMeResponseObject, error)
+	// GetStaffMeDocuments List my own documents
+	// (GET /api/v1/staff/me/documents)
+	GetStaffMeDocuments(ctx context.Context, request GetStaffMeDocumentsRequestObject) (GetStaffMeDocumentsResponseObject, error)
 	// GetStaffMeEvents List my own history
 	// (GET /api/v1/staff/me/events)
 	GetStaffMeEvents(ctx context.Context, request GetStaffMeEventsRequestObject) (GetStaffMeEventsResponseObject, error)
@@ -7298,6 +8461,12 @@ type StrictServerInterface interface {
 	// PostStaffPeopleByIdBankAccountReveal Reveal a person's bank account
 	// (POST /api/v1/staff/people/{id}/bank-account/reveal)
 	PostStaffPeopleByIdBankAccountReveal(ctx context.Context, request PostStaffPeopleByIdBankAccountRevealRequestObject) (PostStaffPeopleByIdBankAccountRevealResponseObject, error)
+	// GetStaffPeopleByIdDocuments List a person's documents
+	// (GET /api/v1/staff/people/{id}/documents)
+	GetStaffPeopleByIdDocuments(ctx context.Context, request GetStaffPeopleByIdDocumentsRequestObject) (GetStaffPeopleByIdDocumentsResponseObject, error)
+	// PostStaffPeopleByIdDocuments File a document
+	// (POST /api/v1/staff/people/{id}/documents)
+	PostStaffPeopleByIdDocuments(ctx context.Context, request PostStaffPeopleByIdDocumentsRequestObject) (PostStaffPeopleByIdDocumentsResponseObject, error)
 	// GetStaffPeopleByIdEmployments List a person's employments
 	// (GET /api/v1/staff/people/{id}/employments)
 	GetStaffPeopleByIdEmployments(ctx context.Context, request GetStaffPeopleByIdEmploymentsRequestObject) (GetStaffPeopleByIdEmploymentsResponseObject, error)
@@ -7636,6 +8805,181 @@ func (sh *strictHandler) PostStaffDepartmentsByIdArchive(w http.ResponseWriter, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostStaffDepartmentsByIdArchiveResponseObject); ok {
 		if err := validResponse.VisitPostStaffDepartmentsByIdArchiveResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffDocumentCategories operation middleware
+func (sh *strictHandler) GetStaffDocumentCategories(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffDocumentCategoriesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffDocumentCategories(ctx, request.(GetStaffDocumentCategoriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffDocumentCategories")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffDocumentCategoriesResponseObject); ok {
+		if err := validResponse.VisitGetStaffDocumentCategoriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffDocumentCategories operation middleware
+func (sh *strictHandler) PostStaffDocumentCategories(w http.ResponseWriter, r *http.Request) {
+	var request PostStaffDocumentCategoriesRequestObject
+
+	var body PostStaffDocumentCategoriesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffDocumentCategories(ctx, request.(PostStaffDocumentCategoriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffDocumentCategories")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffDocumentCategoriesResponseObject); ok {
+		if err := validResponse.VisitPostStaffDocumentCategoriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffDocumentCategoriesById operation middleware
+func (sh *strictHandler) PutStaffDocumentCategoriesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffDocumentCategoriesByIdParams) {
+	var request PutStaffDocumentCategoriesByIdRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutStaffDocumentCategoriesByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffDocumentCategoriesById(ctx, request.(PutStaffDocumentCategoriesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffDocumentCategoriesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffDocumentCategoriesByIdResponseObject); ok {
+		if err := validResponse.VisitPutStaffDocumentCategoriesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteStaffDocumentsById operation middleware
+func (sh *strictHandler) DeleteStaffDocumentsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteStaffDocumentsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteStaffDocumentsById(ctx, request.(DeleteStaffDocumentsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteStaffDocumentsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteStaffDocumentsByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteStaffDocumentsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffDocumentsById operation middleware
+func (sh *strictHandler) GetStaffDocumentsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffDocumentsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffDocumentsById(ctx, request.(GetStaffDocumentsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffDocumentsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffDocumentsByIdResponseObject); ok {
+		if err := validResponse.VisitGetStaffDocumentsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffDocumentsById operation middleware
+func (sh *strictHandler) PutStaffDocumentsById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffDocumentsByIdParams) {
+	var request PutStaffDocumentsByIdRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutStaffDocumentsByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffDocumentsById(ctx, request.(PutStaffDocumentsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffDocumentsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffDocumentsByIdResponseObject); ok {
+		if err := validResponse.VisitPutStaffDocumentsByIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8134,6 +9478,30 @@ func (sh *strictHandler) PutStaffMe(w http.ResponseWriter, r *http.Request, para
 	}
 }
 
+// GetStaffMeDocuments operation middleware
+func (sh *strictHandler) GetStaffMeDocuments(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffMeDocumentsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffMeDocuments(ctx, request.(GetStaffMeDocumentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffMeDocuments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffMeDocumentsResponseObject); ok {
+		if err := validResponse.VisitGetStaffMeDocumentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetStaffMeEvents operation middleware
 func (sh *strictHandler) GetStaffMeEvents(w http.ResponseWriter, r *http.Request, params GetStaffMeEventsParams) {
 	var request GetStaffMeEventsRequestObject
@@ -8379,6 +9747,65 @@ func (sh *strictHandler) PostStaffPeopleByIdBankAccountReveal(w http.ResponseWri
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostStaffPeopleByIdBankAccountRevealResponseObject); ok {
 		if err := validResponse.VisitPostStaffPeopleByIdBankAccountRevealResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleByIdDocuments operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdDocuments(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdDocumentsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdDocuments(ctx, request.(GetStaffPeopleByIdDocumentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdDocuments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdDocumentsResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdDocumentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleByIdDocuments operation middleware
+func (sh *strictHandler) PostStaffPeopleByIdDocuments(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffPeopleByIdDocumentsRequestObject
+
+	request.Id = id
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleByIdDocuments(ctx, request.(PostStaffPeopleByIdDocumentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleByIdDocuments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleByIdDocumentsResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleByIdDocumentsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
