@@ -154,11 +154,16 @@ describe("ModuleAccessGuard", () => {
     expect(screen.getByText("Allowed content")).toBeInTheDocument();
   });
 
-  // Invoices' journal is for every reader, its settings for invoices:manage
-  // alone (invoices foundation design D12).
+  // Invoices' journal and Overdue are for every reader, its settings for
+  // invoices:manage alone (invoices foundation design D12). A run's page and
+  // the paper letters fall under the list's /invoices entry: the page itself
+  // says "not allowed" without invoices:payments (meta's canRunReminders).
   it.each([
     ["/invoices", ["invoices:access"]],
     ["/invoices/journal", ["invoices:access"]],
+    ["/invoices/overdue", ["invoices:access"]],
+    ["/invoices/reminder-runs/11", ["invoices:access"]],
+    ["/invoices/reminders/print", ["invoices:access"]],
     ["/invoices/settings", ["invoices:manage"]],
   ])("guards %s behind %s", (pathname, permissions) => {
     renderGuardFor(pathname, []);

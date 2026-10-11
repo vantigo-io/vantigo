@@ -1,7 +1,26 @@
 import type { ChargeKind } from "../api/charges";
 import type { InvoiceDocument } from "../api/invoices";
-import type { Reminder } from "../api/reminders";
+import type { Reminder, ReminderStatus } from "../api/reminders";
+import { invoicesCatalog } from "../i18n";
+import { useWho } from "./bank";
 import { useInvoiceFormat } from "./format";
+
+/** The colour a letter's status badge has. */
+export const statusColour: Record<ReminderStatus, string> = {
+  queued: "blue",
+  awaiting_print: "blue",
+  printed: "cyan",
+  sent: "green",
+  failed: "red",
+  withdrawn: "gray",
+};
+
+/** A key in words when this catalog has it, the code itself otherwise — a newer server's code never throws. */
+export const useWords = () => {
+  const { t } = useInvoiceFormat();
+  return (key: string, code: string, values?: Record<string, unknown>) =>
+    key in invoicesCatalog.en ? t(key, values) : code;
+};
 
 /** A letter's level as a person reads it: a reminder, one announcing the hand-off, or a debt collection notice. */
 export const useLetterLevel = () => {
@@ -52,4 +71,33 @@ export const waivableCharges = (invoice: InvoiceDocument): WaivableCharge[] => {
     charges.push({ reminderId: latest.id, sequence: latest.sequence, kind: "interest", amount: latest.interest ?? 0 });
   }
   return charges;
+};
+
+/**
+ * What a letter's status needs said beside it: why a queued one waits, why a
+ * failed one failed, why and by whom one was withdrawn — a code of the
+ * module's in words, a person's own words quoted — and a printed one's batch.
+ */
+export const useLetterStatusLine = (currentUserId: string | undefined) => {
+  const { t } = useInvoiceFormat();
+  const words = useWords();
+  const who = useWho(currentUserId);
+  return (letter: Reminder): string | undefined => {
+    if (letter.status === "queued" && letter.heldReason)
+      return words(`reminder.held.${letter.heldReason}`, letter.heldReason);
+    if (letter.status === "failed")
+      return t("reminder.failedAfter", { attempts: letter.attempts, error: letter.lastError ?? "" });
+    if (letter.status === "withdrawn") {
+      const reason = letter.withdrawnBy
+        ? (letter.withdrawalReason ?? "")
+        : words(`reminder.withdrawnReason.${letter.withdrawalReason}`, letter.withdrawalReason ?? "");
+      return letter.withdrawnBy
+        ? t("reminder.withdrawnBy", { who: who(letter.withdrawnBy), reason })
+        : t("reminder.withdrawnByVantigo", { reason });
+    }
+    if (letter.status === "printed" && letter.printBatchId !== undefined) {
+      return t("reminder.inBatch", { batch: letter.printBatchId });
+    }
+    return undefined;
+  };
 };

@@ -1386,3 +1386,278 @@ export const reminded = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocum
     nextAction: { action: "blocked", reasons: ["letter_pending"], chargeNotes: [] },
     ...overrides,
   });
+
+type OverdueItem = components["schemas"]["InvoicesOverdueItem"];
+type OverdueList = components["schemas"]["InvoicesOverdueResponse"];
+type BankFreshness = components["schemas"]["InvoicesBankFreshness"];
+type LetterFacts = components["schemas"]["InvoicesLetterFacts"];
+type RunPreview = components["schemas"]["InvoicesReminderRunPreview"];
+type RunPreviewLetter = components["schemas"]["InvoicesRunPreviewLetter"];
+type RunResult = components["schemas"]["InvoicesReminderRunResult"];
+type ReminderRun = components["schemas"]["InvoicesReminderRun"];
+type PrintBatch = components["schemas"]["InvoicesPrintBatch"];
+
+/** The bank data as fresh: booked through yesterday, a stale limit of 7 days, no account imported as OCR giro. */
+export const freshness = (overrides: Partial<BankFreshness> = {}): BankFreshness => ({
+  lastBookedOn: "2026-09-11",
+  stale: false,
+  staleImportDays: 7,
+  ocrAccounts: [],
+  ...overrides,
+});
+
+/**
+ * A first reminder as it would go today, 12 September — a wire literal: a fee
+ * of 35, interest of 1.20 on the 1 250 open, deadline 28 September.
+ */
+export const letterFacts = (overrides: Partial<LetterFacts> = {}): LetterFacts => ({
+  level: "reminder",
+  announcesCollection: false,
+  regime: "inkassolov_1988",
+  principalOpen: 1250,
+  chargesEarlier: 0,
+  feeKind: "reminder_fee",
+  fee: 35,
+  compensation: 0,
+  interest: 1.2,
+  interestWaived: 0,
+  interestPaid: 0,
+  interestFrom: "2026-08-16",
+  interestSegments: [{ from: "2026-08-16", to: "2026-09-12", base: 1250, rate: 12.25 }],
+  inkassosats: 700,
+  total: 1286.2,
+  deadline: "2026-09-28",
+  ...overrides,
+});
+
+/**
+ * Invoice 1000 (document 1001) of Acme, due 15 August and 28 days overdue on
+ * 12 September — a wire literal: 1 250 open, no charges yet, interest of 1.20
+ * today, delivered, no letter yet; next a reminder from 30 August, as it would
+ * go today.
+ */
+export const overdueItem = (overrides: Partial<OverdueItem> = {}): OverdueItem => ({
+  invoiceId: 1001,
+  number: 1000,
+  customerId: 2001,
+  buyerName: "Acme AS",
+  buyerType: "business",
+  issueDate: "2026-08-01",
+  dueDate: "2026-08-15",
+  daysOverdue: 28,
+  principalOpen: 1250,
+  charges: { claimed: 0, waived: 0, paid: 0, outstanding: 0, interestToday: 1.2 },
+  interestToday: 1.2,
+  delivered: true,
+  nextAction: { action: "reminder", earliestOn: "2026-08-30", reasons: [], chargeNotes: [], letter: letterFacts() },
+  policyMode: "normal",
+  ...overrides,
+});
+
+/**
+ * GET /overdue's answer: invoice 1000 due a reminder; invoice 1003 of Kari
+ * Nordmann waiting on letter 1's deadline, with 35 of charges outstanding;
+ * invoice 1004 of Bygg AS blocked — on hold and never delivered by its due
+ * date. The bank data fresh, no warning.
+ */
+export const overdueList = (overrides: Partial<OverdueList> = {}): OverdueList => ({
+  items: [
+    overdueItem(),
+    overdueItem({
+      invoiceId: 1004,
+      number: 1003,
+      customerId: 2002,
+      buyerName: "Kari Nordmann",
+      buyerType: "person",
+      dueDate: "2026-08-01",
+      daysOverdue: 42,
+      principalOpen: 500,
+      charges: { claimed: 35, waived: 0, paid: 0, outstanding: 35 },
+      interestToday: undefined,
+      lastLetter: {
+        id: 3101,
+        sequence: 1,
+        level: "reminder",
+        announcesCollection: false,
+        status: "sent",
+        sentOn: "2026-09-01",
+        deadline: "2026-09-15",
+      },
+      nextAction: { action: "waiting", earliestOn: "2026-09-19", reasons: ["waiting"], chargeNotes: [] },
+    }),
+    overdueItem({
+      invoiceId: 1005,
+      number: 1004,
+      customerId: 2003,
+      buyerName: "Bygg AS",
+      daysOverdue: 12,
+      dueDate: "2026-08-31",
+      principalOpen: 9000,
+      interestToday: undefined,
+      delivered: false,
+      hold: {
+        id: 81,
+        kind: "disputed",
+        note: "Kunden bestrider leveransen",
+        placedAt: "2026-09-05T09:00:00Z",
+        placedBy: CURRENT_USER_ID,
+      },
+      policyMode: "no_charges",
+      nextAction: { action: "blocked", reasons: ["on_hold", "not_delivered"], chargeNotes: [] },
+    }),
+  ],
+  total: 3,
+  freshness: freshness(),
+  warnings: [],
+  ...overrides,
+});
+
+/** One letter of a preview: invoice 1000's first reminder by e-mail to Acme's reminder address. */
+export const previewLetter = (overrides: Partial<RunPreviewLetter> = {}): RunPreviewLetter => ({
+  invoiceId: 1001,
+  number: 1000,
+  customerId: 2001,
+  buyerName: "Acme AS",
+  action: "reminder",
+  channel: "email",
+  recipient: "purring@acme.no",
+  warnings: [],
+  chargeNotes: [],
+  letter: letterFacts(),
+  ...overrides,
+});
+
+/**
+ * The run's preview: invoice 1000 by e-mail with a fee; invoice 1006 of Kari
+ * Nordmann on paper — she wants e-mail and has no reminder address — and fee
+ * free, its last letter's deadline not missed; invoice 1004 blocked, on hold.
+ */
+export const runPreview = (overrides: Partial<RunPreview> = {}): RunPreview => ({
+  letters: [
+    previewLetter(),
+    previewLetter({
+      invoiceId: 1007,
+      number: 1006,
+      customerId: 2002,
+      buyerName: "Kari Nordmann",
+      channel: "paper",
+      recipient: "",
+      warnings: ["reminder_email_missing"],
+      chargeNotes: ["fee_deadline_not_missed"],
+      letter: letterFacts({
+        principalOpen: 400,
+        feeKind: "none",
+        fee: 0,
+        interest: 0,
+        interestSegments: [],
+        interestFrom: undefined,
+        total: 400,
+      }),
+    }),
+  ],
+  blockedOrWaiting: [
+    {
+      invoiceId: 1005,
+      number: 1004,
+      customerId: 2003,
+      buyerName: "Bygg AS",
+      nextAction: { action: "blocked", reasons: ["on_hold"], chargeNotes: [] },
+    },
+  ],
+  freshness: freshness(),
+  warnings: [],
+  ...overrides,
+});
+
+/** Run 11, made on 12 September by the signed-in user: two letters, one skipped, on fresh bank data. */
+export const reminderRun = (overrides: Partial<ReminderRun> = {}): ReminderRun => ({
+  id: 11,
+  runOn: "2026-09-12",
+  createdAt: "2026-09-12T08:00:00Z",
+  createdBy: CURRENT_USER_ID,
+  letters: 2,
+  skipped: 1,
+  lastBookedOn: "2026-09-11",
+  staleImportAcknowledged: false,
+  ...overrides,
+});
+
+/** A letter run 11 made, still without its facts. */
+const madeLetter = (overrides: Partial<Reminder> = {}): Reminder =>
+  reminderLetter({
+    runId: 11,
+    status: "queued",
+    attempts: 0,
+    createdAt: "2026-09-12T08:00:00Z",
+    sentOn: undefined,
+    sentAt: undefined,
+    deadline: undefined,
+    regime: undefined,
+    principalOpen: undefined,
+    feeKind: undefined,
+    fee: undefined,
+    compensation: undefined,
+    chargesEarlier: undefined,
+    interest: undefined,
+    interestWaived: undefined,
+    interestPaid: undefined,
+    interestFrom: undefined,
+    interestSegments: undefined,
+    total: undefined,
+    ...overrides,
+  });
+
+/** The run's 201: letter 1 of invoice 1000 queued for e-mail, invoice 1006 skipped — paid since the preview. */
+export const runResult = (overrides: Partial<RunResult> = {}): RunResult => ({
+  run: reminderRun({ letters: 1, skipped: 1 }),
+  created: [madeLetter({ id: 3201 })],
+  skipped: [{ invoiceId: 1007, reason: "action_changed" }],
+  ...overrides,
+});
+
+/**
+ * Run 11 as GET /reminder-runs/11 answers it: letter 1 of invoice 1000 sent by
+ * e-mail; letter 2 of invoice 1006 awaiting print.
+ */
+export const reminderRunDetail = () => ({
+  run: reminderRun(),
+  letters: [
+    reminderLetter({
+      id: 3201,
+      runId: 11,
+      sentOn: "2026-09-12",
+      sentAt: "2026-09-12T08:01:00Z",
+      deadline: "2026-09-28",
+    }),
+    madeLetter({ id: 3202, invoiceId: 1007, sequence: 2, channel: "paper", recipient: "", status: "awaiting_print" }),
+  ],
+});
+
+/** Letters awaiting print: letter 2 of document 1007 and letter 1 of document 1008, made by run 11. */
+export const awaitingPrint = (): Reminder[] => [
+  madeLetter({ id: 3202, invoiceId: 1007, sequence: 2, channel: "paper", recipient: "", status: "awaiting_print" }),
+  madeLetter({ id: 3203, invoiceId: 1008, sequence: 1, channel: "paper", recipient: "", status: "awaiting_print" }),
+];
+
+/** Batch 7, printed on 12 September for posting the same day, open: letter 2 of document 1007 printed in it. */
+export const printBatch = (overrides: Partial<PrintBatch> = {}): PrintBatch => ({
+  id: 7,
+  postOn: "2026-09-12",
+  createdAt: "2026-09-12T09:00:00Z",
+  createdBy: CURRENT_USER_ID,
+  letters: [
+    reminderLetter({
+      id: 3202,
+      invoiceId: 1007,
+      sequence: 2,
+      channel: "paper",
+      recipient: "",
+      status: "printed",
+      printBatchId: 7,
+      sentOn: "2026-09-12",
+      sentAt: undefined,
+      deadline: "2026-09-28",
+    }),
+  ],
+  ...overrides,
+});

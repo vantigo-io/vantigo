@@ -12,9 +12,10 @@ sources:
 
 The Invoices app issues the sales documents of your bookkeeping: a draft becomes a
 numbered invoice or credit note the moment it is issued, gets a PDF, and from then on
-never changes. The app has four areas in its sidebar: **Invoices**, **Invoice
-journal**, **Payments** — the bank's files and the exception queue, shown only with
-`invoices:payments` — and **Invoice settings**. Every amount is in NOK in this phase. An invoice is
+never changes. The app has five areas in its sidebar: **Invoices**, **Invoice
+journal**, **Overdue** — the overdue invoices and their reminders —, **Payments** — the
+bank's files and the exception queue, shown only with `invoices:payments` — and **Invoice
+settings**. Every amount is in NOK in this phase. An invoice is
 handed over as a PDF — by download or by e-mail — or as an EHF e-invoice over the Peppol
 network, once your installation is set up for it
 ([what the law asks](/en/reference/invoices/#the-law-in-one-page)).
@@ -846,9 +847,9 @@ failed one.
 next, with the letter as it would go today, and whether the bank data is recent enough to
 trust. Someone with `invoices:payments` previews a run and then makes it: the letters are
 created, by e-mail to the customer's reminder address or on paper, and their figures are
-fixed when they are sent. The Overdue screens come with the list and the paper letters;
-until then the list and the runs are in the API
-([the overdue list](/en/reference/invoices/#the-overdue-list),
+fixed when they are sent. Both are under **Overdue**
+([Overdue invoices and reminders](#overdue-invoices-and-reminders); the reference's
+[overdue list](/en/reference/invoices/#the-overdue-list) and
 [runs](/en/reference/invoices/#runs)).
 
 **Paid on the deadline.** A payment ordered on a letter's deadline is on time, and the
@@ -886,8 +887,77 @@ letters are sent; a fee the day no longer supports — the invoice paid, put on 
 handed off since printing — is waived. Posted on another day, the batch must be printed
 again for the day it goes. A batch confirmed posted, or reprinted, while it is still being
 printed keeps the letters already printed in it; the rest are named and wait for another
-batch. The screens come with the Overdue area; until then this is in
-the API ([paper and posting](/en/reference/invoices/#paper-and-posting)).
+batch. This is done under **Overdue** → **Paper letters**
+([Printing and posting paper letters](#printing-and-posting-paper-letters); the
+reference's [paper and posting](/en/reference/invoices/#paper-and-posting)).
+
+### Overdue invoices and reminders
+
+**Overdue** in the sidebar lists every overdue invoice to anyone with `invoices:access`,
+each judged as of today. A row shows the invoice, the customer — marked **On hold**,
+**Handed off**, **Reminded without charges**, **Not reminded** or **Not delivered by the
+due date** when that applies — the due date, the days overdue, what is open, the charges
+outstanding, the interest a letter today would claim, the last letter and its status, and
+what comes next: a **Reminder**, a **Debt collection notice** or **Hand off to
+collection** from a day, **Waiting** until a day, or **Blocked** — each with its reasons in
+words, the same ones the invoice's **Reminders** card gives. Filter by customer, next
+action and due date; **Also paid invoices with charges outstanding** adds the paid
+invoices whose fee or interest is still owed. More than 5 000 overdue invoices must be
+narrowed by customer or due date.
+
+Above the list stands the bank data's freshness: *Bank data booked up to …*, or **The
+bank data is old** when the latest booking imported is older than the reminder settings'
+stale limit — and always when no bank file was ever imported. Letters judged on old bank
+data may claim charges on invoices already paid. When an account is imported as OCR giro,
+a note says payments without a KID never reach such a file: **register the payments
+without a KID by hand first, then make the run**.
+
+With `invoices:payments`, **Send reminders** opens the preview of a run, narrowed to the
+customer and due date the list is filtered by. It shows every letter as it would go today:
+its kind, how it goes and to whom — on paper when the customer wants e-mail but has no
+reminder address, or when this installation cannot send e-mail, each said beside it — its
+deadline, its total with the fee, compensation and interest, and why it claims less than
+it might. Every letter is chosen to begin with; untick those not to send. Below them are
+the invoices that get no letter today, with why, and above them the warnings: a collection
+rate missing for a half-year, or the regime review lapsed. When the bank data is old and a
+chosen letter claims a charge, tick **The bank data is old: make the run with its charges
+anyway** — or import the latest bank file first; letters without charges are never held
+back by it. **Send N letters** makes the run, at most 500 letters at a time. It says how
+many letters were made, names each invoice it skipped — paid since the preview, another
+letter on its way, put on hold, or the customer anonymised — and links to the run's own
+page: its letters with their status, counted, where a letter not yet sent can be
+withdrawn and a failed one sent again. The runs are listed under the overdue list. Every
+refusal is said in words; a missing collection rate names the rate and the half-year.
+
+**Bad-debt relief in the VAT return.** A claim counts as lost for VAT when it is unpaid six
+months after its due date despite **at least three reminders** at normal intervals
+(merverdiavgiftsforskriften § 4-7-1 first paragraph b), or when collection has failed.
+Vantigo's default sequence sends **two** letters — one reminder, then the debt collection
+notice. If you will rely on the three reminders, set **Reminders before the debt collection
+notice** to 2 in the reminder settings; the letters on each invoice's **Reminders** card
+are the record.
+
+### Printing and posting paper letters
+
+**Overdue** → **Paper letters** (with `invoices:payments`) lists the letters awaiting
+print, each with its invoice and the run that made it, all chosen to begin with. Choose the
+**Posting day** — today or one of the next 7 days — and **Print N letters**: each letter
+is judged for that day, and its date, deadline and fee are that day's. The answer names
+the batch, with **Download the batch** for its PDF, and every letter left out and why —
+withdrawn or printed in another batch meanwhile, waiting for a collection rate or the
+regime review, or withdrawn because the invoice was paid, put on hold or handed off since.
+A letter left out for a rate or the review stays awaiting print.
+
+**Print batches** lists the batches with their posting day and state: **Printed, not
+confirmed posted**, **Posted on** a day, or **Reprinted**; each batch's PDF can be
+downloaded again. Once the batch is in the post, **Confirm posted** and choose the day it
+went — today or an earlier day; a later day is never offered. Only its posting day is
+accepted: posted on another day, the confirmation is refused in words and offers
+**Reprint**, which returns its letters to awaiting print, to be printed for the day they
+go. A batch for a later day offers no confirmation until that day. A confirmed batch's
+letters are sent; the answer names each letter whose fee or compensation was waived as
+claimed in error, and why — the invoice paid, put on hold or handed off since printing —
+and any letter withdrawn since printing, which was not sent.
 
 ### Charges
 
@@ -1259,7 +1329,7 @@ No built-in role holds these; an Owner holds everything
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one | `invoices:issue` |
-| Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters and confirm them posted; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; see the dashboard's notices about bank lines, letters and print batches | `invoices:payments` |
+| Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; see the dashboard's notices about bank lines, letters and print batches | `invoices:payments` |
 | Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments** | `invoices:manage` |
 
 Payments and reminders add no permission of their own. Reminders, the exception queue,

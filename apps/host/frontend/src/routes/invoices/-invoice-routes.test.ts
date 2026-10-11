@@ -40,6 +40,18 @@ describe("the invoices route tree", () => {
     expect(ids).not.toContain("/invoices/$invoiceId");
   });
 
+  // So are the Overdue area, a run's page and the paper letters.
+  it.each([
+    ["/invoices/overdue", "/invoices/overdue"],
+    ["/invoices/reminder-runs/11", "/invoices/reminder-runs/$runId"],
+    ["/invoices/reminders/print", "/invoices/reminders/print"],
+  ])("matches %s on the Overdue area's route, not a document's", (path, routeId) => {
+    const ids = matchedRouteIds(path);
+
+    expect(ids).toContain(routeId);
+    expect(ids).not.toContain("/invoices/$invoiceId");
+  });
+
   it("still matches a document id on the dynamic route", () => {
     expect(matchedRouteIds("/invoices/1001")).toContain("/invoices/$invoiceId");
   });

@@ -9,6 +9,7 @@ import {
   IconCategory,
   IconChecklist,
   IconClock,
+  IconClockExclamation,
   IconFileInvoice,
   IconFlag,
   IconInbox,
@@ -250,6 +251,17 @@ export const apps: readonly AppDefinition[] = [
       label: "navigation.invoiceJournal",
       to: "/invoices/journal",
       icon: IconBook,
+      requiredPermissions: ["invoices:access"],
+    },
+    {
+      // The overdue list (invoices payments and reminders design D12, D22):
+      // every reader of invoices reads it. Sending reminders and printing
+      // paper letters are the page's own, behind meta's canRunReminders
+      // (invoices:payments); the run's and the paper letters' pages fall
+      // under the list's /invoices entry and say "not allowed" themselves.
+      label: "navigation.invoiceOverdue",
+      to: "/invoices/overdue",
+      icon: IconClockExclamation,
       requiredPermissions: ["invoices:access"],
     },
     {

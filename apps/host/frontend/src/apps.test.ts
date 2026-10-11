@@ -71,6 +71,7 @@ describe("the app registry", () => {
       "/expenses/settings",
       "/invoices",
       "/invoices/journal",
+      "/invoices/overdue",
       "/invoices/payments",
       "/invoices/settings",
       "/communications/inbox",
@@ -186,11 +187,11 @@ describe("the app registry", () => {
     ]);
   });
 
-  // Invoices is four destinations: the list and the journal for anyone who
-  // reads invoices, Payments for invoices:payments (invoices payments and
-  // reminders design D22), the settings for invoices:manage (invoices
-  // foundation design D12).
-  it("gives Invoices the list, the journal, Payments and the settings", () => {
+  // Invoices is five destinations: the list, the journal and Overdue for
+  // anyone who reads invoices, Payments for invoices:payments (invoices
+  // payments and reminders design D22), the settings for invoices:manage
+  // (invoices foundation design D12).
+  it("gives Invoices the list, the journal, Overdue, Payments and the settings", () => {
     const invoices = appForKey("invoices");
     expect(invoices).toMatchObject({ module: "invoices", label: "navigation.invoices", home: "/invoices" });
     expect(invoices.requiredPermissions).toEqual(["invoices:access", "invoices:payments", "invoices:manage"]);
@@ -198,6 +199,7 @@ describe("the app registry", () => {
     expect(items.map((item) => [item.label, item.to, item.requiredPermissions])).toEqual([
       ["navigation.invoices", "/invoices", ["invoices:access"]],
       ["navigation.invoiceJournal", "/invoices/journal", ["invoices:access"]],
+      ["navigation.invoiceOverdue", "/invoices/overdue", ["invoices:access"]],
       ["navigation.invoicePayments", "/invoices/payments", ["invoices:payments"]],
       ["navigation.invoiceSettings", "/invoices/settings", ["invoices:manage"]],
     ]);
@@ -214,13 +216,30 @@ describe("the app registry", () => {
         canManageAuthorization: false,
         enabledModules: allModules,
       }).flatMap((section) => section.items.map((item) => item.to));
-    expect(paths(["invoices:access"])).toEqual(["/invoices", "/invoices/journal"]);
+    expect(paths(["invoices:access"])).toEqual(["/invoices", "/invoices/journal", "/invoices/overdue"]);
     expect(paths(["invoices:access", "invoices:payments"])).toEqual([
       "/invoices",
       "/invoices/journal",
+      "/invoices/overdue",
       "/invoices/payments",
     ]);
     expect(paths(["invoices:access", "invoices:manage"])).not.toContain("/invoices/payments");
+  });
+
+  // Overdue is read by everyone who reads invoices (D12): its entry names
+  // invoices:access alone; sending reminders and paper letters inside it are
+  // the page's own, behind meta's canRunReminders.
+  it("Nav_OverdueBehindAccess", () => {
+    const paths = (permissions: string[]) =>
+      appNavSections(appForKey("invoices"), allModules, {
+        permissions,
+        isOwner: false,
+        canManageAuthorization: false,
+        enabledModules: allModules,
+      }).flatMap((section) => section.items.map((item) => item.to));
+    expect(paths(["invoices:access"])).toContain("/invoices/overdue");
+    expect(paths(["invoices:payments"])).not.toContain("/invoices/overdue");
+    expect(paths(["invoices:manage"])).not.toContain("/invoices/overdue");
   });
 
   it("shows the Expenses tile for expenses:access, hides it without, and mutes it when the module is off", () => {

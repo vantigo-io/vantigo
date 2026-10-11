@@ -12,9 +12,9 @@ sources:
 
 Fakturaer-appen utsteder salgsdokumentene i bokføringen din: et utkast blir en
 nummerert faktura eller kreditnota i det øyeblikket det utstedes, får en PDF, og endres
-aldri etter det. Appen har fire områder i sidemenyen: **Fakturaer**, **Fakturajournal**,
-**Innbetalinger** — bankens filer og avvikskøen, vist bare med `invoices:payments` — og
-**Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
+aldri etter det. Appen har fem områder i sidemenyen: **Fakturaer**, **Fakturajournal**,
+**Forfalt** — de forfalte fakturaene og purringene deres —, **Innbetalinger** — bankens
+filer og avvikskøen, vist bare med `invoices:payments` — og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
 PDF — ved nedlasting eller på e-post — eller som EHF-faktura i Peppol-nettverket, når
 installasjonen er satt opp for det
 ([det loven krever](/en/reference/invoices/#the-law-in-one-page)).
@@ -863,9 +863,9 @@ som feilet på nytt (**Send på nytt**).
 kommer neste gang, med brevet slik det ville gått i dag, og om bankdataene er ferske nok
 til å stole på. Den som har `invoices:payments`, forhåndsviser en kjøring og gjør den så:
 brevene lages, på e-post til kundens purreadresse eller på papir, og tallene i dem
-fastsettes når de sendes. Skjermbildene for forfalte fakturaer kommer med listen og
-papirbrevene; til da finnes listen og kjøringene i API-et
-([forfallslisten](/en/reference/invoices/#the-overdue-list),
+fastsettes når de sendes. Begge deler finnes under **Forfalt**
+([Forfalte fakturaer og purringer](#forfalte-fakturaer-og-purringer); referansens
+[forfallsliste](/en/reference/invoices/#the-overdue-list) og
 [kjøringer](/en/reference/invoices/#runs)).
 
 **Betalt på fristen.** En betaling som er gitt i oppdrag på fristen i et brev, er i tide,
@@ -905,8 +905,80 @@ ikke lenger gir grunnlag for — fakturaen er betalt, satt på vent eller overle
 utskriften — ettergis. Ble bunken postlagt en annen dag, må den skrives ut på nytt for
 dagen den går. Blir en bunke bekreftet postlagt, eller skrevet ut på nytt, mens den
 fortsatt skrives ut, beholder den brevene som allerede er skrevet ut i den; resten
-navngis og venter på en annen bunke. Skjermbildene kommer med forfallsområdet; til da finnes dette i API-et
-([papir og postlegging](/en/reference/invoices/#paper-and-posting)).
+navngis og venter på en annen bunke. Dette gjøres under **Forfalt** → **Papirbrev**
+([Skrive ut og postlegge papirbrev](#skrive-ut-og-postlegge-papirbrev); referansens
+[papir og postlegging](/en/reference/invoices/#paper-and-posting)).
+
+### Forfalte fakturaer og purringer
+
+**Forfalt** i sidemenyen viser hver forfalte faktura til alle med `invoices:access`, hver
+vurdert per i dag. En rad viser fakturaen, kunden — merket **På vent**, **Overlevert**,
+**Purres uten gebyr og renter**, **Purres ikke** eller **Ikke levert innen forfall** når det
+gjelder — forfallsdatoen, dagene forfalt, det som er utestående, utestående gebyr og
+renter, rentene et brev i dag ville kreve, siste brev og statusen det har, og hva som skal
+skje: en **Purring**, et **Inkassovarsel** eller **Overlever til inkasso** fra en dag,
+**Venter** til en dag, eller **Stoppet** — hver med årsakene i ord, de samme som kortet
+**Purringer** på fakturaen gir. Filtrer etter kunde, neste steg og forfallsdato; **Også
+betalte fakturaer med utestående gebyr eller renter** tar med de betalte fakturaene der
+gebyr eller renter fortsatt skyldes. Over 5 000 forfalte fakturaer må avgrenses etter kunde
+eller forfallsdato.
+
+Over listen står hvor ferske bankdataene er: *Bankdata bokført til og med …*, eller
+**Bankdataene er gamle** når den siste bankbokføringen som er importert, er eldre enn
+grensen i purreinnstillingene — og alltid når ingen bankfil er noen gang importert. Brev
+vurdert på gamle bankdata kan kreve gebyr og renter av fakturaer som er betalt. Når en
+konto importeres som OCR-giro, står en merknad om at betalinger uten KID aldri kommer med i
+en slik fil: **registrer betalingene uten KID for hånd først, og gjør så kjøringen**.
+
+Med `invoices:payments` åpner **Send purringer** forhåndsvisningen av en kjøring, avgrenset
+til kunden og forfallsdatoen listen er filtrert på. Den viser hvert brev slik det ville gått
+i dag: hva slags brev, hvordan det går og til hvem — på papir når kunden vil ha e-post men
+ikke har noen purreadresse, eller når denne installasjonen ikke kan sende e-post, sagt ved
+siden av — fristen, totalen med gebyr, kompensasjon og renter, og hvorfor det krever mindre
+enn det kunne. Alle brevene er valgt fra start; fjern krysset for dem som ikke skal sendes.
+Under dem står fakturaene som ikke får brev i dag, med årsaken, og over dem advarslene: en
+sats mangler for et halvår, eller gjennomgangen av regelverket er utløpt. Når
+bankdataene er gamle og et valgt brev krever gebyr eller renter, kryss av for
+**Bankdataene er gamle: gjør kjøringen med gebyr og renter likevel** — eller importer den
+siste bankfilen først; brev uten gebyr og renter holdes aldri tilbake av dette. **Send N
+brev** gjør kjøringen, høyst 500 brev om gangen. Den sier hvor mange brev som ble laget,
+navngir hver faktura den hoppet over — betalt siden forhåndsvisningen, et annet brev på vei,
+satt på vent, eller kunden anonymisert — og lenker til kjøringens egen side: brevene med
+statusen sin, telt opp, der et brev som ikke er sendt, kan trekkes tilbake og et som
+feilet, sendes på nytt. Kjøringene står under forfallslisten. Hver avvisning sies i ord; en
+manglende sats navngir satsen og halvåret.
+
+**Fradrag for tap på krav i mva-meldingen.** Et krav regnes som tapt for merverdiavgiften
+når det ikke er betalt seks måneder etter forfall til tross for **minst tre
+purringer** med normale purreintervaller (merverdiavgiftsforskriften § 4-7-1 første ledd
+bokstav b), eller når inndrivingen har mislyktes. Vantigos standardrekkefølge sender **to**
+brev — én purring, så inkassovarselet. Skal du støtte deg på de tre purringene, setter du
+**Purringer før inkassovarselet** til 2 i purreinnstillingene; brevene på kortet
+**Purringer** på hver faktura er dokumentasjonen.
+
+### Skrive ut og postlegge papirbrev
+
+**Forfalt** → **Papirbrev** (med `invoices:payments`) viser brevene som venter på
+utskrift, hvert med fakturaen og kjøringen som laget det, alle valgt fra start. Velg
+**Postleggingsdag** — i dag eller en av de neste 7 dagene — og **Skriv ut N brev**: hvert
+brev vurderes for den dagen, og datoen, fristen og gebyret er den dagens. Svaret navngir
+bunken, med **Last ned bunken** for PDF-en, og hvert brev som ble holdt utenfor og hvorfor —
+trukket tilbake eller skrevet ut i en annen bunke i mellomtiden, venter på en
+sats eller gjennomgangen av regelverket, eller trukket tilbake fordi fakturaen
+er betalt, satt på vent eller overlevert siden. Et brev som holdes utenfor på grunn av en
+sats eller gjennomgangen, venter fortsatt på utskrift.
+
+**Utskriftsbunker** viser bunkene med postleggingsdagen og statusen: **Skrevet ut, ikke
+bekreftet postlagt**, **Postlagt** en dag, eller **Skrevet ut på nytt**; PDF-en til hver
+bunke kan lastes ned på nytt. Når bunken er lagt i posten, velger du **Bekreft postlagt**
+og dagen den gikk — i dag eller en tidligere dag; en senere dag tilbys aldri. Bare
+postleggingsdagen godtas: postlagt en annen dag avvises bekreftelsen i ord, og **Skriv ut
+på nytt** tilbys, som setter brevene tilbake til å vente på utskrift, for å skrives ut for
+dagen de går. En bunke for en senere dag kan ikke bekreftes før den dagen. Brevene i en
+bekreftet bunke er sendt; svaret navngir hvert brev der gebyret eller kompensasjonen ble
+ettergitt som krevd ved en feil, og hvorfor — fakturaen er betalt, satt på vent eller
+overlevert etter utskriften — og hvert brev som ble trukket tilbake etter utskriften og
+derfor ikke ble sendt.
 
 ### Purrekrav
 
@@ -1279,7 +1351,7 @@ Ingen innebygd rolle har disse; en eier har alt
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en | `invoices:issue` |
-| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev og bekrefte dem postlagt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; se dashbordets varsler om banklinjer, brev og utskriftsbunker | `invoices:payments` |
+| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; se dashbordets varsler om banklinjer, brev og utskriftsbunker | `invoices:payments` |
 | Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger** | `invoices:manage` |
 
 Innbetalinger og purring har ingen egen rettighet. Purringer, avvikskøen, vent og

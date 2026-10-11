@@ -29,7 +29,7 @@ din:
 | [Prosjekter](/nb/user/projects/) | Prosjekter, Mine oppgaver, Prosjektøkonomi |
 | [Timer](/nb/user/time/) | Min uke, Godkjenning, Personer, Timeinnstillinger |
 | [Utlegg](/nb/user/expenses/) | Mine utlegg, Godkjenning av utlegg, Refusjoner, Utleggsinnstillinger |
-| [Fakturaer](/nb/user/invoices/) | Fakturaer, Fakturajournal, Innbetalinger, Fakturainnstillinger |
+| [Fakturaer](/nb/user/invoices/) | Fakturaer, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
 | [Energi](/nb/user/energy/) | Målepunkter |
