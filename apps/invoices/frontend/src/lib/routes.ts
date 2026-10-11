@@ -30,3 +30,21 @@ export const bankFileLinkOptions = (bankFileId: number) => ({
 /** The same path as a plain URL, for a link's href. */
 export const bankFileHref = (bankFileId: number): string =>
   BANK_FILE_ROUTE_PATH.replace("$bankFileId", String(bankFileId));
+
+/** The Overdue area: the overdue list, the run's preview and the runs (D22). */
+export const OVERDUE_ROUTE_PATH = "/invoices/overdue";
+
+/** One reminder run and its letters, under the Overdue area. */
+export const REMINDER_RUN_ROUTE_PATH = "/invoices/reminder-runs/$runId";
+
+/** What `navigate` and `Link` take to reach one run. */
+export const reminderRunLinkOptions = (runId: number) => ({
+  to: REMINDER_RUN_ROUTE_PATH,
+  params: { runId: String(runId) },
+});
+
+/** The same path as a plain URL, for a link's href. */
+export const reminderRunHref = (runId: number): string => REMINDER_RUN_ROUTE_PATH.replace("$runId", String(runId));
+
+/** Paper letters: the letters awaiting print, printed in batches and confirmed posted. */
+export const REMINDER_PRINT_ROUTE_PATH = "/invoices/reminders/print";

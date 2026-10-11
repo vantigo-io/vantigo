@@ -27,8 +27,12 @@ export const refusalProblem = (error: unknown): Record<string, unknown> =>
  * customer a merged one went into (`{{mergedInto}}`), the open amount a
  * payment exceeded (`{{openAmount}}`, written by `money`), the charges
  * outstanding a charge payment exceeded (`{{chargesOutstanding}}`, written by
- * `money`) and the earlier import a bank file repeats (`{{bankFileId}}`,
- * `{{uploadedAt}}` written by `instant`, `{{uploadedBy}}`). The rate limiter's
+ * `money`), the earlier import a bank file repeats (`{{bankFileId}}`,
+ * `{{uploadedAt}}` written by `instant`, `{{uploadedBy}}`), the collection
+ * rate a run lacks (`{{kind}}`, as a sentence names it, and `{{halfYear}}`)
+ * and the bank data's latest booking a stale run names (`{{lastBookedOn}}`,
+ * written by `date`; a run on bank data never imported is worded by
+ * `refusal.bank_import_stale_never`, having none to name). The rate limiter's
  * `rate_limited` (its 429, not a problem document) is worded by
  * `refusal.rateLimited`. A validation error says
  * its first field's message; anything else, the error's own — a code this
@@ -44,9 +48,15 @@ export const refusalMessage = (
   instant: (at: string) => string = (at) => at,
 ): string => {
   const code = refusalCode(error);
-  const key = code === "rate_limited" ? "refusal.rateLimited" : `refusal.${code}`;
+  const problem = refusalProblem(error);
+  const key =
+    code === "rate_limited"
+      ? "refusal.rateLimited"
+      : code === "bank_import_stale" && typeof problem.lastBookedOn !== "string"
+        ? "refusal.bank_import_stale_never"
+        : `refusal.${code}`;
   if (code && key in invoicesCatalog.en) {
-    const problem = refusalProblem(error);
+    const kind = typeof problem.kind === "string" ? problem.kind : "";
     const dates = Array.isArray(problem.allowedIssueDates) ? (problem.allowedIssueDates as string[]) : [];
     return t(key, {
       dates: dates.map(date).join(", "),
@@ -57,6 +67,9 @@ export const refusalMessage = (
       bankFileId: problem.bankFileId ?? "",
       uploadedAt: typeof problem.uploadedAt === "string" ? instant(problem.uploadedAt) : "",
       uploadedBy: problem.uploadedBy ?? "",
+      kind: `rates.inSentence.${kind}` in invoicesCatalog.en ? t(`rates.inSentence.${kind}`) : kind,
+      halfYear: problem.halfYear ?? "",
+      lastBookedOn: typeof problem.lastBookedOn === "string" ? date(problem.lastBookedOn) : "",
     });
   }
   if (error instanceof ApiValidationError) {

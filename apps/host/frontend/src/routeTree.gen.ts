@@ -46,6 +46,7 @@ import { Route as InvitationsAcceptRouteImport } from './routes/invitations/acce
 import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
 import { Route as InvoicesInvoiceIdRouteImport } from './routes/invoices/$invoiceId'
 import { Route as InvoicesJournalRouteImport } from './routes/invoices/journal'
+import { Route as InvoicesOverdueRouteImport } from './routes/invoices/overdue'
 import { Route as InvoicesSettingsRouteImport } from './routes/invoices/settings'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
@@ -78,6 +79,8 @@ import { Route as EnergyMeteringPointsIndexRouteImport } from './routes/energy/m
 import { Route as EnergyMeteringPointsMeteringPointIdRouteImport } from './routes/energy/metering-points/$meteringPointId'
 import { Route as ExpensesClaimsClaimIdRouteImport } from './routes/expenses/claims.$claimId'
 import { Route as InvoicesPaymentsIndexRouteImport } from './routes/invoices/payments.index'
+import { Route as InvoicesReminderRunsRunIdRouteImport } from './routes/invoices/reminder-runs.$runId'
+import { Route as InvoicesRemindersPrintRouteImport } from './routes/invoices/reminders.print'
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId.index'
 import { Route as ProjectsProjectIdBillingRouteImport } from './routes/projects/$projectId.billing'
 import { Route as ProjectsProjectIdEconomyRouteImport } from './routes/projects/$projectId.economy'
@@ -274,6 +277,11 @@ const InvoicesJournalRoute = InvoicesJournalRouteImport.update({
   path: '/journal',
   getParentRoute: () => InvoicesRoute,
 } as any)
+const InvoicesOverdueRoute = InvoicesOverdueRouteImport.update({
+  id: '/overdue',
+  path: '/overdue',
+  getParentRoute: () => InvoicesRoute,
+} as any)
 const InvoicesSettingsRoute = InvoicesSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -441,6 +449,17 @@ const InvoicesPaymentsIndexRoute = InvoicesPaymentsIndexRouteImport.update({
   path: '/payments/',
   getParentRoute: () => InvoicesRoute,
 } as any)
+const InvoicesReminderRunsRunIdRoute =
+  InvoicesReminderRunsRunIdRouteImport.update({
+    id: '/reminder-runs/$runId',
+    path: '/reminder-runs/$runId',
+    getParentRoute: () => InvoicesRoute,
+  } as any)
+const InvoicesRemindersPrintRoute = InvoicesRemindersPrintRouteImport.update({
+  id: '/reminders/print',
+  path: '/reminders/print',
+  getParentRoute: () => InvoicesRoute,
+} as any)
 const ProjectsProjectIdIndexRoute = ProjectsProjectIdIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -524,6 +543,7 @@ export interface FileRoutesByFullPath {
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/invoices/journal': typeof InvoicesJournalRoute
+  '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
@@ -558,6 +578,8 @@ export interface FileRoutesByFullPath {
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
+  '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
+  '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
@@ -592,6 +614,7 @@ export interface FileRoutesByTo {
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/invoices/journal': typeof InvoicesJournalRoute
+  '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
@@ -625,6 +648,8 @@ export interface FileRoutesByTo {
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
+  '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
+  '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
@@ -672,6 +697,7 @@ export interface FileRoutesById {
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/invoices/journal': typeof InvoicesJournalRoute
+  '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
@@ -706,6 +732,8 @@ export interface FileRoutesById {
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
+  '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
+  '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
@@ -754,6 +782,7 @@ export interface FileRouteTypes {
     | '/invitations/accept'
     | '/invoices/$invoiceId'
     | '/invoices/journal'
+    | '/invoices/overdue'
     | '/invoices/settings'
     | '/products/$productId'
     | '/products/categories'
@@ -788,6 +817,8 @@ export interface FileRouteTypes {
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
+    | '/invoices/reminder-runs/$runId'
+    | '/invoices/reminders/print'
     | '/projects/$projectId/billing'
     | '/projects/$projectId/economy'
     | '/projects/$projectId/expenses'
@@ -822,6 +853,7 @@ export interface FileRouteTypes {
     | '/invitations/accept'
     | '/invoices/$invoiceId'
     | '/invoices/journal'
+    | '/invoices/overdue'
     | '/invoices/settings'
     | '/products/$productId'
     | '/products/categories'
@@ -855,6 +887,8 @@ export interface FileRouteTypes {
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
+    | '/invoices/reminder-runs/$runId'
+    | '/invoices/reminders/print'
     | '/projects/$projectId/billing'
     | '/projects/$projectId/economy'
     | '/projects/$projectId/expenses'
@@ -901,6 +935,7 @@ export interface FileRouteTypes {
     | '/invitations/accept'
     | '/invoices/$invoiceId'
     | '/invoices/journal'
+    | '/invoices/overdue'
     | '/invoices/settings'
     | '/products/$productId'
     | '/products/categories'
@@ -935,6 +970,8 @@ export interface FileRouteTypes {
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
+    | '/invoices/reminder-runs/$runId'
+    | '/invoices/reminders/print'
     | '/projects/$projectId/billing'
     | '/projects/$projectId/economy'
     | '/projects/$projectId/expenses'
@@ -1235,6 +1272,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvoicesJournalRouteImport
       parentRoute: typeof InvoicesRoute
     }
+    '/invoices/overdue': {
+      id: '/invoices/overdue'
+      path: '/overdue'
+      fullPath: '/invoices/overdue'
+      preLoaderRoute: typeof InvoicesOverdueRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
     '/invoices/settings': {
       id: '/invoices/settings'
       path: '/settings'
@@ -1459,6 +1503,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvoicesPaymentsIndexRouteImport
       parentRoute: typeof InvoicesRoute
     }
+    '/invoices/reminder-runs/$runId': {
+      id: '/invoices/reminder-runs/$runId'
+      path: '/reminder-runs/$runId'
+      fullPath: '/invoices/reminder-runs/$runId'
+      preLoaderRoute: typeof InvoicesReminderRunsRunIdRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
+    '/invoices/reminders/print': {
+      id: '/invoices/reminders/print'
+      path: '/reminders/print'
+      fullPath: '/invoices/reminders/print'
+      preLoaderRoute: typeof InvoicesRemindersPrintRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
     '/projects/$projectId/': {
       id: '/projects/$projectId/'
       path: '/'
@@ -1629,8 +1687,11 @@ const ExpensesRouteWithChildren = ExpensesRoute._addFileChildren(
 interface InvoicesRouteChildren {
   InvoicesInvoiceIdRoute: typeof InvoicesInvoiceIdRoute
   InvoicesJournalRoute: typeof InvoicesJournalRoute
+  InvoicesOverdueRoute: typeof InvoicesOverdueRoute
   InvoicesSettingsRoute: typeof InvoicesSettingsRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
+  InvoicesReminderRunsRunIdRoute: typeof InvoicesReminderRunsRunIdRoute
+  InvoicesRemindersPrintRoute: typeof InvoicesRemindersPrintRoute
   InvoicesPaymentsIndexRoute: typeof InvoicesPaymentsIndexRoute
   InvoicesPaymentsFilesBankFileIdRoute: typeof InvoicesPaymentsFilesBankFileIdRoute
 }
@@ -1638,8 +1699,11 @@ interface InvoicesRouteChildren {
 const InvoicesRouteChildren: InvoicesRouteChildren = {
   InvoicesInvoiceIdRoute: InvoicesInvoiceIdRoute,
   InvoicesJournalRoute: InvoicesJournalRoute,
+  InvoicesOverdueRoute: InvoicesOverdueRoute,
   InvoicesSettingsRoute: InvoicesSettingsRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,
+  InvoicesReminderRunsRunIdRoute: InvoicesReminderRunsRunIdRoute,
+  InvoicesRemindersPrintRoute: InvoicesRemindersPrintRoute,
   InvoicesPaymentsIndexRoute: InvoicesPaymentsIndexRoute,
   InvoicesPaymentsFilesBankFileIdRoute: InvoicesPaymentsFilesBankFileIdRoute,
 }

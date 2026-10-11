@@ -87,6 +87,32 @@ describe("a refusal's words", () => {
     ).toBe("Betalingen er større enn utestående beløp, kr 24,99. En overbetaling kan ikke registreres.");
   });
 
+  it("names the rate and half-year a run lacks, and the bank data's latest booking, in Norwegian too", () => {
+    const date = (d: string) => `«${d}»`;
+    expect(
+      refusalMessage(
+        conflict("collection_rates_outdated", { kind: "b2b_compensation_nok", halfYear: "2027-H1" }),
+        translate("en"),
+      ),
+    ).toBe(
+      "A letter of this run needs the business compensation for 2027-H1, and there is none. Add the rate, or wait for the release that brings it. No letter was made.",
+    );
+    expect(
+      refusalMessage(
+        conflict("collection_rates_outdated", { kind: "late_interest_percent", halfYear: "2027-H1" }),
+        translate("nb"),
+      ),
+    ).toBe(
+      "Et brev i denne kjøringen trenger forsinkelsesrenten for 2027-H1, og den finnes ikke. Legg inn satsen, eller vent på utgivelsen som bringer den. Ingen brev ble laget.",
+    );
+    expect(refusalMessage(conflict("bank_import_stale", { lastBookedOn: "2026-08-30" }), translate("nb"), date)).toBe(
+      "Den siste bankbokføringen som er importert, er fra «2026-08-30», og brev i denne kjøringen krever gebyr eller renter. Importer den siste bankfilen, eller bekreft kjøringen i boksen under.",
+    );
+    expect(refusalMessage(conflict("bank_import_stale"), translate("en"), date)).toBe(
+      "No bank file was ever imported, and letters of this run claim charges. Import the latest bank file, or confirm the run with the box below.",
+    );
+  });
+
   it("words the rate limiter's rate_limited, whose body is not a problem document", () => {
     const limited = Object.assign(new Error("Too many requests"), { status: 429, code: "rate_limited" });
     expect(refusalMessage(limited, translate("en"))).toBe(

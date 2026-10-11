@@ -13,12 +13,22 @@ import {
 import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import "../i18n";
-import { BANK_FILE_ROUTE_PATH, INVOICE_ROUTE_PATH, PAYMENTS_ROUTE_PATH } from "../lib/routes";
+import {
+  BANK_FILE_ROUTE_PATH,
+  INVOICE_ROUTE_PATH,
+  OVERDUE_ROUTE_PATH,
+  PAYMENTS_ROUTE_PATH,
+  REMINDER_PRINT_ROUTE_PATH,
+  REMINDER_RUN_ROUTE_PATH,
+} from "../lib/routes";
 import { InvoicesPage } from "../pages/invoices";
+import { OverduePage } from "../pages/overdue";
 import { PaymentsPage } from "../pages/payments";
+import { ReminderPrintPage } from "../pages/reminder-print";
 import { BankFileRoute } from "./bank-file-route";
 import { CURRENT_USER_ID } from "./fixtures";
 import { InvoiceRoute } from "./invoice-route";
+import { ReminderRunRoute } from "./reminder-run-route";
 
 /**
  * Stands in for the host routes this package's pages are mounted by: the
@@ -48,6 +58,21 @@ const makeRouteTree = (canViewCustomers: boolean) => {
       getParentRoute: () => rootRoute,
       path: BANK_FILE_ROUTE_PATH,
       component: BankFileRoute,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: OVERDUE_ROUTE_PATH,
+      component: () => <OverduePage canViewCustomers={canViewCustomers} currentUserId={CURRENT_USER_ID} />,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: REMINDER_RUN_ROUTE_PATH,
+      component: ReminderRunRoute,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: REMINDER_PRINT_ROUTE_PATH,
+      component: () => <ReminderPrintPage currentUserId={CURRENT_USER_ID} />,
     }),
   ]);
 };

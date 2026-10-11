@@ -6,7 +6,6 @@ import { useState } from "react";
 import type { InvoiceDocument } from "../api/invoices";
 import {
   type Reminder,
-  type ReminderStatus,
   reminderPdfUrl,
   retryReminder,
   WITH_PDF,
@@ -14,31 +13,14 @@ import {
   withdrawReminder,
 } from "../api/reminders";
 import { INVOICES_QUERY_KEY } from "../api/request";
-import { invoicesCatalog } from "../i18n";
-import { useWho } from "../lib/bank";
+import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
-import { letterName, useLetterLevel } from "../lib/reminders";
+import { letterName, statusColour, useLetterLevel, useLetterStatusLine, useWords } from "../lib/reminders";
 import { PdfButton } from "./pdf-button";
 import { ReasonModal } from "./reason-modal";
 
 type NextAction = NonNullable<InvoiceDocument["nextAction"]>;
-
-const statusColour: Record<ReminderStatus, string> = {
-  queued: "blue",
-  awaiting_print: "blue",
-  printed: "cyan",
-  sent: "green",
-  failed: "red",
-  withdrawn: "gray",
-};
-
-/** A key in words when this catalog has it, the code itself otherwise — a newer server's code never throws. */
-const useWords = () => {
-  const { t } = useInvoiceFormat();
-  return (key: string, code: string, values?: Record<string, unknown>) =>
-    key in invoicesCatalog.en ? t(key, values) : code;
-};
 
 export interface WithdrawReminderModalProps {
   letter: Pick<Reminder, "id" | "sequence">;
@@ -137,7 +119,6 @@ export const RemindersCard = ({ invoice, canAct, currentUserId }: RemindersCardP
   const { t, money, date } = useInvoiceFormat();
   const words = useWords();
   const level = useLetterLevel();
-  const who = useWho(currentUserId);
   const queryClient = useQueryClient();
   const [withdrawing, setWithdrawing] = useState<Reminder | null>(null);
   const letters = invoice.reminders ?? [];
@@ -150,24 +131,7 @@ export const RemindersCard = ({ invoice, canAct, currentUserId }: RemindersCardP
     onError: (error) =>
       notifications.show({ color: "red", title: t("reminder.couldNotRetry"), message: refusalMessage(error, t, date) }),
   });
-  const statusLine = (letter: Reminder): string | undefined => {
-    if (letter.status === "queued" && letter.heldReason)
-      return words(`reminder.held.${letter.heldReason}`, letter.heldReason);
-    if (letter.status === "failed")
-      return t("reminder.failedAfter", { attempts: letter.attempts, error: letter.lastError ?? "" });
-    if (letter.status === "withdrawn") {
-      const reason = letter.withdrawnBy
-        ? (letter.withdrawalReason ?? "")
-        : words(`reminder.withdrawnReason.${letter.withdrawalReason}`, letter.withdrawalReason ?? "");
-      return letter.withdrawnBy
-        ? t("reminder.withdrawnBy", { who: who(letter.withdrawnBy), reason })
-        : t("reminder.withdrawnByVantigo", { reason });
-    }
-    if (letter.status === "printed" && letter.printBatchId !== undefined) {
-      return t("reminder.inBatch", { batch: letter.printBatchId });
-    }
-    return undefined;
-  };
+  const statusLine = useLetterStatusLine(currentUserId);
   return (
     <Card withBorder data-testid="reminders-card">
       <Stack gap="xs">
