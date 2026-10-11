@@ -492,6 +492,19 @@ func TestBankFileCamt_Parse(t *testing.T) {
 		if got := mustCamt(t, tooLongFirst).Transactions[0]; got.KID != "0010017" || got.RemittanceText != "SCOR "+strings.Repeat("1", 26) {
 			t.Errorf("a too-long SCOR reference before a KID: KID %q, text %q", got.KID, got.RemittanceText)
 		}
+		// Of two too-long references before the KID, the first leads the
+		// text; of two KIDs, the first is the KID.
+		scorStrd := func(ref string) string {
+			return "<Strd><CdtrRefInf><Tp><CdOrPrtry><Cd>SCOR</Cd></CdOrPrtry></Tp><Ref>" + ref + "</Ref></CdtrRefInf></Strd>"
+		}
+		twoTooLong := swap(t, r4, "<RmtInf>", "<RmtInf>"+scorStrd(strings.Repeat("1", 26))+scorStrd(strings.Repeat("2", 26)), 1)
+		if got := mustCamt(t, twoTooLong).Transactions[0]; got.KID != "0010017" || got.RemittanceText != "SCOR "+strings.Repeat("1", 26) {
+			t.Errorf("two too-long SCOR references before a KID: KID %q, text %q", got.KID, got.RemittanceText)
+		}
+		twoKIDs := swap(t, r4, "<RmtInf>", "<RmtInf>"+scorStrd("0010025"), 1)
+		if got := mustCamt(t, twoKIDs).Transactions[0]; got.KID != "0010025" || got.RemittanceText != "" {
+			t.Errorf("two KIDs: KID %q, text %q", got.KID, got.RemittanceText)
+		}
 		// A reference is measured in characters, as varchar(n) is: 35 of
 		// them in 70 bytes is an archive reference.
 		if got := mustCamt(t, swap(t, r4, "<AcctSvcrRef>123456789</AcctSvcrRef>", "<AcctSvcrRef>"+strings.Repeat("æ", 35)+"</AcctSvcrRef>", 1)).Transactions[0]; got.ArchiveRef != strings.Repeat("æ", 35) {

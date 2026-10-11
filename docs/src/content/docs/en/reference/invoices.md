@@ -2012,8 +2012,8 @@ keeps what the bank wrote: `line_ref` (OCR `<assignment>/<transaction>`, camt
 `<notification>/<entry>/<transaction>`, 1-based), the receiving account, the booking day
 (OCR's settlement date, camt's `BookgDt`), the value day, OCR's ordering day
 (`ordered_on`, `Oppdragsdato`; camt has none), the amount, the KID as written (the first
-`SCOR` reference in camt that fits a KID's 25 characters — a longer one before it does
-not hide it; none is `NULL`), the remittance text (camt's `Ustrd` lines
+`SCOR` reference in camt that fits a KID's 25 characters — the first too-long reference
+before it does not hide it but leads the remittance text as `SCOR <ref>`; none is `NULL`), the remittance text (camt's `Ustrd` lines
 joined by a space, else the entry's `AddtlNtryInf`, else OCR's text; at most 1 000
 characters), the debtor's name and account, the archive reference (OCR's
 `Arkivreferanse`, camt's `TxDtls/Refs/AcctSvcrRef`) and the bank's transaction code.
