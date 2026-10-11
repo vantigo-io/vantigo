@@ -100,7 +100,7 @@ func (s *server) PutStaffPeopleByIdLegalHold(ctx context.Context, req gen.PutSta
 			if after != nil {
 				change.To = *after
 			}
-			c["reason"] = change
+			c["legalHoldReason"] = change
 		}
 		if len(c) == 0 {
 			saved = current
@@ -113,8 +113,9 @@ func (s *server) PutStaffPeopleByIdLegalHold(ctx context.Context, req gen.PutSta
 			at := s.deps.Clock()
 			params.Reason, params.ByUserID, params.At = reason, &caller.UserID, &at
 			if current.LegalHold {
-				// A new reason on a hold that stands keeps when it was set.
-				params.At = current.LegalHoldAt
+				// A new reason on a hold that stands keeps who set it and
+				// when; the event records who changed the reason.
+				params.ByUserID, params.At = current.LegalHoldByUserID, current.LegalHoldAt
 			}
 		}
 		if err := txq.SetLegalHold(ctx, params); err != nil {

@@ -15,17 +15,26 @@ import (
 const countPersonEvents = `-- name: CountPersonEvents :one
 SELECT count(*) FROM staff.events
 WHERE person_id = $1 AND ($2::boolean OR NOT ('E' = ANY(payload_classes)))
+  AND ($3::boolean OR NOT (kind = ANY($4::text[])))
 `
 
 type CountPersonEventsParams struct {
 	PersonID   *int64
 	WithHealth bool
+	WithHold   bool
+	HoldKinds  []string
 }
 
 // CountPersonEvents counts what ListPersonEvents pages through, health events
-// (those whose payload touches class E) only when asked for.
+// (those whose payload touches class E) and the hold's kinds only when asked
+// for.
 func (q *Queries) CountPersonEvents(ctx context.Context, arg CountPersonEventsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countPersonEvents, arg.PersonID, arg.WithHealth)
+	row := q.db.QueryRow(ctx, countPersonEvents,
+		arg.PersonID,
+		arg.WithHealth,
+		arg.WithHold,
+		arg.HoldKinds,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -119,13 +128,16 @@ const listPersonEvents = `-- name: ListPersonEvents :many
 SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload, payload_classes
 FROM staff.events
 WHERE person_id = $1 AND ($2::boolean OR NOT ('E' = ANY(payload_classes)))
+  AND ($3::boolean OR NOT (kind = ANY($4::text[])))
 ORDER BY at DESC, id DESC
-LIMIT $4 OFFSET $3
+LIMIT $6 OFFSET $5
 `
 
 type ListPersonEventsParams struct {
 	PersonID   *int64
 	WithHealth bool
+	WithHold   bool
+	HoldKinds  []string
 	PageOffset int32
 	PageSize   int32
 }
@@ -145,11 +157,15 @@ type ListPersonEventsRow struct {
 // events of one instant keep the order they were written in, reversed. A
 // health event — one whose payload touches class E, such as a health
 // document's — is left out unless asked for: an audience without the health
-// group does not learn that one happened.
+// group does not learn that one happened. The hold's kinds (@hold_kinds) —
+// the legal hold, the reassessment, the rehire, the export — are left out
+// the same way unless asked for (@with_hold).
 func (q *Queries) ListPersonEvents(ctx context.Context, arg ListPersonEventsParams) ([]ListPersonEventsRow, error) {
 	rows, err := q.db.Query(ctx, listPersonEvents,
 		arg.PersonID,
 		arg.WithHealth,
+		arg.WithHold,
+		arg.HoldKinds,
 		arg.PageOffset,
 		arg.PageSize,
 	)

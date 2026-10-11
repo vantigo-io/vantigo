@@ -162,10 +162,10 @@ var fieldGroups = map[string]fieldGroup{
 
 	"note": groupHRNotes,
 
-	"legalHold":    groupHold,
-	"reason":       groupHold,
-	"erasedAt":     groupHold,
-	"reassessedAt": groupHold,
+	"legalHold":       groupHold,
+	"legalHoldReason": groupHold,
+	"erasedAt":        groupHold,
+	"reassessedAt":    groupHold,
 }
 
 // groupOf is a field's group, groupNobody for a field the table does not
@@ -264,6 +264,11 @@ func (a audience) seesPerson() bool { return a.reads(groupWork) }
 func (a audience) seesEvents() bool {
 	return a.Self || a.Manager || a.Manage || a.PersonalData
 }
+
+// seesHoldEvents is whether the hold's kinds of event (holdEventKinds) are
+// listed to the audience: to the hold group's readers, and to the person
+// themselves, who reads each as its kind with its fields "changed".
+func (a audience) seesHoldEvents() bool { return a.Self || a.reads(groupHold) }
 
 // show is whether the audience reads field.
 func (a audience) show(field string) bool { return a.reads(groupOf(field)) }

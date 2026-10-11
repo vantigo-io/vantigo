@@ -40,7 +40,7 @@ func TestLegalHold_SetAndLifted(t *testing.T) {
 		t.Fatalf("latest event = %s, want legal_hold_set", set.Kind)
 	}
 	if f := fieldsOf(set); f["legalHold"].(map[string]any)["from"] != false || f["legalHold"].(map[string]any)["to"] != true ||
-		f["reason"].(map[string]any)["to"] != "Tvist om oppsigelsen" {
+		f["legalHoldReason"].(map[string]any)["to"] != "Tvist om oppsigelsen" {
 		t.Errorf("legal_hold_set fields = %v", f)
 	}
 
@@ -49,6 +49,24 @@ func TestLegalHold_SetAndLifted(t *testing.T) {
 	do(t, pd, http.MethodPut, legalHoldPath(p.Id), map[string]any{"held": true, "reason": "Tvist om oppsigelsen"}, http.StatusOK, nil)
 	if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1`, p.Id); n != events {
 		t.Errorf("an unchanged hold recorded %d events", n-events)
+	}
+
+	// A new reason on the hold that stands: the hold keeps who set it and
+	// when; the event names who changed the reason.
+	setAt := h.Now()
+	h.Advance(time.Minute)
+	other, otherID := signIn(t, h, "staff:personal-data")
+	do(t, other, http.MethodPut, legalHoldPath(p.Id), map[string]any{"held": true, "reason": "Tvist om oppsigelsen, anket"}, http.StatusOK, &held)
+	if l := held.LegalHold; l == nil || l.At == nil || !l.At.Equal(setAt) || l.Reason == nil || *l.Reason != "Tvist om oppsigelsen, anket" {
+		t.Errorf("legalHold = %+v, want the new reason and the original time", held.LegalHold)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.people WHERE id = $1 AND legal_hold_by_user_id = $2`, p.Id, pdID); n != 1 {
+		t.Error("a new reason replaced who set the hold")
+	}
+	changed := listEvents(t, hr, p.Id)[0]
+	if f := fieldsOf(changed); changed.Kind != "legal_hold_set" || changed.Actor.UserId == nil || *changed.Actor.UserId != otherID ||
+		f["legalHold"] != nil || f["legalHoldReason"].(map[string]any)["to"] != "Tvist om oppsigelsen, anket" {
+		t.Errorf("latest event = %s by %v %v, want legal_hold_set by the second user naming the reason alone", changed.Kind, changed.Actor.UserId, f)
 	}
 
 	h.Advance(time.Hour)
@@ -63,7 +81,7 @@ func TestLegalHold_SetAndLifted(t *testing.T) {
 	}
 	out := listEvents(t, hr, p.Id)[0]
 	if f := fieldsOf(out); out.Kind != "legal_hold_lifted" || f["legalHold"].(map[string]any)["to"] != false ||
-		f["reason"].(map[string]any)["from"] != "Tvist om oppsigelsen" {
+		f["legalHoldReason"].(map[string]any)["from"] != "Tvist om oppsigelsen, anket" {
 		t.Errorf("latest event = %s %v, want legal_hold_lifted from the reason", out.Kind, f)
 	}
 
@@ -151,12 +169,40 @@ func TestLegalHold_TheHoldGroupPerAudience(t *testing.T) {
 		}
 	}
 
+	// The hold's kinds — the hold, the reassessment, the rehire, the export —
+	// are left out of a manager's history and its count, as a health event
+	// is; the person reads each as its kind, its fields "changed"; HR reads
+	// the values.
+	exportOf(t, pd.Do(http.MethodGet, personalDataPath(p.Id), nil))
+	h.Exec(t, `INSERT INTO staff.events (person_id, kind, actor_kind, at, payload, payload_classes) VALUES
+		($1, 'reassessed', 'system', $2, '{"fields":{"reassessedAt":{"to":"2026-09-12T12:00:00Z"}}}', '{C}'),
+		($1, 'person_rehired', 'system', $2, '{"fields":{"erasedAt":{"from":"2026-09-12T12:00:00Z"}}}', '{C}')`, p.Id, h.Now())
+	holdKinds := []string{"legal_hold_set", "legal_hold_lifted", "reassessed", "person_rehired", "personal_data_exported"}
+	others := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1 AND NOT kind = ANY($2)`, p.Id, holdKinds)
+	var managed gen.PaginatedResponseOfStaffEvent
+	do(t, boss, http.MethodGet, eventsPath(p.Id), nil, http.StatusOK, &managed)
+	for _, e := range managed.Data {
+		if slices.Contains(holdKinds, e.Kind) {
+			t.Errorf("the manager reads a %s event", e.Kind)
+		}
+	}
+	if int(managed.Pagination.TotalCount) != others || len(managed.Data) != others {
+		t.Errorf("the manager's history counts %d (lists %d), want %d", managed.Pagination.TotalCount, len(managed.Data), others)
+	}
+
 	var mine gen.PaginatedResponseOfStaffEvent
 	do(t, self, http.MethodGet, meEventsPath, nil, http.StatusOK, &mine)
-	if f := fieldsOf(eventOfKind(t, mine.Data, "legal_hold_set")); f["legalHold"] != "changed" || f["reason"] != "changed" {
-		t.Errorf("the person reads legal_hold_set as %v, want each field changed", f)
+	var viaPerson gen.PaginatedResponseOfStaffEvent
+	do(t, self, http.MethodGet, eventsPath(p.Id), nil, http.StatusOK, &viaPerson)
+	for _, list := range [][]gen.StaffEvent{mine.Data, viaPerson.Data} {
+		for _, kind := range []string{"legal_hold_set", "reassessed", "person_rehired", "personal_data_exported"} {
+			eventOfKind(t, list, kind)
+		}
+		if f := fieldsOf(eventOfKind(t, list, "legal_hold_set")); f["legalHold"] != "changed" || f["legalHoldReason"] != "changed" {
+			t.Errorf("the person reads legal_hold_set as %v, want each field changed", f)
+		}
 	}
-	if f := fieldsOf(eventOfKind(t, listEvents(t, hr, p.Id), "legal_hold_set")); f["reason"].(map[string]any)["to"] != "Tvist" {
+	if f := fieldsOf(eventOfKind(t, listEvents(t, hr, p.Id), "legal_hold_set")); f["legalHoldReason"].(map[string]any)["to"] != "Tvist" {
 		t.Errorf("staff:manage reads legal_hold_set as %v, want the values", f)
 	}
 }

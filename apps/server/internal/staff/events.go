@@ -65,7 +65,8 @@ const (
 // (delivery A2, Task 2). personal_data_exported is an audited reveal: its
 // actor is the viewer and its payload empty, as a sealed field's reveal is.
 // The hold's, the reassessment's and the rehire's name their fields —
-// legalHold, reason, reassessedAt, erasedAt — which the hold group reads.
+// legalHold, legalHoldReason, reassessedAt, erasedAt — which the hold group
+// reads.
 const (
 	eventPersonalDataExported = "personal_data_exported"
 	eventLegalHoldSet         = "legal_hold_set"
@@ -73,6 +74,15 @@ const (
 	eventReassessed           = "reassessed"
 	eventPersonRehired        = "person_rehired"
 )
+
+// holdEventKinds are the hold's kinds: about the record's retention and who
+// exported it rather than about the person's work, so they are listed only to
+// an audience that reads the hold group — and to the person themselves, who
+// has a right to know a hold is on them and that their data was exported,
+// and who reads each as its kind, its fields "changed" (seesHoldEvents). To
+// anyone else they are left out of the history and its count, as a health
+// event is.
+var holdEventKinds = []string{eventPersonalDataExported, eventLegalHoldSet, eventLegalHoldLifted, eventReassessed, eventPersonRehired}
 
 const (
 	actorKindUser          = "user"
@@ -153,7 +163,7 @@ var fieldClasses = map[string]string{
 	// The hold is class F — it stops every erase and is erased by none; when
 	// a person was erased and reassessed is class C, who was employed when
 	// (design §3.1).
-	"legalHold": "F", "reason": "F", "erasedAt": "C", "reassessedAt": "C",
+	"legalHold": "F", "legalHoldReason": "F", "erasedAt": "C", "reassessedAt": "C",
 }
 
 // classes is the retention classes c's fields belong to, sorted and each
@@ -276,7 +286,8 @@ func (s *server) recordRowChange(ctx context.Context, txq *store.Queries, person
 // the 404 an unknown id is. A health event — one whose payload touches class E,
 // a health document's — is left out of the page and the count for an
 // audience without the health group (HR without staff:personal-data, a
-// manager), so they do not learn that one happened.
+// manager), so they do not learn that one happened; the hold's kinds are left
+// out the same way for an audience that is neither the person nor HR.
 func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffPeopleByIdEventsRequestObject) (gen.GetStaffPeopleByIdEventsResponseObject, error) {
 	if f := validatePageParams(req.Params.Page, req.Params.PageSize); f.failed() {
 		return gen.GetStaffPeopleByIdEvents400ApplicationProblemPlusJSONResponse(invalid(invalidPagingTitle, f)), nil
@@ -304,11 +315,14 @@ func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffP
 		if !a.seesEvents() {
 			return notFound()
 		}
-		if total, err = q.CountPersonEvents(ctx, store.CountPersonEventsParams{PersonID: &req.Id, WithHealth: a.reads(groupHealth)}); err != nil {
+		if total, err = q.CountPersonEvents(ctx, store.CountPersonEventsParams{
+			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds,
+		}); err != nil {
 			return fmt.Errorf("staff: count person %d's events: %w", req.Id, err)
 		}
 		rows, err = q.ListPersonEvents(ctx, store.ListPersonEventsParams{
-			PersonID: &req.Id, WithHealth: a.reads(groupHealth), PageSize: pageSize, PageOffset: (page - 1) * pageSize,
+			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds,
+			PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 		})
 		if err != nil {
 			return fmt.Errorf("staff: list person %d's events: %w", req.Id, err)

@@ -387,8 +387,8 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `document_updated` | `documentId`; `fields`: each of the four that changed, before and after. |
 | `document_removed` | `documentId`; `fields`: the four as `from`. |
 | `personal_data_exported` | Empty; the actor is the viewer of the [complete export](#the-personal-data-exports). |
-| `legal_hold_set` | `fields.legalHold` (`false` to `true`) and `fields.reason`, each that changed, before and after. |
-| `legal_hold_lifted` | `fields.legalHold` (`true` to `false`), `fields.reason` as `from`. |
+| `legal_hold_set` | `fields.legalHold` (`false` to `true`) and `fields.legalHoldReason`, each that changed, before and after. |
+| `legal_hold_lifted` | `fields.legalHold` (`true` to `false`), `fields.legalHoldReason` as `from`. |
 | `reassessed` | `fields.reassessedAt` as `to`. |
 | `person_rehired` | `fields.erasedAt` and, when set, `fields.reassessedAt`, each as `from`. |
 
@@ -420,9 +420,13 @@ payload touches class E — is left out of the list, and out of its `totalCount`
 audience without the health group, HR without `staff:personal-data` included: they do
 not learn that one happened.
 
-The **hold** events — `legal_hold_set`, `legal_hold_lifted`, `reassessed`,
-`person_rehired` — name fields of the hold group, so the person and a manager read
-each field as `"changed"`, and HR reads the values.
+The **hold's kinds** — `legal_hold_set`, `legal_hold_lifted`, `reassessed`,
+`person_rehired` and `personal_data_exported` — are left out of the list, and out of its
+`totalCount`, for an audience that is neither the person nor HR: a manager does not
+learn that a hold was set or the person's data exported. The person themselves is
+shown them — they have a right to know a hold is on them and that their data was
+exported — as the kind, each field `"changed"`; `staff:manage` and
+`staff:personal-data` read the values.
 
 ### Deleting a person
 
@@ -970,8 +974,9 @@ record is a choice: rehire the erased one, or add someone new.
 `PUT /people/{id}/legal-hold` (`staff:personal-data`) takes `{held, reason}`. Setting it
 (`held: true`) needs a `reason` of 1 to 500 characters, trimmed; it records the reason,
 who set it and when (`legal_hold`, `legal_hold_reason`, `legal_hold_by_user_id`,
-`legal_hold_at`, class F) as a `legal_hold_set` event naming `legalHold` and `reason`
-before and after. A new reason on a hold that stands keeps when it was set. Lifting it
+`legal_hold_at`, class F) as a `legal_hold_set` event naming `legalHold` and
+`legalHoldReason` before and after. A new reason on a hold that stands keeps who set it and when; its
+event names who changed the reason. Lifting it
 (`held: false`, no `reason` — one sent is a 400) clears all four as a
 `legal_hold_lifted` event. `held` is required. Writing what is there already records
 nothing. The answer is the person.

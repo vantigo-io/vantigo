@@ -308,6 +308,25 @@ func TestErased_TheDirectoryShowsErasedAt(t *testing.T) {
 			t.Error("status=current lists the erased person")
 		}
 	}
+
+	// staff:view never reads erasedAt: it lists the people active today, which
+	// an erased person is not — and were one, the hold group is not its own.
+	active := createPerson(t, hr, newPerson("Aktiv", "Glemt"))
+	seedEmployment(t, h, active.Id, 0)
+	h.Exec(t, `UPDATE staff.people SET erased_at = $2 WHERE id = $1`, active.Id, h.Now())
+	viewer, _ := signIn(t, h, "staff:view")
+	for _, status := range []string{"", "?status=all"} {
+		body := raw(t, viewer.Do(http.MethodGet, peoplePath+status, nil))
+		rows, _ := body["data"].([]any)
+		if len(rows) == 0 {
+			t.Fatalf("staff:view lists nobody (%q)", status)
+		}
+		for _, row := range rows {
+			if _, ok := row.(map[string]any)["erasedAt"]; ok {
+				t.Errorf("staff:view reads erasedAt on %v", row)
+			}
+		}
+	}
 }
 
 func ptr[T any](v T) *T { return &v }
