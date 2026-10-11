@@ -7,6 +7,7 @@ import { defaultFullTimeHours, fullTimeHoursMismatch } from "../lib/terms";
 import { jsonResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
 import {
+  capabilitiesOf,
   businessUnits as defaultBusinessUnits,
   departments as defaultDepartments,
   legalEntities as defaultLegalEntities,
@@ -63,6 +64,9 @@ export const staffProblem = (
   });
 
 const notFound = () => new Response(null, { status: 404 });
+
+/** The access layer's uniform 403. */
+const forbidden = () => jsonResponse(403, { error: { code: "forbidden", message: "Forbidden" } });
 
 const page = <T>(data: T[], pageNumber: number, pageSize: number) => {
   const totalPages = Math.ceil(data.length / pageSize);
@@ -220,10 +224,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     ...listItem(stored),
     revision: 1,
     capabilities: {
-      canEdit: role !== "view",
-      canManageAccount: role !== "view",
+      canEdit: capabilitiesOf(role).canEdit,
+      canManageAccount: capabilitiesOf(role).canEdit,
       canRevealIdentifiers: false,
-      canSeePay: role !== "view",
+      canSeePay: capabilitiesOf(role).canSeePay,
     },
   });
 
@@ -336,6 +340,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     const structure =
       /^\/api\/v1\/staff\/(legal-entities|business-units|departments|locations)(?:\/(\d+)(\/archive)?)?$/.exec(path);
     if (structure) {
+      // The server's own judgment: the lists are staff:view's and
+      // staff:manage's, and anyone else is the uniform 403.
+      if (method === "GET" && role === "access") return Promise.resolve(forbidden());
       const table = tables[structure[1] as keyof typeof tables];
       const rows = table.rows() as Row[];
       if (!structure[2]) {
@@ -374,7 +381,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     }
 
     if (path === "/api/v1/staff/people") {
-      if (method === "GET") return Promise.resolve(listPeople(url));
+      if (method === "GET") return Promise.resolve(role === "access" ? forbidden() : listPeople(url));
       if (method === "POST") return Promise.resolve(createPerson(body));
     }
     const personRow = /^\/api\/v1\/staff\/people\/(\d+)$/.exec(path);

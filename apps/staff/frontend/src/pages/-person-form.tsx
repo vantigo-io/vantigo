@@ -6,6 +6,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import "../i18n";
 import { EMPLOYEE_NUMBER_MAX_LENGTH } from "../lib/employee-number";
 import type { PersonFormValues } from "../lib/person-form";
+import { genders } from "../lib/terms";
 
 export interface PersonFieldsProps {
   form: UseFormReturnType<PersonFormValues>;
@@ -99,7 +100,7 @@ export const PersonFields = ({ form, generatedNumber, privateOpen, onTogglePriva
           <Select
             label={t("gender")}
             clearable
-            data={(["female", "male", "other", "unspecified"] as const).map((value) => ({
+            data={genders.map((value) => ({
               value,
               label: t(`gender_${value}`),
             }))}

@@ -16,7 +16,7 @@ import {
 } from "../api/structure";
 import { PersonPicker } from "../components/person-picker";
 import "../i18n";
-import { fieldRefusals } from "../lib/errors";
+import { fieldRefusals, isRevisionConflict } from "../lib/errors";
 
 /** Adding a row to one of the four tables, or changing the one the caller just read off it. */
 export type StructureModalState =
@@ -83,7 +83,15 @@ const useSave = <V,>(
       notifications.show({ color: "teal", title: t("rowSaved", { name: saved.name }), message: "" });
       onClose();
     },
-    onError: (error) => {
+    onError: async (error) => {
+      if (isRevisionConflict(error)) {
+        // The row moved on since the form opened: close it on the fresh
+        // table rather than keep editing a version that is gone.
+        notifications.show({ color: "yellow", title: t("revisionConflict"), message: t("revisionConflictHint") });
+        onClose();
+        await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
+        return;
+      }
       const { fields, rest } = fieldRefusals(error, shown);
       setErrors(fields);
       if (rest.length > 0) notifications.show({ color: "red", title: t("couldNotSave"), message: rest.join(" ") });

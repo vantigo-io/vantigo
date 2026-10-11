@@ -27,8 +27,9 @@ func TestModule_MountsBehindStaffAccess(t *testing.T) {
 }
 
 // GET /meta answers what the caller may do, one capability per permission,
-// and the structure only to a caller holding staff:view — the directory's
-// permission. Without it the key is absent, not empty or null.
+// and the structure to a caller holding staff:view or staff:manage — the
+// directory and HR, who name units and departments in their lists and forms.
+// Without either the key is absent, not empty or null.
 func TestMeta_CapabilitiesAndTheStructureFollowTheCallersPermissions(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -45,7 +46,7 @@ func TestMeta_CapabilitiesAndTheStructureFollowTheCallersPermissions(t *testing.
 		{"staff:view", []string{"staff:view"}, gen.StaffCapabilities{CanViewDirectory: true}, true},
 		{"staff:approve", []string{"staff:approve"}, gen.StaffCapabilities{}, false},
 		{"staff:manage without staff:view", []string{"staff:manage"},
-			gen.StaffCapabilities{CanEdit: true, CanSeePay: true}, false},
+			gen.StaffCapabilities{CanEdit: true, CanSeePay: true}, true},
 		{"staff:personal-data", []string{"staff:personal-data"},
 			gen.StaffCapabilities{CanRevealIdentifiers: true, CanSeePay: true}, false},
 		{"all five", []string{"staff:view", "staff:approve", "staff:manage", "staff:personal-data"},
@@ -69,7 +70,7 @@ func TestMeta_CapabilitiesAndTheStructureFollowTheCallersPermissions(t *testing.
 			if present != c.structure {
 				t.Errorf("structure present = %v, want %v", present, c.structure)
 			}
-			if c.structure && (len(meta.Structure.LegalEntities) != 1 || meta.Structure.LegalEntities[0].Name != "Kraft-Verket AS") {
+			if c.structure && meta.Structure != nil && (len(meta.Structure.LegalEntities) != 1 || meta.Structure.LegalEntities[0].Name != "Kraft-Verket AS") {
 				t.Errorf("structure = %+v, want the one legal entity", meta.Structure)
 			}
 		})

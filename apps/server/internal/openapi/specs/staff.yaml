@@ -1233,7 +1233,7 @@ components:
                 - nextEmployeeNumber
             type: object
         StaffStructure:
-            description: The company's structure, present on GET /meta only for a caller holding staff:view. Archived rows are included so a stored reference can still be named; the pickers leave them out.
+            description: The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out.
             properties:
                 businessUnits:
                     items:
@@ -1661,7 +1661,7 @@ paths:
             x-vantigo-access: permission:staff:access+staff:manage
     /api/v1/staff/business-units:
         get:
-            description: Every business unit, archived ones included, by name.
+            description: Every business unit, archived ones included, by name. Read by staff:view and by staff:manage (HR without the directory still names units and departments); anyone else gets the uniform 403.
             operationId: getStaffBusinessUnits
             responses:
                 "200":
@@ -1683,11 +1683,11 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
+                    description: Forbidden — neither staff:view nor staff:manage.
             summary: List business units
             tags:
                 - Staff
-            x-vantigo-access: permission:staff:access+staff:view
+            x-vantigo-access: permission:staff:access
         post:
             description: Adds a business unit (the virksomhet or underenhet the a-melding reports per) under a legal entity. The first one becomes the default; isDefault true makes the new one the default instead.
             operationId: postStaffBusinessUnits
@@ -1836,7 +1836,7 @@ paths:
             x-vantigo-access: permission:staff:access+staff:manage
     /api/v1/staff/departments:
         get:
-            description: Every department, archived ones included, by code.
+            description: Every department, archived ones included, by code. Read by staff:view and by staff:manage (HR without the directory still names units and departments); anyone else gets the uniform 403.
             operationId: getStaffDepartments
             responses:
                 "200":
@@ -1858,11 +1858,11 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
+                    description: Forbidden — neither staff:view nor staff:manage.
             summary: List departments
             tags:
                 - Staff
-            x-vantigo-access: permission:staff:access+staff:view
+            x-vantigo-access: permission:staff:access
         post:
             description: Adds a department with its code, name and, optionally, a manager, a parent, a cost centre and a division.
             operationId: postStaffDepartments
@@ -2323,7 +2323,7 @@ paths:
             x-vantigo-access: permission:staff:access+staff:manage
     /api/v1/staff/legal-entities:
         get:
-            description: Every legal entity, archived ones included (so a stored reference can still be named), by name.
+            description: Every legal entity, archived ones included (so a stored reference can still be named), by name. Read by staff:view and by staff:manage (HR without the directory still names units and departments); anyone else gets the uniform 403.
             operationId: getStaffLegalEntities
             responses:
                 "200":
@@ -2345,11 +2345,11 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
+                    description: Forbidden — neither staff:view nor staff:manage.
             summary: List legal entities
             tags:
                 - Staff
-            x-vantigo-access: permission:staff:access+staff:view
+            x-vantigo-access: permission:staff:access
         post:
             description: Adds a legal entity (the juridisk enhet). The first one becomes the default; isDefault true makes the new one the default instead, and the previous default stops being it.
             operationId: postStaffLegalEntities
@@ -2492,7 +2492,7 @@ paths:
             x-vantigo-access: permission:staff:access+staff:manage
     /api/v1/staff/locations:
         get:
-            description: Every location, archived ones included, by name.
+            description: Every location, archived ones included, by name. Read by staff:view and by staff:manage (HR without the directory still names units and departments); anyone else gets the uniform 403.
             operationId: getStaffLocations
             responses:
                 "200":
@@ -2514,11 +2514,11 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
+                    description: Forbidden — neither staff:view nor staff:manage.
             summary: List locations
             tags:
                 - Staff
-            x-vantigo-access: permission:staff:access+staff:view
+            x-vantigo-access: permission:staff:access
         post:
             description: Adds a location (the arbeidssted) with its address and country, Norway when none is given.
             operationId: postStaffLocations
@@ -2795,7 +2795,7 @@ paths:
             x-vantigo-access: permission:staff:access
     /api/v1/staff/meta:
         get:
-            description: 'The one read the Staff app makes before it draws anything: what the caller may do, the installation''s business time zone — the zone every date of this module is a calendar day in — with today''s date in it, and, for a caller holding staff:view, the company''s structure for the pickers and the labels. Every staff:access holder reads it.'
+            description: 'The one read the Staff app makes before it draws anything: what the caller may do, the installation''s business time zone — the zone every date of this module is a calendar day in — with today''s date in it, and, for a caller holding staff:view or staff:manage, the company''s structure for the pickers and the labels. Every staff:access holder reads it.'
             operationId: getStaffMeta
             responses:
                 "200":

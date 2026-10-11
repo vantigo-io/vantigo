@@ -231,6 +231,29 @@ describe("New person — step 2, the first employment", () => {
     );
   });
 
+  it("unfolds More terms when the server refuses a field folded under it", async () => {
+    stubStaffApi({
+      write: (method, path) =>
+        method === "POST" && path.endsWith("/employments")
+          ? staffProblem(400, {
+              title: "Invalid employment",
+              errors: { contractSignedAt: ["The contract cannot be signed after the start's year ends"] },
+            })
+          : undefined,
+    });
+    const dialog = await open();
+    await personStep(dialog);
+
+    await choose(dialog, "Employment type", "Permanent (fast)");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Percentage of a full position" }), "100");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save employment" }));
+
+    expect(
+      await within(dialog).findByText("The contract cannot be signed after the start's year ends"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("textbox", { name: "Contract signed" })).toHaveAttribute("aria-invalid", "true");
+  });
+
   it("folds the rest of the terms under More terms", async () => {
     const fetchMock = stubStaffApi();
     const dialog = await open();

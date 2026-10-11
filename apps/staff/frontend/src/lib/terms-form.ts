@@ -196,11 +196,21 @@ export const termsInputOf = (values: TermsFormValues): StaffTermsInput => {
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
-/** The sentence that says why the hours do not fit the scheme, or null when they do (or are left to the scheme). */
-export const hoursMismatchMessage = (t: Translate, values: TermsFormValues): string | null => {
+/**
+ * The sentence that says why the hours do not fit the scheme, or null when
+ * they do (or are left to the scheme). The scheme's hours are written as the
+ * reader writes a number — 36,5 in Norwegian.
+ */
+export const hoursMismatchMessage = (
+  t: Translate,
+  values: TermsFormValues,
+  formatNumber: (value: number) => string,
+): string | null => {
   const hours = asNumber(values.fullTimeHoursPerWeek);
   if (hours === undefined || !fullTimeHoursMismatch(values.workingHoursScheme, hours)) return null;
-  return t(hoursRuleKey(values.workingHoursScheme), { hours: defaultFullTimeHours[values.workingHoursScheme] });
+  return t(hoursRuleKey(values.workingHoursScheme), {
+    hours: formatNumber(defaultFullTimeHours[values.workingHoursScheme]),
+  });
 };
 
 /**
@@ -208,7 +218,7 @@ export const hoursMismatchMessage = (t: Translate, values: TermsFormValues): str
  * sit under `terms` (an employment's first row nests them so). The server
  * judges all of it again, and its field errors are keyed the same way.
  */
-export const termsValidation = (t: Translate) => ({
+export const termsValidation = (t: Translate, formatNumber: (value: number) => string) => ({
   employmentType: (value: StaffEmploymentType | null) => (value ? null : t("employmentTypeRequired")),
   temporaryGround: (value: StaffTemporaryGround | null, values: { terms: TermsFormValues }) =>
     values.terms.employmentType === "midlertidig" && !value ? t("temporaryGroundRequired") : null,
@@ -218,7 +228,7 @@ export const termsValidation = (t: Translate) => ({
     return isFtePercent(percent) ? null : t("ftePercentRange");
   },
   fullTimeHoursPerWeek: (_value: number | string, values: { terms: TermsFormValues }) =>
-    hoursMismatchMessage(t, values.terms),
+    hoursMismatchMessage(t, values.terms, formatNumber),
   occupationCode: (value: string) =>
     value.trim() === "" || isOccupationCode(value.trim()) ? null : t("occupationCodeInvalid"),
   noticeUnit: (value: StaffNoticeUnit | null, values: { terms: TermsFormValues }) =>

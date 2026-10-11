@@ -20,7 +20,7 @@ The sidebar shows the areas your permissions give you:
 | Area in the sidebar | Who sees it |
 | --- | --- |
 | **My page** | everyone with `staff:access` |
-| **People** | `staff:view` — an HR role holding `staff:manage` without it still opens the page by its address and lists people |
+| **People** | `staff:view`, or `staff:manage` — an HR role without `staff:view` still lists people and reads the structure |
 | **Staff settings** | `staff:manage` |
 
 What a screen offers follows what the server says you may do: the **New person**
@@ -145,7 +145,8 @@ structure.
 - **Occupational injury insurer**.
 
 Press **Save settings**. If somebody else saved the settings since you opened the page,
-the save is refused with a message; reload and save again.
+they are reloaded and the page says so; make your change again. The same goes for a
+row of the structure: its form closes on the refreshed table.
 
 ### The structure
 

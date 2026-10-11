@@ -89,6 +89,90 @@ describe("SettingsPage — the settings", () => {
   });
 });
 
+/** The module's 409 for a stale If-Match, with the English sentence the page must not show. */
+const revisionConflict = () =>
+  staffProblem(409, {
+    code: "revision_conflict",
+    title: "Revision conflict",
+    detail: "The settings has revision 4; the supplied revision was 3.",
+  });
+
+describe("SettingsPage — somebody else saved first", () => {
+  it("reloads the settings and says so in the reader's words", async () => {
+    const fetchMock = stubStaffApi({
+      write: (method, path) => (method === "PUT" && path === "/api/v1/staff/settings" ? revisionConflict() : undefined),
+    });
+    renderRoute("/staff/settings");
+
+    const insurer = await screen.findByRole("textbox", { name: "Occupational injury insurer" });
+    const reads = fetchMock.actualCalls.filter(
+      ([url, init]) => String(url).endsWith("/staff/settings") && !init?.method,
+    ).length;
+    await userEvent.type(insurer, "Gjensidige");
+    // Meanwhile the row moved on, as somebody else's save would leave it.
+    fetchMock.state.settings = { ...fetchMock.state.settings, injuryInsurer: "Tryg", revision: 4 };
+    await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    expect(await screen.findByText("Somebody else saved this; it has been reloaded")).toBeInTheDocument();
+    expect(screen.queryByText(/supplied revision/)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "Occupational injury insurer" })).toHaveValue("Tryg"),
+    );
+    expect(
+      fetchMock.actualCalls.filter(([url, init]) => String(url).endsWith("/staff/settings") && !init?.method).length,
+    ).toBeGreaterThan(reads);
+  });
+
+  it("closes a structure form whose row moved on, and reloads the table", async () => {
+    stubStaffApi({
+      write: (method, path) =>
+        method === "PUT" && path === "/api/v1/staff/locations/31" ? revisionConflict() : undefined,
+    });
+    renderRoute("/staff/settings");
+
+    await userEvent.click(
+      within(await tableRow("Locations", "Oslo HQ")).getByRole("button", { name: "Change Oslo HQ" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Change the location" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Somebody else saved this; it has been reloaded")).toBeInTheDocument();
+    expect(screen.queryByText(/supplied revision/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Change the location" })).not.toBeInTheDocument());
+  });
+
+  it("says the same when the default moved under a stale row", async () => {
+    stubStaffApi({
+      write: (method, path) =>
+        method === "PUT" && path === "/api/v1/staff/legal-entities/2" ? revisionConflict() : undefined,
+    });
+    renderRoute("/staff/settings");
+
+    const second = await tableRow("Legal entities", "Fjord Holding AS");
+    await userEvent.click(within(second).getByRole("button", { name: "Make Fjord Holding AS the default" }));
+
+    expect(await screen.findByText("Somebody else saved this; it has been reloaded")).toBeInTheDocument();
+    expect(screen.queryByText(/supplied revision/)).not.toBeInTheDocument();
+  });
+});
+
+describe("SettingsPage — HR without the directory", () => {
+  it("reads and changes the structure with staff:manage alone", async () => {
+    const fetchMock = stubStaffApi({ role: "manageOnly" });
+    renderRoute("/staff/settings");
+
+    expect(await tableRow("Legal entities", "Fjord Systems AS")).toHaveTextContent("Default");
+    expect(await tableRow("Business units", "Bergen office")).toHaveTextContent("Fjord Holding AS");
+    expect(await tableRow("Departments", "Operations")).toHaveTextContent("Engineering");
+    expect(await tableRow("Locations", "Bergen")).toBeInTheDocument();
+    await userEvent.click(
+      within(await tableRow("Locations", "Bergen")).getByRole("button", { name: "Archive Bergen" }),
+    );
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(write(fetchMock, "POST", "/locations/32/archive").url).toBeDefined());
+  });
+});
+
 describe("SettingsPage — the structure", () => {
   it("marks the default legal entity, and moves the default with the row's own revision", async () => {
     const fetchMock = stubStaffApi();
@@ -177,6 +261,13 @@ describe("SettingsPage — the structure", () => {
       parentId: 21,
     });
     expect(fetchMock.actualCalls.some(([url]) => String(url).includes("/staff/people?q=grace"))).toBe(true);
+  });
+
+  it("names a manager it cannot read by id rather than waiting for ever", async () => {
+    stubStaffApi({ departments: [{ id: 23, code: "LEG", name: "Legal", managerPersonId: 999, revision: 1 }] });
+    renderRoute("/staff/settings");
+
+    expect(await tableRow("Departments", "Legal")).toHaveTextContent("Person 999");
   });
 
   it("adds a business unit under the legal entity picked, with no default flag unless asked", async () => {

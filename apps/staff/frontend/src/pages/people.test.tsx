@@ -136,6 +136,14 @@ describe("PeoplePage — a colleague", () => {
     expect(lastListQuery(fetchMock).has("status")).toBe(false);
   });
 
+  it("never opens New person from a pasted link", async () => {
+    stubStaffApi({ role: "view" });
+    renderRoute("/staff/people?create=person");
+
+    expect(await row("Ada Lovelace")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "New person" })).not.toBeInTheDocument();
+  });
+
   it("links a row to the person's page", async () => {
     stubStaffApi({ role: "view" });
     renderRoute("/staff/people");
@@ -146,12 +154,12 @@ describe("PeoplePage — a colleague", () => {
 });
 
 describe("PeoplePage — HR without the directory", () => {
-  it("still lists, with the status, but offers no structure filters", async () => {
+  it("still lists, with the status and the structure filters", async () => {
     stubStaffApi({ role: "manageOnly" });
     renderRoute("/staff/people");
 
     expect(await row("Ada Lovelace")).toHaveTextContent("Active");
-    expect(screen.queryByRole("combobox", { name: "Business unit" })).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Business unit" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New person" })).toBeInTheDocument();
   });
 });

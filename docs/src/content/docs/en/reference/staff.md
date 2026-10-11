@@ -126,9 +126,11 @@ Four small tables, not an org tree (design S6):
   given).
 
 Listing them (`GET /legal-entities`, `/business-units`, `/departments`, `/locations`)
-needs `staff:view`; adding (`POST`), replacing (`PUT /{id}`) and archiving
-(`POST /{id}/archive`) need `staff:manage`. `GET /meta` carries all four lists for a
-caller holding `staff:view`, read in one snapshot.
+needs `staff:view` or `staff:manage` — an HR role without the directory still lists
+people and names their units and departments — and anyone else gets the uniform 403,
+judged in the module as on `GET /people`; adding (`POST`), replacing (`PUT /{id}`) and
+archiving (`POST /{id}/archive`) need `staff:manage`. `GET /meta` carries all four
+lists for a caller holding either, read in one snapshot.
 
 **Nothing is deleted.** A row no longer in use is archived: it stays on every row that
 names it and leaves the pickers. Every list answers archived rows too, with
@@ -802,7 +804,7 @@ All under `/api/v1/staff`.
 | --- | --- |
 | `GET /meta` | `staff:access` |
 | `GET /settings`, `PUT /settings` | `staff:manage` |
-| `GET /legal-entities`, `/business-units`, `/departments`, `/locations` | `staff:view` |
+| `GET /legal-entities`, `/business-units`, `/departments`, `/locations` | `staff:view` or `staff:manage` (judged in the module; otherwise 403) |
 | `POST` the same, `PUT /{id}`, `POST /{id}/archive` | `staff:manage` |
 | `GET /people` | `staff:view` or `staff:manage` (judged in the module; otherwise 403) |
 | `GET /people/{id}`, `/next-of-kin`, `/roles`, `/events` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |

@@ -19,11 +19,11 @@
 
   | Operations | Access | In-module judgment |
   |---|---|---|
-  | `GET /meta`, `GET /me`, `PUT /me`, `GET /me/events` | `permission:staff:access` | `/me` needs a self-service link, else 404 `no_person`; `/meta`'s structure block only with `staff:view` |
+  | `GET /meta`, `GET /me`, `PUT /me`, `GET /me/events` | `permission:staff:access` | `/me` needs a self-service link, else 404 `no_person`; `/meta`'s structure block only with `staff:view` or `staff:manage` |
   | `GET /people/{id}`, `GET /people/{id}/employments`, `GET /employments/{id}`, `GET /employments/{id}/terms`, `GET /people/{id}/org`, `GET /people/{id}/next-of-kin`, `GET /people/{id}/roles`, `GET /people/{id}/user`, `GET /employments/{id}/contract-check` | `permission:staff:access` | audience by §5: Self (linked user, any state), Manager (any manager of the person in force today — concurrent employments may give two — is linked to the caller), `staff:view`, `staff:manage`, `staff:personal-data`; `staff:approve` is **not** an A1 audience (reading 18); outsider → 404 identical to an unknown id, and so does the `staff:view`-only audience for a person not active today (reading 15); the response shaped per field by the audience's groups |
   | `GET /people/{id}/events` | `permission:staff:access` | Self, Manager, `staff:manage`, `staff:personal-data` only (§5's Events row); every other caller → 404 identical to an unknown id |
   | `GET /people` | `permission:staff:access` | `staff:manage` lists with the `status` filter (`current` default: active, upcoming, no employment yet; `ended`; `all`) and the status column; otherwise `staff:view` lists people active today; neither → the uniform 403 (Expenses' batch-endpoint rule), so an HR role without `staff:view` still lists |
-  | `GET /legal-entities`, `/business-units`, `/departments`, `/locations` | `permission:staff:access+staff:view` | |
+  | `GET /legal-entities`, `/business-units`, `/departments`, `/locations` | `permission:staff:access` | `staff:view` or `staff:manage` (an HR role without `staff:view` still names units and departments, reading 15), else the uniform 403 as on `GET /people` (Task 5a's review) |
   | `GET /settings` | `permission:staff:access+staff:manage` | |
   | every **other** `POST`/`PUT`/`DELETE` on people, employments, terms, structure, settings, `PUT /people/{id}/user`, `GET /assignable-users` | `permission:staff:access+staff:manage` | |
   | `PUT /people/{id}/national-id`, `POST …/national-id/reveal`, `PUT /people/{id}/bank-account`, `POST …/bank-account/reveal` | `permission:staff:access+staff:personal-data` | |

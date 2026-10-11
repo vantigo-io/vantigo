@@ -21,7 +21,7 @@ Sidemenyen viser områdene rettighetene dine gir deg:
 | Område i sidemenyen | Hvem ser det |
 | --- | --- |
 | **Min side** | alle med `staff:access` |
-| **Personer** | `staff:view` — en HR-rolle med `staff:manage` uten den åpner likevel siden via adressen og ser listen |
+| **Personer** | `staff:view`, eller `staff:manage` — en HR-rolle uten `staff:view` ser også listen og strukturen |
 | **Ansatteinnstillinger** | `staff:manage` |
 
 Hva et skjermbilde tilbyr, følger det serveren sier at du kan gjøre: knappen **Ny
@@ -57,7 +57,7 @@ Med `staff:manage` ser du også **Status**-valget og en statuskolonne:
 - **Alle** lister alle.
 
 Kolonnen sier **Aktiv**, **Begynner** med første dag, **Sluttet** med siste
-arbeidsdag, eller **Ikke ansatt**. «I dag» er dagen i forretningstidssonen (se
+arbeidsdag, eller **Ikke ansatt**. «I dag» er dagen i virksomhetens tidssone (se
 [Endre innstillingene](#endre-innstillingene)), så listen skifter ved midnatt der, ikke
 i nettleseren din.
 
@@ -76,10 +76,10 @@ under **Nåværende** i Personer med statusen **Ikke ansatt**.
    **Visningsnavn** er valgfritt; tomt blir det de to navnene.
 2. Ansattnummeret **lages automatisk** som standard: skjemaet sier hvilket nummer som
    er neste — prefikset og neste nummer fra innstillingene — med mindre noen allerede
-   har det, og da brukes det neste ledige. Vil du gi det selv, slår du på **Gi
-   ansattnummer selv** og skriver det inn: opptil 16 bokstaver, sifre eller
+   har det, og da brukes det neste ledige. Vil du gi det selv, slår du på **Velg eget
+   ansattnummer** og skriver det inn: opptil 16 bokstaver, sifre eller
    bindestreker, unikt uansett store og små bokstaver. Nummeret endres aldri senere.
-3. Legg inn **E-post på jobb**, **Telefon på jobb**, **Språk** og **Arbeidsland** når
+3. Legg inn **E-post på jobb**, **Jobbtelefon**, **Språk** og **Arbeidsland** når
    du har dem. En e-post på jobb som en annen person har, avvises på feltet.
 4. **Private opplysninger (valgfritt)** åpner fødselsdato, kjønn, mobiltelefon og privat
    telefon, privat e-post og hjemmeadresse. Ingen av dem kreves for å opprette
@@ -96,9 +96,9 @@ avviser vilkår uten dem.
 
 1. **Virksomhet** er forhåndsvalgt til standardvirksomheten; velg en annen hvis
    arbeidsforholdet rapporteres et annet sted. **Startdato** er forhåndsutfylt med i dag
-   i forretningstidssonen.
+   i virksomhetens tidssone.
 2. Arbeidsforholdsnummeret — a-meldingens arbeidsforholdID — lages fra ansattnummeret
-   (`E-8-1` for ansatt `E-8`). Slå på **Gi arbeidsforholdsnummer selv** for å skrive
+   (`E-8-1` for ansatt `E-8`). Slå på **Velg eget arbeidsforholdsnummer** for å skrive
    inn et eget (opptil 40 bokstaver, sifre eller bindestreker).
 3. Velg **Ansettelsestype**: **Fast** eller **Midlertidig**. En midlertidig ansettelse
    ber om **Grunnlag for midlertidig ansettelse** (aml. § 14-9 (2) a–e, eller grunnlag
@@ -133,7 +133,7 @@ selskapets struktur.
 
 ### Generelt
 
-- **Forretningstidssone** — hver dato i Ansatte, også «i dag», er en kalenderdag i
+- **Virksomhetens tidssone** — hver dato i Ansatte, også «i dag», er en kalenderdag i
   denne sonen.
 - **Prefiks for ansattnummer** og **Neste ansattnummer** — et nummer som lages
   automatisk, er prefikset og neste nummer skrevet sammen uten utfylling: `E-` og 8 blir
@@ -143,10 +143,11 @@ selskapets struktur.
   det varer.
 - **Pensjonsleverandør** — leverandøren av tjenestepensjon som avtalekontrollen leser
   når en vilkårsrad ikke har noen tekst om trygd og pensjon.
-- **Yrkesskadeforsikring**.
+- **Yrkesskadeforsikrer**.
 
 Trykk **Lagre innstillingene**. Har noen andre lagret innstillingene siden du åpnet
-siden, avvises lagringen med en melding; last siden på nytt og lagre igjen.
+siden, lastes de inn på nytt og siden sier fra; gjør endringen din på nytt. Det samme
+gjelder en rad i strukturen: skjemaet lukkes over den oppdaterte tabellen.
 
 ### Strukturen
 

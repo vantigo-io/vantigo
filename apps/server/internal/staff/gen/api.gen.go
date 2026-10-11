@@ -855,7 +855,7 @@ type StaffMeta struct {
 	// Capabilities What the caller may do in Staff, so the app never re-derives a rule this module owns. The access layer still decides every request.
 	Capabilities StaffCapabilities `json:"capabilities"`
 
-	// Structure The company's structure, present on GET /meta only for a caller holding staff:view. Archived rows are included so a stored reference can still be named; the pickers leave them out.
+	// Structure The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out.
 	Structure *StaffStructure `json:"structure,omitempty"`
 
 	// TimeZone The installation's business time zone, an IANA name. Every date of this module — a start, an end, "today" — is a calendar day in it.
@@ -1255,7 +1255,7 @@ type StaffSettingsRequest struct {
 	TimeZone string `json:"timeZone"`
 }
 
-// StaffStructure The company's structure, present on GET /meta only for a caller holding staff:view. Archived rows are included so a stored reference can still be named; the pickers leave them out.
+// StaffStructure The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out.
 type StaffStructure struct {
 	BusinessUnits []StaffBusinessUnit `json:"businessUnits"`
 	Departments   []StaffDepartment   `json:"departments"`
