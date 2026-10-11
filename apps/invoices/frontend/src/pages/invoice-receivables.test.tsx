@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoicesCatalog } from "../i18n";
 import { jsonResponse, refusal } from "../test/api";
-import { NO_BODY, pendingResponse, requestTo, documentServer as server } from "../test/document-server";
+import { NO_BODY, pendingResponse, readsOf, requestTo, documentServer as server } from "../test/document-server";
 import { OTHER_USER_ID, partlyPaid, reminded, reminderLetter } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 
@@ -11,6 +11,9 @@ import { renderRoute } from "../test/route-tree";
 const holdResult = (lettersLeft: unknown[] = []) => jsonResponse(200, { invoice: reminded(), lettersLeft });
 
 /** A letter's row in the Reminders card, by its number. */
+/** The invoice's own read: a write is followed by reading it again. */
+const INVOICE = "/api/v1/invoices/1001";
+
 const letterRow = async (sequence: number) => {
   const card = await screen.findByTestId("reminders-card");
   return card.querySelector(`[data-letter="${sequence}"]`) as HTMLElement;
@@ -124,14 +127,18 @@ describe("RemindersCard_LettersPdfWithdrawRetry", () => {
     expect(within(dialog).getByText(/A printed letter may already be in the post/)).toBeInTheDocument();
     const submit = within(dialog).getByRole("button", { name: "Withdraw" });
     expect(submit).toBeDisabled();
-    await userEvent.type(within(dialog).getByRole("textbox", { name: "Reason" }), "Tatt ut av posten");
+    // Spaces around the reason are not part of it.
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Reason" }), "  Tatt ut av posten  ");
     await userEvent.click(submit);
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Withdraw" })).toBeDisabled());
     expect(requestTo(fetchMock, "POST", "/api/v1/invoices/reminders/3002/withdraw")).toEqual({
       reason: "Tatt ut av posten",
     });
+    expect(readsOf(fetchMock, INVOICE)).toBe(1);
     pending.answer(jsonResponse(200, reminderLetter({ id: 3002, status: "withdrawn" })));
     expect(await screen.findByText("Letter withdrawn")).toBeInTheDocument();
+    // The answer is the letter: the invoice that holds it is read again.
+    await waitFor(() => expect(readsOf(fetchMock, INVOICE)).toBeGreaterThan(1));
   });
 
   it("says reminder_not_withdrawable in words, never the server's English", async () => {
@@ -196,6 +203,59 @@ describe("ChargesCard_FiguresPaymentAndWaive", () => {
     expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/charge-payments")).toEqual({
       paidOn: "2026-09-12",
       amount: 26.2,
+    });
+    // The answer carries no send defaults: the invoice is read again.
+    await waitFor(() => expect(readsOf(fetchMock, INVOICE)).toBeGreaterThan(1));
+  });
+
+  it("offers no charge payment when nothing is outstanding, but still the waiver", async () => {
+    server(() => reminded({ charges: { claimed: 36.2, waived: 0, paid: 36.2, outstanding: 0 } }));
+    renderRoute("/invoices/1001");
+
+    const card = await screen.findByTestId("charges-card");
+    expect(within(card).getByTestId("charges-outstanding")).toHaveTextContent(/NOK\s?0\.00/);
+    expect(within(card).queryByRole("button", { name: "Register a charge payment" })).not.toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Waive" })).toBeInTheDocument();
+  });
+
+  it("says no interest accrued today when the server gives none", async () => {
+    server(() => reminded({ charges: { claimed: 36.2, waived: 0, paid: 10, outstanding: 26.2 } }));
+    renderRoute("/invoices/1001");
+
+    const card = await screen.findByTestId("charges-card");
+    expect(within(card).getByTestId("charges-outstanding")).toBeInTheDocument();
+    expect(within(card).queryByTestId("interest-today")).not.toBeInTheDocument();
+  });
+
+  it("waives interest by the latest sent letter, and offers exactly the three reasons a person gives", async () => {
+    const fetchMock = server(
+      () => {
+        const doc = reminded();
+        // Letter 2 is sent too, with interest of its own: it is the latest that claims it.
+        doc.reminders = doc.reminders?.map((r) =>
+          r.id === 3002 ? { ...r, status: "sent", sentAt: "2026-11-02T07:00:00Z", printBatchId: undefined } : r,
+        );
+        return doc;
+      },
+      { "POST /api/v1/invoices/1001/charges/waive": () => jsonResponse(200, reminded()) },
+    );
+    renderRoute("/invoices/1001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Waive" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("checkbox", { name: /^The interest letter 1 claimed/ })).not.toBeInTheDocument();
+    await userEvent.click(
+      within(dialog).getByRole("checkbox", { name: /^The interest letter 2 claimed, NOK\s?1\.80/ }),
+    );
+    await userEvent.click(within(dialog).getByRole("combobox", { name: "Reason" }));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["The objection was upheld", "Claimed in error", "Goodwill"]);
+    await userEvent.click(screen.getByRole("option", { name: "Goodwill" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Waive" }));
+    expect(await screen.findByText("Charges waived")).toBeInTheDocument();
+    expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/charges/waive")).toEqual({
+      waivers: [{ reminderId: 3002, kind: "interest" }],
+      reason: "goodwill",
     });
   });
 
@@ -344,6 +404,21 @@ describe("DeliveriesCard_RecordAndRemove", () => {
     expect(within(removed).queryByRole("button")).not.toBeInTheDocument();
   });
 
+  it("records a delivery as handed over unless the person says posted", async () => {
+    const fetchMock = server(() => reminded(), {
+      "POST /api/v1/invoices/1001/manual-deliveries": () => jsonResponse(200, reminded()),
+    });
+    renderRoute("/invoices/1001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Record a delivery" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Record" }));
+    expect(await screen.findByText("Delivery recorded")).toBeInTheDocument();
+    expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/manual-deliveries")).toEqual({
+      kind: "handed_over",
+      deliveredOn: "2026-09-12",
+    });
+  });
+
   it("records a delivery, handed over or posted, with invoices:issue", async () => {
     const fetchMock = server(() => reminded(), {
       "POST /api/v1/invoices/1001/manual-deliveries": () => jsonResponse(200, reminded()),
@@ -408,6 +483,8 @@ describe("HoldCard_PlaceAndLiftDefaultingToObjectionUpheld", () => {
     await userEvent.click(submit);
     expect(await screen.findByText("The invoice is on hold")).toBeInTheDocument();
     expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/hold")).toEqual({ note: "Feil timer" });
+    // The answer's invoice is not set into the cache: the invoice is read again.
+    await waitFor(() => expect(readsOf(fetchMock, INVOICE)).toBeGreaterThan(1));
 
     const left = await screen.findByTestId("letters-left");
     expect(within(left).getByText(/Letter 2 is printed in print batch 7 and may be in the post/)).toBeInTheDocument();
@@ -684,7 +761,7 @@ describe("HandoffCard_HandOffWithdrawAndExport", () => {
 
   it.each([
     ["invoice_handed_off", /handed off to a collection agency already/],
-    ["invoice_settled", /Nothing is left to pay on this invoice/],
+    ["invoice_settled", /Nothing of this invoice is open: it is paid or credited, so there is no claim to hand off\./],
   ])("says %s in words", async (code, words) => {
     server(() => reminded(), { "POST /api/v1/invoices/1001/collection": () => refusal(409, code) });
     renderRoute("/invoices/1001");

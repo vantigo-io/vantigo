@@ -80,6 +80,12 @@ export const HandoffModal = ({
         setNotDelivered(true);
         return;
       }
+      // The payments' own words for invoice_settled speak of registering a
+      // payment; a hand-off is refused because no claim is left to hand off.
+      if (refusalCode(error) === "invoice_settled") {
+        notifications.show({ color: "red", title: t("handoff.couldNotRecord"), message: t("handoff.settled") });
+        return;
+      }
       notifications.show({ color: "red", title: t("handoff.couldNotRecord"), message: refusalMessage(error, t, date) });
     },
   });

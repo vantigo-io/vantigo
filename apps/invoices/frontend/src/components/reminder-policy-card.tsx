@@ -2,6 +2,7 @@ import { Alert, Button, Card, Group, Radio, Stack, Text, Textarea } from "@manti
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ContentSkeleton } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   POLICY_MODES,
@@ -44,6 +45,7 @@ export const ReminderPolicyCard = ({ customerId, canChange, currentUserId }: Rem
             {refusalMessage(policy.error, t, date)}
           </Alert>
         )}
+        {policy.isPending && <ContentSkeleton rows={2} rowHeight={36} />}
         {policy.data &&
           (canChange ? (
             <PolicyForm key={policy.data.updatedAt ?? "none"} policy={policy.data} currentUserId={currentUserId} />

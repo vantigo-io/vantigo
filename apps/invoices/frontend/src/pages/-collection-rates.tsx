@@ -20,6 +20,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton } from "@vantigo/frontend-shell";
+import dayjs from "dayjs";
 import { useState } from "react";
 import {
   addCollectionRate,
@@ -236,7 +237,8 @@ const AddRateModal = ({ today, onClose }: { today: string; onClose: () => void }
           description={halfYearly(kind) ? t("rates.validFromHalfYear") : t("rates.validFromHint")}
           required
           valueFormat={t("dateInputFormat")}
-          minDate={today}
+          // The server takes a day after today only.
+          minDate={dayjs(today).add(1, "day").format("YYYY-MM-DD")}
           value={validFrom}
           error={errors.validFrom}
           onChange={(v) => {

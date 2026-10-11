@@ -854,10 +854,10 @@ utskrift**, **Skrevet ut, ikke bekreftet postlagt** (med utskriftsbunken), **Sen
 **Feilet** eller **Trukket tilbake** — med hvorfor et brev i kø venter, hvorfor et brev
 feilet, og hvorfor og av hvem et brev ble trukket tilbake; datoen, fristen og totalen.
 **PDF**-en til et utskrevet eller sendt brev lastes ned ved siden av det av alle som kan
-lese fakturaen. Den som har `invoices:payments`, kan **Trekk tilbake** et brev som ikke er
-sendt, med en begrunnelse — et utskrevet brev kan allerede ligge i posten, så ta det ut
-først; et som sendes på e-post i samme øyeblikk, avvises — og **Send på nytt** et som
-feilet.
+lese fakturaen. Den som har `invoices:payments`, kan trekke tilbake et brev som ikke er
+sendt (**Trekk tilbake**), med en begrunnelse — et utskrevet brev kan allerede ligge i
+posten, så ta det ut først; et som sendes på e-post i samme øyeblikk, avvises — og sende et
+som feilet på nytt (**Send på nytt**).
 
 **Forfallslisten og purrekjøringer.** Vantigo vurderer hver forfalte faktura: hva som
 kommer neste gang, med brevet slik det ville gått i dag, og om bankdataene er ferske nok
@@ -945,7 +945,7 @@ og beholder det de sa.
 
 En purring kan bare kreve gebyr, kompensasjon eller renter av en faktura som er levert
 innen forfall: på e-post, som EHF eller registrert manuelt. Når du overleverte fakturaen
-eller sendte den i posten, klikker du **Registrer en levering** på kortet **Sendt på e-post**
+eller sendte den i posten, klikker du **Registrer en levering** på kortet **Leveringer**
 (`invoices:issue`), velger **Overlevert** eller **Postlagt**, dagen — fra fakturadatoen
 til i dag — og en merknad, og klikker **Registrer**. Kortet viser registreringene under
 **Registrert manuelt**, med hvem som registrerte hver. En feil registrering fjernes med en
@@ -963,7 +963,7 @@ er gått, trekkes tilbake; et utskrevet brev — det kan ligge i posten — og e
 e-post i samme øyeblikk, gjør det ikke, og siden nevner dem under **Brev som ikke ble
 trukket tilbake**, hvert utskrevne med **Trekk tilbake** når du har tatt det ut.
 
-**Opphev ventingen** spør *Var innsigelsen åpenbart grunnløs?* Svaret står på **Nei — den
+**Fjern fra vent** spør *Var innsigelsen åpenbart grunnløs?* Svaret står på **Nei — den
 hadde rimelig grunn**: alle gebyrer og all kompensasjon som er krevd på fakturaen,
 ettergis da (innsigelsen tatt til følge), og ingen kreves på den igjen — kortet sier det
 etterpå. Bare **Ja — den var åpenbart grunnløs** beholder kravene. Forsinkelsesrente er
@@ -980,7 +980,7 @@ oppgi dagen den ble overlevert (ikke før fakturadatoen, ikke etter i dag),
 **Inkassoselskap** og **Inkassoselskapets saksnummer**. En faktura uten registrert
 levering innen forfall avvises med ord: ble den levert, klikker du **Den ble levert:
 registrer leveringen**; ellers krysser du av **Overlever likevel, uten levering innen
-forfall** og overleverer igjen. Som ved en venting trekkes brevene som ikke er gått,
+forfall** og overleverer igjen. Som når en faktura settes på vent, trekkes brevene som ikke er gått,
 tilbake, og de utskrevne nevnes.
 
 Mens den er overlevert, går ingen brev, og betalinger registreres fortsatt: kortet
@@ -1062,7 +1062,7 @@ ren tekst — *Faktura 1001 fra <selger>* eller *Invoice 1001 from <selger>* på
 språk — som ber om utestående beløp til selgerens konto, merket med fakturaens KID når den har
 en og med nummeret ellers; svar går til e-posten i
 innstillingene ([tekstene](/en/reference/invoices/#sending-a-document)). En melding
-bekrefter *Sendt til …*, og kortet **Sendt på e-post** på dokumentet får en rad med
+bekrefter *Sendt til …*, og kortet **Leveringer** på dokumentet får en rad med
 **Sendt**, **Til** og **Emne**. Kolonnen **Til** vises bare for den som har
 `invoices:issue`; andre ser når og under hvilket emne hver sending gikk.
 
@@ -1071,7 +1071,7 @@ mer til den*), når det ikke finnes noen adresse, når dokumentlageret er utilgj
 eller etter mer enn 60 sendinger på ti minutter fra ett sted. Bekrefter e-postserveren
 ikke sendingen, sier dialogen *E-postserveren bekreftet ikke sendingen. Ingenting ble
 registrert; den kan likevel ha kommet fram. Sjekk med kunden før du sender på nytt.* En
-rad under **Sendt på e-post** betyr at e-postserveren tok imot e-posten, ikke at den kom
+rad under **Leveringer** betyr at e-postserveren tok imot e-posten, ikke at den kom
 fram: en retur går til installasjonens avsenderadresse og registreres ikke her. Samme
 dokument kan sendes på nytt, og loggføres da på nytt.
 
@@ -1134,7 +1134,7 @@ En sending kan avvises; dialogen sier da *Kunne ikke sende som EHF* og hvorfor:
 
 ### Følg sendingen på kortet E-faktura (EHF)
 
-Hvert utstedte dokument har kortet **E-faktura (EHF)** ved siden av **Sendt på e-post**.
+Hvert utstedte dokument har kortet **E-faktura (EHF)** ved siden av **Leveringer**.
 Det viser siste tilstand med ord, med når dokumentet ble lagt i kø, overlevert, levert
 eller feilet, og — for den som har `invoices:issue` — leverandørens referanse og årsaken
 til at en sending feilet. Under lister **Sendinger** hvert forsøk, nyeste først, med når
@@ -1267,9 +1267,9 @@ Ingen innebygd rolle har disse; en eier har alt
 
 | Du vil | Du trenger |
 | --- | --- |
-| Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet, lese forfallslisten, se en fakturas purringer, purrekrav, leveringer, venting og overlevering og laste ned PDF-en til et brev, lese en kundes purreregel | `invoices:access` |
+| Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet, lese forfallslisten, se en fakturas purringer, purrekrav, leveringer, vent og overlevering og laste ned PDF-en til et brev, lese en kundes purreregel | `invoices:access` |
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en | `invoices:issue` |
-| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og oppheve ventingen, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen | `invoices:payments` |
+| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen | `invoices:payments` |
 | Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, inkassosatsene og purreinnstillingene; endre en bankkontos filformat under **Innbetalinger** | `invoices:manage` |
