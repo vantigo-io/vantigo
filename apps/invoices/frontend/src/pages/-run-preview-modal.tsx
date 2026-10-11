@@ -16,7 +16,7 @@ import { ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import { RouteLink } from "../components/document-link";
 import "../i18n";
 import { accountNumber } from "../lib/bank";
-import { fieldRefusals, refusalMessage } from "../lib/errors";
+import { fieldRefusals, refusalCode, refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { useLetterLevel, useWords } from "../lib/reminders";
 import { reminderRunHref, reminderRunLinkOptions } from "../lib/routes";
@@ -104,25 +104,31 @@ export const RunPreviewModal = ({ scope, currency, onClose }: RunPreviewModalPro
   const [deselected, setDeselected] = useState<ReadonlySet<number>>(new Set());
   const [acknowledged, setAcknowledged] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
+  // The server found the bank data old when the preview did not: the box is offered from then on.
+  const [staleRefused, setStaleRefused] = useState(false);
   const letters = preview.data?.letters ?? [];
   const chosen = letters.filter((l) => !deselected.has(l.invoiceId));
+  // The stale-import confirmation is offered only where it matters, and sent only when offered and ticked.
+  const askAcknowledgement = Boolean(preview.data?.freshness.stale || staleRefused) && chosen.some(carriesCharge);
   const run = useMutation({
     mutationFn: () =>
       makeRun(
         chosen.map((l) => ({ invoiceId: l.invoiceId, action: l.action })),
-        acknowledged,
+        acknowledged && askAcknowledgement,
       ),
     onSuccess: async (answer) => {
       setResult(answer);
       setRefusal(null);
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
     },
-    onError: (error) =>
+    onError: (error) => {
+      if (refusalCode(error) === "bank_import_stale") setStaleRefused(true);
       setRefusal(
         error instanceof ApiValidationError
           ? fieldRefusals(error, t, () => false, "run").elsewhere.join(" ")
           : refusalMessage(error, t, date, (amount) => money(amount, currency)),
-      ),
+      );
+    },
   });
   const toggle = (invoiceId: number, on: boolean) => {
     setDeselected((current) => {
@@ -283,7 +289,7 @@ export const RunPreviewModal = ({ scope, currency, onClose }: RunPreviewModalPro
                   </Table>
                 </Stack>
               )}
-              {preview.data.freshness.stale && chosen.some(carriesCharge) && (
+              {askAcknowledgement && (
                 <Checkbox
                   label={t("run.acknowledgeStale")}
                   checked={acknowledged}

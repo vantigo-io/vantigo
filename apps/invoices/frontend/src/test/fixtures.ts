@@ -1503,7 +1503,7 @@ export const overdueList = (overrides: Partial<OverdueList> = {}): OverdueList =
         placedBy: CURRENT_USER_ID,
       },
       policyMode: "no_charges",
-      nextAction: { action: "blocked", reasons: ["on_hold", "not_delivered"], chargeNotes: [] },
+      nextAction: { action: "blocked", reasons: ["on_hold", "not_delivered"], chargeNotes: ["not_delivered"] },
     }),
   ],
   total: 3,

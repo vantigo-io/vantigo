@@ -4,8 +4,17 @@ import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
 import type { OverdueAction, OverdueWarning, RunPreviewLetter, RunSkip } from "../api/overdue";
 import { invoicesCatalog } from "../i18n";
-import { jsonResponse, refusal } from "../test/api";
-import { freshness, overdueList, runPreview, runResult } from "../test/fixtures";
+import { jsonResponse, path, refusal } from "../test/api";
+import {
+  freshness,
+  letterFacts,
+  overdueList,
+  pageOf,
+  previewLetter,
+  reminderRun,
+  runPreview,
+  runResult,
+} from "../test/fixtures";
 import { overdueServer } from "../test/overdue-server";
 import { renderRoute } from "../test/route-tree";
 
@@ -70,17 +79,23 @@ describe("the Overdue area", () => {
     expect(within(blocked).getByText("On hold")).toBeInTheDocument();
     expect(within(blocked).getByText("Not delivered by the due date")).toBeInTheDocument();
     expect(within(blocked).getByText("Reminded without charges")).toBeInTheDocument();
+    // Why a letter would claim less than it might, as the invoice's own card says it (D12).
+    expect(
+      within(blocked).getByText("No fee, compensation or interest: no delivery by the due date is recorded."),
+    ).toBeInTheDocument();
     expect(within(blocked).getByText("The invoice is on hold: the customer disputes it.")).toBeInTheDocument();
-    expect(queries[0]).toBe("page=1");
+    expect(queries[0]).toBe("page=1&pageSize=25");
 
     // The filters, each sent as the list takes it.
     await userEvent.click(screen.getByRole("combobox", { name: "Next action" }));
     await userEvent.click(await screen.findByRole("option", { name: "Waiting" }));
-    await waitFor(() => expect(queries).toContain("action=waiting&page=1"));
+    await waitFor(() => expect(queries).toContain("action=waiting&page=1&pageSize=25"));
     await userEvent.type(screen.getByRole("textbox", { name: "Due before" }), "Sep 1, 2026");
-    await waitFor(() => expect(queries).toContain("dueBefore=2026-09-01&action=waiting&page=1"));
+    await waitFor(() => expect(queries).toContain("dueBefore=2026-09-01&action=waiting&page=1&pageSize=25"));
     await userEvent.click(screen.getByRole("checkbox", { name: "Also paid invoices with charges outstanding" }));
-    await waitFor(() => expect(queries).toContain("dueBefore=2026-09-01&action=waiting&charges=outstanding&page=1"));
+    await waitFor(() =>
+      expect(queries).toContain("dueBefore=2026-09-01&action=waiting&charges=outstanding&page=1&pageSize=25"),
+    );
   });
 
   it.each([
@@ -157,6 +172,71 @@ describe("the Overdue area", () => {
     expect(within(runs).getByText("2 letters, 1 skipped")).toBeInTheDocument();
   });
 
+  it("previews the run narrowed as the list is, by customer and due date", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    overdueServer({
+      runs: (body) => {
+        bodies.push(body);
+        return jsonResponse(200, runPreview());
+      },
+    });
+    renderRoute("/invoices/overdue");
+
+    await screen.findByRole("link", { name: "1000" });
+    await userEvent.click(screen.getByRole("combobox", { name: "Customer" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Acme AS (10001)" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Due before" }), "Sep 1, 2026");
+    await userEvent.click(screen.getByRole("button", { name: "Send reminders" }));
+    await screen.findByRole("dialog", { name: "Send reminders" });
+
+    await waitFor(() => expect(bodies[0]).toEqual({ dryRun: true, customerId: 2001, dueBefore: "2026-09-01" }));
+  });
+
+  it("pages the runs", async () => {
+    const pages: string[] = [];
+    // The runs answer two pages: the second asked for when chosen.
+    const fetchMock = overdueServer({
+      answers: {
+        "GET /api/v1/invoices/reminder-runs?page=1": () => {
+          pages.push("1");
+          return jsonResponse(200, {
+            ...pageOf([reminderRun()]),
+            pagination: {
+              page: 1,
+              pageSize: 25,
+              totalCount: 26,
+              totalPages: 2,
+              hasNextPage: true,
+              hasPreviousPage: false,
+            },
+          });
+        },
+        "GET /api/v1/invoices/reminder-runs?page=2": () => {
+          pages.push("2");
+          return jsonResponse(200, {
+            ...pageOf([reminderRun({ id: 3 })]),
+            pagination: {
+              page: 2,
+              pageSize: 25,
+              totalCount: 26,
+              totalPages: 2,
+              hasNextPage: false,
+              hasPreviousPage: true,
+            },
+          });
+        },
+      },
+    });
+    renderRoute("/invoices/overdue");
+
+    const runs = await screen.findByTestId("reminder-runs");
+    await within(runs).findByRole("link", { name: "Run 11" });
+    await userEvent.click(within(runs).getByRole("button", { name: "2" }));
+    expect(await within(runs).findByRole("link", { name: "Run 3" })).toBeInTheDocument();
+    expect(pages).toEqual(["1", "2"]);
+    expect(fetchMock.actualCalls.some(([url]) => path(url) === "/api/v1/invoices/reminder-runs?page=2")).toBe(true);
+  });
+
   describe("RunPreview_DeselectWarnAndAcknowledge", () => {
     it("previews the letters, deselects one, asks for the stale-import confirmation, then runs", async () => {
       const bodies: Record<string, unknown>[] = [];
@@ -194,7 +274,7 @@ describe("the Overdue area", () => {
       await userEvent.click(within(dialog).getByRole("button", { name: "Send 1 letter" }));
       expect(
         await within(dialog).findByText(
-          "The latest bank booking imported is from Aug 30, 2026, and letters of this run claim charges. Import the latest bank file, or confirm the run with the box below.",
+          "The latest bank booking imported is from Aug 30, 2026, and letters of this run claim charges. Import the latest bank file, or confirm the run with the box above.",
         ),
       ).toBeInTheDocument();
       expect(bodies[1]).toEqual({ dryRun: false, items: [{ invoiceId: 1001, action: "reminder" }] });
@@ -218,6 +298,124 @@ describe("the Overdue area", () => {
       await waitFor(() => expect(router.state.location.pathname).toBe("/invoices/reminder-runs/11"));
     });
 
+    it("sends each letter with the action its preview showed", async () => {
+      const bodies: Record<string, unknown>[] = [];
+      overdueServer({
+        runs: (body) => {
+          bodies.push(body);
+          return body.dryRun
+            ? jsonResponse(
+                200,
+                runPreview({
+                  letters: [
+                    previewLetter({
+                      action: "collection_notice",
+                      letter: letterFacts({ level: "collection_notice", feeKind: "none", fee: 0 }),
+                    }),
+                  ],
+                }),
+              )
+            : jsonResponse(201, runResult());
+        },
+      });
+      renderRoute("/invoices/overdue");
+
+      await userEvent.click(await screen.findByRole("button", { name: "Send reminders" }));
+      const dialog = await screen.findByRole("dialog", { name: "Send reminders" });
+      expect(await within(dialog).findByText("Debt collection notice")).toBeInTheDocument();
+      await userEvent.click(within(dialog).getByRole("button", { name: "Send 1 letter" }));
+      await within(dialog).findByTestId("run-result");
+      expect(bodies[1]).toEqual({ dryRun: false, items: [{ invoiceId: 1001, action: "collection_notice" }] });
+    });
+
+    it("offers no stale-import confirmation on fresh bank data, until the server finds it old", async () => {
+      const bodies: Record<string, unknown>[] = [];
+      overdueServer({
+        runs: (body) => {
+          bodies.push(body);
+          if (body.dryRun) return jsonResponse(200, runPreview());
+          if (!body.acknowledgeStaleImport) return refusal(409, "bank_import_stale", { lastBookedOn: "2026-08-30" });
+          return jsonResponse(201, runResult());
+        },
+      });
+      renderRoute("/invoices/overdue");
+
+      await userEvent.click(await screen.findByRole("button", { name: "Send reminders" }));
+      const dialog = await screen.findByRole("dialog", { name: "Send reminders" });
+      await within(dialog).findByTestId("preview-letter-1000");
+      const box = { name: "The bank data is old: make the run with its charges anyway" };
+      expect(within(dialog).queryByRole("checkbox", box)).not.toBeInTheDocument();
+
+      await userEvent.click(within(dialog).getByRole("button", { name: "Send 2 letters" }));
+      await userEvent.click(await within(dialog).findByRole("checkbox", box));
+      await userEvent.click(within(dialog).getByRole("button", { name: "Send 2 letters" }));
+      await within(dialog).findByTestId("run-result");
+      expect(bodies[2]).toMatchObject({ acknowledgeStaleImport: true });
+    });
+
+    it("sends the confirmation only while it is offered: not once the letters with charges are left out", async () => {
+      const bodies: Record<string, unknown>[] = [];
+      overdueServer({
+        runs: (body) => {
+          bodies.push(body);
+          return body.dryRun
+            ? jsonResponse(200, runPreview({ freshness: freshness({ stale: true, lastBookedOn: "2026-08-30" }) }))
+            : jsonResponse(201, runResult());
+        },
+      });
+      renderRoute("/invoices/overdue");
+
+      await userEvent.click(await screen.findByRole("button", { name: "Send reminders" }));
+      const dialog = await screen.findByRole("dialog", { name: "Send reminders" });
+      const box = { name: "The bank data is old: make the run with its charges anyway" };
+      await userEvent.click(await within(dialog).findByRole("checkbox", box));
+      // Invoice 1000 is the one letter with charges: without it the box goes, and so does the confirmation.
+      await userEvent.click(within(dialog).getByRole("checkbox", { name: "Send the letter for invoice 1000" }));
+      expect(within(dialog).queryByRole("checkbox", box)).not.toBeInTheDocument();
+      await userEvent.click(within(dialog).getByRole("button", { name: "Send 1 letter" }));
+      await within(dialog).findByTestId("run-result");
+      expect(bodies[1]).toEqual({ dryRun: false, items: [{ invoiceId: 1007, action: "reminder" }] });
+    });
+
+    it("holds a run to 500 letters", async () => {
+      const letters = Array.from({ length: 501 }, (_, n) =>
+        previewLetter({ invoiceId: 5000 + n, number: 4000 + n, letter: letterFacts({ fee: 0, interest: 0 }) }),
+      );
+      overdueServer({
+        runs: (body) =>
+          body.dryRun
+            ? jsonResponse(200, runPreview({ letters, blockedOrWaiting: [] }))
+            : jsonResponse(201, runResult()),
+      });
+      renderRoute("/invoices/overdue");
+
+      await userEvent.click(await screen.findByRole("button", { name: "Send reminders" }));
+      const dialog = await screen.findByRole("dialog", { name: "Send reminders" });
+      expect(await within(dialog).findByRole("button", { name: "Send 501 letters" })).toBeDisabled();
+      expect(within(dialog).getByText("At most 500 letters go in one run; 501 are chosen.")).toBeInTheDocument();
+      await userEvent.click(within(dialog).getByRole("checkbox", { name: "Send the letter for invoice 4000" }));
+      expect(within(dialog).getByRole("button", { name: "Send 500 letters" })).toBeEnabled();
+    });
+
+    it("reads the overdue list and the runs again after a run", async () => {
+      const fetchMock = overdueServer();
+      renderRoute("/invoices/overdue");
+      await screen.findByTestId("reminder-runs");
+      const reads = (p: string) =>
+        fetchMock.actualCalls.filter(
+          ([url, init]) => path(url).split("?")[0] === p && (init?.method ?? "GET") === "GET",
+        ).length;
+      await waitFor(() => expect(reads("/api/v1/invoices/reminder-runs")).toBe(1));
+      const before = { list: reads("/api/v1/invoices/overdue"), runs: reads("/api/v1/invoices/reminder-runs") };
+
+      await userEvent.click(screen.getByRole("button", { name: "Send reminders" }));
+      const dialog = await screen.findByRole("dialog", { name: "Send reminders" });
+      await userEvent.click(await within(dialog).findByRole("button", { name: "Send 2 letters" }));
+      await within(dialog).findByTestId("run-result");
+      await waitFor(() => expect(reads("/api/v1/invoices/overdue")).toBeGreaterThan(before.list));
+      await waitFor(() => expect(reads("/api/v1/invoices/reminder-runs")).toBeGreaterThan(before.runs));
+    });
+
     it.each([
       [
         "a missing rate, naming the kind and the half-year",
@@ -237,7 +435,7 @@ describe("the Overdue area", () => {
       [
         "no bank file ever imported",
         refusal(409, "bank_import_stale"),
-        "No bank file was ever imported, and letters of this run claim charges. Import the latest bank file, or confirm the run with the box below.",
+        "No bank file was ever imported, and letters of this run claim charges. Import the latest bank file, or confirm the run with the box above.",
       ],
     ])("says %s in words", async (_case, answer, words) => {
       overdueServer({ runs: (body) => (body.dryRun ? jsonResponse(200, runPreview()) : answer) });

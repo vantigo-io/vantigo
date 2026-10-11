@@ -487,9 +487,9 @@ export const invoicesCatalog = {
     "refusal.collection_regime_unreviewed":
       "A letter of this run would claim a fee or be a debt collection notice after the collection-law regime was last reviewed. A manager reviews it in the reminder settings. No letter was made.",
     "refusal.bank_import_stale":
-      "The latest bank booking imported is from {{lastBookedOn}}, and letters of this run claim charges. Import the latest bank file, or confirm the run with the box below.",
+      "The latest bank booking imported is from {{lastBookedOn}}, and letters of this run claim charges. Import the latest bank file, or confirm the run with the box above.",
     "refusal.bank_import_stale_never":
-      "No bank file was ever imported, and letters of this run claim charges. Import the latest bank file, or confirm the run with the box below.",
+      "No bank file was ever imported, and letters of this run claim charges. Import the latest bank file, or confirm the run with the box above.",
     "refusal.too_many_overdue": "More than 5 000 invoices are overdue. Narrow the list by customer or by due date.",
     "refusal.bank_transaction_not_open":
       "This bank line is not in the queue as this needs it: it was matched or resolved, or someone dealt with it meanwhile. Reopen it first if it must be dealt with again.",
@@ -1510,7 +1510,6 @@ export const invoicesCatalog = {
     "print.postOnHint": "Today or one of the next 7 days.",
     "print.print_one": "Print {{count}} letter",
     "print.print_other": "Print {{count}} letters",
-    "print.tooMany": "At most {{max}} letters go in one batch; {{count}} are chosen.",
     "print.couldNotPrint": "The letters were not printed",
     "print.printed_one": "Batch {{id}}: {{count}} letter printed for {{date}}.",
     "print.printed_other": "Batch {{id}}: {{count}} letters printed for {{date}}.",
@@ -2060,9 +2059,9 @@ export const invoicesCatalog = {
     "refusal.collection_regime_unreviewed":
       "Et brev i denne kjøringen ville kreve gebyr eller være et inkassovarsel etter at inkassoregelverket sist ble gjennomgått. En administrator gjennomgår det i purreinnstillingene. Ingen brev ble laget.",
     "refusal.bank_import_stale":
-      "Den siste bankbokføringen som er importert, er fra {{lastBookedOn}}, og brev i denne kjøringen krever gebyr eller renter. Importer den siste bankfilen, eller bekreft kjøringen i boksen under.",
+      "Den siste bankbokføringen som er importert, er fra {{lastBookedOn}}, og brev i denne kjøringen krever gebyr eller renter. Importer den siste bankfilen, eller bekreft kjøringen i boksen over.",
     "refusal.bank_import_stale_never":
-      "Ingen bankfil er noen gang importert, og brev i denne kjøringen krever gebyr eller renter. Importer den siste bankfilen, eller bekreft kjøringen i boksen under.",
+      "Ingen bankfil er noen gang importert, og brev i denne kjøringen krever gebyr eller renter. Importer den siste bankfilen, eller bekreft kjøringen i boksen over.",
     "refusal.too_many_overdue": "Over 5 000 fakturaer har forfalt. Avgrens listen etter kunde eller forfallsdato.",
     "refusal.bank_transaction_not_open":
       "Denne banklinjen står ikke i køen slik dette krever: den er avstemt eller avklart, eller noen har behandlet den i mellomtiden. Gjenåpne den først hvis den må behandles på nytt.",
@@ -3075,7 +3074,7 @@ export const invoicesCatalog = {
     "runPage.openInvoice": "Åpne fakturaen",
     "runPage.openInvoiceOf": "Åpne fakturaen til {{letter}}",
     "reminders.notAllowedTitle": "Ikke tillatt",
-    "reminders.notAllowed": "Purrekjøringer og papirbrev krever tilgangen invoices:payments.",
+    "reminders.notAllowed": "Purrekjøringer og papirbrev krever rettigheten invoices:payments.",
     "print.title": "Papirbrev",
     "print.description":
       "Et papirbrev går når det postlegges: skriv ut brevene for dagen de legges i posten, og bekreft så bunken postlagt den dagen.",
@@ -3086,12 +3085,11 @@ export const invoicesCatalog = {
     "print.noneAwaiting": "Ingen brev venter på utskrift.",
     "print.col.invoice": "Faktura",
     "print.col.made": "Laget av",
-    "print.chooseLetter": "Skriv ut {{letter}} til dokument {{id}}",
+    "print.chooseLetter": "Skriv ut {{letter}} for dokument {{id}}",
     "print.postOn": "Postleggingsdag",
     "print.postOnHint": "I dag eller en av de neste 7 dagene.",
     "print.print_one": "Skriv ut {{count}} brev",
     "print.print_other": "Skriv ut {{count}} brev",
-    "print.tooMany": "Høyst {{max}} brev går i én bunke; {{count}} er valgt.",
     "print.couldNotPrint": "Brevene ble ikke skrevet ut",
     "print.printed_one": "Bunke {{id}}: {{count}} brev skrevet ut for {{date}}.",
     "print.printed_other": "Bunke {{id}}: {{count}} brev skrevet ut for {{date}}.",
@@ -3125,13 +3123,13 @@ export const invoicesCatalog = {
     "print.state.open": "Skrevet ut, ikke bekreftet postlagt",
     "print.state.posted": "Postlagt {{date}}",
     "print.state.reprinted": "Skrevet ut på nytt",
-    "print.toBePosted": "Skal postlegges {{date}}; bekreft den den dagen.",
+    "print.toBePosted": "Skal postlegges {{date}}; bekreft den samme dag.",
     "print.confirmPosted": "Bekreft postlagt",
     "print.confirmPostedOf": "Bekreft bunke {{id}} postlagt",
     "print.postedFor": "Bunken ble skrevet ut for {{date}}: datoene, fristene og gebyrene i brevene er den dagens.",
     "print.postedOn": "Postlagt",
     "print.postedOnHint":
-      "Bare dagen den ble skrevet ut for, godtas. Postlagt en annen dag må den skrives ut på nytt for dagen den går.",
+      "Bare dagen den ble skrevet ut for, godtas. Er den postlagt en annen dag, må den skrives ut på nytt for dagen den går.",
     "print.couldNotConfirm": "Bunken ble ikke bekreftet postlagt",
     "print.posted": "Bunke {{id}} er bekreftet postlagt: brevene er sendt.",
     "print.waivedLine": "{{letter}}: {{kinds}} ettergitt som krevd ved en feil — {{reason}}.",

@@ -46,11 +46,11 @@ export const OVERDUE_ACTIONS: readonly OverdueAction[] = [
   "waiting",
 ];
 
+/** The overdue list's page: it answers a total, not paging, so the page size is asked for and the pages counted here. */
+export const OVERDUE_PAGE_SIZE = 25;
+
 /** At most this many letters in one run (D10). */
 export const MAX_RUN_ITEMS = 500;
-
-/** At most this many letters in one print batch (D10). */
-export const MAX_PRINT_LETTERS = 200;
 
 /** A batch is printed for today or one of this many days on (D10). */
 export const MAX_POST_ON_DAYS = 7;
