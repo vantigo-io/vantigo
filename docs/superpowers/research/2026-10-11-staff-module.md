@@ -1094,3 +1094,19 @@ these, not from §9.
 11. **The sequence**: Staff phase 1 (register, absence, the provisioning flag with
     the local-invitation path) → the Entra module → Staff phase 2 (competence) →
     Staffing.
+12. **The account is created disabled ahead of the start.** Three settings replace
+    the pair in item 8: `provision_account` (yes or no), `provision_from` (the day
+    the account is enabled, default the employment start) and a company-level
+    `create_before_days` (the account is created disabled that many days before;
+    0 = on the day). Entra: created without licences, random never-shown password,
+    `employeeHireDate` set so the tenant's own lifecycle workflows can run, first
+    sign-in through a Temporary Access Pass or self-service reset explained in
+    the wizard. Local identity: a new in-process path creates the user row disabled
+    with no password at the lead date and delivers the invitation and enables on
+    `provision_from`.
+13. **At the end of employment the account is disabled, never deleted by
+    default.** The disable step also strips licences and group memberships and
+    revokes sessions, each a configurable step in the Entra module; a company
+    setting `delete_external_after_days` defaults to never and respects the legal
+    hold flag; identity never deletes a user Staff created (retention class C);
+    rehire re-enables. Mailbox conversion and OneDrive transfer are a roadmap line.
