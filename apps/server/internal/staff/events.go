@@ -24,13 +24,25 @@ import (
 // the history is read. payload_classes, the retention classes the payload
 // touches, is for the erase alone (delivery A2).
 
-// The event kinds delivery A1's Task 3a writes.
+// The event kinds delivery A1 writes. A sealed field's change names the
+// field with its kind (and the bank account's last four digits) before and
+// after, never a digit more; a reveal carries no field at all — its actor is
+// the viewer, which is what it records.
 const (
-	eventPersonCreated     = "person_created"
-	eventPersonUpdated     = "person_updated"
-	eventNextOfKinUpdated  = "next_of_kin_updated"
-	eventRolesUpdated      = "roles_updated"
-	eventPersonDeleted     = "person_deleted"
+	eventPersonCreated       = "person_created"
+	eventPersonUpdated       = "person_updated"
+	eventNextOfKinUpdated    = "next_of_kin_updated"
+	eventRolesUpdated        = "roles_updated"
+	eventPersonDeleted       = "person_deleted"
+	eventNationalIDSet       = "national_id_set"
+	eventNationalIDRevealed  = "national_id_revealed"
+	eventBankAccountSet      = "bank_account_set"
+	eventBankAccountRevealed = "bank_account_revealed"
+	eventUserLinked          = "user_linked"
+	eventUserUnlinked        = "user_unlinked"
+)
+
+const (
 	actorKindUser          = "user"
 	actorKindSystem        = "system"
 	unknownUserDisplay     = "Unknown user"
@@ -89,6 +101,7 @@ var fieldClasses = map[string]string{
 	"birthDate": "C", "gender": "C", "workCountry": "C", "preferredLanguage": "C", "roles": "C",
 	"workEmail": "D", "phoneWork": "D", "phoneMobile": "D", "phonePrivate": "D", "privateEmail": "D",
 	"street": "D", "postalCode": "D", "city": "D", "country": "D", "notes": "D", "nextOfKin": "D",
+	"nationalId": "D", "bankAccount": "D", "user": "C",
 }
 
 // classes is the retention classes c's fields belong to, sorted and each

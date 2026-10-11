@@ -153,7 +153,11 @@ see [SSO and SCIM operations](/en/admin/sso-scim/).
   secrets) is derived from it via HKDF-SHA256, one derived key per purpose. Generate
   it once with `openssl rand -base64 32`, store it in a secret manager, and never
   rotate it without a migration plan: a rotation invalidates every open session and
-  every TOTP secret encrypted under the old value.
+  every TOTP secret encrypted under the old value. With Staff, a rotation also makes
+  every sealed national identity number and bank account unopenable, and leaves the
+  national identity numbers' index unable to find a number or refuse a duplicate of
+  one written before it — see
+  [Rotating APP_SECRET](/en/contributing/platform-packages/#rotating-app_secret).
 - **`APP_URL`** (`vantigo.env`) — the public origin only: scheme and host, with a
   port if needed, no path and no trailing slash. Mailed links, the accepted `Host`
   header values, the cookie `Secure` attribute and the static OIDC callback are all

@@ -31,8 +31,9 @@ func fields(groups ...[]string) []string {
 }
 
 // shapedPerson is a person with every field of every group set — the sealed
-// fields' clear columns seeded directly, as Task 3b's endpoints will write
-// them — linked to a user of their own, with a next of kin and a role.
+// fields' clear columns seeded directly, in the shape PUT /national-id and
+// /bank-account write them, since the matrix is about who reads them —
+// linked to a user of their own, with a next of kin and a role.
 type shapedPerson struct {
 	id   int64
 	self *modtest.Client

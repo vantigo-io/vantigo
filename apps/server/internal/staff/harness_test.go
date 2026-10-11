@@ -231,8 +231,10 @@ func seedPerson(t *testing.T, h *harness, given, family string) int64 {
 }
 
 // link writes the self-service link between a person and a user directly, in
-// the state HR's PUT /people/{id}/user writes (Task 3b): the identity
-// provider, the user's id as text, linked and not managed.
+// the state HR's PUT /people/{id}/user writes: the identity provider, the
+// user's id as text, linked and not managed. It is the seed for the matrix
+// tests, whose subject is who reads what; a test whose subject is the link
+// itself goes through the endpoint (linkThroughAPI).
 func link(t *testing.T, h *harness, personID int64, userID uuid.UUID) {
 	t.Helper()
 	h.Exec(t, `

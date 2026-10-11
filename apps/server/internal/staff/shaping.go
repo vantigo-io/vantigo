@@ -191,8 +191,12 @@ const changed = "changed"
 
 // shapePayload is a stored event payload as the audience may read it: each
 // of its fields kept when the audience reads the field's group, "changed"
-// otherwise. A payload that is not the shape this module writes is answered
-// empty rather than passed through: what is not understood is not shown.
+// otherwise. Every kind this module writes names its fields this way — the
+// sealed fields' and the link's changes too, as nationalId, bankAccount and
+// user, each shaped by its own group — and a reveal names none, so its
+// payload is empty to everyone. A payload that is not the shape this module
+// writes is answered empty rather than passed through: what is not
+// understood is not shown.
 func shapePayload(stored []byte, a audience) map[string]any {
 	var payload struct {
 		Fields map[string]any `json:"fields"`

@@ -163,8 +163,30 @@ type PaginatedResponseOfStaffPersonListItem struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
+// StaffAssignableUser An active user HR may link a person to, as the user directory names them.
+type StaffAssignableUser struct {
+	DisplayName string             `json:"displayName"`
+	Id          openapi_types.UUID `json:"id"`
+}
+
 // StaffBankAccountKind defines model for StaffBankAccountKind.
 type StaffBankAccountKind string
+
+// StaffBankAccountRequest A bank account to seal on the person (design S4): a Norwegian kontonummer (bban, eleven digits with a valid MOD11 control digit; spaces and full stops are dropped) or an IBAN (spaces dropped; the ISO 13616 check digits, and for a Norwegian IBAN the embedded account's MOD11). The value is sealed; only its kind and last four digits are kept in clear, and no refusal echoes it.
+type StaffBankAccountRequest struct {
+	Kind StaffBankAccountKind `json:"kind"`
+
+	// Value The account number. Never answered back, and never named in a refusal.
+	Value string `json:"value"`
+}
+
+// StaffBankAccountReveal The bank account on file, opened once for a holder of staff:personal-data. Answered with Cache-Control no-store; each reveal is a bank_account_revealed event naming the viewer.
+type StaffBankAccountReveal struct {
+	Kind StaffBankAccountKind `json:"kind"`
+
+	// Value The account number as it was sealed — normalised, without spaces.
+	Value string `json:"value"`
+}
 
 // StaffBusinessUnit A business unit, the virksomhet or underenhet the a-melding reports per (design S6).
 type StaffBusinessUnit struct {
@@ -352,6 +374,33 @@ type StaffLocationRequest struct {
 	Street *string `json:"street,omitempty"`
 }
 
+// StaffMeRequest What a person edits on their own record (design S17): their private phones and email, their home address and their next of kin — a full replace of exactly these, every optional field left out cleared. Everything else — the work group, the birth date and gender, the national identity number, the bank account — is HR's; a property this schema does not name is refused as a 400 naming it.
+type StaffMeRequest struct {
+	// City Up to 100 characters.
+	City *string `json:"city,omitempty"`
+
+	// Country An ISO 3166-1 alpha-2 code.
+	Country *string `json:"country,omitempty"`
+
+	// NextOfKin All of the person's next of kin, at most three, in their order. An empty list removes them all.
+	NextOfKin []StaffNextOfKin `json:"nextOfKin"`
+
+	// PhoneMobile Up to 32 characters.
+	PhoneMobile *string `json:"phoneMobile,omitempty"`
+
+	// PhonePrivate Up to 32 characters.
+	PhonePrivate *string `json:"phonePrivate,omitempty"`
+
+	// PostalCode Up to 16 characters.
+	PostalCode *string `json:"postalCode,omitempty"`
+
+	// PrivateEmail An email address of up to 254 characters, stored lower-cased.
+	PrivateEmail *string `json:"privateEmail,omitempty"`
+
+	// Street Up to 200 characters.
+	Street *string `json:"street,omitempty"`
+}
+
 // StaffMeta What the Staff app needs before it draws anything.
 type StaffMeta struct {
 	// Capabilities What the caller may do in Staff, so the app never re-derives a rule this module owns. The access layer still decides every request.
@@ -369,6 +418,26 @@ type StaffMeta struct {
 
 // StaffNationalIdKind defines model for StaffNationalIdKind.
 type StaffNationalIdKind string
+
+// StaffNationalIdRequest A national identity number to seal on the person (design S4). A fødselsnummer or d-nummer is eleven digits once spaces, hyphens and full stops are dropped, both control digits checked, its date a real one (the synthetic test ranges, month + 40 and month + 80, accepted); country, when given, is NO. A foreign id is 1 to 40 letters, digits or hyphens with its country, an ISO 3166-1 alpha-2 code other than NO. The value is sealed and indexed by a keyed MAC; only its kind is kept in clear, and no refusal echoes it.
+type StaffNationalIdRequest struct {
+	// Country A foreign id's country, ISO 3166-1 alpha-2. Required for a foreign id.
+	Country *string             `json:"country,omitempty"`
+	Kind    StaffNationalIdKind `json:"kind"`
+
+	// Value The number. Never answered back, and never named in a refusal.
+	Value string `json:"value"`
+}
+
+// StaffNationalIdReveal The national identity number on file, opened once for a holder of staff:personal-data. Answered with Cache-Control no-store; each reveal is a national_id_revealed event naming the viewer.
+type StaffNationalIdReveal struct {
+	// Country A foreign id's country. Absent for a fødselsnummer or a d-nummer.
+	Country *string             `json:"country,omitempty"`
+	Kind    StaffNationalIdKind `json:"kind"`
+
+	// Value The number as it was sealed — eleven digits, or the upper-cased foreign id.
+	Value string `json:"value"`
+}
 
 // StaffNextOfKin One of a person's next of kin (private).
 type StaffNextOfKin struct {
@@ -481,6 +550,25 @@ type StaffPersonCapabilities struct {
 
 	// CanSeePay The person themselves, staff:manage or staff:personal-data — the pay terms of the person's employments.
 	CanSeePay bool `json:"canSeePay"`
+}
+
+// StaffPersonLink A person's self-service link to a user (design S24, §3.6) — the link that makes the user the person themselves to this module, and nothing else. linked is false, and every other field absent, when the person is linked to nobody.
+type StaffPersonLink struct {
+	Linked bool `json:"linked"`
+
+	// Managed Whether identity reports the user as managed by Staff — false for every self-service link.
+	Managed *bool `json:"managed,omitempty"`
+
+	// State The link's state; linked for a self-service link.
+	State *string `json:"state,omitempty"`
+
+	// User The user the person is linked to for self-service, as the user directory names them. Present for the person themselves, staff:manage and staff:personal-data, when a link exists. A user the directory no longer knows is "Unknown user", not active.
+	User *StaffPersonUser `json:"user,omitempty"`
+}
+
+// StaffPersonLinkRequest The user to link the person to, or null to unlink them.
+type StaffPersonLinkRequest struct {
+	UserId *openapi_types.UUID `json:"userId"`
 }
 
 // StaffPersonListItem A person in the directory — the work group only, whoever lists.
@@ -600,7 +688,7 @@ type StaffPersonUser struct {
 	Id          openapi_types.UUID `json:"id"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle and revision_conflict. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere and no_person. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -658,6 +746,12 @@ type StaffStructure struct {
 	Locations     []StaffLocation     `json:"locations"`
 }
 
+// GetStaffAssignableUsersParams defines parameters for GetStaffAssignableUsers.
+type GetStaffAssignableUsersParams struct {
+	// Q Narrows the search. Absent or blank lists the first twenty active users.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
 // PutStaffBusinessUnitsByIdParams defines parameters for PutStaffBusinessUnitsById.
 type PutStaffBusinessUnitsByIdParams struct {
 	// IfMatch The revision the row was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
@@ -680,6 +774,18 @@ type PutStaffLegalEntitiesByIdParams struct {
 type PutStaffLocationsByIdParams struct {
 	// IfMatch The revision the row was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
 	IfMatch string `json:"If-Match"`
+}
+
+// PutStaffMeParams defines parameters for PutStaffMe.
+type PutStaffMeParams struct {
+	// IfMatch The person's revision as read — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// GetStaffMeEventsParams defines parameters for GetStaffMeEvents.
+type GetStaffMeEventsParams struct {
+	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // GetStaffPeopleParams defines parameters for GetStaffPeople.
@@ -744,11 +850,20 @@ type PostStaffLocationsJSONRequestBody = StaffLocationRequest
 // PutStaffLocationsByIdJSONRequestBody defines body for PutStaffLocationsById for application/json ContentType.
 type PutStaffLocationsByIdJSONRequestBody = StaffLocationRequest
 
+// PutStaffMeJSONRequestBody defines body for PutStaffMe for application/json ContentType.
+type PutStaffMeJSONRequestBody = StaffMeRequest
+
 // PostStaffPeopleJSONRequestBody defines body for PostStaffPeople for application/json ContentType.
 type PostStaffPeopleJSONRequestBody = StaffPersonRequest
 
 // PutStaffPeopleByIdJSONRequestBody defines body for PutStaffPeopleById for application/json ContentType.
 type PutStaffPeopleByIdJSONRequestBody = StaffPersonRequest
+
+// PutStaffPeopleByIdBankAccountJSONRequestBody defines body for PutStaffPeopleByIdBankAccount for application/json ContentType.
+type PutStaffPeopleByIdBankAccountJSONRequestBody = StaffBankAccountRequest
+
+// PutStaffPeopleByIdNationalIdJSONRequestBody defines body for PutStaffPeopleByIdNationalId for application/json ContentType.
+type PutStaffPeopleByIdNationalIdJSONRequestBody = StaffNationalIdRequest
 
 // PutStaffPeopleByIdNextOfKinJSONRequestBody defines body for PutStaffPeopleByIdNextOfKin for application/json ContentType.
 type PutStaffPeopleByIdNextOfKinJSONRequestBody = StaffNextOfKinRequest
@@ -756,11 +871,17 @@ type PutStaffPeopleByIdNextOfKinJSONRequestBody = StaffNextOfKinRequest
 // PutStaffPeopleByIdRolesJSONRequestBody defines body for PutStaffPeopleByIdRoles for application/json ContentType.
 type PutStaffPeopleByIdRolesJSONRequestBody = StaffPersonRolesRequest
 
+// PutStaffPeopleByIdUserJSONRequestBody defines body for PutStaffPeopleByIdUser for application/json ContentType.
+type PutStaffPeopleByIdUserJSONRequestBody = StaffPersonLinkRequest
+
 // PutStaffSettingsJSONRequestBody defines body for PutStaffSettings for application/json ContentType.
 type PutStaffSettingsJSONRequestBody = StaffSettingsRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetStaffAssignableUsers Search the users a person may be linked to
+	// (GET /api/v1/staff/assignable-users)
+	GetStaffAssignableUsers(w http.ResponseWriter, r *http.Request, params GetStaffAssignableUsersParams)
 	// GetStaffBusinessUnits List business units
 	// (GET /api/v1/staff/business-units)
 	GetStaffBusinessUnits(w http.ResponseWriter, r *http.Request)
@@ -809,6 +930,15 @@ type ServerInterface interface {
 	// PostStaffLocationsByIdArchive Archive a location
 	// (POST /api/v1/staff/locations/{id}/archive)
 	PostStaffLocationsByIdArchive(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffMe Get my own record
+	// (GET /api/v1/staff/me)
+	GetStaffMe(w http.ResponseWriter, r *http.Request)
+	// PutStaffMe Change my own record
+	// (PUT /api/v1/staff/me)
+	PutStaffMe(w http.ResponseWriter, r *http.Request, params PutStaffMeParams)
+	// GetStaffMeEvents List my own history
+	// (GET /api/v1/staff/me/events)
+	GetStaffMeEvents(w http.ResponseWriter, r *http.Request, params GetStaffMeEventsParams)
 	// GetStaffMeta Get the Staff metadata
 	// (GET /api/v1/staff/meta)
 	GetStaffMeta(w http.ResponseWriter, r *http.Request)
@@ -827,9 +957,21 @@ type ServerInterface interface {
 	// PutStaffPeopleById Change a person
 	// (PUT /api/v1/staff/people/{id})
 	PutStaffPeopleById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPeopleByIdParams)
+	// PutStaffPeopleByIdBankAccount Set a person's bank account
+	// (PUT /api/v1/staff/people/{id}/bank-account)
+	PutStaffPeopleByIdBankAccount(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffPeopleByIdBankAccountReveal Reveal a person's bank account
+	// (POST /api/v1/staff/people/{id}/bank-account/reveal)
+	PostStaffPeopleByIdBankAccountReveal(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffPeopleByIdEvents List a person's history
 	// (GET /api/v1/staff/people/{id}/events)
 	GetStaffPeopleByIdEvents(w http.ResponseWriter, r *http.Request, id int64, params GetStaffPeopleByIdEventsParams)
+	// PutStaffPeopleByIdNationalId Set a person's national identity number
+	// (PUT /api/v1/staff/people/{id}/national-id)
+	PutStaffPeopleByIdNationalId(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffPeopleByIdNationalIdReveal Reveal a person's national identity number
+	// (POST /api/v1/staff/people/{id}/national-id/reveal)
+	PostStaffPeopleByIdNationalIdReveal(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffPeopleByIdNextOfKin List a person's next of kin
 	// (GET /api/v1/staff/people/{id}/next-of-kin)
 	GetStaffPeopleByIdNextOfKin(w http.ResponseWriter, r *http.Request, id int64)
@@ -842,6 +984,12 @@ type ServerInterface interface {
 	// PutStaffPeopleByIdRoles Replace a person's roles
 	// (PUT /api/v1/staff/people/{id}/roles)
 	PutStaffPeopleByIdRoles(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPeopleByIdRolesParams)
+	// GetStaffPeopleByIdUser Get a person's self-service link
+	// (GET /api/v1/staff/people/{id}/user)
+	GetStaffPeopleByIdUser(w http.ResponseWriter, r *http.Request, id int64)
+	// PutStaffPeopleByIdUser Link a person to a user
+	// (PUT /api/v1/staff/people/{id}/user)
+	PutStaffPeopleByIdUser(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffSettings Get the Staff settings
 	// (GET /api/v1/staff/settings)
 	GetStaffSettings(w http.ResponseWriter, r *http.Request)
@@ -858,6 +1006,39 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetStaffAssignableUsers operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffAssignableUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetStaffAssignableUsersParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffAssignableUsers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetStaffBusinessUnits operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffBusinessUnits(w http.ResponseWriter, r *http.Request) {
@@ -1291,6 +1472,111 @@ func (siw *ServerInterfaceWrapper) PostStaffLocationsByIdArchive(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffMe operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffMe operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffMe(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffMeParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffMe(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffMeEvents operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffMeEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetStaffMeEventsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffMeEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStaffMeta operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffMeta(w http.ResponseWriter, r *http.Request) {
 
@@ -1484,6 +1770,58 @@ func (siw *ServerInterfaceWrapper) PutStaffPeopleById(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// PutStaffPeopleByIdBankAccount operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdBankAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffPeopleByIdBankAccount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffPeopleByIdBankAccountReveal operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdBankAccountReveal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleByIdBankAccountReveal(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStaffPeopleByIdEvents operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdEvents(w http.ResponseWriter, r *http.Request) {
 
@@ -1530,6 +1868,58 @@ func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdEvents(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetStaffPeopleByIdEvents(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffPeopleByIdNationalId operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdNationalId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffPeopleByIdNationalId(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffPeopleByIdNationalIdReveal operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdNationalIdReveal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleByIdNationalIdReveal(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1690,6 +2080,58 @@ func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdRoles(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutStaffPeopleByIdRoles(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffPeopleByIdUser operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdUser(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffPeopleByIdUser operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffPeopleByIdUser(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1878,6 +2320,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/assignable-users", wrapper.GetStaffAssignableUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/business-units", wrapper.GetStaffBusinessUnits)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/business-units", wrapper.PostStaffBusinessUnits)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/business-units/{id}", wrapper.PutStaffBusinessUnitsById)
@@ -1894,21 +2337,80 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/locations", wrapper.PostStaffLocations)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/locations/{id}", wrapper.PutStaffLocationsById)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/locations/{id}/archive", wrapper.PostStaffLocationsByIdArchive)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me", wrapper.GetStaffMe)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/me", wrapper.PutStaffMe)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/events", wrapper.GetStaffMeEvents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/meta", wrapper.GetStaffMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people", wrapper.GetStaffPeople)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people", wrapper.PostStaffPeople)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.DeleteStaffPeopleById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.GetStaffPeopleById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.PutStaffPeopleById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account", wrapper.PutStaffPeopleByIdBankAccount)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account/reveal", wrapper.PostStaffPeopleByIdBankAccountReveal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/events", wrapper.GetStaffPeopleByIdEvents)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/national-id", wrapper.PutStaffPeopleByIdNationalId)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/national-id/reveal", wrapper.PostStaffPeopleByIdNationalIdReveal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/next-of-kin", wrapper.GetStaffPeopleByIdNextOfKin)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/next-of-kin", wrapper.PutStaffPeopleByIdNextOfKin)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/roles", wrapper.GetStaffPeopleByIdRoles)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/roles", wrapper.PutStaffPeopleByIdRoles)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/user", wrapper.GetStaffPeopleByIdUser)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/user", wrapper.PutStaffPeopleByIdUser)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/settings", wrapper.GetStaffSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/settings", wrapper.PutStaffSettings)
 
 	return m
+}
+
+type GetStaffAssignableUsersRequestObject struct {
+	Params GetStaffAssignableUsersParams
+}
+
+type GetStaffAssignableUsersResponseObject interface {
+	VisitGetStaffAssignableUsersResponse(w http.ResponseWriter) error
+}
+
+type GetStaffAssignableUsers200JSONResponse []StaffAssignableUser
+
+func (response GetStaffAssignableUsers200JSONResponse) VisitGetStaffAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAssignableUsers401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffAssignableUsers401JSONResponse) VisitGetStaffAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAssignableUsers403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffAssignableUsers403JSONResponse) VisitGetStaffAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetStaffBusinessUnitsRequestObject struct {
@@ -3003,6 +3505,240 @@ func (response PostStaffLocationsByIdArchive404Response) VisitPostStaffLocations
 	return nil
 }
 
+type GetStaffMeRequestObject struct {
+}
+
+type GetStaffMeResponseObject interface {
+	VisitGetStaffMeResponse(w http.ResponseWriter) error
+}
+
+type GetStaffMe200JSONResponse StaffPerson
+
+func (response GetStaffMe200JSONResponse) VisitGetStaffMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMe401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMe401JSONResponse) VisitGetStaffMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMe403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMe403JSONResponse) VisitGetStaffMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMe404ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffMe404ApplicationProblemPlusJSONResponse) VisitGetStaffMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffMeRequestObject struct {
+	Params PutStaffMeParams
+	Body   *PutStaffMeJSONRequestBody
+}
+
+type PutStaffMeResponseObject interface {
+	VisitPutStaffMeResponse(w http.ResponseWriter) error
+}
+
+type PutStaffMe200JSONResponse StaffPerson
+
+func (response PutStaffMe200JSONResponse) VisitPutStaffMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffMe400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffMe400ApplicationProblemPlusJSONResponse) VisitPutStaffMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffMe401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffMe401JSONResponse) VisitPutStaffMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffMe403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffMe403JSONResponse) VisitPutStaffMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffMe404ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffMe404ApplicationProblemPlusJSONResponse) VisitPutStaffMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffMe409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffMe409ApplicationProblemPlusJSONResponse) VisitPutStaffMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeEventsRequestObject struct {
+	Params GetStaffMeEventsParams
+}
+
+type GetStaffMeEventsResponseObject interface {
+	VisitGetStaffMeEventsResponse(w http.ResponseWriter) error
+}
+
+type GetStaffMeEvents200JSONResponse PaginatedResponseOfStaffEvent
+
+func (response GetStaffMeEvents200JSONResponse) VisitGetStaffMeEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeEvents400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffMeEvents400ApplicationProblemPlusJSONResponse) VisitGetStaffMeEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeEvents401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMeEvents401JSONResponse) VisitGetStaffMeEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeEvents403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMeEvents403JSONResponse) VisitGetStaffMeEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeEvents404ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffMeEvents404ApplicationProblemPlusJSONResponse) VisitGetStaffMeEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStaffMetaRequestObject struct {
 }
 
@@ -3392,6 +4128,147 @@ func (response PutStaffPeopleById409ApplicationProblemPlusJSONResponse) VisitPut
 	return err
 }
 
+type PutStaffPeopleByIdBankAccountRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutStaffPeopleByIdBankAccountJSONRequestBody
+}
+
+type PutStaffPeopleByIdBankAccountResponseObject interface {
+	VisitPutStaffPeopleByIdBankAccountResponse(w http.ResponseWriter) error
+}
+
+type PutStaffPeopleByIdBankAccount200JSONResponse StaffPerson
+
+func (response PutStaffPeopleByIdBankAccount200JSONResponse) VisitPutStaffPeopleByIdBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdBankAccount400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdBankAccount400ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdBankAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdBankAccount401JSONResponse) VisitPutStaffPeopleByIdBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdBankAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdBankAccount403JSONResponse) VisitPutStaffPeopleByIdBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdBankAccount404Response struct {
+}
+
+func (response PutStaffPeopleByIdBankAccount404Response) VisitPutStaffPeopleByIdBankAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdBankAccountRevealRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostStaffPeopleByIdBankAccountRevealResponseObject interface {
+	VisitPostStaffPeopleByIdBankAccountRevealResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleByIdBankAccountReveal200ResponseHeaders struct {
+	CacheControl *string
+}
+
+type PostStaffPeopleByIdBankAccountReveal200JSONResponse struct {
+	Body    StaffBankAccountReveal
+	Headers PostStaffPeopleByIdBankAccountReveal200ResponseHeaders
+}
+
+func (response PostStaffPeopleByIdBankAccountReveal200JSONResponse) VisitPostStaffPeopleByIdBankAccountRevealResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdBankAccountReveal401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdBankAccountReveal401JSONResponse) VisitPostStaffPeopleByIdBankAccountRevealResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdBankAccountReveal403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdBankAccountReveal403JSONResponse) VisitPostStaffPeopleByIdBankAccountRevealResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdBankAccountReveal404Response struct {
+}
+
+func (response PostStaffPeopleByIdBankAccountReveal404Response) VisitPostStaffPeopleByIdBankAccountRevealResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type GetStaffPeopleByIdEventsRequestObject struct {
 	Id     int64 `json:"id"`
 	Params GetStaffPeopleByIdEventsParams
@@ -3461,6 +4338,147 @@ type GetStaffPeopleByIdEvents404Response struct {
 }
 
 func (response GetStaffPeopleByIdEvents404Response) VisitGetStaffPeopleByIdEventsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdNationalIdRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutStaffPeopleByIdNationalIdJSONRequestBody
+}
+
+type PutStaffPeopleByIdNationalIdResponseObject interface {
+	VisitPutStaffPeopleByIdNationalIdResponse(w http.ResponseWriter) error
+}
+
+type PutStaffPeopleByIdNationalId200JSONResponse StaffPerson
+
+func (response PutStaffPeopleByIdNationalId200JSONResponse) VisitPutStaffPeopleByIdNationalIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdNationalId400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdNationalId400ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdNationalIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdNationalId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdNationalId401JSONResponse) VisitPutStaffPeopleByIdNationalIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdNationalId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdNationalId403JSONResponse) VisitPutStaffPeopleByIdNationalIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdNationalId404Response struct {
+}
+
+func (response PutStaffPeopleByIdNationalId404Response) VisitPutStaffPeopleByIdNationalIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdNationalIdRevealRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostStaffPeopleByIdNationalIdRevealResponseObject interface {
+	VisitPostStaffPeopleByIdNationalIdRevealResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleByIdNationalIdReveal200ResponseHeaders struct {
+	CacheControl *string
+}
+
+type PostStaffPeopleByIdNationalIdReveal200JSONResponse struct {
+	Body    StaffNationalIdReveal
+	Headers PostStaffPeopleByIdNationalIdReveal200ResponseHeaders
+}
+
+func (response PostStaffPeopleByIdNationalIdReveal200JSONResponse) VisitPostStaffPeopleByIdNationalIdRevealResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdNationalIdReveal401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdNationalIdReveal401JSONResponse) VisitPostStaffPeopleByIdNationalIdRevealResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdNationalIdReveal403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdNationalIdReveal403JSONResponse) VisitPostStaffPeopleByIdNationalIdRevealResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdNationalIdReveal404Response struct {
+}
+
+func (response PostStaffPeopleByIdNationalIdReveal404Response) VisitPostStaffPeopleByIdNationalIdRevealResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
 }
@@ -3757,6 +4775,137 @@ func (response PutStaffPeopleByIdRoles409ApplicationProblemPlusJSONResponse) Vis
 	return err
 }
 
+type GetStaffPeopleByIdUserRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdUserResponseObject interface {
+	VisitGetStaffPeopleByIdUserResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdUser200JSONResponse StaffPersonLink
+
+func (response GetStaffPeopleByIdUser200JSONResponse) VisitGetStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdUser401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdUser401JSONResponse) VisitGetStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdUser403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdUser403JSONResponse) VisitGetStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdUser404Response struct {
+}
+
+func (response GetStaffPeopleByIdUser404Response) VisitGetStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdUserRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutStaffPeopleByIdUserJSONRequestBody
+}
+
+type PutStaffPeopleByIdUserResponseObject interface {
+	VisitPutStaffPeopleByIdUserResponse(w http.ResponseWriter) error
+}
+
+type PutStaffPeopleByIdUser200JSONResponse StaffPersonLink
+
+func (response PutStaffPeopleByIdUser200JSONResponse) VisitPutStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdUser400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdUser400ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdUser401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdUser401JSONResponse) VisitPutStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdUser403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdUser403JSONResponse) VisitPutStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdUser404Response struct {
+}
+
+func (response PutStaffPeopleByIdUser404Response) VisitPutStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type GetStaffSettingsRequestObject struct {
 }
 
@@ -3887,6 +5036,9 @@ func (response PutStaffSettings409ApplicationProblemPlusJSONResponse) VisitPutSt
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// GetStaffAssignableUsers Search the users a person may be linked to
+	// (GET /api/v1/staff/assignable-users)
+	GetStaffAssignableUsers(ctx context.Context, request GetStaffAssignableUsersRequestObject) (GetStaffAssignableUsersResponseObject, error)
 	// GetStaffBusinessUnits List business units
 	// (GET /api/v1/staff/business-units)
 	GetStaffBusinessUnits(ctx context.Context, request GetStaffBusinessUnitsRequestObject) (GetStaffBusinessUnitsResponseObject, error)
@@ -3935,6 +5087,15 @@ type StrictServerInterface interface {
 	// PostStaffLocationsByIdArchive Archive a location
 	// (POST /api/v1/staff/locations/{id}/archive)
 	PostStaffLocationsByIdArchive(ctx context.Context, request PostStaffLocationsByIdArchiveRequestObject) (PostStaffLocationsByIdArchiveResponseObject, error)
+	// GetStaffMe Get my own record
+	// (GET /api/v1/staff/me)
+	GetStaffMe(ctx context.Context, request GetStaffMeRequestObject) (GetStaffMeResponseObject, error)
+	// PutStaffMe Change my own record
+	// (PUT /api/v1/staff/me)
+	PutStaffMe(ctx context.Context, request PutStaffMeRequestObject) (PutStaffMeResponseObject, error)
+	// GetStaffMeEvents List my own history
+	// (GET /api/v1/staff/me/events)
+	GetStaffMeEvents(ctx context.Context, request GetStaffMeEventsRequestObject) (GetStaffMeEventsResponseObject, error)
 	// GetStaffMeta Get the Staff metadata
 	// (GET /api/v1/staff/meta)
 	GetStaffMeta(ctx context.Context, request GetStaffMetaRequestObject) (GetStaffMetaResponseObject, error)
@@ -3953,9 +5114,21 @@ type StrictServerInterface interface {
 	// PutStaffPeopleById Change a person
 	// (PUT /api/v1/staff/people/{id})
 	PutStaffPeopleById(ctx context.Context, request PutStaffPeopleByIdRequestObject) (PutStaffPeopleByIdResponseObject, error)
+	// PutStaffPeopleByIdBankAccount Set a person's bank account
+	// (PUT /api/v1/staff/people/{id}/bank-account)
+	PutStaffPeopleByIdBankAccount(ctx context.Context, request PutStaffPeopleByIdBankAccountRequestObject) (PutStaffPeopleByIdBankAccountResponseObject, error)
+	// PostStaffPeopleByIdBankAccountReveal Reveal a person's bank account
+	// (POST /api/v1/staff/people/{id}/bank-account/reveal)
+	PostStaffPeopleByIdBankAccountReveal(ctx context.Context, request PostStaffPeopleByIdBankAccountRevealRequestObject) (PostStaffPeopleByIdBankAccountRevealResponseObject, error)
 	// GetStaffPeopleByIdEvents List a person's history
 	// (GET /api/v1/staff/people/{id}/events)
 	GetStaffPeopleByIdEvents(ctx context.Context, request GetStaffPeopleByIdEventsRequestObject) (GetStaffPeopleByIdEventsResponseObject, error)
+	// PutStaffPeopleByIdNationalId Set a person's national identity number
+	// (PUT /api/v1/staff/people/{id}/national-id)
+	PutStaffPeopleByIdNationalId(ctx context.Context, request PutStaffPeopleByIdNationalIdRequestObject) (PutStaffPeopleByIdNationalIdResponseObject, error)
+	// PostStaffPeopleByIdNationalIdReveal Reveal a person's national identity number
+	// (POST /api/v1/staff/people/{id}/national-id/reveal)
+	PostStaffPeopleByIdNationalIdReveal(ctx context.Context, request PostStaffPeopleByIdNationalIdRevealRequestObject) (PostStaffPeopleByIdNationalIdRevealResponseObject, error)
 	// GetStaffPeopleByIdNextOfKin List a person's next of kin
 	// (GET /api/v1/staff/people/{id}/next-of-kin)
 	GetStaffPeopleByIdNextOfKin(ctx context.Context, request GetStaffPeopleByIdNextOfKinRequestObject) (GetStaffPeopleByIdNextOfKinResponseObject, error)
@@ -3968,6 +5141,12 @@ type StrictServerInterface interface {
 	// PutStaffPeopleByIdRoles Replace a person's roles
 	// (PUT /api/v1/staff/people/{id}/roles)
 	PutStaffPeopleByIdRoles(ctx context.Context, request PutStaffPeopleByIdRolesRequestObject) (PutStaffPeopleByIdRolesResponseObject, error)
+	// GetStaffPeopleByIdUser Get a person's self-service link
+	// (GET /api/v1/staff/people/{id}/user)
+	GetStaffPeopleByIdUser(ctx context.Context, request GetStaffPeopleByIdUserRequestObject) (GetStaffPeopleByIdUserResponseObject, error)
+	// PutStaffPeopleByIdUser Link a person to a user
+	// (PUT /api/v1/staff/people/{id}/user)
+	PutStaffPeopleByIdUser(ctx context.Context, request PutStaffPeopleByIdUserRequestObject) (PutStaffPeopleByIdUserResponseObject, error)
 	// GetStaffSettings Get the Staff settings
 	// (GET /api/v1/staff/settings)
 	GetStaffSettings(ctx context.Context, request GetStaffSettingsRequestObject) (GetStaffSettingsResponseObject, error)
@@ -4013,6 +5192,32 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetStaffAssignableUsers operation middleware
+func (sh *strictHandler) GetStaffAssignableUsers(w http.ResponseWriter, r *http.Request, params GetStaffAssignableUsersParams) {
+	var request GetStaffAssignableUsersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffAssignableUsers(ctx, request.(GetStaffAssignableUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffAssignableUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffAssignableUsersResponseObject); ok {
+		if err := validResponse.VisitGetStaffAssignableUsersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetStaffBusinessUnits operation middleware
@@ -4475,6 +5680,89 @@ func (sh *strictHandler) PostStaffLocationsByIdArchive(w http.ResponseWriter, r 
 	}
 }
 
+// GetStaffMe operation middleware
+func (sh *strictHandler) GetStaffMe(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffMeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffMe(ctx, request.(GetStaffMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffMeResponseObject); ok {
+		if err := validResponse.VisitGetStaffMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffMe operation middleware
+func (sh *strictHandler) PutStaffMe(w http.ResponseWriter, r *http.Request, params PutStaffMeParams) {
+	var request PutStaffMeRequestObject
+
+	request.Params = params
+
+	var body PutStaffMeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffMe(ctx, request.(PutStaffMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffMeResponseObject); ok {
+		if err := validResponse.VisitPutStaffMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffMeEvents operation middleware
+func (sh *strictHandler) GetStaffMeEvents(w http.ResponseWriter, r *http.Request, params GetStaffMeEventsParams) {
+	var request GetStaffMeEventsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffMeEvents(ctx, request.(GetStaffMeEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffMeEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffMeEventsResponseObject); ok {
+		if err := validResponse.VisitGetStaffMeEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetStaffMeta operation middleware
 func (sh *strictHandler) GetStaffMeta(w http.ResponseWriter, r *http.Request) {
 	var request GetStaffMetaRequestObject
@@ -4642,6 +5930,65 @@ func (sh *strictHandler) PutStaffPeopleById(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// PutStaffPeopleByIdBankAccount operation middleware
+func (sh *strictHandler) PutStaffPeopleByIdBankAccount(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutStaffPeopleByIdBankAccountRequestObject
+
+	request.Id = id
+
+	var body PutStaffPeopleByIdBankAccountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffPeopleByIdBankAccount(ctx, request.(PutStaffPeopleByIdBankAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffPeopleByIdBankAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffPeopleByIdBankAccountResponseObject); ok {
+		if err := validResponse.VisitPutStaffPeopleByIdBankAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleByIdBankAccountReveal operation middleware
+func (sh *strictHandler) PostStaffPeopleByIdBankAccountReveal(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffPeopleByIdBankAccountRevealRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleByIdBankAccountReveal(ctx, request.(PostStaffPeopleByIdBankAccountRevealRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleByIdBankAccountReveal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleByIdBankAccountRevealResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleByIdBankAccountRevealResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetStaffPeopleByIdEvents operation middleware
 func (sh *strictHandler) GetStaffPeopleByIdEvents(w http.ResponseWriter, r *http.Request, id int64, params GetStaffPeopleByIdEventsParams) {
 	var request GetStaffPeopleByIdEventsRequestObject
@@ -4662,6 +6009,65 @@ func (sh *strictHandler) GetStaffPeopleByIdEvents(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetStaffPeopleByIdEventsResponseObject); ok {
 		if err := validResponse.VisitGetStaffPeopleByIdEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffPeopleByIdNationalId operation middleware
+func (sh *strictHandler) PutStaffPeopleByIdNationalId(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutStaffPeopleByIdNationalIdRequestObject
+
+	request.Id = id
+
+	var body PutStaffPeopleByIdNationalIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffPeopleByIdNationalId(ctx, request.(PutStaffPeopleByIdNationalIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffPeopleByIdNationalId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffPeopleByIdNationalIdResponseObject); ok {
+		if err := validResponse.VisitPutStaffPeopleByIdNationalIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleByIdNationalIdReveal operation middleware
+func (sh *strictHandler) PostStaffPeopleByIdNationalIdReveal(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffPeopleByIdNationalIdRevealRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleByIdNationalIdReveal(ctx, request.(PostStaffPeopleByIdNationalIdRevealRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleByIdNationalIdReveal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleByIdNationalIdRevealResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleByIdNationalIdRevealResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4782,6 +6188,65 @@ func (sh *strictHandler) PutStaffPeopleByIdRoles(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutStaffPeopleByIdRolesResponseObject); ok {
 		if err := validResponse.VisitPutStaffPeopleByIdRolesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleByIdUser operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdUser(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdUserRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdUser(ctx, request.(GetStaffPeopleByIdUserRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdUser")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdUserResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffPeopleByIdUser operation middleware
+func (sh *strictHandler) PutStaffPeopleByIdUser(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutStaffPeopleByIdUserRequestObject
+
+	request.Id = id
+
+	var body PutStaffPeopleByIdUserJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffPeopleByIdUser(ctx, request.(PutStaffPeopleByIdUserRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffPeopleByIdUser")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffPeopleByIdUserResponseObject); ok {
+		if err := validResponse.VisitPutStaffPeopleByIdUserResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

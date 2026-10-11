@@ -15,7 +15,7 @@ import (
 func TestFieldGroups_CoverEveryPersonField(t *testing.T) {
 	t.Parallel()
 	own := map[string]bool{"id": true, "capabilities": true, "revision": true}
-	for _, typ := range []reflect.Type{reflect.TypeOf(gen.StaffPerson{}), reflect.TypeOf(gen.StaffPersonRequest{})} {
+	for _, typ := range []reflect.Type{reflect.TypeOf(gen.StaffPerson{}), reflect.TypeOf(gen.StaffPersonRequest{}), reflect.TypeOf(gen.StaffMeRequest{})} {
 		for i := range typ.NumField() {
 			name, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
 			if own[name] {
@@ -90,5 +90,35 @@ func TestShapePayload_PerField(t *testing.T) {
 	hr := shapePayload(stored, audience{Manage: true})["fields"].(map[string]any)
 	if f, ok := hr["notes"].(map[string]any); !ok || f["to"] != "b" {
 		t.Errorf("HR: notes = %v, want its value", hr["notes"])
+	}
+}
+
+// The sealed fields' and the link's events name their field — nationalId,
+// bankAccount, user — and are shaped by its group like any other: the person
+// and HR read the kind, the last four digits and the user; a manager, who
+// reads the work group alone, reads "changed". A reveal carries no field, so
+// every audience that reads the history reads the same empty payload.
+func TestShapePayload_TheSealedAndLinkEvents(t *testing.T) {
+	t.Parallel()
+	for _, stored := range []string{
+		`{"fields":{"nationalId":{"to":{"kind":"fodselsnummer"}}}}`,
+		`{"fields":{"bankAccount":{"from":{"kind":"bban","last4":"8903"},"to":{"kind":"iban","last4":"7947"}}}}`,
+		`{"fields":{"user":{"to":{"id":"00000000-0000-0000-0000-000000000001","displayName":"Kari"}}}}`,
+	} {
+		for name, a := range map[string]audience{"self": {Self: true}, "staff:manage": {Manage: true}, "staff:personal-data": {PersonalData: true}} {
+			for field, value := range shapePayload([]byte(stored), a)["fields"].(map[string]any) {
+				if value == changed {
+					t.Errorf("%s reads %s as changed in %s, want its value", name, field, stored)
+				}
+			}
+		}
+		for field, value := range shapePayload([]byte(stored), audience{Manager: true})["fields"].(map[string]any) {
+			if value != changed {
+				t.Errorf("a manager reads %s as %v in %s, want changed", field, value, stored)
+			}
+		}
+	}
+	if got := shapePayload([]byte(`{}`), audience{Self: true}); len(got) != 0 {
+		t.Errorf("a reveal's payload = %v, want empty", got)
 	}
 }

@@ -2,6 +2,26 @@
 // CI regenerates this file and fails when it is stale.
 
 export interface paths {
+    "/api/v1/staff/assignable-users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search the users a person may be linked to
+         * @description The picker HR links a person to a user with — active users whose display name (or, as the directory chooses, email) matches q, at most twenty. A user already linked to another person is listed too; linking them is user_linked_elsewhere.
+         */
+        get: operations["getStaffAssignableUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/business-units": {
         parameters: {
             query?: never;
@@ -258,6 +278,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get my own record
+         * @description The caller's own person, through their self-service link — the Self view (design §5, S17): the work and private groups, the national identity number's kind and whether one is on file, the bank account's kind and last four digits, and the linked user; never HR's notes. A caller linked to nobody gets the 404 no_person.
+         */
+        get: operations["getStaffMe"];
+        /**
+         * Change my own record
+         * @description Replaces what the person edits on their own record — the private phones and email, the home address and the next of kin — under the person's revision (If-Match). Each change is an event attributed to the person; a replace that changes nothing writes nothing.
+         */
+        put: operations["putStaffMe"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/me/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List my own history
+         * @description The caller's own history, newest first, shaped as the person themselves reads it — a field of a group they may not read, HR's notes, shows "changed". A caller linked to nobody gets the 404 no_person.
+         */
+        get: operations["getStaffMeEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/meta": {
         parameters: {
             query?: never;
@@ -330,6 +394,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/people/{id}/bank-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a person's bank account
+         * @description Seals a bank account on the person (design S4) — staff:personal-data only, never staff:manage alone and never the person. Its kind and last four digits are kept in clear. The change is a bank_account_set event carrying the kind and the last four digits, and after it has committed the person is mailed — at their private email, else their work email, in their preferred language, naming at most the last four digits; with neither address, or a mail driver other than smtp, the mail is skipped with a log line.
+         */
+        put: operations["putStaffPeopleByIdBankAccount"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/bank-account/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal a person's bank account
+         * @description Opens the person's sealed bank account and answers it once, with Cache-Control no-store. Each reveal is a bank_account_revealed event naming the viewer.
+         */
+        post: operations["postStaffPeopleByIdBankAccountReveal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/people/{id}/events": {
         parameters: {
             query?: never;
@@ -344,6 +448,46 @@ export interface paths {
         get: operations["getStaffPeopleByIdEvents"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/national-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a person's national identity number
+         * @description Seals a national identity number on the person (design S4) — staff:personal-data only, never staff:manage alone and never the person — and indexes it by a keyed MAC over its kind, country and value in a unique column, so the same number on two people is refused without opening anything. Only its kind (and a foreign id's country) is kept in clear. A fødselsnummer or d-nummer that encodes another birth date than the person's, when one is set, is refused. The change is a national_id_set event carrying the kind only.
+         */
+        put: operations["putStaffPeopleByIdNationalId"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/national-id/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal a person's national identity number
+         * @description Opens the person's sealed national identity number and answers it once, with Cache-Control no-store. Each reveal is a national_id_revealed event naming the viewer.
+         */
+        post: operations["postStaffPeopleByIdNationalIdReveal"];
         delete?: never;
         options?: never;
         head?: never;
@@ -398,6 +542,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/people/{id}/user": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a person's self-service link
+         * @description A person's self-service link and the linked user as the user directory names them — the person themselves, staff:manage and staff:personal-data read it; anyone else gets a 404 identical to an unknown id.
+         */
+        get: operations["getStaffPeopleByIdUser"];
+        /**
+         * Link a person to a user
+         * @description Links the person to an existing, active user for self-service (design S24 as amended), or unlinks them with null. The link makes the user the person themselves — My page, the Self audience — and nothing else; it never makes the user managed. The user is read from the user directory before anything is written. A change is a user_linked event, an unlink a user_unlinked one; linking the person to the user they are already linked to changes nothing.
+         */
+        put: operations["putStaffPeopleByIdUser"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/settings": {
         parameters: {
             query?: never;
@@ -434,8 +602,26 @@ export interface components {
             data: components["schemas"]["StaffPersonListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
+        /** @description An active user HR may link a person to, as the user directory names them. */
+        StaffAssignableUser: {
+            displayName: string;
+            /** Format: uuid */
+            id: string;
+        };
         /** @enum {string} */
         StaffBankAccountKind: "bban" | "iban";
+        /** @description A bank account to seal on the person (design S4): a Norwegian kontonummer (bban, eleven digits with a valid MOD11 control digit; spaces and full stops are dropped) or an IBAN (spaces dropped; the ISO 13616 check digits, and for a Norwegian IBAN the embedded account's MOD11). The value is sealed; only its kind and last four digits are kept in clear, and no refusal echoes it. */
+        StaffBankAccountRequest: {
+            kind: components["schemas"]["StaffBankAccountKind"];
+            /** @description The account number. Never answered back, and never named in a refusal. */
+            value: string;
+        };
+        /** @description The bank account on file, opened once for a holder of staff:personal-data. Answered with Cache-Control no-store; each reveal is a bank_account_revealed event naming the viewer. */
+        StaffBankAccountReveal: {
+            kind: components["schemas"]["StaffBankAccountKind"];
+            /** @description The account number as it was sealed — normalised, without spaces. */
+            value: string;
+        };
         /** @description A business unit, the virksomhet or underenhet the a-melding reports per (design S6). */
         StaffBusinessUnit: {
             /**
@@ -620,6 +806,25 @@ export interface components {
             /** @description Up to 200 characters. */
             street?: string;
         };
+        /** @description What a person edits on their own record (design S17): their private phones and email, their home address and their next of kin — a full replace of exactly these, every optional field left out cleared. Everything else — the work group, the birth date and gender, the national identity number, the bank account — is HR's; a property this schema does not name is refused as a 400 naming it. */
+        StaffMeRequest: {
+            /** @description Up to 100 characters. */
+            city?: string;
+            /** @description An ISO 3166-1 alpha-2 code. */
+            country?: string;
+            /** @description All of the person's next of kin, at most three, in their order. An empty list removes them all. */
+            nextOfKin: components["schemas"]["StaffNextOfKin"][];
+            /** @description Up to 32 characters. */
+            phoneMobile?: string;
+            /** @description Up to 32 characters. */
+            phonePrivate?: string;
+            /** @description Up to 16 characters. */
+            postalCode?: string;
+            /** @description An email address of up to 254 characters, stored lower-cased. */
+            privateEmail?: string;
+            /** @description Up to 200 characters. */
+            street?: string;
+        };
         /** @description What the Staff app needs before it draws anything. */
         StaffMeta: {
             capabilities: components["schemas"]["StaffCapabilities"];
@@ -634,6 +839,22 @@ export interface components {
         };
         /** @enum {string} */
         StaffNationalIdKind: "fodselsnummer" | "d_nummer" | "foreign";
+        /** @description A national identity number to seal on the person (design S4). A fødselsnummer or d-nummer is eleven digits once spaces, hyphens and full stops are dropped, both control digits checked, its date a real one (the synthetic test ranges, month + 40 and month + 80, accepted); country, when given, is NO. A foreign id is 1 to 40 letters, digits or hyphens with its country, an ISO 3166-1 alpha-2 code other than NO. The value is sealed and indexed by a keyed MAC; only its kind is kept in clear, and no refusal echoes it. */
+        StaffNationalIdRequest: {
+            /** @description A foreign id's country, ISO 3166-1 alpha-2. Required for a foreign id. */
+            country?: string;
+            kind: components["schemas"]["StaffNationalIdKind"];
+            /** @description The number. Never answered back, and never named in a refusal. */
+            value: string;
+        };
+        /** @description The national identity number on file, opened once for a holder of staff:personal-data. Answered with Cache-Control no-store; each reveal is a national_id_revealed event naming the viewer. */
+        StaffNationalIdReveal: {
+            /** @description A foreign id's country. Absent for a fødselsnummer or a d-nummer. */
+            country?: string;
+            kind: components["schemas"]["StaffNationalIdKind"];
+            /** @description The number as it was sealed — eleven digits, or the upper-cased foreign id. */
+            value: string;
+        };
         /** @description One of a person's next of kin (private). */
         StaffNextOfKin: {
             /** @description 1 to 200 characters. */
@@ -720,6 +941,20 @@ export interface components {
             canRevealIdentifiers: boolean;
             /** @description The person themselves, staff:manage or staff:personal-data — the pay terms of the person's employments. */
             canSeePay: boolean;
+        };
+        /** @description A person's self-service link to a user (design S24, §3.6) — the link that makes the user the person themselves to this module, and nothing else. linked is false, and every other field absent, when the person is linked to nobody. */
+        StaffPersonLink: {
+            linked: boolean;
+            /** @description Whether identity reports the user as managed by Staff — false for every self-service link. */
+            managed?: boolean;
+            /** @description The link's state; linked for a self-service link. */
+            state?: string;
+            user?: components["schemas"]["StaffPersonUser"];
+        };
+        /** @description The user to link the person to, or null to unlink them. */
+        StaffPersonLinkRequest: {
+            /** Format: uuid */
+            userId: string | null;
         };
         /** @description A person in the directory — the work group only, whoever lists. */
         StaffPersonListItem: {
@@ -821,7 +1056,7 @@ export interface components {
             /** Format: uuid */
             id: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle and revision_conflict. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere and no_person. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -908,6 +1143,47 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getStaffAssignableUsers: {
+        parameters: {
+            query?: {
+                /** @description Narrows the search. Absent or blank lists the first twenty active users. */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAssignableUser"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     getStaffBusinessUnits: {
         parameters: {
             query?: never;
@@ -1776,6 +2052,184 @@ export interface operations {
             };
         };
     };
+    getStaffMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPerson"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person, the caller is linked to no person. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    putStaffMe: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The person's revision as read — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffMeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPerson"];
+                };
+            };
+            /** @description Bad Request — a field did not pass (a next of kin's keyed as nextOfKin[0].name), or a property the request does not name, a field of the work group among them. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person, the caller is linked to no person. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Conflict — revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffMeEvents: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfStaffEvent"];
+                };
+            };
+            /** @description Bad Request — paging out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person, the caller is linked to no person. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
     getStaffMeta: {
         parameters: {
             query?: never;
@@ -2090,6 +2544,115 @@ export interface operations {
             };
         };
     };
+    putStaffPeopleByIdBankAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffBankAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPerson"];
+                };
+            };
+            /** @description Bad Request — bank_account_invalid. The refusal never echoes the number. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postStaffPeopleByIdBankAccountReveal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description no-store — the value is never kept by a cache. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffBankAccountReveal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or no bank account on file. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getStaffPeopleByIdEvents: {
         parameters: {
             query?: {
@@ -2141,6 +2704,115 @@ export interface operations {
                 };
             };
             /** @description Not Found — no such person, or not one whose history the caller may read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffPeopleByIdNationalId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffNationalIdRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPerson"];
+                };
+            };
+            /** @description Bad Request — national_id_invalid; national_id_birth_date_mismatch when the number encodes another birth date than the person's; national_id_duplicate when another person has the number, naming nobody. No refusal echoes the number. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postStaffPeopleByIdNationalIdReveal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description no-store — the value is never kept by a cache. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffNationalIdReveal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or no national identity number on file. The body is empty. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2384,6 +3056,113 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["StaffProblem"];
                 };
+            };
+        };
+    };
+    getStaffPeopleByIdUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonLink"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or not one whose link the caller may read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffPeopleByIdUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffPersonLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonLink"];
+                };
+            };
+            /** @description Bad Request — a field error on userId when no user has the id; user_inactive when the user is disabled; user_linked_elsewhere when the user is linked to another person. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
