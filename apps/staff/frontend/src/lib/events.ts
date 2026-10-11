@@ -41,6 +41,8 @@ export const eventKinds = [
   // The retention run's erase of a person (design S15): its payload names
   // no field, only the kinds erased and their counts.
   "erased",
+  // Installation-level: a threshold acknowledged (design S20), naming its key.
+  "threshold_acknowledged",
 ] as const;
 
 /**

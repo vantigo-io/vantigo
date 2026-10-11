@@ -1074,6 +1074,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the register's figures
+         * @description The dashboard's figures for the register, judged on today in the settings' time zone and read in one snapshot. staff:view or staff:manage, judged in the module; anyone else is the uniform 403.
+         */
+        get: operations["getStaffStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/stats/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the register's attention items
+         * @description The dashboard's attention items for the caller (StaffStatsAttentionItem names each type, its trigger and its audience) — staff:manage's, staff:personal-data's, and a manager's for the people they manage today — read in one snapshot. A caller with none of these gets an empty list, never a 403.
+         */
+        get: operations["getStaffStatsAttention"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/terms/{id}": {
         parameters: {
             query?: never;
@@ -1093,6 +1133,26 @@ export interface paths {
          * @description Deletes an employment's latest terms row, so the one before it is in force again. The first row is never deleted. The deletion is a terms_deleted event naming the row's values.
          */
         delete: operations["deleteStaffTermsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/thresholds/{key}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge a threshold
+         * @description Acknowledges a threshold (design S20) — 5, 30 or 50 people, or otp — once and permanently, in one transaction under the settings row's lock: the settings record when, and a threshold_acknowledged event of the installation names the caller and the key. Its attention item is not shown again, whatever the headcount does. Acknowledging a threshold already acknowledged changes nothing, records no event and answers the same. A threshold need not be crossed to be acknowledged. Any other key is 404 threshold_unknown.
+         */
+        post: operations["postStaffThresholdsByKeyAcknowledge"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2020,7 +2080,7 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold, reassessment_not_due and retention_busy. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -2095,7 +2155,7 @@ export interface components {
              */
             pendingDeletions: number;
         };
-        /** @description The Staff settings (design §3.6) as far as the deliveries so far expose them, and the retention run's state, derived. The other columns of the settings row reach the contract with the deliveries that use them. */
+        /** @description The Staff settings (design §3.6) as far as the deliveries so far expose them, the retention run's state, derived, and when each threshold was acknowledged, read-only. The other columns of the settings row reach the contract with the deliveries that use them. */
         StaffSettings: {
             /** @description What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none. */
             employeeNumberPrefix: string;
@@ -2124,6 +2184,7 @@ export interface components {
              * @description The revision a change sends back in If-Match.
              */
             revision: number;
+            thresholdsAcknowledged: components["schemas"]["StaffThresholdsAcknowledged"];
             /** @description The business time zone, an IANA name. */
             timeZone: string;
         };
@@ -2159,6 +2220,54 @@ export interface components {
             birthDate: string;
             familyName: string;
             givenName: string;
+        };
+        /** @description The dashboard's figures for the register (design S20), judged on today in the settings' time zone and read in one snapshot. The absence figures arrive with delivery B. */
+        StaffStats: {
+            /**
+             * Format: int32
+             * @description Employments in force today whose end falls within the next thirty days, today included.
+             */
+            endingSoon: number;
+            /**
+             * Format: double
+             * @description The full-time equivalents in force today — the sum of the percentage of every employment's terms row in force today, divided by a hundred, to two decimals. A person with two employments counts both.
+             */
+            fteSum: number;
+            /**
+             * Format: int32
+             * @description People with at least one employment in force today — started on or before today and not ended before it. Each person counts once.
+             */
+            headcount: number;
+            /**
+             * Format: int32
+             * @description People not erased who have no employment at all — a record created and never completed.
+             */
+            peopleWithoutEmployment: number;
+            /**
+             * Format: int32
+             * @description Employments starting after today and within the next thirty days.
+             */
+            startingSoon: number;
+        };
+        /**
+         * @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares. The host words the sentence from `type`; `title` is the name of the thing — a person's name — or, for the three items about the installation, an English sentence the host replaces. "Today" is the day in the settings' time zone; a date-only occurredAt is that day at midnight UTC.
+         *
+         *     Nine types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, as agreed at the start, it lasts under a month or the person is hired out (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and the person's manager today for their reports): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager in employment today — neither the manager its terms name nor one of its department or the departments above; the head of a top-level department is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each of 5, 30 and 50 the headcount has reached and that is not acknowledged — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
+         */
+        StaffStatsAttentionItem: {
+            /**
+             * Format: int32
+             * @description How many the item stands for — the failing ledger rows, or the headcount of a threshold. Absent on the other types.
+             */
+            count?: number;
+            /** @description The person's id, or the literal 'retention' or 'thresholds', or the headcount threshold ('5', '30', '50'). */
+            entityId: string;
+            id: string;
+            /** Format: date-time */
+            occurredAt: string;
+            title: string;
+            /** @enum {string} */
+            type: "contractOverdue" | "probationEnding" | "temporaryNoticeDue" | "temporaryConverts" | "reportsWithoutManager" | "reassessmentDue" | "retentionFailing" | "otpThreshold" | "headcountThreshold";
         };
         /** @description The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out. */
         StaffStructure: {
@@ -2395,6 +2504,17 @@ export interface components {
             workingHoursScheme?: components["schemas"]["StaffWorkingHoursScheme"] | null;
             /** @description § 14-6 j. Up to 1000 characters. */
             workingTimeText?: string | null;
+        };
+        /** @description When each threshold was acknowledged (design S20) — once and permanently, by staff:manage; a threshold not yet acknowledged is absent. Who acknowledged it is in the threshold_acknowledged event. */
+        StaffThresholdsAcknowledged: {
+            /** Format: date-time */
+            5?: string;
+            /** Format: date-time */
+            30?: string;
+            /** Format: date-time */
+            50?: string;
+            /** Format: date-time */
+            otp?: string;
         };
         /**
          * @description The a-melding's arbeidstidsordning: not_shift (ikkeSkift), shift_365 (skift365), offshore_336 (offshore336), continuous_336 (helkontinuerligSkiftOgAndreOrdninger336), round_the_clock_355 (doegnkontinuerligSkiftOgTurnus355), other_shift (andreSkift).
@@ -6199,6 +6319,82 @@ export interface operations {
             };
         };
     };
+    getStaffStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffStats"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getStaffStatsAttention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffStatsAttentionItem"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     putStaffTermsById: {
         parameters: {
             query?: never;
@@ -6316,6 +6512,55 @@ export interface operations {
             };
             /** @description Conflict — terms_not_latest when a later row exists; terms_first_row_start for the first row; manager_cycle when the row in force again closes a loop in the manager graph; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    postStaffThresholdsByKeyAcknowledge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — when each threshold was acknowledged, this one included. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffThresholdsAcknowledged"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — threshold_unknown: the key is none of 5, 30, 50 and otp. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -12,19 +12,25 @@ import (
 // field is absent when the column is NULL, never null and never an empty
 // string — a nil pointer is what omitempty leaves out.
 
-// settingsResponse is the settings delivery A1 exposes.
-func settingsResponse(row store.StaffSetting, retention gen.StaffRetentionState) gen.StaffSettings {
-	return gen.StaffSettings{
-		TimeZone:             row.TimeZone,
-		EmployeeNumberPrefix: row.EmployeeNumberPrefix,
-		NextEmployeeNumber:   row.NextEmployeeNumber,
-		PensionProvider:      row.PensionProvider,
-		InjuryInsurer:        row.InjuryInsurer,
-		RetentionGraceDays:   int32(row.RetentionGraceDays),
-		HealthRetentionDays:  int32(row.HealthRetentionDays),
-		Retention:            retention,
-		Revision:             row.Revision,
+// settingsResponse is the settings the deliveries so far expose, the
+// retention block and the acknowledged thresholds.
+func settingsResponse(row store.StaffSetting, retention gen.StaffRetentionState) (gen.StaffSettings, error) {
+	acknowledged, err := parseAcknowledged(row.ThresholdsAcknowledged)
+	if err != nil {
+		return gen.StaffSettings{}, err
 	}
+	return gen.StaffSettings{
+		TimeZone:               row.TimeZone,
+		EmployeeNumberPrefix:   row.EmployeeNumberPrefix,
+		NextEmployeeNumber:     row.NextEmployeeNumber,
+		PensionProvider:        row.PensionProvider,
+		InjuryInsurer:          row.InjuryInsurer,
+		RetentionGraceDays:     int32(row.RetentionGraceDays),
+		HealthRetentionDays:    int32(row.HealthRetentionDays),
+		Retention:              retention,
+		ThresholdsAcknowledged: thresholdsResponse(acknowledged),
+		Revision:               row.Revision,
+	}, nil
 }
 
 func legalEntityResponse(row store.StaffLegalEntity) gen.StaffLegalEntity {

@@ -143,7 +143,11 @@ func (s *server) GetStaffSettings(ctx context.Context, _ gen.GetStaffSettingsReq
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetStaffSettings200JSONResponse(settingsResponse(row, state)), nil
+	out, err := settingsResponse(row, state)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetStaffSettings200JSONResponse(out), nil
 }
 
 // retentionState is the retention block of the settings (plan reading 8),
@@ -242,7 +246,11 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 	if err != nil {
 		return nil, err
 	}
-	return gen.PutStaffSettings200JSONResponse(settingsResponse(saved, state)), nil
+	out, err := settingsResponse(saved, state)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutStaffSettings200JSONResponse(out), nil
 }
 
 // badIfMatch is the field error an If-Match that carries no revision answers.

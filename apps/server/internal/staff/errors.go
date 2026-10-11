@@ -96,6 +96,12 @@ const (
 	codeRetentionBusy = "retention_busy"
 )
 
+// The refusal code of the thresholds (delivery A2, Task 6): a 404 naming the
+// key that is none of the four.
+const (
+	codeThresholdUnknown = "threshold_unknown"
+)
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.
@@ -201,6 +207,16 @@ func noPerson() gen.StaffProblem {
 	status := int32(http.StatusNotFound)
 	code, title := codeNoPerson, "No person"
 	detail := "You are linked to no person in Staff. Ask HR to link your user to your record."
+	return gen.StaffProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}
+}
+
+// thresholdUnknown is the 404 a threshold key that is none of the four
+// answers: a problem with its code rather than the bare 404 of an unknown id,
+// since the four keys are no secret.
+func thresholdUnknown(key string) gen.StaffProblem {
+	status := int32(http.StatusNotFound)
+	code, title := codeThresholdUnknown, "Unknown threshold"
+	detail := fmt.Sprintf("'%s' is no threshold; a threshold is 5, 30, 50 or otp.", key)
 	return gen.StaffProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}
 }
 

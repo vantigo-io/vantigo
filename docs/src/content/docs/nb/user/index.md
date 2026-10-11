@@ -17,12 +17,18 @@ rollene dine gir deg. En modul du ikke har rettighet til vises rett og slett ikk
 Hver modul er en **app** med sin egen sidemeny: Kunder, Prosjekter, Timer, Utlegg,
 Ansatte, Fakturaer, Kommunikasjon, Produkter og Energi. App-velgeren i toppfeltet lister appene
 du kan åpne; **Hjem** er dashbordet, der hver app du bruker viser sitt eget kort med
-tallene som trenger oppmerksomheten din — Ansatte, som ikke har noen tall ennå, bare
-under **Moduler** nederst. Listen **Trenger oppfølging** samler det i appene
-som venter på noen — også fra Fakturaer: forfalte fakturaer, penger som skal tilbake på en
-faktura, og, med `invoices:payments`, banklinjer i avvikskøen, purringer som feilet eller
-venter på en sats eller en gjennomgang, og utskriftsbunker som ikke er bekreftet postlagt,
-hver med de utskrevne brevene talt ([kortet på dashbordet](/nb/user/invoices/#kortet-på-dashbordet)).
+tallene som trenger oppmerksomheten din — Ansattes, hvor mange som er ansatt i dag med
+årsverkene og hvem som begynner og slutter snart, for `staff:view` eller `staff:manage`
+([dashbordet](/nb/user/staff/#dashbordet)). Listen **Trenger oppfølging** samler det i
+appene som venter på noen — også fra Fakturaer: forfalte fakturaer, penger som skal
+tilbake på en faktura, og, med `invoices:payments`, banklinjer i avvikskøen, purringer
+som feilet eller venter på en sats eller en gjennomgang, og utskriftsbunker som ikke er
+bekreftet postlagt, hver med de utskrevne brevene talt
+([kortet på dashbordet](/nb/user/invoices/#kortet-på-dashbordet)); og fra Ansatte:
+arbeidsavtaler som ikke er signert, prøvetider som går ut, midlertidige arbeidsforhold
+over ett eller tre år, personer uten leder, nye vurderinger som skal gjøres, dokumenter
+lageret ikke vil slette, og terskler for antall ansatte og tjenestepensjon som ikke er
+bekreftet.
 
 Inne i en app lister sidemenyen appens områder. Mange av dem vises bare til den som har
 den tilhørende rettigheten, så en kollegas sidemeny kan være lengre eller kortere enn

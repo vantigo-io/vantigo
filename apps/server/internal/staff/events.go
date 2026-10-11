@@ -105,6 +105,14 @@ const (
 	eventErased = "erased"
 )
 
+// eventThresholdAcknowledged is a threshold's acknowledgement (design S20,
+// plan reading 18): an installation event naming its actor and the key —
+// {key} — written once per threshold, in the transaction that records it in
+// the settings. Its payload touches no class.
+const (
+	eventThresholdAcknowledged = "threshold_acknowledged"
+)
+
 // holdEventKinds are the hold's kinds: about the record's retention and who
 // exported it rather than about the person's work, so they are listed only to
 // an audience that reads the hold group — and to the person themselves, who

@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
+description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
 sidebar:
   order: 44
 sources:
@@ -19,6 +19,7 @@ sources:
   - apps/server/internal/staff/retention.go
   - apps/server/internal/staff/retention_worker.go
   - apps/server/internal/staff/object_deletions.go
+  - apps/server/internal/staff/thresholds.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -385,6 +386,34 @@ An erased person who comes back is [rehired](#rehire-an-erased-person) on the sa
 record: what the erase removed stays empty until you type it again, and the rehired
 employment's pay is untouched by the old one's erase.
 
+## The thresholds
+
+Four thresholds bring the employer a duty, and Staff watches each. While one is crossed
+and not acknowledged, people with `staff:manage` see an item for it in **Needs
+attention** on the dashboard ([the dashboard](/en/user/staff/#the-dashboard)):
+
+| Threshold | Crossed when | What the employer must do |
+| --- | --- | --- |
+| `5` | 5 or more people are employed today | Have written whistleblowing routines (aml. § 2 A-6) and a safety representative, verneombud (§ 6-1). |
+| `30` | 30 or more | Have a working environment committee, AMU (§ 7-1). |
+| `50` | 50 or more | The activity and reporting duty on equality, ARP (likestillings- og diskrimineringsloven § 26), applies above fifty — the item comes one person early. |
+| `otp` | Someone is at 75 % or more, or the people at 20 % or more add up to two full-time positions — the percentages employed today, summed per person | Have an occupational pension scheme, OTP (OTP-loven § 2) — unless the only such person is the owner, which Staff cannot tell, since it records no owner. |
+
+When the duty is dealt with — or does not apply — acknowledge the threshold. It is
+acknowledged **once and for good**: its item never comes back, whatever the headcount
+does later, and a threshold can be acknowledged before it is crossed.
+
+1. As someone with `staff:manage`, send
+   `POST /api/v1/staff/thresholds/{key}/acknowledge` with the key — `5`, `30`, `50` or
+   `otp`. The Staff settings screen has no control for it yet.
+2. Verify: the answer, and `thresholdsAcknowledged` in `GET /api/v1/staff/settings`,
+   carry the time it was acknowledged; the item is gone from the dashboard.
+
+Each acknowledgement is recorded in the settings with its time, and as a
+`threshold_acknowledged` event of the installation naming who acknowledged it.
+Acknowledging a threshold again changes nothing and records nothing. A key other than
+the four is refused with `threshold_unknown`.
+
 ## The bank-change mail
 
 When a bank account is set or changed, the person is mailed — at their private email
@@ -427,7 +456,10 @@ changing the settings at once cannot overwrite each other unseen.
   erased ([Retention](#retention)). Left out of a replace, each keeps its value.
 - **Retention state** (`retention`, read-only): the deletion ledger's pending and
   failing files, the oldest pending, and the last erase ([The deletion
-  ledger](#the-deletion-ledger)).
+  ledger](#the-deletion-ledger)). Files the store has refused for more than a day also
+  raise an item on the dashboard for `staff:manage`.
+- **Thresholds acknowledged** (`thresholdsAcknowledged`, read-only): when each
+  threshold was acknowledged ([The thresholds](#the-thresholds)).
 
 ## What can go wrong
 
@@ -455,6 +487,7 @@ changing the settings at once cannot overwrite each other unseen.
   category of your own instead.
 - **`category_in_use`.** Documents are still filed under the category you are
   archiving. Move them to another category first.
+- **`threshold_unknown`.** The key is none of `5`, `30`, `50` and `otp`.
 - **`document_count_exceeded`.** The person has 200 documents, the most one person may
   have — counted whatever you may see, so it can include health documents you cannot.
   Remove documents that are no longer needed.
