@@ -309,7 +309,7 @@ stops every erase for the person). The `staff-retention` worker runs daily: for 
 person whose last employment ended more than `retentionGraceDays` ago (default 90),
 not held, it blanks the D columns, deletes the D rows and queues the D objects; for
 every **closed case** older than `healthRetentionDays` (default 365), whatever the
-employment state, it blanks the E content and queues the health objects; for every
+employment state, it blanks the E content and queues the health objects (**B's**: the case does not exist before B; A2's health schedule is the one below); for every
 A item older than five years after its year, it blanks. Objects go through
 `object_deletions` (object key, attempts, next attempt), retried every cycle until the
 store confirms, so a legal erase is never best-effort (M7). It writes an `erased`
@@ -317,8 +317,8 @@ event per person listing kinds and counts, and a **re-assessment** attention ite
 is derived — due twelve months after the last employment's end for a person with
 `erased_at` set and `reassessed_at` null — cleared by `reassessed_at` and
 `reassessed_by`. **(A2 pre-flight)** The three schedules are three due queries, each
-over what remains: **D** — `erased_at` null, every employment ended before today
-minus the grace, not held; **health** — a *health document* is one in a **restricted**
+over what remains: **D** — `erased_at` null, at least one employment and every one ended before
+today minus the grace, not held (a person with no employment is never erased); **health** — a *health document* is one in a **restricted**
 category (restricted ⇔ class E), deleted `healthRetentionDays` after the last
 employment's end until B attaches documents to a sick case (`documents.case_id`,
 nullable, added by B) and moves the attached ones to the case's schedule, current
@@ -710,7 +710,9 @@ recomputed when the case's rows change), `done_at`, `done_by_user_id`, `waived`,
 `staff.documents` — `person_id`, `category_id` → `document_categories` (`key`, names,
 `retention_class`, `restricted` ⇔ class E, `seeded`, `archived_at`, `sort`),
 `object_key`, `file_name`, `content_type`, `size_bytes`, `valid_to`, `signed_at`,
-`uploaded_by_user_id`, `revision` (no `deleted_at`: rows are deleted — A2
+`uploaded_by_user_id`, `employment_id` (nullable; the employment covering `signed_at`, else
+the upload day, when exactly one does; HR may set it; the A erase's handle — A2
+pre-flight re-check), `revision` (no `deleted_at`: rows are deleted — A2
 pre-flight). Keys `people/<personId>/<uuid>`. `staff.object_deletions` — `object_key`,
 `attempts`, `next_attempt_at`, `claimed_until`, `last_error`, `created_at`. The
 `retention` block of `GET /settings` (pending and failing deletions, the oldest
