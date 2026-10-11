@@ -42,3 +42,17 @@ export const validatePeopleSearch = (search: Record<string, unknown>): PeopleSea
   page: Math.max(1, Number(search.page) || 1),
   create: search.create === "person" ? "person" : undefined,
 });
+
+/** The tabs of the person page (design §7); the Account, Absence and Documents tabs come with later deliveries. */
+export const personTabs = ["profile", "employments", "history"] as const;
+export type PersonTab = (typeof personTabs)[number];
+
+/** The person page's and My page's URL search: the tab, so a refresh or a pasted link opens the same view. */
+export interface PersonSearch {
+  tab?: PersonTab;
+}
+
+/** The host route's `validateSearch` for the person page and My page; an unknown tab is the profile. */
+export const validatePersonSearch = (search: Record<string, unknown>): PersonSearch => ({
+  tab: personTabs.includes(search.tab as PersonTab) && search.tab !== "profile" ? (search.tab as PersonTab) : undefined,
+});

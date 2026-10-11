@@ -1,0 +1,200 @@
+import { Alert, Button, Group, Modal, SimpleGrid, Stack, Tabs, Text, TextInput } from "@mantine/core";
+import { useForm } from "@mantine/form";
+import { useMediaQuery } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
+import { IconAlertCircle, IconPencil, IconUserQuestion } from "@tabler/icons-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { ContentSkeleton, EmptyState, PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
+import { useState } from "react";
+import { meQueryOptions, myEventsQueryOptions, updateMe } from "../api/me";
+import { staffMetaQueryOptions } from "../api/meta";
+import { nextOfKinQueryOptions, type StaffNextOfKin, type StaffPerson } from "../api/people";
+import { NotFoundError, STAFF_QUERY_KEY } from "../api/request";
+import "../i18n";
+import { isRevisionConflict, listPath, mappedRefusals } from "../lib/errors";
+import {
+  type MyDetailsFormValues,
+  meInputOf,
+  myDetailsFields,
+  myDetailsFormValuesOf,
+  myDetailsValidation,
+} from "../lib/person-form";
+import type { PersonSearch, PersonTab } from "../lib/search";
+import { NextOfKinFields } from "./-next-of-kin-fields";
+import { PersonEmployments } from "./-person-employments";
+import { PersonHistory } from "./-person-history";
+import { PersonProfile } from "./-person-profile";
+
+/**
+ * My page (design §7, S17, S28): the caller's own record through their
+ * self-service link, read as themselves — whatever else they hold — with the
+ * private group theirs to edit (`PUT /me`), their employments and terms with
+ * the pay (it is their contract), and their history. A caller HR has not
+ * linked yet gets a plain explanation, not an error: `no_person` is the
+ * expected state of somebody new. Laid out for a phone first.
+ */
+export const MyPage = () => {
+  const { t } = useI18n("staff");
+  const { tab = "profile" } = useSearch({ strict: false }) as PersonSearch;
+  const navigate = useNavigate() as (options: unknown) => void;
+  const meta = useQuery(staffMetaQueryOptions());
+  const me = useQuery(meQueryOptions());
+  const [editing, setEditing] = useState(false);
+
+  const header = <PageHeader title={t("navMyPage")} description={t("myPageDescription")} />;
+  // `/me` has no id to be unknown: its one 404 is `no_person`.
+  if (me.error instanceof NotFoundError)
+    return (
+      <Stack gap="lg">
+        {header}
+        <EmptyState icon={IconUserQuestion} title={t("noPersonTitle")} description={t("noPersonExplained")} />
+      </Stack>
+    );
+  if (me.isError)
+    return (
+      <Stack gap="lg">
+        {header}
+        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMyPage")}>
+          {me.error.message}
+        </Alert>
+      </Stack>
+    );
+  if (!me.data || !meta.data) return <ContentSkeleton rows={6} rowHeight={44} />;
+  const person = me.data;
+  const current: PersonTab = tab;
+
+  return (
+    <Stack gap="lg">
+      {header}
+      <PageTabs
+        aria-label={t("personViews")}
+        items={[
+          { value: "profile", label: t("tab_profile") },
+          { value: "employments", label: t("tab_employments") },
+          { value: "history", label: t("tab_history") },
+        ]}
+        value={current}
+        onChange={(next) => navigate({ search: { tab: next === "profile" ? undefined : next }, replace: true })}
+      >
+        <Tabs.Panel value="profile" pt="lg">
+          <PersonProfile
+            person={person}
+            canOpenPeople={meta.data.capabilities.canViewDirectory || meta.data.capabilities.canEdit}
+            privateActions={
+              <Button variant="light" leftSection={<IconPencil size={16} />} onClick={() => setEditing(true)}>
+                {t("editMyDetails")}
+              </Button>
+            }
+          />
+        </Tabs.Panel>
+        <Tabs.Panel value="employments" pt="lg">
+          <PersonEmployments person={person} today={meta.data.today} structure={meta.data.structure} />
+        </Tabs.Panel>
+        <Tabs.Panel value="history" pt="lg">
+          <PersonHistory page={myEventsQueryOptions} />
+        </Tabs.Panel>
+      </PageTabs>
+      <MyDetailsModal person={person} opened={editing} onClose={() => setEditing(false)} />
+    </Stack>
+  );
+};
+
+/** On a phone the form is a sheet that takes the whole screen. */
+const MyDetailsModal = ({ person, opened, onClose }: { person: StaffPerson; opened: boolean; onClose: () => void }) => {
+  const { t } = useI18n("staff");
+  const phone = useMediaQuery("(max-width: 48em)");
+  const nextOfKin = useQuery({ ...nextOfKinQueryOptions(person.id), enabled: opened });
+  return (
+    <Modal opened={opened} onClose={onClose} title={t("editMyDetails")} size="lg" fullScreen={phone}>
+      {opened && nextOfKin.data && (
+        <MyDetailsForm
+          person={person}
+          nextOfKin={nextOfKin.data.nextOfKin}
+          revision={nextOfKin.data.revision}
+          onDone={onClose}
+        />
+      )}
+    </Modal>
+  );
+};
+
+const MyDetailsForm = ({
+  person,
+  nextOfKin,
+  revision,
+  onDone,
+}: {
+  person: StaffPerson;
+  nextOfKin: StaffNextOfKin[];
+  /** The person's revision, read with the next of kin — the one `PUT /me` sends. */
+  revision: number;
+  onDone: () => void;
+}) => {
+  const { t } = useI18n("staff");
+  const queryClient = useQueryClient();
+  const form = useForm<MyDetailsFormValues>({
+    initialValues: myDetailsFormValuesOf(person, nextOfKin),
+    validate: myDetailsValidation(t),
+  });
+
+  const save = useMutation({
+    mutationFn: (values: MyDetailsFormValues) => updateMe(meInputOf(values), revision),
+    onSuccess: async () => {
+      notifications.show({ color: "teal", title: t("myDetailsSaved"), message: "" });
+      await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
+      onDone();
+    },
+    onError: async (error) => {
+      if (isRevisionConflict(error)) {
+        // HR saved the record meanwhile: close on what is there now.
+        notifications.show({ color: "yellow", title: t("revisionConflict"), message: t("revisionConflictHint") });
+        await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
+        onDone();
+        return;
+      }
+      const { fields, rest } = mappedRefusals(error, (field) =>
+        field.startsWith("nextOfKin") || (myDetailsFields as readonly string[]).includes(field)
+          ? listPath(field)
+          : undefined,
+      );
+      form.setErrors(fields);
+      if (rest.length > 0) notifications.show({ color: "red", title: t("couldNotSave"), message: rest.join(" ") });
+    },
+  });
+
+  return (
+    <form onSubmit={form.onSubmit((values) => save.mutate(values))}>
+      <Stack>
+        <Text size="sm" c="dimmed">
+          {t("askHrForTheRest")}
+        </Text>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
+          <TextInput label={t("phoneMobile")} type="tel" {...form.getInputProps("phoneMobile")} />
+          <TextInput label={t("phonePrivate")} type="tel" {...form.getInputProps("phonePrivate")} />
+          <TextInput label={t("privateEmail")} type="email" {...form.getInputProps("privateEmail")} />
+          <TextInput label={t("street")} {...form.getInputProps("street")} />
+          <TextInput label={t("postalCode")} {...form.getInputProps("postalCode")} />
+          <TextInput label={t("city")} {...form.getInputProps("city")} />
+          <TextInput
+            label={t("country")}
+            description={t("homeCountryDescription")}
+            {...form.getInputProps("country")}
+          />
+        </SimpleGrid>
+        <Text size="sm" fw={500}>
+          {t("nextOfKin")}
+        </Text>
+        <NextOfKinFields form={form} />
+        <Group justify="flex-end">
+          <Button type="button" variant="default" onClick={onDone}>
+            {t("cancel")}
+          </Button>
+          <Button type="submit" loading={save.isPending}>
+            {t("save")}
+          </Button>
+        </Group>
+      </Stack>
+    </form>
+  );
+};

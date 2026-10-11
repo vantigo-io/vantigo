@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { staffCatalog } from "./i18n";
+import { eventFieldLabelKey, eventFields, eventKinds } from "./lib/events";
 import { staffNavItems } from "./lib/navigation";
+import { personTabs } from "./lib/search";
 import {
   appointmentFormsFor,
+  bankAccountKinds,
+  contractCheckItems,
   employeeTypes,
   employmentTypes,
+  endReasons,
   genders,
+  nationalIdKinds,
+  nextOfKinRelationships,
   noticeUnits,
+  payPeriods,
+  personRoleKinds,
   relationshipTypes,
   remunerationTypes,
   temporaryGrounds,
@@ -51,8 +60,28 @@ describe("the staff catalog", () => {
       ...remunerationTypes.map((value) => `remunerationType_${value}`),
       ...genders.map((value) => `gender_${value}`),
       ...staffNavItems.map((item) => item.label),
+      ...endReasons.map((value) => `endReason_${value}`),
+      ...payPeriods.map((value) => `payPeriod_${value}`),
+      ...nextOfKinRelationships.map((value) => `relationship_${value}`),
+      ...personRoleKinds.map((value) => `role_${value}`),
+      ...nationalIdKinds.map((value) => `nationalIdKind_${value}`),
+      ...bankAccountKinds.map((value) => `bankAccountKind_${value}`),
+      ...contractCheckItems.map((value) => `contractItem_${value}`),
+      ...["present", "missing", "not_applicable"].map((value) => `contractState_${value}`),
+      ...personTabs.map((value) => `tab_${value}`),
+      ...eventKinds.map((value) => `event_${value}`),
     ];
     for (const key of keys) expect(en[key], `no label for ${key}`).toBeDefined();
+  });
+
+  it("names every field a history entry can name", () => {
+    const en = staffCatalog.en as Record<string, string>;
+    for (const field of eventFields) expect(en[eventFieldLabelKey(field)], `no label for ${field}`).toBeDefined();
+  });
+
+  it("names seventeen items of the contract check, a to q", () => {
+    expect(contractCheckItems).toHaveLength(17);
+    expect(contractCheckItems.join("")).toBe("abcdefghijklmnopq");
   });
 
   it("explains the presumption in both languages, naming the section of the act", () => {

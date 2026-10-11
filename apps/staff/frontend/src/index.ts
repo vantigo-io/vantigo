@@ -1,6 +1,7 @@
 import "./i18n";
 
 export * from "./api/employments";
+export * from "./api/me";
 export { type StaffCapabilities, type StaffMeta, type StaffStructure, staffMetaQueryOptions } from "./api/meta";
 export * from "./api/people";
 export * from "./api/settings";
@@ -19,5 +20,7 @@ export * from "./lib/search";
 export * from "./lib/terms";
 export * from "./lib/terms-form";
 export { NewPersonModal, type NewPersonModalProps } from "./pages/-new-person-modal";
+export { MyPage } from "./pages/my-page";
 export { PeoplePage } from "./pages/people";
+export { PersonPage } from "./pages/person";
 export { SettingsPage } from "./pages/settings";

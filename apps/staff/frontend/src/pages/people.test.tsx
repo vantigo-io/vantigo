@@ -149,7 +149,7 @@ describe("PeoplePage — a colleague", () => {
     renderRoute("/staff/people");
 
     await userEvent.click(within(await row("Grace Hopper")).getByRole("link", { name: "Grace Hopper" }));
-    expect(await screen.findByTestId("person-page")).toHaveTextContent("102");
+    expect(await screen.findByRole("heading", { name: "Grace Hopper", level: 2 })).toBeInTheDocument();
   });
 });
 
