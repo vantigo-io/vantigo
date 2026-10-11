@@ -21,11 +21,19 @@ import (
 
 var roleKinds = []string{"verneombud", "amu_member", "hms_responsible"}
 
+// rolesMax bounds a replace, as the contract's maxItems does: three kinds,
+// re-elected over the years, fit many times over.
+const rolesMax = 20
+
 // parseRoles judges a replace, each field named by the role's place in the
 // list (roles[1].toDate). A period may be open at either end; one that ends
 // before it starts is refused.
 func parseRoles(body gen.StaffPersonRolesRequest) ([]gen.StaffPersonRole, fieldErrors) {
 	var f fieldErrors
+	if len(body.Roles) > rolesMax {
+		f.add("roles", fmt.Sprintf("A person has at most %d roles, but %d were given", rolesMax, len(body.Roles)))
+		return nil, f
+	}
 	out := make([]gen.StaffPersonRole, 0, len(body.Roles))
 	for i, r := range body.Roles {
 		field := func(name string) string { return fmt.Sprintf("roles[%d].%s", i, name) }
@@ -73,16 +81,21 @@ func (s *server) GetStaffPeopleByIdRoles(ctx context.Context, req gen.GetStaffPe
 	if err != nil {
 		return nil, err
 	}
-	var rows []store.ListPersonRolesRow
+	var (
+		rows     []store.ListPersonRolesRow
+		revision int32
+	)
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
-		if _, err := readPerson(ctx, q, req.Id); err != nil {
-			return err
-		}
-		manager, err := managesPerson(ctx, q, caller, req.Id)
+		person, err := readPerson(ctx, q, req.Id)
 		if err != nil {
 			return err
 		}
-		if !caller.audienceOn(req.Id, manager).show("roles") {
+		revision = person.Revision
+		a, err := personAudience(ctx, q, caller, req.Id)
+		if err != nil {
+			return err
+		}
+		if !a.show("roles") {
 			return notFound()
 		}
 		if rows, err = q.ListPersonRoles(ctx, req.Id); err != nil {
@@ -96,7 +109,7 @@ func (s *server) GetStaffPeopleByIdRoles(ctx context.Context, req gen.GetStaffPe
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetStaffPeopleByIdRoles200JSONResponse(mapRows(rows, personRoleResponse)), nil
+	return gen.GetStaffPeopleByIdRoles200JSONResponse(gen.StaffPersonRoleList{Roles: mapRows(rows, personRoleResponse), Revision: revision}), nil
 }
 
 // PutStaffPeopleByIdRoles Replace a person's roles
@@ -110,12 +123,23 @@ func (s *server) PutStaffPeopleByIdRoles(ctx context.Context, req gen.PutStaffPe
 	if f.failed() {
 		return gen.PutStaffPeopleByIdRoles400ApplicationProblemPlusJSONResponse(invalid(invalidRolesTitle, f)), nil
 	}
+	revision, ok := parseIfMatch(req.Params.IfMatch)
+	if !ok {
+		return gen.PutStaffPeopleByIdRoles400ApplicationProblemPlusJSONResponse(invalid(invalidRolesTitle, badIfMatch())), nil
+	}
 	who, err := s.actorFor(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var rows []store.ListPersonRolesRow
 	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		person, err := readPerson(ctx, txq, req.Id)
+		if err != nil {
+			return err
+		}
+		if err := checkRevision("person", person.Revision, revision); err != nil {
+			return err
+		}
 		before, err := txq.ListPersonRoles(ctx, req.Id)
 		if err != nil {
 			return fmt.Errorf("staff: list person %d's roles: %w", req.Id, err)
@@ -137,13 +161,19 @@ func (s *server) PutStaffPeopleByIdRoles(ctx context.Context, req gen.PutStaffPe
 		if !differ {
 			return nil
 		}
+		if revision, err = bumpPersonRevision(ctx, txq, req.Id, s.deps.Clock()); err != nil {
+			return err
+		}
 		return s.recordChanges(ctx, txq, req.Id, eventRolesUpdated, who, changes{"roles": c})
 	})
 	if errors.Is(err, errPersonNotFound) {
 		return gen.PutStaffPeopleByIdRoles404Response{}, nil
 	}
+	if r, ok := asRefusal(err); ok {
+		return gen.PutStaffPeopleByIdRoles409ApplicationProblemPlusJSONResponse(r.problem), nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("staff: replace person %d's roles: %w", req.Id, err)
 	}
-	return gen.PutStaffPeopleByIdRoles200JSONResponse(mapRows(rows, personRoleResponse)), nil
+	return gen.PutStaffPeopleByIdRoles200JSONResponse(gen.StaffPersonRoleList{Roles: mapRows(rows, personRoleResponse), Revision: revision}), nil
 }

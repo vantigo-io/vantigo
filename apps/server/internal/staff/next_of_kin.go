@@ -89,16 +89,21 @@ func (s *server) GetStaffPeopleByIdNextOfKin(ctx context.Context, req gen.GetSta
 	if err != nil {
 		return nil, err
 	}
-	var rows []store.ListNextOfKinRow
+	var (
+		rows     []store.ListNextOfKinRow
+		revision int32
+	)
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
-		if _, err := readPerson(ctx, q, req.Id); err != nil {
-			return err
-		}
-		manager, err := managesPerson(ctx, q, caller, req.Id)
+		person, err := readPerson(ctx, q, req.Id)
 		if err != nil {
 			return err
 		}
-		if !caller.audienceOn(req.Id, manager).show("nextOfKin") {
+		revision = person.Revision
+		a, err := personAudience(ctx, q, caller, req.Id)
+		if err != nil {
+			return err
+		}
+		if !a.show("nextOfKin") {
 			return notFound()
 		}
 		if rows, err = q.ListNextOfKin(ctx, req.Id); err != nil {
@@ -112,7 +117,7 @@ func (s *server) GetStaffPeopleByIdNextOfKin(ctx context.Context, req gen.GetSta
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetStaffPeopleByIdNextOfKin200JSONResponse(mapRows(rows, nextOfKinResponse)), nil
+	return gen.GetStaffPeopleByIdNextOfKin200JSONResponse(gen.StaffNextOfKinList{NextOfKin: mapRows(rows, nextOfKinResponse), Revision: revision}), nil
 }
 
 // PutStaffPeopleByIdNextOfKin Replace a person's next of kin
@@ -126,12 +131,23 @@ func (s *server) PutStaffPeopleByIdNextOfKin(ctx context.Context, req gen.PutSta
 	if f.failed() {
 		return gen.PutStaffPeopleByIdNextOfKin400ApplicationProblemPlusJSONResponse(invalid(invalidNextOfKinTitle, f)), nil
 	}
+	revision, ok := parseIfMatch(req.Params.IfMatch)
+	if !ok {
+		return gen.PutStaffPeopleByIdNextOfKin400ApplicationProblemPlusJSONResponse(invalid(invalidNextOfKinTitle, badIfMatch())), nil
+	}
 	who, err := s.actorFor(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var rows []store.ListNextOfKinRow
 	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		person, err := readPerson(ctx, txq, req.Id)
+		if err != nil {
+			return err
+		}
+		if err := checkRevision("person", person.Revision, revision); err != nil {
+			return err
+		}
 		before, err := txq.ListNextOfKin(ctx, req.Id)
 		if err != nil {
 			return fmt.Errorf("staff: list person %d's next of kin: %w", req.Id, err)
@@ -154,13 +170,19 @@ func (s *server) PutStaffPeopleByIdNextOfKin(ctx context.Context, req gen.PutSta
 		if !differ {
 			return nil
 		}
+		if revision, err = bumpPersonRevision(ctx, txq, req.Id, s.deps.Clock()); err != nil {
+			return err
+		}
 		return s.recordChanges(ctx, txq, req.Id, eventNextOfKinUpdated, who, changes{"nextOfKin": c})
 	})
 	if errors.Is(err, errPersonNotFound) {
 		return gen.PutStaffPeopleByIdNextOfKin404Response{}, nil
 	}
+	if r, ok := asRefusal(err); ok {
+		return gen.PutStaffPeopleByIdNextOfKin409ApplicationProblemPlusJSONResponse(r.problem), nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("staff: replace person %d's next of kin: %w", req.Id, err)
 	}
-	return gen.PutStaffPeopleByIdNextOfKin200JSONResponse(mapRows(rows, nextOfKinResponse)), nil
+	return gen.PutStaffPeopleByIdNextOfKin200JSONResponse(gen.StaffNextOfKinList{NextOfKin: mapRows(rows, nextOfKinResponse), Revision: revision}), nil
 }

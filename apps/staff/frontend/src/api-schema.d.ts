@@ -287,7 +287,7 @@ export interface paths {
         };
         /**
          * List people
-         * @description The directory: every person, by display name, the work group only. q matches each of its words against the names, the employee number and the work email. Listed for staff:view and staff:manage; anyone else is the uniform 403.
+         * @description The directory, by display name, the work group only: staff:manage lists everyone, staff:view without it the people active today (an employment that has started and not ended). q matches each of its words against the names, the employee number and the work email. Anyone else is the uniform 403.
          */
         get: operations["getStaffPeople"];
         put?: never;
@@ -311,7 +311,7 @@ export interface paths {
         };
         /**
          * Get a person
-         * @description One person, shaped by who is asking (design §5): the person themselves through their self-service link, staff:view, staff:manage and staff:personal-data each see the field groups theirs to read. Anyone else gets a 404 identical to an unknown id.
+         * @description One person, shaped by who is asking (design §5): the person themselves through their self-service link, staff:view for a person active today (an employment that has started and not ended), staff:manage and staff:personal-data each see the field groups theirs to read. Anyone else — staff:view alone for a person not active today included — gets a 404 identical to an unknown id.
          */
         get: operations["getStaffPeopleById"];
         /**
@@ -364,7 +364,7 @@ export interface paths {
         get: operations["getStaffPeopleByIdNextOfKin"];
         /**
          * Replace a person's next of kin
-         * @description Replaces a person's next of kin — at most three — and records a next_of_kin_updated event when they changed.
+         * @description Replaces a person's next of kin — at most three — under the person's revision (If-Match), which moves on when the list changes, and records a next_of_kin_updated event.
          */
         put: operations["putStaffPeopleByIdNextOfKin"];
         post?: never;
@@ -383,12 +383,12 @@ export interface paths {
         };
         /**
          * List a person's roles
-         * @description A person's roles — the work group, so everyone who may see the person reads them; anyone else gets a 404 identical to an unknown id.
+         * @description A person's roles — the work group, so everyone who may see the person reads them (staff:view for a person active today); anyone else gets a 404 identical to an unknown id.
          */
         get: operations["getStaffPeopleByIdRoles"];
         /**
          * Replace a person's roles
-         * @description Replaces a person's roles and records a roles_updated event when they changed.
+         * @description Replaces a person's roles — at most twenty — under the person's revision (If-Match), which moves on when the list changes, and records a roles_updated event.
          */
         put: operations["putStaffPeopleByIdRoles"];
         post?: never;
@@ -644,6 +644,15 @@ export interface components {
             phone?: string;
             relationship: components["schemas"]["StaffNextOfKinRelationship"];
         };
+        /** @description A person's next of kin in their order, with the person's revision — the one a replace sends back in If-Match. */
+        StaffNextOfKinList: {
+            nextOfKin: components["schemas"]["StaffNextOfKin"][];
+            /**
+             * Format: int32
+             * @description The person's revision.
+             */
+            revision: number;
+        };
         /** @enum {string} */
         StaffNextOfKinRelationship: "spouse" | "partner" | "parent" | "child" | "sibling" | "other";
         /** @description A person's next of kin, all of them, in the order they are to be listed — a full replace. An empty list removes them all. */
@@ -791,7 +800,16 @@ export interface components {
          * @enum {string}
          */
         StaffPersonRoleKind: "verneombud" | "amu_member" | "hms_responsible";
-        /** @description A person's roles, all of them — a full replace. An empty list removes them all. */
+        /** @description A person's roles, with the person's revision — the one a replace sends back in If-Match. */
+        StaffPersonRoleList: {
+            /**
+             * Format: int32
+             * @description The person's revision.
+             */
+            revision: number;
+            roles: components["schemas"]["StaffPersonRole"][];
+        };
+        /** @description A person's roles, all of them, at most twenty — a full replace. An empty list removes them all. */
         StaffPersonRolesRequest: {
             roles: components["schemas"]["StaffPersonRole"][];
         };
@@ -2148,7 +2166,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StaffNextOfKin"][];
+                    "application/json": components["schemas"]["StaffNextOfKinList"];
                 };
             };
             /** @description Unauthorized */
@@ -2181,7 +2199,10 @@ export interface operations {
     putStaffPeopleByIdNextOfKin: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description The person's revision as read — bare (3) or quoted ("3"). A replace that changes the list moves the person's revision on; a revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
             path: {
                 id: number;
             };
@@ -2199,7 +2220,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StaffNextOfKin"][];
+                    "application/json": components["schemas"]["StaffNextOfKinList"];
                 };
             };
             /** @description Bad Request — more than three, or a field did not pass (keyed as nextOfKin[0].name). */
@@ -2236,6 +2257,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflict — revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
         };
     };
     getStaffPeopleByIdRoles: {
@@ -2255,7 +2285,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StaffPersonRole"][];
+                    "application/json": components["schemas"]["StaffPersonRoleList"];
                 };
             };
             /** @description Unauthorized */
@@ -2288,7 +2318,10 @@ export interface operations {
     putStaffPeopleByIdRoles: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description The person's revision as read — bare (3) or quoted ("3"). A replace that changes the list moves the person's revision on; a revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
             path: {
                 id: number;
             };
@@ -2306,10 +2339,10 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StaffPersonRole"][];
+                    "application/json": components["schemas"]["StaffPersonRoleList"];
                 };
             };
-            /** @description Bad Request — a field did not pass (keyed as roles[0].toDate), such as a toDate before its fromDate. */
+            /** @description Bad Request — more than twenty, or a field did not pass (keyed as roles[0].toDate), such as a toDate before its fromDate. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2342,6 +2375,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict — revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
             };
         };
     };

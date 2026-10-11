@@ -61,6 +61,31 @@ func listPeople(t *testing.T, c *modtest.Client, query string) gen.PaginatedResp
 	return out
 }
 
+// personRevision is a person's revision as stored — what a client that read
+// the person sends back in If-Match.
+func personRevision(t *testing.T, h *harness, id int64) int32 {
+	t.Helper()
+	return modtest.One[int32](t, h.Harness, `SELECT revision FROM staff.people WHERE id = $1`, id)
+}
+
+// putNextOfKin replaces a person's next of kin under their current revision
+// and fails the test unless it answered 200.
+func putNextOfKin(t *testing.T, h *harness, c *modtest.Client, id int64, body map[string]any) gen.StaffNextOfKinList {
+	t.Helper()
+	var out gen.StaffNextOfKinList
+	do(t, c, http.MethodPut, nextOfKinPath(id), body, http.StatusOK, &out, ifMatch(personRevision(t, h, id)))
+	return out
+}
+
+// putRoles replaces a person's roles under their current revision and fails
+// the test unless it answered 200.
+func putRoles(t *testing.T, h *harness, c *modtest.Client, id int64, body map[string]any) gen.StaffPersonRoleList {
+	t.Helper()
+	var out gen.StaffPersonRoleList
+	do(t, c, http.MethodPut, rolesPath(id), body, http.StatusOK, &out, ifMatch(personRevision(t, h, id)))
+	return out
+}
+
 // setPrefix sets the employee number sequence's prefix and next number.
 func setPrefix(t *testing.T, h *harness, hr *modtest.Client, prefix string, next int64) {
 	t.Helper()
@@ -155,6 +180,48 @@ func TestPostPeople_GenerationSkipsPastATakenNumber(t *testing.T) {
 	}
 	if n := nextEmployeeNumber(t, h); n != 7 {
 		t.Errorf("next = %d, want 7", n)
+	}
+}
+
+// A typed create that races a generation — committing the number the
+// generation chose after the generation checked it — makes the generation's
+// insert trip the unique index; the generation is tried once more, takes the
+// next free number, and the create succeeds. A typed duplicate still answers
+// employee_number_taken (the case-insensitivity test).
+func TestPostPeople_GenerationRetriesOnceWhenATypedCreateWinsTheRace(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// The typed create, not yet committed: the generation cannot see it, picks
+	// "1", and its insert waits on the index for this transaction.
+	if _, err := tx.Exec(ctx, `INSERT INTO staff.people (employee_number, given_name, family_name, display_name, created_at, updated_at)
+		VALUES ('1', 'Typed', 'First', 'Typed First', now(), now())`); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan *modtest.Response, 1)
+	go func() { done <- hr.Do(http.MethodPost, peoplePath, newPerson("Kari", "Nordmann")) }()
+	time.Sleep(300 * time.Millisecond)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if r.Status != http.StatusCreated {
+			t.Fatalf("the generated create: %d %s, want 201 after one retry", r.Status, r.Body)
+		}
+		var p gen.StaffPerson
+		r.JSON(&p)
+		if p.EmployeeNumber != "2" {
+			t.Errorf("generated = %s, want 2 (1 was taken by the race)", p.EmployeeNumber)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the generated create never answered")
 	}
 }
 
@@ -329,21 +396,25 @@ func TestPeople_WritesAreStaffManage(t *testing.T) {
 // else is the uniform 403. q matches every word against the names, the
 // employee number and the work email; the list is paged by display name.
 //
-// In this task staff:view lists everyone: "active today" needs employments,
-// which are Task 4's, and Task 4 narrows the colleague's list to the people
-// active today (plan reading 15).
+// staff:view without staff:manage lists the people active today only
+// (plan reading 15; people_active_test.go has the cases).
 func TestGetPeople_ListAndSearch(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	hr, _ := signIn(t, h, "staff:manage")
-	createPerson(t, hr, with(newPerson("Kari", "Nordmann"), "employeeNumber", "K-1", "workEmail", "kari@example.no"))
+	kari := createPerson(t, hr, with(newPerson("Kari", "Nordmann"), "employeeNumber", "K-1", "workEmail", "kari@example.no"))
 	createPerson(t, hr, with(newPerson("Ola", "Nordmann"), "employeeNumber", "O-2"))
-	createPerson(t, hr, with(newPerson("Per", "Hansen"), "employeeNumber", "P-3", "workEmail", "per.h@firma.no", "phonePrivate", "999"))
+	per := createPerson(t, hr, with(newPerson("Per", "Hansen"), "employeeNumber", "P-3", "workEmail", "per.h@firma.no", "phonePrivate", "999"))
+	seedEmployment(t, h, kari.Id, 0)
+	seedEmployment(t, h, per.Id, 0)
 
 	viewer, _ := signIn(t, h, "staff:view")
-	all := listPeople(t, viewer, "")
-	if all.Pagination.TotalCount != 3 || len(all.Data) != 3 || all.Data[0].DisplayName != "Kari Nordmann" {
-		t.Errorf("list = %+v, want 3 by display name (Task 4 narrows staff:view to people active today)", all)
+	active := listPeople(t, viewer, "")
+	if active.Pagination.TotalCount != 2 || len(active.Data) != 2 || active.Data[0].DisplayName != "Kari Nordmann" {
+		t.Errorf("staff:view's list = %+v, want the 2 active today by display name", active)
+	}
+	if all := listPeople(t, hr, ""); all.Pagination.TotalCount != 3 {
+		t.Errorf("staff:manage's list = %+v, want all 3", all)
 	}
 	for _, c := range []struct {
 		q    string
@@ -396,8 +467,8 @@ func TestPeople_EveryWriteReadsTheDirectoryOutsideItsTransaction(t *testing.T) {
 	_, self := signIn(t, h)
 	link(t, h, p.Id, self)
 	do(t, hr, http.MethodPut, personPath(p.Id), newPerson("Kari", "Hansen"), http.StatusOK, nil, ifMatch(p.Revision))
-	do(t, hr, http.MethodPut, nextOfKinPath(p.Id), map[string]any{"nextOfKin": []any{map[string]any{"name": "Ola", "relationship": "spouse"}}}, http.StatusOK, nil)
-	do(t, hr, http.MethodPut, rolesPath(p.Id), map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}}, http.StatusOK, nil)
+	putNextOfKin(t, h, hr, p.Id, map[string]any{"nextOfKin": []any{map[string]any{"name": "Ola", "relationship": "spouse"}}})
+	putRoles(t, h, hr, p.Id, map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}})
 	other := createPerson(t, hr, newPerson("Ola", "Nordmann"))
 	do(t, hr, http.MethodDelete, personPath(other.Id), nil, http.StatusNoContent, nil)
 
@@ -462,8 +533,8 @@ func TestPeople_WritesTakeThePersonLockFirst(t *testing.T) {
 	}
 	personRow := `SELECT id FROM staff.people WHERE id = $1 FOR NO KEY UPDATE`
 	waitsFor("PUT person", personRow, []any{p.Id}, http.MethodPut, personPath(p.Id), newPerson("Kari", "Hansen"), http.StatusOK, ifMatch(p.Revision))
-	waitsFor("PUT next of kin", personRow, []any{p.Id}, http.MethodPut, nextOfKinPath(p.Id), map[string]any{"nextOfKin": []any{}}, http.StatusOK)
-	waitsFor("PUT roles", personRow, []any{p.Id}, http.MethodPut, rolesPath(p.Id), map[string]any{"roles": []any{}}, http.StatusOK)
+	waitsFor("PUT next of kin", personRow, []any{p.Id}, http.MethodPut, nextOfKinPath(p.Id), map[string]any{"nextOfKin": []any{}}, http.StatusOK, ifMatch(personRevision(t, h, p.Id)))
+	waitsFor("PUT roles", personRow, []any{p.Id}, http.MethodPut, rolesPath(p.Id), map[string]any{"roles": []any{}}, http.StatusOK, ifMatch(personRevision(t, h, p.Id)))
 	waitsFor("DELETE on the person", personRow, []any{gone.Id}, http.MethodDelete, personPath(gone.Id), nil, http.StatusNoContent)
 	again := createPerson(t, hr, newPerson("Per", "Nordmann"))
 	waitsFor("DELETE on the manager graph", `SELECT pg_advisory_xact_lock(hashtext('staff-manager-graph'))`, nil,

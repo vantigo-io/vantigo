@@ -4,9 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"slices"
+
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 // This file holds the one place a request body is judged by what the
@@ -24,13 +29,15 @@ import (
 // rawBodyKey is the context key keepRawBody stores a request's body under.
 type rawBodyKey struct{}
 
-// keepRawBody keeps a copy of the request's body in its context and hands the
-// generated decoder an identical reader. The router has already capped the
-// body, so the copy is bounded; a read that fails is handed on as the same
-// failure, which the decoder answers as it would have.
+// keepRawBody keeps a copy of a JSON request's body in its context and hands
+// the generated decoder an identical reader. Only application/json is read:
+// any other body — a multipart upload above all — reaches the handler
+// untouched, never held in memory or drained here. The router has already
+// capped the body, so the copy is bounded; a read that fails is handed on as
+// the same failure, which the decoder answers as it would have.
 func keepRawBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Body == nil || r.Body == http.NoBody {
+		if r.Body == nil || r.Body == http.NoBody || !isJSON(r.Header.Get("Content-Type")) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -42,6 +49,13 @@ func keepRawBody(next http.Handler) http.Handler {
 		r.Body = io.NopCloser(rest)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), rawBodyKey{}, body)))
 	})
+}
+
+// isJSON reports whether a Content-Type is application/json, parameters
+// aside.
+func isJSON(contentType string) bool {
+	media, _, err := mime.ParseMediaType(contentType)
+	return err == nil && media == "application/json"
 }
 
 // failingReader answers err, for the part of a body that could not be read.
@@ -86,3 +100,27 @@ func (s *server) unknownProperties(ctx context.Context, schema string) fieldErro
 // personRequestSchema is the contract's name for the person's editable
 // fields.
 const personRequestSchema = "StaffPersonRequest"
+
+// closedSchemas are the request schemas whose handlers refuse a property the
+// contract does not name.
+var closedSchemas = []string{personRequestSchema}
+
+// checkClosedSchemas fails the mount unless the contract has every schema of
+// closedSchemas and closes each (additionalProperties false): the refusal
+// reads exactly that, so a contract that lost the schema, or opened it,
+// would otherwise let a sealed field be sent and silently dropped.
+func checkClosedSchemas(doc *openapi3.T) error {
+	if doc == nil || doc.Components == nil {
+		return errors.New("staff: no contract to check the closed request schemas against")
+	}
+	for _, name := range closedSchemas {
+		ref := doc.Components.Schemas[name]
+		if ref == nil || ref.Value == nil {
+			return fmt.Errorf("staff: the contract has no %s schema", name)
+		}
+		if admits := ref.Value.AdditionalProperties.Has; admits == nil || *admits {
+			return fmt.Errorf("staff: the contract's %s must declare additionalProperties: false", name)
+		}
+	}
+	return nil
+}

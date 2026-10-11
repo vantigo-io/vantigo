@@ -10,9 +10,16 @@ import (
 )
 
 // seedEmployment writes an employment for personID directly — employments
-// are Task 4's — with one terms row naming managerID as the manager when it
-// is not 0, and answers the employment's id.
+// are Task 4's — starting on 1 January 2026 and open-ended, with one terms
+// row naming managerID as the manager when it is not 0, and answers the
+// employment's id.
 func seedEmployment(t *testing.T, h *harness, personID, managerID int64) int64 {
+	t.Helper()
+	return seedEmploymentDated(t, h, personID, managerID, "2026-01-01", nil)
+}
+
+// seedEmploymentDated is seedEmployment from start to end (nil: open-ended).
+func seedEmploymentDated(t *testing.T, h *harness, personID, managerID int64, start string, end *string) int64 {
 	t.Helper()
 	now := h.Now()
 	unit := modtest.One[int64](t, h.Harness, `
@@ -23,8 +30,9 @@ func seedEmployment(t *testing.T, h *harness, personID, managerID int64) int64 {
 		INSERT INTO staff.business_units (legal_entity_id, name, is_default, created_at, updated_at)
 		SELECT id, 'Oslo', false, $1, $1 FROM le RETURNING id`, now)
 	employment := modtest.One[int64](t, h.Harness, `
-		INSERT INTO staff.employments (person_id, employment_number, relationship_type, business_unit_id, start_date, created_at, updated_at)
-		VALUES ($1, $2, 'ordinary', $3, '2026-01-01', $4, $4) RETURNING id`, personID, fmt.Sprintf("EMP-%d-%d", personID, unit), unit, now)
+		INSERT INTO staff.employments (person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, created_at, updated_at)
+		VALUES ($1, $2, 'ordinary', $3, $4::date, $5::date, CASE WHEN $5::date IS NULL THEN NULL ELSE 'contract_ended' END, $6, $6) RETURNING id`,
+		personID, fmt.Sprintf("EMP-%d-%d", personID, unit), unit, start, end, now)
 	var manager *int64
 	if managerID != 0 {
 		manager = &managerID
@@ -32,7 +40,7 @@ func seedEmployment(t *testing.T, h *harness, personID, managerID int64) int64 {
 	h.Exec(t, `
 		INSERT INTO staff.employment_terms (employment_id, valid_from, employment_type, appointment_form, fte_percent,
 			full_time_hours_per_week, manager_person_id, created_at, updated_at)
-		VALUES ($1, '2026-01-01', 'fast', 'fast', 100, 37.5, $2, $3, $3)`, employment, manager, now)
+		VALUES ($1, $2::date, 'fast', 'fast', 100, 37.5, $3, $4, $4)`, employment, start, manager, now)
 	return employment
 }
 
@@ -82,8 +90,8 @@ func TestDeletePerson_CascadesAndRecordsTheEmployeeNumberOnly(t *testing.T) {
 	h := newHarness(t)
 	hr, _ := signIn(t, h, "staff:manage")
 	p := createPerson(t, hr, with(newPerson("Kari", "Nordmann"), "employeeNumber", "ERR-1", "notes", "created twice"))
-	do(t, hr, http.MethodPut, nextOfKinPath(p.Id), map[string]any{"nextOfKin": []any{map[string]any{"name": "Ola", "relationship": "spouse"}}}, http.StatusOK, nil)
-	do(t, hr, http.MethodPut, rolesPath(p.Id), map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}}, http.StatusOK, nil)
+	putNextOfKin(t, h, hr, p.Id, map[string]any{"nextOfKin": []any{map[string]any{"name": "Ola", "relationship": "spouse"}}})
+	putRoles(t, h, hr, p.Id, map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}})
 	keep := createPerson(t, hr, newPerson("Ola", "Nordmann"))
 
 	do(t, hr, http.MethodDelete, personPath(p.Id), nil, http.StatusNoContent, nil)

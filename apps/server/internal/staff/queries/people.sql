@@ -21,13 +21,38 @@ WHERE id = @id;
 SELECT external_id FROM staff.identity_links
 WHERE person_id = @person_id AND provider = 'identity';
 
--- name: EmployeeNumberTaken :one
--- EmployeeNumberTaken is whether a person has the number however it is
--- cased — the unique index's own question, asked before a generated number
--- is used so the sequence skips past a number HR assigned by hand.
+-- name: FirstFreeEmployeeNumber :one
+-- FirstFreeEmployeeNumber is the first n from @next_number whose number —
+-- the prefix and n, unpadded — no person has however it is cased: the unique
+-- index's own question, asked in one statement so the sequence skips past
+-- every number HR assigned by hand. Among next .. next + the number of
+-- people at least one n is free, so the series is bounded by the table.
+WITH probe AS (
+    SELECT @next_number::bigint AS first, @prefix::text AS prefix, (SELECT count(*) FROM staff.people) AS people
+)
+SELECT candidate.n::bigint AS n
+FROM probe, generate_series(probe.first, probe.first + probe.people) AS candidate(n)
+WHERE NOT EXISTS (
+    SELECT 1 FROM staff.people p WHERE upper(p.employee_number) = upper(probe.prefix || candidate.n::text)
+)
+ORDER BY candidate.n
+LIMIT 1;
+
+-- name: PersonActiveOn :one
+-- PersonActiveOn is whether a person has an employment in force on @today
+-- — started, and not ended before it (the end day itself is still worked).
+-- It decides the colleague audience (plan reading 15): staff:view alone
+-- sees only the people active today.
 SELECT EXISTS (
-    SELECT 1 FROM staff.people WHERE upper(employee_number) = upper(@employee_number::text)
-) AS taken;
+    SELECT 1 FROM staff.employments e
+    WHERE e.person_id = @person_id AND e.start_date <= @today::date
+      AND (e.end_date IS NULL OR e.end_date >= @today::date)
+) AS active;
+
+-- name: BumpPersonRevision :exec
+-- BumpPersonRevision moves a person's revision on for a change to a list of
+-- theirs — next of kin, roles — which the person's revision guards.
+UPDATE staff.people SET revision = revision + 1, updated_at = @now::timestamptz WHERE id = @id;
 
 -- name: AdvanceEmployeeNumber :exec
 -- AdvanceEmployeeNumber moves the sequence on past the number just used. It
@@ -81,7 +106,9 @@ WHERE id = @id;
 -- CountPeople is ListPeople's total. @patterns holds one ILIKE-escaped
 -- "%word%" per word of the search; a person passes when every pattern
 -- matches at least one of the searched fields, and everyone passes when there
--- is no search (unnest of an empty array yields no rows).
+-- is no search (unnest of an empty array yields no rows). @active_only keeps
+-- the people active on @today — the colleague's directory (plan reading 15),
+-- judged as PersonActiveOn judges one person.
 SELECT count(*)
 FROM staff.people p
 WHERE NOT EXISTS (
@@ -93,7 +120,12 @@ WHERE NOT EXISTS (
         p.employee_number ILIKE s.pattern OR
         coalesce(p.work_email, '') ILIKE s.pattern
     )
-);
+)
+AND (NOT @active_only::boolean OR EXISTS (
+    SELECT 1 FROM staff.employments e
+    WHERE e.person_id = p.id AND e.start_date <= @today::date
+      AND (e.end_date IS NULL OR e.end_date >= @today::date)
+));
 
 -- name: ListPeople :many
 -- ListPeople is one page of the directory, by display name, the work group's
@@ -111,6 +143,11 @@ WHERE NOT EXISTS (
         coalesce(p.work_email, '') ILIKE s.pattern
     )
 )
+AND (NOT @active_only::boolean OR EXISTS (
+    SELECT 1 FROM staff.employments e
+    WHERE e.person_id = p.id AND e.start_date <= @today::date
+      AND (e.end_date IS NULL OR e.end_date >= @today::date)
+))
 ORDER BY p.display_name, p.id
 LIMIT @page_size OFFSET @page_offset;
 

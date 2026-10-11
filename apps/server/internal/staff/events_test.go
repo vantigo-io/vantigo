@@ -35,11 +35,11 @@ func TestEvents_EveryWriteIsRecorded(t *testing.T) {
 	h.Advance(time.Minute)
 	do(t, hr, http.MethodPut, personPath(p.Id), with(newPerson("Kari", "Hansen"), "employeeNumber", "E-1"), http.StatusOK, nil, ifMatch(p.Revision))
 	h.Advance(time.Minute)
-	do(t, hr, http.MethodPut, nextOfKinPath(p.Id), map[string]any{"nextOfKin": []any{kin("Ola", "spouse")}}, http.StatusOK, nil)
+	putNextOfKin(t, h, hr, p.Id, map[string]any{"nextOfKin": []any{kin("Ola", "spouse")}})
 	h.Advance(time.Minute)
-	do(t, hr, http.MethodPut, rolesPath(p.Id), map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}}, http.StatusOK, nil)
+	putRoles(t, h, hr, p.Id, map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}})
 	// A replace that changes nothing writes no event.
-	do(t, hr, http.MethodPut, rolesPath(p.Id), map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}}, http.StatusOK, nil)
+	putRoles(t, h, hr, p.Id, map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}})
 
 	events := listEvents(t, hr, p.Id)
 	var kinds []string

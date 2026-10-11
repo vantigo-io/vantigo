@@ -81,10 +81,14 @@ func Module() module.Module {
 
 // mount registers every contract operation on the platform router, which wraps
 // each in its access rule and request-body cap before the generated wrapper
-// decodes it. It fails when the router reports a problem — an operation never
-// registered, a rule that does not parse, or a permission missing from the
-// catalog.
+// decodes it. It fails when the contract does not close the request schemas
+// whose unknown properties are refused (strictbody.go), or when the router
+// reports a problem — an operation never registered, a rule that does not
+// parse, or a permission missing from the catalog.
 func mount(d module.Deps) (http.Handler, error) {
+	if err := checkClosedSchemas(d.Doc); err != nil {
+		return nil, err
+	}
 	router := module.NewRouter(module.RouterOptions{
 		Doc:     d.Doc,
 		Access:  d.Access,
