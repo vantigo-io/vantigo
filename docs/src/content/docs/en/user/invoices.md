@@ -941,7 +941,10 @@ With the default settings Vantigo sends two letters before it suggests the hand-
 three, set **Reminders before the debt collection notice** to 2 in the reminder settings:
 under the 1988 act the third letter is the debt collection notice, which needs **Send a
 debt collection notice** on; under the new act it is the reminder announcing the hand-off.
-Letters alone may not be enough: in KMVA 8156 the Tax Administration faulted two debt
+Three letters are reached only once a delivery on or before the due date is recorded:
+without one, Vantigo sends at most two reminders, both without fees, and the invoice is
+marked **Not delivered by the due date**. Letters alone may not be enough: in KMVA 8156
+the VAT appeals board (Klagenemnda for merverdiavgift) faulted two debt
 collection notices that were never followed by collection, so record what else you did to
 recover the claim. The letters on each invoice's **Reminders** card are the record of what
 was sent.
@@ -1297,7 +1300,8 @@ owed back to … on an invoice* for everyone with `invoices:access`; with
 `invoices:payments` also the bank lines waiting in the exception queue, per file; a
 reminder that could not be sent; the reminders waiting for a collection rate or for the
 review of the collection-law regime, which lead to **Overdue**; and a print batch not
-confirmed posted two days after its posting day, which leads to **Paper letters**
+confirmed posted two days after its posting day, with the number of printed letters
+still in it, which leads to **Paper letters**
 ([attention](/en/reference/invoices/#stats)).
 
 ## A customer's invoices

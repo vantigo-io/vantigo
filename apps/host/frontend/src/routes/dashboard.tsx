@@ -504,12 +504,19 @@ export const attentionTitle = (
   if (item.module === "invoices") {
     // The title is a buyer's name, or a day or two — a file's first and last
     // booking day, a batch's posting day — written as dates (in UTC: they
-    // are calendar days); the count is the server's, one when it sends none.
+    // are calendar days); the count is the server's. When it sends none, an
+    // unposted batch has no printed letter left in it, and any other item
+    // stands for one.
     const asDate = (value: string) => formatDate(value, { dateStyle: "medium", timeZone: "UTC" });
     const days = /^\d{4}-\d{2}-\d{2}( – \d{4}-\d{2}-\d{2})?$/.test(item.title)
       ? item.title.split(" – ").map(asDate).join(" – ")
       : "";
-    return t(key, { name: item.title, days, date: days, count: item.count ?? 1 });
+    return t(key, {
+      name: item.title,
+      days,
+      date: days,
+      count: item.count ?? (item.type === "reminderBatchUnposted" ? 0 : 1),
+    });
   }
   return t(key, { date: formatDate(attentionWeek(item.entityId), { dateStyle: "medium", timeZone: "UTC" }) });
 };

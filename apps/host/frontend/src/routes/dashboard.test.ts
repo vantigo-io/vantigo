@@ -123,6 +123,21 @@ describe("the dashboard's attention links", () => {
     expect(title).not.toContain("30 Aug");
   });
 
+  it("names an invoices batch's posting day, not the day before, west of Greenwich", () => {
+    const item = {
+      module: "invoices" as const,
+      type: "reminderBatchUnposted",
+      entityId: "7",
+      title: "2026-09-10",
+      count: 2,
+    };
+
+    const title = attentionTitle(item, (key, values) => `${key}:${values?.date}`, formatInLosAngeles);
+
+    expect(title).toBe("dashboard.invoiceBatchUnposted:10 Sept 2026");
+    expect(title).not.toContain("9 Sept");
+  });
+
   it("leaves every other module's title exactly as the server wrote it", () => {
     const item = { module: "projects" as const, type: "projectOverdue", entityId: "31", title: "ACME1000 is overdue" };
 
@@ -547,6 +562,8 @@ describe("Dashboard_InvoicesAttentionSentencesAndLinks", () => {
     item("remindersHeld", "collectionRatesOutdated", "collectionRatesOutdated", 4),
     item("remindersHeld", "collectionRegimeUnreviewed", "collectionRegimeUnreviewed", 1),
     item("reminderBatchUnposted", "7", "2026-09-10", 5),
+    // No count: a batch with no printed letter left in it, never "1 letter".
+    item("reminderBatchUnposted", "8", "2026-09-12"),
   ];
   const sentences = (lng: "en" | "nb") =>
     items.map((it) => attentionTitle(it, (key, values) => i18n.t(key, { ns: "host", lng, ...values }), day));
@@ -562,6 +579,7 @@ describe("Dashboard_InvoicesAttentionSentencesAndLinks", () => {
       "4 reminders wait for a collection rate",
       "1 reminder waits for the review of the collection-law regime",
       "The print batch for «2026-09-10» (5 letters) is not confirmed posted",
+      "The print batch for «2026-09-12» (0 letters) is not confirmed posted",
     ]);
   });
 
@@ -576,6 +594,7 @@ describe("Dashboard_InvoicesAttentionSentencesAndLinks", () => {
       "4 purringer venter på en sats",
       "1 purring venter på gjennomgangen av inkassoregelverket",
       "Utskriftsbunken for «2026-09-10» (5 brev) er ikke bekreftet postlagt",
+      "Utskriftsbunken for «2026-09-12» (0 brev) er ikke bekreftet postlagt",
     ]);
   });
 
@@ -589,6 +608,7 @@ describe("Dashboard_InvoicesAttentionSentencesAndLinks", () => {
       "/invoices/1003",
       "/invoices/overdue",
       "/invoices/overdue",
+      "/invoices/reminders/print",
       "/invoices/reminders/print",
     ]);
     // A type this build does not know: the app's home, and the server's own title.
