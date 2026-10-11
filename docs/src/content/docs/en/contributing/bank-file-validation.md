@@ -31,7 +31,8 @@ entries; every booked amount is in NOK — the entry's `Amt`, the transaction's 
 `Amt` and its `AmtDtls/TxAmt/Amt`, while an instructed, counter-value or remitted
 amount or a charge in another currency is not judged; every amount has at most two
 decimals; every reference fits the column it is stored in. A creditor reference of
-type `SCOR` longer than a KID's 25 characters is kept in the text, not as a KID. A refusal names the element, such as
+type `SCOR` longer than a KID's 25 characters is kept in the text, not as a KID, and a
+KID in a later `SCOR` reference of the same `TxDtls` is still read. A refusal names the element, such as
 `Ntry[2]/NtryDtls/TxDtls[1]/AmtDtls/TxAmt/Amt`.
 
 ## The XSD oracle, deferred

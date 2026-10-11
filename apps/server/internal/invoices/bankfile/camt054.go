@@ -767,8 +767,10 @@ func (p *camtParser) txAmount(where string, tx *camtTx, direction string) (int64
 // creditor reference of type SCOR, whatever the bank transaction code
 // says (R4 §3.2) — the unstructured lines joined, else the entry's
 // additional information, the debtor, the archive reference. A SCOR
-// reference longer than a KID can be is no KID: it leads the text as
-// "SCOR <ref>", and the line reaches the queue as a payment without one.
+// reference longer than a KID can be is no KID: the first such leads the
+// text as "SCOR <ref>", and the search goes on, so a KID in a later SCOR
+// reference of the same TxDtls is still read; without one, the line
+// reaches the queue as a payment without a KID.
 func (p *camtParser) details(where string, tx *camtTx, out *Transaction) error {
 	scor := ""
 	for _, s := range tx.Structured {
@@ -776,8 +778,10 @@ func (p *camtParser) details(where string, tx *camtTx, out *Transaction) error {
 			continue
 		}
 		if ref := text(s.Ref); len(ref) > kidSize {
-			scor = ref
-			break
+			if scor == "" {
+				scor = ref
+			}
+			continue
 		} else if ref != "" {
 			out.KID = ref
 			break
