@@ -79,7 +79,7 @@ func (q *Queries) InsertPrintBatch(ctx context.Context, arg InsertPrintBatchPara
 }
 
 const lettersOfBatch = `-- name: LettersOfBatch :many
-SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE print_batch_id = $1::bigint ORDER BY id
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE print_batch_id = $1::bigint ORDER BY id
 `
 
 // LettersOfBatch is every letter naming a batch, any status, by id: printed
@@ -111,6 +111,7 @@ func (q *Queries) LettersOfBatch(ctx context.Context, printBatchID int64) ([]Inv
 			&i.Deadline,
 			&i.Regime,
 			&i.PrincipalOpen,
+			&i.Credited,
 			&i.FeeKind,
 			&i.Fee,
 			&i.Compensation,
@@ -151,7 +152,7 @@ func (q *Queries) LettersOfBatch(ctx context.Context, printBatchID int64) ([]Inv
 }
 
 const lettersOfBatches = `-- name: LettersOfBatches :many
-SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE print_batch_id = ANY($1::bigint[]) ORDER BY print_batch_id, id
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE print_batch_id = ANY($1::bigint[]) ORDER BY print_batch_id, id
 `
 
 // LettersOfBatches is LettersOfBatch for a page of batches at once.
@@ -181,6 +182,7 @@ func (q *Queries) LettersOfBatches(ctx context.Context, ids []int64) ([]Invoices
 			&i.Deadline,
 			&i.Regime,
 			&i.PrincipalOpen,
+			&i.Credited,
 			&i.FeeKind,
 			&i.Fee,
 			&i.Compensation,
@@ -269,7 +271,7 @@ func (q *Queries) ListPrintBatches(ctx context.Context, arg ListPrintBatchesPara
 const markPosted = `-- name: MarkPosted :one
 UPDATE invoices.reminders SET status = 'sent', sent_at = $1::timestamptz
 WHERE id = $2 AND status = 'printed' AND print_batch_id = $3::bigint
-RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
+RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
 `
 
 type MarkPostedParams struct {
@@ -300,6 +302,7 @@ func (q *Queries) MarkPosted(ctx context.Context, arg MarkPostedParams) (Invoice
 		&i.Deadline,
 		&i.Regime,
 		&i.PrincipalOpen,
+		&i.Credited,
 		&i.FeeKind,
 		&i.Fee,
 		&i.Compensation,
@@ -335,7 +338,7 @@ func (q *Queries) MarkPosted(ctx context.Context, arg MarkPostedParams) (Invoice
 const markPrinted = `-- name: MarkPrinted :one
 UPDATE invoices.reminders SET status = 'printed', print_batch_id = $1::bigint
 WHERE id = $2 AND status = 'awaiting_print' AND sent_on IS NOT NULL
-RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
+RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
 `
 
 type MarkPrintedParams struct {
@@ -366,6 +369,7 @@ func (q *Queries) MarkPrinted(ctx context.Context, arg MarkPrintedParams) (Invoi
 		&i.Deadline,
 		&i.Regime,
 		&i.PrincipalOpen,
+		&i.Credited,
 		&i.FeeKind,
 		&i.Fee,
 		&i.Compensation,
@@ -400,7 +404,7 @@ func (q *Queries) MarkPrinted(ctx context.Context, arg MarkPrintedParams) (Invoi
 
 const printCandidates = `-- name: PrintCandidates :many
 
-SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE id = ANY($1::bigint[]) ORDER BY id
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE id = ANY($1::bigint[]) ORDER BY id
 `
 
 // Paper letters (invoices payments and reminders design D10, reading 39): a
@@ -436,6 +440,7 @@ func (q *Queries) PrintCandidates(ctx context.Context, ids []int64) ([]InvoicesR
 			&i.Deadline,
 			&i.Regime,
 			&i.PrincipalOpen,
+			&i.Credited,
 			&i.FeeKind,
 			&i.Fee,
 			&i.Compensation,
@@ -608,7 +613,7 @@ UPDATE invoices.reminders
 SET status = 'withdrawn', withdrawn_at = $1::timestamptz, withdrawal_reason = $2::text,
     held_reason = NULL
 WHERE id = $3 AND status = 'awaiting_print'
-RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
+RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
 `
 
 type WithdrawUnprintedParams struct {
@@ -640,6 +645,7 @@ func (q *Queries) WithdrawUnprinted(ctx context.Context, arg WithdrawUnprintedPa
 		&i.Deadline,
 		&i.Regime,
 		&i.PrincipalOpen,
+		&i.Credited,
 		&i.FeeKind,
 		&i.Fee,
 		&i.Compensation,

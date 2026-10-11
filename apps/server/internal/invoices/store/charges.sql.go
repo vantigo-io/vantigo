@@ -208,7 +208,7 @@ func (q *Queries) InsertWaiver(ctx context.Context, arg InsertWaiverParams) (Inv
 }
 
 const reminderOf = `-- name: ReminderOf :one
-SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE id = $1 AND invoice_id = $2
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE id = $1 AND invoice_id = $2
 `
 
 type ReminderOfParams struct {
@@ -238,6 +238,7 @@ func (q *Queries) ReminderOf(ctx context.Context, arg ReminderOfParams) (Invoice
 		&i.Deadline,
 		&i.Regime,
 		&i.PrincipalOpen,
+		&i.Credited,
 		&i.FeeKind,
 		&i.Fee,
 		&i.Compensation,
@@ -303,7 +304,7 @@ func (q *Queries) RemoveChargePayment(ctx context.Context, arg RemoveChargePayme
 
 const sentLettersOf = `-- name: SentLettersOf :many
 
-SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders
 WHERE invoice_id = $1 AND status = 'sent'
 ORDER BY sequence, id
 `
@@ -340,6 +341,7 @@ func (q *Queries) SentLettersOf(ctx context.Context, invoiceID int64) ([]Invoice
 			&i.Deadline,
 			&i.Regime,
 			&i.PrincipalOpen,
+			&i.Credited,
 			&i.FeeKind,
 			&i.Fee,
 			&i.Compensation,

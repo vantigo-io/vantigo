@@ -383,6 +383,7 @@ var receivablesColumns = []string{
 	"reminders.compensation:numeric:14,2:YES:",
 	"reminders.created_at:timestamp with time zone::NO:",
 	"reminders.created_by_user_id:uuid::NO:",
+	"reminders.credited:numeric:14,2:YES:",
 	"reminders.deadline:date::YES:",
 	"reminders.failed_at:timestamp with time zone::YES:",
 	"reminders.fee:numeric:14,2:YES:",
@@ -735,7 +736,7 @@ const receivablesFacts = receivablesFactsBase + `, fee_kind = 'reminder_fee', fe
 // receivablesFactsBase is the facts but the charge: fee_kind, fee and
 // compensation.
 const receivablesFactsBase = `sent_on = DATE '2026-11-02', deadline = DATE '2026-11-16', regime = 'inkassolov_1988',
-    principal_open = 1250, charges_earlier = 0, interest = 0, interest_waived = 0, interest_paid = 0, total = 1285`
+    principal_open = 1250, credited = 0, charges_earlier = 0, interest = 0, interest_waived = 0, interest_paid = 0, total = 1285`
 
 // ptrTo is a pointer to v.
 func ptrTo[T any](v T) *T { return &v }
@@ -1464,7 +1465,7 @@ func TestReminders_Triggers(t *testing.T) {
 		{"the claim", "lease_id = 'w1', lease_until = now(), attempts = 1, first_attempt_at = now(), message_id = 'reminder-1@vantigo.invalid'"},
 		{"the reschedule", "held_reason = 'collection_rates_outdated', next_attempt_at = now(), lease_id = NULL, lease_until = NULL"},
 		{"the facts written", receivablesFacts + ", held_reason = NULL"},
-		{"the facts cleared", "sent_on = NULL, deadline = NULL, total = NULL, last_error = 'smtp: 421'"},
+		{"the facts cleared", "sent_on = NULL, deadline = NULL, credited = NULL, total = NULL, last_error = 'smtp: 421'"},
 	} {
 		if err := f.exec(`UPDATE invoices.reminders SET `+c.set+` WHERE id = $1`, letter); err != nil {
 			t.Errorf("%s on a queued letter: %v, want it allowed", c.name, err)
@@ -1557,6 +1558,7 @@ func TestReminders_Triggers(t *testing.T) {
 	f.mustExec("the letter sent", `UPDATE invoices.reminders SET status = 'sent', sent_at = now(), `+receivablesFacts+` WHERE id = $1`, letter)
 	for _, c := range []struct{ name, set string }{
 		{"a sent letter's total", "total = 1"},
+		{"a sent letter's credited", "credited = 100"},
 		{"a sent letter's status", "status = 'failed', failed_at = now()"},
 		{"a sent letter's held reason", "held_reason = 'collection_rates_outdated'"},
 	} {

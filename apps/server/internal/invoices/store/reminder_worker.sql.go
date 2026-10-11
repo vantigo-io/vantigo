@@ -27,7 +27,7 @@ WHERE status = 'queued' AND id = (
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
+RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
 `
 
 type ClaimReminderParams struct {
@@ -78,6 +78,7 @@ func (q *Queries) ClaimReminder(ctx context.Context, arg ClaimReminderParams) (I
 		&i.Deadline,
 		&i.Regime,
 		&i.PrincipalOpen,
+		&i.Credited,
 		&i.FeeKind,
 		&i.Fee,
 		&i.Compensation,
@@ -198,7 +199,7 @@ func (q *Queries) FailReminderAttempt(ctx context.Context, arg FailReminderAttem
 }
 
 const getReminder = `-- name: GetReminder :one
-SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE id = $1
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders WHERE id = $1
 `
 
 func (q *Queries) GetReminder(ctx context.Context, id int64) (InvoicesReminder, error) {
@@ -221,6 +222,7 @@ func (q *Queries) GetReminder(ctx context.Context, id int64) (InvoicesReminder, 
 		&i.Deadline,
 		&i.Regime,
 		&i.PrincipalOpen,
+		&i.Credited,
 		&i.FeeKind,
 		&i.Fee,
 		&i.Compensation,
@@ -254,7 +256,7 @@ func (q *Queries) GetReminder(ctx context.Context, id int64) (InvoicesReminder, 
 }
 
 const listReminders = `-- name: ListReminders :many
-SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders
+SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason FROM invoices.reminders
 WHERE ($1::text IS NULL OR status = $1::text)
   AND ($2::text IS NULL OR channel = $2::text)
   AND ($3::bigint IS NULL OR invoice_id = $3::bigint)
@@ -307,6 +309,7 @@ func (q *Queries) ListReminders(ctx context.Context, arg ListRemindersParams) ([
 			&i.Deadline,
 			&i.Regime,
 			&i.PrincipalOpen,
+			&i.Credited,
 			&i.FeeKind,
 			&i.Fee,
 			&i.Compensation,
@@ -385,7 +388,7 @@ UPDATE invoices.reminders
 SET status = 'sent', sent_at = $1::timestamptz, lease_id = NULL, lease_until = NULL, held_reason = NULL,
     last_error = NULL
 WHERE id = $2 AND lease_id = $3::text AND status = 'queued'
-RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
+RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
 `
 
 type MarkReminderSentParams struct {
@@ -418,6 +421,7 @@ func (q *Queries) MarkReminderSent(ctx context.Context, arg MarkReminderSentPara
 		&i.Deadline,
 		&i.Regime,
 		&i.PrincipalOpen,
+		&i.Credited,
 		&i.FeeKind,
 		&i.Fee,
 		&i.Compensation,
@@ -492,7 +496,7 @@ const retryReminder = `-- name: RetryReminder :one
 UPDATE invoices.reminders
 SET status = 'queued', next_attempt_at = $1::timestamptz, first_attempt_at = NULL, attempts = 0, failed_at = NULL
 WHERE id = $2 AND status = 'failed'
-RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
+RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
 `
 
 type RetryReminderParams struct {
@@ -522,6 +526,7 @@ func (q *Queries) RetryReminder(ctx context.Context, arg RetryReminderParams) (I
 		&i.Deadline,
 		&i.Regime,
 		&i.PrincipalOpen,
+		&i.Credited,
 		&i.FeeKind,
 		&i.Fee,
 		&i.Compensation,
@@ -621,7 +626,7 @@ UPDATE invoices.reminders
 SET status = 'withdrawn', withdrawn_at = $1::timestamptz, withdrawn_by_user_id = $2,
     withdrawal_reason = $3::text, held_reason = NULL
 WHERE id = $4 AND status IN ('queued', 'awaiting_print', 'printed', 'failed')
-RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
+RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
 `
 
 type WithdrawReminderParams struct {
@@ -660,6 +665,7 @@ func (q *Queries) WithdrawReminder(ctx context.Context, arg WithdrawReminderPara
 		&i.Deadline,
 		&i.Regime,
 		&i.PrincipalOpen,
+		&i.Credited,
 		&i.FeeKind,
 		&i.Fee,
 		&i.Compensation,
@@ -704,7 +710,7 @@ SET sent_on = $1::date, deadline = $2::date, regime = $3::text,
     pdf_object_key = NULL, pdf_sha256 = NULL, held_reason = NULL,
     first_attempt_at = CASE WHEN status = 'queued' THEN coalesce(first_attempt_at, $17::timestamptz) ELSE first_attempt_at END
 WHERE id = $18 AND status IN ('queued', 'awaiting_print')
-RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
+RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
 `
 
 type WriteLetterFactsParams struct {
@@ -773,6 +779,7 @@ func (q *Queries) WriteLetterFacts(ctx context.Context, arg WriteLetterFactsPara
 		&i.Deadline,
 		&i.Regime,
 		&i.PrincipalOpen,
+		&i.Credited,
 		&i.FeeKind,
 		&i.Fee,
 		&i.Compensation,

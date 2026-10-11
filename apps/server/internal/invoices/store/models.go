@@ -350,6 +350,7 @@ type InvoicesReminder struct {
 	Deadline            pgtype.Date
 	Regime              *string
 	PrincipalOpen       pgtype.Numeric
+	Credited            pgtype.Numeric
 	FeeKind             *string
 	Fee                 pgtype.Numeric
 	Compensation        pgtype.Numeric
