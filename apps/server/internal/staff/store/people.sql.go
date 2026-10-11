@@ -81,12 +81,11 @@ AND (
         SELECT 1 FROM staff.employments e
         LEFT JOIN LATERAL (
             SELECT t.department_id, t.location_id FROM staff.employment_terms t
-            WHERE t.employment_id = e.id AND t.valid_from <= $3::date
+            WHERE t.employment_id = e.id AND t.valid_from <= greatest($3::date, e.start_date)
             ORDER BY t.valid_from DESC
             LIMIT 1
         ) t ON true
-        WHERE e.person_id = p.id AND e.start_date <= $3::date
-          AND (e.end_date IS NULL OR e.end_date >= $3::date)
+        WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= $3::date)
           AND ($5::bigint IS NULL OR e.business_unit_id = $5::bigint)
           AND ($6::bigint IS NULL OR t.department_id = $6::bigint)
           AND ($7::bigint IS NULL OR t.location_id = $7::bigint)
@@ -114,8 +113,11 @@ type CountPeopleParams struct {
 // starting later (an employment not ended before today) or with no
 // employment at all — 'ended' (every employment ended before today) or
 // 'all'. @unit_id, @department_id and @location_id, each when given, keep
-// the people with one employment in force on @today in that unit whose terms
-// in force that day name that department and location.
+// the people with one employment not ended before @today in that unit whose
+// terms name that department and location — the row in force on @today, or
+// for an employment that starts later its first row, so HR finds next
+// month's starter in their department. (A colleague lists the people active
+// today only, so an upcoming hire never reaches them.)
 func (q *Queries) CountPeople(ctx context.Context, arg CountPeopleParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countPeople,
 		arg.Patterns,
@@ -469,12 +471,11 @@ AND (
         SELECT 1 FROM staff.employments e
         LEFT JOIN LATERAL (
             SELECT t.department_id, t.location_id FROM staff.employment_terms t
-            WHERE t.employment_id = e.id AND t.valid_from <= $3::date
+            WHERE t.employment_id = e.id AND t.valid_from <= greatest($3::date, e.start_date)
             ORDER BY t.valid_from DESC
             LIMIT 1
         ) t ON true
-        WHERE e.person_id = p.id AND e.start_date <= $3::date
-          AND (e.end_date IS NULL OR e.end_date >= $3::date)
+        WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= $3::date)
           AND ($5::bigint IS NULL OR e.business_unit_id = $5::bigint)
           AND ($6::bigint IS NULL OR t.department_id = $6::bigint)
           AND ($7::bigint IS NULL OR t.location_id = $7::bigint)
@@ -576,6 +577,39 @@ func (q *Queries) ListPersonRoles(ctx context.Context, personID int64) ([]ListPe
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const peopleActiveOn = `-- name: PeopleActiveOn :many
+SELECT DISTINCT person_id FROM staff.employments
+WHERE person_id = ANY($1::bigint[]) AND start_date <= $2::date
+  AND (end_date IS NULL OR end_date >= $2::date)
+`
+
+type PeopleActiveOnParams struct {
+	Ids   []int64
+	Today pgtype.Date
+}
+
+// PeopleActiveOn is which of @ids are active on @today, as PersonActiveOn
+// judges one person.
+func (q *Queries) PeopleActiveOn(ctx context.Context, arg PeopleActiveOnParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, peopleActiveOn, arg.Ids, arg.Today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var person_id int64
+		if err := rows.Scan(&person_id); err != nil {
+			return nil, err
+		}
+		items = append(items, person_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

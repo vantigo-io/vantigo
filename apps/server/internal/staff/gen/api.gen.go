@@ -726,7 +726,7 @@ type StaffEmploymentType string
 // StaffEndReason The a-melding's six end reasons (sluttårsak): employee_resigned, employer_terminated, contract_ended (a contract, engagement or temporary employment ran out), wrongly_reported (the employment should never have been reported), internal_change (a change in the organisation or an internal move), payroll_system_change (a change of payroll system or accountant).
 type StaffEndReason string
 
-// StaffEvent One change in a person's history (design S21). payload.fields names each field the change touched, with its value before (from) and after (to) — either absent when the field was empty — or, for a field of a group the caller may not read, the string "changed" in place of the values. A sealed value is never in a payload.
+// StaffEvent One change in a person's history (design S21). payload.fields names each field the change touched, with its value before (from) and after (to) — either absent when the field was empty — or, for a field of a group the caller may not read, the string "changed" in place of the values; a field of the pay or of HR's notes the caller may not read is left out altogether, since even the day it changed is not theirs to know. A sealed value is never in a payload.
 type StaffEvent struct {
 	// Actor Who made the change, as the user directory named them at the time.
 	Actor StaffEventActor `json:"actor"`
@@ -1057,7 +1057,7 @@ type StaffPersonLinkRequest struct {
 	UserId *openapi_types.UUID `json:"userId"`
 }
 
-// StaffPersonListItem A person in the directory — the work group, with the manager and the department from the terms in force today (absent when there is none), and where the person stands today.
+// StaffPersonListItem A person in the directory — the work group, with the manager and the department from the terms in force today (absent when there is none; to a caller holding staff:view alone the manager is absent too when not active today), and where the person stands today.
 type StaffPersonListItem struct {
 	// Department A department as the work group names it.
 	Department     *StaffDepartmentSummary `json:"department,omitempty"`

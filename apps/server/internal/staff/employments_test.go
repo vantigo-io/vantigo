@@ -1,9 +1,11 @@
 package staff_test
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
@@ -269,5 +271,98 @@ func TestEmployments_EndAndReopen(t *testing.T) {
 	}
 	if r := hr.Do(http.MethodPost, reopenPath(e.Id+1000), nil); r.Status != http.StatusNotFound {
 		t.Errorf("reopen an unknown employment: %d, want 404", r.Status)
+	}
+}
+
+// Moving an end later brings the terms after the old end back into force, as
+// a reopening does, so it is judged on the manager graph from the day after
+// the old end: P's terms name Q, P ended on 31 March, Q's terms name P from
+// April — ending P on 31 December instead would make each the other's
+// manager. Moving it earlier only takes edges away.
+func TestEmployments_ALaterEndReChecksTheGraph(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	company(t, hr)
+	q, eq := employed(t, hr, "Quentin", "2026-01-01", terms())
+	p, ep := employed(t, hr, "Petra", "2026-01-01", terms("managerPersonId", q.Id))
+	do(t, hr, http.MethodPost, endPath(ep.Id), map[string]any{"endDate": "2026-03-31", "endReason": "contract_ended"}, http.StatusOK, nil)
+	addTerms(t, hr, eq.Id, terms("validFrom", "2026-04-01", "managerPersonId", p.Id))
+
+	refused(t, hr.Do(http.MethodPost, endPath(ep.Id), map[string]any{"endDate": "2026-12-31", "endReason": "contract_ended"}),
+		http.StatusConflict, "manager_cycle")
+	if got := getEmployment(t, hr, ep.Id); got.EndDate == nil || got.EndDate.Format("2006-01-02") != "2026-03-31" {
+		t.Errorf("end = %v, want 2026-03-31 kept", got.EndDate)
+	}
+	do(t, hr, http.MethodPost, endPath(ep.Id), map[string]any{"endDate": "2026-02-28", "endReason": "contract_ended"}, http.StatusOK, nil)
+}
+
+// A moved start re-judges every terms row's probation against the new start:
+// moved earlier, a probation may end more than six months after it; moved
+// later, a probation may end before it. Either is refused, and nothing moves.
+func TestEmployments_AMovedStartReChecksProbation(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	unit := company(t, hr)
+	_, e := employed(t, hr, "Kari", "2026-03-01", terms("probationEndDate", "2026-08-31"))
+	change := func(start string) map[string]any {
+		return map[string]any{"startDate": start, "relationshipType": "ordinary", "businessUnitId": unit.Id}
+	}
+	pr := refused(t, hr.Do(http.MethodPut, employmentPath(e.Id), change("2026-02-01"), ifMatch(e.Revision)),
+		http.StatusBadRequest, "probation_too_long")
+	if len(pr.Errors["startDate"]) == 0 {
+		t.Errorf("errors %v, want one on startDate", pr.Errors)
+	}
+	pr = refused(t, hr.Do(http.MethodPut, employmentPath(e.Id), change("2026-09-01"), ifMatch(e.Revision)), http.StatusBadRequest, "")
+	if len(pr.Errors["startDate"]) == 0 {
+		t.Errorf("errors %v, want one on startDate", pr.Errors)
+	}
+	if got := getEmployment(t, hr, e.Id); got.StartDate.Format("2006-01-02") != "2026-03-01" || got.Revision != e.Revision {
+		t.Errorf("employment = %+v, want it unchanged", got)
+	}
+	do(t, hr, http.MethodPut, employmentPath(e.Id), change("2026-04-01"), http.StatusOK, nil, ifMatch(e.Revision))
+}
+
+// A generated employment number another create took in the meantime — one
+// the generation could not see, since it had not committed — is retried once
+// and takes the next free number, as a generated employee number is; a typed
+// one is never retried.
+func TestEmployments_AGeneratedNumberRetriesOnARace(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	unit := company(t, hr)
+	p := createPerson(t, hr, with(newPerson("Kari", "Nordmann"), "employeeNumber", "R-1"))
+	other := createPerson(t, hr, newPerson("Ola", "Nordmann"))
+
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `INSERT INTO staff.employments (person_id, employment_number, relationship_type, business_unit_id, start_date, created_at, updated_at)
+		VALUES ($1, 'R-1-1', 'ordinary', $2, '2026-01-01', $3, $3)`, other.Id, unit.Id, h.Now()); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan *modtest.Response, 1)
+	go func() { done <- hr.Do(http.MethodPost, employmentsPath(p.Id), newEmployment("2026-01-01", terms())) }()
+	time.Sleep(300 * time.Millisecond)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if r.Status != http.StatusCreated {
+			t.Fatalf("after the race: %d %s, want 201", r.Status, r.Body)
+		}
+		var got gen.StaffEmployment
+		r.JSON(&got)
+		if got.EmploymentNumber == nil || *got.EmploymentNumber != "R-1-2" {
+			t.Errorf("number = %v, want R-1-2, the next free one", got.EmploymentNumber)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the create never answered")
 	}
 }

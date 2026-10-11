@@ -87,7 +87,8 @@ func TestEvents_EveryWriteIsRecorded(t *testing.T) {
 
 // A payload is shaped per field by the caller's groups (design S21 as
 // amended): HR's notes are the HR-notes group, so the person sees a notes
-// change as "changed" and HR sees its values; a private field's change is
+// change not at all — HR's notes are left out of the payload for anyone who
+// may not read them, not marked "changed" — and HR sees its values; a private field's change is
 // the person's to read; a colleague reads no history at all.
 func TestEvents_ShapedPerField(t *testing.T) {
 	t.Parallel()
@@ -104,8 +105,8 @@ func TestEvents_ShapedPerField(t *testing.T) {
 
 	latest := func(c *modtest.Client) map[string]any { return fieldsOf(listEvents(t, c, p.Id)[0]) }
 	mine := latest(self)
-	if mine["notes"] != "changed" {
-		t.Errorf("self sees notes as %v, want \"changed\"", mine["notes"])
+	if v, ok := mine["notes"]; ok {
+		t.Errorf("self sees notes as %v, want them left out", v)
 	}
 	if f, ok := mine["privateEmail"].(map[string]any); !ok || f["to"] != "kari@privat.no" {
 		t.Errorf("self sees privateEmail as %v, want its value", mine["privateEmail"])

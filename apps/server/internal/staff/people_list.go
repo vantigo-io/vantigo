@@ -123,6 +123,9 @@ type placement struct {
 	status     gen.StaffPersonStatus
 	manager    *gen.StaffPersonSummary
 	department *gen.StaffDepartmentSummary
+	// managerActive is whether the manager is active today, without which a
+	// colleague alone is not shown them (shownManager).
+	managerActive bool
 }
 
 // statusOf is where a person with these employments stands on today: active
@@ -161,13 +164,9 @@ func placementsOf(ctx context.Context, q *store.Queries, ids []int64, today time
 	if len(ids) == 0 {
 		return out, nil
 	}
-	g, err := loadManagerGraph(ctx, q, ids)
+	g, departments, err := loadManagerGraphAndDepartments(ctx, q, ids)
 	if err != nil {
 		return nil, err
-	}
-	departments, err := q.ListDepartments(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("staff: read the departments: %w", err)
 	}
 	byID := make(map[int64]store.StaffDepartment, len(departments))
 	for _, d := range departments {
@@ -204,10 +203,15 @@ func placementsOf(ctx context.Context, q *store.Queries, ids []int64, today time
 		if err != nil {
 			return nil, err
 		}
+		active, err := q.PeopleActiveOn(ctx, store.PeopleActiveOnParams{Ids: managerIDs, Today: dayParam(today)})
+		if err != nil {
+			return nil, fmt.Errorf("staff: read which managers are active today: %w", err)
+		}
 		for id, m := range managers {
 			if name, ok := names[m]; ok {
 				p := out[id]
 				p.manager = &name
+				p.managerActive = slices.Contains(active, m)
 				out[id] = p
 			}
 		}

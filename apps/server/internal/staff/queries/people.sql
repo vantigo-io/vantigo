@@ -113,8 +113,11 @@ WHERE id = @id;
 -- starting later (an employment not ended before today) or with no
 -- employment at all — 'ended' (every employment ended before today) or
 -- 'all'. @unit_id, @department_id and @location_id, each when given, keep
--- the people with one employment in force on @today in that unit whose terms
--- in force that day name that department and location.
+-- the people with one employment not ended before @today in that unit whose
+-- terms name that department and location — the row in force on @today, or
+-- for an employment that starts later its first row, so HR finds next
+-- month's starter in their department. (A colleague lists the people active
+-- today only, so an upcoming hire never reaches them.)
 SELECT count(*)
 FROM staff.people p
 WHERE NOT EXISTS (
@@ -153,12 +156,11 @@ AND (
         SELECT 1 FROM staff.employments e
         LEFT JOIN LATERAL (
             SELECT t.department_id, t.location_id FROM staff.employment_terms t
-            WHERE t.employment_id = e.id AND t.valid_from <= @today::date
+            WHERE t.employment_id = e.id AND t.valid_from <= greatest(@today::date, e.start_date)
             ORDER BY t.valid_from DESC
             LIMIT 1
         ) t ON true
-        WHERE e.person_id = p.id AND e.start_date <= @today::date
-          AND (e.end_date IS NULL OR e.end_date >= @today::date)
+        WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= @today::date)
           AND (sqlc.narg('unit_id')::bigint IS NULL OR e.business_unit_id = sqlc.narg('unit_id')::bigint)
           AND (sqlc.narg('department_id')::bigint IS NULL OR t.department_id = sqlc.narg('department_id')::bigint)
           AND (sqlc.narg('location_id')::bigint IS NULL OR t.location_id = sqlc.narg('location_id')::bigint)
@@ -207,12 +209,11 @@ AND (
         SELECT 1 FROM staff.employments e
         LEFT JOIN LATERAL (
             SELECT t.department_id, t.location_id FROM staff.employment_terms t
-            WHERE t.employment_id = e.id AND t.valid_from <= @today::date
+            WHERE t.employment_id = e.id AND t.valid_from <= greatest(@today::date, e.start_date)
             ORDER BY t.valid_from DESC
             LIMIT 1
         ) t ON true
-        WHERE e.person_id = p.id AND e.start_date <= @today::date
-          AND (e.end_date IS NULL OR e.end_date >= @today::date)
+        WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= @today::date)
           AND (sqlc.narg('unit_id')::bigint IS NULL OR e.business_unit_id = sqlc.narg('unit_id')::bigint)
           AND (sqlc.narg('department_id')::bigint IS NULL OR t.department_id = sqlc.narg('department_id')::bigint)
           AND (sqlc.narg('location_id')::bigint IS NULL OR t.location_id = sqlc.narg('location_id')::bigint)
@@ -265,3 +266,10 @@ DELETE FROM staff.person_roles WHERE person_id = @person_id;
 -- name: InsertPersonRole :exec
 INSERT INTO staff.person_roles (person_id, role, from_date, to_date, created_at, updated_at)
 VALUES (@person_id, @role, @from_date, @to_date, @now::timestamptz, @now::timestamptz);
+
+-- name: PeopleActiveOn :many
+-- PeopleActiveOn is which of @ids are active on @today, as PersonActiveOn
+-- judges one person.
+SELECT DISTINCT person_id FROM staff.employments
+WHERE person_id = ANY(@ids::bigint[]) AND start_date <= @today::date
+  AND (end_date IS NULL OR end_date >= @today::date);

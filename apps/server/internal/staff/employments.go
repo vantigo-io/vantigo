@@ -302,59 +302,16 @@ func (s *server) PostStaffPeopleByIdEmployments(ctx context.Context, req gen.Pos
 	}
 
 	var created store.StaffEmployment
-	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		edges := first.ManagerPersonID != nil || first.DepartmentID != nil
-		if edges {
-			if err := lockManagerGraph(ctx, txq); err != nil {
-				return err
-			}
+	for attempt := 1; ; attempt++ {
+		err = s.createEmployment(ctx, req.Id, body, number, relationship, first, who, &created)
+		// A generated number another create took before committing trips the
+		// index; one more try sees it and takes the next free number. A
+		// typed number is the caller's to change and is never retried.
+		if number == nil && attempt < generationAttempts && refusedWithCode(err, codeEmploymentNumberTaken) {
+			continue
 		}
-		unit, err := resolveUnit(ctx, txq, body.BusinessUnitId, 0)
-		if err != nil {
-			return err
-		}
-		if err := checkTermsReferences(ctx, txq, req.Id, first, nil, "terms."); err != nil {
-			return err
-		}
-		employmentNumber := ""
-		if number != nil {
-			taken, err := txq.EmploymentNumberTaken(ctx, *number)
-			if err != nil {
-				return fmt.Errorf("staff: is employment number %s taken: %w", *number, err)
-			}
-			if taken {
-				return employmentNumberTaken()
-			}
-			employmentNumber = *number
-		} else if employmentNumber, err = generateEmploymentNumber(ctx, txq, req.Id); err != nil {
-			return err
-		}
-		created, err = txq.InsertEmployment(ctx, store.InsertEmploymentParams{
-			PersonID: req.Id, EmploymentNumber: employmentNumber, RelationshipType: relationship, BusinessUnitID: unit,
-			StartDate: dayParam(start), ContractSignedAt: pgDate(civilDate(body.ContractSignedAt)), Now: s.deps.Clock(),
-		})
-		if err != nil {
-			return employmentWriteError(fmt.Errorf("staff: add an employment to person %d: %w", req.Id, err))
-		}
-		first.EmploymentID = created.ID
-		row, err := insertTerms(ctx, txq, first, s.deps.Clock())
-		if err != nil {
-			return err
-		}
-		if edges {
-			if err := checkManagerCycle(ctx, txq, req.Id, start); err != nil {
-				return err
-			}
-		}
-		values, err := employmentValues(&created)
-		if err != nil {
-			return err
-		}
-		if err := s.recordRowChange(ctx, txq, req.Id, eventEmploymentCreated, who, created.ID, 0, diffFields(nil, values)); err != nil {
-			return err
-		}
-		return s.recordTermsChange(ctx, txq, req.Id, eventTermsAdded, who, nil, &row)
-	})
+		break
+	}
 	if errors.Is(err, errPersonNotFound) {
 		return gen.PostStaffPeopleByIdEmployments404Response{}, nil
 	}
@@ -376,6 +333,66 @@ func (s *server) PostStaffPeopleByIdEmployments(ctx context.Context, req gen.Pos
 		return nil, err
 	}
 	return gen.PostStaffPeopleByIdEmployments201JSONResponse(out), nil
+}
+
+// createEmployment is one try of PostStaffPeopleByIdEmployments' write, in
+// one transaction under the person's lock.
+func (s *server) createEmployment(ctx context.Context, personID int64, body gen.StaffEmploymentRequest, number *string, relationship string,
+	first store.StaffEmploymentTerm, who actor, created *store.StaffEmployment) error {
+	start := body.StartDate.Time
+	return s.withPersonLock(ctx, personID, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		edges := first.ManagerPersonID != nil || first.DepartmentID != nil
+		if edges {
+			if err := lockManagerGraph(ctx, txq); err != nil {
+				return err
+			}
+		}
+		unit, err := resolveUnit(ctx, txq, body.BusinessUnitId, 0)
+		if err != nil {
+			return err
+		}
+		if err := checkTermsReferences(ctx, txq, personID, first, nil, "terms."); err != nil {
+			return err
+		}
+		employmentNumber := ""
+		if number != nil {
+			taken, err := txq.EmploymentNumberTaken(ctx, *number)
+			if err != nil {
+				return fmt.Errorf("staff: is employment number %s taken: %w", *number, err)
+			}
+			if taken {
+				return employmentNumberTaken()
+			}
+			employmentNumber = *number
+		} else if employmentNumber, err = generateEmploymentNumber(ctx, txq, personID); err != nil {
+			return err
+		}
+		*created, err = txq.InsertEmployment(ctx, store.InsertEmploymentParams{
+			PersonID: personID, EmploymentNumber: employmentNumber, RelationshipType: relationship, BusinessUnitID: unit,
+			StartDate: dayParam(start), ContractSignedAt: pgDate(civilDate(body.ContractSignedAt)), Now: s.deps.Clock(),
+		})
+		if err != nil {
+			return employmentWriteError(fmt.Errorf("staff: add an employment to person %d: %w", personID, err))
+		}
+		first.EmploymentID = created.ID
+		row, err := insertTerms(ctx, txq, first, s.deps.Clock())
+		if err != nil {
+			return err
+		}
+		if edges {
+			if err := checkManagerCycle(ctx, txq, personID, start); err != nil {
+				return err
+			}
+		}
+		values, err := employmentValues(created)
+		if err != nil {
+			return err
+		}
+		if err := s.recordRowChange(ctx, txq, personID, eventEmploymentCreated, who, created.ID, 0, diffFields(nil, values)); err != nil {
+			return err
+		}
+		return s.recordTermsChange(ctx, txq, personID, eventTermsAdded, who, nil, &row)
+	})
 }
 
 // GetStaffEmploymentsById Get an employment
@@ -480,6 +497,9 @@ func (s *server) PutStaffEmploymentsById(ctx context.Context, req gen.PutStaffEm
 				fmt.Sprintf("A terms row takes effect on %s, which would lie before the new start.", civil(chain[1].ValidFrom).Format(time.DateOnly))))
 		}
 		if moves {
+			if err := checkProbations(start, chain); err != nil {
+				return err
+			}
 			if err := lockManagerGraph(ctx, txq); err != nil {
 				return err
 			}
@@ -533,6 +553,26 @@ func (s *server) PutStaffEmploymentsById(ctx context.Context, req gen.PutStaffEm
 	return gen.PutStaffEmploymentsById200JSONResponse(out), nil
 }
 
+// checkProbations re-judges every row's probation against a new start
+// (design §4 Terms): it ends on or after the start, at most six months after
+// it, and within half a temporary term — the rules a row was judged on
+// against the old start.
+func checkProbations(start time.Time, chain []store.StaffEmploymentTerm) error {
+	for _, row := range chain {
+		if end := civilPtr(row.ProbationEndDate); end != nil && end.Before(start) {
+			return refuseInvalid(invalidEmploymentTitle, fieldErrors{errs: fieldError("startDate", fmt.Sprintf(
+				"The terms from %s have a probation ending on %s, before this start", civil(row.ValidFrom).Format(time.DateOnly), end.Format(time.DateOnly)))})
+		}
+		if _, msg := probationTooLong(start, row); msg != "" {
+			return refuseInvalid(invalidEmploymentTitle, fieldErrors{
+				errs: fieldError("startDate", fmt.Sprintf("From this start, the terms from %s break the probation's rule: %s", civil(row.ValidFrom).Format(time.DateOnly), msg)),
+				code: codeProbationTooLong,
+			})
+		}
+	}
+	return nil
+}
+
 // earliest is the earlier of two days.
 func earliest(a, b time.Time) time.Time {
 	if a.Before(b) {
@@ -545,7 +585,8 @@ func earliest(a, b time.Time) time.Time {
 // (POST /api/v1/staff/employments/{id}/end)
 //
 // An end only takes edges out of the manager graph, which can close no loop,
-// so it needs no graph lock.
+// so it needs no graph lock — unless it moves an earlier end later, which
+// brings edges back.
 func (s *server) PostStaffEmploymentsByIdEnd(ctx context.Context, req gen.PostStaffEmploymentsByIdEndRequestObject) (gen.PostStaffEmploymentsByIdEndResponseObject, error) {
 	var body gen.StaffEmploymentEndRequest
 	if req.Body != nil {
@@ -586,9 +627,23 @@ func (s *server) PostStaffEmploymentsByIdEnd(ctx context.Context, req gen.PostSt
 			return refuseConflict(conflict(codeTermsAfterEnd, "Terms after the end",
 				fmt.Sprintf("A terms row takes effect on %s, after this end; delete it or end the employment later.", civil(chain[n-1].ValidFrom).Format(time.DateOnly))))
 		}
+		// A later end than the one recorded brings the terms after the old
+		// end back into force, edges included — a reopening in part — so it
+		// is judged on the manager graph as a reopening is.
+		later := e.EndDate.Valid && end.After(e.EndDate.Time)
+		if later {
+			if err := lockManagerGraph(ctx, txq); err != nil {
+				return err
+			}
+		}
 		saved, err = txq.SetEmploymentEnd(ctx, store.SetEmploymentEndParams{ID: e.ID, EndDate: dayParam(end), EndReason: reason, Now: s.deps.Clock()})
 		if err != nil {
 			return fmt.Errorf("staff: end employment %d: %w", e.ID, err)
+		}
+		if later {
+			if err := checkManagerCycle(ctx, txq, e.PersonID, e.EndDate.Time.AddDate(0, 0, 1)); err != nil {
+				return err
+			}
 		}
 		before, err := employmentValues(&e)
 		if err != nil {

@@ -20,17 +20,24 @@ import (
 // everyone's. Read under the graph's lock it is the graph a cycle check
 // judges; read outside it, a snapshot for the audience and the org view.
 func loadManagerGraph(ctx context.Context, q *store.Queries, personIDs []int64) (managerGraph, error) {
+	g, _, err := loadManagerGraphAndDepartments(ctx, q, personIDs)
+	return g, err
+}
+
+// loadManagerGraphAndDepartments is loadManagerGraph with the departments'
+// rows it read, for a caller that names them too.
+func loadManagerGraphAndDepartments(ctx context.Context, q *store.Queries, personIDs []int64) (managerGraph, []store.StaffDepartment, error) {
 	employments, err := q.GraphEmployments(ctx, personIDs)
 	if err != nil {
-		return managerGraph{}, fmt.Errorf("staff: read the employments of the manager graph: %w", err)
+		return managerGraph{}, nil, fmt.Errorf("staff: read the employments of the manager graph: %w", err)
 	}
 	terms, err := q.GraphTerms(ctx, personIDs)
 	if err != nil {
-		return managerGraph{}, fmt.Errorf("staff: read the terms of the manager graph: %w", err)
+		return managerGraph{}, nil, fmt.Errorf("staff: read the terms of the manager graph: %w", err)
 	}
 	departments, err := q.ListDepartments(ctx)
 	if err != nil {
-		return managerGraph{}, fmt.Errorf("staff: read the departments of the manager graph: %w", err)
+		return managerGraph{}, nil, fmt.Errorf("staff: read the departments of the manager graph: %w", err)
 	}
 	ge := make([]graphEmployment, 0, len(employments))
 	for _, e := range employments {
@@ -44,7 +51,7 @@ func loadManagerGraph(ctx context.Context, q *store.Queries, personIDs []int64) 
 	for _, d := range departments {
 		gd = append(gd, graphDepartment{ID: d.ID, Manager: d.ManagerPersonID, ParentID: d.ParentID})
 	}
-	return newManagerGraph(ge, gt, gd), nil
+	return newManagerGraph(ge, gt, gd), departments, nil
 }
 
 // checkManagerCycle is the rule every write of an edge ends with (design §4
@@ -101,6 +108,16 @@ func (g managerGraph) primaryManagerOf(person int64, date time.Time) *int64 {
 		}
 	}
 	return nil
+}
+
+// activeOn reports whether person has an employment in force on date.
+func (g managerGraph) activeOn(person int64, date time.Time) bool {
+	for _, e := range g.employments[person] {
+		if !date.Before(e.Start) && (e.End == nil || !date.After(*e.End)) {
+			return true
+		}
+	}
+	return false
 }
 
 // reportsOf is everyone whose manager person is on date, sorted.
@@ -160,6 +177,12 @@ func (s *server) GetStaffPeopleByIdOrg(ctx context.Context, req gen.GetStaffPeop
 		visited := map[int64]bool{req.Id: true}
 		for m := g.primaryManagerOf(req.Id, caller.Today); m != nil && !visited[*m]; m = g.primaryManagerOf(*m, caller.Today) {
 			visited[*m] = true
+			// A colleague sees only the people active today (plan reading
+			// 15), so a manager who is not — a leaver the terms still name —
+			// is left out of the chain they read; the walk goes on above.
+			if a.colleagueOnly() && !g.activeOn(*m, caller.Today) {
+				continue
+			}
 			chain = append(chain, *m)
 		}
 		reports := g.reportsOf(req.Id, caller.Today)

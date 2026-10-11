@@ -281,8 +281,10 @@ func TestShaping_ManagerAudience(t *testing.T) {
 			}
 		case "terms_added":
 			seen[ev.Kind] = true
-			if f["payComponents"] != "changed" || f["note"] != "changed" {
-				t.Errorf("manager reads the pay or the note of terms_added: %v", f)
+			for _, name := range []string{"payComponents", "payMethod", "remunerationType", "note"} {
+				if v, ok := f[name]; ok {
+					t.Errorf("manager reads %s of terms_added as %v, want it left out", name, v)
+				}
 			}
 			if title, ok := f["title"].(map[string]any); !ok || title["to"] != "Developer" {
 				t.Errorf("manager reads title as %v, want its value", f["title"])
@@ -291,6 +293,22 @@ func TestShaping_ManagerAudience(t *testing.T) {
 	}
 	if len(seen) != 4 {
 		t.Errorf("manager saw %v of the four event kinds", seen)
+	}
+	// A correction of the pay alone tells a manager nothing — not even that
+	// the pay changed, or on which day, which the employment's
+	// salaryChangedAt keeps from them.
+	first := rawList(t, hr.Do(http.MethodGet, termsPath(e.Id), nil))[0]
+	do(t, hr, http.MethodPut, termsRowPath(int64(first["id"].(float64))), terms("validFrom", start, "title", "Developer", "managerPersonId", boss.Id,
+		"payComponents", []any{map[string]any{"name": "Base", "amount": 55000, "currency": "NOK", "period": "monthly"}},
+		"payMethod", "Bank transfer", "remunerationType", "monthly", "note", "HR only", "correction", true),
+		http.StatusOK, nil, ifMatch(int32(first["revision"].(float64))))
+	do(t, manager, http.MethodGet, eventsPath(p.Id), nil, http.StatusOK, &events)
+	if latest := events.Data[0]; latest.Kind != "terms_corrected" || len(fieldsOf(latest)) != 0 {
+		t.Errorf("manager reads the pay correction as %s %v, want terms_corrected with no field", latest.Kind, fieldsOf(latest))
+	}
+	do(t, hr, http.MethodGet, eventsPath(p.Id), nil, http.StatusOK, &events)
+	if _, ok := fieldsOf(events.Data[0])["payComponents"].(map[string]any); !ok {
+		t.Errorf("HR reads the pay correction as %v, want its values", fieldsOf(events.Data[0]))
 	}
 
 	// The head of a department manages its people who name no manager.
