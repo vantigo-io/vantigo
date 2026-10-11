@@ -493,6 +493,51 @@ func TestImport_ErasedPersonsRowIsRefused(t *testing.T) {
 	}
 }
 
+// An erased person's row that changes only a sealed value is refused
+// person_erased like any other change, and writes nothing: the number and the
+// account on file stay as they were, no event, no revision, no mail.
+func TestImport_ErasedPersonsSealedOnlyRowIsRefused(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	pd, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	erased := seedErased(t, h, pd)
+	id, number := erased.person.Id, erased.person.EmployeeNumber
+	stored := func() (string, string) {
+		return modtest.One[string](t, h.Harness, `SELECT encode(national_id_mac, 'hex') FROM staff.people WHERE id = $1`, id),
+			modtest.One[string](t, h.Harness, `SELECT coalesce(encode(bank_account_sealed, 'hex'), '') FROM staff.people WHERE id = $1`, id)
+	}
+	mac, account := stored()
+	revision := modtest.One[int32](t, h.Harness, `SELECT revision FROM staff.people WHERE id = $1`, id)
+	events := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1`, id)
+	mails := len(h.mail.messages())
+
+	for name, file := range map[string]string{
+		"nationalId": csvOf("employeeNumber;givenName;familyName;birthDate;nationalIdKind;nationalId",
+			number+";Erik;Glemt;1990-01-01;fodselsnummer;"+testNationalID("018190", 400)),
+		"bankAccount": csvOf("employeeNumber;givenName;familyName;birthDate;bankAccountKind;bankAccount",
+			number+";Erik;Glemt;1990-01-01;bban;12345678903"),
+	} {
+		for _, dryRun := range []bool{true, false} {
+			res := importCSV(t, pd, file, dryRun)
+			if res.Failed != 1 || res.Updated != 0 || !hasRowError(res, 1, "", "erased") {
+				t.Errorf("%s, dryRun %v: %+v %v, want the row refused as erased", name, dryRun, res, rowErrors(res))
+			}
+		}
+	}
+	if gotMAC, gotAccount := stored(); gotMAC != mac || gotAccount != account {
+		t.Errorf("the sealed values on file changed under a refused row")
+	}
+	if got := modtest.One[int32](t, h.Harness, `SELECT revision FROM staff.people WHERE id = $1`, id); got != revision {
+		t.Errorf("revision %d → %d, want unchanged", revision, got)
+	}
+	if got := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1`, id); got != events {
+		t.Errorf("events %d → %d, want none written", events, got)
+	}
+	if got := len(h.mail.messages()); got != mails {
+		t.Errorf("mails %d → %d, want none sent", mails, got)
+	}
+}
+
 // The sealed columns need staff:personal-data: a file carrying any of them
 // from HR without it is refused whole, import_sealed_columns, and the same
 // file from a holder imports — each value through the sealed path, with its

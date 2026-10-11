@@ -217,7 +217,8 @@ A row that fails writes nothing and does not stop the others; rows already impor
 imported, so send a corrected file of the failed rows alone, or the whole file again —
 rows that change nothing write nothing. An import cut short — the connection dropped
 mid-file — keeps the rows it ran, and the installation's history still records it with
-the counts so far. The file is at most 5 MiB and
+the counts so far: `rows` is the whole file, and the created, updated and failed rows
+add up to fewer. The file is at most 5 MiB and
 `STAFF_IMPORT_MAX_ROWS` rows (5000 unless you raised it,
 [configuration reference](/en/admin/authentication/#configuration-reference)).
 

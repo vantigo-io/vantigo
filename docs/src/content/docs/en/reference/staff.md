@@ -1068,7 +1068,9 @@ number or a bank account**, and neither does a log line or an event. A real run 
 recorded as the installation's `people_imported` event carrying the four counts — also
 a real run cut short because its caller went away, with the counts so far: the rows it
 ran stay committed, so the event is written on a context the request's end does not
-cancel, bounded by a timeout of its own. A dry run records nothing.
+cancel, bounded by a timeout of its own. On a run cut short, `rows` is the file's row
+count while `created`, `updated` and `failed` count only the rows processed before the
+cut, so they do not sum to `rows`. A dry run records nothing.
 
 ## The erased state
 
