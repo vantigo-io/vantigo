@@ -90,6 +90,55 @@ describe("History", () => {
     expect(await screen.findByText("Actor 29")).toBeInTheDocument();
   });
 
+  it("names the structure and the people a change points at, and never says a bare id", async () => {
+    stubStaffApi({
+      role: "manage",
+      events: {
+        101: [
+          {
+            id: 701,
+            kind: "terms_corrected",
+            at: "2026-09-03T08:00:00Z",
+            actor: hr,
+            payload: {
+              employmentId: 201,
+              termsId: 302,
+              fields: {
+                departmentId: { from: 21, to: 22 },
+                locationId: { from: 31 },
+                managerPersonId: { from: 999, to: 102 },
+                businessUnitId: { from: 11, to: 12 },
+              },
+            },
+          },
+        ],
+      },
+    });
+    renderRoute("/staff/people/101?tab=history");
+
+    const [corrected] = await events();
+    expect(within(corrected).getByText("Department: Engineering → Operations")).toBeInTheDocument();
+    expect(within(corrected).getByText("Location: Oslo HQ → —")).toBeInTheDocument();
+    expect(within(corrected).getByText("Business unit: Oslo office → Bergen office")).toBeInTheDocument();
+    // Person 999 is nobody this page knows: the change is said, the number is not.
+    expect(within(corrected).getByText("Manager changed")).toBeInTheDocument();
+    expect(corrected).not.toHaveTextContent(/999|\b21\b|\b102\b/);
+  });
+
+  it("shows the History tab and its error when the history fails for another reason than not being the reader's", async () => {
+    stubStaffApi({
+      role: "manage",
+      read: (path) =>
+        path.endsWith("/people/101/events")
+          ? new Response(JSON.stringify({ title: "Boom" }), { status: 500 })
+          : undefined,
+    });
+    renderRoute("/staff/people/101");
+
+    await userEvent.click(await screen.findByRole("tab", { name: "History" }));
+    expect(await screen.findByText("Could not load the history")).toBeInTheDocument();
+  });
+
   it("keeps the tab in the URL", async () => {
     stubStaffApi({ role: "manage" });
     const { router } = renderRoute("/staff/people/101");

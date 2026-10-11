@@ -44,6 +44,38 @@ describe("My page — my own record", () => {
     expect(screen.queryByText("Hired through the referral programme")).not.toBeInTheDocument();
   });
 
+  it("leaves HR's note off my terms even when I am HR myself", async () => {
+    stubStaffApi({ role: "manage", me: 101 });
+    renderRoute("/staff/me?tab=employments");
+
+    const first = await region("Terms from Jan 1, 2025 to Feb 28, 2026");
+    expect(within(first).getByText("Engineer")).toBeInTheDocument();
+    expect(screen.queryByText("Hired through the referral programme")).not.toBeInTheDocument();
+  });
+
+  it("opens the form on my record as it is now, so HR's newer change is neither lost nor overwritten", async () => {
+    const fetchMock = stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/me");
+
+    await region("Private");
+    // HR saves meanwhile; the page has not read it yet.
+    const ada = fetchMock.state.people.find((one) => one.id === 101);
+    if (ada?.record) {
+      ada.record.city = "Bergen";
+      ada.record.revision = 4;
+    }
+    await userEvent.click(screen.getByRole("button", { name: "Edit my details" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit my details" });
+    expect(await within(dialog).findByRole("textbox", { name: "City" })).toHaveValue("Bergen");
+    await retype(within(dialog).getByRole("textbox", { name: "Mobile phone" }), "+47 922 22 222");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/staff\/me$/)).toHaveLength(1));
+    const [put] = sent(fetchMock, "PUT", /\/staff\/me$/);
+    expect(put.ifMatch).toBe("4");
+    expect(put.body).toMatchObject({ city: "Bergen", phoneMobile: "+47 922 22 222" });
+  });
+
   it("shows my history without HR's notes", async () => {
     stubStaffApi({ role: "access", me: 101 });
     renderRoute("/staff/me?tab=history");
@@ -152,6 +184,18 @@ describe("My page — on a phone", () => {
       )
       .filter((line) => !line.endsWith(": "));
     expect(outline).toMatchSnapshot();
+    // Every field grid declares one column at the base width — the phone's —
+    // and two only from Mantine's `sm` up.
+    const grids = [...document.querySelectorAll("dl")];
+    expect(grids.length).toBeGreaterThan(0);
+    const css = [...document.querySelectorAll("style")].map((style) => style.textContent ?? "").join("\n");
+    for (const grid of grids) {
+      const scope = [...grid.classList].find((name) => css.includes(`.${name}`)) as string;
+      expect(scope, "a grid without its own column rule").toBeDefined();
+      const escaped = scope.replace(/[-_]/g, "\\$&");
+      expect(css).toMatch(new RegExp(`\\.${escaped}\\{[^}]*--sg-cols:\\s*1;`));
+      expect(css).toMatch(new RegExp(`@media\\(min-width: 48em\\)\\{\\.${escaped}\\{--sg-cols:\\s*2;`));
+    }
 
     await userEvent.click(screen.getByRole("button", { name: "Edit my details" }));
     const dialog = await screen.findByRole("dialog", { name: "Edit my details" });

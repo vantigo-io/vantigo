@@ -31,6 +31,8 @@ export interface PersonEmploymentsProps {
   /** The business zone's day, from `/meta`. */
   today: string;
   structure?: StaffStructure;
+  /** My page: the person reads their own terms, without HR's note. */
+  asSelf?: boolean;
 }
 
 /**
@@ -39,7 +41,7 @@ export interface PersonEmploymentsProps {
  * reader of the employment group — its § 14-6 check. HR's actions are on
  * the card and the rows; everyone else reads.
  */
-export const PersonEmployments = ({ person, today, structure }: PersonEmploymentsProps) => {
+export const PersonEmployments = ({ person, today, structure, asSelf }: PersonEmploymentsProps) => {
   const { t } = useI18n("staff");
   const { data, isPending, isError, error } = useQuery(personEmploymentsQueryOptions(person.id));
   // People a terms row names as manager are named from what this page
@@ -68,6 +70,7 @@ export const PersonEmployments = ({ person, today, structure }: PersonEmployment
           today={today}
           structure={structure}
           known={known}
+          asSelf={asSelf}
         />
       ))}
     </Stack>
@@ -82,12 +85,14 @@ const EmploymentCard = ({
   today,
   structure,
   known,
+  asSelf,
 }: {
   person: StaffPerson;
   employment: StaffEmployment;
   today: string;
   structure?: StaffStructure;
   known: Map<number, StaffPersonSummary>;
+  asSelf?: boolean;
 }) => {
   const format = useStaffFormat();
   const t = format.t;
@@ -138,8 +143,11 @@ const EmploymentCard = ({
     ? t("employmentTitle", { number: employment.employmentNumber })
     : t("employmentFrom", { date: format.date(employment.startDate) });
   const unit = structure?.businessUnits.find((row) => row.id === employment.businessUnitId)?.name;
-  // New terms start from the row in force today — or, before the start, the first; after the end, the last.
-  const inForce = [...terms].reverse().find((row) => inForceOn(row, today)) ?? terms[terms.length - 1];
+  // New terms start from the row in force today; when none is — before the
+  // start, the first row; after the end, the last.
+  const inForce =
+    [...terms].reverse().find((row) => inForceOn(row, today, employment)) ??
+    (today < employment.startDate ? terms[0] : terms[terms.length - 1]);
 
   const confirmReopen = () =>
     modals.openConfirmModal({
@@ -233,7 +241,9 @@ const EmploymentCard = ({
             {t("terms")}
           </Title>
           <TermsTimeline
+            employment={employment}
             terms={terms}
+            asSelf={asSelf}
             today={today}
             structure={structure}
             personName={personName}

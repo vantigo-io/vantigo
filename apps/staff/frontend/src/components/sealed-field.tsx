@@ -215,7 +215,12 @@ const SetSealedForm = ({ person, kind, onDone }: { person: StaffPerson; kind: Se
             ...(values.kind === "foreign" ? { country: values.country.trim().toUpperCase() } : {}),
           })
         : setBankAccount(person.id, { kind: values.kind as StaffBankAccountKind, value: values.value }),
+    // A mutation keeps what it was called with as its variables: here the
+    // number typed. It is dropped the moment the answer is in, and the
+    // mutation leaves the cache as soon as nothing observes it (S4).
+    gcTime: 0,
     onSuccess: async () => {
+      save.reset();
       notifications.show({ color: "teal", title: t(national ? "nationalIdSaved" : "bankAccountSaved"), message: "" });
       await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
       onDone();
@@ -223,6 +228,7 @@ const SetSealedForm = ({ person, kind, onDone }: { person: StaffPerson; kind: Se
     onError: (error) => {
       const { fields, rest } = fieldRefusals(error, ["kind", "value", "country"]);
       form.setErrors(fields);
+      save.reset();
       if (rest.length > 0) notifications.show({ color: "red", title: t("couldNotSave"), message: rest.join(" ") });
     },
   });

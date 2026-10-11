@@ -3,6 +3,7 @@ import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
+import { useState } from "react";
 import { staffMetaQueryOptions } from "../api/meta";
 import { personEventsQueryOptions, personQueryOptions } from "../api/people";
 import { NotFoundError } from "../api/request";
@@ -32,9 +33,15 @@ export const PersonPage = () => {
   const person = useQuery({ ...personQueryOptions(personId), retry: false });
   // The history is the person's own, a manager's of theirs and HR's (§5's
   // Events row); to anyone else it is the unknown id's 404 — so the tab is
-  // offered once the first page says it is this reader's.
+  // left out on that 404 alone. Any other failure is shown in the tab.
   const history = useQuery({ ...personEventsQueryOptions(personId, 1), enabled: person.isSuccess, retry: false });
-  const historyReadable = history.isSuccess;
+  // Decided once per person, on the first answer: a refetch puts a query
+  // without data back to pending, which must not take the tab away from
+  // under a reader looking at the error it shows.
+  const [historyFor, setHistoryFor] = useState<{ id: number; readable: boolean } | null>(null);
+  if (historyFor?.id !== personId && (history.isSuccess || history.isError))
+    setHistoryFor({ id: personId, readable: !(history.error instanceof NotFoundError) });
+  const historyReadable = historyFor?.id === personId && historyFor.readable;
 
   if (person.error instanceof NotFoundError)
     return <EmptyState title={t("personNotFound")} description={t("personNotFoundHint")} />;
@@ -83,7 +90,11 @@ export const PersonPage = () => {
         </Tabs.Panel>
         {historyReadable && (
           <Tabs.Panel value="history" pt="lg">
-            <PersonHistory page={(page) => personEventsQueryOptions(personId, page)} />
+            <PersonHistory
+              page={(page) => personEventsQueryOptions(personId, page)}
+              person={data}
+              structure={meta.data.structure}
+            />
           </Tabs.Panel>
         )}
       </PageTabs>

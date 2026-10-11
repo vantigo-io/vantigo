@@ -247,7 +247,15 @@ describe("Person page — the sealed fields", () => {
 
   it("sets a national id, saying so on the number when it disagrees with the birth date", async () => {
     const fetchMock = stubStaffApi({ role: "personalData" });
-    renderRoute("/staff/people/101");
+    const { queryClient } = renderRoute("/staff/people/101");
+    // What a Set mutation holds once settled: never the number typed (S4).
+    const kept = () =>
+      JSON.stringify(
+        queryClient
+          .getMutationCache()
+          .getAll()
+          .map((m) => m.state.variables) ?? [],
+      );
 
     const identifiers = await region("Identifiers");
     await userEvent.click(within(identifiers).getByRole("button", { name: "Set the national identity number" }));
@@ -262,6 +270,7 @@ describe("Person page — the sealed fields", () => {
       ),
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/^Number/)).toHaveAttribute("aria-invalid", "true");
+    expect(kept()).not.toContain("01019012345");
 
     await retype(within(dialog).getByLabelText(/^Number/), "101290 49905");
     await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
@@ -272,6 +281,7 @@ describe("Person page — the sealed fields", () => {
       kind: "fodselsnummer",
       value: "101290 49905",
     });
+    expect(kept()).not.toContain("49905");
     // Nothing of what was typed stays on the page.
     expect(document.body.textContent).not.toMatch(/49905/);
   });

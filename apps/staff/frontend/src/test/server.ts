@@ -54,6 +54,8 @@ export interface StaffServer {
   pageSize?: number;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
+  /** Answers a read instead of the fake's own, as `write` does a write. */
+  read?: (path: string) => Response | undefined;
 }
 
 /** What the fake holds after the writes, for a test to read back. */
@@ -697,6 +699,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       const record = recordOf(stored);
       const sub = person[2];
       const privateReader = reads(audience, "private");
+      // Every write on a person but the sealed fields' is staff:manage's
+      // (the access layer's uniform 403); the sealed ones check their own.
+      if (method !== "GET" && !/^(national-id|bank-account)/.test(sub ?? "") && !audience.hr) return forbidden();
 
       if (sub === undefined) {
         if (method === "GET") return jsonResponse(200, personOf(stored, audience));
@@ -984,7 +989,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     const path = url.pathname;
     const method = init?.method ?? "GET";
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    const answered = method === "GET" ? undefined : server.write?.(method, path, body);
+    const answered = method === "GET" ? server.read?.(path) : server.write?.(method, path, body);
     if (answered) return Promise.resolve(answered);
 
     if (path === "/api/v1/staff/meta") {

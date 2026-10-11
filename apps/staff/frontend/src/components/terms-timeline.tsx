@@ -1,7 +1,7 @@
 import { Badge, Button, Card, Group, List, Stack, Text, Timeline } from "@mantine/core";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import type { ReactNode } from "react";
-import type { StaffTerms } from "../api/employments";
+import type { StaffEmployment, StaffTerms } from "../api/employments";
 import type { StaffStructure } from "../api/meta";
 import "../i18n";
 import { useStaffFormat } from "../lib/format";
@@ -9,8 +9,16 @@ import { inForceOn } from "../lib/terms";
 import { type FieldItem, Fields } from "./field-group";
 
 export interface TermsTimelineProps {
+  /** The employment the rows belong to: no row is in force outside its days. */
+  employment: Pick<StaffEmployment, "startDate" | "endDate">;
   /** The chain as the server answers it, oldest first. */
   terms: StaffTerms[];
+  /**
+   * The person reading their own terms (My page): HR's note on a row is left
+   * off whatever the response carries — an HR user reading themselves gets
+   * it from the server as HR, but My page is what they see of themselves.
+   */
+  asSelf?: boolean;
   /** The business zone's day, which decides the row in force. */
   today: string;
   structure?: StaffStructure;
@@ -31,7 +39,9 @@ export interface TermsTimelineProps {
  * the latest, never the first.
  */
 export const TermsTimeline = ({
+  employment,
   terms,
+  asSelf = false,
   today,
   structure,
   personName,
@@ -89,7 +99,7 @@ export const TermsTimeline = ({
     [t("paydayText"), row.paydayText],
     [t("seniorityDate"), date(row.seniorityDate)],
     [t("payGrade"), row.payGrade],
-    [t("termsNote"), row.note],
+    [t("termsNote"), asSelf ? undefined : row.note],
   ];
 
   const pay = (row: StaffTerms): ReactNode =>
@@ -119,7 +129,7 @@ export const TermsTimeline = ({
         const name = row.validTo
           ? t("termsFromTo", { from: format.date(row.validFrom), to: format.date(row.validTo) })
           : t("termsFrom", { date: format.date(row.validFrom) });
-        const current = inForceOn(row, today);
+        const current = inForceOn(row, today, employment);
         const deletable = onDelete && row.id === latest?.id && row.id !== first?.id;
         return (
           <Timeline.Item key={row.id} color={current ? "teal" : "gray"}>

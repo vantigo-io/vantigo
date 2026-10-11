@@ -89,10 +89,10 @@ export const MyPage = () => {
           />
         </Tabs.Panel>
         <Tabs.Panel value="employments" pt="lg">
-          <PersonEmployments person={person} today={meta.data.today} structure={meta.data.structure} />
+          <PersonEmployments person={person} today={meta.data.today} structure={meta.data.structure} asSelf />
         </Tabs.Panel>
         <Tabs.Panel value="history" pt="lg">
-          <PersonHistory page={myEventsQueryOptions} />
+          <PersonHistory page={myEventsQueryOptions} person={person} structure={meta.data.structure} />
         </Tabs.Panel>
       </PageTabs>
       <MyDetailsModal person={person} opened={editing} onClose={() => setEditing(false)} />
@@ -104,18 +104,27 @@ export const MyPage = () => {
 const MyDetailsModal = ({ person, opened, onClose }: { person: StaffPerson; opened: boolean; onClose: () => void }) => {
   const { t } = useI18n("staff");
   const phone = useMediaQuery("(max-width: 48em)");
-  const nextOfKin = useQuery({ ...nextOfKinQueryOptions(person.id), enabled: opened });
   return (
     <Modal opened={opened} onClose={onClose} title={t("editMyDetails")} size="lg" fullScreen={phone}>
-      {opened && nextOfKin.data && (
-        <MyDetailsForm
-          person={person}
-          nextOfKin={nextOfKin.data.nextOfKin}
-          revision={nextOfKin.data.revision}
-          onDone={onClose}
-        />
-      )}
+      {opened && <FreshMyDetails personId={person.id} onDone={onClose} />}
     </Modal>
+  );
+};
+
+/**
+ * The form opens on the record as it is now: `/me` and the next of kin are
+ * read again when it opens, and the form waits for both, so the revision it
+ * sends is the one the fields it shows were read at — a change HR made since
+ * the page loaded is in the form, and one HR makes while it is open is a
+ * 409, never overwritten.
+ */
+const FreshMyDetails = ({ personId, onDone }: { personId: number; onDone: () => void }) => {
+  const me = useQuery({ ...meQueryOptions(), refetchOnMount: "always" });
+  const nextOfKin = useQuery({ ...nextOfKinQueryOptions(personId), refetchOnMount: "always" });
+  if (!me.isFetchedAfterMount || !nextOfKin.isFetchedAfterMount || !me.data || !nextOfKin.data)
+    return <ContentSkeleton rows={4} rowHeight={44} />;
+  return (
+    <MyDetailsForm person={me.data} nextOfKin={nextOfKin.data.nextOfKin} revision={me.data.revision} onDone={onDone} />
   );
 };
 
@@ -127,7 +136,7 @@ const MyDetailsForm = ({
 }: {
   person: StaffPerson;
   nextOfKin: StaffNextOfKin[];
-  /** The person's revision, read with the next of kin — the one `PUT /me` sends. */
+  /** The person's revision, read with the fields the form shows — the one `PUT /me` sends. */
   revision: number;
   onDone: () => void;
 }) => {

@@ -180,7 +180,7 @@ vilkår datert etter slutten på **Siste arbeidsdag**.
 arbeidsavtale inneholder, a) til q), hvert som **Finnes**, **Mangler** eller **Gjelder
 ikke** — vurdert ut fra vilkårene som gjelder i dag — og sier om en signert avtale er
 registrert. Den informerer; den stopper aldri en lagring. Personen, en leder av dem og
-HR ser den. Se [§ 14-6-kontrollen](/en/reference/staff/#terms) i referansen for hvor
+HR ser den. Se [§ 14-6-kontrollen](/en/reference/staff/#the--14-6-check) i referansen for hvor
 hvert punkt leses fra.
 
 ### Historikk
