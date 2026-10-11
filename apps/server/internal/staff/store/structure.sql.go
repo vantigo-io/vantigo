@@ -247,6 +247,22 @@ func (q *Queries) HasDefaultLegalEntity(ctx context.Context) (bool, error) {
 	return has_default, err
 }
 
+const holdsDefaultBusinessUnit = `-- name: HoldsDefaultBusinessUnit :one
+SELECT EXISTS (
+    SELECT 1 FROM staff.business_units WHERE is_default AND legal_entity_id = $1
+) AS holds_default
+`
+
+// HoldsDefaultBusinessUnit is whether the default business unit sits under a
+// legal entity — which is then not archived, or the unit an employment is put
+// in by default would sit under an archived legal entity.
+func (q *Queries) HoldsDefaultBusinessUnit(ctx context.Context, legalEntityID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, holdsDefaultBusinessUnit, legalEntityID)
+	var holds_default bool
+	err := row.Scan(&holds_default)
+	return holds_default, err
+}
+
 const insertBusinessUnit = `-- name: InsertBusinessUnit :one
 INSERT INTO staff.business_units (legal_entity_id, name, org_number, is_default, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5::timestamptz, $5::timestamptz)

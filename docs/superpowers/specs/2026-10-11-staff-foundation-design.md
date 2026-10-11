@@ -813,8 +813,13 @@ alone); A columns after five years past the end year. Names, birth date, employe
 number, employments, non-pay terms, absence dates and types stay (C). The run reports
 per kind.
 
-**Locking.** Every mutation of a person's rows takes the person row `FOR UPDATE`
-first, then employments, absences, documents, in that order; the workers take one
+**Locking.** Every mutation of a person's rows takes the person row `FOR NO KEY UPDATE`
+first, then employments, absences, documents, in that order (**A1 Task 2 review**: not
+`FOR UPDATE`, which would block the `KEY SHARE` a foreign-key check on another row's
+`manager_person_id` takes, so such a write — holding its own person and the
+manager-graph lock — could deadlock against this one waiting on the graph lock); a
+person `DELETE` takes the manager-graph lock before its named-as-nobody's-manager
+check and maps a 23503 to `person_in_use`; the workers take one
 person per transaction and claim links by row. No call to a contract, the mail or the
 object store happens inside any transaction or read-only snapshot
 (boundaries.md's rule as widened at `6941e58d`).

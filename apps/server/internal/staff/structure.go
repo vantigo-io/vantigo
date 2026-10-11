@@ -271,6 +271,19 @@ func (s *server) PostStaffLegalEntitiesByIdArchive(ctx context.Context, req gen.
 		if row.IsDefault {
 			return refuseConflict(structureDefault("legal entity"))
 		}
+		// The default business unit's legal entity is never archived either:
+		// the unit an employment is put in by default must not sit under an
+		// archived legal entity. A business unit write making a unit the
+		// default share-locks its legal entity first (checkUnitLegalEntity),
+		// which this transaction's row lock excludes, so the read cannot race.
+		holds, err := txq.HoldsDefaultBusinessUnit(ctx, row.ID)
+		if err != nil {
+			return fmt.Errorf("staff: read the default business unit: %w", err)
+		}
+		if holds {
+			return refuseConflict(conflict(codeStructureDefault, "The default business unit",
+				"The default business unit is under this legal entity. Make a business unit under another legal entity the default first."))
+		}
 		saved, err = txq.ArchiveLegalEntity(ctx, store.ArchiveLegalEntityParams{ID: row.ID, Now: s.deps.Clock()})
 		return err
 	})
@@ -311,7 +324,11 @@ func parseBusinessUnit(body gen.StaffBusinessUnitRequest) (parsedBusinessUnit, f
 // write: it must exist, and a unit is never put under an archived one — but a
 // unit already under a legal entity archived since keeps it (current is its
 // legal entity before this write, 0 for a new unit).
-func checkUnitLegalEntity(ctx context.Context, txq *store.Queries, id, current int64) error {
+//
+// makeDefault adds the default's own rule: the default unit is never under an
+// archived legal entity, the mirror of the archive refusing a legal entity
+// that holds the default unit.
+func checkUnitLegalEntity(ctx context.Context, txq *store.Queries, id, current int64, makeDefault bool) error {
 	le, err := txq.ShareLegalEntity(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return refuseInvalid(invalidBusinessUnitTitle,
@@ -319,8 +336,8 @@ func checkUnitLegalEntity(ctx context.Context, txq *store.Queries, id, current i
 	} else if err != nil {
 		return fmt.Errorf("staff: read legal entity %d: %w", id, err)
 	}
-	if le.ArchivedAt != nil && le.ID != current {
-		return refuseConflict(structureArchived(fmt.Sprintf("Legal entity %s is archived; a business unit cannot be put under it.", le.Name)))
+	if le.ArchivedAt != nil && (le.ID != current || makeDefault) {
+		return refuseConflict(structureArchived(fmt.Sprintf("Legal entity %s is archived; a business unit cannot be put under it or be the default under it.", le.Name)))
 	}
 	return nil
 }
@@ -351,14 +368,14 @@ func (s *server) PostStaffBusinessUnits(ctx context.Context, req gen.PostStaffBu
 		if err := advisoryLock(ctx, txq, businessUnitDefaultLock); err != nil {
 			return err
 		}
-		if err := checkUnitLegalEntity(ctx, txq, parsed.LegalEntityID, 0); err != nil {
-			return err
-		}
 		hasDefault, err := txq.HasDefaultBusinessUnit(ctx)
 		if err != nil {
 			return fmt.Errorf("staff: read the default business unit: %w", err)
 		}
 		makeDefault := !hasDefault || (body.IsDefault != nil && *body.IsDefault)
+		if err := checkUnitLegalEntity(ctx, txq, parsed.LegalEntityID, 0, makeDefault); err != nil {
+			return err
+		}
 		if makeDefault && hasDefault {
 			if err := txq.ClearBusinessUnitDefault(ctx, store.ClearBusinessUnitDefaultParams{Keep: 0, Now: s.deps.Clock()}); err != nil {
 				return fmt.Errorf("staff: move the default business unit: %w", err)
@@ -414,7 +431,8 @@ func (s *server) PutStaffBusinessUnitsById(ctx context.Context, req gen.PutStaff
 		if err := checkRevision("business unit", row.Revision, revision); err != nil {
 			return err
 		}
-		if err := checkUnitLegalEntity(ctx, txq, parsed.LegalEntityID, row.LegalEntityID); err != nil {
+		becomesDefault := body.IsDefault != nil && *body.IsDefault && !row.IsDefault
+		if err := checkUnitLegalEntity(ctx, txq, parsed.LegalEntityID, row.LegalEntityID, becomesDefault); err != nil {
 			return err
 		}
 		makeDefault := false

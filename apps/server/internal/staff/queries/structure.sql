@@ -171,3 +171,11 @@ UPDATE staff.locations SET
     updated_at = CASE WHEN archived_at IS NULL THEN @now::timestamptz ELSE updated_at END
 WHERE id = @id
 RETURNING *;
+
+-- name: HoldsDefaultBusinessUnit :one
+-- HoldsDefaultBusinessUnit is whether the default business unit sits under a
+-- legal entity — which is then not archived, or the unit an employment is put
+-- in by default would sit under an archived legal entity.
+SELECT EXISTS (
+    SELECT 1 FROM staff.business_units WHERE is_default AND legal_entity_id = @legal_entity_id
+) AS holds_default;

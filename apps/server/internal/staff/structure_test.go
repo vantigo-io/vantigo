@@ -257,18 +257,13 @@ func TestBusinessUnits_UnderALegalEntity(t *testing.T) {
 	refused(t, hr.Do(http.MethodPost, businessUnitsPath, map[string]any{"legalEntityId": parent.Id, "name": "Bad", "orgNumber": orgBadMod}),
 		http.StatusBadRequest, "org_number_invalid")
 
-	do(t, hr, http.MethodPost, archivePath(legalEntitiesPath, other.Id), nil, http.StatusOK, nil)
-	refused(t, hr.Do(http.MethodPost, businessUnitsPath, map[string]any{"legalEntityId": other.Id, "name": "Trondheim"}),
-		http.StatusConflict, "structure_archived")
-	refused(t, hr.Do(http.MethodPut, rowPath(businessUnitsPath, bergen.Id),
-		map[string]any{"legalEntityId": other.Id, "name": "Bergen"}, ifMatch(bergen.Revision)), http.StatusConflict, "structure_archived")
-	var kept gen.StaffBusinessUnit
-	do(t, hr, http.MethodPut, rowPath(businessUnitsPath, oslo.Id),
-		map[string]any{"legalEntityId": other.Id, "name": "Oslo sentrum", "orgNumber": orgBrreg}, http.StatusOK, &kept, ifMatch(oslo.Revision))
-	if kept.Name != "Oslo sentrum" || kept.LegalEntityId != other.Id {
-		t.Errorf("kept = %+v, want renamed under its archived legal entity", kept)
+	// The default unit's legal entity is never archived: Oslo is the default
+	// and sits under Other AS.
+	r := hr.Do(http.MethodPost, archivePath(legalEntitiesPath, other.Id), nil)
+	refused(t, r, http.StatusConflict, "structure_default")
+	if !strings.Contains(string(r.Body), "business unit") {
+		t.Errorf("refusal %s, want it to name the default business unit", r.Body)
 	}
-
 	var moved gen.StaffBusinessUnit
 	do(t, hr, http.MethodPut, rowPath(businessUnitsPath, bergen.Id),
 		map[string]any{"legalEntityId": parent.Id, "name": "Bergen", "isDefault": true}, http.StatusOK, &moved, ifMatch(bergen.Revision))
@@ -278,8 +273,41 @@ func TestBusinessUnits_UnderALegalEntity(t *testing.T) {
 	if moved.OrgNumber != nil {
 		t.Errorf("orgNumber = %v, want it cleared by a replace that left it out", *moved.OrgNumber)
 	}
+
+	// With the default moved away, Other AS may be archived.
+	do(t, hr, http.MethodPost, archivePath(legalEntitiesPath, other.Id), nil, http.StatusOK, nil)
+	refused(t, hr.Do(http.MethodPost, businessUnitsPath, map[string]any{"legalEntityId": other.Id, "name": "Trondheim"}),
+		http.StatusConflict, "structure_archived")
+	refused(t, hr.Do(http.MethodPut, rowPath(businessUnitsPath, bergen.Id),
+		map[string]any{"legalEntityId": other.Id, "name": "Bergen"}, ifMatch(moved.Revision)), http.StatusConflict, "structure_archived")
+	// Losing the default moved Oslo's revision on.
+	var kept gen.StaffBusinessUnit
+	do(t, hr, http.MethodPut, rowPath(businessUnitsPath, oslo.Id),
+		map[string]any{"legalEntityId": other.Id, "name": "Oslo sentrum", "orgNumber": orgBrreg}, http.StatusOK, &kept, ifMatch(oslo.Revision+1))
+	if kept.Name != "Oslo sentrum" || kept.LegalEntityId != other.Id {
+		t.Errorf("kept = %+v, want renamed under its archived legal entity", kept)
+	}
+
 	refused(t, hr.Do(http.MethodPost, archivePath(businessUnitsPath, bergen.Id), nil), http.StatusConflict, "structure_default")
+	// A unit under an archived legal entity keeps it, but is never made the
+	// default there.
+	refused(t, hr.Do(http.MethodPut, rowPath(businessUnitsPath, oslo.Id),
+		map[string]any{"legalEntityId": other.Id, "name": "Oslo sentrum", "isDefault": true}, ifMatch(kept.Revision)),
+		http.StatusConflict, "structure_archived")
 	do(t, hr, http.MethodPost, archivePath(businessUnitsPath, oslo.Id), nil, http.StatusOK, nil)
+
+	// A legal entity holding the default business unit is not archived either,
+	// even once it is no longer the default legal entity itself: the default
+	// unit would sit under an archived legal entity. Moving the default unit
+	// elsewhere lets it go.
+	holding := createLegalEntity(t, hr, map[string]any{"name": "Holding AS", "isDefault": true})
+	r = hr.Do(http.MethodPost, archivePath(legalEntitiesPath, parent.Id), nil)
+	refused(t, r, http.StatusConflict, "structure_default")
+	if !strings.Contains(string(r.Body), "business unit") {
+		t.Errorf("refusal %s, want it to name the default business unit", r.Body)
+	}
+	createBusinessUnit(t, hr, map[string]any{"legalEntityId": holding.Id, "name": "Tromsø", "isDefault": true})
+	do(t, hr, http.MethodPost, archivePath(legalEntitiesPath, parent.Id), nil, http.StatusOK, nil)
 }
 
 // Departments: the code is unique however it is cased; the manager is an
