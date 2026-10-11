@@ -98,6 +98,11 @@ func mount(d module.Deps) (http.Handler, error) {
 	handler := gen.HandlerWithOptions(strict, gen.StdHTTPServerOptions{
 		BaseRouter:       router,
 		ErrorHandlerFunc: module.DecodeError(apicommon.WriteDecodeError),
+		// keepRawBody runs inside the router's access rule and body cap, and
+		// before the generated decoder: a schema the contract closes
+		// (additionalProperties false) is judged by the raw body
+		// (strictbody.go).
+		Middlewares: []gen.MiddlewareFunc{keepRawBody},
 	})
 	if err := router.Err(); err != nil {
 		return nil, err

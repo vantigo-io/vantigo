@@ -325,13 +325,19 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-## staff (19 uncovered)
+## staff (29 uncovered)
 
+- `DELETE /api/v1/staff/people/{id}` (deleteStaffPeopleById)
 - `GET /api/v1/staff/business-units` (getStaffBusinessUnits)
 - `GET /api/v1/staff/departments` (getStaffDepartments)
 - `GET /api/v1/staff/legal-entities` (getStaffLegalEntities)
 - `GET /api/v1/staff/locations` (getStaffLocations)
 - `GET /api/v1/staff/meta` (getStaffMeta)
+- `GET /api/v1/staff/people/{id}/events` (getStaffPeopleByIdEvents)
+- `GET /api/v1/staff/people/{id}/next-of-kin` (getStaffPeopleByIdNextOfKin)
+- `GET /api/v1/staff/people/{id}/roles` (getStaffPeopleByIdRoles)
+- `GET /api/v1/staff/people/{id}` (getStaffPeopleById)
+- `GET /api/v1/staff/people` (getStaffPeople)
 - `GET /api/v1/staff/settings` (getStaffSettings)
 - `POST /api/v1/staff/business-units/{id}/archive` (postStaffBusinessUnitsByIdArchive)
 - `POST /api/v1/staff/business-units` (postStaffBusinessUnits)
@@ -341,10 +347,14 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/staff/legal-entities` (postStaffLegalEntities)
 - `POST /api/v1/staff/locations/{id}/archive` (postStaffLocationsByIdArchive)
 - `POST /api/v1/staff/locations` (postStaffLocations)
+- `POST /api/v1/staff/people` (postStaffPeople)
 - `PUT /api/v1/staff/business-units/{id}` (putStaffBusinessUnitsById)
 - `PUT /api/v1/staff/departments/{id}` (putStaffDepartmentsById)
 - `PUT /api/v1/staff/legal-entities/{id}` (putStaffLegalEntitiesById)
 - `PUT /api/v1/staff/locations/{id}` (putStaffLocationsById)
+- `PUT /api/v1/staff/people/{id}/next-of-kin` (putStaffPeopleByIdNextOfKin)
+- `PUT /api/v1/staff/people/{id}/roles` (putStaffPeopleByIdRoles)
+- `PUT /api/v1/staff/people/{id}` (putStaffPeopleById)
 - `PUT /api/v1/staff/settings` (putStaffSettings)
 
-Total: 315 of 450 operations have no recorded exchange.
+Total: 325 of 460 operations have no recorded exchange.
