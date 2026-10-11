@@ -9,6 +9,12 @@ import { overdueServer } from "../test/overdue-server";
 import { renderRoute } from "../test/route-tree";
 
 const BATCHES = "/api/v1/invoices/reminder-print-batches";
+const REMINDERS = "/api/v1/invoices/reminders";
+
+/** How many times a list was read (GET, any query). */
+const reads = (fetchMock: ReturnType<typeof overdueServer>, list: string) =>
+  fetchMock.actualCalls.filter(([url, init]) => String(url).split("?")[0] === list && (init?.method ?? "GET") === "GET")
+    .length;
 
 /** Every value of a contract enum, so a value the catalog lacks words for fails here. */
 const LEFT_OUT: Record<PrintBatchLeftOut["reason"], true> = {
@@ -93,6 +99,9 @@ describe("ReminderPrintPage_BatchDownloadPostedReprint", () => {
     await userEvent.click(within(awaiting).getByRole("button", { name: "Print 2 letters" }));
     const result = await screen.findByTestId("print-result");
     expect(sent(fetchMock, "POST").body).toEqual({ reminderIds: [3202, 3203], postOn: "2026-09-14" });
+    // The letters printed no longer await print, and the batch is new: both lists are read again.
+    await waitFor(() => expect(reads(fetchMock, REMINDERS)).toBe(2));
+    await waitFor(() => expect(reads(fetchMock, BATCHES)).toBe(2));
     expect(within(result).getByText("Batch 7: 1 letter printed for Sep 14, 2026.")).toBeInTheDocument();
     expect(
       within(result).getByText(
@@ -127,7 +136,11 @@ describe("ReminderPrintPage_BatchDownloadPostedReprint", () => {
         [`POST ${BATCHES}/7/posted`]: jsonResponse(200, {
           batch: printBatch({ postedOn: "2026-09-12", postedAt: "2026-09-12T15:00:00Z", postedBy: "x" }),
           skipped: [3204],
-          waived: [{ reminderId: 3202, invoiceId: 1007, kinds: ["fee"], reason: "settled" }],
+          waived: [
+            { reminderId: 3202, invoiceId: 1007, kinds: ["fee"], reason: "settled" },
+            { reminderId: 3205, invoiceId: 1009, kinds: ["compensation"], reason: "charges_barred" },
+            { reminderId: 3206, invoiceId: 1010, kinds: ["fee", "compensation"], reason: "handed_off" },
+          ],
         }),
       },
     });
@@ -150,7 +163,19 @@ describe("ReminderPrintPage_BatchDownloadPostedReprint", () => {
     expect(
       within(posted).getByText("Letter 2: the fee waived as claimed in error — nothing was left to pay."),
     ).toBeInTheDocument();
+    expect(
+      within(posted).getByText(
+        "letter id 3205: the compensation waived as claimed in error — a hold was lifted with the objection upheld, which bars charges.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(posted).getByText(
+        "letter id 3206: the fee and compensation waived as claimed in error — the invoice was handed off to collection.",
+      ),
+    ).toBeInTheDocument();
     expect(within(posted).getByText("Withdrawn since printing, so not sent: letter id 3204.")).toBeInTheDocument();
+    // The batch is closed: the list is read again.
+    await waitFor(() => expect(reads(fetchMock, BATCHES)).toBe(2));
   });
 
   it.each([
@@ -159,6 +184,7 @@ describe("ReminderPrintPage_BatchDownloadPostedReprint", () => {
       printBatch({ postOn: "2026-09-10", createdAt: "2026-09-08T09:00:00Z" }),
       "Sep 10, 2026",
       "Sep 12, 2026",
+      "2026-09-12",
       refusal(409, "reminder_posted_late"),
       "This batch was printed for an earlier day; posted now, its letters would give less time than they say. Reprint it for the day it is posted.",
     ],
@@ -167,34 +193,79 @@ describe("ReminderPrintPage_BatchDownloadPostedReprint", () => {
       printBatch({ postOn: "2026-09-11", createdAt: "2026-09-08T09:00:00Z" }),
       "Sep 11, 2026",
       "Sep 10, 2026",
+      "2026-09-10",
       refusal(409, "reminder_posted_early"),
       "This batch was printed for a later day, and its fees and deadlines were judged for that day. Reprint it for the day it is posted.",
     ],
-  ])("says a batch posted %s in words and offers the reprint", async (_case, batch, postOn, day, answer, words) => {
-    const fetchMock = overdueServer({
-      answers: {
-        ...batches(batch),
-        [`POST ${BATCHES}/7/posted`]: answer,
-        [`POST ${BATCHES}/7/reprint`]: jsonResponse(200, { ...batch, reprintedAt: "2026-09-12T15:00:00Z" }),
-      },
-    });
+  ])(
+    "says a batch posted %s in words and offers the reprint",
+    async (_case, batch, postOn, day, postedOn, answer, words) => {
+      const fetchMock = overdueServer({
+        answers: {
+          ...batches(batch),
+          [`POST ${BATCHES}/7/posted`]: answer,
+          [`POST ${BATCHES}/7/reprint`]: jsonResponse(200, { ...batch, reprintedAt: "2026-09-12T15:00:00Z" }),
+        },
+      });
+      renderRoute("/invoices/reminders/print");
+
+      const row = await within(await screen.findByTestId("print-batches")).findByTestId("batch-7");
+      await userEvent.click(within(row).getByRole("button", { name: "Confirm batch 7 posted" }));
+      const dialog = await screen.findByRole("dialog", { name: "Confirm batch 7 posted" });
+      // Its own posting day is offered first, as the day it most likely went.
+      expect(within(dialog).getByRole("radio", { name: postOn })).toBeChecked();
+      await userEvent.click(within(dialog).getByRole("radio", { name: day }));
+      await userEvent.click(within(dialog).getByRole("button", { name: "Confirm posted" }));
+
+      expect(await within(dialog).findByText(words)).toBeInTheDocument();
+      expect(within(dialog).queryByText("The server's English.")).not.toBeInTheDocument();
+      // The day chosen is the day sent.
+      expect(sent(fetchMock, "POST").body).toEqual({ postedOn });
+      const before = { batches: reads(fetchMock, BATCHES), awaiting: reads(fetchMock, REMINDERS) };
+      await userEvent.click(within(dialog).getByRole("button", { name: "Reprint" }));
+      expect(await screen.findByText("The letters are awaiting print again.")).toBeInTheDocument();
+      // Its letters await print again, and the batch is closed: both lists are read again.
+      await waitFor(() => expect(reads(fetchMock, BATCHES)).toBeGreaterThan(before.batches));
+      await waitFor(() => expect(reads(fetchMock, REMINDERS)).toBeGreaterThan(before.awaiting));
+      expect(
+        fetchMock.actualCalls.some(([url, init]) => String(url) === `${BATCHES}/7/reprint` && init?.method === "POST"),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    [
+      "from the day it was printed, in Oslo",
+      printBatch({ postOn: "2026-09-10", createdAt: "2026-09-07T22:30:00Z" }),
+      ["Sep 12, 2026", "Sep 11, 2026", "Sep 10, 2026", "Sep 9, 2026", "Sep 8, 2026"],
+    ],
+    [
+      "for at most a week back, and its own posting day",
+      printBatch({ postOn: "2026-09-03", createdAt: "2026-09-01T09:00:00Z" }),
+      [
+        "Sep 12, 2026",
+        "Sep 11, 2026",
+        "Sep 10, 2026",
+        "Sep 9, 2026",
+        "Sep 8, 2026",
+        "Sep 7, 2026",
+        "Sep 6, 2026",
+        "Sep 5, 2026",
+        "Sep 3, 2026",
+      ],
+    ],
+  ])("offers the days a batch may have been posted %s", async (_case, batch, days) => {
+    overdueServer({ answers: batches(batch) });
     renderRoute("/invoices/reminders/print");
 
     const row = await within(await screen.findByTestId("print-batches")).findByTestId("batch-7");
     await userEvent.click(within(row).getByRole("button", { name: "Confirm batch 7 posted" }));
     const dialog = await screen.findByRole("dialog", { name: "Confirm batch 7 posted" });
-    // Its own posting day is offered first, as the day it most likely went.
-    expect(within(dialog).getByRole("radio", { name: postOn })).toBeChecked();
-    await userEvent.click(within(dialog).getByRole("radio", { name: day }));
-    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm posted" }));
-
-    expect(await within(dialog).findByText(words)).toBeInTheDocument();
-    expect(within(dialog).queryByText("The server's English.")).not.toBeInTheDocument();
-    await userEvent.click(within(dialog).getByRole("button", { name: "Reprint" }));
-    expect(await screen.findByText("The letters are awaiting print again.")).toBeInTheDocument();
     expect(
-      fetchMock.actualCalls.some(([url, init]) => String(url) === `${BATCHES}/7/reprint` && init?.method === "POST"),
-    ).toBe(true);
+      within(dialog)
+        .getAllByRole("radio")
+        .map((r) => (r as HTMLInputElement).labels?.[0]?.textContent),
+    ).toEqual(days);
   });
 
   it("offers no confirmation for a batch to be posted on a later day, only the reprint", async () => {

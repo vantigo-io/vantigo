@@ -26,7 +26,6 @@ import {
   confirmPosted,
   createPrintBatch,
   MAX_POST_ON_DAYS,
-  MAX_PRINT_LETTERS,
   type PrintBatch,
   type PrintBatchLeftOut,
   type PrintBatchPosted,
@@ -117,6 +116,7 @@ const AwaitingCard = () => {
   const meta = useQuery(invoicesMetaQueryOptions());
   const today = meta.data?.today ?? dayjs().format("YYYY-MM-DD");
   const [page, setPage] = useState(1);
+  // A batch is the letters chosen on one page of 100, under the 200 a batch may hold (D10).
   const letters = useQuery(remindersQueryOptions({ status: "awaiting_print", page, pageSize: 100 }));
   const [deselected, setDeselected] = useState<ReadonlySet<number>>(new Set());
   const [postOn, setPostOn] = useState<string>(today);
@@ -242,18 +242,13 @@ const AwaitingCard = () => {
                 }}
               />
               <Button
-                disabled={chosen.length === 0 || chosen.length > MAX_PRINT_LETTERS || print.isPending}
+                disabled={chosen.length === 0 || print.isPending}
                 loading={print.isPending}
                 onClick={() => print.mutate(chosen)}
               >
                 {t("print.print", { count: chosen.length })}
               </Button>
             </Group>
-            {chosen.length > MAX_PRINT_LETTERS && (
-              <Text size="sm" c="red">
-                {t("print.tooMany", { max: MAX_PRINT_LETTERS, count: chosen.length })}
-              </Text>
-            )}
           </>
         )}
         {refusal && (

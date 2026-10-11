@@ -13,8 +13,8 @@ sources:
 The Invoices app issues the sales documents of your bookkeeping: a draft becomes a
 numbered invoice or credit note the moment it is issued, gets a PDF, and from then on
 never changes. The app has five areas in its sidebar: **Invoices**, **Invoice
-journal**, **Overdue** — the overdue invoices and their reminders —, **Payments** — the
-bank's files and the exception queue, shown only with `invoices:payments` — and **Invoice
+journal**, **Overdue** (the overdue invoices and their reminders), **Payments** (the
+bank's files and the exception queue, shown only with `invoices:payments`) and **Invoice
 settings**. Every amount is in NOK in this phase. An invoice is
 handed over as a PDF — by download or by e-mail — or as an EHF e-invoice over the Peppol
 network, once your installation is set up for it
@@ -929,13 +929,22 @@ page: its letters with their status, counted, where a letter not yet sent can be
 withdrawn and a failed one sent again. The runs are listed under the overdue list. Every
 refusal is said in words; a missing collection rate names the rate and the half-year.
 
-**Bad-debt relief in the VAT return.** A claim counts as lost for VAT when it is unpaid six
-months after its due date despite **at least three reminders** at normal intervals
-(merverdiavgiftsforskriften § 4-7-1 first paragraph b), or when collection has failed.
-Vantigo's default sequence sends **two** letters — one reminder, then the debt collection
-notice. If you will rely on the three reminders, set **Reminders before the debt collection
-notice** to 2 in the reminder settings; the letters on each invoice's **Reminders** card
-are the record.
+**Bad-debt relief in the VAT return.** One of the grounds on which a claim counts as
+finally lost for VAT is that it is a customer receivable not paid six months after its due
+date, despite **at least three reminders at normal intervals and the activity on the
+creditor's part that the circumstances call for**
+([merverdiavgiftsforskriften § 4-7-1 first paragraph b](https://lovdata.no/forskrift/2009-12-15-1540/§4-7-1));
+the paragraph's other grounds include collection that has failed. A debt collection notice
+counts as one of the three reminders
+([KMVA 8156](https://www.skatteetaten.no/en/rettskilder/type/vedtak/klagenemnda-for-merverdiavgift/kmva-8156/)).
+With the default settings Vantigo sends two letters before it suggests the hand-off. For
+three, set **Reminders before the debt collection notice** to 2 in the reminder settings:
+under the 1988 act the third letter is the debt collection notice, which needs **Send a
+debt collection notice** on; under the new act it is the reminder announcing the hand-off.
+Letters alone may not be enough: in KMVA 8156 the Tax Administration faulted two debt
+collection notices that were never followed by collection, so record what else you did to
+recover the claim. The letters on each invoice's **Reminders** card are the record of what
+was sent.
 
 ### Printing and posting paper letters
 

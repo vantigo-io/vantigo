@@ -375,8 +375,12 @@ preparatory works; **ADMIN** Finanstilsynet, Skatteetaten or Finansdepartementet
   or an interest/fee note satisfies the law, provided it is documented and shown apart
   from the principal.
 - **Bad-debt VAT relief.** FMVA § 4-7-1 first paragraph b: a receivable counts as finally
-  lost if "ikke … innfridd seks måneder etter forfall, til tross for **minst tre
-  purringskrav med normale purringsintervaller**"; alternative (a) is failed inkasso.
+  lost if it "er en kundefordring som ikke er innfridd seks måneder etter forfall, til
+  tross for **minst tre purringskrav med normale purringsintervaller og slik aktivitet fra
+  kreditors side som forholdene tilsier**"; alternative (a) is failed inkasso. An
+  inkassovarsel counts as one of the three, and the Tax Administration has looked for
+  follow-up beyond the letters (KMVA 8156 faulted two inkassovarsler not followed by
+  collection).
   **LAW via ADMIN** (MVAH ch. 4). Vantigo's reminder history is the evidence for it.
   Skatteklagenemnda accepted three bundled reminders in one case.
 

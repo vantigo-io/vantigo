@@ -1,4 +1,4 @@
-import { jsonResponse, path } from "./api";
+import { customerSearch, jsonResponse, path } from "./api";
 import type { Answer } from "./document-server";
 import { stubFetch } from "./fetch";
 import {
@@ -28,7 +28,7 @@ export interface OverdueServerOptions {
  * The fetch fake for the Overdue area: meta, the overdue list, the run's
  * preview and the run (POST /reminder-runs, by its body's dryRun), the runs
  * and run 11, the letters awaiting print, and the print batches with batch
- * 7. Each write, or any read the test answers otherwise, by "METHOD url" (the
+ * 7, and the customers the picker searches. Each write, or any read the test answers otherwise, by "METHOD url" (the
  * full URL first, then the path alone). Anything else is a bare 404.
  */
 export const overdueServer = ({ answers = {}, capabilities = {}, overdue, runs }: OverdueServerOptions = {}) =>
@@ -44,6 +44,7 @@ export const overdueServer = ({ answers = {}, capabilities = {}, overdue, runs }
       return body.dryRun ? jsonResponse(200, runPreview()) : jsonResponse(201, runResult());
     }
     if (method !== "GET") return new Response(null, { status: 404 });
+    if (pathname === "/api/v1/customers") return customerSearch(url);
     const query = new URLSearchParams(search);
     switch (pathname) {
       case "/api/v1/invoices/meta":

@@ -20,6 +20,7 @@ import { useState } from "react";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import {
   OVERDUE_ACTIONS,
+  OVERDUE_PAGE_SIZE,
   type OverdueAction,
   type OverdueFilters,
   type OverdueItem,
@@ -66,6 +67,7 @@ export const OverduePage = ({ canViewCustomers, currentUserId }: OverduePageProp
     ...(action ? { action } : {}),
     ...(chargesOutstanding ? { charges: "outstanding" as const } : {}),
     page,
+    pageSize: OVERDUE_PAGE_SIZE,
   };
   const list = useQuery(overdueQueryOptions(filters));
   const canRun = Boolean(meta.data?.capabilities.canRunReminders);
@@ -166,8 +168,8 @@ export const OverduePage = ({ canViewCustomers, currentUserId }: OverduePageProp
           </Text>
         </>
       )}
-      {list.data && list.data.total > 25 && (
-        <Pagination total={Math.ceil(list.data.total / 25)} value={page} onChange={setPage} />
+      {list.data && list.data.total > OVERDUE_PAGE_SIZE && (
+        <Pagination total={Math.ceil(list.data.total / OVERDUE_PAGE_SIZE)} value={page} onChange={setPage} />
       )}
       {canRun && <RunsCard currentUserId={currentUserId} />}
       {previewing && (
@@ -265,6 +267,11 @@ const OverdueTable = ({ items, currency }: { items: OverdueItem[]; currency: str
                         kind: next.outdated ? words(`rates.kind.${next.outdated.kind}`, next.outdated.kind) : "",
                         halfYear: next.outdated?.halfYear ?? "",
                       })}
+                    </Text>
+                  ))}
+                  {next.chargeNotes.map((note) => (
+                    <Text key={note} size="xs" c="dimmed" data-charge-note={note}>
+                      {words(`reminder.chargeNote.${note}`, note)}
                     </Text>
                   ))}
                 </Table.Td>

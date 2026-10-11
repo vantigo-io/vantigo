@@ -13,8 +13,8 @@ sources:
 Fakturaer-appen utsteder salgsdokumentene i bokføringen din: et utkast blir en
 nummerert faktura eller kreditnota i det øyeblikket det utstedes, får en PDF, og endres
 aldri etter det. Appen har fem områder i sidemenyen: **Fakturaer**, **Fakturajournal**,
-**Forfalt** — de forfalte fakturaene og purringene deres —, **Innbetalinger** — bankens
-filer og avvikskøen, vist bare med `invoices:payments` — og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
+**Forfalt** (de forfalte fakturaene og purringene deres), **Innbetalinger** (bankens
+filer og avvikskøen, vist bare med `invoices:payments`) og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
 PDF — ved nedlasting eller på e-post — eller som EHF-faktura i Peppol-nettverket, når
 installasjonen er satt opp for det
 ([det loven krever](/en/reference/invoices/#the-law-in-one-page)).
@@ -948,13 +948,21 @@ statusen sin, telt opp, der et brev som ikke er sendt, kan trekkes tilbake og et
 feilet, sendes på nytt. Kjøringene står under forfallslisten. Hver avvisning sies i ord; en
 manglende sats navngir satsen og halvåret.
 
-**Fradrag for tap på krav i mva-meldingen.** Et krav regnes som tapt for merverdiavgiften
-når det ikke er betalt seks måneder etter forfall til tross for **minst tre
-purringer** med normale purreintervaller (merverdiavgiftsforskriften § 4-7-1 første ledd
-bokstav b), eller når inndrivingen har mislyktes. Vantigos standardrekkefølge sender **to**
-brev — én purring, så inkassovarselet. Skal du støtte deg på de tre purringene, setter du
-**Purringer før inkassovarselet** til 2 i purreinnstillingene; brevene på kortet
-**Purringer** på hver faktura er dokumentasjonen.
+**Fradrag for tap på krav i mva-meldingen.** Ett av grunnlagene for at et krav regnes som
+endelig tapt for merverdiavgiften, er at det er en kundefordring som ikke er innfridd seks
+måneder etter forfall, til tross for **minst tre purringskrav med normale
+purringsintervaller og slik aktivitet fra kreditors side som forholdene tilsier**
+([merverdiavgiftsforskriften § 4-7-1 første ledd bokstav b](https://lovdata.no/forskrift/2009-12-15-1540/§4-7-1));
+leddets andre grunnlag omfatter blant annet inndriving som har mislyktes. Et
+inkassovarsel teller som ett av de tre purringskravene
+([KMVA 8156](https://www.skatteetaten.no/en/rettskilder/type/vedtak/klagenemnda-for-merverdiavgift/kmva-8156/)).
+Med standardinnstillingene sender Vantigo to brev før det foreslår overlevering til
+inkasso. For tre setter du **Purringer før inkassovarselet** til 2 i purreinnstillingene:
+etter inkassoloven av 1988 er det tredje brevet inkassovarselet, som krever at **Send
+inkassovarsel** er slått på; etter den nye loven er det purringen som varsler overlevering
+til inkasso. Brevene alene er ikke nødvendigvis nok: i KMVA 8156 la Skatteetaten vekt på at
+to inkassovarsler ikke ble fulgt opp med inndriving, så dokumenter hva mer du gjorde for å
+få inn kravet. Brevene på kortet **Purringer** på hver faktura viser hva som er sendt.
 
 ### Skrive ut og postlegge papirbrev
 

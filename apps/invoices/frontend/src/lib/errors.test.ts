@@ -106,10 +106,10 @@ describe("a refusal's words", () => {
       "Et brev i denne kjøringen trenger forsinkelsesrenten for 2027-H1, og den finnes ikke. Legg inn satsen, eller vent på utgivelsen som bringer den. Ingen brev ble laget.",
     );
     expect(refusalMessage(conflict("bank_import_stale", { lastBookedOn: "2026-08-30" }), translate("nb"), date)).toBe(
-      "Den siste bankbokføringen som er importert, er fra «2026-08-30», og brev i denne kjøringen krever gebyr eller renter. Importer den siste bankfilen, eller bekreft kjøringen i boksen under.",
+      "Den siste bankbokføringen som er importert, er fra «2026-08-30», og brev i denne kjøringen krever gebyr eller renter. Importer den siste bankfilen, eller bekreft kjøringen i boksen over.",
     );
     expect(refusalMessage(conflict("bank_import_stale"), translate("en"), date)).toBe(
-      "No bank file was ever imported, and letters of this run claim charges. Import the latest bank file, or confirm the run with the box below.",
+      "No bank file was ever imported, and letters of this run claim charges. Import the latest bank file, or confirm the run with the box above.",
     );
   });
 
