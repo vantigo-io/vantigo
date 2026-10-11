@@ -224,7 +224,8 @@ En rad som feiler, skriver ingenting og stopper ikke de andre; rader som allered
 importert, blir stående, så send en rettet fil med bare de feilede radene, eller hele
 filen på nytt — rader som ikke endrer noe, skriver ingenting. En import som avbrytes
 underveis — forbindelsen brytes midt i filen — beholder radene den kjørte, og
-installasjonens historikk registrerer den likevel med tallene så langt. Filen er høyst 5 MiB og
+installasjonens historikk registrerer den likevel med tallene så langt: `rows` er hele
+filen, og de opprettede, endrede og feilede radene blir til sammen færre. Filen er høyst 5 MiB og
 `STAFF_IMPORT_MAX_ROWS` rader (5000 med mindre du har hevet det,
 [konfigurasjonsreferansen](/nb/admin/authentication/#konfigurasjonsreferanse)).
 
