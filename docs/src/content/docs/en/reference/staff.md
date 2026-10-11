@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, the sealed national identity number and bank account, the self-service link and My page, the settings, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the settings, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -20,13 +20,15 @@ no slot; nothing in another module reads the register yet.
 
 This page grows with the module. What is here today: the [permissions](#permissions),
 the [settings](#settings), the [business time zone](#the-business-time-zone), the
-[structure](#the-structure), [people](#people) — the record, its
-[field groups and audiences](#field-groups-and-audiences), the
-[history](#the-history) and [deletion](#deleting-a-person) — the
+[structure](#the-structure), [people](#people) — the record, the
+[directory](#the-directory), the [field groups and audiences](#field-groups-and-audiences),
+the [history](#the-history) and [deletion](#deleting-a-person) —
+[employments](#employments) and their [terms](#terms), the
+[derived dates](#the-derived-dates), the [§ 14-6 check](#the--14-6-check),
+[managers and the org view](#managers-and-the-org-view), the
 [sealed identifiers](#the-sealed-identifiers), the
 [self-service link](#the-self-service-link), [My page](#my-page), [how a refusal
 looks](#refusals-and-revisions), the [locks](#locks) and the [endpoints](#endpoints).
-Employments and terms arrive with the rest of the delivery.
 
 ## The schema
 
@@ -237,13 +239,37 @@ changes the list moves it on, and both the `GET` and the `PUT` answer the list w
 person's current revision. A field error names the element: `nextOfKin[1].name`,
 `roles[0].toDate`.
 
-**The directory**, `GET /people`, lists people by display name with the work group
-only, paged (`page`, `pageSize` up to 100). `q` matches each of its words, however
-cased, against the names, the employee number and the work email — never a private
-field. `staff:manage` lists everyone; `staff:view` without it lists the people
-**active today** — with an employment that has started and not ended, judged on the
-business zone's day (the end day itself still counts). Anyone else is the uniform 403.
-With employments' own endpoints, `staff:manage` gains a status filter.
+### The directory
+
+`GET /people` lists people by display name with the work group only, paged (`page`,
+`pageSize` up to 100). `q` matches each of its words, however cased, against the
+names, the employee number and the work email — never a private field. Every row, and
+`GET /people/{id}`, carries the person's place today:
+
+- **`status`** — where they stand on the business zone's day: `active` (an employment
+  has started and not ended; the end day itself still counts), `upcoming` with the
+  earliest later start as `date`, `ended` with the latest end as `date` (every
+  employment ended before today), or `none` (no employment yet).
+- **`manager`** and **`department`** — `{id, displayName, employeeNumber}` and `{id,
+  code, name}` from the terms in force today on the person's earliest employment in
+  force: the manager the terms name, else [the department's](#managers-and-the-org-view);
+  absent when there is none.
+
+Who lists whom:
+
+- **`staff:manage`** lists by `status`: `current` (the default — active, upcoming and
+  no employment yet, so a person created in the first step of a two-step hire stays
+  findable), `ended`, or `all`. Any other value is a 400.
+- **`staff:view`** without it lists the people **active today** only, whatever
+  `status` says (`status=ended` lists nobody).
+- Anyone else is the uniform 403.
+
+`unitId`, `departmentId` and `locationId` keep the people with an employment in force
+today in that business unit whose terms in force today name that department and that
+location — every filter given, on the same employment. "Today" is the business time
+zone's calendar day, computed once per request from the clock and handed to the
+database as a date, so the list turns over at midnight in Oslo, not in UTC, and does
+so on the right hour on the days the clocks change.
 
 ### Field groups and audiences
 
@@ -252,22 +278,28 @@ Every field of a person belongs to one **field group**, held in one static table
 caller's audience reads the field's group. A group the audience may not read is absent
 from the response — never null.
 
-| Group | Fields | Self | Colleague (`staff:view`) | `staff:manage` | `staff:personal-data` |
-| --- | --- | --- | --- | --- | --- |
-| Work | name, employee number, work email and phone, work country, language, roles | ✓ | ✓ | ✎ | ✎ |
-| Private | birth date, gender, mobile, private phone and email, home address, next of kin | ✓ | — | ✎ | ✎ |
-| HR notes | `notes` | — | — | ✎ | ✎ |
-| National identity number | `nationalId { kind, onFile }` | ✓ | — | ✓ | ✓ |
-| Bank account | `bankAccount { kind, last4 }` | ✓ | — | ✓ | ✓ |
-| Link | `user { id, displayName, active }` | ✓ | — | ✓ | ✓ |
+| Group | Fields | Self | Colleague (`staff:view`) | Manager | `staff:manage` | `staff:personal-data` |
+| --- | --- | --- | --- | --- | --- | --- |
+| Work | name, employee number, work email and phone, work country, language, roles, `manager`, `department` | ✓ | ✓ | ✓ | ✎ | ✎ |
+| Employment dates | `status`; an employment's `startDate`, `endDate`, `fteChangedAt`; a terms row's `validFrom`, `validTo`, `employmentType`, `ftePercent` | ✓ | ✓ | ✓ | ✎ | ✎ |
+| Employment | every other field of an employment and its terms but the pay | ✓ | — | ✓ | ✎ | ✎ |
+| Pay | `remunerationType`, `payComponents`, `payMethod`, `paydayText`, `seniorityDate`, `payGrade`, `salaryChangedAt` | ✓ | — | — | ✎ | ✎ |
+| Private | birth date, gender, mobile, private phone and email, home address, next of kin | ✓ | — | — | ✎ | ✎ |
+| HR notes | `notes`; a terms row's `note` | — | — | — | ✎ | ✎ |
+| National identity number | `nationalId { kind, onFile }` | ✓ | — | — | ✓ | ✓ |
+| Bank account | `bankAccount { kind, last4 }` | ✓ | — | — | ✓ | ✓ |
+| Link | `user { id, displayName, active }` | ✓ | — | — | ✓ | ✓ |
 
 - **Self** is the user a person's self-service link names, whatever state the link is
   in. **Colleague** is `staff:view`, and only for a person **active today**: an
   unannounced hire, a leaver and someone with no employment stay out of the colleague
-  directory, and since ids are sequential they answer the unknown id's 404. A caller holding several is every one of them at
-  once and reads what any may. `staff:approve` is no audience yet; the **manager**
-  audience — the work group and the non-pay terms of their reports — arrives with
-  employments.
+  directory, and since ids are sequential they answer the unknown id's 404.
+  **Manager** is a caller whose self-service link names a manager of the person
+  today: the manager the terms in force today name on one of the person's employments,
+  or the department's when they name none (see [managers](#managers-and-the-org-view));
+  concurrent employments may give two. It needs no permission. A caller holding several
+  is every one of them at once and reads what any may. `staff:approve` is no audience
+  yet (it decides absence, which arrives later).
 - **The national identity number** is never answered as a digit: only its kind and
   whether one is on file, since the last digits with the birth date reconstruct the
   whole number. **The bank account** is its kind and last four digits.
@@ -302,14 +334,24 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `bank_account_revealed` | Empty; the actor is the viewer. |
 | `user_linked` | `fields.user`: the user linked before, if any, and now, each `{id, displayName}`. |
 | `user_unlinked` | `fields.user`: the user that was linked (`{id, displayName}`). |
+| `employment_created` | `employmentId`; `fields`: each field of the employment set. |
+| `employment_updated` | `employmentId`; `fields`: each field that changed. |
+| `employment_ended` | `employmentId`; `fields.endDate`, `fields.endReason`. |
+| `employment_reopened` | `employmentId`; `fields.endDate`, `fields.endReason` from their values to nothing. |
+| `terms_added` | `employmentId`, `termsId`; `fields`: each field of the new row. |
+| `terms_corrected` | `employmentId`, `termsId`; `fields`: each field of the row that changed, before and after. |
+| `terms_deleted` | `employmentId`, `termsId`; `fields`: each field of the deleted row, as `from`. |
 
 `GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
-the person themselves, `staff:manage` and `staff:personal-data` (and, with employments,
-their manager); to anyone else — a colleague included — it is the unknown id's 404.
-Each payload is **shaped per field** by the same table: a field of a group the caller
-may not read shows the string `"changed"` in place of its values. So a change to HR's
-notes reads `{"notes": "changed"}` to the person and `{"notes": {"from": …, "to": …}}`
-to HR. A sealed value is never in a payload. Each event also stores the retention
+the person themselves, a manager of theirs today, `staff:manage` and
+`staff:personal-data`; to anyone else — a colleague included — it is the unknown id's
+404. Each payload is **shaped per field** by the same table: a field of a group the
+caller may not read shows the string `"changed"` in place of its values. So a change
+to HR's notes reads `{"notes": "changed"}` to the person and `{"notes": {"from": …,
+"to": …}}` to HR; a manager reads a birth-date change as `"changed"` and a work-email
+change with its values, and a new terms row's pay as `"changed"`. An employment's and
+a terms row's `employmentId` and `termsId` are kept for everyone who reads the
+history. A sealed value is never in a payload. Each event also stores the retention
 classes its payload touches (`payload_classes`), which the erase uses and nothing
 else; who reads what is never decided by them.
 
@@ -325,6 +367,212 @@ person between the check and the delete, and a foreign key that refuses anyway i
 person's own history — the one exception to the history's append-only rule — and
 records an installation-level `person_deleted` event carrying the employee number and
 nothing else. It answers 204.
+
+## Employments
+
+An employment (`staff.employments`) is one arbeidsforhold — the a-melding's unit — of
+a person: its own number, a business unit, a start, and an end with its reason. A
+person may hold several, one after the other (a rehire) or at once (two part-time
+positions); the register does not refuse an overlap.
+
+- **`POST /people/{id}/employments`** (`staff:manage`) creates one with its **first
+  terms row** nested as `terms`, which takes effect on the start: `terms.validFrom`
+  is left out or equals `startDate` — otherwise `terms_first_row_start` (409). The
+  business unit is the [default one](#the-structure) when `businessUnitId` is left
+  out; a named one must exist and not be archived (`structure_archived`, 409).
+  `relationshipType` is `ordinary` (the default), `maritime`, `freelancer` or
+  `pension_or_other`. The creation is an `employment_created` and a `terms_added`
+  event.
+- **The employment number** — the a-melding's `arbeidsforholdID` — is 1–40 letters,
+  digits or hyphens, unique however it is cased, and never changes. Typed, it is kept
+  as typed; left out, it is generated as the person's employee number, a hyphen and the
+  first `n` from 1 that no employment has — so `E-7-1`, `E-7-2`, skipping past a number
+  typed by hand — under the person's lock. A number another employment has is
+  `employment_number_taken` (400), including when the unique index settles a race.
+- **`PUT /employments/{id}`** (`staff:manage`, `If-Match`) replaces `startDate`,
+  `relationshipType`, `businessUnitId` and `contractSignedAt` (left out, cleared). A new
+  start moves the first terms row with it, and is `terms_before_start` (409) when a
+  later row would then lie before it. The change is an `employment_updated` event.
+- **`POST /employments/{id}/end`** (`staff:manage`) takes `endDate` — the last day
+  worked, on or after the start, and allowed in the future — and `endReason`, one of the
+  a-melding's six: `employee_resigned`, `employer_terminated`, `contract_ended`,
+  `wrongly_reported`, `internal_change`, `payroll_system_change`. Without the reason it
+  is `end_reason_required` (400); a terms row dated after the end is `terms_after_end`
+  (409). Ending an ended employment moves its end. It is an `employment_ended` event.
+- **`POST /employments/{id}/reopen`** (`staff:manage`) takes the end and its reason
+  away, for an end recorded in error — an `employment_reopened` event; an employment
+  with no end is answered as it is.
+- **`GET /people/{id}/employments`** and **`GET /employments/{id}`** answer them as the
+  [audience](#field-groups-and-audiences) reads them: a colleague reads the dates, a
+  manager every field but `salaryChangedAt`.
+
+The six end reasons and the six working-hours schemes map to Skatteetaten's codes in
+`values.go`, pinned by a table test for the payroll export:
+
+| Scheme | a-melding | End reason | a-melding |
+| --- | --- | --- | --- |
+| `not_shift` | `ikkeSkift` | `employee_resigned` | `arbeidstakerHarSagtOppSelv` |
+| `shift_365` | `skift365` | `employer_terminated` | `arbeidsgiverHarSagtOppArbeidstaker` |
+| `offshore_336` | `offshore336` | `contract_ended` | `kontraktEngasjementEllerVikariatErUtloept` |
+| `continuous_336` | `helkontinuerligSkiftOgAndreOrdninger336` | `wrongly_reported` | `arbeidsforholdetSkulleAldriVaertRapportert` |
+| `round_the_clock_355` | `doegnkontinuerligSkiftOgTurnus355` | `internal_change` | `endringIOrganisasjonsstrukturEllerByttetJobbInternt` |
+| `other_shift` | `andreSkift` | `payroll_system_change` | `byttetLoenssystemEllerRegnskapsfoerer` |
+
+### Terms
+
+An employment's **terms** (`staff.employment_terms`) are dated rows, one per change,
+each in force from its `validFrom` until the day before the next row's (`validTo`,
+absent on the latest). They carry what the a-melding reports and what aml. § 14-6 asks
+a contract to hold: the type, the ground and expected end of a temporary employment,
+the appointment form, the percentage, the working-hours scheme and the hours of a full
+position, the occupation code (STYRK-08, seven digits), the title, the department, the
+location, the manager, the working time, the breaks, the special arrangement, the
+overtime rule, the probation and its extension, the notice periods, the tariff, the
+holiday terms, the competence development, the social security and pension, the hirer
+when hired out — and the pay: the remuneration type, the pay components (at most
+twenty `{name, amount, currency, period}`), the pay method and the payday, the
+seniority date and the pay grade.
+
+- **`POST /employments/{id}/terms`** (`staff:manage`) adds a row on `validFrom`
+  (required). A field left out takes its value from the row in force before that day; a
+  field sent as `null` is cleared. The temporary employment's ground and expected end are
+  dropped when the row turns permanent and leaves them out; the appointment form follows
+  the type when it is left out and the one before does not go with it; the hours of a
+  full position follow a new scheme when they are left out. It is a `terms_added`
+  event.
+- **`PUT /terms/{id}`** (`staff:manage`, `If-Match` with the row's revision) replaces
+  a row whole — a field left out is cleared. It replaces the latest row, or any row with
+  `correction: true`, HR's correction of a past row; otherwise `terms_not_latest`
+  (409). The first row stays dated the start (`terms_first_row_start`, 409; change the
+  employment's start to move it). Either way it is a `terms_corrected` event with every
+  changed field before and after.
+- **`DELETE /terms/{id}`** (`staff:manage`) deletes the latest row only
+  (`terms_not_latest` otherwise), so the one before is in force again — never the first
+  (`terms_first_row_start`). It is a `terms_deleted` event.
+- **`GET /employments/{id}/terms`** answers the chain, oldest first, as the audience
+  reads it: the person and HR every field, a manager every field but the pay, a
+  colleague `validFrom`, `validTo`, `employmentType` and `ftePercent` only; a row's
+  `note` is HR's.
+
+A row is refused when:
+
+| Rule | Code | Status |
+| --- | --- | --- |
+| `employmentType` (`fast`, `midlertidig`) or `ftePercent` is missing after the defaults — the law presumes the employee's claim when they are, so the module never assumes one; `errors` names each | `terms_required_fields` | 400 |
+| `midlertidig` without `temporaryGround` (§ 14-9 (2) `a`–`e`, or `tariff`) | `temporary_ground_required` | 400 |
+| `appointmentForm` does not go with the type: `fast` and `fast_utleid` with `fast`; `midlertidig`, `midlertidig_utleid` and `midlertidig_tilkallingsvikar` with `midlertidig` | `appointment_form_mismatch` | 400 |
+| the probation ends more than six months after the employment's start (the same day six months on, or that month's last day), or for a temporary employment with an expected end more than half the expected term after it; an extension (`probationExtendedTo`) without `probationExtensionAgreed`, without a reason, without a probation, not after it, or longer than the probation itself | `probation_too_long` | 400 |
+| the hours of a full position break [the a-melding's rule](#the-hours-rule) | `full_time_hours_mismatch` | 400 |
+| another row of the employment has the day | `terms_valid_from_taken` | 409 |
+| the day is before the employment's start | `terms_before_start` | 409 |
+| the day is after the employment's end | `terms_after_end` | 409 |
+| the first row would not be dated the start | `terms_first_row_start` | 409 |
+| the manager is the person | `self_manager` | 409 |
+| the manager graph would loop | `manager_cycle` | 409 |
+| a department or location newly named is archived | `structure_archived` | 409 |
+
+`ftePercent` is more than 0 and at most 100 with at most two decimals; a pay amount 0
+or more with at most two decimals; a currency three letters; a notice needs its unit
+(`days`, `weeks`, `months`).
+
+### The hours rule
+
+`fullTimeHoursPerWeek` defaults to the scheme's own when it is left out, and is checked
+against the a-melding's rule for the scheme:
+
+| Scheme | Default | Allowed |
+| --- | --- | --- |
+| `not_shift` | 37.5 | any (more than 0, at most 168) |
+| `shift_365` | 36.5 | exactly 36.5 |
+| `offshore_336` | 33.6 | 28 to 33.6 |
+| `continuous_336` | 33.6 | 28 to 33.6 |
+| `round_the_clock_355` | 35.5 | exactly 35.5 |
+| `other_shift` | 37.5 | any (more than 0, at most 168) |
+
+### The derived dates
+
+The a-melding wants two dates that are never typed; an employment answers them from
+its terms, judged on today held inside the employment (its start before it has started,
+its end once it has ended):
+
+- **`fteChangedAt`** — the day the percentage in force took effect: the earliest row of
+  the unbroken run of rows with that percentage, so a row that changed only the title
+  leaves it where it was.
+- **`salaryChangedAt`** — the same for the pay, judged on the pay components as a list
+  sorted by name and amount and compared on those two alone: a reordered list, or a
+  component whose currency or period alone changed, is the same pay; a renamed component
+  or a new amount is a change. No components and an empty list are the same.
+
+A single-row chain answers that row's `validFrom` for both. The row in force on a day
+is the latest whose `validFrom` is on or before it, within the employment's days — a
+row dated later, a change agreed ahead, is not yet in force.
+
+### The § 14-6 check
+
+`GET /employments/{id}/contract-check` answers the seventeen items aml. § 14-6 (1) a–q
+asks a written contract to hold, each `{item, state, source}` — `present`, `missing` or
+`not_applicable` — judged on the employment and its row in force today (its first row
+before the start, its last at the end), and `contractSigned` from the employment's
+`contractSignedAt`. It informs; it never blocks a write.
+
+| Item | Source | Applies |
+| --- | --- | --- |
+| a parties | the person and the business unit | always (present) |
+| b workplace | `locationId` | always |
+| c title or description | `title` or `occupationCode` | always |
+| d start | the employment's `startDate` | always |
+| e duration and ground | `expectedEndDate` and `temporaryGround` | only when `midlertidig` |
+| f probation | `probationEndDate` | only when a probation is set |
+| g holiday | `holidayTermsText` | always |
+| h notice | `noticeEmployee`, `noticeEmployer` and `noticeUnit` | always |
+| i pay | `payComponents`, `payMethod` and `paydayText` — all three | always |
+| j working time | `workingTimeText` | always |
+| k breaks | `breakMinutes` | always |
+| l special arrangement | `specialHoursText` | not when the scheme is `not_shift` and the text is empty |
+| m overtime | `overtimeRuleText` | always |
+| n tariff | `tariffReference` | not when it is empty and the employment is not hired out |
+| o hirer | `hiredOutTo` | only when the appointment form is `*_utleid` |
+| p competence development | `competenceDevelopmentText` | always |
+| q social security and pension | `socialSecurityText`, or the settings' `pensionProvider` | always |
+
+Whether an item is present says something about the pay, so the check is read by those
+who read the employment group — the person, a manager of theirs and HR; a colleague
+gets the unknown id's 404.
+
+## Managers and the org view
+
+A person's **manager on a day** is, for each of their employments in force that day,
+the manager the terms in force name; when they name none, the manager of the terms'
+department — unless that is the person themselves, or the department has none, when the
+parent departments are climbed to the first whose manager is someone else; else nobody.
+So the head of a department is managed by the head of the department above, never by
+themselves, and concurrent employments may give two managers. The climb carries a
+visited set, so a department graph that loops ends it.
+
+Nobody manages themselves (`self_manager`, 409), and the graph never loops: a write
+that names, clears or changes a manager or a department on a terms row — adding,
+replacing or deleting one, a new start, a reopening — and a department write that
+changes its manager or parent take the manager graph's lock after the person's row and
+judge the graph they leave on the row's day and on **every later day the graph
+changes** (each terms row's day, each start, each day after an end). A person who would
+manage themselves through anyone is `manager_cycle` (409), naming the first such day:
+a row of B's naming A from March is refused when A's row naming B takes effect in June.
+Two such writes at once are judged one after the other, so exactly one of a pair that
+would close a loop is written.
+
+`GET /people/{id}/org` answers `{person, chain, reports}` as the work group names them
+(`{id, displayName, employeeNumber}`): `chain` is the person's manager, that manager's
+manager and so on up, following each one's earliest employment in force today and
+stopping where nobody manages or where the walk would come back on itself; `reports`
+are the people whose manager the person is today. Anyone who may see the person reads
+it.
+
+The **Manager audience** is resolved from the same rule on today: a caller whose
+self-service link names a manager of the person reads the person as the
+[table](#field-groups-and-audiences) says — the work group, the employments and the
+non-pay terms, the roles, the history shaped and the § 14-6 check; not the private
+group, the next of kin, the pay, HR's notes or the link (`GET /people/{id}/user`
+answers them the unknown id's 404).
 
 ## The sealed identifiers
 
@@ -457,7 +705,8 @@ never the words. A 400 carries `errors`, the field errors keyed by the request's
 camelCase field; a plain validation failure has no code, a named rule (such as
 `org_number_invalid`) carries one beside its field errors. A request the server
 cannot decode — malformed JSON, a missing required header — is a bare 400. A list
-element's field is named by its place: `nextOfKin[0].name`.
+element's field is named by its place, a nested one by its path: `nextOfKin[0].name`,
+`terms.ftePercent`, `payComponents[0].amount`.
 
 | Code | Status | When |
 | --- | --- | --- |
@@ -477,6 +726,20 @@ element's field is named by its place: `nextOfKin[0].name`.
 | `user_inactive` | 400 | The user to link is disabled. |
 | `user_linked_elsewhere` | 400 | The user to link is linked to another person. |
 | `no_person` | 404 | `/me` for a caller linked to no person. |
+| `employment_number_taken` | 400 | Another employment has the employment number, however it is cased. |
+| `end_reason_required` | 400 | Ending an employment without its reason. |
+| `terms_required_fields` | 400 | A terms row without `employmentType` or `ftePercent`. |
+| `temporary_ground_required` | 400 | A temporary row without its ground. |
+| `appointment_form_mismatch` | 400 | An appointment form the employment type does not take. |
+| `probation_too_long` | 400 | A probation past six months or half a temporary term, or an extension not agreed, without a reason or too long. |
+| `full_time_hours_mismatch` | 400 | Hours of a full position the scheme does not allow. |
+| `terms_valid_from_taken` | 409 | Another row of the employment has the day. |
+| `terms_before_start` | 409 | A row before the employment's start, or a new start after a row. |
+| `terms_after_end` | 409 | A row after the employment's end, or an end before a row. |
+| `terms_first_row_start` | 409 | A first row not dated the start; deleting the first row. |
+| `terms_not_latest` | 409 | Replacing a row that is not the latest without `correction`, or deleting one. |
+| `self_manager` | 409 | A terms row naming the person as their own manager. |
+| `manager_cycle` | 409 | A terms or department write that would make someone their own manager, through others. |
 
 An unknown id is a bare 404 with no body.
 
@@ -504,10 +767,15 @@ person's, which it moves on when the list changes.
   names the person — another person's terms naming them as manager, a department
   naming them as its head — so such a write never waits on this person while holding
   locks of its own.
-- **The manager graph.** A write that changes an edge of the manager graph — a
-  department's manager or parent today, a terms row's manager or department with the
-  employments — takes the transaction advisory lock `staff-manager-graph`, after any
-  person's row, so the cycle checks across people are judged one at a time.
+- **The employment's row next.** A write of an employment or its terms takes the
+  person's row, then the employment's (`FOR NO KEY UPDATE` too).
+- **The manager graph.** A write that changes an edge of the manager graph — a terms
+  row naming, clearing or changing a manager or a department, a moved start, a
+  reopening, a department's manager or parent — takes the transaction advisory lock
+  `staff-manager-graph`, after any person's and employment's row, and runs the
+  [cycle check](#managers-and-the-org-view) over the graph it leaves before it
+  commits, so the checks across people are judged one at a time. An end takes no
+  graph lock: it only takes edges away.
 - **The defaults.** A write of a legal entity or a business unit takes its table's
   default lock first.
 - **The sequence.** A create that generates an employee number holds the settings row
@@ -532,6 +800,9 @@ All under `/api/v1/staff`.
 | `PUT /people/{id}/user`, `GET /assignable-users` | `staff:manage` |
 | `PUT /people/{id}/national-id`, `POST /people/{id}/national-id/reveal`, `PUT /people/{id}/bank-account`, `POST /people/{id}/bank-account/reveal` | `staff:personal-data` |
 | `GET /me`, `PUT /me`, `GET /me/events` | `staff:access`, then a self-service link (otherwise `no_person`) |
+| `GET /people/{id}/employments`, `GET /employments/{id}`, `GET /employments/{id}/terms`, `GET /people/{id}/org` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
+| `GET /employments/{id}/contract-check` | `staff:access`, then the person, a manager of theirs or HR (otherwise 404) |
+| `POST /people/{id}/employments`, `PUT /employments/{id}`, `POST /employments/{id}/end`, `POST /employments/{id}/reopen`, `POST /employments/{id}/terms`, `PUT /terms/{id}`, `DELETE /terms/{id}` | `staff:manage` |
 
 Every operation also requires `staff:access`. The request and response shapes are in
 the contract, [`openapi/staff.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/staff.yaml),

@@ -19,6 +19,33 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for StaffAppointmentForm.
+const (
+	StaffAppointmentFormFast                        StaffAppointmentForm = "fast"
+	StaffAppointmentFormFastUtleid                  StaffAppointmentForm = "fast_utleid"
+	StaffAppointmentFormMidlertidig                 StaffAppointmentForm = "midlertidig"
+	StaffAppointmentFormMidlertidigTilkallingsvikar StaffAppointmentForm = "midlertidig_tilkallingsvikar"
+	StaffAppointmentFormMidlertidigUtleid           StaffAppointmentForm = "midlertidig_utleid"
+)
+
+// Valid indicates whether the value is a known member of the StaffAppointmentForm enum.
+func (e StaffAppointmentForm) Valid() bool {
+	switch e {
+	case StaffAppointmentFormFast:
+		return true
+	case StaffAppointmentFormFastUtleid:
+		return true
+	case StaffAppointmentFormMidlertidig:
+		return true
+	case StaffAppointmentFormMidlertidigTilkallingsvikar:
+		return true
+	case StaffAppointmentFormMidlertidigUtleid:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StaffBankAccountKind.
 const (
 	Bban StaffBankAccountKind = "bban"
@@ -31,6 +58,99 @@ func (e StaffBankAccountKind) Valid() bool {
 	case Bban:
 		return true
 	case Iban:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffContractCheckItemState.
+const (
+	Missing       StaffContractCheckItemState = "missing"
+	NotApplicable StaffContractCheckItemState = "not_applicable"
+	Present       StaffContractCheckItemState = "present"
+)
+
+// Valid indicates whether the value is a known member of the StaffContractCheckItemState enum.
+func (e StaffContractCheckItemState) Valid() bool {
+	switch e {
+	case Missing:
+		return true
+	case NotApplicable:
+		return true
+	case Present:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffEmployeeType.
+const (
+	Consultant StaffEmployeeType = "consultant"
+	Contractor StaffEmployeeType = "contractor"
+	Employee   StaffEmployeeType = "employee"
+	Intern     StaffEmployeeType = "intern"
+)
+
+// Valid indicates whether the value is a known member of the StaffEmployeeType enum.
+func (e StaffEmployeeType) Valid() bool {
+	switch e {
+	case Consultant:
+		return true
+	case Contractor:
+		return true
+	case Employee:
+		return true
+	case Intern:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffEmploymentType.
+const (
+	StaffEmploymentTypeFast        StaffEmploymentType = "fast"
+	StaffEmploymentTypeMidlertidig StaffEmploymentType = "midlertidig"
+)
+
+// Valid indicates whether the value is a known member of the StaffEmploymentType enum.
+func (e StaffEmploymentType) Valid() bool {
+	switch e {
+	case StaffEmploymentTypeFast:
+		return true
+	case StaffEmploymentTypeMidlertidig:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffEndReason.
+const (
+	ContractEnded       StaffEndReason = "contract_ended"
+	EmployeeResigned    StaffEndReason = "employee_resigned"
+	EmployerTerminated  StaffEndReason = "employer_terminated"
+	InternalChange      StaffEndReason = "internal_change"
+	PayrollSystemChange StaffEndReason = "payroll_system_change"
+	WronglyReported     StaffEndReason = "wrongly_reported"
+)
+
+// Valid indicates whether the value is a known member of the StaffEndReason enum.
+func (e StaffEndReason) Valid() bool {
+	switch e {
+	case ContractEnded:
+		return true
+	case EmployeeResigned:
+		return true
+	case EmployerTerminated:
+		return true
+	case InternalChange:
+		return true
+	case PayrollSystemChange:
+		return true
+	case WronglyReported:
 		return true
 	default:
 		return false
@@ -130,6 +250,51 @@ func (e StaffNextOfKinRelationship) Valid() bool {
 	}
 }
 
+// Defines values for StaffNoticeUnit.
+const (
+	Days   StaffNoticeUnit = "days"
+	Months StaffNoticeUnit = "months"
+	Weeks  StaffNoticeUnit = "weeks"
+)
+
+// Valid indicates whether the value is a known member of the StaffNoticeUnit enum.
+func (e StaffNoticeUnit) Valid() bool {
+	switch e {
+	case Days:
+		return true
+	case Months:
+		return true
+	case Weeks:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffPayPeriod.
+const (
+	StaffPayPeriodHourly  StaffPayPeriod = "hourly"
+	StaffPayPeriodMonthly StaffPayPeriod = "monthly"
+	StaffPayPeriodOnce    StaffPayPeriod = "once"
+	StaffPayPeriodYearly  StaffPayPeriod = "yearly"
+)
+
+// Valid indicates whether the value is a known member of the StaffPayPeriod enum.
+func (e StaffPayPeriod) Valid() bool {
+	switch e {
+	case StaffPayPeriodHourly:
+		return true
+	case StaffPayPeriodMonthly:
+		return true
+	case StaffPayPeriodOnce:
+		return true
+	case StaffPayPeriodYearly:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StaffPersonRoleKind.
 const (
 	AmuMember      StaffPersonRoleKind = "amu_member"
@@ -151,6 +316,162 @@ func (e StaffPersonRoleKind) Valid() bool {
 	}
 }
 
+// Defines values for StaffPersonStatusState.
+const (
+	StaffPersonStatusStateActive   StaffPersonStatusState = "active"
+	StaffPersonStatusStateEnded    StaffPersonStatusState = "ended"
+	StaffPersonStatusStateNone     StaffPersonStatusState = "none"
+	StaffPersonStatusStateUpcoming StaffPersonStatusState = "upcoming"
+)
+
+// Valid indicates whether the value is a known member of the StaffPersonStatusState enum.
+func (e StaffPersonStatusState) Valid() bool {
+	switch e {
+	case StaffPersonStatusStateActive:
+		return true
+	case StaffPersonStatusStateEnded:
+		return true
+	case StaffPersonStatusStateNone:
+		return true
+	case StaffPersonStatusStateUpcoming:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffRelationshipType.
+const (
+	Freelancer     StaffRelationshipType = "freelancer"
+	Maritime       StaffRelationshipType = "maritime"
+	Ordinary       StaffRelationshipType = "ordinary"
+	PensionOrOther StaffRelationshipType = "pension_or_other"
+)
+
+// Valid indicates whether the value is a known member of the StaffRelationshipType enum.
+func (e StaffRelationshipType) Valid() bool {
+	switch e {
+	case Freelancer:
+		return true
+	case Maritime:
+		return true
+	case Ordinary:
+		return true
+	case PensionOrOther:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffRemunerationType.
+const (
+	StaffRemunerationTypeCommission StaffRemunerationType = "commission"
+	StaffRemunerationTypeFee        StaffRemunerationType = "fee"
+	StaffRemunerationTypeHourly     StaffRemunerationType = "hourly"
+	StaffRemunerationTypeMonthly    StaffRemunerationType = "monthly"
+	StaffRemunerationTypePiecework  StaffRemunerationType = "piecework"
+)
+
+// Valid indicates whether the value is a known member of the StaffRemunerationType enum.
+func (e StaffRemunerationType) Valid() bool {
+	switch e {
+	case StaffRemunerationTypeCommission:
+		return true
+	case StaffRemunerationTypeFee:
+		return true
+	case StaffRemunerationTypeHourly:
+		return true
+	case StaffRemunerationTypeMonthly:
+		return true
+	case StaffRemunerationTypePiecework:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffTemporaryGround.
+const (
+	A      StaffTemporaryGround = "a"
+	B      StaffTemporaryGround = "b"
+	C      StaffTemporaryGround = "c"
+	D      StaffTemporaryGround = "d"
+	E      StaffTemporaryGround = "e"
+	Tariff StaffTemporaryGround = "tariff"
+)
+
+// Valid indicates whether the value is a known member of the StaffTemporaryGround enum.
+func (e StaffTemporaryGround) Valid() bool {
+	switch e {
+	case A:
+		return true
+	case B:
+		return true
+	case C:
+		return true
+	case D:
+		return true
+	case E:
+		return true
+	case Tariff:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffWorkingHoursScheme.
+const (
+	Continuous336    StaffWorkingHoursScheme = "continuous_336"
+	NotShift         StaffWorkingHoursScheme = "not_shift"
+	Offshore336      StaffWorkingHoursScheme = "offshore_336"
+	OtherShift       StaffWorkingHoursScheme = "other_shift"
+	RoundTheClock355 StaffWorkingHoursScheme = "round_the_clock_355"
+	Shift365         StaffWorkingHoursScheme = "shift_365"
+)
+
+// Valid indicates whether the value is a known member of the StaffWorkingHoursScheme enum.
+func (e StaffWorkingHoursScheme) Valid() bool {
+	switch e {
+	case Continuous336:
+		return true
+	case NotShift:
+		return true
+	case Offshore336:
+		return true
+	case OtherShift:
+		return true
+	case RoundTheClock355:
+		return true
+	case Shift365:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetStaffPeopleParamsStatus.
+const (
+	GetStaffPeopleParamsStatusAll     GetStaffPeopleParamsStatus = "all"
+	GetStaffPeopleParamsStatusCurrent GetStaffPeopleParamsStatus = "current"
+	GetStaffPeopleParamsStatusEnded   GetStaffPeopleParamsStatus = "ended"
+)
+
+// Valid indicates whether the value is a known member of the GetStaffPeopleParamsStatus enum.
+func (e GetStaffPeopleParamsStatus) Valid() bool {
+	switch e {
+	case GetStaffPeopleParamsStatusAll:
+		return true
+	case GetStaffPeopleParamsStatusCurrent:
+		return true
+	case GetStaffPeopleParamsStatusEnded:
+		return true
+	default:
+		return false
+	}
+}
+
 // PaginatedResponseOfStaffEvent defines model for PaginatedResponseOfStaffEvent.
 type PaginatedResponseOfStaffEvent struct {
 	Data       []StaffEvent                    `json:"data"`
@@ -162,6 +483,9 @@ type PaginatedResponseOfStaffPersonListItem struct {
 	Data       []StaffPersonListItem           `json:"data"`
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
+
+// StaffAppointmentForm The a-melding's ansettelsesform. fast and fast_utleid go with a permanent employment, the other three with a temporary one.
+type StaffAppointmentForm string
 
 // StaffAssignableUser An active user HR may link a person to, as the user directory names them.
 type StaffAssignableUser struct {
@@ -234,6 +558,35 @@ type StaffCapabilities struct {
 	CanViewDirectory bool `json:"canViewDirectory"`
 }
 
+// StaffContractCheck The § 14-6 check of one employment (design S5).
+type StaffContractCheck struct {
+	// ContractSigned Whether the employment records a signed contract (contractSignedAt).
+	ContractSigned bool `json:"contractSigned"`
+
+	// ContractSignedAt Absent when not recorded.
+	ContractSignedAt *openapi_types.Date      `json:"contractSignedAt,omitempty"`
+	EmploymentId     int64                    `json:"employmentId"`
+	Items            []StaffContractCheckItem `json:"items"`
+
+	// TermsId The terms row judged. Absent when the employment has none.
+	TermsId *int64 `json:"termsId,omitempty"`
+}
+
+// StaffContractCheckItem defines model for StaffContractCheckItem.
+type StaffContractCheckItem struct {
+	// Item The letter of aml. § 14-6 (1), a to q.
+	Item string `json:"item"`
+
+	// Source Where the item is read from, as the contract names the fields (terms.locationId, employment.startDate, settings.pensionProvider …).
+	Source string `json:"source"`
+
+	// State present, missing, or not_applicable when the item does not apply to this employment (e when permanent, f without a probation, l without a special arrangement, n without a tariff when not hired out, o when not hired out).
+	State StaffContractCheckItemState `json:"state"`
+}
+
+// StaffContractCheckItemState present, missing, or not_applicable when the item does not apply to this employment (e when permanent, f without a probation, l without a special arrangement, n without a tariff when not hired out, o when not hired out).
+type StaffContractCheckItemState string
+
 // StaffDepartment A department (design S6). Its manager is the manager of the people whose terms name the department and no manager of their own.
 type StaffDepartment struct {
 	// ArchivedAt When it was archived. Absent while it is in use.
@@ -277,6 +630,102 @@ type StaffDepartmentRequest struct {
 	ParentId *int64 `json:"parentId,omitempty"`
 }
 
+// StaffDepartmentSummary A department as the work group names it.
+type StaffDepartmentSummary struct {
+	Code string `json:"code"`
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// StaffEmployeeType The kind of worker, for an identity provider.
+type StaffEmployeeType string
+
+// StaffEmployment An employment (design §3.2), shaped by who is asking (§5): the dates are everyone's who may see the person; the other fields are the employment group's — the person themselves, a manager of theirs and HR; salaryChangedAt is the pay group's — the person and HR. A field the caller may not read is absent, never null.
+type StaffEmployment struct {
+	BusinessUnitId *int64 `json:"businessUnitId,omitempty"`
+
+	// ContractSignedAt Absent when not recorded.
+	ContractSignedAt *openapi_types.Date `json:"contractSignedAt,omitempty"`
+
+	// EmploymentNumber The a-melding's arbeidsforholdID. Never changes.
+	EmploymentNumber *string `json:"employmentNumber,omitempty"`
+
+	// EndDate The last day worked. Absent while open-ended.
+	EndDate *openapi_types.Date `json:"endDate,omitempty"`
+
+	// EndReason The a-melding's six end reasons (sluttårsak): employee_resigned, employer_terminated, contract_ended (a contract, engagement or temporary employment ran out), wrongly_reported (the employment should never have been reported), internal_change (a change in the organisation or an internal move), payroll_system_change (a change of payroll system or accountant).
+	EndReason *StaffEndReason `json:"endReason,omitempty"`
+
+	// FteChangedAt The date the stillingsprosent in force today (or at the start, before it; at the end, after it) took effect: the earliest row of the unbroken run of rows with that percentage. Derived, never typed.
+	FteChangedAt *openapi_types.Date `json:"fteChangedAt,omitempty"`
+	Id           int64               `json:"id"`
+	PersonId     int64               `json:"personId"`
+
+	// RelationshipType The a-melding's kind of arbeidsforhold.
+	RelationshipType *StaffRelationshipType `json:"relationshipType,omitempty"`
+
+	// Revision The revision a change sends back in If-Match.
+	Revision int32 `json:"revision"`
+
+	// SalaryChangedAt The date the pay in force today took effect, judged on the pay components as a list sorted by name and amount and compared on those two alone. Derived, never typed.
+	SalaryChangedAt *openapi_types.Date `json:"salaryChangedAt,omitempty"`
+	StartDate       openapi_types.Date  `json:"startDate"`
+}
+
+// StaffEmploymentChangeRequest An employment's own fields, replaced as a whole. The end is written through POST /employments/{id}/end.
+type StaffEmploymentChangeRequest struct {
+	// BusinessUnitId An existing business unit, not archived unless the employment is already in it.
+	BusinessUnitId int64 `json:"businessUnitId"`
+
+	// ContractSignedAt The date the contract was signed. Left out, it is cleared.
+	ContractSignedAt *openapi_types.Date `json:"contractSignedAt,omitempty"`
+
+	// EmploymentNumber Never changes: left out, or the employment's own.
+	EmploymentNumber *string `json:"employmentNumber,omitempty"`
+
+	// RelationshipType The a-melding's kind of arbeidsforhold.
+	RelationshipType StaffRelationshipType `json:"relationshipType"`
+
+	// StartDate The first day of the employment; the first terms row moves with it.
+	StartDate openapi_types.Date `json:"startDate"`
+}
+
+// StaffEmploymentEndRequest defines model for StaffEmploymentEndRequest.
+type StaffEmploymentEndRequest struct {
+	// EndDate The last day worked, on or after the start; it may lie in the future.
+	EndDate *openapi_types.Date `json:"endDate,omitempty"`
+
+	// EndReason The a-melding's six end reasons (sluttårsak): employee_resigned, employer_terminated, contract_ended (a contract, engagement or temporary employment ran out), wrongly_reported (the employment should never have been reported), internal_change (a change in the organisation or an internal move), payroll_system_change (a change of payroll system or accountant).
+	EndReason *StaffEndReason `json:"endReason,omitempty"`
+}
+
+// StaffEmploymentRequest A new employment and its first terms row.
+type StaffEmploymentRequest struct {
+	// BusinessUnitId An existing business unit, not archived. Left out, the default one.
+	BusinessUnitId *int64 `json:"businessUnitId,omitempty"`
+
+	// ContractSignedAt The date the contract was signed.
+	ContractSignedAt *openapi_types.Date `json:"contractSignedAt,omitempty"`
+
+	// EmploymentNumber 1 to 40 letters, digits or hyphens, unique however cased. Left out, it is generated as <employee number>-<n>.
+	EmploymentNumber *string `json:"employmentNumber,omitempty"`
+
+	// RelationshipType Left out, ordinary.
+	RelationshipType *StaffRelationshipType `json:"relationshipType,omitempty"`
+
+	// StartDate The first day of the employment.
+	StartDate openapi_types.Date `json:"startDate"`
+
+	// Terms A terms row (design §3.3, S5). On POST /employments/{id}/terms a field left out takes the previous row's value and one sent as null is cleared; on an employment's first row and on PUT /terms/{id} a field left out is empty.
+	Terms StaffTermsRequest `json:"terms"`
+}
+
+// StaffEmploymentType fast (permanent) or midlertidig (temporary).
+type StaffEmploymentType string
+
+// StaffEndReason The a-melding's six end reasons (sluttårsak): employee_resigned, employer_terminated, contract_ended (a contract, engagement or temporary employment ran out), wrongly_reported (the employment should never have been reported), internal_change (a change in the organisation or an internal move), payroll_system_change (a change of payroll system or accountant).
+type StaffEndReason string
+
 // StaffEvent One change in a person's history (design S21). payload.fields names each field the change touched, with its value before (from) and after (to) — either absent when the field was empty — or, for a field of a group the caller may not read, the string "changed" in place of the values. A sealed value is never in a payload.
 type StaffEvent struct {
 	// Actor Who made the change, as the user directory named them at the time.
@@ -284,10 +733,10 @@ type StaffEvent struct {
 	At    time.Time       `json:"at"`
 	Id    int64           `json:"id"`
 
-	// Kind person_created, person_updated, next_of_kin_updated or roles_updated in this delivery; the kinds grow with it.
+	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected or terms_deleted in this delivery; the kinds grow with it.
 	Kind string `json:"kind"`
 
-	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}.
+	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId.
 	Payload map[string]interface{} `json:"payload"`
 }
 
@@ -468,7 +917,35 @@ type StaffNextOfKinRequest struct {
 	NextOfKin []StaffNextOfKin `json:"nextOfKin"`
 }
 
-// StaffPerson A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person.
+// StaffNoticeUnit defines model for StaffNoticeUnit.
+type StaffNoticeUnit string
+
+// StaffOrg A person's place in the organisation today (design S6): chain is their manager, that manager's manager and so on up — following each person's earliest employment in force today, stopping where nobody manages or where the chain would come back on itself; reports are the people whose manager they are today.
+type StaffOrg struct {
+	Chain []StaffPersonSummary `json:"chain"`
+
+	// Person A person as the work group names them.
+	Person  StaffPersonSummary   `json:"person"`
+	Reports []StaffPersonSummary `json:"reports"`
+}
+
+// StaffPayComponent One named amount of the pay as the contract states it.
+type StaffPayComponent struct {
+	// Amount 0 or more, with at most two decimals.
+	Amount float64 `json:"amount"`
+
+	// Currency An ISO 4217 code, three letters.
+	Currency string `json:"currency"`
+
+	// Name 1 to 100 characters.
+	Name   string         `json:"name"`
+	Period StaffPayPeriod `json:"period"`
+}
+
+// StaffPayPeriod defines model for StaffPayPeriod.
+type StaffPayPeriod string
+
+// StaffPerson A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager and department among it — each from the terms in force today, the manager the terms' own or else the department's (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person.
 type StaffPerson struct {
 	// BankAccount The bank account on file, as its kind and its last four digits. Present for the person themselves, staff:manage and staff:personal-data, when one is on file.
 	BankAccount *StaffPersonBankAccount `json:"bankAccount,omitempty"`
@@ -483,15 +960,21 @@ type StaffPerson struct {
 	City *string `json:"city,omitempty"`
 
 	// Country Private. Absent when not set.
-	Country        *string `json:"country,omitempty"`
-	DisplayName    string  `json:"displayName"`
-	EmployeeNumber string  `json:"employeeNumber"`
-	FamilyName     string  `json:"familyName"`
+	Country *string `json:"country,omitempty"`
+
+	// Department A department as the work group names it.
+	Department     *StaffDepartmentSummary `json:"department,omitempty"`
+	DisplayName    string                  `json:"displayName"`
+	EmployeeNumber string                  `json:"employeeNumber"`
+	FamilyName     string                  `json:"familyName"`
 
 	// Gender female, male, other or unspecified — what the equality report (ARP) counts.
 	Gender    *StaffGender `json:"gender,omitempty"`
 	GivenName string       `json:"givenName"`
 	Id        int64        `json:"id"`
+
+	// Manager A person as the work group names them.
+	Manager *StaffPersonSummary `json:"manager,omitempty"`
 
 	// NationalId Whether a national identity number is on file, and its kind — never a digit of it. Present for the person themselves, staff:manage and staff:personal-data.
 	NationalId *StaffPersonNationalId `json:"nationalId,omitempty"`
@@ -519,6 +1002,9 @@ type StaffPerson struct {
 
 	// Revision The revision a change sends back in If-Match.
 	Revision int32 `json:"revision"`
+
+	// Status Where the person stands today, in the business time zone: active (an employment has started and not ended — the end day itself is still worked), upcoming (none active, one starting later; date is the earliest such start), ended (every employment ended before today; date is the latest end) or none (no employment yet).
+	Status StaffPersonStatus `json:"status"`
 
 	// Street Private. Absent when not set.
 	Street *string `json:"street,omitempty"`
@@ -571,20 +1057,28 @@ type StaffPersonLinkRequest struct {
 	UserId *openapi_types.UUID `json:"userId"`
 }
 
-// StaffPersonListItem A person in the directory — the work group only, whoever lists.
+// StaffPersonListItem A person in the directory — the work group, with the manager and the department from the terms in force today (absent when there is none), and where the person stands today.
 type StaffPersonListItem struct {
-	DisplayName    string `json:"displayName"`
-	EmployeeNumber string `json:"employeeNumber"`
-	FamilyName     string `json:"familyName"`
-	GivenName      string `json:"givenName"`
-	Id             int64  `json:"id"`
+	// Department A department as the work group names it.
+	Department     *StaffDepartmentSummary `json:"department,omitempty"`
+	DisplayName    string                  `json:"displayName"`
+	EmployeeNumber string                  `json:"employeeNumber"`
+	FamilyName     string                  `json:"familyName"`
+	GivenName      string                  `json:"givenName"`
+	Id             int64                   `json:"id"`
+
+	// Manager A person as the work group names them.
+	Manager *StaffPersonSummary `json:"manager,omitempty"`
 
 	// PhoneWork Absent when not set.
 	PhoneWork *string `json:"phoneWork,omitempty"`
 
 	// PreferredLanguage The language the person reads Vantigo and its mail in.
 	PreferredLanguage StaffLanguage `json:"preferredLanguage"`
-	WorkCountry       string        `json:"workCountry"`
+
+	// Status Where the person stands today, in the business time zone: active (an employment has started and not ended — the end day itself is still worked), upcoming (none active, one starting later; date is the earliest such start), ended (every employment ended before today; date is the latest end) or none (no employment yet).
+	Status      StaffPersonStatus `json:"status"`
+	WorkCountry string            `json:"workCountry"`
 
 	// WorkEmail Absent when not set.
 	WorkEmail *string `json:"workEmail,omitempty"`
@@ -680,6 +1174,23 @@ type StaffPersonRolesRequest struct {
 	Roles []StaffPersonRole `json:"roles"`
 }
 
+// StaffPersonStatus Where the person stands today, in the business time zone: active (an employment has started and not ended — the end day itself is still worked), upcoming (none active, one starting later; date is the earliest such start), ended (every employment ended before today; date is the latest end) or none (no employment yet).
+type StaffPersonStatus struct {
+	// Date The start for upcoming, the end for ended; absent otherwise.
+	Date  *openapi_types.Date    `json:"date,omitempty"`
+	State StaffPersonStatusState `json:"state"`
+}
+
+// StaffPersonStatusState defines model for StaffPersonStatus.State.
+type StaffPersonStatusState string
+
+// StaffPersonSummary A person as the work group names them.
+type StaffPersonSummary struct {
+	DisplayName    string `json:"displayName"`
+	EmployeeNumber string `json:"employeeNumber"`
+	Id             int64  `json:"id"`
+}
+
 // StaffPersonUser The user the person is linked to for self-service, as the user directory names them. Present for the person themselves, staff:manage and staff:personal-data, when a link exists. A user the directory no longer knows is "Unknown user", not active.
 type StaffPersonUser struct {
 	// Active False when the account is disabled.
@@ -688,7 +1199,7 @@ type StaffPersonUser struct {
 	Id          openapi_types.UUID `json:"id"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere and no_person. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager and manager_cycle. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -698,6 +1209,12 @@ type StaffProblem struct {
 	Title    *string              `json:"title,omitempty"`
 	Type     *string              `json:"type,omitempty"`
 }
+
+// StaffRelationshipType The a-melding's kind of arbeidsforhold.
+type StaffRelationshipType string
+
+// StaffRemunerationType defines model for StaffRemunerationType.
+type StaffRemunerationType string
 
 // StaffSettings The Staff settings delivery A1 exposes (design §3.6). The other columns of the settings row reach the contract with the deliveries that use them.
 type StaffSettings struct {
@@ -746,6 +1263,241 @@ type StaffStructure struct {
 	Locations     []StaffLocation     `json:"locations"`
 }
 
+// StaffTemporaryGround The ground of a temporary employment: aml. § 14-9 (2) a–e, or a tariff agreement's.
+type StaffTemporaryGround string
+
+// StaffTerms A terms row (design §3.3), shaped by who is asking (§5): the person themselves and HR read every field; a manager of theirs every field but the pay group (remunerationType, payComponents, payMethod, paydayText, seniorityDate, payGrade); a colleague holding staff:view validFrom, validTo, employmentType and ftePercent only; note is HR's alone. A field the caller may not read is absent, never null.
+type StaffTerms struct {
+	// AppointmentForm The a-melding's ansettelsesform. fast and fast_utleid go with a permanent employment, the other three with a temporary one.
+	AppointmentForm *StaffAppointmentForm `json:"appointmentForm,omitempty"`
+	BreakMinutes    *int32                `json:"breakMinutes,omitempty"`
+
+	// CompetenceDevelopmentText Absent when not set.
+	CompetenceDevelopmentText *string `json:"competenceDevelopmentText,omitempty"`
+
+	// CostCentre Absent when not set.
+	CostCentre   *string `json:"costCentre,omitempty"`
+	DepartmentId *int64  `json:"departmentId,omitempty"`
+
+	// Division Absent when not set.
+	Division *string `json:"division,omitempty"`
+
+	// EmployeeType The kind of worker, for an identity provider.
+	EmployeeType *StaffEmployeeType `json:"employeeType,omitempty"`
+	EmploymentId int64              `json:"employmentId"`
+
+	// EmploymentType fast (permanent) or midlertidig (temporary).
+	EmploymentType StaffEmploymentType `json:"employmentType"`
+
+	// ExpectedEndDate Absent when not set.
+	ExpectedEndDate      *openapi_types.Date `json:"expectedEndDate,omitempty"`
+	FtePercent           float64             `json:"ftePercent"`
+	FullTimeHoursPerWeek *float64            `json:"fullTimeHoursPerWeek,omitempty"`
+
+	// HiredOutTo Absent when not set.
+	HiredOutTo *string `json:"hiredOutTo,omitempty"`
+
+	// HolidayTermsText Absent when not set.
+	HolidayTermsText *string `json:"holidayTermsText,omitempty"`
+	Id               int64   `json:"id"`
+	LocationId       *int64  `json:"locationId,omitempty"`
+	ManagerPersonId  *int64  `json:"managerPersonId,omitempty"`
+
+	// Note HR's note — staff:manage and staff:personal-data only. Absent when not set.
+	Note           *string          `json:"note,omitempty"`
+	NoticeEmployee *int32           `json:"noticeEmployee,omitempty"`
+	NoticeEmployer *int32           `json:"noticeEmployer,omitempty"`
+	NoticeUnit     *StaffNoticeUnit `json:"noticeUnit,omitempty"`
+
+	// OccupationCode Absent when not set.
+	OccupationCode *string `json:"occupationCode,omitempty"`
+
+	// OvertimeRuleText Absent when not set.
+	OvertimeRuleText *string `json:"overtimeRuleText,omitempty"`
+
+	// PayComponents Pay group. Absent when not recorded.
+	PayComponents *[]StaffPayComponent `json:"payComponents,omitempty"`
+
+	// PayGrade Pay group. Absent when not set.
+	PayGrade *string `json:"payGrade,omitempty"`
+
+	// PayMethod Pay group. Absent when not set.
+	PayMethod *string `json:"payMethod,omitempty"`
+
+	// PaydayText Pay group. Absent when not set.
+	PaydayText *string `json:"paydayText,omitempty"`
+
+	// ProbationEndDate Absent without a probation.
+	ProbationEndDate *openapi_types.Date `json:"probationEndDate,omitempty"`
+
+	// ProbationExtendedTo Absent without an extension.
+	ProbationExtendedTo      *openapi_types.Date `json:"probationExtendedTo,omitempty"`
+	ProbationExtensionAgreed *bool               `json:"probationExtensionAgreed,omitempty"`
+
+	// ProbationExtensionReason Absent when not set.
+	ProbationExtensionReason *string                `json:"probationExtensionReason,omitempty"`
+	RemunerationType         *StaffRemunerationType `json:"remunerationType,omitempty"`
+
+	// Revision The revision a change sends back in If-Match.
+	Revision int32 `json:"revision"`
+
+	// SeniorityDate Pay group. Absent when not set.
+	SeniorityDate *openapi_types.Date `json:"seniorityDate,omitempty"`
+
+	// SocialSecurityText Absent when not set.
+	SocialSecurityText *string `json:"socialSecurityText,omitempty"`
+
+	// SpecialHoursText Absent when not set.
+	SpecialHoursText *string `json:"specialHoursText,omitempty"`
+
+	// TariffReference Absent when not set.
+	TariffReference *string `json:"tariffReference,omitempty"`
+
+	// TemporaryGround The ground of a temporary employment: aml. § 14-9 (2) a–e, or a tariff agreement's.
+	TemporaryGround *StaffTemporaryGround `json:"temporaryGround,omitempty"`
+
+	// Title Absent when not set.
+	Title *string `json:"title,omitempty"`
+
+	// ValidFrom The day the row takes effect.
+	ValidFrom openapi_types.Date `json:"validFrom"`
+
+	// ValidTo The last day the row is in force: the day before the next row's validFrom. Absent on the latest row.
+	ValidTo *openapi_types.Date `json:"validTo,omitempty"`
+
+	// WorkingHoursScheme The a-melding's arbeidstidsordning: not_shift (ikkeSkift), shift_365 (skift365), offshore_336 (offshore336), continuous_336 (helkontinuerligSkiftOgAndreOrdninger336), round_the_clock_355 (doegnkontinuerligSkiftOgTurnus355), other_shift (andreSkift).
+	WorkingHoursScheme *StaffWorkingHoursScheme `json:"workingHoursScheme,omitempty"`
+
+	// WorkingTimeText Absent when not set.
+	WorkingTimeText *string `json:"workingTimeText,omitempty"`
+}
+
+// StaffTermsRequest A terms row (design §3.3, S5). On POST /employments/{id}/terms a field left out takes the previous row's value and one sent as null is cleared; on an employment's first row and on PUT /terms/{id} a field left out is empty.
+type StaffTermsRequest struct {
+	// AppointmentForm Must agree with employmentType. Left out on the first row — or when the previous row's does not agree with this row's type — it is the type's own (fast or midlertidig).
+	AppointmentForm *StaffAppointmentForm `json:"appointmentForm,omitempty"`
+
+	// BreakMinutes § 14-6 k. 0 to 1440.
+	BreakMinutes *int32 `json:"breakMinutes,omitempty"`
+
+	// CompetenceDevelopmentText § 14-6 p. Up to 1000 characters.
+	CompetenceDevelopmentText *string `json:"competenceDevelopmentText,omitempty"`
+
+	// Correction PUT /terms/{id} only: true replaces a row that is not the latest, as HR's correction of a past row.
+	Correction *bool `json:"correction,omitempty"`
+
+	// CostCentre Up to 40 characters.
+	CostCentre *string `json:"costCentre,omitempty"`
+
+	// DepartmentId An existing department; archived only when the previous row (or, on a change, the row) already names it.
+	DepartmentId *int64 `json:"departmentId,omitempty"`
+
+	// Division Up to 100 characters.
+	Division *string `json:"division,omitempty"`
+
+	// EmployeeType For an identity provider.
+	EmployeeType *StaffEmployeeType `json:"employeeType,omitempty"`
+
+	// EmploymentType Required on every row (the law presumes the employee's claim when it is missing): given, or the previous row's.
+	EmploymentType *StaffEmploymentType `json:"employmentType,omitempty"`
+
+	// ExpectedEndDate A temporary employment's expected end. Dropped when the row is fast and it is not given.
+	ExpectedEndDate *openapi_types.Date `json:"expectedEndDate,omitempty"`
+
+	// FtePercent Stillingsprosent: more than 0 and at most 100, at most two decimals. Required on every row: given, or the previous row's.
+	FtePercent *float64 `json:"ftePercent,omitempty"`
+
+	// FullTimeHoursPerWeek Hours per week for a full position, at most two decimals. Left out, the scheme's: 37.5 not_shift and other_shift, 36.5 shift_365, 33.6 offshore_336 and continuous_336, 35.5 round_the_clock_355. Refused full_time_hours_mismatch unless exactly 36.5 for shift_365, exactly 35.5 for round_the_clock_355, 28 to 33.6 for the two 336 schemes; free otherwise (more than 0, at most 168).
+	FullTimeHoursPerWeek *float64 `json:"fullTimeHoursPerWeek,omitempty"`
+
+	// HiredOutTo The innleier, when hired out (§ 14-6 o). Up to 200 characters.
+	HiredOutTo *string `json:"hiredOutTo,omitempty"`
+
+	// HolidayTermsText § 14-6 g. Up to 1000 characters.
+	HolidayTermsText *string `json:"holidayTermsText,omitempty"`
+
+	// LocationId An existing location, the workplace (§ 14-6 b); archived only as for departmentId.
+	LocationId *int64 `json:"locationId,omitempty"`
+
+	// ManagerPersonId The direct manager, never the person. Left empty, the department's manager is the person's manager.
+	ManagerPersonId *int64 `json:"managerPersonId,omitempty"`
+
+	// Note HR's note on the row — staff:manage and staff:personal-data only. Up to 1000 characters.
+	Note *string `json:"note,omitempty"`
+
+	// NoticeEmployee § 14-6 h: the employee's notice, in noticeUnit. 0 to 999.
+	NoticeEmployee *int32 `json:"noticeEmployee,omitempty"`
+
+	// NoticeEmployer § 14-6 h: the employer's notice, in noticeUnit. 0 to 999.
+	NoticeEmployer *int32 `json:"noticeEmployer,omitempty"`
+
+	// NoticeUnit Required with a notice.
+	NoticeUnit *StaffNoticeUnit `json:"noticeUnit,omitempty"`
+
+	// OccupationCode The STYRK-08 yrkeskode: seven digits.
+	OccupationCode *string `json:"occupationCode,omitempty"`
+
+	// OvertimeRuleText § 14-6 m. Up to 1000 characters.
+	OvertimeRuleText *string `json:"overtimeRuleText,omitempty"`
+
+	// PayComponents Pay group. Up to 20 components.
+	PayComponents *[]StaffPayComponent `json:"payComponents,omitempty"`
+
+	// PayGrade Pay group. Up to 20 characters.
+	PayGrade *string `json:"payGrade,omitempty"`
+
+	// PayMethod Pay group (§ 14-6 i). Up to 40 characters.
+	PayMethod *string `json:"payMethod,omitempty"`
+
+	// PaydayText Pay group (§ 14-6 i). Up to 100 characters.
+	PaydayText *string `json:"paydayText,omitempty"`
+
+	// ProbationEndDate The probation's last day: at most six months after the employment's start, and for a temporary employment at most half its expected term.
+	ProbationEndDate *openapi_types.Date `json:"probationEndDate,omitempty"`
+
+	// ProbationExtendedTo The extended probation's last day: needs the extension agreed, a reason and a probationEndDate, and lies after it by at most the probation's own length.
+	ProbationExtendedTo *openapi_types.Date `json:"probationExtendedTo,omitempty"`
+
+	// ProbationExtensionAgreed Whether an extension of the probation was agreed in writing (aml. § 15-6 (4)).
+	ProbationExtensionAgreed *bool `json:"probationExtensionAgreed,omitempty"`
+
+	// ProbationExtensionReason Up to 200 characters.
+	ProbationExtensionReason *string `json:"probationExtensionReason,omitempty"`
+
+	// RemunerationType Pay group. Optional.
+	RemunerationType *StaffRemunerationType `json:"remunerationType,omitempty"`
+
+	// SeniorityDate Pay group. Lønnsansiennitet.
+	SeniorityDate *openapi_types.Date `json:"seniorityDate,omitempty"`
+
+	// SocialSecurityText § 14-6 q. Up to 1000 characters.
+	SocialSecurityText *string `json:"socialSecurityText,omitempty"`
+
+	// SpecialHoursText § 14-6 l. Up to 1000 characters.
+	SpecialHoursText *string `json:"specialHoursText,omitempty"`
+
+	// TariffReference § 14-6 n. Up to 200 characters.
+	TariffReference *string `json:"tariffReference,omitempty"`
+
+	// TemporaryGround Required when midlertidig. Dropped when the row is fast and it is not given.
+	TemporaryGround *StaffTemporaryGround `json:"temporaryGround,omitempty"`
+
+	// Title Up to 120 characters.
+	Title *string `json:"title,omitempty"`
+
+	// ValidFrom The day the row takes effect. Required on POST /employments/{id}/terms; on an employment's first row it is the start, and may be left out.
+	ValidFrom *openapi_types.Date `json:"validFrom,omitempty"`
+
+	// WorkingHoursScheme Left out on the first row, not_shift.
+	WorkingHoursScheme *StaffWorkingHoursScheme `json:"workingHoursScheme,omitempty"`
+
+	// WorkingTimeText § 14-6 j. Up to 1000 characters.
+	WorkingTimeText *string `json:"workingTimeText,omitempty"`
+}
+
+// StaffWorkingHoursScheme The a-melding's arbeidstidsordning: not_shift (ikkeSkift), shift_365 (skift365), offshore_336 (offshore336), continuous_336 (helkontinuerligSkiftOgAndreOrdninger336), round_the_clock_355 (doegnkontinuerligSkiftOgTurnus355), other_shift (andreSkift).
+type StaffWorkingHoursScheme string
+
 // GetStaffAssignableUsersParams defines parameters for GetStaffAssignableUsers.
 type GetStaffAssignableUsersParams struct {
 	// Q Narrows the search. Absent or blank lists the first twenty active users.
@@ -761,6 +1513,12 @@ type PutStaffBusinessUnitsByIdParams struct {
 // PutStaffDepartmentsByIdParams defines parameters for PutStaffDepartmentsById.
 type PutStaffDepartmentsByIdParams struct {
 	// IfMatch The revision the row was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// PutStaffEmploymentsByIdParams defines parameters for PutStaffEmploymentsById.
+type PutStaffEmploymentsByIdParams struct {
+	// IfMatch The revision the employment was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
 	IfMatch string `json:"If-Match"`
 }
 
@@ -791,10 +1549,25 @@ type GetStaffMeEventsParams struct {
 // GetStaffPeopleParams defines parameters for GetStaffPeople.
 type GetStaffPeopleParams struct {
 	// Q Words that must each appear in a name, the employee number or the work email, however cased.
-	Q        *string `form:"q,omitempty" json:"q,omitempty"`
-	Page     *int32  `form:"page,omitempty" json:"page,omitempty"`
-	PageSize *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// UnitId People with an employment in force today in this business unit.
+	UnitId *int64 `form:"unitId,omitempty" json:"unitId,omitempty"`
+
+	// DepartmentId People whose terms in force today name this department.
+	DepartmentId *int64 `form:"departmentId,omitempty" json:"departmentId,omitempty"`
+
+	// LocationId People whose terms in force today name this location.
+	LocationId *int64 `form:"locationId,omitempty" json:"locationId,omitempty"`
+
+	// Status staff:manage's filter on where people stand today: current (the default — active, upcoming and those with no employment yet), ended, or all. A caller without staff:manage lists the people active today, whatever it says.
+	Status   *GetStaffPeopleParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Page     *int32                      `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32                      `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
+
+// GetStaffPeopleParamsStatus defines parameters for GetStaffPeople.
+type GetStaffPeopleParamsStatus string
 
 // PutStaffPeopleByIdParams defines parameters for PutStaffPeopleById.
 type PutStaffPeopleByIdParams struct {
@@ -826,6 +1599,12 @@ type PutStaffSettingsParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// PutStaffTermsByIdParams defines parameters for PutStaffTermsById.
+type PutStaffTermsByIdParams struct {
+	// IfMatch The revision the terms row was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
 // PostStaffBusinessUnitsJSONRequestBody defines body for PostStaffBusinessUnits for application/json ContentType.
 type PostStaffBusinessUnitsJSONRequestBody = StaffBusinessUnitRequest
 
@@ -837,6 +1616,15 @@ type PostStaffDepartmentsJSONRequestBody = StaffDepartmentRequest
 
 // PutStaffDepartmentsByIdJSONRequestBody defines body for PutStaffDepartmentsById for application/json ContentType.
 type PutStaffDepartmentsByIdJSONRequestBody = StaffDepartmentRequest
+
+// PutStaffEmploymentsByIdJSONRequestBody defines body for PutStaffEmploymentsById for application/json ContentType.
+type PutStaffEmploymentsByIdJSONRequestBody = StaffEmploymentChangeRequest
+
+// PostStaffEmploymentsByIdEndJSONRequestBody defines body for PostStaffEmploymentsByIdEnd for application/json ContentType.
+type PostStaffEmploymentsByIdEndJSONRequestBody = StaffEmploymentEndRequest
+
+// PostStaffEmploymentsByIdTermsJSONRequestBody defines body for PostStaffEmploymentsByIdTerms for application/json ContentType.
+type PostStaffEmploymentsByIdTermsJSONRequestBody = StaffTermsRequest
 
 // PostStaffLegalEntitiesJSONRequestBody defines body for PostStaffLegalEntities for application/json ContentType.
 type PostStaffLegalEntitiesJSONRequestBody = StaffLegalEntityRequest
@@ -862,6 +1650,9 @@ type PutStaffPeopleByIdJSONRequestBody = StaffPersonRequest
 // PutStaffPeopleByIdBankAccountJSONRequestBody defines body for PutStaffPeopleByIdBankAccount for application/json ContentType.
 type PutStaffPeopleByIdBankAccountJSONRequestBody = StaffBankAccountRequest
 
+// PostStaffPeopleByIdEmploymentsJSONRequestBody defines body for PostStaffPeopleByIdEmployments for application/json ContentType.
+type PostStaffPeopleByIdEmploymentsJSONRequestBody = StaffEmploymentRequest
+
 // PutStaffPeopleByIdNationalIdJSONRequestBody defines body for PutStaffPeopleByIdNationalId for application/json ContentType.
 type PutStaffPeopleByIdNationalIdJSONRequestBody = StaffNationalIdRequest
 
@@ -876,6 +1667,9 @@ type PutStaffPeopleByIdUserJSONRequestBody = StaffPersonLinkRequest
 
 // PutStaffSettingsJSONRequestBody defines body for PutStaffSettings for application/json ContentType.
 type PutStaffSettingsJSONRequestBody = StaffSettingsRequest
+
+// PutStaffTermsByIdJSONRequestBody defines body for PutStaffTermsById for application/json ContentType.
+type PutStaffTermsByIdJSONRequestBody = StaffTermsRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -906,6 +1700,27 @@ type ServerInterface interface {
 	// PostStaffDepartmentsByIdArchive Archive a department
 	// (POST /api/v1/staff/departments/{id}/archive)
 	PostStaffDepartmentsByIdArchive(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffEmploymentsById Get an employment
+	// (GET /api/v1/staff/employments/{id})
+	GetStaffEmploymentsById(w http.ResponseWriter, r *http.Request, id int64)
+	// PutStaffEmploymentsById Change an employment
+	// (PUT /api/v1/staff/employments/{id})
+	PutStaffEmploymentsById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffEmploymentsByIdParams)
+	// GetStaffEmploymentsByIdContractCheck Check an employment against § 14-6
+	// (GET /api/v1/staff/employments/{id}/contract-check)
+	GetStaffEmploymentsByIdContractCheck(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffEmploymentsByIdEnd End an employment
+	// (POST /api/v1/staff/employments/{id}/end)
+	PostStaffEmploymentsByIdEnd(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffEmploymentsByIdReopen Reopen an employment
+	// (POST /api/v1/staff/employments/{id}/reopen)
+	PostStaffEmploymentsByIdReopen(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffEmploymentsByIdTerms List an employment's terms
+	// (GET /api/v1/staff/employments/{id}/terms)
+	GetStaffEmploymentsByIdTerms(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffEmploymentsByIdTerms Add a terms row
+	// (POST /api/v1/staff/employments/{id}/terms)
+	PostStaffEmploymentsByIdTerms(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffLegalEntities List legal entities
 	// (GET /api/v1/staff/legal-entities)
 	GetStaffLegalEntities(w http.ResponseWriter, r *http.Request)
@@ -963,6 +1778,12 @@ type ServerInterface interface {
 	// PostStaffPeopleByIdBankAccountReveal Reveal a person's bank account
 	// (POST /api/v1/staff/people/{id}/bank-account/reveal)
 	PostStaffPeopleByIdBankAccountReveal(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffPeopleByIdEmployments List a person's employments
+	// (GET /api/v1/staff/people/{id}/employments)
+	GetStaffPeopleByIdEmployments(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffPeopleByIdEmployments Add an employment
+	// (POST /api/v1/staff/people/{id}/employments)
+	PostStaffPeopleByIdEmployments(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffPeopleByIdEvents List a person's history
 	// (GET /api/v1/staff/people/{id}/events)
 	GetStaffPeopleByIdEvents(w http.ResponseWriter, r *http.Request, id int64, params GetStaffPeopleByIdEventsParams)
@@ -978,6 +1799,9 @@ type ServerInterface interface {
 	// PutStaffPeopleByIdNextOfKin Replace a person's next of kin
 	// (PUT /api/v1/staff/people/{id}/next-of-kin)
 	PutStaffPeopleByIdNextOfKin(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPeopleByIdNextOfKinParams)
+	// GetStaffPeopleByIdOrg Get a person's place in the organisation
+	// (GET /api/v1/staff/people/{id}/org)
+	GetStaffPeopleByIdOrg(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffPeopleByIdRoles List a person's roles
 	// (GET /api/v1/staff/people/{id}/roles)
 	GetStaffPeopleByIdRoles(w http.ResponseWriter, r *http.Request, id int64)
@@ -996,6 +1820,12 @@ type ServerInterface interface {
 	// PutStaffSettings Change the Staff settings
 	// (PUT /api/v1/staff/settings)
 	PutStaffSettings(w http.ResponseWriter, r *http.Request, params PutStaffSettingsParams)
+	// DeleteStaffTermsById Delete the latest terms row
+	// (DELETE /api/v1/staff/terms/{id})
+	DeleteStaffTermsById(w http.ResponseWriter, r *http.Request, id int64)
+	// PutStaffTermsById Change a terms row
+	// (PUT /api/v1/staff/terms/{id})
+	PutStaffTermsById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffTermsByIdParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1247,6 +2077,216 @@ func (siw *ServerInterfaceWrapper) PostStaffDepartmentsByIdArchive(w http.Respon
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostStaffDepartmentsByIdArchive(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffEmploymentsById operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffEmploymentsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffEmploymentsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffEmploymentsById operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffEmploymentsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffEmploymentsByIdParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffEmploymentsById(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffEmploymentsByIdContractCheck operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffEmploymentsByIdContractCheck(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffEmploymentsByIdContractCheck(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffEmploymentsByIdEnd operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffEmploymentsByIdEnd(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffEmploymentsByIdEnd(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffEmploymentsByIdReopen operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffEmploymentsByIdReopen(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffEmploymentsByIdReopen(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffEmploymentsByIdTerms operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffEmploymentsByIdTerms(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffEmploymentsByIdTerms(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffEmploymentsByIdTerms operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffEmploymentsByIdTerms(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffEmploymentsByIdTerms(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1613,6 +2653,58 @@ func (siw *ServerInterfaceWrapper) GetStaffPeople(w http.ResponseWriter, r *http
 		return
 	}
 
+	// ------------- Optional query parameter "unitId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unitId", r.URL.Query(), &params.UnitId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unitId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unitId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "departmentId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "departmentId", r.URL.Query(), &params.DepartmentId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "departmentId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "departmentId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "locationId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "locationId", r.URL.Query(), &params.LocationId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "locationId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "locationId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "page" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
@@ -1822,6 +2914,58 @@ func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdBankAccountReveal(w http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffPeopleByIdEmployments operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdEmployments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdEmployments(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffPeopleByIdEmployments operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdEmployments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleByIdEmployments(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStaffPeopleByIdEvents operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdEvents(w http.ResponseWriter, r *http.Request) {
 
@@ -2000,6 +3144,32 @@ func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdNextOfKin(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutStaffPeopleByIdNextOfKin(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffPeopleByIdOrg operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdOrg(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdOrg(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2200,6 +3370,86 @@ func (siw *ServerInterfaceWrapper) PutStaffSettings(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteStaffTermsById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteStaffTermsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteStaffTermsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffTermsById operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffTermsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffTermsByIdParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffTermsById(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -2329,6 +3579,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/departments", wrapper.PostStaffDepartments)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/departments/{id}", wrapper.PutStaffDepartmentsById)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/departments/{id}/archive", wrapper.PostStaffDepartmentsByIdArchive)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/employments/{id}", wrapper.GetStaffEmploymentsById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/employments/{id}", wrapper.PutStaffEmploymentsById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/employments/{id}/contract-check", wrapper.GetStaffEmploymentsByIdContractCheck)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/employments/{id}/end", wrapper.PostStaffEmploymentsByIdEnd)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/employments/{id}/reopen", wrapper.PostStaffEmploymentsByIdReopen)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/employments/{id}/terms", wrapper.GetStaffEmploymentsByIdTerms)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/employments/{id}/terms", wrapper.PostStaffEmploymentsByIdTerms)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/legal-entities", wrapper.GetStaffLegalEntities)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/legal-entities", wrapper.PostStaffLegalEntities)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/legal-entities/{id}", wrapper.PutStaffLegalEntitiesById)
@@ -2348,17 +3605,22 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.PutStaffPeopleById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account", wrapper.PutStaffPeopleByIdBankAccount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account/reveal", wrapper.PostStaffPeopleByIdBankAccountReveal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/employments", wrapper.GetStaffPeopleByIdEmployments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/employments", wrapper.PostStaffPeopleByIdEmployments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/events", wrapper.GetStaffPeopleByIdEvents)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/national-id", wrapper.PutStaffPeopleByIdNationalId)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/national-id/reveal", wrapper.PostStaffPeopleByIdNationalIdReveal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/next-of-kin", wrapper.GetStaffPeopleByIdNextOfKin)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/next-of-kin", wrapper.PutStaffPeopleByIdNextOfKin)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/org", wrapper.GetStaffPeopleByIdOrg)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/roles", wrapper.GetStaffPeopleByIdRoles)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/roles", wrapper.PutStaffPeopleByIdRoles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/user", wrapper.GetStaffPeopleByIdUser)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/user", wrapper.PutStaffPeopleByIdUser)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/settings", wrapper.GetStaffSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/settings", wrapper.PutStaffSettings)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/terms/{id}", wrapper.DeleteStaffTermsById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/terms/{id}", wrapper.PutStaffTermsById)
 
 	return m
 }
@@ -2971,6 +4233,514 @@ type PostStaffDepartmentsByIdArchive404Response struct {
 func (response PostStaffDepartmentsByIdArchive404Response) VisitPostStaffDepartmentsByIdArchiveResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetStaffEmploymentsByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffEmploymentsByIdResponseObject interface {
+	VisitGetStaffEmploymentsByIdResponse(w http.ResponseWriter) error
+}
+
+type GetStaffEmploymentsById200JSONResponse StaffEmployment
+
+func (response GetStaffEmploymentsById200JSONResponse) VisitGetStaffEmploymentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffEmploymentsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffEmploymentsById401JSONResponse) VisitGetStaffEmploymentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffEmploymentsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffEmploymentsById403JSONResponse) VisitGetStaffEmploymentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffEmploymentsById404Response struct {
+}
+
+func (response GetStaffEmploymentsById404Response) VisitGetStaffEmploymentsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffEmploymentsByIdRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutStaffEmploymentsByIdParams
+	Body   *PutStaffEmploymentsByIdJSONRequestBody
+}
+
+type PutStaffEmploymentsByIdResponseObject interface {
+	VisitPutStaffEmploymentsByIdResponse(w http.ResponseWriter) error
+}
+
+type PutStaffEmploymentsById200JSONResponse StaffEmployment
+
+func (response PutStaffEmploymentsById200JSONResponse) VisitPutStaffEmploymentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffEmploymentsById400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffEmploymentsById400ApplicationProblemPlusJSONResponse) VisitPutStaffEmploymentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffEmploymentsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffEmploymentsById401JSONResponse) VisitPutStaffEmploymentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffEmploymentsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffEmploymentsById403JSONResponse) VisitPutStaffEmploymentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffEmploymentsById404Response struct {
+}
+
+func (response PutStaffEmploymentsById404Response) VisitPutStaffEmploymentsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffEmploymentsById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffEmploymentsById409ApplicationProblemPlusJSONResponse) VisitPutStaffEmploymentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffEmploymentsByIdContractCheckRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffEmploymentsByIdContractCheckResponseObject interface {
+	VisitGetStaffEmploymentsByIdContractCheckResponse(w http.ResponseWriter) error
+}
+
+type GetStaffEmploymentsByIdContractCheck200JSONResponse StaffContractCheck
+
+func (response GetStaffEmploymentsByIdContractCheck200JSONResponse) VisitGetStaffEmploymentsByIdContractCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffEmploymentsByIdContractCheck401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffEmploymentsByIdContractCheck401JSONResponse) VisitGetStaffEmploymentsByIdContractCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffEmploymentsByIdContractCheck403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffEmploymentsByIdContractCheck403JSONResponse) VisitGetStaffEmploymentsByIdContractCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffEmploymentsByIdContractCheck404Response struct {
+}
+
+func (response GetStaffEmploymentsByIdContractCheck404Response) VisitGetStaffEmploymentsByIdContractCheckResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffEmploymentsByIdEndRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostStaffEmploymentsByIdEndJSONRequestBody
+}
+
+type PostStaffEmploymentsByIdEndResponseObject interface {
+	VisitPostStaffEmploymentsByIdEndResponse(w http.ResponseWriter) error
+}
+
+type PostStaffEmploymentsByIdEnd200JSONResponse StaffEmployment
+
+func (response PostStaffEmploymentsByIdEnd200JSONResponse) VisitPostStaffEmploymentsByIdEndResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdEnd400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffEmploymentsByIdEnd400ApplicationProblemPlusJSONResponse) VisitPostStaffEmploymentsByIdEndResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdEnd401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffEmploymentsByIdEnd401JSONResponse) VisitPostStaffEmploymentsByIdEndResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdEnd403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffEmploymentsByIdEnd403JSONResponse) VisitPostStaffEmploymentsByIdEndResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdEnd404Response struct {
+}
+
+func (response PostStaffEmploymentsByIdEnd404Response) VisitPostStaffEmploymentsByIdEndResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffEmploymentsByIdEnd409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffEmploymentsByIdEnd409ApplicationProblemPlusJSONResponse) VisitPostStaffEmploymentsByIdEndResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdReopenRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostStaffEmploymentsByIdReopenResponseObject interface {
+	VisitPostStaffEmploymentsByIdReopenResponse(w http.ResponseWriter) error
+}
+
+type PostStaffEmploymentsByIdReopen200JSONResponse StaffEmployment
+
+func (response PostStaffEmploymentsByIdReopen200JSONResponse) VisitPostStaffEmploymentsByIdReopenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdReopen401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffEmploymentsByIdReopen401JSONResponse) VisitPostStaffEmploymentsByIdReopenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdReopen403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffEmploymentsByIdReopen403JSONResponse) VisitPostStaffEmploymentsByIdReopenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdReopen404Response struct {
+}
+
+func (response PostStaffEmploymentsByIdReopen404Response) VisitPostStaffEmploymentsByIdReopenResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffEmploymentsByIdReopen409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffEmploymentsByIdReopen409ApplicationProblemPlusJSONResponse) VisitPostStaffEmploymentsByIdReopenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffEmploymentsByIdTermsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffEmploymentsByIdTermsResponseObject interface {
+	VisitGetStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error
+}
+
+type GetStaffEmploymentsByIdTerms200JSONResponse []StaffTerms
+
+func (response GetStaffEmploymentsByIdTerms200JSONResponse) VisitGetStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffEmploymentsByIdTerms401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffEmploymentsByIdTerms401JSONResponse) VisitGetStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffEmploymentsByIdTerms403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffEmploymentsByIdTerms403JSONResponse) VisitGetStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffEmploymentsByIdTerms404Response struct {
+}
+
+func (response GetStaffEmploymentsByIdTerms404Response) VisitGetStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffEmploymentsByIdTermsRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostStaffEmploymentsByIdTermsJSONRequestBody
+}
+
+type PostStaffEmploymentsByIdTermsResponseObject interface {
+	VisitPostStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error
+}
+
+type PostStaffEmploymentsByIdTerms201JSONResponse StaffTerms
+
+func (response PostStaffEmploymentsByIdTerms201JSONResponse) VisitPostStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdTerms400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffEmploymentsByIdTerms400ApplicationProblemPlusJSONResponse) VisitPostStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdTerms401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffEmploymentsByIdTerms401JSONResponse) VisitPostStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdTerms403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffEmploymentsByIdTerms403JSONResponse) VisitPostStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffEmploymentsByIdTerms404Response struct {
+}
+
+func (response PostStaffEmploymentsByIdTerms404Response) VisitPostStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffEmploymentsByIdTerms409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffEmploymentsByIdTerms409ApplicationProblemPlusJSONResponse) VisitPostStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetStaffLegalEntitiesRequestObject struct {
@@ -4269,6 +6039,151 @@ func (response PostStaffPeopleByIdBankAccountReveal404Response) VisitPostStaffPe
 	return nil
 }
 
+type GetStaffPeopleByIdEmploymentsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdEmploymentsResponseObject interface {
+	VisitGetStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdEmployments200JSONResponse []StaffEmployment
+
+func (response GetStaffPeopleByIdEmployments200JSONResponse) VisitGetStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdEmployments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdEmployments401JSONResponse) VisitGetStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdEmployments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdEmployments403JSONResponse) VisitGetStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdEmployments404Response struct {
+}
+
+func (response GetStaffPeopleByIdEmployments404Response) VisitGetStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdEmploymentsRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostStaffPeopleByIdEmploymentsJSONRequestBody
+}
+
+type PostStaffPeopleByIdEmploymentsResponseObject interface {
+	VisitPostStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleByIdEmployments201JSONResponse StaffEmployment
+
+func (response PostStaffPeopleByIdEmployments201JSONResponse) VisitPostStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdEmployments400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdEmployments400ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdEmployments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdEmployments401JSONResponse) VisitPostStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdEmployments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdEmployments403JSONResponse) VisitPostStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdEmployments404Response struct {
+}
+
+func (response PostStaffPeopleByIdEmployments404Response) VisitPostStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdEmployments409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdEmployments409ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdEmploymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStaffPeopleByIdEventsRequestObject struct {
 	Id     int64 `json:"id"`
 	Params GetStaffPeopleByIdEventsParams
@@ -4627,6 +6542,64 @@ func (response PutStaffPeopleByIdNextOfKin409ApplicationProblemPlusJSONResponse)
 	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type GetStaffPeopleByIdOrgRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdOrgResponseObject interface {
+	VisitGetStaffPeopleByIdOrgResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdOrg200JSONResponse StaffOrg
+
+func (response GetStaffPeopleByIdOrg200JSONResponse) VisitGetStaffPeopleByIdOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdOrg401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdOrg401JSONResponse) VisitGetStaffPeopleByIdOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdOrg403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdOrg403JSONResponse) VisitGetStaffPeopleByIdOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdOrg404Response struct {
+}
+
+func (response GetStaffPeopleByIdOrg404Response) VisitGetStaffPeopleByIdOrgResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
 }
 
 type GetStaffPeopleByIdRolesRequestObject struct {
@@ -5034,6 +7007,160 @@ func (response PutStaffSettings409ApplicationProblemPlusJSONResponse) VisitPutSt
 	return err
 }
 
+type DeleteStaffTermsByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteStaffTermsByIdResponseObject interface {
+	VisitDeleteStaffTermsByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteStaffTermsById204Response struct {
+}
+
+func (response DeleteStaffTermsById204Response) VisitDeleteStaffTermsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteStaffTermsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteStaffTermsById401JSONResponse) VisitDeleteStaffTermsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteStaffTermsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteStaffTermsById403JSONResponse) VisitDeleteStaffTermsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteStaffTermsById404Response struct {
+}
+
+func (response DeleteStaffTermsById404Response) VisitDeleteStaffTermsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteStaffTermsById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response DeleteStaffTermsById409ApplicationProblemPlusJSONResponse) VisitDeleteStaffTermsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffTermsByIdRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutStaffTermsByIdParams
+	Body   *PutStaffTermsByIdJSONRequestBody
+}
+
+type PutStaffTermsByIdResponseObject interface {
+	VisitPutStaffTermsByIdResponse(w http.ResponseWriter) error
+}
+
+type PutStaffTermsById200JSONResponse StaffTerms
+
+func (response PutStaffTermsById200JSONResponse) VisitPutStaffTermsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffTermsById400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffTermsById400ApplicationProblemPlusJSONResponse) VisitPutStaffTermsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffTermsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffTermsById401JSONResponse) VisitPutStaffTermsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffTermsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffTermsById403JSONResponse) VisitPutStaffTermsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffTermsById404Response struct {
+}
+
+func (response PutStaffTermsById404Response) VisitPutStaffTermsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffTermsById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffTermsById409ApplicationProblemPlusJSONResponse) VisitPutStaffTermsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetStaffAssignableUsers Search the users a person may be linked to
@@ -5063,6 +7190,27 @@ type StrictServerInterface interface {
 	// PostStaffDepartmentsByIdArchive Archive a department
 	// (POST /api/v1/staff/departments/{id}/archive)
 	PostStaffDepartmentsByIdArchive(ctx context.Context, request PostStaffDepartmentsByIdArchiveRequestObject) (PostStaffDepartmentsByIdArchiveResponseObject, error)
+	// GetStaffEmploymentsById Get an employment
+	// (GET /api/v1/staff/employments/{id})
+	GetStaffEmploymentsById(ctx context.Context, request GetStaffEmploymentsByIdRequestObject) (GetStaffEmploymentsByIdResponseObject, error)
+	// PutStaffEmploymentsById Change an employment
+	// (PUT /api/v1/staff/employments/{id})
+	PutStaffEmploymentsById(ctx context.Context, request PutStaffEmploymentsByIdRequestObject) (PutStaffEmploymentsByIdResponseObject, error)
+	// GetStaffEmploymentsByIdContractCheck Check an employment against § 14-6
+	// (GET /api/v1/staff/employments/{id}/contract-check)
+	GetStaffEmploymentsByIdContractCheck(ctx context.Context, request GetStaffEmploymentsByIdContractCheckRequestObject) (GetStaffEmploymentsByIdContractCheckResponseObject, error)
+	// PostStaffEmploymentsByIdEnd End an employment
+	// (POST /api/v1/staff/employments/{id}/end)
+	PostStaffEmploymentsByIdEnd(ctx context.Context, request PostStaffEmploymentsByIdEndRequestObject) (PostStaffEmploymentsByIdEndResponseObject, error)
+	// PostStaffEmploymentsByIdReopen Reopen an employment
+	// (POST /api/v1/staff/employments/{id}/reopen)
+	PostStaffEmploymentsByIdReopen(ctx context.Context, request PostStaffEmploymentsByIdReopenRequestObject) (PostStaffEmploymentsByIdReopenResponseObject, error)
+	// GetStaffEmploymentsByIdTerms List an employment's terms
+	// (GET /api/v1/staff/employments/{id}/terms)
+	GetStaffEmploymentsByIdTerms(ctx context.Context, request GetStaffEmploymentsByIdTermsRequestObject) (GetStaffEmploymentsByIdTermsResponseObject, error)
+	// PostStaffEmploymentsByIdTerms Add a terms row
+	// (POST /api/v1/staff/employments/{id}/terms)
+	PostStaffEmploymentsByIdTerms(ctx context.Context, request PostStaffEmploymentsByIdTermsRequestObject) (PostStaffEmploymentsByIdTermsResponseObject, error)
 	// GetStaffLegalEntities List legal entities
 	// (GET /api/v1/staff/legal-entities)
 	GetStaffLegalEntities(ctx context.Context, request GetStaffLegalEntitiesRequestObject) (GetStaffLegalEntitiesResponseObject, error)
@@ -5120,6 +7268,12 @@ type StrictServerInterface interface {
 	// PostStaffPeopleByIdBankAccountReveal Reveal a person's bank account
 	// (POST /api/v1/staff/people/{id}/bank-account/reveal)
 	PostStaffPeopleByIdBankAccountReveal(ctx context.Context, request PostStaffPeopleByIdBankAccountRevealRequestObject) (PostStaffPeopleByIdBankAccountRevealResponseObject, error)
+	// GetStaffPeopleByIdEmployments List a person's employments
+	// (GET /api/v1/staff/people/{id}/employments)
+	GetStaffPeopleByIdEmployments(ctx context.Context, request GetStaffPeopleByIdEmploymentsRequestObject) (GetStaffPeopleByIdEmploymentsResponseObject, error)
+	// PostStaffPeopleByIdEmployments Add an employment
+	// (POST /api/v1/staff/people/{id}/employments)
+	PostStaffPeopleByIdEmployments(ctx context.Context, request PostStaffPeopleByIdEmploymentsRequestObject) (PostStaffPeopleByIdEmploymentsResponseObject, error)
 	// GetStaffPeopleByIdEvents List a person's history
 	// (GET /api/v1/staff/people/{id}/events)
 	GetStaffPeopleByIdEvents(ctx context.Context, request GetStaffPeopleByIdEventsRequestObject) (GetStaffPeopleByIdEventsResponseObject, error)
@@ -5135,6 +7289,9 @@ type StrictServerInterface interface {
 	// PutStaffPeopleByIdNextOfKin Replace a person's next of kin
 	// (PUT /api/v1/staff/people/{id}/next-of-kin)
 	PutStaffPeopleByIdNextOfKin(ctx context.Context, request PutStaffPeopleByIdNextOfKinRequestObject) (PutStaffPeopleByIdNextOfKinResponseObject, error)
+	// GetStaffPeopleByIdOrg Get a person's place in the organisation
+	// (GET /api/v1/staff/people/{id}/org)
+	GetStaffPeopleByIdOrg(ctx context.Context, request GetStaffPeopleByIdOrgRequestObject) (GetStaffPeopleByIdOrgResponseObject, error)
 	// GetStaffPeopleByIdRoles List a person's roles
 	// (GET /api/v1/staff/people/{id}/roles)
 	GetStaffPeopleByIdRoles(ctx context.Context, request GetStaffPeopleByIdRolesRequestObject) (GetStaffPeopleByIdRolesResponseObject, error)
@@ -5153,6 +7310,12 @@ type StrictServerInterface interface {
 	// PutStaffSettings Change the Staff settings
 	// (PUT /api/v1/staff/settings)
 	PutStaffSettings(ctx context.Context, request PutStaffSettingsRequestObject) (PutStaffSettingsResponseObject, error)
+	// DeleteStaffTermsById Delete the latest terms row
+	// (DELETE /api/v1/staff/terms/{id})
+	DeleteStaffTermsById(ctx context.Context, request DeleteStaffTermsByIdRequestObject) (DeleteStaffTermsByIdResponseObject, error)
+	// PutStaffTermsById Change a terms row
+	// (PUT /api/v1/staff/terms/{id})
+	PutStaffTermsById(ctx context.Context, request PutStaffTermsByIdRequestObject) (PutStaffTermsByIdResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -5443,6 +7606,210 @@ func (sh *strictHandler) PostStaffDepartmentsByIdArchive(w http.ResponseWriter, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostStaffDepartmentsByIdArchiveResponseObject); ok {
 		if err := validResponse.VisitPostStaffDepartmentsByIdArchiveResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffEmploymentsById operation middleware
+func (sh *strictHandler) GetStaffEmploymentsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffEmploymentsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffEmploymentsById(ctx, request.(GetStaffEmploymentsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffEmploymentsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffEmploymentsByIdResponseObject); ok {
+		if err := validResponse.VisitGetStaffEmploymentsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffEmploymentsById operation middleware
+func (sh *strictHandler) PutStaffEmploymentsById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffEmploymentsByIdParams) {
+	var request PutStaffEmploymentsByIdRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutStaffEmploymentsByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffEmploymentsById(ctx, request.(PutStaffEmploymentsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffEmploymentsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffEmploymentsByIdResponseObject); ok {
+		if err := validResponse.VisitPutStaffEmploymentsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffEmploymentsByIdContractCheck operation middleware
+func (sh *strictHandler) GetStaffEmploymentsByIdContractCheck(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffEmploymentsByIdContractCheckRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffEmploymentsByIdContractCheck(ctx, request.(GetStaffEmploymentsByIdContractCheckRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffEmploymentsByIdContractCheck")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffEmploymentsByIdContractCheckResponseObject); ok {
+		if err := validResponse.VisitGetStaffEmploymentsByIdContractCheckResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffEmploymentsByIdEnd operation middleware
+func (sh *strictHandler) PostStaffEmploymentsByIdEnd(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffEmploymentsByIdEndRequestObject
+
+	request.Id = id
+
+	var body PostStaffEmploymentsByIdEndJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffEmploymentsByIdEnd(ctx, request.(PostStaffEmploymentsByIdEndRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffEmploymentsByIdEnd")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffEmploymentsByIdEndResponseObject); ok {
+		if err := validResponse.VisitPostStaffEmploymentsByIdEndResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffEmploymentsByIdReopen operation middleware
+func (sh *strictHandler) PostStaffEmploymentsByIdReopen(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffEmploymentsByIdReopenRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffEmploymentsByIdReopen(ctx, request.(PostStaffEmploymentsByIdReopenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffEmploymentsByIdReopen")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffEmploymentsByIdReopenResponseObject); ok {
+		if err := validResponse.VisitPostStaffEmploymentsByIdReopenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffEmploymentsByIdTerms operation middleware
+func (sh *strictHandler) GetStaffEmploymentsByIdTerms(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffEmploymentsByIdTermsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffEmploymentsByIdTerms(ctx, request.(GetStaffEmploymentsByIdTermsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffEmploymentsByIdTerms")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffEmploymentsByIdTermsResponseObject); ok {
+		if err := validResponse.VisitGetStaffEmploymentsByIdTermsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffEmploymentsByIdTerms operation middleware
+func (sh *strictHandler) PostStaffEmploymentsByIdTerms(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffEmploymentsByIdTermsRequestObject
+
+	request.Id = id
+
+	var body PostStaffEmploymentsByIdTermsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffEmploymentsByIdTerms(ctx, request.(PostStaffEmploymentsByIdTermsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffEmploymentsByIdTerms")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffEmploymentsByIdTermsResponseObject); ok {
+		if err := validResponse.VisitPostStaffEmploymentsByIdTermsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -5989,6 +8356,65 @@ func (sh *strictHandler) PostStaffPeopleByIdBankAccountReveal(w http.ResponseWri
 	}
 }
 
+// GetStaffPeopleByIdEmployments operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdEmployments(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdEmploymentsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdEmployments(ctx, request.(GetStaffPeopleByIdEmploymentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdEmployments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdEmploymentsResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdEmploymentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleByIdEmployments operation middleware
+func (sh *strictHandler) PostStaffPeopleByIdEmployments(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffPeopleByIdEmploymentsRequestObject
+
+	request.Id = id
+
+	var body PostStaffPeopleByIdEmploymentsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleByIdEmployments(ctx, request.(PostStaffPeopleByIdEmploymentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleByIdEmployments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleByIdEmploymentsResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleByIdEmploymentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetStaffPeopleByIdEvents operation middleware
 func (sh *strictHandler) GetStaffPeopleByIdEvents(w http.ResponseWriter, r *http.Request, id int64, params GetStaffPeopleByIdEventsParams) {
 	var request GetStaffPeopleByIdEventsRequestObject
@@ -6128,6 +8554,32 @@ func (sh *strictHandler) PutStaffPeopleByIdNextOfKin(w http.ResponseWriter, r *h
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutStaffPeopleByIdNextOfKinResponseObject); ok {
 		if err := validResponse.VisitPutStaffPeopleByIdNextOfKinResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleByIdOrg operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdOrg(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdOrgRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdOrg(ctx, request.(GetStaffPeopleByIdOrgRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdOrg")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdOrgResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdOrgResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -6304,6 +8756,66 @@ func (sh *strictHandler) PutStaffSettings(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutStaffSettingsResponseObject); ok {
 		if err := validResponse.VisitPutStaffSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteStaffTermsById operation middleware
+func (sh *strictHandler) DeleteStaffTermsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteStaffTermsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteStaffTermsById(ctx, request.(DeleteStaffTermsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteStaffTermsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteStaffTermsByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteStaffTermsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffTermsById operation middleware
+func (sh *strictHandler) PutStaffTermsById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffTermsByIdParams) {
+	var request PutStaffTermsByIdRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutStaffTermsByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffTermsById(ctx, request.(PutStaffTermsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffTermsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffTermsByIdResponseObject); ok {
+		if err := validResponse.VisitPutStaffTermsByIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

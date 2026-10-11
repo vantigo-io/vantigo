@@ -3,10 +3,15 @@ package staff
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/ident"
 )
@@ -168,4 +173,118 @@ func pageParams(page, pageSize *int32) (int32, int32) {
 		size = *pageSize
 	}
 	return p, size
+}
+
+// The employment's and the terms' enumerations (plan, Exact values; design
+// §3.2, §3.3). The order is the contract's.
+var (
+	relationshipTypes   = []string{"ordinary", "maritime", "freelancer", "pension_or_other"}
+	endReasons          = []string{"employee_resigned", "employer_terminated", "contract_ended", "wrongly_reported", "internal_change", "payroll_system_change"}
+	employmentTypes     = []string{"fast", "midlertidig"}
+	temporaryGrounds    = []string{"a", "b", "c", "d", "e", "tariff"}
+	appointmentForms    = []string{"fast", "midlertidig", "fast_utleid", "midlertidig_utleid", "midlertidig_tilkallingsvikar"}
+	workingHoursSchemes = []string{"not_shift", "shift_365", "offshore_336", "continuous_336", "round_the_clock_355", "other_shift"}
+	remunerationTypes   = []string{"monthly", "hourly", "commission", "fee", "piecework"}
+	employeeTypes       = []string{"employee", "contractor", "consultant", "intern"}
+	noticeUnits         = []string{"days", "weeks", "months"}
+	payPeriods          = []string{"monthly", "yearly", "hourly", "once"}
+)
+
+// workingHoursSchemeCodes is each arbeidstidsordning as Skatteetaten's
+// a-melding names it, and endReasonCodes each sluttårsak: the codes the
+// payroll export (delivery A2) reports, pinned in a table test so a rename on
+// either side is a failing test rather than a rejected a-melding.
+var (
+	workingHoursSchemeCodes = map[string]string{
+		"not_shift":           "ikkeSkift",
+		"shift_365":           "skift365",
+		"offshore_336":        "offshore336",
+		"continuous_336":      "helkontinuerligSkiftOgAndreOrdninger336",
+		"round_the_clock_355": "doegnkontinuerligSkiftOgTurnus355",
+		"other_shift":         "andreSkift",
+	}
+	endReasonCodes = map[string]string{
+		"employee_resigned":     "arbeidstakerHarSagtOppSelv",
+		"employer_terminated":   "arbeidsgiverHarSagtOppArbeidstaker",
+		"contract_ended":        "kontraktEngasjementEllerVikariatErUtloept",
+		"wrongly_reported":      "arbeidsforholdetSkulleAldriVaertRapportert",
+		"internal_change":       "endringIOrganisasjonsstrukturEllerByttetJobbInternt",
+		"payroll_system_change": "byttetLoenssystemEllerRegnskapsfoerer",
+	}
+)
+
+// parseEnum is an optional enumerated value: nil stays nil, anything else
+// must be one of values.
+func parseEnum[T ~string](label string, raw *T, values []string) (*string, string) {
+	if raw == nil {
+		return nil, ""
+	}
+	v := string(*raw)
+	if !slices.Contains(values, v) {
+		return nil, fmt.Sprintf("%s must be one of %s, but was '%s'", label, strings.Join(values, ", "), v)
+	}
+	return &v, ""
+}
+
+// hundredthsOf is a JSON number with at most two decimals as hundredths, and
+// false for one with more: the numeric(_,2) columns hold what was typed,
+// never a rounding of it.
+func hundredthsOf(v float64) (int64, bool) {
+	h := math.Round(v * 100)
+	if math.Abs(v*100-h) > 1e-6 || math.IsInf(v, 0) || math.IsNaN(v) {
+		return 0, false
+	}
+	return int64(h), true
+}
+
+// numericOfHundredths stores hundredths exactly: an integer with a scale of
+// two, never through a float (the time module's numericFromCents).
+func numericOfHundredths(h int64) pgtype.Numeric {
+	return pgtype.Numeric{Int: big.NewInt(h), Exp: -2, Valid: true}
+}
+
+// hundredthsOfNumeric reads a numeric(_,2) column back as hundredths; NULL
+// is 0.
+func hundredthsOfNumeric(n pgtype.Numeric) int64 {
+	if !n.Valid || n.Int == nil {
+		return 0
+	}
+	v := new(big.Int).Set(n.Int)
+	for e := n.Exp + 2; e > 0; e-- {
+		v.Mul(v, big.NewInt(10))
+	}
+	for e := n.Exp + 2; e < 0; e++ {
+		v.Quo(v, big.NewInt(10))
+	}
+	return v.Int64()
+}
+
+// civil is a date column's calendar day, the zero time for NULL.
+func civil(d pgtype.Date) time.Time {
+	if !d.Valid {
+		return time.Time{}
+	}
+	return d.Time
+}
+
+// civilPtr is a nullable date column's calendar day, nil for NULL.
+func civilPtr(d pgtype.Date) *time.Time {
+	if !d.Valid {
+		return nil
+	}
+	t := d.Time
+	return &t
+}
+
+// dayParam is a calendar day as a date parameter.
+func dayParam(t time.Time) pgtype.Date { return pgtype.Date{Time: t, Valid: true} }
+
+// addMonths is the day n months after d — the same day of the month, or the
+// month's last day when it has no such day (31 August + 6 months is 28 or 29
+// February, not 3 March as time.AddDate would answer).
+func addMonths(d time.Time, n int) time.Time {
+	y, m, day := d.Date()
+	first := time.Date(y, m+time.Month(n), 1, 0, 0, 0, 0, time.UTC)
+	last := first.AddDate(0, 1, -1).Day()
+	return time.Date(first.Year(), first.Month(), min(day, last), 0, 0, 0, 0, time.UTC)
 }

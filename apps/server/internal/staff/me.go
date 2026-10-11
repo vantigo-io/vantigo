@@ -85,14 +85,18 @@ func (p parsedMe) applyTo(current store.GetPersonRow) store.GetPersonRow {
 	return next
 }
 
-// respondSelf is the person as they read themselves, the linked user read
-// from the directory after any transaction.
-func (s *server) respondSelf(ctx context.Context, row store.GetPersonRow, link *string) (gen.StaffPerson, error) {
+// respondSelf is the person as they read themselves, placed on today, the
+// linked user read from the directory after any transaction.
+func (s *server) respondSelf(ctx context.Context, caller *callerContext, row store.GetPersonRow, link *string) (gen.StaffPerson, error) {
+	placements, err := placementsOf(ctx, store.New(s.deps.Pool), []int64{row.ID}, caller.Today)
+	if err != nil {
+		return gen.StaffPerson{}, err
+	}
 	user, err := s.linkedUser(ctx, link)
 	if err != nil {
 		return gen.StaffPerson{}, err
 	}
-	return personResponse(row, selfAudience, user), nil
+	return personResponse(row, placements[row.ID], selfAudience, user), nil
 }
 
 // GetStaffMe Get my own record
@@ -123,7 +127,7 @@ func (s *server) GetStaffMe(ctx context.Context, _ gen.GetStaffMeRequestObject) 
 	if err != nil {
 		return nil, err
 	}
-	out, err := s.respondSelf(ctx, row, link)
+	out, err := s.respondSelf(ctx, caller, row, link)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +261,7 @@ func (s *server) PutStaffMe(ctx context.Context, req gen.PutStaffMeRequestObject
 	if err != nil {
 		return nil, err
 	}
-	out, err := s.respondSelf(ctx, saved, link)
+	out, err := s.respondSelf(ctx, caller, saved, link)
 	if err != nil {
 		return nil, err
 	}

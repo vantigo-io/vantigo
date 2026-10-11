@@ -108,7 +108,13 @@ WHERE id = @id;
 -- matches at least one of the searched fields, and everyone passes when there
 -- is no search (unnest of an empty array yields no rows). @active_only keeps
 -- the people active on @today — the colleague's directory (plan reading 15),
--- judged as PersonActiveOn judges one person.
+-- judged as PersonActiveOn judges one person. @status is staff:manage's
+-- filter on where people stand on @today: 'current' — someone active or
+-- starting later (an employment not ended before today) or with no
+-- employment at all — 'ended' (every employment ended before today) or
+-- 'all'. @unit_id, @department_id and @location_id, each when given, keep
+-- the people with one employment in force on @today in that unit whose terms
+-- in force that day name that department and location.
 SELECT count(*)
 FROM staff.people p
 WHERE NOT EXISTS (
@@ -125,11 +131,43 @@ AND (NOT @active_only::boolean OR EXISTS (
     SELECT 1 FROM staff.employments e
     WHERE e.person_id = p.id AND e.start_date <= @today::date
       AND (e.end_date IS NULL OR e.end_date >= @today::date)
-));
+))
+AND CASE @status::text
+    WHEN 'all' THEN true
+    WHEN 'ended' THEN
+        EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+        AND NOT EXISTS (
+            SELECT 1 FROM staff.employments e
+            WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= @today::date)
+        )
+    ELSE
+        NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+        OR EXISTS (
+            SELECT 1 FROM staff.employments e
+            WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= @today::date)
+        )
+END
+AND (
+    (sqlc.narg('unit_id')::bigint IS NULL AND sqlc.narg('department_id')::bigint IS NULL AND sqlc.narg('location_id')::bigint IS NULL)
+    OR EXISTS (
+        SELECT 1 FROM staff.employments e
+        LEFT JOIN LATERAL (
+            SELECT t.department_id, t.location_id FROM staff.employment_terms t
+            WHERE t.employment_id = e.id AND t.valid_from <= @today::date
+            ORDER BY t.valid_from DESC
+            LIMIT 1
+        ) t ON true
+        WHERE e.person_id = p.id AND e.start_date <= @today::date
+          AND (e.end_date IS NULL OR e.end_date >= @today::date)
+          AND (sqlc.narg('unit_id')::bigint IS NULL OR e.business_unit_id = sqlc.narg('unit_id')::bigint)
+          AND (sqlc.narg('department_id')::bigint IS NULL OR t.department_id = sqlc.narg('department_id')::bigint)
+          AND (sqlc.narg('location_id')::bigint IS NULL OR t.location_id = sqlc.narg('location_id')::bigint)
+    )
+);
 
 -- name: ListPeople :many
 -- ListPeople is one page of the directory, by display name, the work group's
--- columns only.
+-- columns only, filtered as CountPeople counts.
 SELECT p.id, p.employee_number, p.given_name, p.family_name, p.display_name,
        p.work_email, p.phone_work, p.work_country, p.preferred_language
 FROM staff.people p
@@ -148,6 +186,38 @@ AND (NOT @active_only::boolean OR EXISTS (
     WHERE e.person_id = p.id AND e.start_date <= @today::date
       AND (e.end_date IS NULL OR e.end_date >= @today::date)
 ))
+AND CASE @status::text
+    WHEN 'all' THEN true
+    WHEN 'ended' THEN
+        EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+        AND NOT EXISTS (
+            SELECT 1 FROM staff.employments e
+            WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= @today::date)
+        )
+    ELSE
+        NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+        OR EXISTS (
+            SELECT 1 FROM staff.employments e
+            WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= @today::date)
+        )
+END
+AND (
+    (sqlc.narg('unit_id')::bigint IS NULL AND sqlc.narg('department_id')::bigint IS NULL AND sqlc.narg('location_id')::bigint IS NULL)
+    OR EXISTS (
+        SELECT 1 FROM staff.employments e
+        LEFT JOIN LATERAL (
+            SELECT t.department_id, t.location_id FROM staff.employment_terms t
+            WHERE t.employment_id = e.id AND t.valid_from <= @today::date
+            ORDER BY t.valid_from DESC
+            LIMIT 1
+        ) t ON true
+        WHERE e.person_id = p.id AND e.start_date <= @today::date
+          AND (e.end_date IS NULL OR e.end_date >= @today::date)
+          AND (sqlc.narg('unit_id')::bigint IS NULL OR e.business_unit_id = sqlc.narg('unit_id')::bigint)
+          AND (sqlc.narg('department_id')::bigint IS NULL OR t.department_id = sqlc.narg('department_id')::bigint)
+          AND (sqlc.narg('location_id')::bigint IS NULL OR t.location_id = sqlc.narg('location_id')::bigint)
+    )
+)
 ORDER BY p.display_name, p.id
 LIMIT @page_size OFFSET @page_offset;
 

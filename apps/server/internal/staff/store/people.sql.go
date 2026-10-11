@@ -60,12 +60,48 @@ AND (NOT $2::boolean OR EXISTS (
     WHERE e.person_id = p.id AND e.start_date <= $3::date
       AND (e.end_date IS NULL OR e.end_date >= $3::date)
 ))
+AND CASE $4::text
+    WHEN 'all' THEN true
+    WHEN 'ended' THEN
+        EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+        AND NOT EXISTS (
+            SELECT 1 FROM staff.employments e
+            WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= $3::date)
+        )
+    ELSE
+        NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+        OR EXISTS (
+            SELECT 1 FROM staff.employments e
+            WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= $3::date)
+        )
+END
+AND (
+    ($5::bigint IS NULL AND $6::bigint IS NULL AND $7::bigint IS NULL)
+    OR EXISTS (
+        SELECT 1 FROM staff.employments e
+        LEFT JOIN LATERAL (
+            SELECT t.department_id, t.location_id FROM staff.employment_terms t
+            WHERE t.employment_id = e.id AND t.valid_from <= $3::date
+            ORDER BY t.valid_from DESC
+            LIMIT 1
+        ) t ON true
+        WHERE e.person_id = p.id AND e.start_date <= $3::date
+          AND (e.end_date IS NULL OR e.end_date >= $3::date)
+          AND ($5::bigint IS NULL OR e.business_unit_id = $5::bigint)
+          AND ($6::bigint IS NULL OR t.department_id = $6::bigint)
+          AND ($7::bigint IS NULL OR t.location_id = $7::bigint)
+    )
+)
 `
 
 type CountPeopleParams struct {
-	Patterns   []string
-	ActiveOnly bool
-	Today      pgtype.Date
+	Patterns     []string
+	ActiveOnly   bool
+	Today        pgtype.Date
+	Status       string
+	UnitID       *int64
+	DepartmentID *int64
+	LocationID   *int64
 }
 
 // CountPeople is ListPeople's total. @patterns holds one ILIKE-escaped
@@ -73,9 +109,23 @@ type CountPeopleParams struct {
 // matches at least one of the searched fields, and everyone passes when there
 // is no search (unnest of an empty array yields no rows). @active_only keeps
 // the people active on @today — the colleague's directory (plan reading 15),
-// judged as PersonActiveOn judges one person.
+// judged as PersonActiveOn judges one person. @status is staff:manage's
+// filter on where people stand on @today: 'current' — someone active or
+// starting later (an employment not ended before today) or with no
+// employment at all — 'ended' (every employment ended before today) or
+// 'all'. @unit_id, @department_id and @location_id, each when given, keep
+// the people with one employment in force on @today in that unit whose terms
+// in force that day name that department and location.
 func (q *Queries) CountPeople(ctx context.Context, arg CountPeopleParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countPeople, arg.Patterns, arg.ActiveOnly, arg.Today)
+	row := q.db.QueryRow(ctx, countPeople,
+		arg.Patterns,
+		arg.ActiveOnly,
+		arg.Today,
+		arg.Status,
+		arg.UnitID,
+		arg.DepartmentID,
+		arg.LocationID,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -398,16 +448,52 @@ AND (NOT $2::boolean OR EXISTS (
     WHERE e.person_id = p.id AND e.start_date <= $3::date
       AND (e.end_date IS NULL OR e.end_date >= $3::date)
 ))
+AND CASE $4::text
+    WHEN 'all' THEN true
+    WHEN 'ended' THEN
+        EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+        AND NOT EXISTS (
+            SELECT 1 FROM staff.employments e
+            WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= $3::date)
+        )
+    ELSE
+        NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+        OR EXISTS (
+            SELECT 1 FROM staff.employments e
+            WHERE e.person_id = p.id AND (e.end_date IS NULL OR e.end_date >= $3::date)
+        )
+END
+AND (
+    ($5::bigint IS NULL AND $6::bigint IS NULL AND $7::bigint IS NULL)
+    OR EXISTS (
+        SELECT 1 FROM staff.employments e
+        LEFT JOIN LATERAL (
+            SELECT t.department_id, t.location_id FROM staff.employment_terms t
+            WHERE t.employment_id = e.id AND t.valid_from <= $3::date
+            ORDER BY t.valid_from DESC
+            LIMIT 1
+        ) t ON true
+        WHERE e.person_id = p.id AND e.start_date <= $3::date
+          AND (e.end_date IS NULL OR e.end_date >= $3::date)
+          AND ($5::bigint IS NULL OR e.business_unit_id = $5::bigint)
+          AND ($6::bigint IS NULL OR t.department_id = $6::bigint)
+          AND ($7::bigint IS NULL OR t.location_id = $7::bigint)
+    )
+)
 ORDER BY p.display_name, p.id
-LIMIT $5 OFFSET $4
+LIMIT $9 OFFSET $8
 `
 
 type ListPeopleParams struct {
-	Patterns   []string
-	ActiveOnly bool
-	Today      pgtype.Date
-	PageOffset int32
-	PageSize   int32
+	Patterns     []string
+	ActiveOnly   bool
+	Today        pgtype.Date
+	Status       string
+	UnitID       *int64
+	DepartmentID *int64
+	LocationID   *int64
+	PageOffset   int32
+	PageSize     int32
 }
 
 type ListPeopleRow struct {
@@ -423,12 +509,16 @@ type ListPeopleRow struct {
 }
 
 // ListPeople is one page of the directory, by display name, the work group's
-// columns only.
+// columns only, filtered as CountPeople counts.
 func (q *Queries) ListPeople(ctx context.Context, arg ListPeopleParams) ([]ListPeopleRow, error) {
 	rows, err := q.db.Query(ctx, listPeople,
 		arg.Patterns,
 		arg.ActiveOnly,
 		arg.Today,
+		arg.Status,
+		arg.UnitID,
+		arg.DepartmentID,
+		arg.LocationID,
 		arg.PageOffset,
 		arg.PageSize,
 	)

@@ -3,6 +3,7 @@ package staff
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 )
@@ -37,6 +38,21 @@ const (
 	codeUserInactive                = "user_inactive"
 	codeUserLinkedElsewhere         = "user_linked_elsewhere"
 	codeNoPerson                    = "no_person"
+
+	codeEmploymentNumberTaken   = "employment_number_taken"
+	codeEndReasonRequired       = "end_reason_required"
+	codeTermsRequiredFields     = "terms_required_fields"
+	codeTemporaryGroundRequired = "temporary_ground_required"
+	codeAppointmentFormMismatch = "appointment_form_mismatch"
+	codeProbationTooLong        = "probation_too_long"
+	codeFullTimeHoursMismatch   = "full_time_hours_mismatch"
+	codeTermsValidFromTaken     = "terms_valid_from_taken"
+	codeTermsBeforeStart        = "terms_before_start"
+	codeTermsAfterEnd           = "terms_after_end"
+	codeTermsFirstRowStart      = "terms_first_row_start"
+	codeTermsNotLatest          = "terms_not_latest"
+	codeSelfManager             = "self_manager"
+	codeManagerCycle            = "manager_cycle"
 )
 
 // The titles this module's validation problems carry, one per thing a request
@@ -52,9 +68,13 @@ const (
 	invalidNextOfKinTitle    = "Invalid next of kin"
 	invalidRolesTitle        = "Invalid roles"
 	invalidPagingTitle       = "Invalid paging"
+	invalidListTitle         = "Invalid list filter"
 	invalidNationalIDTitle   = "Invalid national identity number"
 	invalidBankAccountTitle  = "Invalid bank account"
 	invalidLinkTitle         = "Invalid user link"
+	invalidEmploymentTitle   = "Invalid employment"
+	invalidEndTitle          = "Invalid end of employment"
+	invalidTermsTitle        = "Invalid terms"
 )
 
 // withFieldError adds one message to a map another rule may already have put
@@ -148,4 +168,12 @@ func structureArchived(detail string) gen.StaffProblem {
 func structureDefault(what string) gen.StaffProblem {
 	return conflict(codeStructureDefault, "The default "+what,
 		fmt.Sprintf("This is the default %s, and there is always exactly one. Make another %s the default first.", what, what))
+}
+
+// managerCycle is the 409 a write answers when it would close a loop in the
+// manager graph on day: a person who, through their managers, would manage
+// themselves. It names nobody — the loop runs through other people's rows.
+func managerCycle(day time.Time) error {
+	return refuseConflict(conflict(codeManagerCycle, "Manager cycle",
+		fmt.Sprintf("This would make someone their own manager, through the people above them, from %s.", day.Format(time.DateOnly))))
 }
