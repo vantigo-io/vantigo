@@ -93,7 +93,8 @@ Når et kontonummer settes eller endres, får personen en e-post — til den pri
 e-postadressen når de har en, ellers til jobbadressen, på det foretrukne språket — som
 nevner kontoens fire siste sifre og ikke mer, så en endring noen andre har gjort ikke
 går upåaktet hen. E-posten går gjennom installasjonens egen SMTP-server etter at
-endringen er lagret.
+endringen er lagret. Å sende kontonummeret som allerede er lagret, på nytt endrer
+ingenting og sender ingen e-post.
 
 - Den krever `MAIL_DRIVER=smtp` og `SMTP_*`-innstillingene
   ([Installasjon](/nb/admin/installation/#e-post-og-observerbarhet)). Med en hvilken

@@ -2014,7 +2014,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/StaffProblem'
-                    description: Bad Request — a field did not pass, or a property the request does not name; a field error when the employee number differs from the person's; work_email_taken when another person has the work email.
+                    description: Bad Request — a field did not pass, or a property the request does not name; a field error when the employee number differs from the person's; work_email_taken when another person has the work email; national_id_birth_date_mismatch on birthDate when the person's fødselsnummer or d-nummer encodes another birth date.
                 "401":
                     content:
                         application/json:
@@ -2041,7 +2041,7 @@ paths:
             x-vantigo-access: permission:staff:access+staff:manage
     /api/v1/staff/people/{id}/bank-account:
         put:
-            description: Seals a bank account on the person (design S4) — staff:personal-data only, never staff:manage alone and never the person. Its kind and last four digits are kept in clear. The change is a bank_account_set event carrying the kind and the last four digits, and after it has committed the person is mailed — at their private email, else their work email, in their preferred language, naming at most the last four digits; with neither address, or a mail driver other than smtp, the mail is skipped with a log line.
+            description: Seals a bank account on the person (design S4) — staff:personal-data only, never staff:manage alone and never the person. Its kind and last four digits are kept in clear. The account already on file changes nothing — no event, no mail. A change is a bank_account_set event carrying the kind and the last four digits, and after it has committed the person is mailed — at their private email, else their work email, in their preferred language, naming at most the last four digits; with neither address, or a mail driver other than smtp, the mail is skipped with a log line.
             operationId: putStaffPeopleByIdBankAccount
             parameters:
                 - in: path
@@ -2182,7 +2182,7 @@ paths:
             x-vantigo-access: permission:staff:access
     /api/v1/staff/people/{id}/national-id:
         put:
-            description: 'Seals a national identity number on the person (design S4) — staff:personal-data only, never staff:manage alone and never the person — and indexes it by a keyed MAC over its kind, country and value in a unique column, so the same number on two people is refused without opening anything. Only its kind (and a foreign id''s country) is kept in clear. A fødselsnummer or d-nummer that encodes another birth date than the person''s, when one is set, is refused. The change is a national_id_set event carrying the kind only.'
+            description: 'Seals a national identity number on the person (design S4) — staff:personal-data only, never staff:manage alone and never the person — and indexes it by a keyed MAC over its kind, country and value in a unique column, so the same number on two people is refused without opening anything. Only its kind (and a foreign id''s country) is kept in clear. A fødselsnummer or d-nummer that encodes another birth date than the person''s, when one is set, is refused. The change is a national_id_set event carrying the kind only; the number already on file, however it is typed, changes nothing.'
             operationId: putStaffPeopleByIdNationalId
             parameters:
                 - in: path

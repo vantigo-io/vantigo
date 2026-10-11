@@ -300,8 +300,8 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `national_id_revealed` | Empty; the actor is the viewer. |
 | `bank_account_set` | `fields.bankAccount`: `{kind, last4}` before and after. |
 | `bank_account_revealed` | Empty; the actor is the viewer. |
-| `user_linked` | `fields.user`: the user linked before (`{id}`), if any, and now (`{id, displayName}`). |
-| `user_unlinked` | `fields.user`: the user that was linked (`{id}`). |
+| `user_linked` | `fields.user`: the user linked before, if any, and now, each `{id, displayName}`. |
+| `user_unlinked` | `fields.user`: the user that was linked (`{id, displayName}`). |
 
 `GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
 the person themselves, `staff:manage` and `staff:personal-data` (and, with employments,
@@ -355,7 +355,10 @@ permission).
   the server cannot decode is a bare 400 that repeats nothing either.
 - A fødselsnummer or d-nummer encodes a birth date. When the person has a birth date
   and the two differ, the write is `national_id_birth_date_mismatch` (400): one of them
-  is wrong, and HR corrects whichever it is.
+  is wrong, and HR corrects whichever it is. The rule holds the other way too: HR's
+  `PUT /people/{id}` setting a birth date the number on file does not encode is
+  `national_id_birth_date_mismatch` on `birthDate`, the number opened under the
+  person's lock to judge it.
 - The number is indexed by an HMAC-SHA256 under `staff/national-id-index` of
   `kind | country | value`, in a unique column, so the same number on a second person
   is `national_id_duplicate` (400) — found without opening anything, settled by the
@@ -373,7 +376,9 @@ holds. Anything else is `bank_account_invalid` (400). The kind and the last four
 are kept in clear and answered as `bankAccount { kind, last4 }`.
 
 A change of either is an event carrying the kind (and the bank account's last four
-digits) before and after. Neither write moves the person's revision: the revision
+digits) before and after. The value already on file, however it is typed, is no
+change: no event, and for the bank account no mail — the national id is compared by
+its MAC, the bank account by opening the one on file. Neither write moves the person's revision: the revision
 guards the editable fields, which these are not.
 
 **The bank-change mail.** After a bank account is set and the change has committed,
@@ -382,7 +387,8 @@ preferred language (`en` or `nb`), naming the account's last four digits and not
 more. It goes through `mail.SendOutbound` (the `Deps.SMTPSend` seam), outside every
 transaction, on a context the request's cancellation does not reach. It is skipped with
 a log line when the mail driver is not `smtp` or the person has no email, and a failed
-send is logged with the person's id; the change stands either way.
+send is logged with the person's id and the address taken out of the error, however
+the server cased it; the change stands either way.
 
 **The reveals**, `POST /people/{id}/national-id/reveal` and
 `POST /people/{id}/bank-account/reveal`, open the value and answer it once —

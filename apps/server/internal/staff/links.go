@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/jackc/pgx/v5"
 
@@ -69,6 +70,25 @@ func linkResponse(row *store.PersonLinkRow, user *gen.StaffPersonUser) gen.Staff
 	}
 	state, managed := row.State, row.Managed
 	return gen.StaffPersonLink{Linked: true, State: &state, Managed: &managed, User: user}
+}
+
+// linkName is a link's user as the directory named them.
+type linkName struct{ id, name string }
+
+// currentLinkName is the user a person is linked to now, read on the pool and
+// named through the directory — never inside a transaction — and nil when
+// the person is linked to nobody. A user the directory no longer knows is
+// "Unknown user".
+func (s *server) currentLinkName(ctx context.Context, personID int64) (*linkName, error) {
+	current, err := personLink(ctx, store.New(s.deps.Pool), personID)
+	if err != nil || current == nil {
+		return nil, err
+	}
+	user, err := s.linkedUser(ctx, &current.ExternalID)
+	if err != nil {
+		return nil, err
+	}
+	return &linkName{id: current.ExternalID, name: user.DisplayName}, nil
 }
 
 // GetStaffPeopleByIdUser Get a person's self-service link
@@ -152,6 +172,24 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 	if err != nil {
 		return nil, err
 	}
+	// The user linked now, named by the directory before the transaction so
+	// an unlink or a relink names who it took the person from, as a link
+	// names who it gave them to. A link that changed in between is named by
+	// its id alone.
+	was, err := s.currentLinkName(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	from := func(current *store.PersonLinkRow) any {
+		if current == nil {
+			return nil
+		}
+		out := map[string]any{"id": current.ExternalID}
+		if was != nil && was.id == current.ExternalID {
+			out["displayName"] = was.name
+		}
+		return out
+	}
 
 	var row *store.PersonLinkRow
 	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
@@ -166,9 +204,7 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 			if err := txq.DeletePersonLink(ctx, req.Id); err != nil {
 				return fmt.Errorf("staff: unlink person %d: %w", req.Id, err)
 			}
-			return s.recordChanges(ctx, txq, req.Id, eventUserUnlinked, who, changes{"user": fieldChange{
-				From: map[string]any{"id": current.ExternalID},
-			}})
+			return s.recordChanges(ctx, txq, req.Id, eventUserUnlinked, who, changes{"user": fieldChange{From: from(current)}})
 		}
 		id := target.ID.String()
 		if current != nil && current.ExternalID == id {
@@ -188,12 +224,8 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 		if row, err = personLink(ctx, txq, req.Id); err != nil {
 			return err
 		}
-		var from any
-		if current != nil {
-			from = map[string]any{"id": current.ExternalID}
-		}
 		return s.recordChanges(ctx, txq, req.Id, eventUserLinked, who, changes{"user": fieldChange{
-			From: from,
+			From: from(current),
 			To:   map[string]any{"id": id, "displayName": target.DisplayName},
 		}})
 	})
@@ -201,6 +233,9 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 		return gen.PutStaffPeopleByIdUser404Response{}, nil
 	}
 	if r, ok := asRefusal(err); ok {
+		if r.status == http.StatusNotFound {
+			return gen.PutStaffPeopleByIdUser404Response{}, nil
+		}
 		return gen.PutStaffPeopleByIdUser400ApplicationProblemPlusJSONResponse(r.problem), nil
 	}
 	if err != nil {

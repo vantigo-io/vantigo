@@ -90,11 +90,12 @@ func TestLink_Rules(t *testing.T) {
 		t.Fatalf("kinds = %v, want %v", kinds, want)
 	}
 	relinked := fieldsOf(events[1])["user"].(map[string]any)
-	if relinked["from"].(map[string]any)["id"] != kari.String() || relinked["to"].(map[string]any)["id"] != other.String() {
-		t.Errorf("the relink = %v, want from Kari's user to the new one", relinked)
+	if from := relinked["from"].(map[string]any); from["id"] != kari.String() || from["displayName"] != "Kari the user" ||
+		relinked["to"].(map[string]any)["id"] != other.String() {
+		t.Errorf("the relink = %v, want from Kari's user, named, to the new one", relinked)
 	}
-	if from := fieldsOf(events[0])["user"].(map[string]any)["from"].(map[string]any); from["id"] != other.String() {
-		t.Errorf("the unlink = %v, want from the new user", from)
+	if from := fieldsOf(events[0])["user"].(map[string]any)["from"].(map[string]any); from["id"] != other.String() || from["displayName"] != "Kari's new account" {
+		t.Errorf("the unlink = %v, want from the new user, named as user_linked names one", from)
 	}
 	var reads int
 	for _, call := range contractCalls.by(hrID) {
@@ -209,5 +210,29 @@ func TestAssignableUsers_ActiveUsersCappedAtTwenty(t *testing.T) {
 	do(t, hr, http.MethodGet, assignableUsersPath+"?q=zelda", nil, http.StatusOK, &one)
 	if len(one) != 1 || one[0].Id != zelda || one[0].DisplayName != "Zelda Unique" {
 		t.Errorf("q=zelda = %+v, want Zelda alone", one)
+	}
+}
+
+// A body that does not name userId is no unlink: the decoder reads it as
+// null, so the handler refuses it naming userId, and the link stands with no
+// event written.
+func TestLink_ABodyWithoutUserIdUnlinksNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	p := createPerson(t, hr, newPerson("Kari", "Nordmann"))
+	_, user := signIn(t, h)
+	linkThroughAPI(t, hr, p.Id, user)
+	for _, body := range []string{`{}`, `{"other":1}`} {
+		pr := refused(t, hr.Do(http.MethodPut, userPath(p.Id), nil, modtest.RawBody("application/json", []byte(body))), http.StatusBadRequest, "")
+		if len(pr.Errors["userId"]) == 0 {
+			t.Errorf("%s: errors = %v, want userId named", body, pr.Errors)
+		}
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.identity_links WHERE person_id = $1 AND external_id = $2`, p.Id, user.String()); n != 1 {
+		t.Errorf("links = %d, want the one untouched", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1 AND kind = 'user_unlinked'`, p.Id); n != 0 {
+		t.Errorf("user_unlinked events = %d, want none", n)
 	}
 }
