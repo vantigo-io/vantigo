@@ -2,9 +2,10 @@
 
 A new module, `staff`. Research: `docs/superpowers/research/2026-10-11-staff-module.md`
 ("R", cited by section); its §10 holds the nineteen decisions the owner took on
-2026-10-11, which this design implements and does not reopen. Revision 1, after the
+2026-10-11, which this design implements and does not reopen. Revision 2, after the
 critical review of 2026-10-11 (five blockers, fourteen major findings, thirty minor —
-every one taken in its place; §12 lists the readings the review left to the owner).
+every one taken in its place) and its re-check (seventeen edits, taken; its five open
+questions answered as readings 30–34).
 Code references are against `main` at `6941e58d`; `srv/` abbreviates
 `apps/server/internal/`, `mig/` `srv/db/migrations/`, `boundaries.md` the page
 `docs/src/content/docs/en/contributing/module-boundaries.md`.
@@ -32,7 +33,14 @@ what everything else about the person hangs on:
 The sequence decided (R §10.11): **this phase** (register, absence, the account flag
 with the local path) → the Entra module → Staff phase 2 (competence and preferences)
 → Staffing. Four deliveries, four PRs, **one migration each** (numbers assigned at
-plan time; the invoices phase 4 PR 2 branch is in flight):
+plan time; the invoices phase 4 PR 2 branch is in flight): A1's creates `people` and
+`settings` with every §3 column they will ever need in this phase plus the A1
+tables; A2's adds documents, deletions and the retention columns; B's adds the
+absence tables and the absence rate's inputs; C's spans `identity` and `staff` in one
+file (the precedent of `00024` and `00040`) for the columns of S24, the invitation's
+`user_id`, `provisioning_roles` and `identity_links`. A2's payroll export ships without
+leave and absence columns, which B adds; A2's stats ship without the absence rate,
+which B adds.
 
 - **A1 — People and employments**: the module, people with the sealed identifiers,
   employments and their dated terms, structure (legal entities, business units,
@@ -190,15 +198,18 @@ excluded), pending (requested, shown apart), remaining. **Untaken days do not
 vanish**: in January the attention list names every person with days left from the
 year before and offers the carry-over in one action, agreed or forced with a
 reason; HR may also set the installation to carry over automatically as forced
-(`auto_carry_over`, default off). **Sickness during ferie returns the days** (fl. § 9):
-a sykmelding over approved ferie is accepted, the overlapped ferie days are given
-back with an event, and the ferie row is split around it. Feriepenger are payroll's:
+(`auto_carry_over`, default off). **Sickness during ferie returns the days** (fl. § 9 (1): helt
+arbeidsufør, with a legeerklæring): a **100 % sykmelding** over approved ferie is
+accepted and the ferie row is split around it, which alone returns the days to
+`remaining` — no adjustment is written; a graded sykmelding over ferie is allowed too
+and splits nothing. At year end, returned days still unused carry over under the
+January action like any other. Feriepenger are payroll's:
 the account holds days, never money.
 
 **S10 — Sickness is a case with a timeline; egenmelding is counted per occurrence
 in calendar days.** A **sick case** (`sick_cases`) opens with the first absent day of
 a sickness and gathers its egenmelding and sykmelding rows; a sick absence that
-starts fewer than sixteen calendar days after the last day of a case joins it
+starts with fewer than sixteen calendar days between it and the last day of a case joins it
 (ftrl. § 8-19 (3), R §4.5). The **arbeidsgiverperiode** ends on the case's sixteenth
 *summed* absence day across its rows, not on a calendar offset (M5); the other
 milestones — oppfølgingsplan at 4 weeks, dialogmøte 1 at 7, NAV's aktivitetsplikt at
@@ -260,7 +271,8 @@ streamed through the API with `nosniff` and a disposition. A document has a
 **category** (contract, attest, certificate, correspondence, health, other, and the
 company's own), an optional `validTo`, an optional `signedAt`, and the **retention
 class** its category implies (S15). The `health` category is readable only under
-`staff:personal-data`; every other document is visible to the person it concerns.
+`staff:personal-data` and by the person it concerns; every other document is visible
+to the person it concerns as well as to HR.
 
 **S15 — Retention is per class on every column and category, with an erase run that
 finishes.** Six classes (R §4.9, §1.2 finding 9): **A** pay and contract
@@ -291,7 +303,7 @@ duplicate is a choice, not an accident. Identity's user is never deleted by this
 module (R §10.13); `Deactivate` is the most it asks.
 
 **S16 — The person's own data, exported.** `GET /me/export` (the person's own,
-sealed values included — they are theirs) and `GET /people/{id}/personal-data`
+the sealed values omitted — reading 31) and `GET /people/{id}/personal-data`
 (`staff:personal-data`) stream one JSON document with every field group, every
 absence, every case, every event and the documents' metadata (the files follow on the
 archive's download endpoints), the shape of customers' export (R §7.4). The module
@@ -318,7 +330,7 @@ then one row per **leave whose total length exceeds fourteen days** and that tou
 the month, with the absence id as its `permisjonId`, its whole first and last day, its
 a-melding description and percentage, then the absence days per type and the care
 days used beyond the employer's ten. Semicolon, BOM, CRLF, as Expenses' CSV
-(`srv/expenses/reminders.go:590-608`). An export is an event with its hash; the rows
+(`srv/expenses/reimbursements.go:584-594`, decimal comma included). An export is an event with its hash; the rows
 it drew on are class A for five years.
 
 **S19 — Import and export of the register.** `POST /people/import` (CSV, dry run
@@ -335,8 +347,9 @@ today, open sick cases, absence rate for the trailing twelve months) and
 follow-ups): absence awaiting the caller's decision; a contract overdue (no document
 of category contract on an employment seven days after its start — immediately for
 one under a month or hired out, R §4.1); a probation ending within a month; a
-temporary employment on grounds a or b past twelve months (notice due) or whose
-chain of temporary employments for the person passes thirty-six (converts, R §4.2);
+temporary employment past twelve months (notice due, any ground) or whose chain of
+temporary employments on grounds a or b for the person passes thirty-six (converts,
+R §4.2);
 a sick-case milestone due or overdue for the caller's reports; untaken holiday from
 last year (January) and fewer than the main-period days approved by 1 June; reports
 without a manager; a provisioning failure or a person blocked from an account, with
@@ -397,14 +410,19 @@ managed with the employee number — which an Owner does once, under `OwnerManag
 "staff", employeeNumber}` (and `/unmanage`), the **adoption** that also brings the
 installation's current staff into the register (open question 4, now in scope).
 `Prepare` by email alone finds nothing; the email is checked only for a collision
-(`account_email_taken`). `Activate` and `Deactivate` refuse an unmanaged user
-(`account_not_managed`), refuse any Owner or SystemAdmin (`account_privileged` — the
-Owner handles Owners by hand), and refuse the last active Owner as identity's own
-disable does (`srv/identity/users.go:452-530`). **An Owner's disable wins**:
+(`account_email_taken`). `Prepare` (when it links), `Activate`, `Deactivate`
+and `Update` refuse an unmanaged user (`account_not_managed`) and any Owner or
+SystemAdmin (`account_privileged` — the Owner handles Owners by hand); adoption
+refuses Owners and SystemAdmins the same way; promoting a managed user to Owner
+**unmanages** them, audited, and the link reports `account_privileged`; `Deactivate`
+refuses the last active Owner as identity's own disable does
+(`srv/identity/users.go:452-530`). **An Owner's disable wins**:
 `Activate` never re-enables a user whose `disabled_by` is `owner`; it reports
 `blocked_by_owner` to attention. Every contract method takes an **actor** (the HR
 user who pressed *Run now*, or `system:staff-accounts`) that identity writes to its
-audit (`srv/identity/audit.go:34-64`). Identity's delete refuses a managed user
+audit (`srv/identity/audit.go:34-64`: a user actor as `actor_user_id`; a system actor
+as a null `actor_user_id` with `details.actor = "system:staff-accounts"` and no
+request trace, a new case beside the bootstrap's anonymous one). Identity's delete refuses a managed user
 (`account_managed`); its users list shows `pending` and "managed by Staff"; its
 `Resend` carries the invitation's `user_id`.
 
@@ -412,7 +430,7 @@ audit (`srv/identity/audit.go:34-64`). Identity's delete refuses a managed user
 `contracts.AccountProvisioning`, implemented by identity, consumed by staff through
 `Deps.Accounts`, resolved by `Compose` **and by `module.Workers`** (B1: today
 `module.Workers` resolves no single-provider slot, `srv/module/workers.go:20-42`, and
-worker-mode Deps carry no `Users`, `srv/cmd/vantigo/main.go:262-283`; both gain the
+worker-mode Deps carry no `Users`, `apps/server/cmd/vantigo/main.go:261-283`; both gain the
 slot, and identity's provider is buildable from worker-mode Deps):
 
 ```go
@@ -439,7 +457,8 @@ type AccountProvisioning interface {
     Activate(ctx context.Context, actor Actor, userID uuid.UUID) (AccountRef, error)
     // Deactivate: disable, end sessions, revoke pending invitations. Idempotent.
     Deactivate(ctx context.Context, actor Actor, userID uuid.UUID) (AccountRef, error)
-    // Update: display name, email and language on a managed user (the mover).
+    // Update: display name, email and language on a managed user (the mover);
+    // federated mode: language and employee number only.
     Update(ctx context.Context, actor Actor, userID uuid.UUID, spec AccountSpec) (AccountRef, error)
     Account(ctx context.Context, userID uuid.UUID) (*AccountRef, error) // (nil, nil) if unknown
 }
@@ -453,12 +472,16 @@ already does (`srv/identity/invitations.go:125-135`). `FindByEmail` is not offer
 (M4). Identity gains for it: the columns of S24; a `pending` state that is explicit
 (`managed_by` set, `pending_since` set, no credential), not inferred from a null
 password — OIDC and SCIM users have none either (M2); an invitation that names the
-user it completes (`invitations.user_id`), so `PostIdentityInvitationsAccept`
+user it completes (`invitations.user_id`; it stores role `User`, which the
+`identity.invitations.role` check allows, and accept assigns nothing beyond what
+`Prepare` already gave — the built-in `User` role every account has), so
+`PostIdentityInvitationsAccept`
 (`srv/identity/invitations.go:241`) **completes** that user — sets the password,
 confirms the email, clears `pending_since`, assigns no role itself (the roles were
 assigned at activation), audits a distinct action — instead of inserting one and
 refusing the email; an invitation is issued only when none is active, re-issued by
-the next cycle after the seven-day expiry at most three times, then attention
+the next cycle after `INVITATION_LIFETIME` expires (default 168 h) at most three
+times, then attention
 (`invitation_unanswered`); a mail failure revokes the invitation as today and counts
 as an attempt; the Owner's manual invite answers 409 `account_exists` for a pending
 person, documented.
@@ -466,24 +489,32 @@ person, documented.
 **S26 — The employee role is a custom role the Owner names.** The built-in `User`
 role carries no permissions and cannot be edited
 (`srv/identity/authorization.go:657`; `mig/00002_identity_baseline.sql:44-46`), so a
-provisioned employee would see an empty dashboard (B2). Staff's settings hold
-`employee_role_ids` — custom roles an Owner created, typically "Employee" with
-`staff:access`, `time:access` and `expenses:access` — and `Activate` assigns them
-(identity accepts custom roles only). With none configured the worker does not
-activate and attention says `employee_role_missing`; the admin page and the Settings
-page both explain the one-time step. Adopted users keep their roles.
+provisioned employee would see an empty dashboard (B2). **Identity holds the set of
+roles Staff may assign** (`identity.provisioning_roles`, written only by an Owner under
+`OwnerManagement` through `PUT /owner/provisioning-roles`, custom roles only —
+typically one "Employee" role with `staff:access`, `time:access` and
+`expenses:access`), because `staff:manage` must not be able to mint an account holding
+any role it names (identity's `authorizeAssignment`, `srv/identity/authorization.go:279-314`,
+is the gate HR would otherwise bypass). `Activate` assigns exactly that set and refuses
+anything else (`role_not_assignable`); it runs only when the link is not yet active,
+so an Owner's later removal of a role is not undone daily. Staff's Settings page
+reads the set and links to identity's page to change it. With the set empty the
+worker does not activate and attention says `employee_role_missing`; the admin page
+explains the one-time step. Adopted users keep their roles.
 
 **S27 — The accounts worker, daily, per-link claims, in the business time zone.**
-`staff-accounts` runs every `STAFF_WORKERS_POLL` (default 1 h) and acts once per
-business day per link: it reads the due links on the pool, **claims each with a lease
-id and a lease-until on the link row** (the invoices reminder worker's pattern,
+`staff-accounts` runs every `STAFF_WORKERS_POLL` (default 1 h); a successful step
+acts once per business day per link, a failed one retries at each poll up to three
+times and then daily. A person due for `Prepare` with no link gets one inserted first
+(`state = preparing`, `external_id` null) under the person lock, so every step has a
+row to claim and a place for its attempts. It reads the due links on the pool,
+**claims each with a lease id and a lease-until on the link row** (the invoices reminder worker's pattern,
 `srv/invoices/reminder_worker.go:206-216`), releases the connection, calls identity
 with no transaction open, and writes the result — never the customers anonymisation
 loop, whose one lease connection held across a call is the pool starvation PR #124
 fixed (`srv/customers/anonymisation_worker_test.go:647-651`). `POST /accounts/run`
 and `POST /people/{id}/account/run` run a cycle on demand (`staff:manage`, the caller
-as actor). Three failures put the person on attention; the fourth and later attempts
-back off to daily. The decision per person per cycle is §4's table.
+as actor). Three failures put the person on attention. The decision per person per cycle is §4's table.
 
 **S28 — Frontend, one app, mobile-first where the employee is.** `apps/staff/frontend`
 (`@vantigo/staff-ui`), the tile "Staff" / "Ansatte". Sidebar: **My page**
@@ -520,7 +551,7 @@ column (S15).
 | `preferred_language` | varchar(2) not null default `nb` | | C |
 | `bank_account_sealed`, `bank_account_last4`, `bank_account_kind` | bytea, char(4), varchar(10) | `bban`, `iban` | D |
 | `children_under_12`, `sole_carer`, `chronically_ill_children` | smallint, boolean, smallint | S11 | D |
-| `self_cert_withdrawn_until`, `self_cert_withdrawn_reason` | date, varchar(500) | S10 | E |
+| `self_cert_withdrawn_until`, `self_cert_withdrawn_reason` | date, varchar(500) | S10; blanked when the withdrawal lapses plus `healthRetentionDays` | E |
 | `provision_account`, `provision_from`, `account_email_kind` | boolean, date, varchar(10) | S22 | C |
 | `legal_hold`, `legal_hold_reason`, `legal_hold_by_user_id`, `legal_hold_at` | | F | — |
 | `erased_at`, `reassessed_at`, `reassessed_by_user_id` | timestamptz, …, uuid | S15 | C |
@@ -601,22 +632,27 @@ stay referenced and leave the pickers.
 
 `staff.holiday_adjustments` — `person_id`, `year` smallint, `days` numeric(5,1)
 (signed, working days), `reason` (`agreed_carry_over`, `forced_carry_over`,
-`sick_during_holiday`, `correction`), `note`, `by_user_id`; class C; listed and deleted
-by HR.
+`correction`), `note` (D), `by_user_id`; class C; listed and deleted by HR.
 
 `staff.absences` — `person_id`, `type_id`, `first_day`, `last_day`, `hours`
 numeric(4,2) (hour types; `first_day = last_day`), `percent` numeric(5,2) default 100,
 `status` (`requested`, `approved`, `rejected`, `cancelled`, `registered`), `note`
 varchar(500) (null and refused on sick kinds; class D), `case_id` → sick_cases,
 `degree_percent` (sick kinds; class E), `requested_by_user_id`, `decided_by_user_id`,
-`decided_at`, `decision_note`, `self_approved` boolean. Indexes `(person_id,
+`decided_at`, `decision_note` (D), `self_approved` boolean. Sick-kind rows (type,
+dates, degree) and child-sick rows are class **E** whole, not C: that a person was sick
+on a date is health data (R §4.9), so the erase replaces the type with `absent` and
+keeps the days as C. Indexes `(person_id,
 first_day)`, `(type_id)`, `(case_id)`, `(status)` partial on requested. Overlap of two
 approved or registered absences for one person on one day is refused unless both
-allow percent and the percentages sum to at most 100 — except a sick absence over
-approved ferie, which splits the ferie (S9).
+allow percent and the percentages sum to at most 100 — except a 100 % sykmelding over
+approved ferie, which splits the ferie (S9), and a graded one over ferie, which is
+allowed beside it.
 
 `staff.sick_cases` — `person_id`, `first_day`, `closed_at`, `accommodation_note`
-varchar(2000) (E; manager read-write), `max_benefit_estimate` date (editable).
+varchar(2000) (manager read-write), `max_benefit_estimate` date (editable). The case
+and its milestones are class **E** whole; after the E erase the case keeps only its
+id and that it existed between two dates.
 `staff.sick_case_milestones` — `case_id`, `kind` (`employer_period_end`,
 `follow_up_plan`, `dialogue_1`, `nav_activity`, `dialogue_2`), `due_date` (stored,
 recomputed when the case's rows change), `done_at`, `done_by_user_id`, `waived`,
@@ -648,7 +684,7 @@ payload touches, for shaping and erase). Index `(person_id, at)`. Append-only.
 `self_cert_days_per_year`, `self_cert_after_months` default 2, `auto_carry_over`
 boolean, `create_before_days` default 14, `delete_external_after_days` null,
 `retention_grace_days` default 90, `health_retention_days` default 365,
-`employee_role_ids` uuid[], `pension_provider`, `injury_insurer`,
+`pension_provider`, `injury_insurer`,
 `thresholds_acknowledged` jsonb (`{"5": at, "30": at, "50": at, "otp": at}`).
 
 ## 4. Rules
@@ -681,8 +717,8 @@ not withdrawn. Otherwise `self_certification_exhausted`, `self_certification_too
 or `self_certification_withdrawn`, each with the reason, and the person is told to
 register a sykmelding.
 
-**The case.** A sick absence whose first day is within sixteen calendar days after
-the last day of an open or recently closed case joins that case; otherwise it opens
+**The case.** A sick absence with fewer than sixteen calendar days between its first
+day and the last day of an open or recently closed case joins that case; otherwise it opens
 one. The arbeidsgiverperiode ends on the day the case's rows sum to sixteen absence
 days (a 50 % day counts as one day); the other milestones are dated from
 `first_day`; the 52-week estimate is `first_day + 364 days` until edited. A case
@@ -714,7 +750,7 @@ the link:
 
 | State | Local mode | Federated mode |
 |---|---|---|
-| erased, or hold | nothing | nothing |
+| erased | nothing (a hold stops the erase only; every row below applies under a hold) | same |
 | flag off, no L | nothing | nothing |
 | flag off, L active | nothing (HR disables explicitly) | nothing |
 | flag on, no employment at all | attention `no_employment` | same |
@@ -723,18 +759,21 @@ the link:
 | flag on, `T ≥ F`, `T ≤ E` or no E | `Prepare` if no L, then `Activate` (roles; invitation when no credential and none active) → L active; `blocked_by_owner` → L blocked | `Prepare` if no L; never `Activate`; L active when identity says active |
 | flag on, `T > E`, no later employment | `Deactivate` → L disabled | `Deactivate` → L disabled |
 | flag on, `T > E`, later employment with start `S` | as the row for `F = S` | same |
-| L active, spec changed (`last_spec_hash`) | `Update` | `Update` |
+| L active, spec changed (`last_spec_hash`) | `Update` | `Update` of language and employee number only (the IdP owns name and email, which SCIM rewrites, `srv/identity/scim_users.go:282-291`) |
+| rehire: L disabled, flag on, `T ≥ F` | `Activate` | re-enable only when `disabled_by = staff`, no invitation; otherwise attention `disabled_by_owner` |
 
 An early `provisionFrom` (before the start) is honoured: the rows read `F`, not `S`.
 `work_email` (or the private email when chosen) must be set, else attention
-`account_blocked: email_missing`. An identity answer of "unknown user" on an active
+`account_email_missing`. An identity answer of "unknown user" on an active
 link marks it `failed: user_gone` for attention; the worker never re-creates on its
 own (reading 18).
 
 **Erase.** The D columns → null, the D rows (next of kin, D documents' rows marked,
 their objects queued) deleted, sealed values and MACs removed, notes blanked, events'
 D payloads replaced by the field names; the E content per closed case on its own
-schedule; A columns after five years past the end year. Names, birth date, employee
+schedule (sick rows' types to `absent`, cases and milestones to their dates, notes
+blanked, the withdrawal after it lapses, sickness-related event payloads to the kind
+alone); A columns after five years past the end year. Names, birth date, employee
 number, employments, non-pay terms, absence dates and types stay (C). The run reports
 per kind.
 
@@ -768,11 +807,13 @@ requests.
 | Pay terms, seniority, grade | ✓ | — | — | — | ✎ | ✎ |
 | Private: mobile, private phone and email, home address, next of kin, birth date, gender | ✎ (birth date, gender ✓) | — | — | — | ✎ | ✎ |
 | Care-day fields, self-cert withdrawal | ✓ | — | — | — | ✎ | ✎ |
-| National id (kind and on-file only outside the last column), bank (last four) | ✓ own export | — | — | — | ✓ kind/last4 | ✎ reveal |
+| National id | kind, on file | — | — | — | kind, on file | ✎ reveal |
+| Bank account | last four | — | — | — | last four | ✎ reveal |
 | Absence: dates, status | ✓ | "absent" | ✓ | ✓ | ✎ | ✎ |
-| Absence type | ✓ | — | ✓ except `hr_only` → "leave" | ✓ except `hr_only` | ✓ | ✓ |
+| Absence type | ✓ | — | ✓ except `hr_only` → "leave" | ✓ except `hr_only` | ✓ except `hr_only` | ✓ |
 | Absence note (non-sick), degree (sick) | ✓ | — | ✓ | ✓ | ✎ | ✎ |
-| Case milestones, accommodation note | ✓ | — | ✎ | ✓ | ✎ | ✎ |
+| Case milestones | ✓ | — | ✎ | ✎ | ✎ | ✎ |
+| Accommodation note | ✓ | — | ✎ | — | ✎ | ✎ |
 | Milestone notes, health documents | ✓ | — | — | — | — | ✎ |
 | Other documents | ✓ | — | — | — | ✎ | ✎ |
 | Account flag, links | ✓ | — | — | — | ✎ | ✎ |
@@ -788,7 +829,7 @@ employee role (S26) is the Owner's to create and is the one that carries
 
 | Area | Operations |
 |---|---|
-| Meta | `GET /meta` — capabilities, structure, absence types visible to the caller, schemes, the zone, `accountMode`, whether the employee role is set |
+| Meta | `GET /meta` — capabilities, structure, absence types visible to the caller, schemes, the zone, `accountMode`, whether identity's provisioning roles are set |
 | People | `GET /people` (q, unitId, departmentId, locationId, active, paged) · `POST /people` · `GET|PUT /people/{id}` · `DELETE /people/{id}` (created in error: no employment, no absence, no link) · `PUT /people/{id}/national-id` · `POST /people/{id}/national-id/reveal` · `PUT /people/{id}/bank-account` · `POST /people/{id}/bank-account/reveal` · `GET|PUT /people/{id}/next-of-kin` · `GET|PUT /people/{id}/roles` · `GET /people/{id}/events` · `GET /people/{id}/personal-data` · `PUT /people/{id}/legal-hold` · `POST /people/{id}/reassessed` · `GET /people/{id}/org` |
 | Employments | `GET|POST /people/{id}/employments` · `GET|PUT /employments/{id}` · `POST /employments/{id}/end` · `/reopen` · `GET|POST /employments/{id}/terms` · `PUT /terms/{id}` (latest, or a correction with `correction: true`) · `DELETE /terms/{id}` (latest) · `GET /employments/{id}/contract-check` |
 | Structure | `GET|POST`, `PUT /{id}`, `POST /{id}/archive` for `/legal-entities`, `/business-units`, `/departments`, `/locations` |
@@ -812,7 +853,14 @@ Refusal codes: `national_id_invalid`, `national_id_duplicate`, `bank_account_inv
 `own_request`, `holiday_scheme_in_use`, `seed_immutable`, `document_type_unsupported`,
 `document_too_large`, `person_erased`, `person_in_use`, `legal_hold`,
 `import_sealed_columns`, `work_email_taken`, `account_email_missing`,
-`accounts_unavailable`, `employee_role_missing`.
+`account_email_taken`, `account_not_managed`, `account_privileged`,
+`blocked_by_owner`, `disabled_by_owner`, `role_not_assignable`,
+`accounts_unavailable`, `employee_role_missing`, `terms_not_latest`,
+`absence_not_requested`, `absence_not_cancellable`, `percent_not_allowed`,
+`hours_on_day_type`, `structure_archived`, `category_in_use`.
+`DELETE /absences/{id}` removes a row that was never decided (a draft the person
+abandons, or HR's cleanup); `/cancel` withdraws a requested or approved one and keeps
+it as history. `POST /retention/run` and `POST /accounts/run` are `staff:manage`.
 
 ## 7. Frontend
 
@@ -821,7 +869,7 @@ A new app "Staff" / "Ansatte" (`apps/staff/frontend`, `@vantigo/staff-ui`).
 - **My page** (`staff:access`): my profile with the editable fields, my employments
   and the terms in force (pay components shown), my holiday account with pending and
   remaining and the request button, my care days, my self-certification standing, my
-  absences, my documents, "download my data". Mobile first: the request form is a
+  absences, my documents, "download my data" (without the sealed numbers). Mobile first: the request form is a
   sheet with the type, the days (a range picker, or one day and hours for an hour
   type), the percentage when allowed, a note (hidden for sick types); egenmelding
   shows what the policy allows today before the person submits.
@@ -841,6 +889,10 @@ A new app "Staff" / "Ansatte" (`apps/staff/frontend`, `@vantigo/staff-ui`).
   with the derived default explained, the address choice, the links' states and
   reasons, *Run now*, *Disable now*; for an unlinked existing user, the Owner's
   adoption step explained with a link to identity's users page), **History** (events).
+- **My team** (`staff:access`, shown when the caller manages anyone): the reports'
+  work fields, their absence with the types the matrix allows, their open cases, and
+  the **Approvals** inbox for what the caller may decide — a team lead on the Employee
+  role needs no `staff:view` for their own reports.
 - **Absence** (`staff:view`, decisions by right): the calendar — a month per
   department with people as rows and absences as bars, types only where the caller
   may see them — and the **Approvals** inbox listing what the caller may decide,
@@ -849,7 +901,7 @@ A new app "Staff" / "Ansatte" (`apps/staff/frontend`, `@vantigo/staff-ui`).
   mapping and visibility shown read-only, own types editable), holiday schemes with
   the default and the conversion shown ("25 virkedager = 21 days on a five-day
   week"), the self-certification policy as presets or custom numbers, the account
-  settings and the employee role picker, retention periods, the zone, pension
+  settings and the employee roles (read from identity, with a link to change them), retention periods, the zone, pension
   provider and insurer, thresholds, import and export, the payroll export for a
   month, *Run retention now*, *Run accounts now*.
 - **Host**: the tile and routes; dashboard items from `/stats/attention`; the
@@ -887,8 +939,10 @@ A new app "Staff" / "Ansatte" (`apps/staff/frontend`, `@vantigo/staff-ui`).
    `user/workspace-administration.md` en+nb (pending users, managed by Staff, the
    employee role); `user/getting-started.md` en+nb (accepting a Staff invitation);
    the section overviews `user/index.md`, `admin/index.md`, `reference/index.md`; a
-   platform page for `internal/calendar` and the secrets MAC (`contributing/platform.md`
-   or the existing page that names `internal/secrets`); `reference/invoices.md` for
+   new `contributing/platform-packages.md` (English only) naming `internal/calendar`
+   and `internal/secrets` in its `sources`, with the MAC and the rotation rule;
+   `admin/installation.md` en+nb carrying the `APP_SECRET` rotation note for the
+   national-id index; `reference/invoices.md` for
    the calendar import path (a `Docs-Impact` trailer where nothing documented changes);
    module-boundaries.md (module list, schema list, `MODULES` default, the `Accounts`
    slot and its resolution in both places, the new write direction, the platform
@@ -899,20 +953,21 @@ A new app "Staff" / "Ansatte" (`apps/staff/frontend`, `@vantigo/staff-ui`).
 - Two concurrent employments: one holiday account (the scheme of the earlier
   employment), one set of counters, one flag, one link.
 - An employment ended with a future end date keeps the account until the day after;
-  ending it today disables at the next cycle, or now with *Run now*.
+  an end date in the past disables at the next cycle or with *Run now*; today's end
+  disables tomorrow; *Disable now* disables at once.
 - A rehire of an erased person: the warning at creation, the employee number reused,
   `Prepare` finds the managed user by employee number and the worker activates it
-  (local) or links it (federated).
+  (local) or re-enables it when Staff's own earlier run disabled it (federated).
 - The Owner deletes a managed user: refused. The Owner revokes a pending invitation:
-  the next cycle re-issues once, then attention.
+  no re-issue; attention `invitation_revoked` until HR runs the person again.
 - A manager who leaves: their reports route to the department's manager, else to
   `staff:approve` and HR; attention lists "reports without a manager".
 - Egenmelding registered for a day already covered by a sykmelding: refused as
   overlap; a sykmelding covering an egenmelding converts the earlier days' type and
   keeps the case.
 - Holiday crossing a year boundary is two accounts' worth, split at New Year.
-- A sick absence over ferie: the ferie row is split, the returned days recorded as an
-  adjustment, both events on the person.
+- A 100 % sykmelding over ferie: the ferie row is split, the days return through the
+  account's own arithmetic, one event on the person.
 - Public holidays in approved ferie are not deducted; inneklemte dager are a company
   `time_off` type.
 - The payroll export for a month with an employment's end reports the end and its
@@ -1027,8 +1082,23 @@ For the owner's verdict; each is how the design read a decision or a gap.
     accommodation note, which the manager owns.
 28. **The arbeidsgiverperiode is the sixteenth summed absence day**, and the
     52-week end is an estimate HR edits.
-29. **A sykmelding over ferie returns the days** (fl. § 9) automatically, as an
-    adjustment with its own reason.
+29. **A 100 % sykmelding over ferie returns the days** (fl. § 9) by splitting the
+    ferie row; a graded one returns nothing.
+30. **Moving an installation from local to federated** leaves pending, credential-less
+    managed users pending; they would meet `oidc_account_locked` at an SSO sign-in.
+    The worker reports every such link as `mode_changed` on attention, and the Entra
+    module's adoption into the provider is where they are resolved; this phase does
+    not migrate them.
+31. **The person's own export omits the sealed values** (national id, bank account):
+    they are the person's own, which they know, and a stolen session should not get
+    them. This revises S16's earlier reading.
+32. **An Owner who re-enables a leaver is re-disabled by the next run**, by design:
+    the employment's end is the fact; an Owner who wants the account kept turns the
+    person's flag off, after which the worker leaves the account alone.
+33. **A change of the account's email mails both the old and the new address**, in
+    local mode, so a takeover by password reset is noticed.
+34. **A leave's "total length" for the a-melding is the chain** of contiguous rows of
+    the same type (an extension row continues the leave), not the single row.
 
 ## 12. Open questions
 
