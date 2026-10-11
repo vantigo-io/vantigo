@@ -29,6 +29,12 @@ import (
 // The buyer's language is not an input: the engine judges no letter by it,
 // and the letter's dispatch reads it from the invoice row it holds locked.
 
+// ratesRead is told every time the engine's collection rates are read, so a
+// test can pin a read against the locks around it — a print batch's letter
+// reads them only after it has shared the rows in force (D6, plan reading
+// 6). nil in production.
+var ratesRead func(ctx context.Context)
+
 // ruleInputs reads the engine's Input on day L for every issued invoice
 // among ids, in one read-only REPEATABLE READ transaction opened on on (the
 // pool), so a whole list is judged on one snapshot — a payment committed
@@ -94,6 +100,9 @@ func (s *server) readRuleInputs(ctx context.Context, q *store.Queries, ids []int
 	rateRows, err := q.RatesFor(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the collection rates: %w", err)
+	}
+	if hook := ratesRead; hook != nil {
+		hook(ctx)
 	}
 	rates, err := ratesOf(rateRows)
 	if err != nil {

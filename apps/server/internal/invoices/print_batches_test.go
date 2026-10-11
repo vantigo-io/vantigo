@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -652,11 +653,11 @@ func TestPrintBatch_List(t *testing.T) {
 	if ids, n := list(""); !slices.Equal(ids, []int64{redo.Batch.ID, done.Batch.ID, open.Batch.ID}) || n != 3 {
 		t.Errorf("all = %v (%d), want the three newest first", ids, n)
 	}
-	if ids, _ := list("?posted=true"); !slices.Equal(ids, []int64{done.Batch.ID}) {
-		t.Errorf("posted = %v, want the posted batch", ids)
+	if ids, n := list("?posted=true"); !slices.Equal(ids, []int64{done.Batch.ID}) || n != 1 {
+		t.Errorf("posted = %v (%d), want the posted batch", ids, n)
 	}
-	if ids, _ := list("?posted=false"); !slices.Equal(ids, []int64{open.Batch.ID}) {
-		t.Errorf("open = %v, want the batch neither posted nor reprinted", ids)
+	if ids, n := list("?posted=false"); !slices.Equal(ids, []int64{open.Batch.ID}) || n != 1 {
+		t.Errorf("open = %v (%d), want the batch neither posted nor reprinted", ids, n)
 	}
 	if ids, n := list("?pageSize=1&page=2"); !slices.Equal(ids, []int64{done.Batch.ID}) || n != 3 {
 		t.Errorf("page 2 of 1 = %v (%d), want the second newest", ids, n)
@@ -669,8 +670,9 @@ func TestPrintBatch_List(t *testing.T) {
 	}
 }
 
-// The lock order (D18): a batch's letter takes its invoice, then the
-// letter, then the rates in force on postOn; the posting takes the batch,
+// The lock order (D18): a batch's letter takes its batch FOR SHARE, its
+// invoice, then the letter, then the rates in force on postOn — and reads
+// the engine's rates only after that share; the posting takes the batch,
 // its letters' invoices in descending id, then the letters; the reprint the
 // batch, then its printed letters — and no invoice.
 func TestPrintBatch_LockOrder(t *testing.T) {
@@ -679,15 +681,20 @@ func TestPrintBatch_LockOrder(t *testing.T) {
 	y, ly := paperDue(t, h, 2)
 	seen := &lockSeen{}
 	defer invoices.SetLockTaken(seen.note)()
+	defer invoices.SetRatesRead(func(ctx context.Context) { seen.note(ctx, "rates", "read") })()
 	r := printFor(t, h, "2026-09-12", lx, ly)
 	rates := ratesInForce(t, h, "2026-09-12")
-	want := append(append([]string{"invoice " + idKey(x), "reminder " + idKey(lx)}, rates...), "invoice "+idKey(y), "reminder "+idKey(ly))
+	batch := "print_batch " + idKey(r.Batch.ID)
+	want := append(append([]string{batch, "invoice " + idKey(x), "reminder " + idKey(lx)}, rates...), "rates read",
+		batch, "invoice "+idKey(y), "reminder "+idKey(ly))
 	want = append(want, rates...)
+	want = append(want, "rates read")
 	if got := seen.take(); !slices.Equal(got, want) || len(rates) != 3 {
 		t.Errorf("the batch locked %v, want %v", got, want)
 	}
 	posted(t, "the posting", payer(t, h).Do(http.MethodPost, batchPath(r.Batch.ID, "posted"), postedOn("2026-09-12")))
-	want = []string{"print_batch " + idKey(r.Batch.ID), "invoice " + idKey(y), "invoice " + idKey(x), "reminder " + idKey(lx), "reminder " + idKey(ly)}
+	want = []string{"print_batch " + idKey(r.Batch.ID), "invoice " + idKey(y), "invoice " + idKey(x),
+		"reminder " + idKey(lx), "rates read", "reminder " + idKey(ly), "rates read"}
 	if got := seen.take(); !slices.Equal(got, want) {
 		t.Errorf("the posting locked %v, want %v", got, want)
 	}
@@ -886,5 +893,276 @@ func TestPrintBatch_ReprintTakesNoInvoice(t *testing.T) {
 	raw.release(t)
 	if row := letterOf(t, h, letter); row.Status != "awaiting_print" {
 		t.Errorf("the letter = %s, want awaiting print", row.Status)
+	}
+}
+
+// A batch posted or reprinted while its own creation is still printing
+// (D18; Task 13's review, IMPORTANT-1): the request is parked right after it
+// locked its first letter, holding the batch FOR SHARE, and the posting or
+// the reprint then waits on the batch (pg_blocking_pids). The first letter
+// is printed and committed, and the posting sends it — or the reprint
+// returns it to awaiting print; the second letter's transaction then finds
+// the batch closed and leaves the letter out, print_batch_closed, still
+// awaiting print and free for another batch — never printed into a batch
+// that is closed.
+func TestPrintBatch_PostedWhilePrinting(t *testing.T) {
+	for _, tc := range []struct {
+		name, op, firstStatus string
+		body                  any
+		firstInBatch          bool
+	}{
+		{"posted", "posted", "sent", postedOn("2026-09-12"), true},
+		{"reprinted", "reprint", "awaiting_print", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := paperHarness(t, "")
+			_, a := paperDue(t, h, 1)
+			_, b := paperDue(t, h, 2)
+			probeConn := ownConn(t, h)
+			before := deadlocks(t, probeConn)
+			var once sync.Once
+			var done <-chan raceRequest
+			waited := make(chan uint32, 1)
+			restore := invoices.SetLockTaken(func(_ context.Context, what, key string) {
+				if what != "reminder" || key != idKey(a) {
+					return
+				}
+				once.Do(func() {
+					id := int64(h.Count(t, `SELECT max(id)::int FROM invoices.reminder_print_batches`))
+					done = startRequest(payer(t, h), http.MethodPost, batchPath(id, tc.op), tc.body)
+					waited <- newWaiter(t, probeConn)
+				})
+			})
+			r := printFor(t, h, "2026-09-12", a, b)
+			restore()
+			if waiter := <-waited; len(blockersOf(t, probeConn, waiter)) != 0 {
+				t.Errorf("the %s still waits after the batch was made", tc.name)
+			}
+			finished(t, "the "+tc.name, done, http.StatusOK)
+			if len(r.LeftOut) != 1 || r.LeftOut[0].ReminderID != b || r.LeftOut[0].Reason != "print_batch_closed" {
+				t.Errorf("left out %+v, want letter %d, print_batch_closed", r.LeftOut, b)
+			}
+			if got := len(r.Batch.Letters) == 1 && r.Batch.Letters[0].ID == a; got != tc.firstInBatch {
+				t.Errorf("the batch's letters = %+v, want the first letter %v", r.Batch.Letters, tc.firstInBatch)
+			}
+			if row := letterOf(t, h, a); row.Status != tc.firstStatus {
+				t.Errorf("the first letter = %s, want %s", row.Status, tc.firstStatus)
+			}
+			if row := letterOf(t, h, b); row.Status != "awaiting_print" || row.PrintBatchID != nil || !factsCleared(row) {
+				t.Errorf("the second letter = %s batch %v cleared %v, want awaiting print, in no batch, without facts",
+					row.Status, row.PrintBatchID, factsCleared(row))
+			}
+			if again := printFor(t, h, "2026-09-12", b); len(again.Batch.Letters) != 1 {
+				t.Errorf("a new batch = %+v, want the second letter printed", again)
+			}
+			if after := deadlocks(t, probeConn); after != before {
+				t.Errorf("Postgres broke %d deadlock(s)", after-before)
+			}
+		})
+	}
+}
+
+// A letter whose PDF could not be stored when it was printed (Task 13's
+// review, IMPORTANT-2): it is printed all the same, its own download a 500
+// until its PDF is stored, and the batch's PDF renders it from its row. The
+// next posting stores it — the letter sent by then, whose key and hash the
+// trigger lets be set once — and so does the next download of the batch's
+// PDF; either way its PDF is the one its row renders.
+func TestPrintBatch_AStoreFailureHealed(t *testing.T) {
+	h := paperHarness(t, "")
+	_, posting := paperDue(t, h, 1)
+	_, download := paperDue(t, h, 2)
+	c := payer(t, h)
+	h.objects.failPuts(errors.New("disk full"))
+	first := printFor(t, h, "2026-09-12", posting)
+	second := printFor(t, h, "2026-09-12", download)
+	for _, l := range []int64{posting, download} {
+		if row := letterOf(t, h, l); row.Status != "printed" || row.PdfObjectKey != nil {
+			t.Fatalf("letter %d = %s key %v, want printed without a PDF", l, row.Status, row.PdfObjectKey)
+		}
+	}
+	if res := reader(t, h).Do(http.MethodGet, letterPath(posting, "pdf"), nil); res.Status != http.StatusInternalServerError {
+		t.Errorf("the PDF of a letter whose store failed = %d, want 500", res.Status)
+	}
+	if res := c.Do(http.MethodGet, first.PdfURL, nil); res.Status != http.StatusOK || letterOf(t, h, posting).PdfObjectKey != nil {
+		t.Errorf("the batch's PDF while the store fails = %d, want 200 and still no stored PDF", res.Status)
+	}
+	h.objects.failPuts(nil)
+
+	posted(t, "the posting", c.Do(http.MethodPost, batchPath(first.Batch.ID, "posted"), postedOn("2026-09-12")))
+	if res := c.Do(http.MethodGet, second.PdfURL, nil); res.Status != http.StatusOK {
+		t.Fatalf("the second batch's PDF = %d", res.Status)
+	}
+	for _, tc := range []struct {
+		letter int64
+		status string
+	}{{posting, "sent"}, {download, "printed"}} {
+		row := letterOf(t, h, tc.letter)
+		want, err := invoices.RenderLetterForTest(context.Background(), h.Deps(), tc.letter)
+		if err != nil {
+			t.Fatalf("render letter %d: %v", tc.letter, err)
+		}
+		res := reader(t, h).Do(http.MethodGet, letterPath(tc.letter, "pdf"), nil)
+		if row.Status != tc.status || row.PdfObjectKey == nil || res.Status != http.StatusOK || string(res.Body) != string(want) {
+			t.Errorf("letter %d = %s key %v, its PDF %d; want %s with its PDF stored and served", tc.letter, row.Status,
+				row.PdfObjectKey, res.Status, tc.status)
+		}
+	}
+}
+
+// Every cause the posting's re-judge names (NI4; Task 13's review,
+// IMPORTANT-3): four letters printed with the fee 38, and since printing the
+// customer of one anonymised, another's policy made none, a third invoice
+// held and the hold lifted barring charges, and reminder fees switched off
+// for the fourth's customer type, so the engine no longer gives the fee.
+// Posted: all four sent, each fee waived claimed_in_error, listed with its
+// cause — customer_anonymised, policy_none, charges_barred, action_changed.
+func TestPrintBatch_PostedRejudgesEveryCause(t *testing.T) {
+	t.Parallel()
+	h := paperHarness(t, "")
+	erased := deliveredOn(t, h, 1, customerPerson, "2026-08-03")
+	erasedLetter := paperLetter(t, h, erased, 1)
+	none := deliveredOn(t, h, 2, customerForeign, "2026-08-03")
+	noneLetter := paperLetter(t, h, none, 1)
+	barred, barredLetter := paperDue(t, h, 3)
+	changed, changedLetter := paperDue(t, h, 4)
+	r := printFor(t, h, "2026-09-12", erasedLetter, noneLetter, barredLetter, changedLetter)
+	for _, l := range r.Batch.Letters {
+		if l.Fee == nil || *l.Fee != 38 {
+			t.Fatalf("letter %d printed with fee %v, want 38", l.ID, l.Fee)
+		}
+	}
+	if len(r.Batch.Letters) != 4 {
+		t.Fatalf("the batch = %+v, want four letters printed", r)
+	}
+	h.Exec(t, `INSERT INTO invoices.erased_customers (customer_id, erased_at) VALUES ($1, now())`, customerPerson)
+	plantPolicy(t, h, customerForeign, "none", "Avtalt med kunden")
+	c := payer(t, h)
+	answered(t, "the hold", c.Do(http.MethodPost, holdPath(barred), holdNote("Kunden bestrider timene")))
+	answered(t, "the barring lift", c.Do(http.MethodPost, liftPath(barred), liftBody(false, "Innsigelsen var begrunnet")))
+	h.Exec(t, `UPDATE invoices.reminder_settings SET person_charge = 'none', business_charge = 'none'`)
+
+	p := posted(t, "the posting", c.Do(http.MethodPost, batchPath(r.Batch.ID, "posted"), postedOn("2026-09-12")))
+	waived := map[int64]batchWaiverJSON{}
+	for _, w := range p.Waived {
+		waived[w.ReminderID] = w
+	}
+	for _, tc := range []struct {
+		letter, invoice int64
+		reason          string
+	}{
+		{erasedLetter, erased, "customer_anonymised"}, {noneLetter, none, "policy_none"},
+		{barredLetter, barred, "charges_barred"}, {changedLetter, changed, "action_changed"},
+	} {
+		if w := waived[tc.letter]; w.Reason != tc.reason || w.InvoiceID != tc.invoice || !slices.Equal(w.Kinds, []string{"fee"}) {
+			t.Errorf("letter %d's waiver = %+v, want its fee waived, %s", tc.letter, w, tc.reason)
+		}
+		if got := letterWaivers(t, h, tc.letter); !slices.Equal(got, []string{"fee claimed_in_error"}) {
+			t.Errorf("letter %d's waivers = %v, want its fee waived claimed_in_error", tc.letter, got)
+		}
+		if row := letterOf(t, h, tc.letter); row.Status != "sent" || amountText(row.Fee) != "38.00" {
+			t.Errorf("letter %d = %s fee %s, want sent with the fee it printed", tc.letter, row.Status, amountText(row.Fee))
+		}
+	}
+	if len(p.Waived) != 4 {
+		t.Errorf("waived %+v, want the four letters", p.Waived)
+	}
+}
+
+// A letter renders as it went (Task 13's review, IMPORTANT-4): what it
+// prints as credited is fixed with its facts. A paper letter printed for
+// Tuesday 15 September, and a credit note of 200 issued on Saturday the
+// 12th after it was printed: the batch's PDF downloaded again is the same
+// bytes, and the letter's own render is its stored PDF. An e-mail letter
+// mailed before a credit note renders, after it, as the PDF it was mailed
+// with.
+func TestPrintBatch_ACreditNoteAfterPrinting(t *testing.T) {
+	t.Run("paper", func(t *testing.T) {
+		h := paperHarness(t, "")
+		id, letter := paperDue(t, h, 1)
+		r := printFor(t, h, "2026-09-15", letter)
+		c := payer(t, h)
+		before := c.Do(http.MethodGet, r.PdfURL, nil)
+		plantCreditNote(t, h, id, 200)
+		after := c.Do(http.MethodGet, r.PdfURL, nil)
+		if before.Status != http.StatusOK || after.Status != http.StatusOK || string(before.Body) != string(after.Body) {
+			t.Errorf("the batch's PDF before and after the credit note = %d and %d, differing %v; want the same bytes",
+				before.Status, after.Status, string(before.Body) != string(after.Body))
+		}
+		stored := h.objects.object(deref(letterOf(t, h, letter).PdfObjectKey))
+		rendered, err := invoices.RenderLetterForTest(context.Background(), h.Deps(), letter)
+		if err != nil || string(rendered) != string(stored) {
+			t.Errorf("the letter rendered after the credit note (%v) is not its stored PDF", err)
+		}
+	})
+	t.Run("e-mail", func(t *testing.T) {
+		h, mails := workerHarness(t, "")
+		id, letter := dueLetter(t, h, 1)
+		dispatch(t, invoices.NewReminderWorker(h.Deps()))
+		if len(mails.delivered()) != 1 {
+			t.Fatal("the letter was not mailed")
+		}
+		plantCreditNote(t, h, id, 200)
+		rendered, err := invoices.RenderLetterForTest(context.Background(), h.Deps(), letter)
+		if err != nil || string(rendered) != string(mails.delivered()[0].Attachments[0].Content) {
+			t.Errorf("the letter rendered after the credit note (%v) is not the PDF it was mailed with", err)
+		}
+	})
+}
+
+// plantCreditNote plants an issued credit note of gross against invoice
+// id, issued on the fixed clock's day.
+func plantCreditNote(t *testing.T, h *harness, id int64, gross int) {
+	t.Helper()
+	h.Exec(t, `
+		INSERT INTO invoices.invoices (kind, status, number, customer_id, issue_date, credits_invoice_id, exchange_rate_date,
+		    seller_legal_name, buyer_name, gross_total, issued_at, created_by_user_id, created_at, updated_at)
+		SELECT 'credit_note', 'issued', 9000 + id, customer_id, DATE '2026-09-12', id, DATE '2026-09-12', 'Selger AS',
+		    buyer_name, $2, now(), gen_random_uuid(), now(), now()
+		FROM invoices.invoices WHERE id = $1`, id, gross)
+}
+
+// The rates are shared before the letter is judged (D6, plan reading 6;
+// Task 13's review, MINOR 3): a DELETE of the user's inkassosats of 800 from
+// 15 September, in flight on a raw transaction, holds the row FOR UPDATE; a
+// batch for the 16th waits on it at the share (pg_blocking_pids), and once
+// it commits the batch judges the letter without the row — the fee 38 of
+// the release's 750, never 40 from a row deleted under it.
+func TestPrintBatch_RatesSharedBeforeTheJudgement(t *testing.T) {
+	h := paperHarness(t, "", modtest.WithPoolMaxConns(2))
+	_, letter := paperDue(t, h, 1)
+	rate := plantID(t, h, `INSERT INTO invoices.collection_rates (kind, valid_from, value, source_ref, created_by_user_id, created_at)
+		VALUES ('inkassosats', DATE '2026-09-15', 800, 'FOR-2026-09-01-1', gen_random_uuid(), now()) RETURNING id`)
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+	seen := &lockSeen{}
+	defer invoices.SetLockTaken(seen.note)()
+	raw := holdRow(t, h, `DELETE FROM invoices.collection_rates WHERE id = $1`, rate)
+	done := startRequest(payer(t, h), http.MethodPost, printBatchesPath, printBody("2026-09-16", letter))
+	waiter := newWaiter(t, probeConn, raw.pid)
+	if got := blockersOf(t, probeConn, waiter); !slices.Equal(got, []uint32{raw.pid}) {
+		t.Errorf("the batch waits on %v, want the DELETE %d", got, raw.pid)
+	}
+	raw.release(t)
+	finished(t, "the batch", done, http.StatusCreated)
+	// The share waited on the DELETE and so judged "in force" on a snapshot
+	// that still had the user's row: it shared no inkassosats at all. The
+	// rows read again after the judgement differ, and the letter's
+	// transaction is tried again, sharing the release's row it relies on.
+	var shared []string
+	for _, s := range seen.take() {
+		if strings.HasPrefix(s, "collection_rate ") {
+			shared = append(shared, s)
+		}
+	}
+	rates := ratesInForce(t, h, "2026-09-16")
+	if len(shared) < len(rates) || !slices.Equal(shared[len(shared)-len(rates):], rates) {
+		t.Errorf("the batch shared %v, its last share want %v", shared, rates)
+	}
+	if row := letterOf(t, h, letter); row.Status != "printed" || amountText(row.Fee) != "38.00" || amountText(row.Inkassosats) != "750.00" {
+		t.Errorf("the letter = %s fee %s inkassosats %s, want printed on the release's 750", row.Status, amountText(row.Fee), amountText(row.Inkassosats))
+	}
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("Postgres broke %d deadlock(s)", after-before)
 	}
 }

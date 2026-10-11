@@ -908,7 +908,9 @@ invoice paid, put on hold or handed off. The batch's letters come as one PDF, wh
 downloaded again. Once the batch is in the post, confirm it was posted that day, and its
 letters are sent; a fee the day no longer supports — the invoice paid, put on hold or
 handed off since printing — is waived. Posted on another day, the batch must be printed
-again for the day it goes. The screens come with the Overdue area; until then this is in
+again for the day it goes. A batch confirmed posted, or reprinted, while it is still being
+printed keeps the letters already printed in it; the rest are named and wait for another
+batch. The screens come with the Overdue area; until then this is in
 the API ([paper and posting](/en/reference/invoices/#paper-and-posting)).
 
 ## Sending a document by e-mail

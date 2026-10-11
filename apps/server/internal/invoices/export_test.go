@@ -563,10 +563,6 @@ func SetReminderLease(d time.Duration) func() {
 // RenderLetterForTest renders letter reminderID from its row, as the
 // dispatch does, and answers the bytes: the same row renders the same bytes.
 func RenderLetterForTest(ctx context.Context, d module.Deps, reminderID int64) ([]byte, error) {
-	s, err := newServer(d)
-	if err != nil {
-		return nil, err
-	}
 	q := store.New(d.Pool)
 	letter, err := q.GetReminder(ctx, reminderID)
 	if err != nil {
@@ -576,7 +572,7 @@ func RenderLetterForTest(ctx context.Context, d module.Deps, reminderID int64) (
 	if err != nil {
 		return nil, err
 	}
-	_, body, err := s.renderLetter(ctx, q, letter, inv)
+	_, body, err := renderLetter(letter, inv)
 	return body, err
 }
 
@@ -589,4 +585,13 @@ func RenderLetterForTest(ctx context.Context, d module.Deps, reminderID int64) (
 func SetPostedAfterBatchLock(hook func(ctx context.Context, batchID int64) error) func() {
 	postedAfterBatchLock = hook
 	return func() { postedAfterBatchLock = nil }
+}
+
+// SetRatesRead installs a hook told every time the engine's collection rates
+// are read (ruleinput.go), and answers the function that removes it: a test
+// pins the read after the locks a path takes before it. A test using it does
+// not run in parallel: the hook is the package's.
+func SetRatesRead(hook func(ctx context.Context)) func() {
+	ratesRead = hook
+	return func() { ratesRead = nil }
 }

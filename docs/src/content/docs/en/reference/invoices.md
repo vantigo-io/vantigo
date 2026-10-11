@@ -2946,7 +2946,8 @@ invoice's snapshots, so a row renders the same bytes every time (its creation da
   an opening that says payment was not registered, or, when part of the invoice is paid,
   that the full amount was not received;
 - **the claim with every amount apart** (inkassoloven § 10 c and d by choice): the
-  invoice's total, what credit notes issued by `sent_on` took off it, what was paid, the
+  invoice's total, what its issued credit notes had taken off it when the facts were
+  written (`credited`), what was paid, the
   **principal open**; the **earlier fees and compensation still outstanding**
   (`charges_earlier`) — worded **as a credit from earlier payments of charges** when it is
   negative, the charges paid beyond the earlier ones paying this letter's own; this
@@ -2998,15 +2999,25 @@ either the posting — `posted_on`, `posted_by_user_id` and `posted_at`, set tog
   `storage_unavailable`. Then every letter is read on the pool: one that is not
   `awaiting_print` is 409 **`reminder_not_awaiting_print`**, naming it. Nothing is
   written before these.
-- The batch row is inserted, and then **each letter in its own transaction: its invoice
-  `FOR UPDATE`, then the letter `FOR NO KEY UPDATE`, then the collection rates in force on
-  `postOn` `FOR KEY SHARE`** — of each kind the row a letter dated `postOn` relies on, the
-  rows [deleting a rate](#collection-rates) judges "used". The rate's `DELETE` takes its
-  row `FOR UPDATE` first, so it waits for the letter's transaction and then sees the
-  letter printed, and is refused; or it deleted the row before, and the letter is judged
-  without it. The letter is then judged on `L = postOn`, with itself left out of the
-  letters in flight, as the worker's first step judges an e-mail letter
-  ([The worker](#the-worker)):
+- The batch row is inserted, and then **each letter in its own transaction: the batch
+  `FOR SHARE`, its invoice `FOR UPDATE`, then the letter `FOR NO KEY UPDATE`, then the
+  collection rates in force on `postOn` `FOR KEY SHARE`** — and only then are the
+  engine's rates read. The batch's share waits on a posting or a reprint of the batch
+  (`FOR NO KEY UPDATE`), and they on it, so a batch is never posted or reprinted while a
+  letter is being printed into it: a letter printed first is seen by the posting or the
+  reprint, and one whose turn comes after finds the batch closed. The rates are, of each
+  kind, the row a letter dated `postOn` relies on — the rows [deleting a
+  rate](#collection-rates) judges "used". The rate's `DELETE` takes its row `FOR UPDATE`
+  first, so it waits for the letter's transaction and then sees the letter printed, and
+  is refused; or it deleted the row before, and the letter is judged without it. The
+  share decides "in force" on its own snapshot, so once the letter is judged the rows in
+  force are read again, and a row that came into force on `postOn` meanwhile — added, or
+  left in force by a deletion the share waited on — rolls the letter's transaction back
+  and tries it again (three times at most). The letter is judged on `L = postOn`, with
+  itself left out of the letters in flight, as the worker's first step judges an e-mail
+  letter ([The worker](#the-worker)):
+  - a letter of a batch posted or reprinted while this request was still printing it is
+    **left out**, `print_batch_closed`, and stays `awaiting_print` for another batch;
   - a letter no longer `awaiting_print` under its lock — withdrawn meanwhile, or printed
     by another batch naming it — is **left out** as it is, `not_awaiting_print`;
   - one that on `postOn` needs a rate with no row for a half-year, or would carry a fee or
@@ -3020,9 +3031,12 @@ either the posting — `posted_on`, `posted_by_user_id` and `posted_at`, set tog
     fee or compensation, the interest to that day — and is **`printed`** in the batch.
 - After the last letter, outside any transaction, each printed letter's PDF is rendered
   from its row and stored once under its hash's key, `reminders/<invoiceId>/<reminderId>-<postOn>-<sha256>.pdf`,
-  and recorded on the letter while it is still printed in the batch. A store that fails
-  is logged; the letter stays printed, and the batch's PDF is rendered from the rows
-  anyway.
+  and recorded on the letter while it is still in the batch, printed — or sent, when the
+  batch was posted in between — and has none. A store that fails is logged; the letter
+  stays printed, its own download is a 500 for now, and the batch's PDF is rendered from
+  the rows anyway. **The next posting of the batch, and the next download of its PDF**,
+  store every printed or sent letter of it that has no PDF yet, outside any transaction
+  — the stored PDF is what the letter's own download answers, never a render.
 - 201 with the batch and its letters, `pdfUrl` — its combined PDF — and `leftOut`, each
   letter left out with its invoice and reason.
 
@@ -3030,14 +3044,17 @@ either the posting — `posted_on`, `posted_by_user_id` and `posted_at`, set tog
 and `invoices:payments`) renders the batch's **`printed` and `sent`** letters — never one
 withdrawn since printing — from their rows, in id order, each starting on a page of its
 own, read in one snapshot and rendered after it: the same pages as often as it is asked
-for, `paper-letters-<id>-<postOn>.pdf`, `Cache-Control: private, no-store`. 404 for no
+for — a letter renders from its facts alone, and what it prints as credited is
+`credited`, fixed with them, so a credit note issued after printing changes nothing on
+paper already printed — `paper-letters-<id>-<postOn>.pdf`, `Cache-Control: private, no-store`. 404 for no
 batch, or one with no printed or sent letter (reprinted, or every letter withdrawn or
 left out).
 
 **Confirming the posting.** `POST /invoices/reminder-print-batches/{id}/posted`
 `{postedOn}` (`invoices:access` and `invoices:payments`): a `postedOn` after today is a
 400 — no day to come is posted. Then **the batch `FOR NO KEY UPDATE`** (the key-share
-locks its letters' foreign keys take on it never conflict with that), **its letters'
+locks its letters' foreign keys take on it never conflict with that; a letter still being
+printed into it holds it `FOR SHARE`, and the posting waits for that letter), **its letters'
 invoices `FOR UPDATE` in descending id, then each letter**: a batch posted or reprinted
 already is 409 **`print_batch_closed`**; `postedOn` before `postOn` 409
 **`reminder_posted_early`**, after it 409 **`reminder_posted_late`** — reprint the batch.
@@ -3067,10 +3084,13 @@ cycle: the reprint never waits on an invoice, so a cycle would need a path holdi
 printed letter of the batch while it waits on something the reprint holds — and none
 does. The worker claims only queued letters; a hold, a hand-off and the erase hold the
 invoice and write only the letters in flight (`queued`, `awaiting_print`, `failed`),
-whose `UPDATE` passes a printed row without waiting on it; a print batch's letter,
-holding its invoice, waits on the letter and on nothing after it; a person's withdrawal
-holds the letter alone; and the posting takes the batch first, so it and a reprint
-queue on the batch row.
+whose `UPDATE` passes a printed row without waiting on it — the erase among them, which
+locks no printed letter because a paper letter's recipient is `''` already, and must keep
+to that; a print batch's letter holds its own batch `FOR SHARE` and its invoice, then waits
+on the letter and on the rates, never on a batch it does not hold — and a letter of the
+reprinted batch itself takes the batch first, so it and the reprint queue on the batch
+row; a person's withdrawal holds the letter alone; and the posting takes the batch first,
+so it and a reprint queue on the batch row.
 
 **The list.** `GET /invoices/reminder-print-batches` (`invoices:access` and
 `invoices:payments`) answers the batches newest first, each with its letters, paged (25

@@ -927,7 +927,9 @@ overlevert. Brevene i bunken kommer som én PDF, som kan lastes ned på nytt. N�
 postlagt, bekrefter du at den ble postlagt den dagen, og brevene er sendt; et gebyr dagen
 ikke lenger gir grunnlag for — fakturaen er betalt, satt på vent eller overlevert etter
 utskriften — ettergis. Ble bunken postlagt en annen dag, må den skrives ut på nytt for
-dagen den går. Skjermbildene kommer med forfallsområdet; til da finnes dette i API-et
+dagen den går. Blir en bunke bekreftet postlagt, eller skrevet ut på nytt, mens den
+fortsatt skrives ut, beholder den brevene som allerede er skrevet ut i den; resten
+navngis og venter på en annen bunke. Skjermbildene kommer med forfallsområdet; til da finnes dette i API-et
 ([papir og postlegging](/en/reference/invoices/#paper-and-posting)).
 
 ## Sende et dokument på e-post

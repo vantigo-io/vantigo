@@ -75,10 +75,10 @@ var reminderModelBuilt func(reminderID int64, m reminderModel)
 var errLetterWithoutFacts = errors.New("invoices: a letter without facts has no PDF")
 
 // reminderModelOf is letter r's model: r carries its facts; inv is its
-// invoice; credited is what the invoice's issued credit notes took off it
-// by r's day (CreditedOn).
-func reminderModelOf(r store.InvoicesReminder, inv store.InvoicesInvoice, credited *big.Rat) (reminderModel, error) {
-	if !r.SentOn.Valid || !r.Deadline.Valid || r.FeeKind == nil {
+// invoice. What it prints as credited is the row's credited, fixed with its
+// facts — never the credit notes as they stand when it is rendered.
+func reminderModelOf(r store.InvoicesReminder, inv store.InvoicesInvoice) (reminderModel, error) {
+	if !r.SentOn.Valid || !r.Deadline.Valid || r.FeeKind == nil || !r.Credited.Valid {
 		return reminderModel{}, errLetterWithoutFacts
 	}
 	lang := strings.TrimSpace(r.Language)
@@ -111,7 +111,7 @@ func reminderModelOf(r store.InvoicesReminder, inv store.InvoicesInvoice, credit
 	}
 	f := map[string]*big.Rat{}
 	for _, n := range []numericField{
-		{"principal_open", r.PrincipalOpen}, {"fee", r.Fee}, {"compensation", r.Compensation},
+		{"principal_open", r.PrincipalOpen}, {"credited", r.Credited}, {"fee", r.Fee}, {"compensation", r.Compensation},
 		{"charges_earlier", r.ChargesEarlier}, {"interest", r.Interest}, {"interest_waived", r.InterestWaived},
 		{"interest_paid", r.InterestPaid}, {"total", r.Total},
 	} {
@@ -125,6 +125,7 @@ func reminderModelOf(r store.InvoicesReminder, inv store.InvoicesInvoice, credit
 	if err != nil {
 		return reminderModel{}, fmt.Errorf("invoices: read document %d's gross: %w", inv.ID, err)
 	}
+	credited := f["credited"]
 	paid := new(big.Rat).Sub(gross, credited)
 	paid.Sub(paid, f["principal_open"])
 

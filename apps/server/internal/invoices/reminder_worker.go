@@ -255,7 +255,7 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 		return c.fail(ctx, reasonNoStorage)
 	}
 	q := store.New(c.w.deps.Pool)
-	m, body, err := c.s.renderLetter(ctx, q, letter, inv)
+	m, body, err := renderLetter(letter, inv)
 	if err != nil {
 		if failErr := c.fail(ctx, reasonLetterNotRendered); failErr != nil {
 			return failErr
@@ -451,7 +451,11 @@ func (s *server) judgeAndWriteFacts(ctx context.Context, txq *store.Queries, inv
 	case out.Letter == nil || string(out.Letter.Level) != letter.Level || out.Letter.AnnouncesCollection != letter.AnnouncesCollection:
 		return withdraw(withdrawnActionChanged)
 	}
-	params, err := letterFactsParams(letter.ID, out.Letter, out.ChargeNotes, L, now)
+	credited := new(big.Rat)
+	for _, c := range in.Credits {
+		credited.Add(credited, c.Gross)
+	}
+	params, err := letterFactsParams(letter.ID, out.Letter, out.ChargeNotes, credited, L, now)
 	if err != nil {
 		return judgement{}, err
 	}
@@ -465,8 +469,10 @@ func (s *server) judgeAndWriteFacts(ctx context.Context, txq *store.Queries, inv
 // letterFactsParams is the engine's letter on day L as the row stores it:
 // amounts as numeric(14,2), the fee and the compensation only when claimed,
 // the segments as interestSegment JSON, the charge notes — none is an empty
-// array.
-func letterFactsParams(id int64, f *reminderrules.LetterFacts, notes []string, L, now time.Time) (store.WriteLetterFactsParams, error) {
+// array — and credited, what the issued credit notes the engine judged on
+// took off the invoice, so the letter prints the credit notes its
+// principal_open left out, however often it is rendered.
+func letterFactsParams(id int64, f *reminderrules.LetterFacts, notes []string, credited *big.Rat, L, now time.Time) (store.WriteLetterFactsParams, error) {
 	p := store.WriteLetterFactsParams{
 		ID: id, SentOn: pgDate(L), Deadline: pgDate(f.Deadline), Regime: string(f.Regime), FeeKind: string(f.FeeKind),
 		ChargeNotes: append([]string{}, notes...), Now: now,
@@ -475,7 +481,7 @@ func letterFactsParams(id int64, f *reminderrules.LetterFacts, notes []string, L
 		dst *pgtype.Numeric
 		v   *big.Rat
 	}{
-		{&p.PrincipalOpen, f.PrincipalOpen}, {&p.ChargesEarlier, f.ChargesEarlier}, {&p.Interest, f.Interest},
+		{&p.PrincipalOpen, f.PrincipalOpen}, {&p.Credited, credited}, {&p.ChargesEarlier, f.ChargesEarlier}, {&p.Interest, f.Interest},
 		{&p.InterestWaived, f.InterestWaived}, {&p.InterestPaid, f.InterestPaid}, {&p.Total, f.Total},
 	} {
 		n, err := numericFromRat(a.v, 2)
@@ -516,19 +522,12 @@ func letterFactsParams(id int64, f *reminderrules.LetterFacts, notes []string, L
 	return p, nil
 }
 
-// renderLetter is a letter's model and PDF, from its row and its invoice's
-// snapshots and the credit notes issued by its day, read with q — on the
-// pool, never under a lock.
-func (s *server) renderLetter(ctx context.Context, q *store.Queries, letter store.InvoicesReminder, inv store.InvoicesInvoice) (reminderModel, []byte, error) {
-	n, err := q.CreditedOn(ctx, store.CreditedOnParams{InvoiceID: inv.ID, Day: letter.SentOn})
-	if err != nil {
-		return reminderModel{}, nil, fmt.Errorf("invoices: read what was credited of document %d: %w", inv.ID, err)
-	}
-	credited, err := ratFromNumeric(n)
-	if err != nil {
-		return reminderModel{}, nil, err
-	}
-	m, err := reminderModelOf(letter, inv, credited)
+// renderLetter is a letter's model and PDF, from its row — its facts,
+// credited among them — and its invoice's snapshots alone: nothing read
+// live, so a row renders the same bytes every time, whatever was credited or
+// paid since its facts were written. Never under a lock.
+func renderLetter(letter store.InvoicesReminder, inv store.InvoicesInvoice) (reminderModel, []byte, error) {
+	m, err := reminderModelOf(letter, inv)
 	if err != nil {
 		return reminderModel{}, nil, err
 	}

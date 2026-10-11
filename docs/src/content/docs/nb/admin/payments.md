@@ -159,7 +159,8 @@ under en lås på 60 sekunder og sender aldri et brev to ganger med vilje.
   papirbrev**, med varselet `mail_unavailable`, og ingenting sendes på e-post.
 - **Papirbrev trenger verken jobben eller e-post.** En person skriver dem ut i en bunke
   for dagen de skal postlegges, og bekrefter postleggingen; bunken lagrer PDF-en til hvert
-  brev i det samme objektlageret, på samme måte
+  brev i det samme objektlageret, på samme måte, og en PDF den ikke kunne lagre da,
+  lagres neste gang bunken bekreftes postlagt eller lastes ned
   ([papir og postlegging](/en/reference/invoices/#paper-and-posting)).
 - **Den trenger et objektlager.** PDF-en til hvert brev lagres én gang, før det sendes,
   under `reminders/` ([Objektlagring](/nb/admin/object-storage/)); et lager som ikke kan

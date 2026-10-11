@@ -1918,7 +1918,8 @@ gains the new rows. Each path, in its order:
 | a charge payment, a waiver, a manual delivery and its removal | the invoice alone (a manual delivery's trigger shares it) |
 | a hold, a lift, a hand-off, its withdrawal | the invoice, then its letters (withdrawn) and, on a barring lift, the waivers inserted |
 | a reminder run's item (D10) | the invoice (the letter is inserted) |
-| the reminder worker's dispatch, a print batch's letter | the invoice, then its letter |
+| the reminder worker's dispatch | the invoice, then its letter |
+| a print batch's letter | the batch `FOR SHARE` (so the batch is never posted or reprinted while a letter is printed into it; Task 13's review), the invoice, then its letter, then the collection rates in force on its day `FOR KEY SHARE` |
 | a batch posted or reprinted | the batch row `FOR NO KEY UPDATE` (so the letters' key-share locks on it never conflict, m11), then its letters' invoices in descending id, then the letters |
 | a letter's withdraw or retry | the letter alone (the worker re-reads its status after its own locks) |
 | a policy `PUT` | the customer's documents `FOR SHARE` newest first, then the policy row (revision 3); the merge: the documents, then the policy rows by customer id |

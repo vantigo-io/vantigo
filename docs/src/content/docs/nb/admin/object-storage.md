@@ -124,7 +124,8 @@ nøkkel, og brevets rad viser til objektet det gikk med
 ([jobben](/en/reference/invoices/#the-worker)). PDF-en til et papirbrev lagres på samme
 måte når utskriftsbunken skrives ut, under postleggingsdagen; en ny utskrift skriver det ut
 igjen under en ny nøkkel, og bunkens samlede PDF lages fra brevenes rader hver gang den
-lastes ned, og lagres aldri
+lastes ned, og lagres aldri; et brev der PDF-en ikke kunne lagres da det ble skrevet ut,
+lagres neste gang bunken bekreftes postlagt eller lastes ned
 ([papir og postlegging](/en/reference/invoices/#paper-and-posting)). Et avgrenset lager
 avviser en relativ nøkkel som er lik omfanget sitt eller allerede begynner med
 `{scope}/`: kallere sender bare relative nøkler og må aldri bygge prefikset selv.

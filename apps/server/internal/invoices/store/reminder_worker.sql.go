@@ -139,33 +139,12 @@ func (q *Queries) CountReminders(ctx context.Context, arg CountRemindersParams) 
 	return column_1, err
 }
 
-const creditedOn = `-- name: CreditedOn :one
-SELECT coalesce(sum(gross_total), 0)::numeric AS credited
-FROM invoices.invoices
-WHERE credits_invoice_id = $1::bigint AND kind = 'credit_note' AND status = 'issued' AND issue_date <= $2::date
-`
-
-type CreditedOnParams struct {
-	InvoiceID int64
-	Day       pgtype.Date
-}
-
-// CreditedOn is what the invoice's issued credit notes took off it up to and
-// including a letter's day: the letter prints it beside the principal, from
-// its own row and the documents, the same every time it is rendered.
-func (q *Queries) CreditedOn(ctx context.Context, arg CreditedOnParams) (pgtype.Numeric, error) {
-	row := q.db.QueryRow(ctx, creditedOn, arg.InvoiceID, arg.Day)
-	var credited pgtype.Numeric
-	err := row.Scan(&credited)
-	return credited, err
-}
-
 const failReminderAttempt = `-- name: FailReminderAttempt :execrows
 UPDATE invoices.reminders
 SET attempts = attempts + 1, next_attempt_at = $1::timestamptz, last_error = $2::text,
     first_attempt_at = coalesce(first_attempt_at, $3::timestamptz),
     lease_id = NULL, lease_until = NULL,
-    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, fee_kind = NULL, fee = NULL,
+    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
     interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
@@ -353,7 +332,7 @@ const markReminderFailed = `-- name: MarkReminderFailed :execrows
 UPDATE invoices.reminders
 SET status = 'failed', failed_at = $1::timestamptz, attempts = attempts + 1,
     last_error = $2::text, lease_id = NULL, lease_until = NULL,
-    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, fee_kind = NULL, fee = NULL,
+    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
     interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
@@ -458,7 +437,7 @@ const rescheduleReminderUncounted = `-- name: RescheduleReminderUncounted :execr
 UPDATE invoices.reminders
 SET next_attempt_at = $1::timestamptz, held_reason = $2::text,
     lease_id = NULL, lease_until = NULL,
-    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, fee_kind = NULL, fee = NULL,
+    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
     interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
@@ -590,7 +569,7 @@ const withdrawClaimedReminder = `-- name: WithdrawClaimedReminder :execrows
 UPDATE invoices.reminders
 SET status = 'withdrawn', withdrawn_at = $1::timestamptz, withdrawal_reason = $2::text,
     lease_id = NULL, lease_until = NULL, held_reason = NULL,
-    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, fee_kind = NULL, fee = NULL,
+    sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
     interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
@@ -701,15 +680,15 @@ func (q *Queries) WithdrawReminder(ctx context.Context, arg WithdrawReminderPara
 const writeLetterFacts = `-- name: WriteLetterFacts :one
 UPDATE invoices.reminders
 SET sent_on = $1::date, deadline = $2::date, regime = $3::text,
-    principal_open = $4, fee_kind = $5::text,
-    fee = $6::numeric, compensation = $7::numeric,
-    charges_earlier = $8, interest = $9, interest_waived = $10,
-    interest_paid = $11, interest_from = $12::date,
-    interest_segments = $13::jsonb, inkassosats = $14::numeric,
-    total = $15, charge_notes = $16::text[],
+    principal_open = $4, credited = $5, fee_kind = $6::text,
+    fee = $7::numeric, compensation = $8::numeric,
+    charges_earlier = $9, interest = $10, interest_waived = $11,
+    interest_paid = $12, interest_from = $13::date,
+    interest_segments = $14::jsonb, inkassosats = $15::numeric,
+    total = $16, charge_notes = $17::text[],
     pdf_object_key = NULL, pdf_sha256 = NULL, held_reason = NULL,
-    first_attempt_at = CASE WHEN status = 'queued' THEN coalesce(first_attempt_at, $17::timestamptz) ELSE first_attempt_at END
-WHERE id = $18 AND status IN ('queued', 'awaiting_print')
+    first_attempt_at = CASE WHEN status = 'queued' THEN coalesce(first_attempt_at, $18::timestamptz) ELSE first_attempt_at END
+WHERE id = $19 AND status IN ('queued', 'awaiting_print')
 RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason
 `
 
@@ -718,6 +697,7 @@ type WriteLetterFactsParams struct {
 	Deadline         pgtype.Date
 	Regime           string
 	PrincipalOpen    pgtype.Numeric
+	Credited         pgtype.Numeric
 	FeeKind          string
 	Fee              pgtype.Numeric
 	Compensation     pgtype.Numeric
@@ -746,6 +726,7 @@ func (q *Queries) WriteLetterFacts(ctx context.Context, arg WriteLetterFactsPara
 		arg.Deadline,
 		arg.Regime,
 		arg.PrincipalOpen,
+		arg.Credited,
 		arg.FeeKind,
 		arg.Fee,
 		arg.Compensation,

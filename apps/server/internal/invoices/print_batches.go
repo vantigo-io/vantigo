@@ -69,7 +69,15 @@ const (
 	// waivedChargesBarred is a posted letter whose charges a lift barred
 	// since it was printed.
 	waivedChargesBarred = "charges_barred"
+	// printLetterTries is how often a letter's transaction is tried when a
+	// collection rate keeps coming into force on its day under it.
+	printLetterTries = 3
 )
+
+// errRatesMoved is a letter judged on rates of which one came into force on
+// its day after the share was taken (shareCollectionRates): it is judged
+// again, in a transaction of its own.
+var errRatesMoved = errors.New("invoices: a collection rate came into force on the letter's day while it was judged")
 
 // postedAfterBatchLock is called inside the posting's transaction right
 // after it has locked the batch and before it locks the letters' invoices,
@@ -222,16 +230,32 @@ func (s *server) PostInvoicesReminderPrintBatches(ctx context.Context, req gen.P
 	}), nil
 }
 
-// printLetter is one letter's transaction of a print batch (D10): its
-// invoice FOR UPDATE, then the letter (D18), then the collection rates in
-// force on postOn FOR KEY SHARE — the rows a rate's DELETE judges "used", so
-// none of them is deleted under the letter (plan reading 6) — and the
-// letter judged again on postOn (judgeAndWriteFacts). A letter no longer
-// awaiting print is left out as it is; one held for a rate or the review is
-// left out and kept awaiting print (m9); one the engine no longer gives on
-// postOn is withdrawn with the reason; every other is printed in the batch.
-// It answers the letter left out, or nil when it was printed.
+// printLetter is one letter's transaction of a print batch (D10), tried
+// again when a collection rate came into force on postOn under it
+// (errRatesMoved). It answers the letter left out, or nil when it was
+// printed.
 func (s *server) printLetter(ctx context.Context, batchID int64, letter store.InvoicesReminder, postOn, now time.Time) (*gen.InvoicesPrintBatchLeftOut, error) {
+	for try := 1; ; try++ {
+		left, err := s.printLetterOnce(ctx, batchID, letter, postOn, now)
+		if errors.Is(err, errRatesMoved) && try < printLetterTries {
+			continue
+		}
+		return left, err
+	}
+}
+
+// printLetterOnce is one try of a letter's transaction: the batch FOR
+// SHARE — a batch posted or reprinted meanwhile leaves the letter out,
+// awaiting print — then its invoice FOR UPDATE, then the letter (D18), then
+// the collection rates in force on postOn FOR KEY SHARE — the rows a rate's
+// DELETE judges "used", so none of them is deleted under the letter (plan
+// reading 6) — and the letter judged again on postOn (judgeAndWriteFacts).
+// A letter no longer awaiting print is left out as it is; one held for a
+// rate or the review is left out and kept awaiting print (m9); one the
+// engine no longer gives on postOn is withdrawn with the reason; every other
+// is printed in the batch, once the rates in force on postOn are read again
+// and found to be the ones shared — else errRatesMoved rolls it back.
+func (s *server) printLetterOnce(ctx context.Context, batchID int64, letter store.InvoicesReminder, postOn, now time.Time) (*gen.InvoicesPrintBatchLeftOut, error) {
 	var left *gen.InvoicesPrintBatchLeftOut
 	leave := func(reason string) {
 		left = &gen.InvoicesPrintBatchLeftOut{
@@ -239,6 +263,16 @@ func (s *server) printLetter(ctx context.Context, batchID int64, letter store.In
 		}
 	}
 	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		closed, err := shareOwnPrintBatch(ctx, txq, batchID)
+		if err != nil {
+			return err
+		}
+		if closed {
+			// Posted or reprinted while this request was printing it: the
+			// letter is not printed into a batch that has gone.
+			leave(codePrintBatchClosed)
+			return nil
+		}
 		inv, err := lockInvoice(ctx, txq, letter.InvoiceID)
 		if err != nil {
 			return fmt.Errorf("invoices: lock document %d: %w", letter.InvoiceID, err)
@@ -251,7 +285,8 @@ func (s *server) printLetter(ctx context.Context, batchID int64, letter store.In
 			leave(leftNotAwaitingPrint)
 			return nil
 		}
-		if err := shareCollectionRates(ctx, txq, postOn); err != nil {
+		shared, err := shareCollectionRates(ctx, txq, postOn)
+		if err != nil {
 			return err
 		}
 		j, err := s.judgeAndWriteFacts(ctx, txq, inv, locked, postOn, now)
@@ -274,6 +309,13 @@ func (s *server) printLetter(ctx context.Context, batchID int64, letter store.In
 			leave(j.reason)
 			return nil
 		}
+		inForce, err := txq.CollectionRatesInForce(ctx, pgDate(postOn))
+		if err != nil {
+			return fmt.Errorf("invoices: read the collection rates in force on %s: %w", postOn.Format(time.DateOnly), err)
+		}
+		if !slices.Equal(inForce, shared) {
+			return errRatesMoved
+		}
 		if _, err := txq.MarkPrinted(ctx, store.MarkPrintedParams{PrintBatchID: batchID, ID: locked.ID}); err != nil {
 			return fmt.Errorf("invoices: print letter %d: %w", locked.ID, err)
 		}
@@ -288,9 +330,10 @@ func (s *server) printLetter(ctx context.Context, batchID int64, letter store.In
 // storePrintedLetter renders a letter the batch printed from its row and
 // stores it once under a key carrying its hash (plan reading 35), outside
 // any transaction, then records it on the letter while the letter is still
-// printed in the batch. A failure is logged and leaves the letter without a
-// stored PDF: the batch's combined PDF is rendered from the rows, and the
-// letter is printed all the same.
+// in the batch, printed or sent, without a PDF. A failure is logged and
+// leaves the letter without a stored PDF for now — the letter is printed all
+// the same, and the batch's combined PDF is rendered from the rows — and the
+// next posting or download of the batch stores it (healPrintedLetters).
 func (s *server) storePrintedLetter(ctx context.Context, batchID, letterID int64) {
 	q := store.New(s.deps.Pool)
 	warn := func(what string, err error) {
@@ -302,12 +345,16 @@ func (s *server) storePrintedLetter(ctx context.Context, batchID, letterID int64
 		warn("read", err)
 		return
 	}
+	if (letter.Status != reminderrules.StatusPrinted && letter.Status != reminderrules.StatusSent) ||
+		letter.PrintBatchID == nil || *letter.PrintBatchID != batchID || letter.PdfObjectKey != nil {
+		return // reprinted, withdrawn, or stored already
+	}
 	inv, err := q.GetInvoice(ctx, letter.InvoiceID)
 	if err != nil {
 		warn("read", err)
 		return
 	}
-	_, body, err := s.renderLetter(ctx, q, letter, inv)
+	_, body, err := renderLetter(letter, inv)
 	if err != nil {
 		warn("rendered", err)
 		return
@@ -323,6 +370,17 @@ func (s *server) storePrintedLetter(ctx context.Context, batchID, letterID int64
 		PdfObjectKey: key, PdfSha256: sha, ID: letter.ID, PrintBatchID: batchID,
 	}); err != nil {
 		warn("recorded", err)
+	}
+}
+
+// healPrintedLetters stores the PDF of every letter of the batch among
+// letters that is printed or sent and has none — its store failed when the
+// batch was printed — outside any transaction (storePrintedLetter).
+func (s *server) healPrintedLetters(ctx context.Context, batchID int64, letters []store.InvoicesReminder) {
+	for _, l := range letters {
+		if (l.Status == reminderrules.StatusPrinted || l.Status == reminderrules.StatusSent) && l.PdfObjectKey == nil {
+			s.storePrintedLetter(ctx, batchID, l.ID)
+		}
 	}
 }
 
@@ -360,12 +418,13 @@ func (r batchPDF) VisitGetInvoicesReminderPrintBatchesByIdPdfResponse(w http.Res
 func (s *server) GetInvoicesReminderPrintBatchesByIdPdf(ctx context.Context, req gen.GetInvoicesReminderPrintBatchesByIdPdfRequestObject) (gen.GetInvoicesReminderPrintBatchesByIdPdfResponseObject, error) {
 	var batch store.InvoicesReminderPrintBatch
 	var models []reminderModel
+	var letters []store.InvoicesReminder
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
 		if batch, err = q.GetPrintBatch(ctx, req.Id); err != nil {
 			return err
 		}
-		letters, err := q.LettersOfBatch(ctx, batch.ID)
+		letters, err = q.LettersOfBatch(ctx, batch.ID)
 		if err != nil {
 			return fmt.Errorf("invoices: read print batch %d's letters: %w", batch.ID, err)
 		}
@@ -381,15 +440,7 @@ func (s *server) GetInvoicesReminderPrintBatchesByIdPdf(ctx context.Context, req
 				}
 				invs[l.InvoiceID] = inv
 			}
-			n, err := q.CreditedOn(ctx, store.CreditedOnParams{InvoiceID: inv.ID, Day: l.SentOn})
-			if err != nil {
-				return fmt.Errorf("invoices: read what was credited of document %d: %w", inv.ID, err)
-			}
-			credited, err := ratFromNumeric(n)
-			if err != nil {
-				return err
-			}
-			m, err := reminderModelOf(l, inv, credited)
+			m, err := reminderModelOf(l, inv)
 			if err != nil {
 				return err
 			}
@@ -410,6 +461,7 @@ func (s *server) GetInvoicesReminderPrintBatchesByIdPdf(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
+	s.healPrintedLetters(ctx, batch.ID, letters)
 	return batchPDF{
 		body: gen.GetInvoicesReminderPrintBatchesByIdPdf200ApplicationpdfResponse{Body: bytes.NewReader(body), ContentLength: int64(len(body))},
 		disposition: fmt.Sprintf("attachment; filename=%q",
@@ -527,6 +579,10 @@ func (s *server) PostInvoicesReminderPrintBatchesByIdPosted(ctx context.Context,
 		return gen.PostInvoicesReminderPrintBatchesByIdPosted409ApplicationProblemPlusJSONResponse(*refusal), nil
 	case err != nil:
 		return nil, err
+	}
+	s.healPrintedLetters(ctx, posted.ID, letters)
+	if letters, err = store.New(s.deps.Pool).LettersOfBatch(ctx, posted.ID); err != nil {
+		return nil, fmt.Errorf("invoices: read print batch %d's letters: %w", posted.ID, err)
 	}
 	w, err := printBatchWire(posted, letters)
 	if err != nil {
