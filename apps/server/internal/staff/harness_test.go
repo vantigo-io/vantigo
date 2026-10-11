@@ -196,10 +196,29 @@ func (a *allCalls) by(userID uuid.UUID) []contractCall {
 }
 
 // noteContractCall is the hook TestMain installs: every call is recorded, and
-// one the lock rule forbids is also recorded as a failure.
+// one the lock rule forbids is also recorded as a failure. A test that asked
+// to be told of its caller's calls (onContractCall) is told after both.
 func noteContractCall(ctx context.Context, method string) {
 	lockedContractCalls.note(ctx, method)
 	contractCalls.note(ctx, method)
+	p, _ := contracts.PrincipalFrom(ctx)
+	if fn, ok := callHooks.Load(p.UserID); ok {
+		fn.(func(method string))(method)
+	}
+}
+
+// callHooks is what a test runs when a request of one user's calls out of
+// the module, keyed by the user: the way a test makes something happen at
+// the moment a handler reaches the directory — after its snapshot, say — to
+// show what the handler had already read by then.
+var callHooks sync.Map
+
+// onContractCall runs fn on every call out of the module a request of
+// userID's makes, for the rest of the test.
+func onContractCall(t *testing.T, userID uuid.UUID, fn func(method string)) {
+	t.Helper()
+	callHooks.Store(userID, fn)
+	t.Cleanup(func() { callHooks.Delete(userID) })
 }
 
 // The module's paths, so a typo is one compile error rather than a 404 a test

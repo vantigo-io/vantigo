@@ -522,6 +522,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/me/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export my own data
+         * @description The caller's own data in one file (design S16, reading 31 and 35): their record, next of kin, roles, employments with their terms, self-service link, documents' metadata and history, read in one snapshot. The sealed values are left out — the national identity number is its kind and whether one is on file, the bank account its kind and last four digits — and so are HR's notes and the terms' notes; the history is shaped as the person reads it on My page. Served as an attachment named staff-<employeeNumber>-personal-data.json, and never cached. The person's own copy records no event. A caller linked to nobody gets the 404 no_person.
+         */
+        get: operations["getStaffMeExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/meta": {
         parameters: {
             query?: never;
@@ -560,6 +580,26 @@ export interface paths {
          * @description Adds a person. The employee number is the one given, or the next from the settings' sequence — the prefix and the next number, skipping past any number already taken — taken under the settings row's lock, so two creators get two numbers. The display name is the given name and the family name unless one is given. The creation is a person_created event.
          */
         post: operations["postStaffPeople"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/similar-erased": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Find erased people with the same names and birth date
+         * @description The erased people whose given and family names (however cased) and birth date match the ones sent — the warning HR's creation form shows before a person is added who may be an erased person coming back (design S15). Because the erase removed the national identity number, the module cannot tell them apart; a rehire is POST /people/{id}/employments on the erased record. A body rather than a query, so the names stay out of access logs.
+         */
+        post: operations["postStaffPeopleSimilarErased"];
         delete?: never;
         options?: never;
         head?: never;
@@ -673,7 +713,7 @@ export interface paths {
         put?: never;
         /**
          * Add an employment
-         * @description Adds an employment (an arbeidsforhold, design S2) with its first terms row, which is dated the start. The business unit is the default one when none is named; the employment number is the one given, or the person's employee number and the first free -n, generated under the person's lock and skipping past any number already taken. The creation is an employment_created event and a terms_added one.
+         * @description Adds an employment (an arbeidsforhold, design S2) with its first terms row, which is dated the start. The business unit is the default one when none is named; the employment number is the one given, or the person's employee number and the first free -n, generated under the person's lock and skipping past any number already taken. The creation is an employment_created event and a terms_added one. On an erased person it is a rehire (design S15) — the person's erased_at and reassessed_at are cleared in the same transaction, recorded as a person_rehired event, and the record starts again with what HR types.
          */
         post: operations["postStaffPeopleByIdEmployments"];
         delete?: never;
@@ -695,6 +735,26 @@ export interface paths {
          */
         get: operations["getStaffPeopleByIdEvents"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/legal-hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set or lift a person's legal hold
+         * @description Sets or lifts the legal hold (design S15, class F): while a person is held, no retention erase touches them, and they cannot be deleted (legal_hold). Setting it records the reason, who set it and when, as a legal_hold_set event; lifting it clears all three, as a legal_hold_lifted event — each naming legalHold and reason before and after, read by staff:manage and staff:personal-data. The hold is one of the writes an erased person still allows. Writing what is already there changes nothing and records nothing.
+         */
+        put: operations["putStaffPeopleByIdLegalHold"];
         post?: never;
         delete?: never;
         options?: never;
@@ -780,6 +840,46 @@ export interface paths {
         get: operations["getStaffPeopleByIdOrg"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/personal-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export a person's data
+         * @description Everything the module holds about a person, in one file (design S16) — the complete answer to an innsyn request: the record with every field group, the national identity number and the bank account opened, HR's notes, the hold fields, the next of kin, the roles, every employment with its terms (pay and notes included), the self-service link with the linked user as the directory names them, the documents' metadata (the files are read through GET /documents/{id}) and every event whole, read in one snapshot and built in memory — never refused for size. The linked user is read after the snapshot. The export is an audited reveal: once the file is read, a personal_data_exported event naming the viewer is recorded in its own transaction, and a file whose export could not be recorded is not answered. Served as an attachment named staff-<employeeNumber>-personal-data.json, and never cached. An erased person's file is what is left of them.
+         */
+        get: operations["getStaffPeopleByIdPersonalData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/reassessed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a reassessment
+         * @description Records the reassessment of an erased person (design S15): due once the retention run has erased them, none has been recorded, and twelve months have passed since their last employment ended — from that day on, in the business time zone. It records who and when, as a reassessed event naming reassessedAt, read by staff:manage and staff:personal-data, and clears the attention item. Anything else is 409 reassessment_not_due.
+         */
+        post: operations["postStaffPeopleByIdReassessed"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1264,6 +1364,18 @@ export interface components {
          * @enum {string}
          */
         StaffEndReason: "employee_resigned" | "employer_terminated" | "contract_ended" | "wrongly_reported" | "internal_change" | "payroll_system_change";
+        /** @description An erased person whose names and birth date match a new person's (POST /people/similar-erased), so a rehire is a choice rather than a duplicate made by accident. */
+        StaffErasedPerson: {
+            displayName: string;
+            employeeNumber: string;
+            /**
+             * Format: date-time
+             * @description When the retention run erased the person.
+             */
+            erasedAt: string;
+            /** Format: int64 */
+            id: number;
+        };
         /** @description One change in a person's history (design S21). payload.fields names each field the change touched, with its value before (from) and after (to) — either absent when the field was empty — or, for a field of a group the caller may not read, the string "changed" in place of the values; a field of the pay or of HR's notes the caller may not read is left out altogether, since even the day it changed is not theirs to know. A sealed value is never in a payload. */
         StaffEvent: {
             actor: components["schemas"]["StaffEventActor"];
@@ -1271,7 +1383,7 @@ export interface components {
             at: string;
             /** Format: int64 */
             id: number;
-            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected or terms_deleted in this delivery; the kinds grow with it. */
+            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed or person_rehired; the kinds grow with the module. */
             kind: string;
             /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. */
             payload: {
@@ -1323,6 +1435,23 @@ export interface components {
             name: string;
             /** @description Nine digits with a valid MOD11 check digit; spaces are ignored. Unique among legal entities. Left out, it is cleared. */
             orgNumber?: string;
+        };
+        /** @description The legal hold (design S15, class F) — while held, no retention erase touches the person. reason and at are absent when the person is not held. */
+        StaffLegalHold: {
+            /**
+             * Format: date-time
+             * @description When the hold was set.
+             */
+            at?: string;
+            held: boolean;
+            /** @description Why the person is held, as staff:personal-data wrote it. */
+            reason?: string;
+        };
+        /** @description Sets (held true, with a reason) or lifts (held false, no reason) the legal hold. */
+        StaffLegalHoldRequest: {
+            held: boolean;
+            /** @description 1 to 500 characters when held is true; absent or null when it is false. */
+            reason?: string | null;
         };
         /** @description A location, the arbeidssted (design S6). */
         StaffLocation: {
@@ -1460,7 +1589,7 @@ export interface components {
         };
         /** @enum {string} */
         StaffPayPeriod: "monthly" | "yearly" | "hourly" | "once";
-        /** @description A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the terms' own or else the department's (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person. */
+        /** @description A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the terms' own or else the department's (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone; erasedAt, legalHold and reassessedAt (the hold group) are staff:manage's and staff:personal-data's. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person. */
         StaffPerson: {
             bankAccount?: components["schemas"]["StaffPersonBankAccount"];
             /**
@@ -1477,11 +1606,17 @@ export interface components {
             department?: components["schemas"]["StaffDepartmentSummary"];
             displayName: string;
             employeeNumber: string;
+            /**
+             * Format: date-time
+             * @description When the retention run erased the person — staff:manage and staff:personal-data only (the hold group). Absent when not erased. An erased person is read-only but for the legal hold, the reassessment, an unlink and a rehire.
+             */
+            erasedAt?: string;
             familyName: string;
             gender?: components["schemas"]["StaffGender"];
             givenName: string;
             /** Format: int64 */
             id: number;
+            legalHold?: components["schemas"]["StaffLegalHold"];
             location?: components["schemas"]["StaffLocationSummary"];
             manager?: components["schemas"]["StaffPersonSummary"];
             nationalId?: components["schemas"]["StaffPersonNationalId"];
@@ -1498,6 +1633,11 @@ export interface components {
             preferredLanguage: components["schemas"]["StaffLanguage"];
             /** @description Private. Absent when not set. */
             privateEmail?: string;
+            /**
+             * Format: date-time
+             * @description When staff:personal-data recorded the reassessment of an erased person — the hold group. Absent when not reassessed.
+             */
+            reassessedAt?: string;
             /**
              * Format: int32
              * @description The revision a change sends back in If-Match.
@@ -1522,6 +1662,8 @@ export interface components {
         StaffPersonCapabilities: {
             /** @description staff:manage — change the record, the next of kin and the roles, and delete a person created in error. */
             canEdit: boolean;
+            /** @description staff:personal-data — set and lift the legal hold, record a reassessment and export the person's data. */
+            canHold: boolean;
             /** @description staff:manage — the self-service link to a user. */
             canManageAccount: boolean;
             /** @description staff:personal-data — reveal and write the national identity number and the bank account. */
@@ -1551,6 +1693,11 @@ export interface components {
             department?: components["schemas"]["StaffDepartmentSummary"];
             displayName: string;
             employeeNumber: string;
+            /**
+             * Format: date-time
+             * @description When the retention run erased the person, for staff:manage; absent otherwise. An erased person is listed under status ended or all, their state ended.
+             */
+            erasedAt?: string;
             familyName: string;
             givenName: string;
             /** Format: int64 */
@@ -1669,7 +1816,70 @@ export interface components {
             /** Format: uuid */
             id: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased and storage_unavailable. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description A person's data in one file (design S16): the record, the next of kin, the roles, every employment with its terms, the self-service link, the documents' metadata (the files themselves are read through the documents' own downloads) and every event, read in one snapshot. exportedAt is when it was made. GET /people/{id}/personal-data's is the complete file, the sealed values opened and the events whole; GET /me/export's is the person's own, without the sealed values, HR's notes and the terms' notes, its events shaped as the person reads their history. */
+        StaffPersonalData: {
+            documents: components["schemas"]["StaffDocument"][];
+            employments: components["schemas"]["StaffPersonalDataEmployment"][];
+            /** @description Every event of the person, oldest first. */
+            events: components["schemas"]["StaffEvent"][];
+            /** Format: date-time */
+            exportedAt: string;
+            link: components["schemas"]["StaffPersonLink"];
+            nextOfKin: components["schemas"]["StaffNextOfKin"][];
+            person: components["schemas"]["StaffPersonalDataPerson"];
+            roles: components["schemas"]["StaffPersonRole"][];
+        };
+        /** @description The bank account on file. value, the whole number, is in the complete file only. */
+        StaffPersonalDataBankAccount: {
+            kind: components["schemas"]["StaffBankAccountKind"];
+            last4: string;
+            value?: string;
+        };
+        /** @description One employment and its terms, oldest first. */
+        StaffPersonalDataEmployment: {
+            employment: components["schemas"]["StaffEmployment"];
+            terms: components["schemas"]["StaffTerms"][];
+        };
+        /** @description Whether a national identity number is on file, and its kind. country (a foreign id's) and value, the whole number, are in the complete file only. */
+        StaffPersonalDataNationalId: {
+            country?: string;
+            kind?: components["schemas"]["StaffNationalIdKind"];
+            onFile: boolean;
+            value?: string;
+        };
+        /** @description The person's record in a personal-data file — every field of theirs, each absent when not set. notes, erasedAt, legalHold and reassessedAt are in the complete file only. */
+        StaffPersonalDataPerson: {
+            bankAccount?: components["schemas"]["StaffPersonalDataBankAccount"];
+            /** Format: date */
+            birthDate?: string;
+            city?: string;
+            country?: string;
+            displayName: string;
+            employeeNumber: string;
+            /** Format: date-time */
+            erasedAt?: string;
+            familyName: string;
+            gender?: components["schemas"]["StaffGender"];
+            givenName: string;
+            /** Format: int64 */
+            id: number;
+            legalHold?: components["schemas"]["StaffLegalHold"];
+            nationalId: components["schemas"]["StaffPersonalDataNationalId"];
+            notes?: string;
+            phoneMobile?: string;
+            phonePrivate?: string;
+            phoneWork?: string;
+            postalCode?: string;
+            preferredLanguage: components["schemas"]["StaffLanguage"];
+            privateEmail?: string;
+            /** Format: date-time */
+            reassessedAt?: string;
+            status: components["schemas"]["StaffPersonStatus"];
+            street?: string;
+            workCountry: string;
+            workEmail?: string;
+        };
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold and reassessment_not_due. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1725,6 +1935,13 @@ export interface components {
             pensionProvider?: string;
             /** @description An IANA name such as Europe/Oslo, which this server and its database must read the same way. */
             timeZone: string;
+        };
+        /** @description A new person's names and birth date, to find an erased person they may be (the rehire warning). Sent as a body, not a query, so the names stay out of access logs. */
+        StaffSimilarErasedRequest: {
+            /** Format: date */
+            birthDate: string;
+            familyName: string;
+            givenName: string;
         };
         /** @description The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out. */
         StaffStructure: {
@@ -2760,7 +2977,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict. */
+            /** @description Conflict — revision_conflict; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2814,6 +3031,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
             };
         };
     };
@@ -2925,7 +3151,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict; terms_before_start when a later terms row would lie before the new start; structure_archived when a newly named business unit is archived; manager_cycle when an earlier start closes a loop in the manager graph. */
+            /** @description Conflict — revision_conflict; terms_before_start when a later terms row would lie before the new start; structure_archived when a newly named business unit is archived; manager_cycle when an earlier start closes a loop in the manager graph; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3041,7 +3267,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — terms_after_end when a terms row is dated after endDate; manager_cycle when a later end brings back terms that close a loop in the manager graph. */
+            /** @description Conflict — terms_after_end when a terms row is dated after endDate; manager_cycle when a later end brings back terms that close a loop in the manager graph; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3097,7 +3323,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — manager_cycle when the terms the reopening brings back into force close a loop in the manager graph. */
+            /** @description Conflict — manager_cycle when the terms the reopening brings back into force close a loop in the manager graph; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3213,7 +3439,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — terms_valid_from_taken when the employment has a row on that date; terms_before_start before the employment's start; terms_after_end after its end; terms_first_row_start when the first row would not be dated the start; self_manager when the manager is the person; manager_cycle when the manager — named on the row, or the department's — would close a loop in the manager graph on the row's date or any later date the graph changes; structure_archived when a department or location newly named is archived. */
+            /** @description Conflict — terms_valid_from_taken when the employment has a row on that date; terms_before_start before the employment's start; terms_after_end after its end; terms_first_row_start when the first row would not be dated the start; self_manager when the manager is the person; manager_cycle when the manager — named on the row, or the department's — would close a loop in the manager graph on the row's date or any later date the graph changes; structure_archived when a department or location newly named is archived; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3757,7 +3983,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["StaffProblem"];
                 };
             };
-            /** @description Conflict — revision_conflict. */
+            /** @description Conflict — revision_conflict; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3843,6 +4069,53 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person, the caller is linked to no person. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffMeExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named staff-<employeeNumber>-personal-data.json, and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonalData"];
                 };
             };
             /** @description Unauthorized */
@@ -4023,6 +4296,57 @@ export interface operations {
             };
         };
     };
+    postStaffPeopleSimilarErased: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffSimilarErasedRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the matches, most recently erased first; [] when there are none. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffErasedPerson"][];
+                };
+            };
+            /** @description Bad Request — a name or the birth date is missing or empty. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     getStaffPeopleById: {
         parameters: {
             query?: never;
@@ -4131,7 +4455,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict. */
+            /** @description Conflict — revision_conflict; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4185,7 +4509,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — person_in_use. */
+            /** @description Conflict — person_erased; legal_hold when the person is under a legal hold (judged before anything else names them); person_in_use. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4253,6 +4577,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
             };
         };
     };
@@ -4420,7 +4753,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — document_count_exceeded (the person has 200 documents) or person_erased. */
+            /** @description Conflict — document_count_exceeded (the person has 200 documents); person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4625,6 +4958,66 @@ export interface operations {
             };
         };
     };
+    putStaffPeopleByIdLegalHold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffLegalHoldRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPerson"];
+                };
+            };
+            /** @description Bad Request — a field error on reason when a hold is set without one or with more than 500 characters, or a lift sends one. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     putStaffPeopleByIdNationalId: {
         parameters: {
             query?: never;
@@ -4682,6 +5075,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
             };
         };
     };
@@ -4842,7 +5244,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict. */
+            /** @description Conflict — revision_conflict; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4897,6 +5299,109 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getStaffPeopleByIdPersonalData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named staff-<employeeNumber>-personal-data.json, and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonalData"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postStaffPeopleByIdReassessed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPerson"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — reassessment_not_due. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
             };
         };
     };
@@ -5008,7 +5513,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict. */
+            /** @description Conflict — revision_conflict; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5123,6 +5628,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire); an unlink (userId null) is allowed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
             };
         };
     };
@@ -5288,7 +5802,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict; terms_not_latest when the row is not the latest and correction is not true; terms_valid_from_taken when the employment has a row on that date; terms_before_start before the employment's start; terms_after_end after its end; terms_first_row_start when the first row would not be dated the start; self_manager when the manager is the person; manager_cycle when the manager — named on the row, or the department's — would close a loop in the manager graph on the row's date or any later date the graph changes; structure_archived when a department or location newly named is archived. */
+            /** @description Conflict — revision_conflict; terms_not_latest when the row is not the latest and correction is not true; terms_valid_from_taken when the employment has a row on that date; terms_before_start before the employment's start; terms_after_end after its end; terms_first_row_start when the first row would not be dated the start; self_manager when the manager is the person; manager_cycle when the manager — named on the row, or the department's — would close a loop in the manager graph on the row's date or any later date the graph changes; structure_archived when a department or location newly named is archived; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5342,7 +5856,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — terms_not_latest when a later row exists; terms_first_row_start for the first row; manager_cycle when the row in force again closes a loop in the manager graph. */
+            /** @description Conflict — terms_not_latest when a later row exists; terms_first_row_start for the first row; manager_cycle when the row in force again closes a loop in the manager graph; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;

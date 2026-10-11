@@ -46,8 +46,9 @@ type PersonNationalIDRow struct {
 
 // The sealed identifiers (design S4, §4 Sealed fields): the national identity
 // number and the bank account, each written sealed beside what may be kept in
-// clear, and read sealed only by the reveal that opens it. Nothing else in
-// this module reads a sealed column.
+// clear, and read sealed only by the reveal that opens it and by the
+// personal-data export (personal_data.go), an audited reveal of its own.
+// Nothing else in this module reads a sealed column.
 // PersonNationalID is a person's national identity number as stored: its
 // kind, a foreign id's country, the sealed value and its MAC, each NULL when
 // none is on file.

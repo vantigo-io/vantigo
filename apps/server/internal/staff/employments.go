@@ -116,7 +116,7 @@ func (s *server) withEmploymentLock(ctx context.Context, id int64, fn func(ctx c
 	if err != nil {
 		return err
 	}
-	err = s.withPersonLock(ctx, e.PersonID, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, e.PersonID, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		locked, err := lockEmployment(ctx, txq, id)
 		if err != nil {
 			return err
@@ -336,11 +336,16 @@ func (s *server) PostStaffPeopleByIdEmployments(ctx context.Context, req gen.Pos
 }
 
 // createEmployment is one try of PostStaffPeopleByIdEmployments' write, in
-// one transaction under the person's lock.
+// one transaction under the person's lock. It is one of the writes an erased
+// person allows (erased.go): on them it is a rehire, which opens the record
+// again in the same transaction.
 func (s *server) createEmployment(ctx context.Context, personID int64, body gen.StaffEmploymentRequest, number *string, relationship string,
 	first store.StaffEmploymentTerm, who actor, created *store.StaffEmployment) error {
 	start := body.StartDate.Time
-	return s.withPersonLock(ctx, personID, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	return s.withPersonLock(ctx, personID, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		if err := s.rehireIfErased(ctx, txq, personID, who); err != nil {
+			return err
+		}
 		edges := first.ManagerPersonID != nil || first.DepartmentID != nil
 		if edges {
 			if err := lockManagerGraph(ctx, txq); err != nil {

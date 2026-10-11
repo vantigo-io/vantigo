@@ -15,10 +15,10 @@ import (
 
 // This file is DELETE /people/{id}: the hard delete of a person created in
 // error (plan reading 5) — no employment, no link, no document, named as
-// nobody's manager — with their next of kin, their roles and their own history, in one
-// transaction. It is the one exception to the events table's append-only
-// rule, and it leaves one installation-level event behind carrying the
-// employee number and nothing else. Anything that names the person keeps
+// nobody's manager, not under a legal hold — with their next of kin, their
+// roles and their own history, in one transaction. It is the one exception to
+// the events table's append-only rule, and it leaves one installation-level
+// event behind carrying the employee number and nothing else. Anything that names the person keeps
 // them; the retention run (A2) is the only other way a person's data leaves.
 
 // personInUse is the 409 a person something names answers. reasons are what
@@ -49,19 +49,24 @@ func personDeleteError(err error) error {
 // write that makes someone a manager — a department's, a terms row's — takes
 // the graph lock, so once it is held nobody can start naming this person
 // between the check and the delete. A foreign key that refuses anyway is
-// still person_in_use.
+// still person_in_use. An erased person is person_erased (the read-only
+// rule, at the lock) and a held one legal_hold, before what names them.
 func (s *server) DeleteStaffPeopleById(ctx context.Context, req gen.DeleteStaffPeopleByIdRequestObject) (gen.DeleteStaffPeopleByIdResponseObject, error) {
 	who, err := s.actorFor(ctx)
 	if err != nil {
 		return nil, err
 	}
-	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, req.Id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		if err := lockManagerGraph(ctx, txq); err != nil {
 			return err
 		}
 		row, err := readPerson(ctx, txq, req.Id)
 		if err != nil {
 			return err
+		}
+		if row.LegalHold {
+			return refuseConflict(conflict(codeLegalHold, "Legal hold",
+				"This person is under a legal hold, which keeps their record whole. Lift the hold first."))
 		}
 		use, err := txq.PersonInUse(ctx, req.Id)
 		if err != nil {

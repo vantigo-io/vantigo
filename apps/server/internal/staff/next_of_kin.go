@@ -140,7 +140,7 @@ func (s *server) PutStaffPeopleByIdNextOfKin(ctx context.Context, req gen.PutSta
 		return nil, err
 	}
 	var rows []store.ListNextOfKinRow
-	err = s.withPersonLock(ctx, req.Id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, req.Id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		person, err := readPerson(ctx, txq, req.Id)
 		if err != nil {
 			return err

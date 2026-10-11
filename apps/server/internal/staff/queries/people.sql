@@ -10,7 +10,8 @@ SELECT
     national_id_kind, (national_id_mac IS NOT NULL)::boolean AS national_id_on_file,
     work_email, phone_work, phone_mobile, phone_private, private_email,
     street, postal_code, city, country, work_country, preferred_language,
-    bank_account_kind, bank_account_last4, notes, revision
+    bank_account_kind, bank_account_last4, notes, revision,
+    legal_hold, legal_hold_reason, legal_hold_at, erased_at, reassessed_at
 FROM staff.people
 WHERE id = @id;
 
@@ -171,7 +172,7 @@ AND (
 -- ListPeople is one page of the directory, by display name, the work group's
 -- columns only, filtered as CountPeople counts.
 SELECT p.id, p.employee_number, p.given_name, p.family_name, p.display_name,
-       p.work_email, p.phone_work, p.work_country, p.preferred_language
+       p.work_email, p.phone_work, p.work_country, p.preferred_language, p.erased_at
 FROM staff.people p
 WHERE NOT EXISTS (
     SELECT 1 FROM unnest(@patterns::text[]) AS s(pattern)
@@ -274,3 +275,58 @@ VALUES (@person_id, @role, @from_date, @to_date, @now::timestamptz, @now::timest
 SELECT DISTINCT person_id FROM staff.employments
 WHERE person_id = ANY(@ids::bigint[]) AND start_date <= @today::date
   AND (end_date IS NULL OR end_date >= @today::date);
+
+-- name: SetLegalHold :exec
+-- SetLegalHold sets or lifts a person's legal hold (design S15, class F): set,
+-- with the reason, who set it and when; lifted, all three cleared. The
+-- revision is left alone, as the sealed fields' writes leave it: it guards
+-- HR's replace of the editable fields, which the hold is not among.
+UPDATE staff.people SET
+    legal_hold = @held,
+    legal_hold_reason = sqlc.narg(reason),
+    legal_hold_by_user_id = sqlc.narg(by_user_id),
+    legal_hold_at = sqlc.narg(at),
+    updated_at = @now::timestamptz
+WHERE id = @id;
+
+-- name: SetReassessed :exec
+-- SetReassessed records the reassessment of an erased person: when and by
+-- whom. The revision is left alone, as SetLegalHold leaves it.
+UPDATE staff.people SET
+    reassessed_at = @now::timestamptz,
+    reassessed_by_user_id = @by_user_id,
+    updated_at = @now::timestamptz
+WHERE id = @id;
+
+-- name: ClearErasure :exec
+-- ClearErasure is a rehire's first write (design S15): the erased record is a
+-- record again, its reassessment with it. What the erase blanked stays
+-- blank until HR types it.
+UPDATE staff.people SET
+    erased_at = NULL,
+    reassessed_at = NULL,
+    reassessed_by_user_id = NULL,
+    updated_at = @now::timestamptz
+WHERE id = @id;
+
+-- name: LastEmploymentEnd :one
+-- LastEmploymentEnd is when a person's last employment ended — the latest
+-- end — and whether every one of them has ended at all: an employment with
+-- no end has not, and a person with none has no last end.
+SELECT
+    (count(*) > 0 AND count(*) FILTER (WHERE end_date IS NULL) = 0)::boolean AS all_ended,
+    max(end_date)::date AS last_end
+FROM staff.employments
+WHERE person_id = @person_id;
+
+-- name: SimilarErasedPeople :many
+-- SimilarErasedPeople is the erased people with these names, however cased,
+-- and this birth date (the rehire warning, design S15), most recently erased
+-- first.
+SELECT id, employee_number, display_name, erased_at::timestamptz AS erased_at
+FROM staff.people
+WHERE erased_at IS NOT NULL
+  AND lower(given_name) = lower(@given_name::text)
+  AND lower(family_name) = lower(@family_name::text)
+  AND birth_date = @birth_date::date
+ORDER BY erased_at DESC, id;

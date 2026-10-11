@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the settings, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the erased state, the legal hold and the reassessment, the settings, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -29,7 +29,9 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 [managers and the org view](#managers-and-the-org-view), the
 [sealed identifiers](#the-sealed-identifiers), the
 [self-service link](#the-self-service-link), [My page](#my-page), the
-[documents](#documents) and their [categories](#categories-and-classes), [how a refusal
+[documents](#documents) and their [categories](#categories-and-classes), the
+[personal-data exports](#the-personal-data-exports), the [erased state](#the-erased-state),
+the [legal hold](#the-legal-hold) and the [reassessment](#the-reassessment), [how a refusal
 looks](#refusals-and-revisions), the [locks](#locks) and the [endpoints](#endpoints).
 
 ## The schema
@@ -59,11 +61,11 @@ Delivery A2's migration, `00043_staff_records.sql`, adds three tables and no col
 
 | Key | Name | Grants | Sensitive |
 | --- | --- | --- | --- |
-| `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** Your absence arrives with delivery B, your export later in A2. | no |
+| `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** Your absence arrives with delivery B. | no |
 | `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the calendar with types hidden. The calendar arrives with B. | no |
 | `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. Registered now; grants nothing until absence arrives with B. | no |
 | `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, the settings, documents other than health and their categories, the account flag, imports and exports. The imports and exports arrive later in A2, the account flag with C. | yes |
-| `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. The export, legal holds and erasure arrive later in A2, the milestones' notes and the HR-only types with B. | yes |
+| `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. Erasure arrives later in A2, the milestones' notes and the HR-only types with B. | yes |
 
 All five are in the category "Staff" and delegable. The Owner holds them through the
 wildcard; anyone else needs a role that grants them. Each operation's rule is in the
@@ -281,6 +283,10 @@ Who lists whom:
   `status` says (`status=ended` lists nobody).
 - Anyone else is the uniform 403.
 
+An [erased](#the-erased-state) person is listed to `staff:manage` as any leaver is —
+under `ended` and `all`, their `status` `ended` — with `erasedAt` beside it, the hold
+group's; there is no state of its own.
+
 `unitId`, `departmentId` and `locationId` keep the people with an employment not ended
 before today in that business unit whose terms name that department and that location —
 the row in force today, or for an employment that starts later its first row, so HR
@@ -308,6 +314,7 @@ from the response — never null.
 | National identity number | `nationalId { kind, onFile }` | ✓ | — | — | ✓ | ✎ reveal and set |
 | Bank account | `bankAccount { kind, last4 }` | ✓ | — | — | ✓ | ✎ reveal and set |
 | Link | `user { id, displayName, active }` | ✓ | — | — | ✓ | ✓ |
+| Hold | `legalHold { held, reason, at }`, `erasedAt`, `reassessedAt` | — | — | — | ✓ | ✎ hold and reassess |
 
 - **Self** is the user a person's self-service link names, whatever state the link is
   in. **Colleague** is `staff:view`, and only for a person **active today**: an
@@ -339,8 +346,15 @@ from the response — never null.
 
 Each person carries `capabilities`: `canEdit` and `canManageAccount` (`staff:manage`),
 `canRevealIdentifiers` (`staff:personal-data`), `canSeePay` (the person themselves,
-`staff:manage` or `staff:personal-data`) and `canSeeHealth` (the person themselves or
-`staff:personal-data`: the person's health documents).
+`staff:manage` or `staff:personal-data`), `canSeeHealth` (the person themselves or
+`staff:personal-data`: the person's health documents) and `canHold`
+(`staff:personal-data`: the [legal hold](#the-legal-hold), the
+[reassessment](#the-reassessment) and the [complete export](#the-personal-data-exports)).
+
+The **hold** group is about the record's retention rather than the person: whether a
+legal hold stands, with its reason and when it was set, when the retention run erased
+the person and when they were reassessed. It is HR's alone — `erasedAt` and
+`reassessedAt` are absent until set, `legalHold` is `{held: false}` when there is none.
 
 ### The history
 
@@ -372,6 +386,11 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `document_added` | `documentId`; `fields`: `category` (the key), `fileName`, `validTo`, `signedAt` as `to`. |
 | `document_updated` | `documentId`; `fields`: each of the four that changed, before and after. |
 | `document_removed` | `documentId`; `fields`: the four as `from`. |
+| `personal_data_exported` | Empty; the actor is the viewer of the [complete export](#the-personal-data-exports). |
+| `legal_hold_set` | `fields.legalHold` (`false` to `true`) and `fields.reason`, each that changed, before and after. |
+| `legal_hold_lifted` | `fields.legalHold` (`true` to `false`), `fields.reason` as `from`. |
+| `reassessed` | `fields.reassessedAt` as `to`. |
+| `person_rehired` | `fields.erasedAt` and, when set, `fields.reassessedAt`, each as `from`. |
 
 `GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
 the person themselves, a manager of theirs today, `staff:manage` and
@@ -401,12 +420,18 @@ payload touches class E — is left out of the list, and out of its `totalCount`
 audience without the health group, HR without `staff:personal-data` included: they do
 not learn that one happened.
 
+The **hold** events — `legal_hold_set`, `legal_hold_lifted`, `reassessed`,
+`person_rehired` — name fields of the hold group, so the person and a manager read
+each field as `"changed"`, and HR reads the values.
+
 ### Deleting a person
 
 `DELETE /people/{id}` (`staff:manage`) is the hard delete of a person **created in
 error**: one with no employment, no user link, no document, and named as nobody's
-manager — neither a department's nor on anyone's terms. Anything else is
-`person_in_use` (409), whose
+manager — neither a department's nor on anyone's terms — and not under a
+[legal hold](#the-legal-hold). An [erased](#the-erased-state) person is
+`person_erased` (409) and a held one `legal_hold` (409), judged before what names
+them; anything else is `person_in_use` (409), whose
 detail says what names the person — "has documents" among the reasons; the person
 stays. The delete takes the person's row
 and then the manager-graph lock before it judges, so no write can start naming the
@@ -753,6 +778,8 @@ caller about themselves.
   HR's notes are left out.
 - **`GET /me/documents`** is the person's own [documents](#documents), health
   documents included, newest first.
+- **`GET /me/export`** is the person's own copy of their data — see
+  [the personal-data exports](#the-personal-data-exports).
 
 ## Documents
 
@@ -801,7 +828,8 @@ person never writes their own documents, and anyone else gets the uniform 403.
   without bound.
 - **The order.** The object is written **before** the row's transaction; a store that
   cannot write is 503 `storage_unavailable` and nothing is recorded. Then, under the
-  person's lock: the person is not erased (`person_erased`, 409), the count is under
+  person's lock: the person is not erased (`person_erased`, 409 — the
+  [read-only rule](#the-erased-state), judged at the lock), the count is under
   the cap, the category exists and is not archived (a field error on `categoryId`),
   the row is written and a `document_added` event recorded. Whatever refuses or fails
   after the write removes the object again, with one attempt on a context detached from
@@ -870,6 +898,101 @@ health documents — and only class E is. Six are seeded:
   move them first — so the archive never takes from the picker a category a document
   still names.
 
+## The personal-data exports
+
+A person's data in one JSON file (design S16): `exportedAt`, the `person` — every field
+of the record — their `nextOfKin`, `roles`, `employments` (each `{employment, terms}`,
+the terms oldest first), the self-service `link`, the `documents`' metadata (the files
+themselves are read through `GET /documents/{id}`) and every event of their history,
+oldest first. Both exports read it all in **one** REPEATABLE READ snapshot, so its parts
+agree with each other, build it in memory — one person's data is one response, and it is
+never refused for size — and answer it as an attachment named
+`staff-<employeeNumber>-personal-data.json`, `Content-Type: application/json`, with its
+`Content-Length` and `Cache-Control: private, no-store`. The directory is asked only
+after the snapshot: the linked user's name, and the viewer's for the audit.
+
+- **`GET /people/{id}/personal-data`** (`staff:personal-data`) is the **complete file**,
+  the module's answer to an innsyn request (GDPR art. 15): every field group, HR's
+  `notes`, the hold fields, `nationalId` with its `country` and `value` and
+  `bankAccount` with its `value` — the sealed values opened — the terms' `note` and
+  pay, the health documents, and every event **whole**, its payload as stored. It is an
+  **audited reveal**: once the file is read, a `personal_data_exported` event naming the
+  viewer is recorded under the person's lock in a transaction of its own, and a file
+  whose export could not be recorded is not answered. The event is not in the file it
+  records. An erased person's file is what is left of them.
+- **`GET /me/export`** (`staff:access`, the caller's linked person, else `no_person`)
+  is the person's **own copy**: the same shape, without the sealed values —
+  `nationalId` is `{kind, onFile}` and `bankAccount` `{kind, last4}`, as the person reads
+  them on their record (reading 31: a stolen session should not get them) — without
+  HR's `notes`, the terms' `note` and the hold fields (reading 35: the UI does not show
+  them either), and with each event shaped as the person reads their history on My
+  page. It records no event: it is the person's own.
+
+## The erased state
+
+The retention run (later in A2) erases a former employee's personnel administration
+(class D) and sets `erased_at`. What is left is **read-only** (design S15): every write
+of the person answers `person_erased` (409) — the record (`PUT /people/{id}`,
+`DELETE`), the next of kin, the roles, the national identity number and the bank
+account, a link to a user, an employment and its terms (`PUT`, end, reopen, terms
+added, replaced or deleted), a document (filed, changed, removed) and the person's own
+`PUT /me`. The rule is judged once, where every write of a person starts: the person's
+lock (`withPersonLock`) reads `erased_at` on the row it holds and refuses before the
+write runs, so an erase cannot slip in between the check and the write, and no write
+path can forget it.
+
+The **exceptions**:
+
+- **`PUT /people/{id}/legal-hold`** — the [legal hold](#the-legal-hold).
+- **`POST /people/{id}/reassessed`** — the [reassessment](#the-reassessment).
+- **`PUT /people/{id}/user` with `userId: null`** — the unlink, so the user can be linked
+  to someone else. A link to a user is refused.
+- **`POST /people/{id}/employments`** — a **rehire**: the employment is added and, in the
+  same transaction, `erased_at` and the reassessment are cleared and a `person_rehired`
+  event names what was cleared, before the employment's own events. The record is
+  writable again under the same employee number; what the erase blanked stays blank
+  until HR types it.
+
+**Reads stay open**: the record, the history, the documents and their downloads (class
+A documents live five years for claims), the employments, a reveal, both exports.
+
+**The rehire warning.** The erase removes the national identity number and its index,
+so a person who comes back cannot be recognised by it. `POST /people/similar-erased`
+(`staff:manage`) takes `{givenName, familyName, birthDate}` — a body, not a query, so
+the names stay out of access logs — and answers the erased people with the same names,
+however cased, and the same birth date, most recently erased first, as
+`[{id, employeeNumber, displayName, erasedAt}]` (`[]` when none). A missing or empty
+name or birth date is a 400 naming it. The creation form uses it so that a second
+record is a choice: rehire the erased one, or add someone new.
+
+## The legal hold
+
+`PUT /people/{id}/legal-hold` (`staff:personal-data`) takes `{held, reason}`. Setting it
+(`held: true`) needs a `reason` of 1 to 500 characters, trimmed; it records the reason,
+who set it and when (`legal_hold`, `legal_hold_reason`, `legal_hold_by_user_id`,
+`legal_hold_at`, class F) as a `legal_hold_set` event naming `legalHold` and `reason`
+before and after. A new reason on a hold that stands keeps when it was set. Lifting it
+(`held: false`, no `reason` — one sent is a 400) clears all four as a
+`legal_hold_lifted` event. `held` is required. Writing what is there already records
+nothing. The answer is the person.
+
+While a person is held, no retention erase touches them, and `DELETE /people/{id}` is
+`legal_hold` (409). The hold moves no revision: it is not among the editable fields the
+person's revision guards.
+
+## The reassessment
+
+An erased person raises a reassessment item twelve months after their last
+employment ended (design S15; the attention item arrives later in A2).
+`POST /people/{id}/reassessed` (`staff:personal-data`) records it: due when the person
+is erased, not yet reassessed, every employment has ended, and today — the business
+time zone's day — is on or after the last end plus twelve months (the 29th of February's
+due day is the 28th). It records when and by whom (`reassessed_at`,
+`reassessed_by_user_id`) as a `reassessed` event naming `reassessedAt`, and answers the
+person. Anything else — too early, already reassessed, not erased, an employment that has
+not ended — is `reassessment_not_due` (409). A rehire clears the reassessment with the
+erasure.
+
 ## Refusals and revisions
 
 Every refusal is an RFC 9457 problem, `StaffProblem`: `title`, `status`, `detail`,
@@ -888,6 +1011,8 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `employee_number_taken` | 400 | Another person has the employee number, however it is cased. |
 | `work_email_taken` | 400 | Another person has the work email. |
 | `person_in_use` | 409 | Deleting a person with an employment, a user link or documents, or named as a manager. |
+| `legal_hold` | 409 | Deleting a person under a legal hold. |
+| `reassessment_not_due` | 409 | Recording a reassessment of a person who is not erased, already reassessed, or whose last employment ended less than twelve months ago or has not ended. |
 | `structure_archived` | 409 | A write newly names an archived row, or makes one the default. |
 | `structure_default` | 409 | Archiving the default, or the legal entity the default business unit sits under, or taking the flag off the default in place. |
 | `department_cycle` | 409 | A parent that is the department itself or below it. |
@@ -919,7 +1044,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `category_restricted` | 403 | Filing, moving into or out of, or removing a health document without `staff:personal-data`. |
 | `category_in_use` | 409 | Archiving a category documents are filed under. |
 | `seed_immutable` | 409 | Changing a seeded document category. |
-| `person_erased` | 409 | Filing a document for a person the retention run has erased. |
+| `person_erased` | 409 | Any write of a person the retention run has erased but the hold, the reassessment, an unlink and a rehire. |
 | `storage_unavailable` | 503 | The object store could not be written to or read from. |
 
 An unknown id is a bare 404 with no body.
@@ -948,7 +1073,8 @@ person's, which it moves on when the list changes.
   but does not block the `KEY SHARE` lock a foreign-key check takes when another row
   names the person — another person's terms naming them as manager, a department
   naming them as its head — so such a write never waits on this person while holding
-  locks of its own.
+  locks of its own. The lock is also where the [read-only rule](#the-erased-state) is
+  judged, on the row it holds.
 - **The employment's row next.** A write of an employment or its terms takes the
   person's row, then the employment's (`FOR NO KEY UPDATE` too).
 - **The document's row last.** A write of a document takes the person's row, then —
@@ -986,7 +1112,9 @@ All under `/api/v1/staff`.
 | `GET /people/{id}/user` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
 | `PUT /people/{id}/user`, `GET /assignable-users` | `staff:manage` |
 | `PUT /people/{id}/national-id`, `POST /people/{id}/national-id/reveal`, `PUT /people/{id}/bank-account`, `POST /people/{id}/bank-account/reveal` | `staff:personal-data` |
-| `GET /me`, `PUT /me`, `GET /me/events`, `GET /me/documents` | `staff:access`, then a self-service link (otherwise `no_person`) |
+| `GET /me`, `PUT /me`, `GET /me/events`, `GET /me/documents`, `GET /me/export` | `staff:access`, then a self-service link (otherwise `no_person`) |
+| `GET /people/{id}/personal-data`, `PUT /people/{id}/legal-hold`, `POST /people/{id}/reassessed` | `staff:personal-data` |
+| `POST /people/similar-erased` | `staff:manage` |
 | `GET /people/{id}/documents`, `GET /documents/{id}` | `staff:access`, then the person, `staff:manage` (not health documents) or `staff:personal-data` (otherwise 404) |
 | `POST /people/{id}/documents`, `PUT /documents/{id}`, `DELETE /documents/{id}` | `staff:access`, then `staff:manage` or `staff:personal-data`, a health document `staff:personal-data` (judged in the module; otherwise 403) |
 | `GET /document-categories` | `staff:view`, `staff:manage` or `staff:personal-data` (judged in the module; otherwise 403) |

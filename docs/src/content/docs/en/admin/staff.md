@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, the bank-change mail, and the settings — the business time zone and the employee number sequence.
+description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, the bank-change mail, and the settings — the business time zone and the employee number sequence.
 sidebar:
   order: 44
 sources:
@@ -9,6 +9,9 @@ sources:
   - apps/server/internal/staff/sealed.go
   - apps/server/internal/staff/links.go
   - apps/server/internal/staff/document_categories.go
+  - apps/server/internal/staff/personal_data.go
+  - apps/server/internal/staff/legal_hold.go
+  - apps/server/internal/staff/erased.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -119,7 +122,65 @@ To rename one, or stop offering it, send its `names` and `archived` to
 archived category is offered for no new document, and only a category no document is
 filed under can be archived. The six seeds never change.
 
-## The bank-change mail
+## Answer an innsyn request
+
+A person has the right to a copy of the personal data held about them (GDPR art. 15,
+*innsyn*). Staff's complete answer is the HR-issued personal-data file:
+
+1. As a user with `staff:personal-data`, `GET /api/v1/staff/people/{id}/personal-data`.
+   The answer is a download, `staff-<employee number>-personal-data.json`: the person's
+   record with every field group, the national identity number and the bank account in
+   full, HR's notes, the next of kin, the roles, every employment with its terms (pay and
+   notes included), the user link, the documents' list and the whole history.
+2. Download each document the file lists through `GET /api/v1/staff/documents/{id}`; the
+   file carries their metadata, not their bytes.
+3. Verify: the person's history now starts with **Personal data exported**, naming you.
+   Every such export is recorded, because the file opens the sealed values.
+
+Hand the file over the way your company hands over personal data — not by ordinary
+email. The person can also download their own copy from My page
+(`GET /api/v1/staff/me/export`); it leaves out the sealed values, HR's notes and the
+terms' notes, so it is not the complete answer, and it records nothing.
+
+## Put a person under a legal hold
+
+A legal hold keeps a person's record whole — no retention erase touches it, and the
+person cannot be deleted — for as long as a dispute, a claim or an investigation needs
+it.
+
+1. As a user with `staff:personal-data`, `PUT /api/v1/staff/people/{id}/legal-hold` with
+   `{"held": true, "reason": "…"}`. The reason is required, up to 500 characters; write
+   what the hold is for and, if you can, until when.
+2. Verify: the person's `legalHold` is `{"held": true, …}` with the reason and the time,
+   and their history has **Legal hold set**.
+3. When the matter is closed, lift it with `{"held": false}` (no reason). The reason and
+   who set it are cleared; the history keeps both.
+
+A held person who has been erased can still be held and released; nothing else of theirs
+changes.
+
+## Rehire an erased person
+
+When the retention run has erased a former employee, their record is read-only: every
+change answers `person_erased`, except a legal hold, a reassessment, unlinking their
+user, and a rehire.
+
+1. Before adding someone who may have worked here before, ask
+   `POST /api/v1/staff/people/similar-erased` (`staff:manage`) with
+   `{"givenName", "familyName", "birthDate"}`. Erased people with the same names and
+   birth date are listed with their employee number and when they were erased. The
+   national identity number cannot tell — the erase removed it.
+2. If it is the same person, add the new employment to the erased record:
+   `POST /api/v1/staff/people/{id}/employments`. The record opens again under the same
+   employee number; its history gets **Rehired** before the new employment.
+3. Type again what the erase removed — contact details, address, next of kin, the
+   national identity number and the bank account (the last two with
+   `staff:personal-data`).
+4. If it is someone else, add them as a new person; the erased record stays as it is.
+
+To link the person's user to a new record instead, unlink it from the erased one first
+(`PUT /api/v1/staff/people/{id}/user` with `{"userId": null}`) — the one change of the
+link an erased record allows.
 
 ## The bank-change mail
 
@@ -187,3 +248,9 @@ changing the settings at once cannot overwrite each other unseen.
 - **`document_count_exceeded`.** The person has 200 documents, the most one person may
   have — counted whatever you may see, so it can include health documents you cannot.
   Remove documents that are no longer needed.
+- **`person_erased`.** The retention run has erased the person, and the record is
+  read-only. Rehire them with a new employment, or leave it.
+- **`legal_hold`.** The person you are deleting is under a legal hold. Lift it first, if
+  the matter is closed.
+- **`reassessment_not_due`.** The person is not erased, has been reassessed already, or
+  their last employment ended less than twelve months ago.

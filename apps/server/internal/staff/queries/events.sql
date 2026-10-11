@@ -23,3 +23,12 @@ FROM staff.events
 WHERE person_id = @person_id AND (@with_health::boolean OR NOT ('E' = ANY(payload_classes)))
 ORDER BY at DESC, id DESC
 LIMIT @page_size OFFSET @page_offset;
+
+-- name: ListAllPersonEvents :many
+-- ListAllPersonEvents is a person's whole history, oldest first, for the
+-- personal-data exports (design S16): no page, health events included —
+-- each export shapes what its reader may read.
+SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload, payload_classes
+FROM staff.events
+WHERE person_id = @person_id
+ORDER BY at, id;

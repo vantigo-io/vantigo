@@ -45,12 +45,22 @@ const (
 // wait on this one while this one waits on the graph: the cross-person
 // deadlock the rule "nothing locks two people" exists to rule out. A person
 // who does not exist is errPersonNotFound, and fn never runs.
-func (s *server) withPersonLock(ctx context.Context, personID int64, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) error {
+//
+// The lock is also where the read-only rule is judged (erased.go): rule says
+// whether the write is one an erased person refuses, and on a person the
+// retention run has erased such a write is the 409 person_erased before fn
+// runs — judged on the row the lock now holds, so no erase can slip in
+// between the check and the write.
+func (s *server) withPersonLock(ctx context.Context, personID int64, rule erasedRule, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) error {
 	return s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-		if _, err := txq.LockPerson(ctx, personID); errors.Is(err, pgx.ErrNoRows) {
+		row, err := txq.LockPerson(ctx, personID)
+		if errors.Is(err, pgx.ErrNoRows) {
 			return errPersonNotFound
 		} else if err != nil {
 			return fmt.Errorf("staff: lock person %d: %w", personID, err)
+		}
+		if rule == refuseErased && row.ErasedAt != nil {
+			return personErased()
 		}
 		return fn(ctx, tx, txq)
 	})

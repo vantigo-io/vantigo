@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, e-posten om endret kontonummer, og innstillingene — forretningstidssonen og ansattnummerserien.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, e-posten om endret kontonummer, og innstillingene — forretningstidssonen og ansattnummerserien.
 sidebar:
   order: 44
 sources:
@@ -9,6 +9,9 @@ sources:
   - apps/server/internal/staff/sealed.go
   - apps/server/internal/staff/links.go
   - apps/server/internal/staff/document_categories.go
+  - apps/server/internal/staff/personal_data.go
+  - apps/server/internal/staff/legal_hold.go
+  - apps/server/internal/staff/erased.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -123,6 +126,70 @@ For å gi en nytt navn, eller slutte å tilby den, sender du `names` og `archive
 kategori tilbys ikke for nye dokumenter, og bare en kategori ingen dokumenter er arkivert
 under, kan arkiveres. De seks standardkategoriene endres aldri.
 
+## Svar på en innsynsbegjæring
+
+En person har rett til en kopi av personopplysningene som behandles om dem
+(personvernforordningen art. 15, innsyn). Ansattes fullstendige svar er
+personopplysningsfilen HR henter ut:
+
+1. Som en bruker med `staff:personal-data`, `GET /api/v1/staff/people/{id}/personal-data`.
+   Svaret er en nedlasting, `staff-<ansattnummer>-personal-data.json`: personens
+   opplysninger i alle feltgrupper, fødselsnummeret og kontonummeret i sin helhet, HRs
+   notater, pårørende, rollene, hvert arbeidsforhold med vilkårene (lønn og notater
+   medregnet), brukerkoblingen, listen over dokumenter og hele historikken.
+2. Last ned hvert dokument filen lister gjennom `GET /api/v1/staff/documents/{id}`;
+   filen har metadataene deres, ikke innholdet.
+3. Kontroller: personens historikk begynner nå med **Personopplysninger eksportert**,
+   med deg som den som gjorde det. Hver slik eksport registreres, fordi filen åpner de
+   forseglede verdiene.
+
+Overlever filen slik bedriften overleverer personopplysninger — ikke med vanlig
+e-post. Personen kan også laste ned sin egen kopi fra Min side
+(`GET /api/v1/staff/me/export`); den utelater de forseglede verdiene, HRs notater og
+notatene på vilkårene, så den er ikke det fullstendige svaret, og den registrerer
+ingenting.
+
+## Sett en slettesperre på en person
+
+En slettesperre (legal hold) holder en persons opplysninger hele — ingen sletting etter
+oppbevaringsreglene rører dem, og personen kan ikke slettes — så lenge en tvist, et krav
+eller en undersøkelse trenger det.
+
+1. Som en bruker med `staff:personal-data`, `PUT /api/v1/staff/people/{id}/legal-hold`
+   med `{"held": true, "reason": "…"}`. Grunnen er påkrevd, inntil 500 tegn; skriv hva
+   sperren gjelder og gjerne hvor lenge.
+2. Kontroller: personens `legalHold` er `{"held": true, …}` med grunnen og tidspunktet,
+   og historikken har **Slettesperre satt**.
+3. Når saken er avsluttet, opphever du den med `{"held": false}` (uten grunn). Grunnen og
+   hvem som satte den, fjernes; historikken beholder begge.
+
+En slettet person kan fortsatt få og miste en slettesperre; ingenting annet ved dem
+endres.
+
+## Ansett en slettet person på nytt
+
+Når oppbevaringskjøringen har slettet en tidligere ansatt, er opplysningene skrivebeskyttet:
+hver endring svarer `person_erased`, bortsett fra en slettesperre, en revurdering, å
+fjerne koblingen til brukeren og en nyansettelse.
+
+1. Før du legger til noen som kan ha jobbet her før, spør
+   `POST /api/v1/staff/people/similar-erased` (`staff:manage`) med
+   `{"givenName", "familyName", "birthDate"}`. Slettede personer med samme navn og
+   fødselsdato listes med ansattnummer og når de ble slettet. Fødselsnummeret kan ikke
+   avgjøre det — slettingen fjernet det.
+2. Er det samme person, legger du det nye arbeidsforholdet til de slettede
+   opplysningene: `POST /api/v1/staff/people/{id}/employments`. Opplysningene åpnes igjen
+   under samme ansattnummer; historikken får **Ansatt på nytt** før det nye
+   arbeidsforholdet.
+3. Skriv inn igjen det slettingen fjernet — kontaktopplysninger, adresse, pårørende,
+   fødselsnummeret og kontonummeret (de to siste med `staff:personal-data`).
+4. Er det en annen, legger du dem til som en ny person; de slettede opplysningene blir
+   stående.
+
+For å koble personens bruker til nye opplysninger i stedet, fjerner du først koblingen
+fra de slettede (`PUT /api/v1/staff/people/{id}/user` med `{"userId": null}`) — den ene
+endringen av koblingen slettede opplysninger tillater.
+
 ## E-posten om endret kontonummer
 
 Når et kontonummer settes eller endres, får personen en e-post — til den private
@@ -187,3 +254,9 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
 - **`document_count_exceeded`.** Personen har 200 dokumenter, det meste én person kan
   ha — talt uansett hva du får se, så det kan omfatte helsedokumenter du ikke ser. Fjern
   dokumenter som ikke lenger trengs.
+- **`person_erased`.** Oppbevaringskjøringen har slettet personen, og opplysningene er
+  skrivebeskyttet. Ansett dem på nytt med et nytt arbeidsforhold, eller la dem være.
+- **`legal_hold`.** Personen du sletter, har en slettesperre. Opphev den først, hvis
+  saken er avsluttet.
+- **`reassessment_not_due`.** Personen er ikke slettet, er allerede revurdert, eller det
+  siste arbeidsforholdet sluttet for mindre enn tolv måneder siden.

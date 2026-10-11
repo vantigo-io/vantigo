@@ -61,6 +61,19 @@ const (
 	eventDocumentRemoved = "document_removed"
 )
 
+// The event kinds of the exports, the legal hold and the erased state
+// (delivery A2, Task 2). personal_data_exported is an audited reveal: its
+// actor is the viewer and its payload empty, as a sealed field's reveal is.
+// The hold's, the reassessment's and the rehire's name their fields —
+// legalHold, reason, reassessedAt, erasedAt — which the hold group reads.
+const (
+	eventPersonalDataExported = "personal_data_exported"
+	eventLegalHoldSet         = "legal_hold_set"
+	eventLegalHoldLifted      = "legal_hold_lifted"
+	eventReassessed           = "reassessed"
+	eventPersonRehired        = "person_rehired"
+)
+
 const (
 	actorKindUser          = "user"
 	actorKindSystem        = "system"
@@ -136,6 +149,11 @@ var fieldClasses = map[string]string{
 	"competenceDevelopmentText": "C", "socialSecurityText": "C",
 	"remunerationType": "A", "payComponents": "A", "payMethod": "A", "paydayText": "A", "seniorityDate": "A", "payGrade": "A",
 	"note": "D",
+
+	// The hold is class F — it stops every erase and is erased by none; when
+	// a person was erased and reassessed is class C, who was employed when
+	// (design §3.1).
+	"legalHold": "F", "reason": "F", "erasedAt": "C", "reassessedAt": "C",
 }
 
 // classes is the retention classes c's fields belong to, sorted and each

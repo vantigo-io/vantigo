@@ -65,11 +65,6 @@ SELECT * FROM staff.documents WHERE id = @id FOR NO KEY UPDATE;
 -- name: CountPersonDocuments :one
 SELECT count(*) FROM staff.documents WHERE person_id = @person_id;
 
--- name: PersonErased :one
--- PersonErased is whether the retention run has erased the person — the
--- record read-only but for the exceptions delivery A2's guard names.
-SELECT (erased_at IS NOT NULL)::boolean AS erased FROM staff.people WHERE id = @id;
-
 -- name: CoveringEmployments :many
 -- CoveringEmployments is the person's employments in force on day: started on
 -- or before it, not ended before it.

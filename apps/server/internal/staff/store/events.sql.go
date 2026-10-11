@@ -65,6 +65,56 @@ func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) error 
 	return err
 }
 
+const listAllPersonEvents = `-- name: ListAllPersonEvents :many
+SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload, payload_classes
+FROM staff.events
+WHERE person_id = $1
+ORDER BY at, id
+`
+
+type ListAllPersonEventsRow struct {
+	ID             int64
+	Kind           string
+	ActorKind      string
+	ActorUserID    *uuid.UUID
+	ActorDisplay   *string
+	At             time.Time
+	Payload        []byte
+	PayloadClasses []string
+}
+
+// ListAllPersonEvents is a person's whole history, oldest first, for the
+// personal-data exports (design S16): no page, health events included —
+// each export shapes what its reader may read.
+func (q *Queries) ListAllPersonEvents(ctx context.Context, personID *int64) ([]ListAllPersonEventsRow, error) {
+	rows, err := q.db.Query(ctx, listAllPersonEvents, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllPersonEventsRow
+	for rows.Next() {
+		var i ListAllPersonEventsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.ActorKind,
+			&i.ActorUserID,
+			&i.ActorDisplay,
+			&i.At,
+			&i.Payload,
+			&i.PayloadClasses,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPersonEvents = `-- name: ListPersonEvents :many
 SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload, payload_classes
 FROM staff.events

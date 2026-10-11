@@ -7,6 +7,7 @@ package store
 
 import (
 	"context"
+	"time"
 )
 
 const advisoryXactLock = `-- name: AdvisoryXactLock :exec
@@ -22,8 +23,13 @@ func (q *Queries) AdvisoryXactLock(ctx context.Context, name string) error {
 }
 
 const lockPerson = `-- name: LockPerson :one
-SELECT id FROM staff.people WHERE id = $1 FOR NO KEY UPDATE
+SELECT id, erased_at FROM staff.people WHERE id = $1 FOR NO KEY UPDATE
 `
+
+type LockPersonRow struct {
+	ID       int64
+	ErasedAt *time.Time
+}
 
 // LockPerson takes one person's row for the rest of the transaction, the first
 // lock every mutation of a person's rows takes (design §4, Locking). It is FOR
@@ -32,10 +38,12 @@ SELECT id FROM staff.people WHERE id = $1 FOR NO KEY UPDATE
 // foreign-key check takes on the row — another person's terms naming this one
 // as manager, a department naming them as its head — so such a write never
 // waits on this person's lock while holding locks of its own. No row is an
-// unknown person.
-func (q *Queries) LockPerson(ctx context.Context, id int64) (int64, error) {
+// unknown person. erased_at is read with the lock for the read-only guard
+// (erased.go): a person the retention run erased refuses every write but its
+// exceptions, judged on the row the lock holds.
+func (q *Queries) LockPerson(ctx context.Context, id int64) (LockPersonRow, error) {
 	row := q.db.QueryRow(ctx, lockPerson, id)
-	var id_2 int64
-	err := row.Scan(&id_2)
-	return id_2, err
+	var i LockPersonRow
+	err := row.Scan(&i.ID, &i.ErasedAt)
+	return i, err
 }

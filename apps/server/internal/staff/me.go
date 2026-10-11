@@ -173,7 +173,7 @@ func (s *server) PutStaffMe(ctx context.Context, req gen.PutStaffMeRequestObject
 		saved store.GetPersonRow
 		link  *string
 	)
-	err = s.withPersonLock(ctx, id, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withPersonLock(ctx, id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		// The link is judged again under the person's lock: HR may have
 		// unlinked the caller since they were read, and then this record is
 		// no longer theirs to change.
