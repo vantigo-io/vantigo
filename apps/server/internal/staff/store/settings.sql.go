@@ -112,6 +112,27 @@ func (q *Queries) ResolveTimeZone(ctx context.Context, arg ResolveTimeZoneParams
 	return i, err
 }
 
+const setThresholdsAcknowledged = `-- name: SetThresholdsAcknowledged :exec
+UPDATE staff.settings SET
+    thresholds_acknowledged = $1::jsonb,
+    updated_at = $2::timestamptz
+WHERE id = 1
+`
+
+type SetThresholdsAcknowledgedParams struct {
+	ThresholdsAcknowledged []byte
+	Now                    time.Time
+}
+
+// SetThresholdsAcknowledged replaces when each threshold was acknowledged
+// (design S20). The caller holds the row's lock (LockSettings) and adds one
+// key to what it read. The revision is left alone: it guards the replace of
+// the editable settings, which this is not among.
+func (q *Queries) SetThresholdsAcknowledged(ctx context.Context, arg SetThresholdsAcknowledgedParams) error {
+	_, err := q.db.Exec(ctx, setThresholdsAcknowledged, arg.ThresholdsAcknowledged, arg.Now)
+	return err
+}
+
 const updateSettings = `-- name: UpdateSettings :one
 UPDATE staff.settings SET
     time_zone = $1,

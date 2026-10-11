@@ -7,13 +7,15 @@ import {
   attentionTitleKey,
   attentionWeek,
   awaitingApprovalHint,
+  canReadStaffStats,
   expensesUnreimbursedValue,
   invoicesKpi,
   invoicesOverdueHint,
-  kpiModuleCards,
+  kpiCards,
   metrics,
   projectsCardHint,
   readyMilestonesHint,
+  staffKpi,
   visibleModuleCards,
 } from "./dashboard";
 import "../i18n";
@@ -538,17 +540,10 @@ describe("the dashboard's invoices card", () => {
 });
 
 /**
- * Invoices' attention items (invoices payments and reminders design D12):
- * the server writes a buyer's name, a file's booking days, a cause or a
- * posting day in `title`, and the count apart, so every sentence is built
- * here from a catalog — in the reader's language, with the count where one is
- * sent — and every item leads to the page that deals with it.
- */
-/**
- * Staff's module card (plan Task 6, the pre-flight's answer 6): the card every
- * module has, and nothing more in delivery A1 — its stats and attention items
- * arrive with A2, so it has no KPI card, no activity metric, and nothing the
- * dashboard would ask `/api/v1/staff/stats/*` for.
+ * Staff's cards (design S20, plan Task 6): the module card every module has,
+ * shown with `staff:access`, and a KPI card fed by `GET /staff/stats`, which
+ * answers `staff:view` or `staff:manage` alone — so the KPI card is theirs.
+ * Staff has no activity metric: its figures are a state on today.
  */
 describe("the dashboard's staff card", () => {
   it("names the app in both languages", () => {
@@ -575,14 +570,139 @@ describe("the dashboard's staff card", () => {
     expect(staffCard(["customers", "projects"], ["*"])).toBeUndefined();
   });
 
-  it("keeps Staff out of the KPI row and the activity chart", () => {
+  it("puts Staff in the KPI row for staff:view or staff:manage, and keeps it out of the activity chart", () => {
     const cards = visibleModuleCards(["customers", "expenses", "staff"], ["*"]);
-    expect(cards.map((card) => card.module)).toEqual(["customers", "expenses", "staff"]);
-    expect(kpiModuleCards(cards).map((card) => card.module)).toEqual(["customers", "expenses"]);
+    expect(kpiCards(cards, ["*"]).map((card) => card.module)).toEqual(["customers", "expenses", "staff"]);
+    for (const permissions of [
+      ["staff:access", "staff:view"],
+      ["staff:access", "staff:manage"],
+    ]) {
+      expect(canReadStaffStats(permissions)).toBe(true);
+      expect(kpiCards(cards, permissions).map((card) => card.module)).toContain("staff");
+    }
+    for (const permissions of [["staff:access"], ["staff:access", "staff:approve", "staff:personal-data"], undefined]) {
+      expect(canReadStaffStats(permissions)).toBe(false);
+      expect(kpiCards(cards, permissions).map((card) => card.module)).toEqual(["customers", "expenses"]);
+    }
     expect(metrics.some((metric) => (metric.module as string) === "staff")).toBe(false);
+  });
+
+  it("shows the headcount, the full-time equivalents and who starts and ends soon", () => {
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${JSON.stringify(values)}`;
+    const formatNumber = (value: number) => value.toFixed(2);
+    const stats = { headcount: 12, fteSum: 10.5, startingSoon: 2, endingSoon: 1, peopleWithoutEmployment: 0 };
+
+    expect(staffKpi(undefined, formatNumber, t)).toEqual({ value: "—", hint: undefined });
+    expect(staffKpi(stats, formatNumber, t)).toEqual({
+      value: 12,
+      hint: 'dashboard.staffKpiHint:{"fte":"10.50","starting":2,"ending":1}',
+    });
+    expect(staffKpi({ ...stats, peopleWithoutEmployment: 3 }, formatNumber, t).hint).toBe(
+      'dashboard.staffKpiHint:{"fte":"10.50","starting":2,"ending":1} · dashboard.staffWithoutEmploymentHint:{"count":3}',
+    );
+  });
+
+  it("has the card's words in English and Norwegian", () => {
+    for (const lng of ["en", "nb"]) {
+      expect(i18n.t("dashboard.staffHeadcount", { ns: "host", lng })).not.toBe("dashboard.staffHeadcount");
+      expect(i18n.t("dashboard.staffKpiHint", { ns: "host", lng, fte: "4,25", starting: 2, ending: 1 })).toContain(
+        "4,25",
+      );
+      for (const count of [1, 3]) {
+        expect(i18n.t("dashboard.staffWithoutEmploymentHint", { ns: "host", lng, count })).toContain(String(count));
+      }
+    }
   });
 });
 
+/**
+ * Staff's attention items (design S20): six are about one person and open
+ * their page; the deletion ledger and the thresholds are Settings'. The
+ * server's title is the person's name — or an English sentence — so every
+ * sentence is worded here, in the reader's language.
+ */
+describe("the dashboard's staff attention items", () => {
+  const personTypes = [
+    "contractOverdue",
+    "probationEnding",
+    "temporaryNoticeDue",
+    "temporaryConverts",
+    "reportsWithoutManager",
+    "reassessmentDue",
+  ];
+
+  it("opens the person's page for an item about a person, and Settings for the ledger and the thresholds", () => {
+    for (const type of personTypes) {
+      expect(attentionHref({ module: "staff", type, entityId: "1042" })).toBe("/staff/people/1042");
+    }
+    expect(attentionHref({ module: "staff", type: "retentionFailing", entityId: "retention" })).toBe("/staff/settings");
+    expect(attentionHref({ module: "staff", type: "otpThreshold", entityId: "thresholds" })).toBe("/staff/settings");
+    for (const threshold of ["5", "30", "50"]) {
+      expect(attentionHref({ module: "staff", type: "headcountThreshold", entityId: threshold })).toBe(
+        "/staff/settings",
+      );
+    }
+    expect(attentionHref({ module: "staff", type: "somethingNew", entityId: "1042" })).toBe("/staff");
+  });
+
+  it("words every type from a catalog, carrying the person's name or the count", () => {
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.name}:${values?.count}`;
+    const format = () => "never";
+    expect(
+      attentionTitle({ module: "staff", type: "contractOverdue", entityId: "1042", title: "Kari Nordmann" }, t, format),
+    ).toBe("dashboard.staffContractOverdue:Kari Nordmann:undefined");
+    expect(
+      attentionTitle(
+        { module: "staff", type: "retentionFailing", entityId: "retention", title: "Deletions…", count: 2 },
+        t,
+        format,
+      ),
+    ).toBe("dashboard.staffRetentionFailing:Deletions…:2");
+    expect(
+      attentionTitle(
+        { module: "staff", type: "headcountThreshold", entityId: "30", title: "30 or more…", count: 31 },
+        t,
+        format,
+      ),
+    ).toBe("dashboard.staffHeadcountThreshold30:30 or more…:31");
+    expect(attentionTitleKey({ module: "staff", type: "headcountThreshold", entityId: "7" })).toBeUndefined();
+    expect(
+      attentionTitle({ module: "staff", type: "somethingNew", entityId: "1", title: "As written" }, t, format),
+    ).toBe("As written");
+  });
+
+  it("has every sentence in English and Norwegian", () => {
+    const keys = [
+      ...personTypes.map((type) => attentionTitleKey({ module: "staff", type })),
+      attentionTitleKey({ module: "staff", type: "retentionFailing" }),
+      attentionTitleKey({ module: "staff", type: "otpThreshold" }),
+      ...["5", "30", "50"].map((entityId) =>
+        attentionTitleKey({ module: "staff", type: "headcountThreshold", entityId }),
+      ),
+    ];
+    expect(keys.every((key) => key !== undefined)).toBe(true);
+    for (const key of keys as string[]) {
+      for (const lng of ["en", "nb"]) {
+        const sentence = i18n.t(key, { ns: "host", lng, name: "Kari Nordmann", count: 31 });
+        expect(sentence).not.toBe(key);
+        if (personTypes.some((type) => attentionTitleKey({ module: "staff", type }) === key)) {
+          expect(sentence).toContain("Kari Nordmann");
+        }
+      }
+    }
+    for (const lng of ["en", "nb"]) {
+      expect(i18n.t("dashboard.staffOtpThreshold", { ns: "host", lng })).toMatch(/owner|eieren/);
+    }
+  });
+});
+
+/**
+ * Invoices' attention items (invoices payments and reminders design D12):
+ * the server writes a buyer's name, a file's booking days, a cause or a
+ * posting day in `title`, and the count apart, so every sentence is built
+ * here from a catalog — in the reader's language, with the count where one is
+ * sent — and every item leads to the page that deals with it.
+ */
 describe("Dashboard_InvoicesAttentionSentencesAndLinks", () => {
   const day = (value: string) => `«${value.slice(0, 10)}»`;
   const item = (type: string, entityId: string, title: string, count?: number) => ({

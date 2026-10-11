@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the settings, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -34,8 +34,9 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 [import and export](#the-registers-import-and-export), the
 [payroll export](#the-payroll-export), [retention](#retention) and its
 [deletion ledger](#the-deletion-ledger), the [erased state](#the-erased-state),
-the [legal hold](#the-legal-hold) and the [reassessment](#the-reassessment), [how a refusal
-looks](#refusals-and-revisions), the [locks](#locks) and the [endpoints](#endpoints).
+the [legal hold](#the-legal-hold) and the [reassessment](#the-reassessment), the
+dashboard's [figures and attention items](#stats-and-attention) and the
+[thresholds](#the-thresholds), [how a refusal looks](#refusals-and-revisions), the [locks](#locks) and the [endpoints](#endpoints).
 
 ## The schema
 
@@ -68,7 +69,7 @@ erase reaches has a retention class, listed [under Retention](#the-classes-colum
 | `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** Your absence arrives with delivery B. | no |
 | `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the calendar with types hidden. The calendar arrives with B. | no |
 | `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. Registered now; grants nothing until absence arrives with B. | no |
-| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, the settings, documents other than health and their categories, the account flag, imports and exports, the retention run by hand. The imports and exports arrive later in A2, the account flag with C. | yes |
+| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, the settings, documents other than health and their categories, the account flag, imports and exports, the retention run by hand, the thresholds' acknowledgement. The account flag arrives with C. | yes |
 | `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. Erasure is the [retention run](#retention)'s, on its schedule (run by hand by `staff:manage`); the milestones' notes and the HR-only types arrive with B. | yes |
 
 All five are in the category "Staff" and delegable. The Owner holds them through the
@@ -85,9 +86,9 @@ rule. The capability absence adds (`canDecide`) arrives with it.
 ## Settings
 
 One row, written by the migration. `GET /settings` and `PUT /settings` are
-`staff:manage`'s. The contract exposes seven fields and a derived block; the others on
-the row — the self-certification policy, the account days, the thresholds — reach the
-contract with the deliveries that use them.
+`staff:manage`'s. The contract exposes seven fields, a derived block and the
+acknowledged thresholds; the others on the row — the self-certification policy, the
+account days — reach the contract with the deliveries that use them.
 
 | Field | Default | Rule |
 | --- | --- | --- |
@@ -102,7 +103,9 @@ contract with the deliveries that use them.
 `GET /settings` and the answer of `PUT /settings` also carry the read-only
 [`retention` block](#the-settings-and-the-retention-block), derived from the deletion
 ledger and the history: `pendingDeletions`, `failingDeletions`, `oldestPendingSince`,
-`lastErasedAt`.
+`lastErasedAt` — and the read-only `thresholdsAcknowledged`, when each
+[threshold](#the-thresholds) was acknowledged (`{"5": at, "30": at, "50": at, "otp": at}`,
+a threshold not acknowledged absent), which `PUT /settings` neither takes nor changes.
 
 A generated employee number is the prefix and the next number, unpadded: `EMP-` and 7
 make `EMP-7`. An employee number is at most 16 characters (Entra's `employeeId`
@@ -407,6 +410,7 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `people_imported` | Installation-level (no person): `rows`, `created`, `updated`, `failed` of a real [import](#the-registers-import-and-export); each row's own events name the people it wrote. |
 | `people_exported` | Installation-level (no person): `rows`, the people the [export](#the-registers-import-and-export) wrote. |
 | `payroll_exported` | Installation-level (no person): `month`, `format`, `rows` and `sha256` (hex) of the [payroll file](#the-payroll-export) answered; no personal data, so no payload class. |
+| `threshold_acknowledged` | Installation-level (no person): `key`, the [threshold](#the-thresholds) acknowledged (`5`, `30`, `50` or `otp`); the actor is the caller; no payload class. |
 | `erased` | No fields: `kinds`, `[{kind, count}]` — what one [erase](#what-an-erase-does) removed per kind (`D`, `health`, `A`), read by `staff:manage` and `staff:personal-data`, the `health` entry by `staff:personal-data` alone; listed as the hold's kinds are; the actor is the installation's `system` for the worker, the caller for a run by hand; no payload class. |
 
 `GET /people/{id}/events` lists a person's history, newest first, paged. It is read by
@@ -1429,7 +1433,7 @@ person's revision guards.
 ## The reassessment
 
 An erased person raises a reassessment item twelve months after their last
-employment ended (design S15; the attention item arrives later in A2).
+employment ended (design S15; [`reassessmentDue`](#attention-items)).
 `POST /people/{id}/reassessed` (`staff:personal-data`) records it: due when the person
 is erased, not yet reassessed, every employment has ended, and today — the business
 time zone's day — is on or after the last end plus twelve months (the 29th of February's
@@ -1438,6 +1442,82 @@ due day is the 28th). It records when and by whom (`reassessed_at`,
 person. Anything else — too early, already reassessed, not erased, an employment that has
 not ended — is `reassessment_not_due` (409). A rehire clears the reassessment with the
 erasure.
+
+## Stats and attention
+
+The dashboard's two reads (design S20). Both are read in one snapshot — the people,
+every employment with its terms, the manager graph — and judged in Go on today, the
+day in the settings' [time zone](#the-business-time-zone). The absence figures and
+items arrive with delivery B, the account items with C.
+
+### The figures
+
+`GET /stats` is `staff:view`'s or `staff:manage`'s, judged in the module; anyone else
+gets the uniform 403 (the `GET /people` rule). An employment is **in force** on a day
+when it started on or before it and has not ended before it (the end day is still
+worked).
+
+| Figure | Rule |
+| --- | --- |
+| `headcount` | The people with at least one employment in force today; each person once. |
+| `fteSum` | The sum of `ftePercent` of the terms row in force today of every employment in force today, divided by 100, to two decimals — a person with two employments counts both. |
+| `startingSoon` | Employments whose start is after today and no later than today + 30 days. |
+| `endingSoon` | Employments in force today whose end is today or no later than today + 30 days. |
+| `peopleWithoutEmployment` | People not erased with no employment at all. |
+
+### Attention items
+
+`GET /stats/attention` is `staff:access`'s and shaped per caller: `staff:manage`'s
+items, `staff:personal-data`'s and a manager's for the people they manage today (by the
+[manager rule](#managers-and-the-org-view)); a caller with none of these gets `[]`,
+never a 403. Each item is `{id, type, title, occurredAt, entityId, count?}`, the shape
+every module's attention list shares; a date-only `occurredAt` is that day at midnight
+UTC. The list is oldest `occurredAt` first, then by `type` and `id`, and an item two of
+the caller's roles find is listed once.
+
+| `type` | Audience | Trigger | `occurredAt` | `entityId`, `count` |
+| --- | --- | --- | --- | --- |
+| `contractOverdue` | manage | An employment in force today with neither `contractSignedAt` nor a signed document of the `contract` category filed for it (`employmentId` set, `signedAt` set), from seven days after the start — from the start when, judged on the terms in force on the start day, the person is hired out (`fast_utleid`, `midlertidig_utleid`) or the employment lasts under a month (its end, else a temporary row's `expectedEndDate`, before the start plus a month less a day) (aml. § 14-5). A signed contract document filed for no employment suppresses nothing. One per employment. | The day it fell overdue. | The person. |
+| `probationEnding` | manage; the person's manager today | An employment in force today whose terms in force today end the probation — `probationExtendedTo`, else `probationEndDate` — today or within 30 days. One per employment. | The probation's end. | The person. |
+| `temporaryNoticeDue` | manage | An employment in force today whose terms in force today are `midlertidig`, on any ground, that started twelve months ago or more: a month's written notice of the end is owed (aml. § 14-9). One per employment. | The start + 12 months. | The person. |
+| `temporaryConverts` | manage | A run of the person's temporary employments on ground `a` or `b` — each judged on its terms in force on its last day so far (today, or its end), taken by start, each starting no later than the day after the run so far ended (a gap of a day breaks the run; an employment on another ground is no part of it), one of them in force today — that started 36 months ago or more (aml. § 14-9 (7)). One per person. | The run's start + 36 months. | The person. |
+| `reportsWithoutManager` | manage | A person with an employment in force today that has no manager in employment today: neither the manager its terms name (a named manager no longer employed counts as none) nor the manager of its department or a department above it who is someone else (design §9). The manager of a top-level department, whom nobody manages by the structure, is not listed. One per person. | That employment's start. | The person. |
+| `reassessmentDue` | personal-data | An erased person not yet reassessed, every employment ended, the last end twelve months ago or more ([the reassessment](#the-reassessment)). | The due day. | The person. |
+| `retentionFailing` | manage | Ledger rows the object store has refused at least once (`attempts` ≥ 1) that were queued more than 24 hours ago. One item. The settings' `failingDeletions` counts every refused row, however young. | When the oldest of them was queued. | `retention`; `count` the rows. |
+| `otpThreshold` | manage | By the `ftePercent` in force today summed per person over their employments in force today: someone at 75 % or more, or the people at 20 % or more adding up to 200 % (two full-time equivalents) — OTP-loven § 2 judged without an owner flag (plan reading 17), so the title names the exception, "unless the only such person is the owner". Not shown once `otp` is [acknowledged](#the-thresholds). One item. | Today. | `thresholds`. |
+| `headcountThreshold` | manage | For each of 5, 30 and 50 the `headcount` has reached and that is not [acknowledged](#the-thresholds). | Today. | The threshold (`5`, `30`, `50`); `count` the headcount. |
+
+`id` is `<type>/<employment id>` for the employment items, `<type>/<person id>` for
+the person items, `retentionFailing`, `otpThreshold` and `headcountThreshold/<key>`.
+`title` is the person's display name — class C, so it survives the erase — with the
+employment number after it, in brackets, on an employment item of a person who has
+more than one; for the last three types it is an English sentence. The host words
+every type from its own catalog, in the reader's language, and links a person's item to
+their page and the other three to Settings.
+
+### The thresholds
+
+Four thresholds bring an employer a duty, and each raises an item until HR
+acknowledges it:
+
+| Key | Crossed when | The duty |
+| --- | --- | --- |
+| `5` | `headcount` ≥ 5 | Written whistleblowing routines (aml. § 2 A-6) and a safety representative, verneombud (§ 6-1). |
+| `30` | `headcount` ≥ 30 | A working environment committee, AMU (§ 7-1). |
+| `50` | `headcount` ≥ 50 | The activity and reporting duty on equality, ARP (likestillings- og diskrimineringsloven § 26), which applies above fifty: the item comes one person early. |
+| `otp` | The OTP test above | An occupational pension scheme (OTP-loven § 2), unless the only such person is the owner. |
+
+`POST /thresholds/{key}/acknowledge` (`staff:manage`) acknowledges one, **once and
+permanently** (plan reading 18): in one transaction under the settings row's lock — the
+lock `PUT /settings` takes — it adds `key: at` to `settings.thresholds_acknowledged`
+and records a `threshold_acknowledged` event of the installation naming the caller and
+`{key}`. It answers `StaffThresholdsAcknowledged`, every acknowledgement so far. A
+threshold already acknowledged answers the same 200 and changes nothing — no second
+event, the first date kept. A threshold need not be crossed to be acknowledged, and an
+acknowledged one is never shown again, whatever the headcount does. The settings'
+revision is left alone: the acknowledgement is not among the fields `PUT /settings`
+replaces. Any key but the four is 404 `threshold_unknown`, a problem with its code
+rather than a bare 404 — the keys are no secret.
 
 ## Refusals and revisions
 
@@ -1500,6 +1580,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `payroll_month_invalid` | 400 | A payroll export's `month` that is not `YYYY-MM` with a month from `01` to `12`. |
 | `payroll_format_unsupported` | 400 | A payroll export's `format` other than `csv`. |
 | `retention_busy` | 409 | `POST /retention/run` while the retention lease is held — by the worker, here or on another replica, or another run by hand. Nothing ran. |
+| `threshold_unknown` | 404 | `POST /thresholds/{key}/acknowledge` with a key other than `5`, `30`, `50` and `otp`. |
 
 An unknown id is a bare 404 with no body.
 
@@ -1577,6 +1658,9 @@ All under `/api/v1/staff`.
 | `POST /people/import`, `GET /people/export.csv`, `GET /people/import-template.csv` | `staff:manage`; an import file's sealed columns `staff:personal-data` too (`import_sealed_columns`) |
 | `GET /payroll/export` | `staff:manage` |
 | `POST /retention/run` | `staff:manage` |
+| `GET /stats` | `staff:view` or `staff:manage` (judged in the module; otherwise 403) |
+| `GET /stats/attention` | `staff:access`, shaped per caller: `staff:manage`, `staff:personal-data` and a manager for their reports (otherwise `[]`) |
+| `POST /thresholds/{key}/acknowledge` | `staff:manage` |
 | `GET /people/{id}/documents`, `GET /documents/{id}` | `staff:access`, then the person, `staff:manage` (not health documents) or `staff:personal-data` (otherwise 404) |
 | `POST /people/{id}/documents`, `PUT /documents/{id}`, `DELETE /documents/{id}` | `staff:access`, then `staff:manage` or `staff:personal-data`, a health document `staff:personal-data` (judged in the module; otherwise 403) |
 | `GET /document-categories` | `staff:view`, `staff:manage` or `staff:personal-data` (judged in the module; otherwise 403) |

@@ -18,12 +18,17 @@ shown.
 Each module is an **app** with its own sidebar: Customers, Projects, Time, Expenses,
 Staff, Invoices, Communications, Products and Energy. The app switcher in the top bar lists
 the apps you can open; **Home** is the dashboard, where every app you use shows its own
-card with the numbers that need your attention — Staff, which has no figures yet, only
-under **Modules** at the bottom. Its **Needs attention** list gathers the
-apps' items that wait for someone — Invoices' among them: overdue invoices, money owed
-back on an invoice, and, with `invoices:payments`, bank lines in the exception queue,
-reminders that failed or wait for a rate or a review, and print batches not confirmed
-posted, each with its printed letters counted ([the dashboard card](/en/user/invoices/#the-dashboard-card)).
+card with the numbers that need your attention — Staff's, the people employed today
+with the full-time equivalents and who starts and ends soon, for `staff:view` or
+`staff:manage` ([the dashboard](/en/user/staff/#the-dashboard)). Its **Needs attention**
+list gathers the apps' items that wait for someone — Invoices' among them: overdue
+invoices, money owed back on an invoice, and, with `invoices:payments`, bank lines in the
+exception queue, reminders that failed or wait for a rate or a review, and print batches
+not confirmed posted, each with its printed letters counted
+([the dashboard card](/en/user/invoices/#the-dashboard-card)); and Staff's: contracts
+not signed, probations ending, temporary employments past a year or three, people
+without a manager, reassessments due, documents the store will not delete, and the
+headcount and pension thresholds not yet acknowledged.
 
 Inside an app, the sidebar lists its areas. Many of them are only shown to people who
 hold the matching permission, so a colleague's sidebar may be longer or shorter than

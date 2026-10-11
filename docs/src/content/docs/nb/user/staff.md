@@ -286,6 +286,34 @@ mener din mangler.
 Min side er laget for mobilen først: på en smal skjerm står alt i én kolonne, og
 skjemaet fyller hele skjermen.
 
+## Dashbordet
+
+**Hjem**, dashbordet, har et **Ansatte**-kort for den som har `staff:view` eller
+`staff:manage`: hvor mange som er ansatt i dag, og under det årsverkene i dag, hvor
+mange som begynner og hvor mange som slutter innen 30 dager, og — når det finnes noen —
+oppføringene uten noe arbeidsforhold. Trykk på kortet for å åpne Ansatte. Med bare
+`staff:access` har du Ansatte-appen under **Moduler** og ikke noe kort.
+
+Punktene fra Ansatte kommer i **Trenger oppfølging** sammen med de andre appenes, hvert
+formulert på ditt språk. De fleste er HRs (`staff:manage`); en leder ser punktet om
+prøvetid for sine egne folk, og den nye vurderingen er `staff:personal-data` sin:
+
+| Punkt | Det betyr | Åpner |
+| --- | --- | --- |
+| Ingen signert arbeidsavtale | Et arbeidsforhold begynte for sju dager siden — eller i dag, for et som varer under en måned eller en som leies ut — uten signeringsdato og uten signert arbeidsavtale arkivert for det. Arkiver den signerte avtalen på personsiden, eller skriv inn datoen den ble signert. | Personen |
+| Prøvetiden går ut | Prøvetiden, eller forlengelsen av den, går ut innen 30 dager. En leder ser dette for sine egne folk. | Personen |
+| Midlertidig i et år | Et midlertidig arbeidsforhold har vart et år: personen skal ha skriftlig varsel en måned før det slutter. | Personen |
+| Midlertidig i tre år | En rekke midlertidige arbeidsforhold på grunnlag a eller b har vart tre år, og personen kan ha rett til fast ansettelse. | Personen |
+| Ingen leder | En som er ansatt i dag har ingen leder i arbeid: ingen er oppgitt, den som er oppgitt har sluttet, og ingen avdeling over har en. | Personen |
+| Ny vurdering | Det siste arbeidsforholdet til en slettet person sluttet for et år siden: registrer den nye vurderingen. | Personen |
+| Dokumenter ikke slettet | Dokumentlageret har nektet å slette dokumenter i over et døgn. | Ansatteinnstillinger |
+| OTP-terskelen | Etter stillingsprosentene i dag skal virksomheten ha tjenestepensjon — med mindre den eneste det gjelder er eieren. | Ansatteinnstillinger |
+| 5, 30 eller 50 ansatte | Antallet ansatte har nådd en terskel som gir en plikt: varslingsrutine og verneombud fra 5, arbeidsmiljøutvalg fra 30, aktivitets- og redegjørelsesplikten over 50. | Ansatteinnstillinger |
+
+Et punkt forsvinner når det det ber om, er gjort. Punktet for en terskel står til HR
+bekrefter terskelen — én gang, for godt; hvordan står i
+[administrasjonsveiledningen](/nb/admin/staff/#tersklene).
+
 ## Endre innstillingene
 
 **Ansatteinnstillinger** (`staff:manage`) har de generelle innstillingene først, så

@@ -42,3 +42,13 @@ SELECT
     EXTRACT(EPOCH FROM ((winter AT TIME ZONE zone) - (winter AT TIME ZONE 'UTC')))::bigint AS winter_offset,
     EXTRACT(EPOCH FROM ((summer AT TIME ZONE zone) - (summer AT TIME ZONE 'UTC')))::bigint AS summer_offset
 FROM probe;
+
+-- name: SetThresholdsAcknowledged :exec
+-- SetThresholdsAcknowledged replaces when each threshold was acknowledged
+-- (design S20). The caller holds the row's lock (LockSettings) and adds one
+-- key to what it read. The revision is left alone: it guards the replace of
+-- the editable settings, which this is not among.
+UPDATE staff.settings SET
+    thresholds_acknowledged = @thresholds_acknowledged::jsonb,
+    updated_at = @now::timestamptz
+WHERE id = 1;

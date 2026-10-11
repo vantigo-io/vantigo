@@ -106,6 +106,7 @@ export const settings = (overrides: Partial<StaffSettings> = {}): StaffSettings 
   retentionGraceDays: 90,
   healthRetentionDays: 365,
   retention: { pendingDeletions: 0, failingDeletions: 0 },
+  thresholdsAcknowledged: {},
   revision: 3,
   ...overrides,
 });

@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
 sidebar:
   order: 44
 sources:
@@ -19,6 +19,7 @@ sources:
   - apps/server/internal/staff/retention.go
   - apps/server/internal/staff/retention_worker.go
   - apps/server/internal/staff/object_deletions.go
+  - apps/server/internal/staff/thresholds.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -395,6 +396,34 @@ En slettet person som kommer tilbake, [ansettes på nytt](#ansett-en-slettet-per
 på de samme opplysningene: det slettingen fjernet, blir stående tomt til du skriver det
 inn igjen, og lønnen i det nye arbeidsforholdet røres ikke av slettingen av det gamle.
 
+## Tersklene
+
+Fire terskler gir arbeidsgiveren en plikt, og Ansatte følger med på hver av dem. Så lenge
+en er nådd og ikke bekreftet, ser de med `staff:manage` et punkt for den i **Trenger
+oppfølging** på dashbordet ([dashbordet](/nb/user/staff/#dashbordet)):
+
+| Terskel | Nådd når | Hva arbeidsgiveren må gjøre |
+| --- | --- | --- |
+| `5` | 5 eller flere er ansatt i dag | Ha skriftlige varslingsrutiner (aml. § 2 A-6) og verneombud (§ 6-1). |
+| `30` | 30 eller flere | Ha arbeidsmiljøutvalg, AMU (§ 7-1). |
+| `50` | 50 eller flere | Aktivitets- og redegjørelsesplikten, ARP (likestillings- og diskrimineringsloven § 26), gjelder over femti — punktet kommer én person for tidlig. |
+| `otp` | Noen har 75 % eller mer, eller de med 20 % eller mer har til sammen to fulle stillinger — stillingsprosentene i dag, summert per person | Ha obligatorisk tjenestepensjon, OTP (OTP-loven § 2) — med mindre den eneste det gjelder er eieren, noe Ansatte ikke kan vite, siden den ikke registrerer noen eier. |
+
+Når plikten er ivaretatt — eller ikke gjelder — bekrefter du terskelen. Den bekreftes
+**én gang, for godt**: punktet kommer aldri tilbake, uansett hva antallet ansatte gjør
+senere, og en terskel kan bekreftes før den er nådd.
+
+1. Send `POST /api/v1/staff/thresholds/{key}/acknowledge` med nøkkelen — `5`, `30`,
+   `50` eller `otp` — som en med `staff:manage`. Ansatteinnstillingene har ingen knapp
+   for det ennå.
+2. Kontroller: svaret, og `thresholdsAcknowledged` i `GET /api/v1/staff/settings`, har
+   tidspunktet den ble bekreftet; punktet er borte fra dashbordet.
+
+Hver bekreftelse registreres i innstillingene med tidspunktet, og som en
+`threshold_acknowledged`-hendelse for installasjonen som navngir hvem som bekreftet.
+Å bekrefte en terskel på nytt endrer ingenting og registrerer ingenting. En annen nøkkel
+enn de fire avvises med `threshold_unknown`.
+
 ## E-posten om endret kontonummer
 
 Når et kontonummer settes eller endres, får personen en e-post — til den private
@@ -436,7 +465,10 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   ([Oppbevaring](#oppbevaring)). Utelatt fra en erstatning beholder hver sin verdi.
 - **Oppbevaringsstatus** (`retention`, skrivebeskyttet): sletteloggens ventende og
   avviste filer, den eldste ventende, og den siste slettingen
-  ([Sletteloggen](#sletteloggen)).
+  ([Sletteloggen](#sletteloggen)). Filer lageret har avvist i over et døgn, gir også et
+  punkt på dashbordet for `staff:manage`.
+- **Bekreftede terskler** (`thresholdsAcknowledged`, skrivebeskyttet): når hver terskel
+  ble bekreftet ([Tersklene](#tersklene)).
 
 ## Hva som kan gå galt
 
@@ -463,6 +495,7 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   egen kategori i stedet.
 - **`category_in_use`.** Det er fortsatt dokumenter arkivert under kategorien du
   arkiverer. Flytt dem til en annen kategori først.
+- **`threshold_unknown`.** Nøkkelen er ingen av `5`, `30`, `50` og `otp`.
 - **`document_count_exceeded`.** Personen har 200 dokumenter, det meste én person kan
   ha — talt uansett hva du får se, så det kan omfatte helsedokumenter du ikke ser. Fjern
   dokumenter som ikke lenger trengs.

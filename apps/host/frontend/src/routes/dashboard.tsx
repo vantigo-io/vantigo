@@ -148,6 +148,20 @@ interface InvoicesSummary {
   paidCount: number;
 }
 
+/**
+ * Staff's `StaffStats` (design S20): figures on today, not over the period —
+ * a register has no meaningful "new people this period" — so it is fetched
+ * on its own (`GET /staff/stats`), not through the summary every other card
+ * shares.
+ */
+interface StaffStats {
+  headcount: number;
+  fteSum: number;
+  startingSoon: number;
+  endingSoon: number;
+  peopleWithoutEmployment: number;
+}
+
 interface AttentionItem {
   id: string;
   type: string;
@@ -250,12 +264,19 @@ export const visibleModuleCards = (enabledModules: readonly ModuleKey[], permiss
   );
 
 /**
- * The cards of the KPI row: every visible module card but Staff's, which has
- * no figures until its stats arrive (delivery A2) — its card in the module
- * list below is all it has, and nothing here asks its stats endpoints.
+ * Whether the caller may read Staff's figures: `GET /staff/stats` answers
+ * `staff:view` or `staff:manage` and the uniform 403 to anyone else (the
+ * pre-flight's answer 6), so a caller with `staff:access` alone keeps the
+ * module card below and has no Staff card in the KPI row.
  */
-export const kpiModuleCards = <Card extends { module: ModuleKey }>(cards: readonly Card[]) =>
-  cards.filter((card) => card.module !== "staff");
+export const canReadStaffStats = (permissions: string[] | undefined) =>
+  hasPermissions(permissions, ["staff:view", "staff:manage"]);
+
+/** The cards of the KPI row: every visible module card, Staff's for those who may read its figures. */
+export const kpiCards = <Card extends { module: ModuleKey }>(
+  cards: readonly Card[],
+  permissions: string[] | undefined,
+) => cards.filter((card) => card.module !== "staff" || canReadStaffStats(permissions));
 
 const presetDays: Record<Exclude<DashboardPreset, "custom">, number> = {
   "7d": 7,
@@ -313,6 +334,8 @@ const fetchSummary = <T,>(module: ModuleKey, range: DateRange, signal: AbortSign
 const fetchTimeseries = (module: ModuleKey, metric: string, range: DateRange, signal: AbortSignal) =>
   request<DailyPoint[]>(buildStatsUrl(module, "timeseries", range, metric), { signal });
 
+const fetchStaffStats = (signal: AbortSignal) => request<StaffStats>("/api/v1/staff/stats", { signal });
+
 const fetchAttention = async (module: ModuleKey, signal: AbortSignal) => {
   try {
     return await request<AttentionItem[]>(`/api/v1/${module}/stats/attention`, { signal });
@@ -322,6 +345,16 @@ const fetchAttention = async (module: ModuleKey, signal: AbortSignal) => {
     return [];
   }
 };
+
+/** Staff's attention types that are about one person, whose id is the entity id (design S20). */
+const staffPersonAttentionTypes = [
+  "contractOverdue",
+  "probationEnding",
+  "temporaryNoticeDue",
+  "temporaryConverts",
+  "reportsWithoutManager",
+  "reassessmentDue",
+];
 
 /** The four project-economy attention types, which all link to the Economy tab. */
 const projectEconomyAttentionTypes = ["budgetWarning", "budgetExceeded", "milestoneReady", "milestoneOverdue"];
@@ -396,6 +429,13 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     if (item.type === "reminderBatchUnposted") return "/invoices/reminders/print";
     return "/invoices";
   }
+  if (item.module === "staff") {
+    // Six types carry the person's id and open their page; the deletion
+    // ledger and the thresholds are dealt with in Settings.
+    if (staffPersonAttentionTypes.includes(item.type)) return `/staff/people/${encodeURIComponent(item.entityId)}`;
+    if (["retentionFailing", "otpThreshold", "headcountThreshold"].includes(item.type)) return "/staff/settings";
+    return "/staff";
+  }
   return "/communications/inbox";
 };
 
@@ -421,6 +461,28 @@ const projectAttentionTitleKeys: Record<string, string> = {
   budgetExceeded: "dashboard.projectBudgetExceeded",
   milestoneReady: "dashboard.projectMilestoneReady",
   milestoneOverdue: "dashboard.projectMilestoneOverdue",
+};
+
+/**
+ * Staff's sentences (design S20): the server's title is a person's name, or
+ * an English sentence for the ledger and the thresholds, so every type is
+ * worded here — a headcount threshold by the threshold its entity id names.
+ */
+const staffAttentionTitleKeys: Record<string, string> = {
+  contractOverdue: "dashboard.staffContractOverdue",
+  probationEnding: "dashboard.staffProbationEnding",
+  temporaryNoticeDue: "dashboard.staffTemporaryNoticeDue",
+  temporaryConverts: "dashboard.staffTemporaryConverts",
+  reportsWithoutManager: "dashboard.staffReportsWithoutManager",
+  reassessmentDue: "dashboard.staffReassessmentDue",
+  retentionFailing: "dashboard.staffRetentionFailing",
+  otpThreshold: "dashboard.staffOtpThreshold",
+};
+
+const staffHeadcountThresholdKeys: Record<string, string> = {
+  "5": "dashboard.staffHeadcountThreshold5",
+  "30": "dashboard.staffHeadcountThreshold30",
+  "50": "dashboard.staffHeadcountThreshold50",
 };
 
 // Six now: the four registry signals (Brreg in full design D4) and the two
@@ -487,6 +549,11 @@ export const attentionTitleKey = (item: {
     if (item.type === "reimbursementWaiting") return "dashboard.expenseReimbursementWaiting";
     return undefined;
   }
+  if (item.module === "staff") {
+    if (item.type === "headcountThreshold")
+      return item.entityId ? staffHeadcountThresholdKeys[item.entityId] : undefined;
+    return staffAttentionTitleKeys[item.type];
+  }
   return undefined;
 };
 
@@ -515,7 +582,12 @@ export const attentionTitle = (
   // each names the item and — for expenses — the count the server sent, if
   // any. Time's is the odd one out: its entityId carries the week the title
   // is about, not a name.
-  if (item.module === "projects" || item.module === "expenses" || item.module === "customers") {
+  if (
+    item.module === "projects" ||
+    item.module === "expenses" ||
+    item.module === "customers" ||
+    item.module === "staff"
+  ) {
     return t(key, { name: item.title, count: item.count });
   }
   if (item.module === "invoices") {
@@ -637,6 +709,31 @@ export const invoicesKpi = (
     : undefined,
 });
 
+/**
+ * The Staff card's figures (design S20): the headcount today, and as the
+ * hint the full-time equivalents and who starts and ends within thirty days —
+ * with the records that never got an employment named only while there are
+ * any, since zero is the ordinary case.
+ */
+export const staffKpi = (
+  stats: StaffStats | undefined,
+  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string,
+  t: (key: string, values?: Record<string, unknown>) => string,
+) => {
+  if (!stats) return { value: "—", hint: undefined };
+  const hint = t("dashboard.staffKpiHint", {
+    fte: formatNumber(stats.fteSum, { maximumFractionDigits: 2 }),
+    starting: stats.startingSoon,
+    ending: stats.endingSoon,
+  });
+  return {
+    value: stats.headcount,
+    hint: stats.peopleWithoutEmployment
+      ? `${hint} · ${t("dashboard.staffWithoutEmploymentHint", { count: stats.peopleWithoutEmployment })}`
+      : hint,
+  };
+};
+
 const sparkline = (points: DailyPoint[] | undefined) => points?.map((point) => point.value);
 
 const relativeTime = (value: string, locale: string) => {
@@ -672,7 +769,7 @@ const DashboardPage = () => {
   const enabledModules = enabledModuleKeys();
   const permissions = authorization.data?.permissions;
   const modules = visibleModuleCards(enabledModules, permissions);
-  const kpiModules = kpiModuleCards(modules);
+  const kpiModules = kpiCards(modules, permissions);
   const allowed = (module: ModuleKey) => modules.some((item) => item.module === module);
   const range =
     search.preset === "custom" && search.from && search.to
@@ -731,6 +828,14 @@ const DashboardPage = () => {
     queryKey: ["dashboard", "invoices", "summary", range.from.toISOString(), range.to.toISOString()],
     queryFn: ({ signal }) => fetchSummary<InvoicesSummary>("invoices", range, signal),
     enabled: allowed("invoices"),
+    retry: false,
+  });
+
+  // Staff's figures are a state on today, not a period's (design S20).
+  const staffStats = useQuery({
+    queryKey: ["dashboard", "staff", "stats"],
+    queryFn: ({ signal }) => fetchStaffStats(signal),
+    enabled: allowed("staff") && canReadStaffStats(permissions),
     retry: false,
   });
 
@@ -847,6 +952,13 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const staffAttention = useQuery({
+    queryKey: ["dashboard", "staff", "attention"],
+    queryFn: ({ signal }) => fetchAttention("staff", signal),
+    enabled: allowed("staff"),
+    retry: false,
+  });
+
   const timeseriesByMetric: Record<string, DailyPoint[] | undefined> = {
     "customers:newCustomers": customersTimeseries.data,
     "communications:newConversations": communicationsTimeseries.data,
@@ -886,7 +998,8 @@ const DashboardPage = () => {
     (allowed("projects") && projectsAttention.isPending) ||
     (allowed("time") && timeAttention.isPending) ||
     (allowed("expenses") && expensesAttention.isPending) ||
-    (allowed("invoices") && invoicesAttention.isPending);
+    (allowed("invoices") && invoicesAttention.isPending) ||
+    (allowed("staff") && staffAttention.isPending);
   const activityLoading =
     (allowed("customers") && customersTimeseries.isPending) ||
     (allowed("communications") && communicationsTimeseries.isPending) ||
@@ -905,6 +1018,7 @@ const DashboardPage = () => {
     ...(timeAttention.data ?? []).map((item) => ({ ...item, module: "time" as ModuleKey })),
     ...(expensesAttention.data ?? []).map((item) => ({ ...item, module: "expenses" as ModuleKey })),
     ...(invoicesAttention.data ?? []).map((item) => ({ ...item, module: "invoices" as ModuleKey })),
+    ...(staffAttention.data ?? []).map((item) => ({ ...item, module: "staff" as ModuleKey })),
   ]
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
     .slice(0, 8);
@@ -1159,6 +1273,17 @@ const DashboardPage = () => {
                 {...invoicesKpi(invoicesSummary.data, formatters.formatCurrency, t)}
                 href={href}
                 loading={invoicesSummary.isPending}
+              />
+            );
+          }
+          if (module.module === "staff") {
+            return (
+              <KpiCard
+                key={module.module}
+                label={t("dashboard.staffHeadcount")}
+                {...staffKpi(staffStats.data, formatters.formatNumber, t)}
+                href={href}
+                loading={staffStats.isPending}
               />
             );
           }

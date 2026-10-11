@@ -284,6 +284,34 @@ Staff yet* and explains how it comes to be; ask HR if you think yours is missing
 My page is made for a phone first: on a narrow screen everything is one column and the
 form takes the whole screen.
 
+## The dashboard
+
+**Home**, the dashboard, has a **Staff** card for those with `staff:view` or
+`staff:manage`: the number of people employed today, and below it the full-time
+equivalents in force today, how many start and how many end within 30 days, and — when
+there are any — the records with no employment at all. Press the card to open Staff.
+With `staff:access` alone you have the Staff app under **Modules** and no card.
+
+Staff's items join the other apps' in **Needs attention**, each worded in your
+language. Most are HR's (`staff:manage`); a manager sees the probation item for the
+people they manage, and the reassessment is `staff:personal-data`'s:
+
+| Item | It means | Opens |
+| --- | --- | --- |
+| No signed contract | An employment started seven days ago — or today, for one under a month or a hired-out person — with no signing date and no signed contract document filed for it. File the signed contract on the person's page, or type the date it was signed. | The person |
+| Probation ending | The probation, or its extension, ends within 30 days. A manager sees this for their own people. | The person |
+| Temporary for a year | A temporary employment has lasted a year: the person is owed a month's written notice of when it ends. | The person |
+| Temporary for three years | A run of temporary employments on ground a or b has lasted three years, and the person may have a right to a permanent position. | The person |
+| No manager | Someone employed today has no manager in employment: none named, the one named has left, and no department above them has one. | The person |
+| Reassessment due | An erased person's last employment ended a year ago: record the reassessment. | The person |
+| Documents not deleted | The document store has refused to delete documents for more than a day. | Staff settings |
+| OTP threshold | By the percentages employed today, the company needs an occupational pension scheme — unless the only such person is the owner. | Staff settings |
+| 5, 30 or 50 employees | The headcount has reached a threshold that brings a duty: a whistleblowing routine and a safety representative at 5, a working environment committee at 30, the duty to report on equality above 50. | Staff settings |
+
+An item goes away when what it asks for is done. A threshold's item stays until HR
+acknowledges the threshold — once, for good; how is in the
+[administration guide](/en/admin/staff/#the-thresholds).
+
 ## Change the settings
 
 **Staff settings** (`staff:manage`) has the general settings first, then the company's

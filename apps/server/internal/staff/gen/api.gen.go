@@ -435,6 +435,45 @@ func (e StaffRemunerationType) Valid() bool {
 	}
 }
 
+// Defines values for StaffStatsAttentionItemType.
+const (
+	ContractOverdue       StaffStatsAttentionItemType = "contractOverdue"
+	HeadcountThreshold    StaffStatsAttentionItemType = "headcountThreshold"
+	OtpThreshold          StaffStatsAttentionItemType = "otpThreshold"
+	ProbationEnding       StaffStatsAttentionItemType = "probationEnding"
+	ReassessmentDue       StaffStatsAttentionItemType = "reassessmentDue"
+	ReportsWithoutManager StaffStatsAttentionItemType = "reportsWithoutManager"
+	RetentionFailing      StaffStatsAttentionItemType = "retentionFailing"
+	TemporaryConverts     StaffStatsAttentionItemType = "temporaryConverts"
+	TemporaryNoticeDue    StaffStatsAttentionItemType = "temporaryNoticeDue"
+)
+
+// Valid indicates whether the value is a known member of the StaffStatsAttentionItemType enum.
+func (e StaffStatsAttentionItemType) Valid() bool {
+	switch e {
+	case ContractOverdue:
+		return true
+	case HeadcountThreshold:
+		return true
+	case OtpThreshold:
+		return true
+	case ProbationEnding:
+		return true
+	case ReassessmentDue:
+		return true
+	case ReportsWithoutManager:
+		return true
+	case RetentionFailing:
+		return true
+	case TemporaryConverts:
+		return true
+	case TemporaryNoticeDue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StaffTemporaryGround.
 const (
 	StaffTemporaryGroundA      StaffTemporaryGround = "a"
@@ -1534,7 +1573,7 @@ type StaffPersonalDataPerson struct {
 	WorkEmail   *string           `json:"workEmail,omitempty"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold, reassessment_not_due and retention_busy. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1589,7 +1628,7 @@ type StaffRetentionState struct {
 	PendingDeletions int64 `json:"pendingDeletions"`
 }
 
-// StaffSettings The Staff settings (design §3.6) as far as the deliveries so far expose them, and the retention run's state, derived. The other columns of the settings row reach the contract with the deliveries that use them.
+// StaffSettings The Staff settings (design §3.6) as far as the deliveries so far expose them, the retention run's state, derived, and when each threshold was acknowledged, read-only. The other columns of the settings row reach the contract with the deliveries that use them.
 type StaffSettings struct {
 	// EmployeeNumberPrefix What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none.
 	EmployeeNumberPrefix string `json:"employeeNumberPrefix"`
@@ -1614,6 +1653,9 @@ type StaffSettings struct {
 
 	// Revision The revision a change sends back in If-Match.
 	Revision int32 `json:"revision"`
+
+	// ThresholdsAcknowledged When each threshold was acknowledged (design S20) — once and permanently, by staff:manage; a threshold not yet acknowledged is absent. Who acknowledged it is in the threshold_acknowledged event.
+	ThresholdsAcknowledged StaffThresholdsAcknowledged `json:"thresholdsAcknowledged"`
 
 	// TimeZone The business time zone, an IANA name.
 	TimeZone string `json:"timeZone"`
@@ -1649,6 +1691,42 @@ type StaffSimilarErasedRequest struct {
 	FamilyName string             `json:"familyName"`
 	GivenName  string             `json:"givenName"`
 }
+
+// StaffStats The dashboard's figures for the register (design S20), judged on today in the settings' time zone and read in one snapshot. The absence figures arrive with delivery B.
+type StaffStats struct {
+	// EndingSoon Employments in force today whose end falls within the next thirty days, today included.
+	EndingSoon int32 `json:"endingSoon"`
+
+	// FteSum The full-time equivalents in force today — the sum of the percentage of every employment's terms row in force today, divided by a hundred, to two decimals. A person with two employments counts both.
+	FteSum float64 `json:"fteSum"`
+
+	// Headcount People with at least one employment in force today — started on or before today and not ended before it. Each person counts once.
+	Headcount int32 `json:"headcount"`
+
+	// PeopleWithoutEmployment People not erased who have no employment at all — a record created and never completed.
+	PeopleWithoutEmployment int32 `json:"peopleWithoutEmployment"`
+
+	// StartingSoon Employments starting after today and within the next thirty days.
+	StartingSoon int32 `json:"startingSoon"`
+}
+
+// StaffStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares. The host words the sentence from `type`; `title` is the name of the thing — a person's name — or, for the three items about the installation, an English sentence the host replaces. "Today" is the day in the settings' time zone; a date-only occurredAt is that day at midnight UTC.
+//
+// Nine types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, as agreed at the start, it lasts under a month or the person is hired out (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and the person's manager today for their reports): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager in employment today — neither the manager its terms name nor one of its department or the departments above; the head of a top-level department is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each of 5, 30 and 50 the headcount has reached and that is not acknowledged — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
+type StaffStatsAttentionItem struct {
+	// Count How many the item stands for — the failing ledger rows, or the headcount of a threshold. Absent on the other types.
+	Count *int32 `json:"count,omitempty"`
+
+	// EntityId The person's id, or the literal 'retention' or 'thresholds', or the headcount threshold ('5', '30', '50').
+	EntityId   string                      `json:"entityId"`
+	Id         string                      `json:"id"`
+	OccurredAt time.Time                   `json:"occurredAt"`
+	Title      string                      `json:"title"`
+	Type       StaffStatsAttentionItemType `json:"type"`
+}
+
+// StaffStatsAttentionItemType defines model for StaffStatsAttentionItem.Type.
+type StaffStatsAttentionItemType string
 
 // StaffStructure The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out.
 type StaffStructure struct {
@@ -1888,6 +1966,14 @@ type StaffTermsRequest struct {
 
 	// WorkingTimeText § 14-6 j. Up to 1000 characters.
 	WorkingTimeText *string `json:"workingTimeText,omitempty"`
+}
+
+// StaffThresholdsAcknowledged When each threshold was acknowledged (design S20) — once and permanently, by staff:manage; a threshold not yet acknowledged is absent. Who acknowledged it is in the threshold_acknowledged event.
+type StaffThresholdsAcknowledged struct {
+	N30 *time.Time `json:"30,omitempty"`
+	N5  *time.Time `json:"5,omitempty"`
+	N50 *time.Time `json:"50,omitempty"`
+	Otp *time.Time `json:"otp,omitempty"`
 }
 
 // StaffWorkingHoursScheme The a-melding's arbeidstidsordning: not_shift (ikkeSkift), shift_365 (skift365), offshore_336 (offshore336), continuous_336 (helkontinuerligSkiftOgAndreOrdninger336), round_the_clock_355 (doegnkontinuerligSkiftOgTurnus355), other_shift (andreSkift).
@@ -2333,12 +2419,21 @@ type ServerInterface interface {
 	// PutStaffSettings Change the Staff settings
 	// (PUT /api/v1/staff/settings)
 	PutStaffSettings(w http.ResponseWriter, r *http.Request, params PutStaffSettingsParams)
+	// GetStaffStats Get the register's figures
+	// (GET /api/v1/staff/stats)
+	GetStaffStats(w http.ResponseWriter, r *http.Request)
+	// GetStaffStatsAttention Get the register's attention items
+	// (GET /api/v1/staff/stats/attention)
+	GetStaffStatsAttention(w http.ResponseWriter, r *http.Request)
 	// DeleteStaffTermsById Delete the latest terms row
 	// (DELETE /api/v1/staff/terms/{id})
 	DeleteStaffTermsById(w http.ResponseWriter, r *http.Request, id int64)
 	// PutStaffTermsById Change a terms row
 	// (PUT /api/v1/staff/terms/{id})
 	PutStaffTermsById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffTermsByIdParams)
+	// PostStaffThresholdsByKeyAcknowledge Acknowledge a threshold
+	// (POST /api/v1/staff/thresholds/{key}/acknowledge)
+	PostStaffThresholdsByKeyAcknowledge(w http.ResponseWriter, r *http.Request, key string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -4364,6 +4459,34 @@ func (siw *ServerInterfaceWrapper) PutStaffSettings(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffStats operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffStats(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffStats(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffStatsAttention operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffStatsAttention(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffStatsAttention(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteStaffTermsById operation middleware
 func (siw *ServerInterfaceWrapper) DeleteStaffTermsById(w http.ResponseWriter, r *http.Request) {
 
@@ -4435,6 +4558,32 @@ func (siw *ServerInterfaceWrapper) PutStaffTermsById(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutStaffTermsById(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffThresholdsByKeyAcknowledge operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffThresholdsByKeyAcknowledge(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "key" -------------
+	var key string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffThresholdsByKeyAcknowledge(w, r, key)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4632,8 +4781,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/retention/run", wrapper.PostStaffRetentionRun)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/settings", wrapper.GetStaffSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/settings", wrapper.PutStaffSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/stats", wrapper.GetStaffStats)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/stats/attention", wrapper.GetStaffStatsAttention)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/terms/{id}", wrapper.DeleteStaffTermsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/terms/{id}", wrapper.PutStaffTermsById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/thresholds/{key}/acknowledge", wrapper.PostStaffThresholdsByKeyAcknowledge)
 
 	return m
 }
@@ -9436,6 +9588,104 @@ func (response PutStaffSettings409ApplicationProblemPlusJSONResponse) VisitPutSt
 	return err
 }
 
+type GetStaffStatsRequestObject struct {
+}
+
+type GetStaffStatsResponseObject interface {
+	VisitGetStaffStatsResponse(w http.ResponseWriter) error
+}
+
+type GetStaffStats200JSONResponse StaffStats
+
+func (response GetStaffStats200JSONResponse) VisitGetStaffStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffStats401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffStats401JSONResponse) VisitGetStaffStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffStats403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffStats403JSONResponse) VisitGetStaffStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffStatsAttentionRequestObject struct {
+}
+
+type GetStaffStatsAttentionResponseObject interface {
+	VisitGetStaffStatsAttentionResponse(w http.ResponseWriter) error
+}
+
+type GetStaffStatsAttention200JSONResponse []StaffStatsAttentionItem
+
+func (response GetStaffStatsAttention200JSONResponse) VisitGetStaffStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffStatsAttention401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffStatsAttention401JSONResponse) VisitGetStaffStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffStatsAttention403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffStatsAttention403JSONResponse) VisitGetStaffStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteStaffTermsByIdRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -9586,6 +9836,70 @@ func (response PutStaffTermsById409ApplicationProblemPlusJSONResponse) VisitPutS
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffThresholdsByKeyAcknowledgeRequestObject struct {
+	Key string `json:"key"`
+}
+
+type PostStaffThresholdsByKeyAcknowledgeResponseObject interface {
+	VisitPostStaffThresholdsByKeyAcknowledgeResponse(w http.ResponseWriter) error
+}
+
+type PostStaffThresholdsByKeyAcknowledge200JSONResponse StaffThresholdsAcknowledged
+
+func (response PostStaffThresholdsByKeyAcknowledge200JSONResponse) VisitPostStaffThresholdsByKeyAcknowledgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffThresholdsByKeyAcknowledge401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffThresholdsByKeyAcknowledge401JSONResponse) VisitPostStaffThresholdsByKeyAcknowledgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffThresholdsByKeyAcknowledge403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffThresholdsByKeyAcknowledge403JSONResponse) VisitPostStaffThresholdsByKeyAcknowledgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffThresholdsByKeyAcknowledge404ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffThresholdsByKeyAcknowledge404ApplicationProblemPlusJSONResponse) VisitPostStaffThresholdsByKeyAcknowledgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -9796,12 +10110,21 @@ type StrictServerInterface interface {
 	// PutStaffSettings Change the Staff settings
 	// (PUT /api/v1/staff/settings)
 	PutStaffSettings(ctx context.Context, request PutStaffSettingsRequestObject) (PutStaffSettingsResponseObject, error)
+	// GetStaffStats Get the register's figures
+	// (GET /api/v1/staff/stats)
+	GetStaffStats(ctx context.Context, request GetStaffStatsRequestObject) (GetStaffStatsResponseObject, error)
+	// GetStaffStatsAttention Get the register's attention items
+	// (GET /api/v1/staff/stats/attention)
+	GetStaffStatsAttention(ctx context.Context, request GetStaffStatsAttentionRequestObject) (GetStaffStatsAttentionResponseObject, error)
 	// DeleteStaffTermsById Delete the latest terms row
 	// (DELETE /api/v1/staff/terms/{id})
 	DeleteStaffTermsById(ctx context.Context, request DeleteStaffTermsByIdRequestObject) (DeleteStaffTermsByIdResponseObject, error)
 	// PutStaffTermsById Change a terms row
 	// (PUT /api/v1/staff/terms/{id})
 	PutStaffTermsById(ctx context.Context, request PutStaffTermsByIdRequestObject) (PutStaffTermsByIdResponseObject, error)
+	// PostStaffThresholdsByKeyAcknowledge Acknowledge a threshold
+	// (POST /api/v1/staff/thresholds/{key}/acknowledge)
+	PostStaffThresholdsByKeyAcknowledge(ctx context.Context, request PostStaffThresholdsByKeyAcknowledgeRequestObject) (PostStaffThresholdsByKeyAcknowledgeResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -11778,6 +12101,54 @@ func (sh *strictHandler) PutStaffSettings(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// GetStaffStats operation middleware
+func (sh *strictHandler) GetStaffStats(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffStatsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffStats(ctx, request.(GetStaffStatsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffStats")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffStatsResponseObject); ok {
+		if err := validResponse.VisitGetStaffStatsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffStatsAttention operation middleware
+func (sh *strictHandler) GetStaffStatsAttention(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffStatsAttentionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffStatsAttention(ctx, request.(GetStaffStatsAttentionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffStatsAttention")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffStatsAttentionResponseObject); ok {
+		if err := validResponse.VisitGetStaffStatsAttentionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // DeleteStaffTermsById operation middleware
 func (sh *strictHandler) DeleteStaffTermsById(w http.ResponseWriter, r *http.Request, id int64) {
 	var request DeleteStaffTermsByIdRequestObject
@@ -11831,6 +12202,32 @@ func (sh *strictHandler) PutStaffTermsById(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutStaffTermsByIdResponseObject); ok {
 		if err := validResponse.VisitPutStaffTermsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffThresholdsByKeyAcknowledge operation middleware
+func (sh *strictHandler) PostStaffThresholdsByKeyAcknowledge(w http.ResponseWriter, r *http.Request, key string) {
+	var request PostStaffThresholdsByKeyAcknowledgeRequestObject
+
+	request.Key = key
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffThresholdsByKeyAcknowledge(ctx, request.(PostStaffThresholdsByKeyAcknowledgeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffThresholdsByKeyAcknowledge")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffThresholdsByKeyAcknowledgeResponseObject); ok {
+		if err := validResponse.VisitPostStaffThresholdsByKeyAcknowledgeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
