@@ -239,7 +239,9 @@ describe("AppSpotlight navigation authorization", () => {
     await waitFor(() => expect(screen.getByText("My page", { exact: true })).toBeInTheDocument());
     expect(screen.queryByText("New person", { exact: true })).not.toBeInTheDocument();
 
-    // The server asks for the app and staff:manage both.
+    // The server asks for the app and staff:manage both. The settings entry
+    // keeps its own permission (only the tile asks for the app), so Spotlight
+    // still lists it for this caller; New person it does not.
     cleanup();
     spotlight.close();
     renderSpotlight(["staff:manage"], false, false);

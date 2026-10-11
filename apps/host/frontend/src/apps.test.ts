@@ -291,7 +291,9 @@ describe("the app registry", () => {
     const staff = appForKey("staff");
     expect(staff).toMatchObject({ module: "staff", label: "navigation.staff", home: "/staff" });
     expect(staff.icon).toBe(IconUsersGroup);
-    expect(staff.requiredPermissions).toEqual(["staff:access", "staff:view", "staff:manage"]);
+    // The tile asks for the app itself: the server refuses every Staff call
+    // without staff:access, whatever else the caller holds.
+    expect(staff.requiredPermissions).toEqual(["staff:access"]);
     const items = staff.navSections.flatMap((section) => section.items);
     expect(items.map((item) => [item.label, item.to, item.requiredPermissions, item.guardPermissions])).toEqual([
       ["navigation.staffMyPage", "/staff/me", ["staff:access"], undefined],
@@ -307,6 +309,7 @@ describe("the app registry", () => {
     expect(keys(["staff:access"], allModules)).toContainEqual(["staff", true]);
     expect(keys(["customers:view", "expenses:access"], allModules).map(([key]) => key)).not.toContain("staff");
     expect(keys(["staff:access"], ["customers"])).toContainEqual(["staff", false]);
+    expect(keys(["staff:view", "staff:manage"], allModules).map(([key]) => key)).not.toContain("staff");
   });
 
   it("shows a staff:access holder My page alone, and the directory and settings with their permissions", () => {

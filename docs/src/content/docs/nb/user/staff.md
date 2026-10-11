@@ -16,7 +16,9 @@ gjør i hvert skjermbilde.
 
 ## Hvem ser hva
 
-Sidemenyen viser områdene rettighetene dine gir deg:
+Ansatte-flisen vises for alle med `staff:access`; appen åpner på Personer for dem som
+ser den, og på Min side for alle andre. Sidemenyen viser områdene rettighetene dine gir
+deg:
 
 | Område i sidemenyen | Hvem ser det |
 | --- | --- |

@@ -10,13 +10,31 @@ import {
   validatePeopleSearch,
   validatePersonSearch,
 } from "@vantigo/staff-ui";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { routeTree } from "../routeTree.gen";
 import { Route as StaffRoute } from "./staff";
 import { Route as StaffIndexRoute } from "./staff/index";
 import { Route as StaffMeRoute } from "./staff/me";
 import { Route as StaffPersonRoute } from "./staff/people.$id";
 import { Route as StaffPeopleRoute } from "./staff/people.index";
+
+const { getAuthorizationMe } = vi.hoisted(() => ({ getAuthorizationMe: vi.fn() }));
+vi.mock("../api/authorization", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/authorization")>()),
+  getAuthorizationMe,
+}));
+
+/** Drives `/staff/`'s `beforeLoad` with a fresh query client; returns what it throws. */
+const indexRedirect = async () => {
+  const beforeLoad = StaffIndexRoute.options.beforeLoad as (context: unknown) => Promise<void>;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  try {
+    await beforeLoad({ context: { queryClient } });
+  } catch (error) {
+    return error as { options?: { to?: string; search?: unknown } };
+  }
+  return undefined;
+};
 
 /**
  * The route ids the generated tree matches for a path, through the real
@@ -53,19 +71,34 @@ describe("the staff routes", () => {
     expect(StaffRoute.options.staticData).toEqual({ app: "staff" });
   });
 
-  // `/staff` is a pure redirect: My page is the one destination every Staff
-  // user is offered (`staff:access`); People and the settings are a click away
-  // for those who hold more.
-  it("sends /staff to My page", () => {
+  // `/staff` is a pure redirect: People for whoever the sidebar offers it
+  // (staff:view or staff:manage, beside the app's own staff:access), My page
+  // for everyone else — and for anyone whose permissions could not be read.
+  it.each([
+    [["staff:access", "staff:view"], PEOPLE_ROUTE_PATH],
+    [["staff:access", "staff:manage"], PEOPLE_ROUTE_PATH],
+    [["*"], PEOPLE_ROUTE_PATH],
+    [["staff:access"], MY_PAGE_ROUTE_PATH],
+    [["staff:access", "staff:approve", "staff:personal-data"], MY_PAGE_ROUTE_PATH],
+    [["staff:view", "staff:manage"], MY_PAGE_ROUTE_PATH],
+  ])("sends %j from /staff to %s", async (permissions, to) => {
+    getAuthorizationMe.mockResolvedValue({ permissions });
     expect(StaffIndexRoute.options.component).toBeUndefined();
-    let thrown: unknown;
-    try {
-      (StaffIndexRoute.options.beforeLoad as () => void)();
-    } catch (error) {
-      thrown = error;
-    }
+
+    const thrown = await indexRedirect();
+
     expect(isRedirect(thrown)).toBe(true);
-    expect((thrown as { options?: { to?: string } }).options?.to).toBe(MY_PAGE_ROUTE_PATH);
+    expect(thrown?.options?.to).toBe(to);
+    if (to === PEOPLE_ROUTE_PATH) expect(thrown?.options?.search).toEqual(validatePeopleSearch({}));
+  });
+
+  it("sends /staff to My page when the permissions cannot be read", async () => {
+    getAuthorizationMe.mockRejectedValue(new Error("offline"));
+
+    const thrown = await indexRedirect();
+
+    expect(isRedirect(thrown)).toBe(true);
+    expect(thrown?.options?.to).toBe(MY_PAGE_ROUTE_PATH);
   });
 
   // The validators are the package's own, so the route and the package's
