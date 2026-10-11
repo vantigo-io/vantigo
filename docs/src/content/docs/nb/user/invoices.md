@@ -1312,6 +1312,15 @@ dashbordets valgte periode (7, 30 eller 90 dager, 12 måneder eller tilpasset) m
 perioden av samme lengde før ([statistikken](/en/reference/invoices/#stats)). Kortet
 har ingen graf; et klikk på det åpner listen.
 
+Dashbordets liste **Trenger oppfølging** viser også det som venter i Fakturaer, og hvert
+punkt leder til siden der det tas hånd om: *En faktura til … har forfalt* (de 20 som har
+vært forfalt lengst) og *… skal ha penger tilbake på en faktura* for alle med
+`invoices:access`; med `invoices:payments` også banklinjene som venter i avvikskøen, per
+fil; en purring som ikke kunne sendes; purringene som venter på en sats eller på
+gjennomgangen av inkassoregelverket, som leder til **Forfalt**; og en utskriftsbunke som
+ikke er bekreftet postlagt to dager etter postleggingsdagen, som leder til **Papirbrev**
+([oppmerksomhet](/en/reference/invoices/#stats)).
+
 ## En kundes fakturaer
 
 En kundes side i Kunder-appen har en **Fakturaer**-fane (vises når Fakturaer-modulen er

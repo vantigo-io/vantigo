@@ -1291,6 +1291,15 @@ dashboard's selected period (7, 30 or 90 days, 12 months or a custom range) with
 period of the same length before it ([the stats](/en/reference/invoices/#stats)). The
 card has no chart; clicking it opens the list.
 
+The dashboard's **Needs attention** list carries Invoices' items too, each leading to the
+page that deals with it: *An invoice to … is overdue* (the 20 most overdue) and *Money is
+owed back to … on an invoice* for everyone with `invoices:access`; with
+`invoices:payments` also the bank lines waiting in the exception queue, per file; a
+reminder that could not be sent; the reminders waiting for a collection rate or for the
+review of the collection-law regime, which lead to **Overdue**; and a print batch not
+confirmed posted two days after its posting day, which leads to **Paper letters**
+([attention](/en/reference/invoices/#stats)).
+
 ## A customer's invoices
 
 A customer's page in the Customers app has an **Invoices** tab (shown when the Invoices
