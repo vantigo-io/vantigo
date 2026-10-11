@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { employments } from "../test/fixtures";
 import { choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
@@ -62,6 +63,36 @@ describe("Employments — the card and the terms timeline", () => {
     expect(within(row).queryByText(/Base salary/)).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Contract check" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Correct|Delete|End employment|New terms/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("Employments — the row in force lies within the employment", () => {
+  it("marks no row in force once the employment has ended", async () => {
+    stubStaffApi({
+      role: "manage",
+      employments: employments().map((one) =>
+        one.id === 201 ? { ...one, endDate: "2026-05-31", endReason: "employee_resigned" as const } : one,
+      ),
+    });
+    renderRoute("/staff/people/101?tab=employments");
+
+    const card = await adaEmployment();
+    await within(card).findByRole("region", { name: "Terms from Mar 1, 2026" });
+    expect(within(card).queryByText("In force")).not.toBeInTheDocument();
+  });
+
+  it("marks no row in force before the employment starts", async () => {
+    stubStaffApi({
+      role: "manage",
+      employments: employments().map((one) => (one.id === 202 ? { ...one, startDate: "2026-11-01" } : one)),
+      terms: undefined,
+    });
+    renderRoute("/staff/people/102?tab=employments");
+
+    const card = await region("Employment E-2-1");
+    // The row is dated the old start, before today — but the employment has not begun.
+    await within(card).findByRole("region", { name: "Terms from Jan 15, 2026" });
+    expect(within(card).queryByText("In force")).not.toBeInTheDocument();
   });
 });
 
@@ -140,6 +171,7 @@ describe("Employments — HR changes the terms", () => {
     expect(
       await within(dialog).findByText("The probation ends more than six months after the start"),
     ).toBeInTheDocument();
+    expect(within(dialog).getByRole("textbox", { name: /Probation ends/ })).toHaveAttribute("aria-invalid", "true");
   });
 
   it("corrects a past row with the correction flag and the row's revision", async () => {

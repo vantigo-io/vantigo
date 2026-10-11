@@ -180,7 +180,7 @@ The **Contract check** lists the seventeen items aml. § 14-6 asks a written con
 hold, a) to q), each **Present**, **Missing** or **Not applicable** — judged on the
 terms in force today — and says whether a signed contract is recorded. It informs; it
 never stops a save. The person, a manager of theirs and HR see it. See
-[the § 14-6 check](/en/reference/staff/#terms) for where each item is read from.
+[the § 14-6 check](/en/reference/staff/#the--14-6-check) for where each item is read from.
 
 ### History
 

@@ -128,7 +128,17 @@ export interface EventFormatting {
   has: (key: string) => boolean;
   date: (value: string) => string;
   number: (value: number) => string;
+  /** The name of a row a field points at by id — a department, a location, a unit, a person — when the page knows it. */
+  name: (field: string, id: number) => string | undefined;
 }
+
+/** The fields that point at another row by id: a person reads them by name, never by number. */
+export const referenceFields: ReadonlySet<string> = new Set([
+  "departmentId",
+  "locationId",
+  "businessUnitId",
+  "managerPersonId",
+]);
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -177,6 +187,17 @@ export const eventLines = (payload: Record<string, unknown>, f: EventFormatting)
   return Object.entries(fields as Record<string, FieldChange>).map(([field, change]) => {
     const label = f.has(eventFieldLabelKey(field)) ? f.t(eventFieldLabelKey(field)) : field;
     if (change === "changed") return f.t("fieldChanged", { field: label });
+    if (referenceFields.has(field)) {
+      // A reference the page cannot name is said to have changed; its
+      // number means nothing to the reader and is never shown.
+      const named = (id: unknown) =>
+        id === undefined || id === null ? "—" : typeof id === "number" ? f.name(field, id) : undefined;
+      const from = named(change?.from);
+      const to = named(change?.to);
+      return from === undefined || to === undefined
+        ? f.t("fieldChanged", { field: label })
+        : f.t("fieldFromTo", { field: label, from, to });
+    }
     return f.t("fieldFromTo", {
       field: label,
       from: formatEventValue(field, change?.from, f),

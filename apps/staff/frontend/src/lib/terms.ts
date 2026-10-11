@@ -1,6 +1,7 @@
 import type {
   StaffAppointmentForm,
   StaffEmployeeType,
+  StaffEmployment,
   StaffEmploymentType,
   StaffEndReason,
   StaffGender,
@@ -209,6 +210,17 @@ export const MAX_PAY_COMPONENTS = 20;
 export const MAX_NEXT_OF_KIN = 3;
 export const MAX_PERSON_ROLES = 20;
 
-/** Whether a terms row is in force on `today`: it has taken effect, and the next row has not. */
-export const inForceOn = (row: Pick<StaffTerms, "validFrom" | "validTo">, today: string): boolean =>
-  row.validFrom <= today && (!row.validTo || row.validTo >= today);
+/**
+ * Whether a terms row is in force on `today`: the employment runs that day —
+ * no row is in force before its start or after its end — the row has taken
+ * effect, and the next row has not.
+ */
+export const inForceOn = (
+  row: Pick<StaffTerms, "validFrom" | "validTo">,
+  today: string,
+  employment: Pick<StaffEmployment, "startDate" | "endDate">,
+): boolean =>
+  today >= employment.startDate &&
+  (!employment.endDate || today <= employment.endDate) &&
+  row.validFrom <= today &&
+  (!row.validTo || row.validTo >= today);
