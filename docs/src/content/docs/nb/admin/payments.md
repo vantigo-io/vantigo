@@ -84,8 +84,8 @@ importeres.
 
 For å bytte format på en konto — for eksempel fra OCR til camt.054 når du tar avtalen for
 alle innbetalinger — endrer noen med `invoices:manage` kontoens format: i
-**Fakturaer** → **Innbetalinger**, under **Bankkontoer**, **Endre formatet** ved siden av
-kontoen (eller `PUT /api/v1/invoices/bank-accounts/{account}/format`). Vantigo registrerer da **overgangsdagen**: den siste bokføringsdagen for
+**Fakturaer** → **Innbetalinger** (som bare åpnes med `invoices:payments` i tillegg), under
+**Bankkontoer**, **Endre formatet** ved siden av kontoen (eller `PUT /api/v1/invoices/bank-accounts/{account}/format`). Vantigo registrerer da **overgangsdagen**: den siste bokføringsdagen for
 kontoens innbetalinger lest i det gamle formatet. Avstemmingen holder da tilbake en
 innbetaling i det nye formatet som er bokført på eller før overgangsdagen, som et mulig
 duplikat, og overlater den til en person, fordi det gamle formatet kan ha tatt den inn allerede. Bytt når den siste filen i
@@ -169,9 +169,10 @@ under en lås på 60 sekunder og sender aldri et brev to ganger med vilje.
   ikke ville rekke å bli ferdig innenfor låsen — prøves igjen etter 2, 4, 8 … sekunder,
   høyst en time imellom, med årsaken i brevets `lastError`. Et brev som fortsatt ikke er
   sendt **48 timer etter første forsøk**, blir **`failed`**: sjekk e-postserveren og
-  lageret, og la så noen med `invoices:payments` prøve igjen
-  (`POST /api/v1/invoices/reminders/{id}/retry`, til skjermbildet for det kommer) eller
-  trekke brevet tilbake. List dem med `GET /api/v1/invoices/reminders?status=failed`.
+  lageret, og la så noen med `invoices:payments` trykke **Send på nytt** på kortet
+  **Purringer** på fakturaen eller på kjøringens side, eller trekke brevet tilbake. Hvert
+  brev som feilet, er et punkt i listen **Trenger oppfølging** på dashbordet;
+  `GET /api/v1/invoices/reminders?status=failed` lister dem.
 - **Et brev som venter.** Et brev der satsene mangler et halvår, eller som ville
   hatt et gebyr etter at regelordningen sist ble gjennomgått, forsøkes ikke: det venter
   en time om gangen, med `heldReason` som forklaring, uten noen gang å feile. Legg inn

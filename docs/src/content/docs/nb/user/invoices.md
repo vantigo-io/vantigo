@@ -734,7 +734,8 @@ ikke avstemt ennå.
 for: formatet — **OCR giro** eller **camt.054**, satt av kontoens første fil — siste fil og
 siste bokføringsdag, og etter en endring det tidligere formatet med skjæringsdagen. En fil
 i det andre formatet for en konto avvises. For å bytte en konto — for eksempel fra OCR giro
-til camt.054 — klikker noen med `invoices:manage` på **Endre formatet** ved siden av den,
+til camt.054 — klikker noen med `invoices:manage` (og `invoices:payments`, som åpner
+**Innbetalinger**) på **Endre formatet** ved siden av den,
 velger **Nytt format** og klikker **Endre formatet**. Dialogen forklarer
 **skjæringsdagen** først: Vantigo registrerer den siste bokføringsdagen for kontoens
 betalinger i det gamle formatet, og holder tilbake en betaling i det nye formatet bokført
@@ -820,7 +821,7 @@ nytt for hånd.
 
 **Duplikater.** **Bekreft duplikat**, med en valgfri merknad, beholder linjen og
 registrerer ingenting. **Behold som egen betaling** gjør en duplikatrad til en egen
-betaling, tilbake i køen som et mulig duplikat, klar til å **Fordele**; det avvises når banken
+betaling, tilbake i køen som et mulig duplikat, klar til å fordeles med **Fordel**; det avvises når banken
 tilbakeførte en betaling fra linjen den gjentar, fordi de pengene gikk tilbake.
 
 **Gjenåpne.** En behandlet linje — eller en avstemt der alle betalingene ble fjernet — går
@@ -1373,7 +1374,7 @@ Ingen innebygd rolle har disse; en eier har alt
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en | `invoices:issue` |
 | Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; se dashbordets varsler om banklinjer, brev og utskriftsbunker | `invoices:payments` |
-| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger** | `invoices:manage` |
+| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger**, som også krever `invoices:payments` for å åpnes | `invoices:manage` |
 
 Innbetalinger og purring har ingen egen rettighet. Purringer, avvikskøen, vent og
 overlevering til inkasso krever `invoices:payments`, ikke `invoices:issue`: en purring er

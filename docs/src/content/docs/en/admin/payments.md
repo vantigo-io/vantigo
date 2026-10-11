@@ -86,8 +86,8 @@ imported.
 
 To switch an account — say from OCR to camt.054 when you take the agreement for all
 incoming payments — someone with `invoices:manage` changes the account's format: in
-**Invoices** → **Payments**, under **Bank accounts**, **Change the format** beside the
-account (or `PUT /api/v1/invoices/bank-accounts/{account}/format`). Vantigo then records the **cutover**: the latest booking day of that
+**Invoices** → **Payments** (which opens only with `invoices:payments` too), under **Bank
+accounts**, **Change the format** beside the account (or `PUT /api/v1/invoices/bank-accounts/{account}/format`). Vantigo then records the **cutover**: the latest booking day of that
 account's payments read in the old format. Matching then holds back a payment of the new
 format booked on or before the cutover as a possible duplicate, left for a person,
 because the old format may already have brought it in. Make the switch once the last old-format file is
@@ -169,9 +169,10 @@ letters under a 60-second lease and never send one twice on purpose.
   would not finish inside the lease — is retried after 2, 4, 8 … seconds, at most an hour
   apart, with the reason in the letter's `lastError`. A letter still unsent **48 hours
   after its first attempt** is **`failed`**: check the mail server and the store, then
-  someone with `invoices:payments` retries it
-  (`POST /api/v1/invoices/reminders/{id}/retry`, until the screen for it arrives) or
-  withdraws it. List them with `GET /api/v1/invoices/reminders?status=failed`.
+  someone with `invoices:payments` presses **Send again** on the invoice's **Reminders**
+  card or on the run's page, or withdraws it. Each failed letter is an item on the
+  dashboard's **Needs attention** list; `GET /api/v1/invoices/reminders?status=failed`
+  lists them.
 - **A letter that waits.** A letter whose collection rates miss a half-year, or that
   would carry a fee past the regime review, is not attempted: it waits an hour at a time,
   its `heldReason` saying why, without ever failing. Add the rate, or review the regime,

@@ -848,20 +848,41 @@ of two connections.
 
 *Unblocks:* project invoicing end to end; Time's and Expenses' "next: invoicing".
 
-### Phase 4 — Payments and reminders (next)
+### Phase 4 — Payments and reminders (4A and 4B done; 4C next)
 
-OCR giro and camt.054 imports matched on KID with an exception queue; an overdue list
-and reminder runs (purring, inkassovarsel) that enforce the 14-day rules and the fee cap
-from a dated rates table (the inkassosats, the late-interest rate); the B2B standard
-compensation; per-customer reminder settings; an inkasso hand-off export.
+**4A and 4B — delivered** on `feat/invoices-payments-reminders`, the phase's first pull
+request ([design](docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#bank-files-and-the-exception-queue),
+[`docs/src/content/docs/en/admin/payments.md`](docs/src/content/docs/en/admin/payments.md)):
+**the ledger and bank imports** — a payment's `source` (manual or imported); OCR giro and
+camt.054 (`.001.02` and `.001.08`) files parsed by two hand-written parsers in a leaf
+package, checked against their control totals, stored once by their hash and imported
+against the bank agreement's accounts; each line fingerprinted against duplicates across
+files and formats and matched on KID — principal first, then the charges — or queued in
+the **exception queue** with its reason and suggestions, where a person applies it across
+invoices, dismisses it, confirms a duplicate, treats it as distinct, reopens it or handles
+a reversal; the Payments screen with its files and the queue. **Overdue and reminders
+under dated rules** — collection rates (the inkassosats and the late-interest rate) in a
+dated, seeded table a release can extend; the reminder settings with the collection-law
+regime (1988 or 2026) and its review; a customer's reminder policy; the delivery fact,
+with manual deliveries; one pure rules engine — the 14-day rules, the fee cap, the B2B
+standard compensation, late interest by the day — shared by the overdue list, the
+preview, the run and the worker; charges kept apart from the principal, with charge
+payments and waivers; reminder runs, the letters sent by e-mail by a leased worker or
+printed in batches, confirmed posted or reprinted; holds and the hand-off to a
+collection agency with its CSV export; the dashboard's attention items; and the
+customers slots' export, erase and merge for every new kind. Every race on a new lock
+is proved on a pool of two connections.
 
-**A payments port**, the access-point pattern of phase 2 applied to money in: a
+**4C — planned after the first pull request merges**, the phase's second pull request
+(design D13–D17). **A payments port**, the access-point pattern of phase 2 applied to money in: a
 `PaymentProvider` port in a shared server package (not inside Invoices, so a later
 Point of sale module consumes the same adapters), **Vipps MobilePay ePayment first**
 — a payment request on an invoice, the customer's approval in the app, the callback or
 poll matched to the document as a registered payment — with credentials sealed in their
 own table, a fake for every suite, and a tagged test against the provider's test
-environment. **The quick invoice** beside it: create and issue in one step for a job
+environment; pay links and the public **pay page**. **The quick invoice** beside it:
+create and issue in one step for a job
 finished on site (a single line, a person or business buyer, the ordinary number series),
 optionally with a Vipps payment request attached. This is a credit sale — the invoice is
 the document and the payment follows it — which is what keeps it inside Invoices; a sale
@@ -889,6 +910,29 @@ forwarded receipts · construction's § 8-1-2a progress invoicing and retention 
 eFaktura and AvtaleGiro for consumers · a customer portal · a bank API for payments ·
 several legal entities per tenant, each with its own series · a posting export in
 SAF-T-friendly form to Tripletex, Fiken or PowerOffice.
+
+Left out of phase 4 on purpose (design D20): customer credit balances, refunds as a flow
+(and the payments port's `Refund` used by Invoices), setting an overpayment off against
+the next invoice, rounding off small differences · an export of payments or charges for
+the accountant · bank APIs and direct file delivery · camt.053 and the reconciliation of
+movements that are not customers' payments · the Vipps Report API and settlement
+reconciliation · MobilePay markets, other providers, cards, push messages, long-living
+payments · the creditor's own betalingsoppfordring (inkassoloven § 10) · the § 19
+regulation's egeninkasso fees · an agreed B2B interest rate · interest on fees · the
+chapter 2 cost caps · letters as EHF or eFaktura, and SMS · a letter for charges alone ·
+an agency API and an automatic hand-off · a group-level reminder policy · the B2B 60-day
+term check · several KID lengths on one agreement · a holiday calendar · automatic webhook
+re-registration · a "paid" stamp or receipt on the PDF · anything of a kassasystem (Point
+of sale, below).
+
+Follow-ups from phase 4's first pull request: the customers merge's `mergeKindNouns` for
+the eight new invoices kinds (reminders, charge payments, charge waivers, manual
+deliveries, holds, collection hand-offs, bank transactions, reminder policies) · the
+overdue list's `charges=outstanding` filter covering credited invoices that still have
+charges outstanding · the invoice number on `InvoicesReminder`, so a letter links by
+number rather than by document id · `bankFileId` on `InvoicesPayment`, so an imported
+payment links to its file · a bulk confirm-duplicate per bank file (a `duplicate` line
+keeps the file's attention item alive until each is confirmed by hand).
 
 ## Point of sale
 
