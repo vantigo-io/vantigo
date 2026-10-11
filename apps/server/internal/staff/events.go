@@ -1,6 +1,7 @@
 package staff
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -40,6 +41,14 @@ const (
 	eventBankAccountRevealed = "bank_account_revealed"
 	eventUserLinked          = "user_linked"
 	eventUserUnlinked        = "user_unlinked"
+
+	eventEmploymentCreated  = "employment_created"
+	eventEmploymentUpdated  = "employment_updated"
+	eventEmploymentEnded    = "employment_ended"
+	eventEmploymentReopened = "employment_reopened"
+	eventTermsAdded         = "terms_added"
+	eventTermsCorrected     = "terms_corrected"
+	eventTermsDeleted       = "terms_deleted"
 )
 
 const (
@@ -102,6 +111,21 @@ var fieldClasses = map[string]string{
 	"workEmail": "D", "phoneWork": "D", "phoneMobile": "D", "phonePrivate": "D", "privateEmail": "D",
 	"street": "D", "postalCode": "D", "city": "D", "country": "D", "notes": "D", "nextOfKin": "D",
 	"nationalId": "D", "bankAccount": "D", "user": "C",
+
+	// An employment and its non-pay terms are class C, kept for good; the
+	// pay terms, the seniority date and the pay grade class A, kept five
+	// years past the end year; a terms row's note class D (design §3.2, §3.3).
+	"employmentNumber": "C", "relationshipType": "C", "businessUnitId": "C", "startDate": "C", "endDate": "C",
+	"endReason": "C", "contractSignedAt": "C", "validFrom": "C", "employmentType": "C", "temporaryGround": "C",
+	"expectedEndDate": "C", "appointmentForm": "C", "hiredOutTo": "C", "ftePercent": "C", "workingHoursScheme": "C",
+	"fullTimeHoursPerWeek": "C", "occupationCode": "C", "title": "C", "employeeType": "C", "departmentId": "C",
+	"locationId": "C", "managerPersonId": "C", "costCentre": "C", "division": "C", "workingTimeText": "C",
+	"breakMinutes": "C", "specialHoursText": "C", "overtimeRuleText": "C", "probationEndDate": "C",
+	"probationExtensionAgreed": "C", "probationExtendedTo": "C", "probationExtensionReason": "C",
+	"noticeEmployee": "C", "noticeEmployer": "C", "noticeUnit": "C", "tariffReference": "C", "holidayTermsText": "C",
+	"competenceDevelopmentText": "C", "socialSecurityText": "C",
+	"remunerationType": "A", "payComponents": "A", "payMethod": "A", "paydayText": "A", "seniorityDate": "A", "payGrade": "A",
+	"note": "D",
 }
 
 // classes is the retention classes c's fields belong to, sorted and each
@@ -152,10 +176,74 @@ func (s *server) recordChanges(ctx context.Context, txq *store.Queries, personID
 	return s.recordEvent(ctx, txq, &personID, kind, who, map[string]any{"fields": c}, c.classes())
 }
 
+// everything is the audience that reads every group. A payload is written
+// with every field the change touched — who reads which is decided when the
+// history is read (shapePayload) — so the values it is built from are read
+// as this audience reads them.
+var everything = audience{Self: true, Manage: true, PersonalData: true}
+
+// payloadValues is a response's fields as a payload names them — by the
+// contract's names, each value as the response encodes it — less own, the
+// response's fields that are not data about the person (ids, revisions).
+// An absent field is not in the map.
+func payloadValues(response any, own ...string) (map[string]json.RawMessage, error) {
+	b, err := json.Marshal(response)
+	if err != nil {
+		return nil, fmt.Errorf("staff: encode the values of a change: %w", err)
+	}
+	var out map[string]json.RawMessage
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, fmt.Errorf("staff: decode the values of a change: %w", err)
+	}
+	for _, name := range own {
+		delete(out, name)
+	}
+	return out, nil
+}
+
+// diffFields is a change's fields from before to after, each named once with
+// its value on either side — absent on the side where it was empty. before
+// nil is a creation, after nil a deletion.
+func diffFields(before, after map[string]json.RawMessage) changes {
+	out := changes{}
+	for _, side := range []map[string]json.RawMessage{before, after} {
+		for name := range side {
+			from, hadFrom := before[name]
+			to, hasTo := after[name]
+			if hadFrom == hasTo && bytes.Equal(from, to) {
+				continue
+			}
+			var c fieldChange
+			if hadFrom {
+				c.From = from
+			}
+			if hasTo {
+				c.To = to
+			}
+			out[name] = c
+		}
+	}
+	return out
+}
+
+// recordRowChange records kind for personID with c as its fields and the ids
+// of the employment and the terms row it is about (termsID 0 for an
+// employment's own event); nothing when c is empty.
+func (s *server) recordRowChange(ctx context.Context, txq *store.Queries, personID int64, kind string, who actor, employmentID, termsID int64, c changes) error {
+	if len(c) == 0 {
+		return nil
+	}
+	payload := map[string]any{"fields": c, "employmentId": employmentID}
+	if termsID != 0 {
+		payload["termsId"] = termsID
+	}
+	return s.recordEvent(ctx, txq, &personID, kind, who, payload, c.classes())
+}
+
 // GetStaffPeopleByIdEvents List a person's history
 // (GET /api/v1/staff/people/{id}/events)
 //
-// The person themselves, their manager (Task 4) and HR read it; to anyone
+// The person themselves, a manager of theirs today and HR read it; to anyone
 // else — a colleague holding staff:view included — the person's history is
 // the 404 an unknown id is.
 func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffPeopleByIdEventsRequestObject) (gen.GetStaffPeopleByIdEventsResponseObject, error) {

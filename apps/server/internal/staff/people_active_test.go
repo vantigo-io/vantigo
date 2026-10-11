@@ -24,8 +24,8 @@ func shiftDay(t *testing.T, day string, d int) string {
 // person active today in the business zone — an employment that has started
 // and not ended (plan reading 15): an unannounced hire, a leaver and someone
 // with no employment are the bare 404 an unknown id is, on the person and on
-// every sub-resource, and absent from the directory. staff:manage lists and
-// reads them all.
+// every sub-resource, and absent from the directory. staff:manage reads them
+// all and lists them by status.
 func TestColleague_SeesOnlyPeopleActiveToday(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -78,10 +78,19 @@ func TestColleague_SeesOnlyPeopleActiveToday(t *testing.T) {
 	if page := listPeople(t, colleague, ""); page.Pagination.TotalCount != 2 {
 		t.Errorf("colleague's total = %d, want 2", page.Pagination.TotalCount)
 	}
+	// HR's list defaults to the current people — the leaver is under
+	// ?status=ended — and ?status=all is everyone (TestPeopleList_StatusPerAudience).
 	both, _ := signIn(t, h, "staff:view", "staff:manage")
 	for name, c := range map[string]*modtest.Client{"staff:manage": hr, "staff:view+manage": both} {
-		if got := numbers(c); len(got) != 5 {
-			t.Errorf("%s lists %v, want all five", name, got)
+		if got := numbers(c); len(got) != 4 || slices.Contains(got, "L-1") {
+			t.Errorf("%s lists %v, want the four current", name, got)
+		}
+		var all []string
+		for _, p := range listPeople(t, c, "?status=all").Data {
+			all = append(all, p.EmployeeNumber)
+		}
+		if len(all) != 5 {
+			t.Errorf("%s lists %v under status=all, want all five", name, all)
 		}
 	}
 }

@@ -26,8 +26,8 @@ import (
 // default is serialised by an advisory lock of its own (locks.go), and the
 // partial unique index is the backstop. A department's parent chain never
 // cycles; every write of a department takes the manager-graph lock, since its
-// manager and its parent are edges of the graph delivery A1's Task 4 judges
-// manager cycles over.
+// manager and its parent are edges of the graph manager cycles are judged
+// over, and a change of either is judged on it (org.go).
 
 // The unique indexes a structure write can trip, each answered as its field.
 const (
@@ -676,7 +676,16 @@ func (s *server) PutStaffDepartmentsById(ctx context.Context, req gen.PutStaffDe
 			ID: row.ID, Code: parsed.Code, Name: parsed.Name, ManagerPersonID: parsed.ManagerPersonID,
 			CostCentre: parsed.CostCentre, Division: parsed.Division, ParentID: parsed.ParentID, Now: s.deps.Clock(),
 		})
-		return departmentWriteError(err)
+		if err != nil {
+			return departmentWriteError(err)
+		}
+		// A new manager or parent changes the manager of everyone the
+		// department's fallback reaches, so the graph it leaves is judged
+		// under the lock taken above (design §4 Managers).
+		if !sameID(row.ManagerPersonID, parsed.ManagerPersonID) || !sameID(row.ParentID, parsed.ParentID) {
+			return checkDepartmentManagerCycle(ctx, txq, row.ID)
+		}
+		return nil
 	})
 	if r, ok := asRefusal(err); ok {
 		switch r.status {
@@ -832,3 +841,6 @@ func (s *server) PostStaffLocationsByIdArchive(ctx context.Context, req gen.Post
 	}
 	return gen.PostStaffLocationsByIdArchive200JSONResponse(locationResponse(saved)), nil
 }
+
+// sameID reports whether two optional references name the same row.
+func sameID(a, b *int64) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }

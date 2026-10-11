@@ -10,11 +10,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 )
 
 // The person's field groups (design §5), as the response names their fields.
 var (
-	workFields    = []string{"id", "employeeNumber", "givenName", "familyName", "displayName", "workEmail", "phoneWork", "workCountry", "preferredLanguage", "capabilities", "revision"}
+	workFields    = []string{"id", "employeeNumber", "givenName", "familyName", "displayName", "workEmail", "phoneWork", "workCountry", "preferredLanguage", "capabilities", "revision", "status"}
 	privateFields = []string{"birthDate", "gender", "phoneMobile", "phonePrivate", "privateEmail", "street", "postalCode", "city", "country"}
 	sealedFields  = []string{"nationalId", "bankAccount"}
 	linkFields    = []string{"user"}
@@ -65,7 +66,7 @@ func seedShapedPerson(t *testing.T, h *harness, hr *modtest.Client) shapedPerson
 // amended: shaping by field group, per field): each audience of this task
 // sees exactly its groups' fields — a group it may not read is absent, never
 // null — and an outsider gets the 404 an unknown id gets, byte for byte.
-// The Manager audience joins in Task 4.
+// The Manager audience is TestShaping_ManagerAudience's.
 func TestShaping_PersonPerAudience(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -120,7 +121,7 @@ func TestShaping_PersonPerAudience(t *testing.T) {
 
 // The person's sub-resources follow their groups: next of kin are private
 // (the person and HR), roles are work (everyone who sees the person), and the
-// history is the person's, HR's and — in Task 4 — the manager's, never a
+// history is the person's, HR's and the manager's, never a
 // colleague's. A group the audience may not read is the unknown id's 404.
 func TestShaping_SubResourcesPerAudience(t *testing.T) {
 	t.Parallel()
@@ -149,5 +150,171 @@ func TestShaping_SubResourcesPerAudience(t *testing.T) {
 				t.Errorf("%s GET %s: body %q, want the bare 404", c.name, path, r.Body)
 			}
 		}
+	}
+}
+
+// keysOf is a JSON object's keys, sorted.
+func keysOf(m map[string]any) []string { return slices.Sorted(maps.Keys(m)) }
+
+// rawList decodes a response body as a list of JSON objects.
+func rawList(t *testing.T, r *modtest.Response) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	r.JSON(&out)
+	return out
+}
+
+// The terms' and the employment's fields by group (design §5): what a
+// colleague reads, what else a manager reads, and the pay and HR's note.
+var (
+	termsDateFields       = []string{"id", "employmentId", "validFrom", "employmentType", "ftePercent", "revision"}
+	termsNonPayFields     = []string{"appointmentForm", "fullTimeHoursPerWeek", "title", "workingHoursScheme", "managerPersonId", "probationExtensionAgreed"}
+	termsPayFields        = []string{"payComponents", "payMethod", "remunerationType"}
+	employmentDateFields  = []string{"id", "personId", "startDate", "revision", "fteChangedAt"}
+	employmentOtherFields = []string{"businessUnitId", "employmentNumber", "relationshipType"}
+)
+
+// The Manager audience (design §5, plan reading 6): a person linked to the
+// caller who manages someone today — named on their terms in force, or the
+// head of their department — reads that person's work group, employments and
+// every non-pay term, their roles and their history shaped (a private
+// field's change is "changed", a work field's shows its values; the sealed
+// fields' and the link's are "changed"), and the contract check; not the
+// pay, not HR's notes, not the private group, the next of kin or the link.
+// A colleague reads an employment's dates and the terms' dates, type and
+// percentage only.
+func TestShaping_ManagerAudience(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	company(t, hr)
+	start := shiftDay(t, today(t, h), -30)
+
+	boss := createPerson(t, hr, newPerson("Berit", "Boss"))
+	createEmployment(t, hr, boss.Id, newEmployment(start, terms()))
+	manager, managerUser := signIn(t, h)
+	link(t, h, boss.Id, managerUser)
+
+	p := createPerson(t, hr, with(newPerson("Kari", "Nordmann"), "birthDate", "1990-02-28", "workEmail", "kari@example.no"))
+	e := createEmployment(t, hr, p.Id, newEmployment(start, terms("title", "Developer", "managerPersonId", boss.Id,
+		"payComponents", []any{map[string]any{"name": "Base", "amount": 50000, "currency": "NOK", "period": "monthly"}},
+		"payMethod", "Bank transfer", "remunerationType", "monthly", "note", "HR only")))
+	putNextOfKin(t, h, hr, p.Id, map[string]any{"nextOfKin": []any{kin("Ola", "spouse")}})
+	do(t, hr, http.MethodPut, personPath(p.Id), with(newPerson("Kari", "Nordmann"), "birthDate", "1991-03-01", "workEmail", "kari.n@example.no"),
+		http.StatusOK, nil, ifMatch(personRevision(t, h, p.Id)))
+	h.Exec(t, `UPDATE staff.people SET national_id_kind = 'fodselsnummer', national_id_mac = '\x01'::bytea, national_id_sealed = '\x02'::bytea WHERE id = $1`, p.Id)
+	h.Exec(t, `INSERT INTO staff.events (person_id, kind, actor_kind, actor_display, at, payload, payload_classes)
+		VALUES ($1, 'national_id_set', 'user', 'HR', $2, '{"fields":{"nationalId":{"to":{"kind":"fodselsnummer"}}}}', '{D}')`, p.Id, h.Now())
+
+	person := raw(t, manager.Do(http.MethodGet, personPath(p.Id), nil))
+	// No work phone was set, so it is absent for everyone.
+	unset := func(name string) bool { return name == "phoneWork" }
+	if got, want := keysOf(person), slices.DeleteFunc(fields(workFields, []string{"manager"}), unset); !slices.Equal(got, want) {
+		t.Errorf("manager reads the person as %v, want %v", got, want)
+	}
+	if m, _ := person["manager"].(map[string]any); m["id"] != float64(boss.Id) {
+		t.Errorf("manager = %v, want Berit", person["manager"])
+	}
+
+	employment := rawList(t, manager.Do(http.MethodGet, employmentsPath(p.Id), nil))
+	if len(employment) != 1 {
+		t.Fatalf("manager reads %d employments, want 1", len(employment))
+	}
+	for _, f := range append(slices.Clone(employmentDateFields), employmentOtherFields...) {
+		if _, ok := employment[0][f]; !ok {
+			t.Errorf("manager: employment lacks %s: %v", f, employment[0])
+		}
+	}
+	if _, ok := employment[0]["salaryChangedAt"]; ok {
+		t.Errorf("manager reads salaryChangedAt, which is the pay group's: %v", employment[0])
+	}
+	row := rawList(t, manager.Do(http.MethodGet, termsPath(e.Id), nil))[0]
+	for _, f := range append(slices.Clone(termsDateFields), termsNonPayFields...) {
+		if _, ok := row[f]; !ok {
+			t.Errorf("manager: terms lack %s: %v", f, row)
+		}
+	}
+	for _, f := range append(slices.Clone(termsPayFields), "note") {
+		if _, ok := row[f]; ok {
+			t.Errorf("manager reads %s: %v", f, row)
+		}
+	}
+	hrRow := rawList(t, hr.Do(http.MethodGet, termsPath(e.Id), nil))[0]
+	for _, f := range append(slices.Clone(termsPayFields), "note") {
+		if _, ok := hrRow[f]; !ok {
+			t.Errorf("HR does not read %s: %v", f, hrRow)
+		}
+	}
+
+	for path, want := range map[string]int{
+		nextOfKinPath(p.Id): http.StatusNotFound, userPath(p.Id): http.StatusNotFound, rolesPath(p.Id): http.StatusOK,
+		eventsPath(p.Id): http.StatusOK, contractCheckPath(e.Id): http.StatusOK, orgPath(p.Id): http.StatusOK,
+		employmentPath(e.Id): http.StatusOK,
+	} {
+		if r := manager.Do(http.MethodGet, path, nil); r.Status != want {
+			t.Errorf("manager GET %s: %d, want %d", path, r.Status, want)
+		}
+	}
+	var events gen.PaginatedResponseOfStaffEvent
+	do(t, manager, http.MethodGet, eventsPath(p.Id), nil, http.StatusOK, &events)
+	seen := map[string]bool{}
+	for _, ev := range events.Data {
+		f := fieldsOf(ev)
+		switch ev.Kind {
+		case "person_updated":
+			seen[ev.Kind] = true
+			if f["birthDate"] != "changed" {
+				t.Errorf("manager reads birthDate as %v, want changed", f["birthDate"])
+			}
+			if w, ok := f["workEmail"].(map[string]any); !ok || w["to"] != "kari.n@example.no" {
+				t.Errorf("manager reads workEmail as %v, want its values", f["workEmail"])
+			}
+		case "national_id_set":
+			seen[ev.Kind] = true
+			if f["nationalId"] != "changed" {
+				t.Errorf("manager reads nationalId as %v, want changed", f["nationalId"])
+			}
+		case "next_of_kin_updated":
+			seen[ev.Kind] = true
+			if f["nextOfKin"] != "changed" {
+				t.Errorf("manager reads nextOfKin as %v, want changed", f["nextOfKin"])
+			}
+		case "terms_added":
+			seen[ev.Kind] = true
+			if f["payComponents"] != "changed" || f["note"] != "changed" {
+				t.Errorf("manager reads the pay or the note of terms_added: %v", f)
+			}
+			if title, ok := f["title"].(map[string]any); !ok || title["to"] != "Developer" {
+				t.Errorf("manager reads title as %v, want its value", f["title"])
+			}
+		}
+	}
+	if len(seen) != 4 {
+		t.Errorf("manager saw %v of the four event kinds", seen)
+	}
+
+	// The head of a department manages its people who name no manager.
+	head := createPerson(t, hr, newPerson("Hilde", "Leder"))
+	createEmployment(t, hr, head.Id, newEmployment(start, terms()))
+	headClient, headUser := signIn(t, h)
+	link(t, h, head.Id, headUser)
+	dept := createDepartment(t, hr, map[string]any{"code": "OPS", "name": "Operations", "managerPersonId": head.Id})
+	q := createPerson(t, hr, newPerson("Quentin", "Ops"))
+	createEmployment(t, hr, q.Id, newEmployment(start, terms("departmentId", dept.Id)))
+	if r := headClient.Do(http.MethodGet, eventsPath(q.Id), nil); r.Status != http.StatusOK {
+		t.Errorf("the department's head reads their report's history: %d, want 200", r.Status)
+	}
+	if r := headClient.Do(http.MethodGet, eventsPath(p.Id), nil); r.Status != http.StatusNotFound {
+		t.Errorf("the head reads someone else's report's history: %d, want 404", r.Status)
+	}
+
+	colleague, _ := signIn(t, h, "staff:view")
+	crow := rawList(t, colleague.Do(http.MethodGet, termsPath(e.Id), nil))[0]
+	if got, want := keysOf(crow), fields(termsDateFields); !slices.Equal(got, want) {
+		t.Errorf("colleague reads the terms as %v, want %v", got, want)
+	}
+	cemp := rawList(t, colleague.Do(http.MethodGet, employmentsPath(p.Id), nil))[0]
+	if got, want := keysOf(cemp), fields(employmentDateFields); !slices.Equal(got, want) {
+		t.Errorf("colleague reads the employment as %v, want %v", got, want)
 	}
 }

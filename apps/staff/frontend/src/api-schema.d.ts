@@ -150,6 +150,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/employments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get an employment
+         * @description One employment, shaped as on GET /people/{id}/employments.
+         */
+        get: operations["getStaffEmploymentsById"];
+        /**
+         * Change an employment
+         * @description Replaces an employment's own fields. The employment number never changes. A new start date moves the first terms row with it, and is refused when a later row would then lie before it. The end is written through POST /employments/{id}/end. The change is an employment_updated event.
+         */
+        put: operations["putStaffEmploymentsById"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/employments/{id}/contract-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check an employment against § 14-6
+         * @description The seventeen items aml. § 14-6 (1) a–q asks a written employment contract to hold, each present, missing or not_applicable, judged from the employment and the terms in force today (the first row before the start, the last before the end), with the column each comes from; and whether the contract is recorded as signed. Informative, never blocking. The person themselves, a manager of theirs and HR read it; anyone else gets a 404 identical to an unknown id.
+         */
+        get: operations["getStaffEmploymentsByIdContractCheck"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/employments/{id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End an employment
+         * @description Ends an employment on endDate — which may lie in the future — for one of the a-melding's six reasons. A terms row dated after the end is refused. Ending one already ended moves its end. The change is an employment_ended event.
+         */
+        post: operations["postStaffEmploymentsByIdEnd"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/employments/{id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen an employment
+         * @description Takes an employment's end and its reason away, for an end recorded in error. The change is an employment_reopened event; reopening an employment that has no end changes nothing.
+         */
+        post: operations["postStaffEmploymentsByIdReopen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/employments/{id}/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an employment's terms
+         * @description An employment's terms rows by validFrom, each in force from its validFrom until the next row's (validTo, the day before, is absent on the latest). Shaped by who is asking (design §5): the person themselves and HR read every field; a manager of theirs reads every field but the pay group; a colleague holding staff:view reads the dates, employmentType and ftePercent only.
+         */
+        get: operations["getStaffEmploymentsByIdTerms"];
+        put?: never;
+        /**
+         * Add a terms row
+         * @description Adds a terms row in force from validFrom (design S5, §4 Terms). A field left out takes its value from the row in force before validFrom; a field sent as null is cleared; the hours for a full position follow the scheme when the scheme changes and the hours are left out. The row is a terms_added event.
+         */
+        post: operations["postStaffEmploymentsByIdTerms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/legal-entities": {
         parameters: {
             query?: never;
@@ -351,7 +459,7 @@ export interface paths {
         };
         /**
          * List people
-         * @description The directory, by display name, the work group only: staff:manage lists everyone, staff:view without it the people active today (an employment that has started and not ended). q matches each of its words against the names, the employee number and the work email. Anyone else is the uniform 403.
+         * @description The directory, by display name, the work group with each person's manager, department and status today: staff:manage lists everyone, filtered by status (current by default — active, upcoming and no employment yet; ended; all); staff:view without it the people active today (an employment that has started and not ended), whatever status says. q matches each of its words against the names, the employee number and the work email; unitId, departmentId and locationId keep the people with an employment in force today in that unit, or whose terms in force today name that department or location — all on one employment. Anyone else is the uniform 403.
          */
         get: operations["getStaffPeople"];
         put?: never;
@@ -375,7 +483,7 @@ export interface paths {
         };
         /**
          * Get a person
-         * @description One person, shaped by who is asking (design §5): the person themselves through their self-service link, staff:view for a person active today (an employment that has started and not ended), staff:manage and staff:personal-data each see the field groups theirs to read. Anyone else — staff:view alone for a person not active today included — gets a 404 identical to an unknown id.
+         * @description One person, shaped by who is asking (design §5): the person themselves through their self-service link, a manager of theirs today (a person linked to the caller is the manager of one of their employments in force today, by the terms or the department), staff:view for a person active today (an employment that has started and not ended), staff:manage and staff:personal-data each see the field groups theirs to read. Anyone else — staff:view alone for a person not active today included — gets a 404 identical to an unknown id.
          */
         get: operations["getStaffPeopleById"];
         /**
@@ -434,6 +542,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/people/{id}/employments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's employments
+         * @description A person's employments by start date, shaped by who is asking (design §5): the person themselves, a manager of theirs and HR read every non-pay field; a colleague holding staff:view reads the dates only; the derived salaryChangedAt is the pay group's. Anyone who may not see the person gets a 404 identical to an unknown id.
+         */
+        get: operations["getStaffPeopleByIdEmployments"];
+        put?: never;
+        /**
+         * Add an employment
+         * @description Adds an employment (an arbeidsforhold, design S2) with its first terms row, which is dated the start. The business unit is the default one when none is named; the employment number is the one given, or the person's employee number and the first free -n, generated under the person's lock and skipping past any number already taken. The creation is an employment_created event and a terms_added one.
+         */
+        post: operations["postStaffPeopleByIdEmployments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/people/{id}/events": {
         parameters: {
             query?: never;
@@ -443,7 +575,7 @@ export interface paths {
         };
         /**
          * List a person's history
-         * @description A person's history, newest first, each payload shaped by the caller's field groups: a field of a group the caller may not read shows "changed" in place of its values. The person themselves, staff:manage and staff:personal-data read it; anyone else — a colleague holding staff:view included — gets a 404 identical to an unknown id.
+         * @description A person's history, newest first, each payload shaped by the caller's field groups: a field of a group the caller may not read shows "changed" in place of its values. The person themselves, a manager of theirs today, staff:manage and staff:personal-data read it; anyone else — a colleague holding staff:view included — gets a 404 identical to an unknown id.
          */
         get: operations["getStaffPeopleByIdEvents"];
         put?: never;
@@ -511,6 +643,26 @@ export interface paths {
          * @description Replaces a person's next of kin — at most three — under the person's revision (If-Match), which moves on when the list changes, and records a next_of_kin_updated event.
          */
         put: operations["putStaffPeopleByIdNextOfKin"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/org": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a person's place in the organisation
+         * @description The person's managers up the chain — each the manager of the one before, by the terms in force today or the department's manager — and their direct reports today, each as the work group names them. Anyone who may see the person reads it; anyone else gets a 404 identical to an unknown id.
+         */
+        get: operations["getStaffPeopleByIdOrg"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -590,6 +742,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/terms/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a terms row
+         * @description Replaces a terms row: the latest one, or any one with correction true — HR's correction of a past row (design reading 11). A field left out is cleared. The first row stays dated the employment's start. The change is a terms_corrected event naming each field with its value before and after.
+         */
+        put: operations["putStaffTermsById"];
+        post?: never;
+        /**
+         * Delete the latest terms row
+         * @description Deletes an employment's latest terms row, so the one before it is in force again. The first row is never deleted. The deletion is a terms_deleted event naming the row's values.
+         */
+        delete: operations["deleteStaffTermsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -602,6 +778,11 @@ export interface components {
             data: components["schemas"]["StaffPersonListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
+        /**
+         * @description The a-melding's ansettelsesform. fast and fast_utleid go with a permanent employment, the other three with a temporary one.
+         * @enum {string}
+         */
+        StaffAppointmentForm: "fast" | "midlertidig" | "fast_utleid" | "midlertidig_utleid" | "midlertidig_tilkallingsvikar";
         /** @description An active user HR may link a person to, as the user directory names them. */
         StaffAssignableUser: {
             displayName: string;
@@ -665,6 +846,35 @@ export interface components {
             /** @description staff:view — the directory: everyone's work fields and the structure. */
             canViewDirectory: boolean;
         };
+        /** @description The § 14-6 check of one employment (design S5). */
+        StaffContractCheck: {
+            /** @description Whether the employment records a signed contract (contractSignedAt). */
+            contractSigned: boolean;
+            /**
+             * Format: date
+             * @description Absent when not recorded.
+             */
+            contractSignedAt?: string;
+            /** Format: int64 */
+            employmentId: number;
+            items: components["schemas"]["StaffContractCheckItem"][];
+            /**
+             * Format: int64
+             * @description The terms row judged. Absent when the employment has none.
+             */
+            termsId?: number;
+        };
+        StaffContractCheckItem: {
+            /** @description The letter of aml. § 14-6 (1), a to q. */
+            item: string;
+            /** @description Where the item is read from, as the contract names the fields (terms.locationId, employment.startDate, settings.pensionProvider …). */
+            source: string;
+            /**
+             * @description present, missing, or not_applicable when the item does not apply to this employment (e when permanent, f without a probation, l without a special arrangement, n without a tariff when not hired out, o when not hired out).
+             * @enum {string}
+             */
+            state: "present" | "missing" | "not_applicable";
+        };
         /** @description A department (design S6). Its manager is the manager of the people whose terms name the department and no manager of their own. */
         StaffDepartment: {
             /**
@@ -713,6 +923,120 @@ export interface components {
              */
             parentId?: number;
         };
+        /** @description A department as the work group names it. */
+        StaffDepartmentSummary: {
+            code: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /**
+         * @description The kind of worker, for an identity provider.
+         * @enum {string}
+         */
+        StaffEmployeeType: "employee" | "contractor" | "consultant" | "intern";
+        /** @description An employment (design §3.2), shaped by who is asking (§5): the dates are everyone's who may see the person; the other fields are the employment group's — the person themselves, a manager of theirs and HR; salaryChangedAt is the pay group's — the person and HR. A field the caller may not read is absent, never null. */
+        StaffEmployment: {
+            /** Format: int64 */
+            businessUnitId?: number;
+            /**
+             * Format: date
+             * @description Absent when not recorded.
+             */
+            contractSignedAt?: string;
+            /** @description The a-melding's arbeidsforholdID. Never changes. */
+            employmentNumber?: string;
+            /**
+             * Format: date
+             * @description The last day worked. Absent while open-ended.
+             */
+            endDate?: string;
+            endReason?: components["schemas"]["StaffEndReason"];
+            /**
+             * Format: date
+             * @description The date the stillingsprosent in force today (or at the start, before it; at the end, after it) took effect: the earliest row of the unbroken run of rows with that percentage. Derived, never typed.
+             */
+            fteChangedAt?: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            personId: number;
+            relationshipType?: components["schemas"]["StaffRelationshipType"];
+            /**
+             * Format: int32
+             * @description The revision a change sends back in If-Match.
+             */
+            revision: number;
+            /**
+             * Format: date
+             * @description The date the pay in force today took effect, judged on the pay components as a list sorted by name and amount and compared on those two alone. Derived, never typed.
+             */
+            salaryChangedAt?: string;
+            /** Format: date */
+            startDate: string;
+        };
+        /** @description An employment's own fields, replaced as a whole. The end is written through POST /employments/{id}/end. */
+        StaffEmploymentChangeRequest: {
+            /**
+             * Format: int64
+             * @description An existing business unit, not archived unless the employment is already in it.
+             */
+            businessUnitId: number;
+            /**
+             * Format: date
+             * @description The date the contract was signed. Left out, it is cleared.
+             */
+            contractSignedAt?: string;
+            /** @description Never changes: left out, or the employment's own. */
+            employmentNumber?: string;
+            relationshipType: components["schemas"]["StaffRelationshipType"];
+            /**
+             * Format: date
+             * @description The first day of the employment; the first terms row moves with it.
+             */
+            startDate: string;
+        };
+        StaffEmploymentEndRequest: {
+            /**
+             * Format: date
+             * @description The last day worked, on or after the start; it may lie in the future.
+             */
+            endDate?: string;
+            endReason?: components["schemas"]["StaffEndReason"];
+        };
+        /** @description A new employment and its first terms row. */
+        StaffEmploymentRequest: {
+            /**
+             * Format: int64
+             * @description An existing business unit, not archived. Left out, the default one.
+             */
+            businessUnitId?: number;
+            /**
+             * Format: date
+             * @description The date the contract was signed.
+             */
+            contractSignedAt?: string;
+            /** @description 1 to 40 letters, digits or hyphens, unique however cased. Left out, it is generated as <employee number>-<n>. */
+            employmentNumber?: string;
+            /** @description Left out, ordinary. */
+            relationshipType?: components["schemas"]["StaffRelationshipType"];
+            /**
+             * Format: date
+             * @description The first day of the employment.
+             */
+            startDate: string;
+            terms: components["schemas"]["StaffTermsRequest"];
+        };
+        /**
+         * @description fast (permanent) or midlertidig (temporary).
+         * @enum {string}
+         */
+        StaffEmploymentType: "fast" | "midlertidig";
+        /**
+         * @description The a-melding's six end reasons (sluttårsak): employee_resigned, employer_terminated, contract_ended (a contract, engagement or temporary employment ran out), wrongly_reported (the employment should never have been reported), internal_change (a change in the organisation or an internal move), payroll_system_change (a change of payroll system or accountant).
+         * @enum {string}
+         */
+        StaffEndReason: "employee_resigned" | "employer_terminated" | "contract_ended" | "wrongly_reported" | "internal_change" | "payroll_system_change";
         /** @description One change in a person's history (design S21). payload.fields names each field the change touched, with its value before (from) and after (to) — either absent when the field was empty — or, for a field of a group the caller may not read, the string "changed" in place of the values. A sealed value is never in a payload. */
         StaffEvent: {
             actor: components["schemas"]["StaffEventActor"];
@@ -720,9 +1044,9 @@ export interface components {
             at: string;
             /** Format: int64 */
             id: number;
-            /** @description person_created, person_updated, next_of_kin_updated or roles_updated in this delivery; the kinds grow with it. */
+            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected or terms_deleted in this delivery; the kinds grow with it. */
             kind: string;
-            /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}. */
+            /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. */
             payload: {
                 [key: string]: unknown;
             };
@@ -880,7 +1204,30 @@ export interface components {
         StaffNextOfKinRequest: {
             nextOfKin: components["schemas"]["StaffNextOfKin"][];
         };
-        /** @description A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person. */
+        /** @enum {string} */
+        StaffNoticeUnit: "days" | "weeks" | "months";
+        /** @description A person's place in the organisation today (design S6): chain is their manager, that manager's manager and so on up — following each person's earliest employment in force today, stopping where nobody manages or where the chain would come back on itself; reports are the people whose manager they are today. */
+        StaffOrg: {
+            chain: components["schemas"]["StaffPersonSummary"][];
+            person: components["schemas"]["StaffPersonSummary"];
+            reports: components["schemas"]["StaffPersonSummary"][];
+        };
+        /** @description One named amount of the pay as the contract states it. */
+        StaffPayComponent: {
+            /**
+             * Format: double
+             * @description 0 or more, with at most two decimals.
+             */
+            amount: number;
+            /** @description An ISO 4217 code, three letters. */
+            currency: string;
+            /** @description 1 to 100 characters. */
+            name: string;
+            period: components["schemas"]["StaffPayPeriod"];
+        };
+        /** @enum {string} */
+        StaffPayPeriod: "monthly" | "yearly" | "hourly" | "once";
+        /** @description A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager and department among it — each from the terms in force today, the manager the terms' own or else the department's (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person. */
         StaffPerson: {
             bankAccount?: components["schemas"]["StaffPersonBankAccount"];
             /**
@@ -893,6 +1240,7 @@ export interface components {
             city?: string;
             /** @description Private. Absent when not set. */
             country?: string;
+            department?: components["schemas"]["StaffDepartmentSummary"];
             displayName: string;
             employeeNumber: string;
             familyName: string;
@@ -900,6 +1248,7 @@ export interface components {
             givenName: string;
             /** Format: int64 */
             id: number;
+            manager?: components["schemas"]["StaffPersonSummary"];
             nationalId?: components["schemas"]["StaffPersonNationalId"];
             /** @description HR's notes — staff:manage and staff:personal-data only. Absent when not set. */
             notes?: string;
@@ -919,6 +1268,7 @@ export interface components {
              * @description The revision a change sends back in If-Match.
              */
             revision: number;
+            status: components["schemas"]["StaffPersonStatus"];
             /** @description Private. Absent when not set. */
             street?: string;
             user?: components["schemas"]["StaffPersonUser"];
@@ -956,17 +1306,20 @@ export interface components {
             /** Format: uuid */
             userId: string | null;
         };
-        /** @description A person in the directory — the work group only, whoever lists. */
+        /** @description A person in the directory — the work group, with the manager and the department from the terms in force today (absent when there is none), and where the person stands today. */
         StaffPersonListItem: {
+            department?: components["schemas"]["StaffDepartmentSummary"];
             displayName: string;
             employeeNumber: string;
             familyName: string;
             givenName: string;
             /** Format: int64 */
             id: number;
+            manager?: components["schemas"]["StaffPersonSummary"];
             /** @description Absent when not set. */
             phoneWork?: string;
             preferredLanguage: components["schemas"]["StaffLanguage"];
+            status: components["schemas"]["StaffPersonStatus"];
             workCountry: string;
             /** @description Absent when not set. */
             workEmail?: string;
@@ -1048,6 +1401,23 @@ export interface components {
         StaffPersonRolesRequest: {
             roles: components["schemas"]["StaffPersonRole"][];
         };
+        /** @description Where the person stands today, in the business time zone: active (an employment has started and not ended — the end day itself is still worked), upcoming (none active, one starting later; date is the earliest such start), ended (every employment ended before today; date is the latest end) or none (no employment yet). */
+        StaffPersonStatus: {
+            /**
+             * Format: date
+             * @description The start for upcoming, the end for ended; absent otherwise.
+             */
+            date?: string;
+            /** @enum {string} */
+            state: "active" | "upcoming" | "ended" | "none";
+        };
+        /** @description A person as the work group names them. */
+        StaffPersonSummary: {
+            displayName: string;
+            employeeNumber: string;
+            /** Format: int64 */
+            id: number;
+        };
         /** @description The user the person is linked to for self-service, as the user directory names them. Present for the person themselves, staff:manage and staff:personal-data, when a link exists. A user the directory no longer knows is "Unknown user", not active. */
         StaffPersonUser: {
             /** @description False when the account is disabled. */
@@ -1056,7 +1426,7 @@ export interface components {
             /** Format: uuid */
             id: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere and no_person. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager and manager_cycle. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1069,6 +1439,13 @@ export interface components {
             title?: string | null;
             type?: string | null;
         };
+        /**
+         * @description The a-melding's kind of arbeidsforhold.
+         * @enum {string}
+         */
+        StaffRelationshipType: "ordinary" | "maritime" | "freelancer" | "pension_or_other";
+        /** @enum {string} */
+        StaffRemunerationType: "monthly" | "hourly" | "commission" | "fee" | "piecework";
         /** @description The Staff settings delivery A1 exposes (design §3.6). The other columns of the settings row reach the contract with the deliveries that use them. */
         StaffSettings: {
             /** @description What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none. */
@@ -1113,6 +1490,240 @@ export interface components {
             legalEntities: components["schemas"]["StaffLegalEntity"][];
             locations: components["schemas"]["StaffLocation"][];
         };
+        /**
+         * @description The ground of a temporary employment: aml. § 14-9 (2) a–e, or a tariff agreement's.
+         * @enum {string}
+         */
+        StaffTemporaryGround: "a" | "b" | "c" | "d" | "e" | "tariff";
+        /** @description A terms row (design §3.3), shaped by who is asking (§5): the person themselves and HR read every field; a manager of theirs every field but the pay group (remunerationType, payComponents, payMethod, paydayText, seniorityDate, payGrade); a colleague holding staff:view validFrom, validTo, employmentType and ftePercent only; note is HR's alone. A field the caller may not read is absent, never null. */
+        StaffTerms: {
+            appointmentForm?: components["schemas"]["StaffAppointmentForm"];
+            /** Format: int32 */
+            breakMinutes?: number;
+            /** @description Absent when not set. */
+            competenceDevelopmentText?: string;
+            /** @description Absent when not set. */
+            costCentre?: string;
+            /** Format: int64 */
+            departmentId?: number;
+            /** @description Absent when not set. */
+            division?: string;
+            employeeType?: components["schemas"]["StaffEmployeeType"];
+            /** Format: int64 */
+            employmentId: number;
+            employmentType: components["schemas"]["StaffEmploymentType"];
+            /**
+             * Format: date
+             * @description Absent when not set.
+             */
+            expectedEndDate?: string;
+            /** Format: double */
+            ftePercent: number;
+            /** Format: double */
+            fullTimeHoursPerWeek?: number;
+            /** @description Absent when not set. */
+            hiredOutTo?: string;
+            /** @description Absent when not set. */
+            holidayTermsText?: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            locationId?: number;
+            /** Format: int64 */
+            managerPersonId?: number;
+            /** @description HR's note — staff:manage and staff:personal-data only. Absent when not set. */
+            note?: string;
+            /** Format: int32 */
+            noticeEmployee?: number;
+            /** Format: int32 */
+            noticeEmployer?: number;
+            noticeUnit?: components["schemas"]["StaffNoticeUnit"];
+            /** @description Absent when not set. */
+            occupationCode?: string;
+            /** @description Absent when not set. */
+            overtimeRuleText?: string;
+            /** @description Pay group. Absent when not recorded. */
+            payComponents?: components["schemas"]["StaffPayComponent"][];
+            /** @description Pay group. Absent when not set. */
+            payGrade?: string;
+            /** @description Pay group. Absent when not set. */
+            payMethod?: string;
+            /** @description Pay group. Absent when not set. */
+            paydayText?: string;
+            /**
+             * Format: date
+             * @description Absent without a probation.
+             */
+            probationEndDate?: string;
+            /**
+             * Format: date
+             * @description Absent without an extension.
+             */
+            probationExtendedTo?: string;
+            probationExtensionAgreed?: boolean;
+            /** @description Absent when not set. */
+            probationExtensionReason?: string;
+            remunerationType?: components["schemas"]["StaffRemunerationType"];
+            /**
+             * Format: int32
+             * @description The revision a change sends back in If-Match.
+             */
+            revision: number;
+            /**
+             * Format: date
+             * @description Pay group. Absent when not set.
+             */
+            seniorityDate?: string;
+            /** @description Absent when not set. */
+            socialSecurityText?: string;
+            /** @description Absent when not set. */
+            specialHoursText?: string;
+            /** @description Absent when not set. */
+            tariffReference?: string;
+            temporaryGround?: components["schemas"]["StaffTemporaryGround"];
+            /** @description Absent when not set. */
+            title?: string;
+            /**
+             * Format: date
+             * @description The day the row takes effect.
+             */
+            validFrom: string;
+            /**
+             * Format: date
+             * @description The last day the row is in force: the day before the next row's validFrom. Absent on the latest row.
+             */
+            validTo?: string;
+            workingHoursScheme?: components["schemas"]["StaffWorkingHoursScheme"];
+            /** @description Absent when not set. */
+            workingTimeText?: string;
+        };
+        /** @description A terms row (design §3.3, S5). On POST /employments/{id}/terms a field left out takes the previous row's value and one sent as null is cleared; on an employment's first row and on PUT /terms/{id} a field left out is empty. */
+        StaffTermsRequest: {
+            /** @description Must agree with employmentType. Left out on the first row — or when the previous row's does not agree with this row's type — it is the type's own (fast or midlertidig). */
+            appointmentForm?: components["schemas"]["StaffAppointmentForm"] | null;
+            /**
+             * Format: int32
+             * @description § 14-6 k. 0 to 1440.
+             */
+            breakMinutes?: number | null;
+            /** @description § 14-6 p. Up to 1000 characters. */
+            competenceDevelopmentText?: string | null;
+            /** @description PUT /terms/{id} only: true replaces a row that is not the latest, as HR's correction of a past row. */
+            correction?: boolean;
+            /** @description Up to 40 characters. */
+            costCentre?: string | null;
+            /**
+             * Format: int64
+             * @description An existing department; archived only when the previous row (or, on a change, the row) already names it.
+             */
+            departmentId?: number | null;
+            /** @description Up to 100 characters. */
+            division?: string | null;
+            /** @description For an identity provider. */
+            employeeType?: components["schemas"]["StaffEmployeeType"] | null;
+            /** @description Required on every row (the law presumes the employee's claim when it is missing): given, or the previous row's. */
+            employmentType?: components["schemas"]["StaffEmploymentType"] | null;
+            /**
+             * Format: date
+             * @description A temporary employment's expected end. Dropped when the row is fast and it is not given.
+             */
+            expectedEndDate?: string | null;
+            /**
+             * Format: double
+             * @description Stillingsprosent: more than 0 and at most 100, at most two decimals. Required on every row: given, or the previous row's.
+             */
+            ftePercent?: number | null;
+            /**
+             * Format: double
+             * @description Hours per week for a full position, at most two decimals. Left out, the scheme's: 37.5 not_shift and other_shift, 36.5 shift_365, 33.6 offshore_336 and continuous_336, 35.5 round_the_clock_355. Refused full_time_hours_mismatch unless exactly 36.5 for shift_365, exactly 35.5 for round_the_clock_355, 28 to 33.6 for the two 336 schemes; free otherwise (more than 0, at most 168).
+             */
+            fullTimeHoursPerWeek?: number | null;
+            /** @description The innleier, when hired out (§ 14-6 o). Up to 200 characters. */
+            hiredOutTo?: string | null;
+            /** @description § 14-6 g. Up to 1000 characters. */
+            holidayTermsText?: string | null;
+            /**
+             * Format: int64
+             * @description An existing location, the workplace (§ 14-6 b); archived only as for departmentId.
+             */
+            locationId?: number | null;
+            /**
+             * Format: int64
+             * @description The direct manager, never the person. Left empty, the department's manager is the person's manager.
+             */
+            managerPersonId?: number | null;
+            /** @description HR's note on the row — staff:manage and staff:personal-data only. Up to 1000 characters. */
+            note?: string | null;
+            /**
+             * Format: int32
+             * @description § 14-6 h: the employee's notice, in noticeUnit. 0 to 999.
+             */
+            noticeEmployee?: number | null;
+            /**
+             * Format: int32
+             * @description § 14-6 h: the employer's notice, in noticeUnit. 0 to 999.
+             */
+            noticeEmployer?: number | null;
+            /** @description Required with a notice. */
+            noticeUnit?: components["schemas"]["StaffNoticeUnit"] | null;
+            /** @description The STYRK-08 yrkeskode: seven digits. */
+            occupationCode?: string | null;
+            /** @description § 14-6 m. Up to 1000 characters. */
+            overtimeRuleText?: string | null;
+            /** @description Pay group. Up to 20 components. */
+            payComponents?: components["schemas"]["StaffPayComponent"][] | null;
+            /** @description Pay group. Up to 20 characters. */
+            payGrade?: string | null;
+            /** @description Pay group (§ 14-6 i). Up to 40 characters. */
+            payMethod?: string | null;
+            /** @description Pay group (§ 14-6 i). Up to 100 characters. */
+            paydayText?: string | null;
+            /**
+             * Format: date
+             * @description The probation's last day: at most six months after the employment's start, and for a temporary employment at most half its expected term.
+             */
+            probationEndDate?: string | null;
+            /**
+             * Format: date
+             * @description The extended probation's last day: needs the extension agreed, a reason and a probationEndDate, and lies after it by at most the probation's own length.
+             */
+            probationExtendedTo?: string | null;
+            /** @description Whether an extension of the probation was agreed in writing (aml. § 15-6 (4)). */
+            probationExtensionAgreed?: boolean | null;
+            /** @description Up to 200 characters. */
+            probationExtensionReason?: string | null;
+            /** @description Pay group. Optional. */
+            remunerationType?: components["schemas"]["StaffRemunerationType"] | null;
+            /**
+             * Format: date
+             * @description Pay group. Lønnsansiennitet.
+             */
+            seniorityDate?: string | null;
+            /** @description § 14-6 q. Up to 1000 characters. */
+            socialSecurityText?: string | null;
+            /** @description § 14-6 l. Up to 1000 characters. */
+            specialHoursText?: string | null;
+            /** @description § 14-6 n. Up to 200 characters. */
+            tariffReference?: string | null;
+            /** @description Required when midlertidig. Dropped when the row is fast and it is not given. */
+            temporaryGround?: components["schemas"]["StaffTemporaryGround"] | null;
+            /** @description Up to 120 characters. */
+            title?: string | null;
+            /**
+             * Format: date
+             * @description The day the row takes effect. Required on POST /employments/{id}/terms; on an employment's first row it is the start, and may be left out.
+             */
+            validFrom?: string | null;
+            /** @description Left out on the first row, not_shift. */
+            workingHoursScheme?: components["schemas"]["StaffWorkingHoursScheme"] | null;
+            /** @description § 14-6 j. Up to 1000 characters. */
+            workingTimeText?: string | null;
+        };
+        /**
+         * @description The a-melding's arbeidstidsordning: not_shift (ikkeSkift), shift_365 (skift365), offshore_336 (offshore336), continuous_336 (helkontinuerligSkiftOgAndreOrdninger336), round_the_clock_355 (doegnkontinuerligSkiftOgTurnus355), other_shift (andreSkift).
+         * @enum {string}
+         */
+        StaffWorkingHoursScheme: "not_shift" | "shift_365" | "offshore_336" | "continuous_336" | "round_the_clock_355" | "other_shift";
         AuthErrorResponse: {
             error: {
                 code: string;
@@ -1569,7 +2180,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict, or structure_archived (the parent is archived) or department_cycle (the parent is the department itself or below it). */
+            /** @description Conflict — revision_conflict, structure_archived (the parent is archived), department_cycle (the parent is the department itself or below it), or manager_cycle when the new manager or parent would close a loop in the manager graph. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1624,6 +2235,413 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getStaffEmploymentsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffEmployment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such employment, or not one the caller may see. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffEmploymentsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the employment was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffEmploymentChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffEmployment"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, or the employment number differs from the employment's. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such employment. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict; terms_before_start when a later terms row would lie before the new start; structure_archived when a newly named business unit is archived; manager_cycle when an earlier start closes a loop in the manager graph. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffEmploymentsByIdContractCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffContractCheck"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such employment, or not one the caller may check. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postStaffEmploymentsByIdEnd: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffEmploymentEndRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffEmployment"];
+                };
+            };
+            /** @description Bad Request — end_reason_required when endReason is missing; a field error when endDate is missing or before the start. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such employment. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — terms_after_end when a terms row is dated after endDate. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    postStaffEmploymentsByIdReopen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffEmployment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such employment. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — manager_cycle when the terms the reopening brings back into force close a loop in the manager graph. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffEmploymentsByIdTerms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffTerms"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such employment, or not one the caller may see. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postStaffEmploymentsByIdTerms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffTermsRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffTerms"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, or validFrom is missing; terms_required_fields when employmentType or ftePercent is missing (errors names each); temporary_ground_required when the row is midlertidig without a ground; appointment_form_mismatch when the appointment form does not agree with the employment type; probation_too_long when the probation ends more than six months after the start, or more than half the expected term of a temporary employment, or an extension is not agreed, has no reason or is longer than the probation itself; full_time_hours_mismatch when the hours for a full position break the a-melding's rule for the working-hours scheme. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such employment. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — terms_valid_from_taken when the employment has a row on that date; terms_before_start before the employment's start; terms_after_end after its end; terms_first_row_start when the first row would not be dated the start; self_manager when the manager is the person; manager_cycle when the manager — named on the row, or the department's — would close a loop in the manager graph on the row's date or any later date the graph changes; structure_archived when a department or location newly named is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
             };
         };
     };
@@ -2273,6 +3291,14 @@ export interface operations {
             query?: {
                 /** @description Words that must each appear in a name, the employee number or the work email, however cased. */
                 q?: string;
+                /** @description People with an employment in force today in this business unit. */
+                unitId?: number;
+                /** @description People whose terms in force today name this department. */
+                departmentId?: number;
+                /** @description People whose terms in force today name this location. */
+                locationId?: number;
+                /** @description staff:manage's filter on where people stand today: current (the default — active, upcoming and those with no employment yet), ended, or all. A caller without staff:manage lists the people active today, whatever it says. */
+                status?: "current" | "ended" | "all";
                 page?: number;
                 pageSize?: number;
             };
@@ -2291,7 +3317,7 @@ export interface operations {
                     "application/json": components["schemas"]["PaginatedResponseOfStaffPersonListItem"];
                 };
             };
-            /** @description Bad Request — paging out of range. */
+            /** @description Bad Request — paging out of range, or a status other than current, ended or all. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2653,6 +3679,122 @@ export interface operations {
             };
         };
     };
+    getStaffPeopleByIdEmployments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffEmployment"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or not one the caller may see. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postStaffPeopleByIdEmployments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffEmploymentRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffEmployment"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; employment_number_taken when another employment has the number however it is cased; the terms' own refusals as on POST /employments/{id}/terms. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — structure_archived when the business unit, department or location is archived; terms_first_row_start when terms.validFrom is not the start; self_manager or manager_cycle. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
     getStaffPeopleByIdEvents: {
         parameters: {
             query?: {
@@ -2937,6 +4079,53 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["StaffProblem"];
                 };
+            };
+        };
+    };
+    getStaffPeopleByIdOrg: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffOrg"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or not one the caller may see. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -3257,6 +4446,132 @@ export interface operations {
                 };
             };
             /** @description Conflict — revision_conflict: the settings were changed since the revision If-Match names. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    putStaffTermsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the terms row was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffTermsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffTerms"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, or validFrom is missing; terms_required_fields when employmentType or ftePercent is missing (errors names each); temporary_ground_required when the row is midlertidig without a ground; appointment_form_mismatch when the appointment form does not agree with the employment type; probation_too_long when the probation ends more than six months after the start, or more than half the expected term of a temporary employment, or an extension is not agreed, has no reason or is longer than the probation itself; full_time_hours_mismatch when the hours for a full position break the a-melding's rule for the working-hours scheme. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such terms row. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict; terms_not_latest when the row is not the latest and correction is not true; terms_valid_from_taken when the employment has a row on that date; terms_before_start before the employment's start; terms_after_end after its end; terms_first_row_start when the first row would not be dated the start; self_manager when the manager is the person; manager_cycle when the manager — named on the row, or the department's — would close a loop in the manager graph on the row's date or any later date the graph changes; structure_archived when a department or location newly named is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    deleteStaffTermsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such terms row. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — terms_not_latest when a later row exists; terms_first_row_start for the first row; manager_cycle when the row in force again closes a loop in the manager graph. */
             409: {
                 headers: {
                     [name: string]: unknown;

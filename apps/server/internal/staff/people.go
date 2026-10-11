@@ -114,10 +114,15 @@ func (s *server) linkedUser(ctx context.Context, externalID *string) (*gen.Staff
 }
 
 // respondPerson is the person as the caller may read them, after any
-// transaction: the audience resolved on the pool and the linked user read
-// from the directory when the audience reads the link.
+// transaction: the audience and the placement today resolved on the pool,
+// and the linked user read from the directory when the audience reads the
+// link.
 func (s *server) respondPerson(ctx context.Context, caller *callerContext, row store.GetPersonRow, link *string) (gen.StaffPerson, error) {
 	a, err := personAudience(ctx, store.New(s.deps.Pool), caller, row.ID)
+	if err != nil {
+		return gen.StaffPerson{}, err
+	}
+	placements, err := placementsOf(ctx, store.New(s.deps.Pool), []int64{row.ID}, caller.Today)
 	if err != nil {
 		return gen.StaffPerson{}, err
 	}
@@ -127,7 +132,7 @@ func (s *server) respondPerson(ctx context.Context, caller *callerContext, row s
 			return gen.StaffPerson{}, err
 		}
 	}
-	return personResponse(row, a, user), nil
+	return personResponse(row, placements[row.ID], a, user), nil
 }
 
 // generateEmployeeNumber is the next number of the settings' sequence — the

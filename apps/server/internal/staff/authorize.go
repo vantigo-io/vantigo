@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -92,7 +93,7 @@ func (s *server) callerFor(ctx context.Context, q *store.Queries) (*callerContex
 // is no audience in delivery A1 (plan reading 18).
 type audience struct {
 	Self         bool // the caller's self-service link names the person
-	Manager      bool // a manager of the person today (Task 4)
+	Manager      bool // a manager of the person today, by the terms in force
 	Colleague    bool // staff:view
 	Manage       bool // staff:manage
 	PersonalData bool // staff:personal-data
@@ -132,16 +133,21 @@ func personAudience(ctx context.Context, q *store.Queries, c *callerContext, per
 	return c.audienceOn(personID, manager, active), nil
 }
 
-// managesPerson reports whether the caller is a manager of personID today:
-// a person they are linked to is the manager, by the terms in force today or
-// the department's fallback, of one of personID's employments.
-//
-// TASK 4 HOOK — it answers false until the employments and their terms land
-// (delivery A1's Task 4), which resolves managerOf today through the
-// caller's link; until then nobody is a manager, and the Manager audience
-// sees nothing it would not see as a colleague.
-func managesPerson(_ context.Context, _ *store.Queries, _ *callerContext, _ int64) (bool, error) {
-	return false, nil
+// managesPerson reports whether the caller is a manager of personID today
+// (design §5, plan reading 6): the person the caller's self-service link
+// names is a manager of personID by the terms in force today — the manager
+// they name, or the department's — on any of personID's employments, since
+// concurrent employments may give two. A caller linked to nobody manages
+// nobody.
+func managesPerson(ctx context.Context, q *store.Queries, c *callerContext, personID int64) (bool, error) {
+	if c.Person == nil {
+		return false, nil
+	}
+	g, err := loadManagerGraph(ctx, q, []int64{personID})
+	if err != nil {
+		return false, err
+	}
+	return slices.Contains(g.managerOf(personID, c.Today), *c.Person), nil
 }
 
 // civilToday is the calendar day of now in zone, as a date at midnight UTC.
