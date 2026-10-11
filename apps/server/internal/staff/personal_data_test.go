@@ -168,7 +168,9 @@ func TestPersonalData_MyOwnCopy(t *testing.T) {
 
 	r := p.self.Do(http.MethodGet, meExportPath, nil)
 	file := exportOf(t, r)
-	if leaks(string(r.Body), p.nationalID) || strings.Contains(string(r.Body), exportedBankAccount) {
+	// The whole numbers, not leaks' four-digit runs: the file carries random
+	// user ids, whose digits could match a run by chance.
+	if strings.Contains(string(r.Body), p.nationalID) || strings.Contains(string(r.Body), exportedBankAccount) {
 		t.Fatalf("the person's own copy carries a sealed value: %s", r.Body)
 	}
 	body := raw(t, r)

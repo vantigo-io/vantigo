@@ -239,3 +239,19 @@ func TestShapePayload_DocumentEvents(t *testing.T) {
 		}
 	}
 }
+
+// The hold's reason is named legalHoldReason in a payload, so a "reason" of
+// another kind — an absence's, in delivery B — cannot fall into the hold
+// group or its class by accident: "reason" is no field the tables know.
+func TestFieldGroups_ReasonIsNoHoldField(t *testing.T) {
+	t.Parallel()
+	if g := groupOf("reason"); g != groupNobody {
+		t.Errorf("reason is in the %s group, want none", g)
+	}
+	if class, ok := fieldClasses["reason"]; ok {
+		t.Errorf("reason has class %s, want none", class)
+	}
+	if groupOf("legalHoldReason") != groupHold || fieldClasses["legalHoldReason"] != "F" {
+		t.Errorf("legalHoldReason = %s/%s, want the hold group and class F", groupOf("legalHoldReason"), fieldClasses["legalHoldReason"])
+	}
+}

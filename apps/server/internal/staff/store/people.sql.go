@@ -232,7 +232,7 @@ SELECT
     work_email, phone_work, phone_mobile, phone_private, private_email,
     street, postal_code, city, country, work_country, preferred_language,
     bank_account_kind, bank_account_last4, notes, revision,
-    legal_hold, legal_hold_reason, legal_hold_at, erased_at, reassessed_at
+    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at
 FROM staff.people
 WHERE id = $1
 `
@@ -264,6 +264,7 @@ type GetPersonRow struct {
 	Revision          int32
 	LegalHold         bool
 	LegalHoldReason   *string
+	LegalHoldByUserID *uuid.UUID
 	LegalHoldAt       *time.Time
 	ErasedAt          *time.Time
 	ReassessedAt      *time.Time
@@ -304,6 +305,7 @@ func (q *Queries) GetPerson(ctx context.Context, id int64) (GetPersonRow, error)
 		&i.Revision,
 		&i.LegalHold,
 		&i.LegalHoldReason,
+		&i.LegalHoldByUserID,
 		&i.LegalHoldAt,
 		&i.ErasedAt,
 		&i.ReassessedAt,

@@ -752,7 +752,7 @@ export interface paths {
         get?: never;
         /**
          * Set or lift a person's legal hold
-         * @description Sets or lifts the legal hold (design S15, class F): while a person is held, no retention erase touches them, and they cannot be deleted (legal_hold). Setting it records the reason, who set it and when, as a legal_hold_set event; lifting it clears all three, as a legal_hold_lifted event — each naming legalHold and reason before and after, read by staff:manage and staff:personal-data. The hold is one of the writes an erased person still allows. Writing what is already there changes nothing and records nothing.
+         * @description Sets or lifts the legal hold (design S15, class F): while a person is held, no retention erase touches them, and they cannot be deleted (legal_hold). Setting it records the reason, who set it and when, as a legal_hold_set event; lifting it clears all three, as a legal_hold_lifted event — each naming legalHold and legalHoldReason before and after, read by staff:manage and staff:personal-data and listed, its fields changed, to the person; a manager is not shown them. A new reason on a hold that stands keeps who set it and when. The hold is one of the writes an erased person still allows. Writing what is already there changes nothing and records nothing.
          */
         put: operations["putStaffPeopleByIdLegalHold"];
         post?: never;

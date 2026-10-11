@@ -52,7 +52,6 @@ const fieldLabelOverrides: Record<string, string> = {
   bankAccount: "bankAccount",
   nextOfKin: "nextOfKin",
   roles: "roles",
-  reason: "legalHoldReason",
 };
 
 export const eventFieldLabelKey = (field: string): string => fieldLabelOverrides[field] ?? field;
@@ -129,7 +128,7 @@ export const eventFields = [
   "payGrade",
   "note",
   "legalHold",
-  "reason",
+  "legalHoldReason",
   "erasedAt",
   "reassessedAt",
 ] as const;
