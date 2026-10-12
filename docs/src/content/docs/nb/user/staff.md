@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Personregisteret — Personer, personsiden med dokumentene, Ny person, Min side og Ansatteinnstillinger med selskapets struktur og dokumentkategoriene.
+description: Personregisteret — Personer, personsiden med dokumentene, Ny person, Min side og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring og tersklene.
 sidebar:
   order: 45
 sources:
@@ -379,13 +379,15 @@ prøvetid for sine egne folk, og den nye vurderingen er `staff:personal-data` si
 | 5, 30 eller flere enn 50 ansatte | Antallet ansatte har passert en terskel som gir en plikt: varslingsrutine og verneombud fra 5, arbeidsmiljøutvalg fra 30, aktivitets- og redegjørelsesplikten over 50. | Ansatteinnstillinger |
 
 Et punkt forsvinner når det det ber om, er gjort. Punktet for en terskel står til HR
-bekrefter terskelen — én gang, for godt; hvordan står i
-[administrasjonsveiledningen](/nb/admin/staff/#tersklene).
+bekrefter terskelen — én gang, for godt — under [Terskler](#terskler) i
+Ansatteinnstillinger.
 
 ## Endre innstillingene
 
 **Ansatteinnstillinger** (`staff:manage`) har de generelle innstillingene først, så
-selskapets struktur, og til sist dokumentkategoriene.
+selskapets struktur, dokumentkategoriene, og fire kort for dataene: **Importer og
+eksporter personer**, **Lønnseksport**, **Oppbevaring** og **Terskler**. Den som ikke har
+`staff:manage` og åpner siden med adressen, ser ingen av de fire.
 
 ### Generelt
 
@@ -452,3 +454,102 @@ kategorien slettes. På en egen kategori endrer blyanten navnene, **Arkiver** sl
 tilby den for nye dokumenter, og **Gjenopprett** tilbyr den igjen. En kategori det er
 arkivert dokumenter under, arkiveres ikke — siden sier fra: flytt dem til en annen
 kategori først.
+
+### Importer og eksporter personer
+
+Registeret reiser som én semikolonseparert CSV-fil, formen et norsk Excel åpner og
+lagrer som den er. Kolonnene og reglene for hver av dem står i
+[referansen](/en/reference/staff/#the-registers-import-and-export).
+
+- **Eksporter personer** laster ned hver person — også slettede — med jobb- og
+  privatopplysninger og hvor hver enkelt står i dag, som `staff-people-<i dag>.csv`.
+  Fødselsnummeret og kontonummeret er aldri med, bare om et nummer er registrert. Hver
+  eksport føres i historikken med navnet ditt. Et register som er større enn én fil kan
+  romme, avvises, og siden sier fra: administratoren kan øke grensen.
+- **Last ned mal** laster ned bare overskriftsraden, med hver kolonne du kan importere:
+  de forseglede kolonnene er bare med når du også har `staff:personal-data`.
+
+Slik importerer du:
+
+1. Trykk **Importer personer**, deretter **Velg CSV-fil** — semikolonseparert, høyst
+   5 MiB. En større fil avvises med en gang. Hver rad trenger `employeeNumber`: et
+   nummer ingen har, legger til personen, et nummer en person har, endrer vedkommende.
+2. Trykk **Kontroller**. Hver rad kjøres og ingenting lagres: siden viser **Rader** og
+   hvor mange som **Blir opprettet**, **Blir oppdatert** og **Har feil**, og under dem
+   **Problemer i filen, rad for rad**, hvert med rad, kolonne og serverens egen setning.
+   Rett filen og kontroller på nytt til du er fornøyd.
+3. Trykk **Importer**. Den samme filen kjøres på ordentlig; radene med feil hoppes over,
+   og siden viser hva som ble **Opprettet**, **Oppdatert** og hva som **Feilet**. Hold
+   vinduet åpent til den svarer — det kan ikke lukkes mens importen kjører.
+4. Når rader feilet, trykker du **Last ned feilede rader**. Filen inneholder de radene
+   akkurat slik du skrev dem, bak en `error`-kolonne som sier hva som er galt med hver.
+   Rett dem og importer den filen som den er: importen ser bort fra `error`-kolonnen.
+
+En fil avvises i sin helhet — ingenting i den importeres — når den er kommaseparert,
+har flere rader enn én import tar, eller har en kolonne importen ikke kjenner (siden
+navngir den). De **forseglede kolonnene** — `nationalIdKind`, `nationalIdCountry`,
+`nationalId`, `bankAccountKind` og `bankAccount` — krever i tillegg
+`staff:personal-data`: uten den avvises en fil med noen av dem i sin helhet, og siden
+sier fra før du velger fil. Fjern de kolonnene, eller be noen som har tillatelsen.
+
+Stopper importen før den svarer — forbindelsen brytes, eller serveren feiler — sier
+siden fra: radene som ble importert før den stoppet, forblir importert. Trykk
+**Kontroller** igjen, deretter **Importer**; radene som allerede er inne, telles som
+oppdatert og endrer ingenting.
+
+### Eksporter en måned til lønn
+
+**Lønnseksport** gir lønnssystemet en måneds arbeidsforhold.
+
+1. Velg **Måned**. Måneden før i dag er valgt når du åpner siden.
+2. Trykk **Eksporter til lønn**. Filen lastes ned som `staff-payroll-<ÅÅÅÅ-MM>.csv`.
+
+Filen har én rad per arbeidsforhold som var i måneden, med vilkårene som gjelder
+månedens siste dag; kolonnene og kodene står i
+[referansen](/en/reference/staff/#the-payroll-export). Den inneholder ingen
+fødselsnumre og ingen kontonumre. Hver eksport føres i historikken med navnet ditt og
+filens SHA-256-sjekksum, så filen lønn fikk, kan kjennes igjen senere. Kodene for de tre
+ansettelsesformene som kom i 2025 (utleid, og tilkallingsvikar) er ikke kontrollert mot
+Skatteetatens kodeliste — kortet sier fra: sjekk dem med lønnssystemet før du stoler på
+dem.
+
+### Oppbevaring
+
+Ansatte oppbevarer en tidligere ansatts opplysninger bare så lenge loven tillater, og
+sletter resten av seg selv hver time; hva hver sletting fjerner, står i
+[administrasjonsveiledningen](/nb/admin/staff/#oppbevaring). **Oppbevaring** viser:
+
+- **Frist (dager)** — hvor lenge etter at en persons siste arbeidsforhold sluttet
+  personaladministrasjonen slettes: 0 til 3650 dager, 90 om ikke annet er satt.
+- **Helsedokumenter (dager)** — hvor lenge etter at siste arbeidsforhold sluttet
+  helsedokumentene slettes: 30 til 3650 dager, 365 om ikke annet er satt.
+
+  Endre en av dem og trykk **Lagre fristene**. En frist utenfor grensene avvises på
+  feltet før noe lagres. Har noen andre lagret innstillingene siden du åpnet siden,
+  lastes de inn på nytt og siden sier fra.
+- **Ventende slettinger** og **Feilede slettinger** — filer slettingene og
+  dokumentslettingene har satt i kø for fjerning fra dokumentlageret, og de lageret har
+  nektet minst én gang. Så lenge noen feiler, ber kortet deg sjekke at objektlageret er
+  satt opp og kan nås; de prøves igjen til det bekrefter.
+- **Eldste ventende siden** og **Sist slettet** — når den eldste filen ble satt i kø, og
+  når en sletting sist ble kjørt (**Aldri** når ingen er det).
+
+**Kjør sletting nå** kjører timeslettingen nå, etter å ha spurt: den sletter for godt
+det som er forfalt, og kan ikke angres. Personer med slettesperre hoppes over. Kortet
+sier så hva som ble slettet — personaladministrasjon, helsedokumenter, og lønn og
+avtale, hver med et antall — og hvor mange filer som ble slettet fra lageret.
+Slettingene stopper etter 30 sekunder: det som ikke er ferdig, gjør
+oppbevaringsarbeideren ferdig neste gang den ser etter. Kjører arbeideren allerede, sier
+siden fra: prøv igjen om et øyeblikk.
+
+### Terskler
+
+**Terskler** lister de fire tersklene som gir arbeidsgiveren en plikt — **5 eller flere
+ansatte**, **30 eller flere ansatte**, **Flere enn 50 ansatte** og **Tjenestepensjon
+(OTP)** — hver med plikten på én linje. Så lenge en er nådd og ikke bekreftet, viser
+dashbordet et punkt for den. Selve antallet ansatte står på dashbordet, ikke her.
+
+Når plikten er ivaretatt — eller ikke gjelder — trykker du **Bekreft** på raden og
+bekrefter. En bekreftelse er **permanent**: den kan ikke angres, og terskelens punkt
+kommer aldri tilbake, uansett hva antallet ansatte gjør senere. Raden sier da
+**Bekreftet** med datoen. En terskel kan bekreftes før den er nådd.

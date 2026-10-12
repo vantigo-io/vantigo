@@ -17,6 +17,7 @@ import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { staffMetaQueryOptions } from "../api/meta";
 import { STAFF_QUERY_KEY } from "../api/request";
 import { type StaffSettings, staffSettingsQueryOptions, updateStaffSettings } from "../api/settings";
 import "../i18n";
@@ -28,17 +29,27 @@ import {
 } from "../lib/employee-number";
 import { fieldRefusals, isRevisionConflict } from "../lib/errors";
 import { DocumentCategoriesTable } from "./-document-categories";
+import { RegisterDataCard } from "./-import-modal";
+import { PayrollExportCard } from "./-payroll-export";
+import { RetentionPanel } from "./-retention-panel";
 import { BusinessUnitsTable, DepartmentsTable, LegalEntitiesTable, LocationsTable } from "./-structure-tables";
+import { ThresholdsPanel } from "./-thresholds-panel";
 
 /**
  * Staff settings (design §7): the A1 settings — the business zone, how an
  * employee number is generated, the pension provider and the insurer — the
- * company's structure, and the document categories. The page is `staff:manage`'s; the host guards the
- * route, and every read here is that permission's.
+ * company's structure, the document categories, and A2's data operations:
+ * the register's import and export, the payroll month, retention and the
+ * thresholds. The page is `staff:manage`'s; the navigation offers it to
+ * that permission alone, and the data cards are drawn only for a reader
+ * `/meta` says holds it (`canEdit`), so a colleague who types the address
+ * sees none of them.
  */
 export const SettingsPage = () => {
   const { t } = useI18n("staff");
   const settings = useQuery(staffSettingsQueryOptions());
+  const meta = useQuery(staffMetaQueryOptions());
+  const capabilities = meta.data?.capabilities;
 
   return (
     <Stack gap="lg">
@@ -55,6 +66,14 @@ export const SettingsPage = () => {
       <DepartmentsTable />
       <LocationsTable />
       <DocumentCategoriesTable />
+      {capabilities?.canEdit && meta.data && (
+        <>
+          <RegisterDataCard sealedAllowed={capabilities.canRevealIdentifiers} />
+          <PayrollExportCard today={meta.data.today} />
+          {settings.data && <RetentionPanel settings={settings.data} />}
+          {settings.data && <ThresholdsPanel acknowledged={settings.data.thresholdsAcknowledged} />}
+        </>
+      )}
     </Stack>
   );
 };

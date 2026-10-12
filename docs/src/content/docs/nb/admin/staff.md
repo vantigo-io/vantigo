@@ -203,13 +203,16 @@ endringen av koblingen slettede opplysninger tillater.
 ## Importer og eksporter registeret
 
 Registeret flyttes som én semikolonseparert CSV-fil — formen et norsk Excel åpner og
-lagrer som CSV uten en importdialog. Alle tre stegene krever `staff:manage`; kolonnene,
-reglene og kodene står i [referansen](/en/reference/staff/#the-registers-import-and-export).
+lagrer som CSV uten en importdialog. Alle tre stegene krever `staff:manage` og ligger på
+kortet **Importer og eksporter personer** i **Ansatteinnstillinger**
+([brukerveiledningen](/nb/user/staff/#importer-og-eksporter-personer)); hvert av dem er
+også et endepunkt, nevnt nedenfor. Kolonnene, reglene og kodene står i
+[referansen](/en/reference/staff/#the-registers-import-and-export).
 
 ### Importer et register
 
-1. Last ned malen: `GET /api/v1/staff/people/import-template.csv`. Den er overskriftsraden
-   alene — personens kolonner, det første arbeidsforholdets, og de forseglede bare hvis du
+1. Last ned malen: **Last ned mal**
+   (`GET /api/v1/staff/people/import-template.csv`). Den er overskriftsraden alene — personens kolonner, det første arbeidsforholdets, og de forseglede bare hvis du
    har `staff:personal-data`. Eller start fra en eksport.
 2. Fyll inn én rad per person. `employeeNumber` er påkrevd på hver rad: et nummer ingen
    har, legger til personen, et nummer en person har, endrer dem. For en ny person fyller
@@ -218,18 +221,20 @@ reglene og kodene står i [referansen](/en/reference/staff/#the-registers-import
    `location` med navnet, `managerEmployeeNumber` med lederens ansattnummer. En leder
    filen legger til, må komme på en tidligere rad. En person som allerede er i registeret,
    får bare sine egne kolonner endret — aldri et arbeidsforhold: dem endrer du i appen.
-3. Lagre den som CSV UTF-8 med semikolon, og sjekk den: `POST /api/v1/staff/people/import`
-   med filen i multipart-delen `file`. Uten `dryRun=false` er importen en **prøvekjøring**:
-   hver rad kjøres og rulles tilbake, og svaret sier hva hver rad ville gjort —
-   `created`, `updated`, `failed`, og hvert problem med rad og kolonne.
-4. Rett det som feilet, og sjekk igjen. Når prøvekjøringen er ren, sender du den samme
-   filen med `?dryRun=false`.
-5. Kontroller: tallene i svaret er de du venter, personene er i listen, og historikken til
-   hver person viser importens endringer under ditt navn.
+3. Lagre den som CSV UTF-8 med semikolon, og sjekk den: **Importer personer**, velg
+   filen, **Kontroller** (`POST /api/v1/staff/people/import` med filen i
+   multipart-delen `file`). Kontrollen er en **prøvekjøring**: hver rad kjøres og rulles
+   tilbake, og siden viser hva radene ville gjort — opprettet, oppdatert, med feil — og
+   hvert problem med rad og kolonne. Uten `dryRun=false` gjør endepunktet det samme.
+4. Rett det som feilet, og kontroller igjen. Når kontrollen er ren, trykker du
+   **Importer**, som sender den samme filen med `?dryRun=false`.
+5. Kontroller: tallene er de du venter, personene er i listen, og historikken til hver
+   person viser importens endringer under ditt navn.
 
 En rad som feiler, skriver ingenting og stopper ikke de andre; rader som allerede er
-importert, blir stående, så send en rettet fil med bare de feilede radene, eller hele
-filen på nytt — rader som ikke endrer noe, skriver ingenting. En import som avbrytes
+importert, blir stående, så send en rettet fil med bare de feilede radene — **Last ned
+feilede rader** gir deg dem tilbake slik de var skrevet, bak en `error`-kolonne importen
+ser bort fra — eller hele filen på nytt: rader som ikke endrer noe, skriver ingenting. En import som avbrytes
 underveis — forbindelsen brytes midt i filen — beholder radene den kjørte, og
 installasjonens historikk registrerer den likevel med tallene så langt: `rows` er hele
 filen, og de opprettede, endrede og feilede radene blir til sammen færre. Filen er høyst 5 MiB og
@@ -240,7 +245,8 @@ filen, og de opprettede, endrede og feilede radene blir til sammen færre. Filen
 
 `nationalIdKind`, `nationalIdCountry`, `nationalId`, `bankAccountKind` og `bankAccount`
 krever `staff:personal-data` i tillegg. En fil med noen av dem fra noen uten den, avvises
-i sin helhet (`import_sealed_columns`) — fjern kolonnene eller be om rettigheten. En
+i sin helhet (`import_sealed_columns`), og importen sier fra med ord — fjern kolonnene
+eller be om rettigheten. En
 utfylt celle setter verdien med de samme kontrollene som på personens opplysninger; en
 tom celle lar verdien som er lagret, stå. Et kontonummer importen endrer, gir personen en
 e-post, slik en endring for hånd gjør ([E-posten om endret kontonummer](#e-posten-om-endret-kontonummer)),
@@ -261,7 +267,8 @@ hånd: først det nye `nationalId` med tom `birthDate`-celle, deretter den nye
 
 ### Eksporter registeret
 
-`GET /api/v1/staff/people/export.csv` laster ned `staff-people-<i dag>.csv`: hver person —
+**Eksporter personer** (`GET /api/v1/staff/people/export.csv`) laster ned
+`staff-people-<i dag>.csv`: hver person —
 slettede også — med jobb- og privatgruppen og hvor hver står i dag. Fødselsnummeret og
 kontonummeret er aldri med: `nationalIdOnFile` sier `yes` eller `no`. Hver eksport
 registreres i installasjonens historikk med ditt navn og antall rader. Filen inneholder
@@ -277,10 +284,11 @@ ingenting; endrer du den, avvises raden med `person_erased`.
 
 Lønnsfilen gir lønnssystemet en måneds arbeidsforhold. Du trenger `staff:manage`.
 
-1. Be om måneden, som `YYYY-MM`:
-   `GET /api/v1/staff/payroll/export?month=2026-09`. Innstillinger-siden i Ansatte-appen
-   får en månedsvelger for dette i en senere versjon; til da kaller du endepunktet.
-   `format` kan utelates — `csv` er det eneste formatet som finnes.
+1. I **Ansatteinnstillinger**, under **Lønnseksport**, velger du **Måned** — måneden før
+   i dag er valgt fra start — og trykker **Eksporter til lønn**
+   ([brukerveiledningen](/nb/user/staff/#eksporter-en-måned-til-lønn)). Siden ber om
+   `GET /api/v1/staff/payroll/export?month=2026-09&format=csv`; kalt direkte kan `format`
+   utelates — `csv` er det eneste formatet som finnes.
 2. Lagre nedlastingen, `staff-payroll-2026-09.csv`, og importer den i lønnssystemet.
 
 Hva filen inneholder: én rad per arbeidsforhold som var i måneden — startet senest den
@@ -341,11 +349,13 @@ slettes aldri.
 
 ### Sett tidene
 
-1. Som en bruker med `staff:manage`, les innstillingene: `GET /api/v1/staff/settings`.
-2. `PUT /api/v1/staff/settings` med revisjonen du leste i `If-Match`, og
-   `retentionGraceDays` (0 til 3650 dager) og `healthRetentionDays` (30 til 3650). En
-   forespørsel som utelater en av dem, beholder den.
-3. Kontroller: svaret har de nye tidene. Neste kjøring bedømmer etter dem; en tid som
+1. Som en bruker med `staff:manage`, åpne **Ansatteinnstillinger**; kortet
+   **Oppbevaring** viser tidene ([brukerveiledningen](/nb/user/staff/#oppbevaring)).
+2. Endre **Frist (dager)** (`retentionGraceDays`, 0 til 3650) og **Helsedokumenter
+   (dager)** (`healthRetentionDays`, 30 til 3650), og trykk **Lagre fristene**. Gjennom
+   API-et er det `PUT /api/v1/staff/settings` med revisjonen du leste i `If-Match`; en
+   forespørsel som utelater en av tidene, beholder den.
+3. Kontroller: kortet viser de nye tidene. Neste kjøring bedømmer etter dem; en tid som
    gjøres kortere kan gjøre mange personer forfalt på én gang, og arbeideren tar femti
    per kjøring.
 
@@ -362,14 +372,14 @@ kjøringen for hånd nedenfor virker fortsatt.
 
 ### Kjør den for hånd
 
-`POST /api/v1/staff/retention/run` (`staff:manage`) kjører arbeiderens sletting og en
-runde i sletteloggen nå, med deg som forfatter av slettehendelsene. Svaret sier hva som
-ble slettet per type, og hvor mange filer som ble slettet fra objektlageret. Runden i
-sletteloggen stopper etter tretti sekunder, så et tregt objektlager ikke holder igjen
-forespørselen; arbeideren sletter resten neste gang den ser etter. Mens arbeideren
-kjører, svarer den `retention_busy` (409); prøv igjen om et minutt. Foreløpig startes
-kjøringen gjennom dette endepunktet; Innstillinger-siden i Ansatte-appen får en knapp
-for den i en senere versjon.
+**Kjør sletting nå** på kortet **Oppbevaring** i **Ansatteinnstillinger**
+(`staff:manage`; `POST /api/v1/staff/retention/run`) kjører arbeiderens sletting og en
+runde i sletteloggen nå, med deg som forfatter av slettehendelsene, etter at du har
+bekreftet. Kortet sier så hva som ble slettet per type, og hvor mange filer som ble
+slettet fra objektlageret. Runden i sletteloggen stopper etter tretti sekunder, så et
+tregt objektlager ikke holder igjen forespørselen; arbeideren sletter resten neste gang
+den ser etter. Mens arbeideren kjører, sier kortet fra (`retention_busy`, 409); prøv
+igjen om et minutt.
 
 ### Slettesperren
 
@@ -384,7 +394,9 @@ fra objektlageret; det gjør også en sletting for hånd, når lageret ikke bekr
 gang. Arbeideren spør lageret på nytt hver gang den ser etter, venter lenger etter hver
 avvisning (høyst en time), og gir aldri opp — en lovpålagt sletting er ikke et forsøk.
 
-`GET /api/v1/staff/settings` rapporterer sletteloggen i blokken `retention`:
+Kortet **Oppbevaring** i **Ansatteinnstillinger** viser sletteloggen — **Ventende
+slettinger**, **Feilede slettinger**, **Eldste ventende siden** og **Sist slettet** —
+slik `GET /api/v1/staff/settings` rapporterer den i blokken `retention`:
 `pendingDeletions` (filer som venter), `failingDeletions` (filer lageret har avvist minst
 én gang), `oldestPendingSince` og `lastErasedAt` (den siste slettingen). En
 `failingDeletions` som blir stående over null, betyr at objektlageret avviser: sjekk at
@@ -415,11 +427,13 @@ Når plikten er ivaretatt — eller ikke gjelder — bekrefter du terskelen. Den
 **én gang, for godt**: punktet kommer aldri tilbake, uansett hva antallet ansatte gjør
 senere, og en terskel kan bekreftes før den er nådd.
 
-1. Send `POST /api/v1/staff/thresholds/{key}/acknowledge` med nøkkelen — `5`, `30`,
-   `50` eller `otp` — som en med `staff:manage`. Ansatteinnstillingene har ingen knapp
-   for det ennå.
-2. Kontroller: svaret, og `thresholdsAcknowledged` i `GET /api/v1/staff/settings`, har
-   tidspunktet den ble bekreftet; punktet er borte fra dashbordet.
+1. Som en med `staff:manage`, åpne **Ansatteinnstillinger**, trykk **Bekreft** på
+   terskelens rad under **Terskler**, og bekreft
+   ([brukerveiledningen](/nb/user/staff/#terskler)). Gjennom API-et er det
+   `POST /api/v1/staff/thresholds/{key}/acknowledge` med nøkkelen — `5`, `30`, `50` eller
+   `otp`.
+2. Kontroller: raden sier **Bekreftet** med datoen, slik `thresholdsAcknowledged` i
+   `GET /api/v1/staff/settings` gjør; punktet er borte fra dashbordet.
 
 Hver bekreftelse registreres i innstillingene med tidspunktet, og som en
 `threshold_acknowledged`-hendelse for installasjonen som navngir hvem som bekreftet.

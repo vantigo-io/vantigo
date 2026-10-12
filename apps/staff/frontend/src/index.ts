@@ -1,10 +1,12 @@
 import "./i18n";
 
+export * from "./api/data";
 export * from "./api/documents";
 export * from "./api/employments";
 export * from "./api/me";
 export { type StaffCapabilities, type StaffMeta, type StaffStructure, staffMetaQueryOptions } from "./api/meta";
 export * from "./api/people";
+export * from "./api/retention";
 export * from "./api/settings";
 export * from "./api/structure";
 export { PersonPicker, type PersonPickerProps } from "./components/person-picker";
