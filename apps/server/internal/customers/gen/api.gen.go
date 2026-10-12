@@ -135,6 +135,33 @@ type CustomerAssignableUser struct {
 	UserId      openapi_types.UUID `json:"userId"`
 }
 
+// CustomerAttachment One of a customer's attachments (customer attachments design D1-D3): a contract, an NDA, the correspondence behind a timeline entry. The bytes are never in a JSON body: they are read from GET .../attachments/{attachmentId}. timelineEntry is present when the attachment belongs to a manual timeline entry and absent for a document of the relationship itself; the object key is never on the wire.
+type CustomerAttachment struct {
+	// ContentType The type the file's own bytes were sniffed as on upload — application/pdf, image/jpeg, image/png or image/heic.
+	ContentType string `json:"contentType"`
+	CustomerId  int32  `json:"customerId"`
+
+	// FileName The name the file was uploaded under, without any path, at most 255 characters.
+	FileName  string `json:"fileName"`
+	Id        int32  `json:"id"`
+	SizeBytes int64  `json:"sizeBytes"`
+
+	// TimelineEntry The timeline entry an attachment belongs to, as the card names it beside the file: its type, its day, its summary and its state — deleted included, since a soft-deleted entry keeps its attachments (customer attachments design D2).
+	TimelineEntry *CustomerAttachmentTimelineEntry `json:"timelineEntry,omitempty"`
+	UploadedAt    time.Time                        `json:"uploadedAt"`
+}
+
+// CustomerAttachmentTimelineEntry The timeline entry an attachment belongs to, as the card names it beside the file: its type, its day, its summary and its state — deleted included, since a soft-deleted entry keeps its attachments (customer attachments design D2).
+type CustomerAttachmentTimelineEntry struct {
+	EventType  string             `json:"eventType"`
+	Id         int32              `json:"id"`
+	OccurredOn openapi_types.Date `json:"occurredOn"`
+
+	// State active or deleted.
+	State   string `json:"state"`
+	Summary string `json:"summary"`
+}
+
 // CustomerBillingGroupDefault What this customer's group would give it (customer groups design D4). Present whenever the customer belongs to a group, so a client can say "inherits 30 days from Retail" when the profile's own paymentTermsDays is absent, and "group default 30 days, overridden" when it is present. paymentTermsDays is absent when the group carries no default of its own — nothing to inherit, never a 0. The profile's own paymentTermsDays keeps meaning "decided here": the effective value is the profile's own, else this one, else nothing, which is the rule contracts.CustomerDirectory.BillingProfile already applies for every consumer.
 type CustomerBillingGroupDefault struct {
 	// Group The group a customer belongs to (customer groups design D3): its id and its name, and nothing else — a client that needs the group's default payment term reads it from GET /customers/groups or from the billing profile's own groupDefault, where it is already resolved against the customer.
@@ -175,7 +202,7 @@ type CustomerConflictDuplicate struct {
 	Status         string `json:"status"`
 }
 
-// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), customer_merged, the answer a write to a customer merged away gets (the same design), and personal_data_not_a_person, personal_data_customer_active and customer_anonymised (customers GDPR design D3, D4 — the last the answer a write to an anonymised customer gets). A revision conflict carries neither.
+// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), customer_merged, the answer a write to a customer merged away gets (the same design), personal_data_not_a_person, personal_data_customer_active and customer_anonymised (customers GDPR design D3, D4 — the last the answer a write to an anonymised customer gets), and attachment_count_exceeded, the 201st attachment of a customer (customer attachments design D2). A revision conflict carries neither.
 type CustomerConflictProblem struct {
 	Code       *string                      `json:"code,omitempty"`
 	Detail     *string                      `json:"detail,omitempty"`
@@ -482,6 +509,9 @@ type CustomerPersonalDataCustomer struct {
 
 	// Anonymisation A private person's anonymisation (customers GDPR design D4): anonymiseOn is the UTC calendar day it is scheduled for, anonymisedAt the moment the worker ran it — absent until then, omitted, never null. From anonymisedAt on the customer is read-only: every write answers 409 customer_anonymised.
 	Anonymisation *CustomerAnonymisation `json:"anonymisation,omitempty"`
+
+	// Attachments Every attachment of the customer (customer attachments design D6), oldest first, its metadata only: the file is built in memory and streamed, and each attachment is downloaded through GET .../attachments/{attachmentId} for as long as the customer is not anonymised.
+	Attachments *[]CustomerAttachment `json:"attachments,omitempty"`
 
 	// BillingProfile The billing profile's own stored values (customers GDPR design D3) — what the customer row holds, not the resolved profile GET .../billing-profile answers with its warnings and its group's default. Unset, a field is absent.
 	BillingProfile CustomerPersonalDataBillingProfile `json:"billingProfile"`
@@ -1036,6 +1066,12 @@ type GetCustomersStatsTimeseriesParams struct {
 	To     *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
 
+// PostCustomersByIdAttachmentsMultipartBody defines parameters for PostCustomersByIdAttachments.
+type PostCustomersByIdAttachmentsMultipartBody struct {
+	File            openapi_types.File `json:"file"`
+	TimelineEntryId *int32             `json:"timelineEntryId,omitempty"`
+}
+
 // GetCustomersByIdTimelineParams defines parameters for GetCustomersByIdTimeline.
 type GetCustomersByIdTimelineParams struct {
 	Limit        *int32    `form:"limit,omitempty" json:"limit,omitempty"`
@@ -1086,6 +1122,9 @@ type PutCustomersByIdAddressesByAddressIdJSONRequestBody = CustomerAddressReques
 
 // PutCustomersByIdAnonymisationJSONRequestBody defines body for PutCustomersByIdAnonymisation for application/json ContentType.
 type PutCustomersByIdAnonymisationJSONRequestBody = CustomerAnonymisationRequest
+
+// PostCustomersByIdAttachmentsMultipartRequestBody defines body for PostCustomersByIdAttachments for multipart/form-data ContentType.
+type PostCustomersByIdAttachmentsMultipartRequestBody PostCustomersByIdAttachmentsMultipartBody
 
 // PutCustomersByIdBillingProfileJSONRequestBody defines body for PutCustomersByIdBillingProfile for application/json ContentType.
 type PutCustomersByIdBillingProfileJSONRequestBody = PutCustomerBillingProfileRequest
@@ -1230,6 +1269,18 @@ type ServerInterface interface {
 	// PutCustomersByIdAnonymisation Schedule a private person's anonymisation
 	// (PUT /api/v1/customers/{id}/anonymisation)
 	PutCustomersByIdAnonymisation(w http.ResponseWriter, r *http.Request, id int32)
+	// GetCustomersByIdAttachments List a customer's attachments
+	// (GET /api/v1/customers/{id}/attachments)
+	GetCustomersByIdAttachments(w http.ResponseWriter, r *http.Request, id int32)
+	// PostCustomersByIdAttachments Attach a file to a customer
+	// (POST /api/v1/customers/{id}/attachments)
+	PostCustomersByIdAttachments(w http.ResponseWriter, r *http.Request, id int32)
+	// DeleteCustomersByIdAttachmentsByAttachmentId Remove an attachment from a customer
+	// (DELETE /api/v1/customers/{id}/attachments/{attachmentId})
+	DeleteCustomersByIdAttachmentsByAttachmentId(w http.ResponseWriter, r *http.Request, id int32, attachmentId int32)
+	// GetCustomersByIdAttachmentsByAttachmentId Download an attachment
+	// (GET /api/v1/customers/{id}/attachments/{attachmentId})
+	GetCustomersByIdAttachmentsByAttachmentId(w http.ResponseWriter, r *http.Request, id int32, attachmentId int32)
 	// GetCustomersByIdBillingProfile Get a customer's billing profile
 	// (GET /api/v1/customers/{id}/billing-profile)
 	GetCustomersByIdBillingProfile(w http.ResponseWriter, r *http.Request, id int32)
@@ -2624,6 +2675,128 @@ func (siw *ServerInterfaceWrapper) PutCustomersByIdAnonymisation(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// GetCustomersByIdAttachments operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersByIdAttachments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersByIdAttachments(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCustomersByIdAttachments operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersByIdAttachments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersByIdAttachments(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCustomersByIdAttachmentsByAttachmentId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCustomersByIdAttachmentsByAttachmentId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "attachmentId" -------------
+	var attachmentId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "attachmentId", r.PathValue("attachmentId"), &attachmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "attachmentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCustomersByIdAttachmentsByAttachmentId(w, r, id, attachmentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCustomersByIdAttachmentsByAttachmentId operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersByIdAttachmentsByAttachmentId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "attachmentId" -------------
+	var attachmentId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "attachmentId", r.PathValue("attachmentId"), &attachmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "attachmentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersByIdAttachmentsByAttachmentId(w, r, id, attachmentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCustomersByIdBillingProfile operation middleware
 func (siw *ServerInterfaceWrapper) GetCustomersByIdBillingProfile(w http.ResponseWriter, r *http.Request) {
 
@@ -3652,6 +3825,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/addresses/{addressId}", wrapper.PutCustomersByIdAddressesByAddressId)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/anonymisation", wrapper.DeleteCustomersByIdAnonymisation)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/anonymisation", wrapper.PutCustomersByIdAnonymisation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/attachments", wrapper.GetCustomersByIdAttachments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/attachments", wrapper.PostCustomersByIdAttachments)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/attachments/{attachmentId}", wrapper.DeleteCustomersByIdAttachmentsByAttachmentId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/attachments/{attachmentId}", wrapper.GetCustomersByIdAttachmentsByAttachmentId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/billing-profile", wrapper.GetCustomersByIdBillingProfile)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/billing-profile", wrapper.PutCustomersByIdBillingProfile)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/contact-info", wrapper.PutCustomersByIdContactInfo)
@@ -6099,6 +6276,338 @@ func (response PutCustomersByIdAnonymisation409ApplicationProblemPlusJSONRespons
 	return err
 }
 
+type GetCustomersByIdAttachmentsRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetCustomersByIdAttachmentsResponseObject interface {
+	VisitGetCustomersByIdAttachmentsResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersByIdAttachments200JSONResponse struct {
+	Data []CustomerAttachment `json:"data"`
+}
+
+func (response GetCustomersByIdAttachments200JSONResponse) VisitGetCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAttachments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdAttachments401JSONResponse) VisitGetCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAttachments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdAttachments403JSONResponse) VisitGetCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAttachments404Response struct {
+}
+
+func (response GetCustomersByIdAttachments404Response) VisitGetCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersByIdAttachmentsRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *multipart.Reader
+}
+
+type PostCustomersByIdAttachmentsResponseObject interface {
+	VisitPostCustomersByIdAttachmentsResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersByIdAttachments201JSONResponse CustomerAttachment
+
+func (response PostCustomersByIdAttachments201JSONResponse) VisitPostCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdAttachments400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostCustomersByIdAttachments400ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdAttachments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdAttachments401JSONResponse) VisitPostCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdAttachments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdAttachments403JSONResponse) VisitPostCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdAttachments404Response struct {
+}
+
+func (response PostCustomersByIdAttachments404Response) VisitPostCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersByIdAttachments409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomersByIdAttachments409ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdAttachments429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostCustomersByIdAttachments429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostCustomersByIdAttachments429ResponseHeaders
+}
+
+func (response PostCustomersByIdAttachments429JSONResponse) VisitPostCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdAttachments503ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostCustomersByIdAttachments503ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersByIdAttachmentsByAttachmentIdRequestObject struct {
+	Id           int32 `json:"id"`
+	AttachmentId int32 `json:"attachmentId"`
+}
+
+type DeleteCustomersByIdAttachmentsByAttachmentIdResponseObject interface {
+	VisitDeleteCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteCustomersByIdAttachmentsByAttachmentId204Response struct {
+}
+
+func (response DeleteCustomersByIdAttachmentsByAttachmentId204Response) VisitDeleteCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteCustomersByIdAttachmentsByAttachmentId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersByIdAttachmentsByAttachmentId401JSONResponse) VisitDeleteCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersByIdAttachmentsByAttachmentId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersByIdAttachmentsByAttachmentId403JSONResponse) VisitDeleteCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersByIdAttachmentsByAttachmentId404Response struct {
+}
+
+func (response DeleteCustomersByIdAttachmentsByAttachmentId404Response) VisitDeleteCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteCustomersByIdAttachmentsByAttachmentId409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response DeleteCustomersByIdAttachmentsByAttachmentId409ApplicationProblemPlusJSONResponse) VisitDeleteCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAttachmentsByAttachmentIdRequestObject struct {
+	Id           int32 `json:"id"`
+	AttachmentId int32 `json:"attachmentId"`
+}
+
+type GetCustomersByIdAttachmentsByAttachmentIdResponseObject interface {
+	VisitGetCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersByIdAttachmentsByAttachmentId200AsteriskResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetCustomersByIdAttachmentsByAttachmentId200AsteriskResponse) VisitGetCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetCustomersByIdAttachmentsByAttachmentId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdAttachmentsByAttachmentId401JSONResponse) VisitGetCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAttachmentsByAttachmentId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdAttachmentsByAttachmentId403JSONResponse) VisitGetCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAttachmentsByAttachmentId404Response struct {
+}
+
+func (response GetCustomersByIdAttachmentsByAttachmentId404Response) VisitGetCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetCustomersByIdAttachmentsByAttachmentId503ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetCustomersByIdAttachmentsByAttachmentId503ApplicationProblemPlusJSONResponse) VisitGetCustomersByIdAttachmentsByAttachmentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersByIdBillingProfileRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -8354,6 +8863,18 @@ type StrictServerInterface interface {
 	// PutCustomersByIdAnonymisation Schedule a private person's anonymisation
 	// (PUT /api/v1/customers/{id}/anonymisation)
 	PutCustomersByIdAnonymisation(ctx context.Context, request PutCustomersByIdAnonymisationRequestObject) (PutCustomersByIdAnonymisationResponseObject, error)
+	// GetCustomersByIdAttachments List a customer's attachments
+	// (GET /api/v1/customers/{id}/attachments)
+	GetCustomersByIdAttachments(ctx context.Context, request GetCustomersByIdAttachmentsRequestObject) (GetCustomersByIdAttachmentsResponseObject, error)
+	// PostCustomersByIdAttachments Attach a file to a customer
+	// (POST /api/v1/customers/{id}/attachments)
+	PostCustomersByIdAttachments(ctx context.Context, request PostCustomersByIdAttachmentsRequestObject) (PostCustomersByIdAttachmentsResponseObject, error)
+	// DeleteCustomersByIdAttachmentsByAttachmentId Remove an attachment from a customer
+	// (DELETE /api/v1/customers/{id}/attachments/{attachmentId})
+	DeleteCustomersByIdAttachmentsByAttachmentId(ctx context.Context, request DeleteCustomersByIdAttachmentsByAttachmentIdRequestObject) (DeleteCustomersByIdAttachmentsByAttachmentIdResponseObject, error)
+	// GetCustomersByIdAttachmentsByAttachmentId Download an attachment
+	// (GET /api/v1/customers/{id}/attachments/{attachmentId})
+	GetCustomersByIdAttachmentsByAttachmentId(ctx context.Context, request GetCustomersByIdAttachmentsByAttachmentIdRequestObject) (GetCustomersByIdAttachmentsByAttachmentIdResponseObject, error)
 	// GetCustomersByIdBillingProfile Get a customer's billing profile
 	// (GET /api/v1/customers/{id}/billing-profile)
 	GetCustomersByIdBillingProfile(ctx context.Context, request GetCustomersByIdBillingProfileRequestObject) (GetCustomersByIdBillingProfileResponseObject, error)
@@ -9450,6 +9971,119 @@ func (sh *strictHandler) PutCustomersByIdAnonymisation(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdAnonymisationResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdAnonymisationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersByIdAttachments operation middleware
+func (sh *strictHandler) GetCustomersByIdAttachments(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetCustomersByIdAttachmentsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersByIdAttachments(ctx, request.(GetCustomersByIdAttachmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersByIdAttachments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersByIdAttachmentsResponseObject); ok {
+		if err := validResponse.VisitGetCustomersByIdAttachmentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersByIdAttachments operation middleware
+func (sh *strictHandler) PostCustomersByIdAttachments(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostCustomersByIdAttachmentsRequestObject
+
+	request.Id = id
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersByIdAttachments(ctx, request.(PostCustomersByIdAttachmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersByIdAttachments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersByIdAttachmentsResponseObject); ok {
+		if err := validResponse.VisitPostCustomersByIdAttachmentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCustomersByIdAttachmentsByAttachmentId operation middleware
+func (sh *strictHandler) DeleteCustomersByIdAttachmentsByAttachmentId(w http.ResponseWriter, r *http.Request, id int32, attachmentId int32) {
+	var request DeleteCustomersByIdAttachmentsByAttachmentIdRequestObject
+
+	request.Id = id
+	request.AttachmentId = attachmentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCustomersByIdAttachmentsByAttachmentId(ctx, request.(DeleteCustomersByIdAttachmentsByAttachmentIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCustomersByIdAttachmentsByAttachmentId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCustomersByIdAttachmentsByAttachmentIdResponseObject); ok {
+		if err := validResponse.VisitDeleteCustomersByIdAttachmentsByAttachmentIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersByIdAttachmentsByAttachmentId operation middleware
+func (sh *strictHandler) GetCustomersByIdAttachmentsByAttachmentId(w http.ResponseWriter, r *http.Request, id int32, attachmentId int32) {
+	var request GetCustomersByIdAttachmentsByAttachmentIdRequestObject
+
+	request.Id = id
+	request.AttachmentId = attachmentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersByIdAttachmentsByAttachmentId(ctx, request.(GetCustomersByIdAttachmentsByAttachmentIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersByIdAttachmentsByAttachmentId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersByIdAttachmentsByAttachmentIdResponseObject); ok {
+		if err := validResponse.VisitGetCustomersByIdAttachmentsByAttachmentIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -87,12 +87,6 @@ const (
 // refusal per cell would be a response hundreds of MB large.
 var maxImportHeaderWidth = len(customerCSVColumns) + 1
 
-// importBodyLimits raises the router's request-body cap for the import. Every
-// other operation of this module keeps the platform default (1 MiB).
-var importBodyLimits = map[string]int64{
-	"postCustomersImport": maxImportRequestBytes,
-}
-
 // The file-level 400: every refusal on "file", under one title.
 const (
 	invalidImportFileTitle     = "Invalid import file"

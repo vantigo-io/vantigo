@@ -78,7 +78,10 @@ func (w *AnonymisationWorker) Interval() time.Duration {
 	return defaultAnonymisationPoll
 }
 
-// Run is the worker loop, the registry workers' shape.
+// Run is the worker loop, the registry workers' shape: a cycle, then a pass
+// over the deletion ledger (customer attachments design D6) — the objects the
+// cycle's erases and the hand deletes queued that the store has not yet
+// confirmed gone — then the poll.
 func (w *AnonymisationWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
@@ -88,6 +91,9 @@ func (w *AnonymisationWorker) Run(ctx context.Context) error {
 			// takes anything personal as an argument; one customer's failure is
 			// logged, by id, inside the cycle.
 			w.logger().Error("anonymisation cycle failed", "worker", anonymisationWorkerName, "error", err)
+		}
+		if _, _, err := w.RunLedger(ctx); err != nil && ctx.Err() == nil {
+			w.logger().Error("the deletion ledger pass failed", "worker", anonymisationWorkerName, "error", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -128,6 +134,14 @@ func (w *AnonymisationWorker) RunCycle(ctx context.Context) (bool, error) {
 		w.logger().Info("anonymisation cycle finished", "worker", anonymisationWorkerName, "anonymised", anonymised, "failed", failed)
 		return nil
 	})
+}
+
+// RunLedger is one pass over the deletion ledger (object_deletions.go): the
+// rows attempted and the attempts the store confirmed. It runs on the pool,
+// not under the lease — a claim is per row, so two replicas' passes share
+// the work rather than wait on each other.
+func (w *AnonymisationWorker) RunLedger(ctx context.Context) (attempted, succeeded int, err error) {
+	return w.srv.runLedger(ctx)
 }
 
 // anonymiseRecovering is anonymiseCustomer with a panic turned into that

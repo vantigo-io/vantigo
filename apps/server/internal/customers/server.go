@@ -8,6 +8,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/peppol"
+	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
 
 // server implements gen.StrictServerInterface, the module's contract
@@ -22,6 +23,12 @@ type server struct {
 	// so this is the process's one lock — per server rather than per package
 	// only so that each test harness, its own installation, has its own.
 	importing sync.Mutex
+	// objects is the module's scoped object store (objects.go), the
+	// attachments' bytes; objectsErr the error it was built with, which every
+	// object call answers, so a process that never touches an attachment
+	// starts without storage and fails only what needs it.
+	objects    storage.ObjectStore
+	objectsErr error
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
@@ -30,6 +37,11 @@ var _ gen.StrictServerInterface = (*server)(nil)
 // once, here, from config and d.HTTPTransport/d.HTTPBackoff (nil in
 // production, a fake/zero-delay in every test — brreg.go, customers
 // inventory §5).
+//
+// The object store is built once here as well (customer attachments design
+// D1, objects.go's moduleObjectStore): d.ObjectStore when a harness set one,
+// else the one Config selects, scoped to this module; an error building it
+// is kept, not failed on, and answered by the attachment paths alone.
 //
 // s.peppolLookup is resolved once here too (peppol lookup design D3, D5):
 // nil whenever Config.PeppolLookupEnabled is false — the seam is never even
@@ -52,10 +64,13 @@ func newServer(d module.Deps) *server {
 			}).Lookup
 		}
 	}
+	objects, objectsErr := moduleObjectStore(d)
 	return &server{
 		deps:         d,
 		brreg:        newBrregClient(d.Config.BrregBaseURL, d.Config.BrregTimeout, d.HTTPTransport, d.HTTPBackoff),
 		peppolLookup: lookup,
+		objects:      objects,
+		objectsErr:   objectsErr,
 	}
 }
 

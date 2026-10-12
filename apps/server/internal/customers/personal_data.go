@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
@@ -82,6 +83,7 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 		entries   []store.CustomersCustomersTimelineEntry
 		revisions []store.CustomersCustomersTimelineEntriesRevision
 		merged    []store.CustomersMergedIntoForPersonalDataRow
+		files     []store.CustomersCustomerAttachment
 	)
 	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
@@ -111,6 +113,9 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 			return err
 		}
 		if entries, err = txq.ListTimelineEntriesForExport(ctx, req.Id); err != nil {
+			return err
+		}
+		if files, err = txq.ListCustomerAttachmentsForExport(ctx, req.Id); err != nil {
 			return err
 		}
 		revisions, err = txq.ListTimelineRevisionsForExport(ctx, req.Id)
@@ -191,6 +196,22 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 	for _, r := range revisions {
 		earlier[r.CustomerTimelineEntryID] = append(earlier[r.CustomerTimelineEntryID], timelineRevisionResponse(r, followUps))
 	}
+	// The attachments by their metadata (customer attachments design D6): the
+	// entry each belongs to is named from the timeline list beside them.
+	exportedAttachments := make([]gen.CustomerAttachment, 0, len(files))
+	for _, a := range files {
+		var entry *gen.CustomerAttachmentTimelineEntry
+		if a.TimelineEntryID != nil {
+			for _, e := range entries {
+				if e.ID == *a.TimelineEntryID {
+					entry = &gen.CustomerAttachmentTimelineEntry{
+						Id: e.ID, EventType: e.EventType, OccurredOn: openapi_types.Date{Time: e.OccurredOn.Time}, Summary: e.Summary, State: e.State,
+					}
+				}
+			}
+		}
+		exportedAttachments = append(exportedAttachments, attachmentResponse(a, entry))
+	}
 	exportedTimeline := make([]gen.TimelineResponse, 0, len(entries))
 	for _, e := range entries {
 		entry := timelineResponse(e, followUps)
@@ -210,6 +231,7 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 				Identity:    personalDataIdentity(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType),
 				ContactInfo: gen.CustomerContactInfo{Email: row.Email, Phone: row.Phone, Website: row.Website},
 				Addresses:   exportedAddresses,
+				Attachments: &exportedAttachments,
 				BillingProfile: gen.CustomerPersonalDataBillingProfile{
 					InvoiceEmail: row.InvoiceEmail, ReminderEmail: row.ReminderEmail, PaymentTermsDays: row.PaymentTermsDays,
 					Currency: row.Currency, Language: row.Language, InvoiceDelivery: row.InvoiceDelivery,

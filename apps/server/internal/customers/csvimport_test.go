@@ -493,7 +493,7 @@ func TestPostCustomersImport_ADecomposedNameFindsItsWord(t *testing.T) {
 
 // TestPostCustomersImport_TakesABodyPastTheRoutersDefaultCap: a full 5000-row
 // file is a few MB, past the 1 MiB every other operation is capped at, so the
-// import's own cap (importBodyLimits) must be the one in effect. About 1.4 MB
+// import's own cap (bodyLimits, objects.go) must be the one in effect. About 1.4 MB
 // of rows whose names are too long keeps it cheap: every row fails in plan,
 // before any transaction.
 func TestPostCustomersImport_TakesABodyPastTheRoutersDefaultCap(t *testing.T) {

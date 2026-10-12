@@ -152,3 +152,8 @@ func NationalIDForTest(birth string, individual int, dNumber bool) string {
 // key, exported so a test can take the same lock from a second connection and
 // prove a cycle skips — RegistryFeedLeaseKeyForTest's seam.
 const AnonymisationLeaseKeyForTest = anonymisationLeaseKey
+
+// AttachmentUploadsPerHour exposes the attachment upload's rate limit to the
+// test that proves the 601st upload is refused — Expenses'
+// ReceiptUploadsPerHour, for the same reason.
+const AttachmentUploadsPerHour = attachmentUploadsPerHour

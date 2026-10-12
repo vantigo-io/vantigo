@@ -286,7 +286,7 @@ func TestAnonymisationWorker_TakesThePersonOutAndKeepsTheBookkeeping(t *testing.
 		json.Unmarshal(last.Payload, &payload) != nil || payload.CustomerId != person.Id {
 		t.Fatalf("newest entry = %+v, want customer.anonymised by the system", last)
 	}
-	want := fmt.Sprintf("[{customers.addresses 2} {customers.contactAssociations 2} {customers.contacts 1} {customers.timelineEntries %d} {fake.things 3}]", entriesBefore)
+	want := fmt.Sprintf("[{customers.addresses 2} {customers.contactAssociations 2} {customers.contacts 1} {customers.timelineEntries %d} {customers.attachments 0} {fake.things 3}]", entriesBefore)
 	if got := fmt.Sprint(payload.Erased); got != want {
 		t.Errorf("erased = %s, want %s", got, want)
 	}

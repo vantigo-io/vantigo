@@ -267,12 +267,13 @@ const (
 	anonymisedName = "Anonymised person"
 )
 
-// The four kinds this module reports first in customer.anonymised.
+// The five kinds this module reports first in customer.anonymised.
 const (
 	anonymiseKindAddresses           = "customers.addresses"
 	anonymiseKindContactAssociations = "customers.contactAssociations"
 	anonymiseKindContacts            = "customers.contacts"
 	anonymiseKindTimelineEntries     = "customers.timelineEntries"
+	anonymiseKindAttachments         = "customers.attachments"
 )
 
 // personalPayloadKeys are the top-level payload keys that carry the person
@@ -281,7 +282,8 @@ const (
 // (identity, legalIdentity), its contact info and billing profile, every
 // before/after/changes snapshot, the merge's absorbed block and its into, and a
 // contact's name, title, phone and email (contacts_timeline.go), an address's
-// label and one-line display. Every other key — customerId, the ids, dates,
+// label and one-line display, and an attachment's file name (attachments.go —
+// a file is called after the person more often than not). Every other key — customerId, the ids, dates,
 // counts, statuses, roles — is kept, so an entry still says what kind of thing
 // happened to which record when. Applied to every payload alike: a key in this
 // list that holds nothing personal on some event (a status change's before) is
@@ -291,7 +293,7 @@ var personalPayloadKeys = []string{
 	"name", "customerName", "identity", "legalIdentity", "contactInfo", "billingProfile",
 	"before", "after", "changes", "absorbed", "into",
 	"displayName", "firstName", "middleName", "lastName", "title", "phone", "email",
-	"label", "display",
+	"label", "display", "fileName",
 }
 
 // keptSummaryEventTypes are the generated events whose summary is built from
@@ -401,9 +403,11 @@ func (s *server) anonymiseInTx(ctx context.Context, tx pgx.Tx, id int32, now tim
 // Peppol answer, the registry record a person never has but a retyped business
 // might), the contacts (associations detached, the contacts they alone held
 // deleted), the timeline and its revisions rewritten and its open follow-ups
-// closed, every module's eraser in Compose order on this transaction, then the
-// row — cleared, marked, its revision advanced — and last the event, which is
-// recorded after the rewrite and so keeps its words. on is the day the
+// closed, the attachments deleted and their objects queued on the ledger
+// (customer attachments design D6; the worker finishes them after the
+// commit), every module's eraser in Compose order on this transaction, then
+// the row — cleared, marked, its revision advanced — and last the event, which
+// is recorded after the rewrite and so keeps its words. on is the day the
 // anonymisation was scheduled for: a customer merged into the one scheduled
 // takes that day, whatever its own schedule said.
 func (s *server) anonymiseOne(ctx context.Context, tx pgx.Tx, txq *store.Queries, id int32, on pgtype.Date, now time.Time) error {
@@ -443,12 +447,22 @@ func (s *server) anonymiseOne(ctx context.Context, tx pgx.Tx, txq *store.Queries
 	if err := txq.CloseAnonymisedFollowUps(ctx, store.CloseAnonymisedFollowUpsParams{CustomerID: id, Now: now}); err != nil {
 		return fmt.Errorf("close customer %d's open follow-ups: %w", id, err)
 	}
+	objectKeys, err := txq.DeleteAllCustomerAttachments(ctx, id)
+	if err != nil {
+		return fmt.Errorf("delete customer %d's attachments: %w", id, err)
+	}
+	for _, key := range objectKeys {
+		if err := txq.InsertObjectDeletion(ctx, store.InsertObjectDeletionParams{ObjectKey: key, Now: now}); err != nil {
+			return fmt.Errorf("queue customer %d's attachment objects: %w", id, err)
+		}
+	}
 
 	erased := []contracts.ErasedData{
 		{Kind: anonymiseKindAddresses, Count: addresses},
 		{Kind: anonymiseKindContactAssociations, Count: int64(len(contactIDs))},
 		{Kind: anonymiseKindContacts, Count: orphans},
 		{Kind: anonymiseKindTimelineEntries, Count: entries},
+		{Kind: anonymiseKindAttachments, Count: int64(len(objectKeys))},
 	}
 	for _, holder := range s.deps.CustomerPersonalData {
 		kinds, err := holder.Data.EraseCustomerData(ctx, tx, id)

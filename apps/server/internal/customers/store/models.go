@@ -79,6 +79,18 @@ type CustomersCustomerAddress struct {
 	UpdatedAt  time.Time
 }
 
+type CustomersCustomerAttachment struct {
+	ID               int32
+	CustomerID       int32
+	TimelineEntryID  *int32
+	ObjectKey        string
+	FileName         string
+	ContentType      string
+	SizeBytes        int64
+	UploadedByUserID *uuid.UUID
+	CreatedAt        time.Time
+}
+
 type CustomersCustomerContactRole struct {
 	CustomerID int32
 	ContactID  int32
@@ -198,6 +210,16 @@ type CustomersCustomersTimelineEntry struct {
 	FollowUpOn             pgtype.Date
 	FollowUpAssigneeUserID *uuid.UUID
 	FollowUpDoneAt         *time.Time
+}
+
+type CustomersObjectDeletion struct {
+	ID            int32
+	ObjectKey     string
+	Attempts      int32
+	NextAttemptAt time.Time
+	ClaimedUntil  *time.Time
+	LastError     *string
+	CreatedAt     time.Time
 }
 
 type CustomersRegistryFeedCursor struct {

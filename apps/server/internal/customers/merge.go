@@ -25,13 +25,14 @@ import (
 // through the same transaction (docs/src/content/docs/en/contributing/module-boundaries.md rule 8). An error
 // anywhere — a holder's included — rolls every module's part back together.
 
-// The four kinds of reference this module's own tables hold, reported first in
+// The five kinds of reference this module's own tables hold, reported first in
 // a merge's answer, before every holder's.
 const (
 	mergeKindContacts        = "customers.contacts"
 	mergeKindAddresses       = "customers.addresses"
 	mergeKindTimelineEntries = "customers.timelineEntries"
 	mergeKindTags            = "customers.tags"
+	mergeKindAttachments     = "customers.attachments"
 )
 
 // mergeWriteAttempts is how often a merge's transaction runs before a deadlock
@@ -290,7 +291,7 @@ func absorbedSnapshot(c store.CustomerForMergeRow) (mergedCustomerSnapshot, erro
 
 // moveOwnRecords moves this module's tables from the absorbed customer to the
 // survivor (design D3), in the one order the constraints allow, and answers
-// this module's four kinds. The caller holds both rows locked.
+// this module's five kinds. The caller holds both rows locked.
 func moveOwnRecords(ctx context.Context, txq *store.Queries, from, into int32, now time.Time) ([]contracts.RepointedReferences, error) {
 	// Contacts: the associations are copied (the survivor's own row winning for
 	// a shared contact), then the roles (primaries resolved in the statement),
@@ -321,6 +322,13 @@ func moveOwnRecords(ctx context.Context, txq *store.Queries, from, into int32, n
 	if err != nil {
 		return nil, fmt.Errorf("union the tags: %w", err)
 	}
+	// The attachments (customer attachments design D5): one column, nothing
+	// in the store — a key names no customer — and one on an entry follows the
+	// entry, which moved above.
+	attachments, err := txq.MoveCustomerAttachments(ctx, store.MoveCustomerAttachmentsParams{IntoCustomerID: into, FromCustomerID: from})
+	if err != nil {
+		return nil, fmt.Errorf("move the attachments: %w", err)
+	}
 	// The registry record and the Peppol answer describe an identity the
 	// survivor either shares or does not have; the survivor keeps its own, and
 	// a refresh or a re-check fetches either again.
@@ -335,6 +343,7 @@ func moveOwnRecords(ctx context.Context, txq *store.Queries, from, into int32, n
 		{Kind: mergeKindAddresses, Count: addresses},
 		{Kind: mergeKindTimelineEntries, Count: entries},
 		{Kind: mergeKindTags, Count: tags.MovedCount},
+		{Kind: mergeKindAttachments, Count: attachments},
 	}, nil
 }
 
