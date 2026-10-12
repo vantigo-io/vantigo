@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
-import { settings } from "../test/fixtures";
+import { jsonResponse } from "../test/api";
+import { importTally, settings } from "../test/fixtures";
 import { awaitDownload, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { type StaffStub, staffProblem, stubStaffApi } from "../test/server";
@@ -208,6 +209,83 @@ describe("Settings — import people", () => {
     );
     expect(within(dialog).getByRole("button", { name: "Import" })).toBeDisabled();
   });
+
+  it("explains a real run the server failed part-way as cut short too", async () => {
+    let posts = 0;
+    stubStaffApi({
+      write: (method, path) => {
+        if (method !== "POST" || path !== "/api/v1/staff/people/import") return undefined;
+        posts += 1;
+        return posts === 1 ? undefined : staffProblem(500, { title: "Internal Server Error" });
+      },
+    });
+    renderRoute("/staff/settings");
+
+    const dialog = await openImport();
+    await chooseFile(dialog);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Check" }));
+    await within(dialog).findByText("Would be created");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Import" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "The rows that were imported before it stopped stay imported; check the file and run it again.",
+    );
+    expect(within(dialog).getByRole("button", { name: "Import" })).toBeDisabled();
+  });
+
+  it.each([
+    ["import_too_many_rows", "The file has more rows than one import takes. Import it in slices."],
+    ["import_too_large", "The file is larger than 5 MiB, the most one import takes. Import it in slices."],
+  ])("says %s in words", async (code, words) => {
+    stubStaffApi({
+      write: (method, path) =>
+        method === "POST" && path === "/api/v1/staff/people/import"
+          ? staffProblem(400, { code, title: "Invalid import file", errors: { file: ["The server's sentence"] } })
+          : undefined,
+    });
+    renderRoute("/staff/settings");
+
+    const dialog = await openImport();
+    await chooseFile(dialog);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Check" }));
+
+    const banner = await within(dialog).findByRole("alert");
+    expect(banner).toHaveTextContent(words);
+    expect(banner).toHaveTextContent("The server's sentence");
+  });
+
+  it("holds the file still while a check runs, so Import sends the file the check read", async () => {
+    let answer: (response: Response) => void = () => {};
+    // The first check answers only when the test says so.
+    let posts = 0;
+    const held = stubStaffApi({
+      write: (method, path) => {
+        if (method !== "POST" || path !== "/api/v1/staff/people/import") return undefined;
+        posts += 1;
+        if (posts > 1) return undefined;
+        return new Promise<Response>((resolve) => {
+          answer = resolve;
+        }) as unknown as Response;
+      },
+    });
+    renderRoute("/staff/settings");
+
+    const dialog = await openImport();
+    await chooseFile(dialog);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Check" }));
+    // Another file picked while the check of the first is on its way.
+    fireEvent.change(within(dialog).getByLabelText("Choose CSV file"), {
+      target: { files: [new File(["employeeNumber\r\nE-5\r\n"], "other.csv", { type: "text/csv" })] },
+    });
+    answer(jsonResponse(200, { ...importTally(), dryRun: true }));
+
+    await within(dialog).findByText("Would be created");
+    expect(within(dialog).getByText("Chosen: people.csv")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Chosen: other.csv")).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Import" }));
+    await within(dialog).findByText("Created");
+    expect(imports(held).map((one) => one.file.name)).toEqual(["people.csv", "people.csv"]);
+  });
 });
 
 describe("Settings — export people", () => {
@@ -337,6 +415,20 @@ describe("Settings — retention", () => {
     expect(figure(card, "Failing deletions")).toHaveTextContent("0");
     expect(within(card).queryByText(/check that the object store/)).not.toBeInTheDocument();
     expect(figure(card, "Last erased")).toHaveTextContent("Never");
+  });
+
+  it("reloads the periods the server holds when somebody else saved the settings first", async () => {
+    const fetchMock = stubStaffApi();
+    renderRoute("/staff/settings");
+
+    const card = await region("Retention");
+    await retype(within(card).getByRole("textbox", { name: "Grace period (days)" }), "120");
+    // Meanwhile somebody saves the general settings: the revision moves, the periods do not.
+    fetchMock.state.settings = { ...fetchMock.state.settings, injuryInsurer: "Tryg", revision: 4 };
+    await userEvent.click(within(card).getByRole("button", { name: "Save periods" }));
+
+    expect(await screen.findByText("Somebody else saved this; it has been reloaded")).toBeInTheDocument();
+    await waitFor(() => expect(within(card).getByRole("textbox", { name: "Grace period (days)" })).toHaveValue("90"));
   });
 
   it("refuses a period outside its bounds without asking", async () => {

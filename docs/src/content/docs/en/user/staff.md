@@ -527,7 +527,7 @@ rest on its own every hour; what each erase removes is in the
   its field before anything is saved. If somebody else saved the settings since you
   opened the page, they are reloaded and the page says so.
 - **Pending deletions** and **Failing deletions** — files the erases and the document
-  deletes have queued for removal from the document store, and those the store has
+  deletes have queued for removal from the object store, and those the store has
   refused at least once. While any are failing, the card asks you to check that the
   object store is configured and reachable; they are tried again until it confirms.
 - **Oldest pending since** and **Last erased** — when the oldest file was queued, and

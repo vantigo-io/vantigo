@@ -80,7 +80,8 @@ export const ImportModal = ({ onClose, sealedAllowed }: { onClose: () => void; s
   const choose = (event: ChangeEvent<HTMLInputElement>) => {
     const next = event.target.files?.[0];
     event.target.value = "";
-    if (!next || running === "import") return;
+    // Held still while a check or an import runs: the answer is about the file sent.
+    if (!next || running !== null) return;
     setHeld(null);
     setCheck(null);
     setOutcome(null);
@@ -196,7 +197,7 @@ export const ImportModal = ({ onClose, sealedAllowed }: { onClose: () => void; s
               accept=".csv,text/csv"
               aria-label={t("importChooseFile")}
               aria-describedby={introId}
-              disabled={running === "import"}
+              disabled={running !== null}
               onChange={choose}
             />
             {file && <Text size="sm">{t("importChosenFile", { name: file.name })}</Text>}
@@ -214,7 +215,7 @@ export const ImportModal = ({ onClose, sealedAllowed }: { onClose: () => void; s
           </Alert>
         )}
 
-        {/* Announced when a check or an import answers: the result appears without a focus move. */}
+        {/* The counts are announced when a check or an import answers, without a focus move; the table is not. */}
         <Box role="status" aria-live="polite">
           {running === "import" && <Text size="sm">{t("importRunning")}</Text>}
           {shown && (
@@ -234,32 +235,32 @@ export const ImportModal = ({ onClose, sealedAllowed }: { onClose: () => void; s
                   {importable ? t("importCheckIntro") : t("importNothingToImport")}
                 </Text>
               )}
-              {shown.errors.length > 0 && (
-                <ScrollArea.Autosize mah={320}>
-                  <Table striped aria-label={t("importErrorsCaption")}>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>{t("importErrorRow")}</Table.Th>
-                        <Table.Th>{t("importErrorColumn")}</Table.Th>
-                        <Table.Th>{t("importErrorMessage")}</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {shown.errors.map((error, index) => (
-                        // A row can fail on the same column twice; the index keeps them apart.
-                        <Table.Tr key={`${error.row}:${error.column ?? ""}:${index}`}>
-                          <Table.Td>{error.row}</Table.Td>
-                          <Table.Td>{error.column ?? "—"}</Table.Td>
-                          <Table.Td>{error.message}</Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
-                </ScrollArea.Autosize>
-              )}
             </Stack>
           )}
         </Box>
+        {shown && shown.errors.length > 0 && (
+          <ScrollArea.Autosize mah={320}>
+            <Table striped aria-label={t("importErrorsCaption")}>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("importErrorRow")}</Table.Th>
+                  <Table.Th>{t("importErrorColumn")}</Table.Th>
+                  <Table.Th>{t("importErrorMessage")}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {shown.errors.map((error, index) => (
+                  // A row can fail on the same column twice; the index keeps them apart.
+                  <Table.Tr key={`${error.row}:${error.column ?? ""}:${index}`}>
+                    <Table.Td>{error.row}</Table.Td>
+                    <Table.Td>{error.column ?? "—"}</Table.Td>
+                    <Table.Td>{error.message}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </ScrollArea.Autosize>
+        )}
 
         {outcome && outcome.failed > 0 && (
           <Stack gap={4}>

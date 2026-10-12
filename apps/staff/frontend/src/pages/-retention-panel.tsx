@@ -50,8 +50,10 @@ export const RetentionPanel = ({ settings }: { settings: StaffSettings }) => {
     },
   });
 
-  // A pristine form follows the server, as the general form does.
-  const loaded = `${settings.retentionGraceDays}/${settings.healthRetentionDays}`;
+  // A pristine form follows the server, as the general form does — keyed on
+  // the whole row, so a conflict over a general field (the periods
+  // unchanged) still reloads the periods this form had typed over.
+  const loaded = JSON.stringify(settings);
   const [seeded, setSeeded] = useState(loaded);
   if (seeded !== loaded) {
     setSeeded(loaded);

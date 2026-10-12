@@ -1,6 +1,7 @@
 import { appUrl } from "@vantigo/frontend-shell";
 import type { components } from "../api-schema";
-import { downloadFile, type FileDownload, refusalOf } from "./documents";
+import { downloadFile, type FileDownload } from "./documents";
+import { refusalOf } from "./request";
 
 type Schemas = components["schemas"];
 
