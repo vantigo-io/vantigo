@@ -406,7 +406,7 @@ oppfølging** på dashbordet ([dashbordet](/nb/user/staff/#dashbordet)):
 | --- | --- | --- |
 | `5` | 5 eller flere er ansatt i dag | Ha skriftlige varslingsrutiner (aml. § 2 A-6) og verneombud (§ 6-1). |
 | `30` | 30 eller flere | Ha arbeidsmiljøutvalg, AMU (§ 7-1). |
-| `50` | 50 eller flere | Aktivitets- og redegjørelsesplikten, ARP (likestillings- og diskrimineringsloven § 26), gjelder over femti — punktet kommer én person for tidlig. |
+| `50` | Flere enn 50 — 51 eller flere | Aktivitets- og redegjørelsesplikten, ARP (likestillings- og diskrimineringsloven § 26), som gjelder arbeidsgivere med flere enn femti ansatte. Med nøyaktig 50 kommer det ikke noe punkt ennå. |
 | `otp` | Noen har 75 % eller mer, eller de med 20 % eller mer har til sammen to fulle stillinger — stillingsprosentene i dag, summert per person | Ha obligatorisk tjenestepensjon, OTP (OTP-loven § 2) — med mindre den eneste det gjelder er eieren, noe Ansatte ikke kan vite, siden den ikke registrerer noen eier. |
 
 Når plikten er ivaretatt — eller ikke gjelder — bekrefter du terskelen. Den bekreftes
@@ -465,8 +465,9 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   ([Oppbevaring](#oppbevaring)). Utelatt fra en erstatning beholder hver sin verdi.
 - **Oppbevaringsstatus** (`retention`, skrivebeskyttet): sletteloggens ventende og
   avviste filer, den eldste ventende, og den siste slettingen
-  ([Sletteloggen](#sletteloggen)). Filer lageret har avvist i over et døgn, gir også et
-  punkt på dashbordet for `staff:manage`.
+  ([Sletteloggen](#sletteloggen)). Filer lageret har avvist minst én gang, og som ble
+  lagt i køen for mer enn 24 timer siden, gir også et punkt på dashbordet for
+  `staff:manage`.
 - **Bekreftede terskler** (`thresholdsAcknowledged`, skrivebeskyttet): når hver terskel
   ble bekreftet ([Tersklene](#tersklene)).
 

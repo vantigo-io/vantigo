@@ -695,6 +695,9 @@ are the people whose manager the person is today. Anyone who may see the person 
 it; to a caller holding `staff:view` alone a manager in the chain who is not active
 today is left out, as they are from the directory.
 
+The org view and the Manager audience keep a manager who has left; the dashboard's
+attention items skip one ([the dashboard's manager rule](#attention-items)).
+
 The **Manager audience** is resolved from the same rule on today: a caller whose
 self-service link names a manager of the person reads the person as the
 [table](#field-groups-and-audiences) says — the work group, the employments and the
@@ -1446,8 +1449,9 @@ erasure.
 ## Stats and attention
 
 The dashboard's two reads (design S20). Both are read in one snapshot — the people,
-every employment with its terms, the manager graph — and judged in Go on today, the
-day in the settings' [time zone](#the-business-time-zone). The absence figures and
+every employment with its terms, the departments, and the manager graph built from
+those same rows, each table read once — and judged in Go on today, the day in the
+settings' [time zone](#the-business-time-zone). The absence figures and
 items arrive with delivery B, the account items with C.
 
 ### The figures
@@ -1468,24 +1472,36 @@ worked).
 ### Attention items
 
 `GET /stats/attention` is `staff:access`'s and shaped per caller: `staff:manage`'s
-items, `staff:personal-data`'s and a manager's for the people they manage today (by the
-[manager rule](#managers-and-the-org-view)); a caller with none of these gets `[]`,
-never a 403. Each item is `{id, type, title, occurredAt, entityId, count?}`, the shape
+items, `staff:personal-data`'s and a manager's for the employments they manage today
+(by the dashboard's manager rule below); a caller with none of these gets `[]`, never a
+403. A caller with neither `staff:manage` nor `staff:personal-data` is judged as a
+manager on the employments, their terms and the departments alone, and gets `[]` at
+once when they manage nobody today; a manager's read adds only their reports' names.
+
+The **dashboard's manager rule** is the [manager rule](#managers-and-the-org-view)
+with a manager who has left skipped (design §9, "a manager who leaves: their reports
+route to the department's manager"), judged per employment on its terms in force
+today: the manager the terms name when they are in employment today; else the manager
+of the terms' department, else of the first department above it, whose manager is
+someone else in employment today; else nobody. It decides both the probation item's
+manager and whether a person has a manager at all, so the two items never disagree. A
+manager of one of a person's two concurrent employments is the manager of that one
+only. Each item is `{id, type, title, occurredAt, entityId, count?}`, the shape
 every module's attention list shares; a date-only `occurredAt` is that day at midnight
 UTC. The list is oldest `occurredAt` first, then by `type` and `id`, and an item two of
 the caller's roles find is listed once.
 
 | `type` | Audience | Trigger | `occurredAt` | `entityId`, `count` |
 | --- | --- | --- | --- | --- |
-| `contractOverdue` | manage | An employment in force today with neither `contractSignedAt` nor a signed document of the `contract` category filed for it (`employmentId` set, `signedAt` set), from seven days after the start — from the start when, judged on the terms in force on the start day, the person is hired out (`fast_utleid`, `midlertidig_utleid`) or the employment lasts under a month (its end, else a temporary row's `expectedEndDate`, before the start plus a month less a day) (aml. § 14-5). A signed contract document filed for no employment suppresses nothing. One per employment. | The day it fell overdue. | The person. |
-| `probationEnding` | manage; the person's manager today | An employment in force today whose terms in force today end the probation — `probationExtendedTo`, else `probationEndDate` — today or within 30 days. One per employment. | The probation's end. | The person. |
+| `contractOverdue` | manage | An employment in force today with neither `contractSignedAt` nor a signed document of the `contract` category filed for it (`employmentId` set, `signedAt` set), from seven days after the start — from the start when, judged on the terms in force on the start day, the person is hired out (`fast_utleid`, `midlertidig_utleid`) or the row is temporary with an `expectedEndDate` before the start plus a month less a day (aml. § 14-5). The employment's `endDate` is not read: an end typed later — an employment ended early — does not make the contract due at once. A signed contract document filed for no employment suppresses nothing. One per employment. | The day it fell overdue. | The person. |
+| `probationEnding` | manage; the employment's manager today by the dashboard's manager rule | An employment in force today whose terms in force today end the probation — `probationExtendedTo`, else `probationEndDate` — today or within 30 days. One per employment. | The probation's end. | The person. |
 | `temporaryNoticeDue` | manage | An employment in force today whose terms in force today are `midlertidig`, on any ground, that started twelve months ago or more: a month's written notice of the end is owed (aml. § 14-9). One per employment. | The start + 12 months. | The person. |
 | `temporaryConverts` | manage | A run of the person's temporary employments on ground `a` or `b` — each judged on its terms in force on its last day so far (today, or its end), taken by start, each starting no later than the day after the run so far ended (a gap of a day breaks the run; an employment on another ground is no part of it), one of them in force today — that started 36 months ago or more (aml. § 14-9 (7)). One per person. | The run's start + 36 months. | The person. |
-| `reportsWithoutManager` | manage | A person with an employment in force today that has no manager in employment today: neither the manager its terms name (a named manager no longer employed counts as none) nor the manager of its department or a department above it who is someone else (design §9). The manager of a top-level department, whom nobody manages by the structure, is not listed. One per person. | That employment's start. | The person. |
+| `reportsWithoutManager` | manage | A person with an employment in force today that has no manager today by the dashboard's manager rule (design §9). Not listed is the person nobody can manage by the structure: one whose terms in force place them in a department they manage, with no department above it naming a manager other than them — their climb starts and ends in their own department. That holds whatever manager their terms name, so the head of a top-level department whose named manager has left is not listed either; a person who manages a top-level department while their terms place them in another department, or in none, is judged like anyone else. One per person. | That employment's start. | The person. |
 | `reassessmentDue` | personal-data | An erased person not yet reassessed, every employment ended, the last end twelve months ago or more ([the reassessment](#the-reassessment)). | The due day. | The person. |
 | `retentionFailing` | manage | Ledger rows the object store has refused at least once (`attempts` ≥ 1) that were queued more than 24 hours ago. One item. The settings' `failingDeletions` counts every refused row, however young. | When the oldest of them was queued. | `retention`; `count` the rows. |
 | `otpThreshold` | manage | By the `ftePercent` in force today summed per person over their employments in force today: someone at 75 % or more, or the people at 20 % or more adding up to 200 % (two full-time equivalents) — OTP-loven § 2 judged without an owner flag (plan reading 17), so the title names the exception, "unless the only such person is the owner". Not shown once `otp` is [acknowledged](#the-thresholds). One item. | Today. | `thresholds`. |
-| `headcountThreshold` | manage | For each of 5, 30 and 50 the `headcount` has reached and that is not [acknowledged](#the-thresholds). | Today. | The threshold (`5`, `30`, `50`); `count` the headcount. |
+| `headcountThreshold` | manage | For each of 5, 30 and 50 the `headcount` has crossed — 5 or more, 30 or more, more than 50 — and that is not [acknowledged](#the-thresholds). | Today. | The threshold (`5`, `30`, `50`); `count` the headcount. |
 
 `id` is `<type>/<employment id>` for the employment items, `<type>/<person id>` for
 the person items, `retentionFailing`, `otpThreshold` and `headcountThreshold/<key>`.
@@ -1504,7 +1520,7 @@ acknowledges it:
 | --- | --- | --- |
 | `5` | `headcount` ≥ 5 | Written whistleblowing routines (aml. § 2 A-6) and a safety representative, verneombud (§ 6-1). |
 | `30` | `headcount` ≥ 30 | A working environment committee, AMU (§ 7-1). |
-| `50` | `headcount` ≥ 50 | The activity and reporting duty on equality, ARP (likestillings- og diskrimineringsloven § 26), which applies above fifty: the item comes one person early. |
+| `50` | `headcount` > 50 | The activity and reporting duty on equality, ARP (likestillings- og diskrimineringsloven § 26), an employer's with more than fifty employees: at exactly 50 there is no item. |
 | `otp` | The OTP test above | An occupational pension scheme (OTP-loven § 2), unless the only such person is the owner. |
 
 `POST /thresholds/{key}/acknowledge` (`staff:manage`) acknowledges one, **once and

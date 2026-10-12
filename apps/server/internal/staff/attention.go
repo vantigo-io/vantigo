@@ -35,15 +35,17 @@ const (
 )
 
 // headcountThresholds are the headcounts that bring a duty (R §4.10, §4.12),
-// each with the sentence its item carries.
+// each with the headcount from which it is crossed and the sentence its item
+// carries: 5 or more, 30 or more, and more than 50 — the equality duty is an
+// employer's with more than fifty (ldl. § 26), so fifty itself is not over it.
 var headcountThresholds = []struct {
-	key   string
-	count int
-	title string
+	key     string
+	crossed int
+	title   string
 }{
 	{"5", 5, "5 or more employees: a whistleblowing routine (varslingsrutine) and a safety representative (verneombud) are required"},
 	{"30", 30, "30 or more employees: a working environment committee (arbeidsmiljøutvalg, AMU) is required"},
-	{"50", 50, "50 employees: above fifty, the activity and reporting duty on equality (aktivitets- og redegjørelsesplikten, ARP) applies"},
+	{"50", 51, "More than 50 employees: the activity and reporting duty on equality (aktivitets- og redegjørelsesplikten, ARP) applies"},
 }
 
 // otpTitle is the OTP item's sentence. No owner is recorded, so the rule
@@ -110,7 +112,8 @@ func (r register) employmentItem(kind gen.StaffStatsAttentionItemType, e store.S
 // contractOverdue is every employment in force today whose written contract
 // is overdue (R §4.1): neither a typed signing day nor a signed contract
 // document filed for it, seven days after its start — at once when, as
-// agreed at the start, it lasts under a month or the person is hired out.
+// agreed at the start, it lasts under a month or the person is hired out. An
+// end typed later, an employment ended early, does not make it due at once.
 func (in attentionInput) contractOverdue(today time.Time) []gen.StaffStatsAttentionItem {
 	var out []gen.StaffStatsAttentionItem
 	for _, e := range in.employments {
@@ -131,24 +134,25 @@ func (in attentionInput) contractOverdue(today time.Time) []gen.StaffStatsAttent
 
 // contractDueAtOnce reports whether e's contract is owed from its first day
 // (§ 14-5): judged on t, the terms in force on the start, the person is hired
-// out, or the employment — by its end, else a temporary row's expected end —
-// lasts under a month.
+// out, or t is a temporary row whose expected end is under a month from the
+// start. The employment's end is not read: as it stands now it may have been
+// typed later, and what counts is what was agreed at the start.
 func contractDueAtOnce(e store.StaffEmployment, t *store.StaffEmploymentTerm) bool {
 	if hiredOut(t) {
 		return true
 	}
-	end := e.EndDate
-	if !end.Valid && t != nil && t.EmploymentType == "midlertidig" {
-		end = t.ExpectedEndDate
+	if t == nil || t.EmploymentType != "midlertidig" || !t.ExpectedEndDate.Valid {
+		return false
 	}
-	start := civil(e.StartDate)
-	return end.Valid && end.Time.Before(addMonths(start, 1).AddDate(0, 0, -1))
+	return t.ExpectedEndDate.Time.Before(addMonths(civil(e.StartDate), 1).AddDate(0, 0, -1))
 }
 
 // probationEnding is every employment in force today whose probation — the
 // extension's end when there is one — ends today or within soonDays: all of
-// them for staff:manage, and the people the caller manages today for a
-// manager.
+// them for staff:manage, and for a manager the employments whose manager
+// today, by the graph's effectiveManager, is the caller — each employment
+// judged on its own terms, so a manager of one of two concurrent employments
+// sees that one's.
 func (in attentionInput) probationEnding(c *callerContext) []gen.StaffStatsAttentionItem {
 	var out []gen.StaffStatsAttentionItem
 	horizon := c.Today.AddDate(0, 0, soonDays)
@@ -167,7 +171,7 @@ func (in attentionInput) probationEnding(c *callerContext) []gen.StaffStatsAtten
 		if !end.Valid || end.Time.Before(c.Today) || end.Time.After(horizon) {
 			continue
 		}
-		if !c.Manage && !slices.Contains(in.graph.managerOf(e.PersonID, c.Today), *c.Person) {
+		if !c.Manage && !in.manages(*c.Person, e, c.Today) {
 			continue
 		}
 		out = append(out, in.employmentItem(gen.ProbationEnding, e, end.Time))
@@ -247,60 +251,49 @@ func (in attentionInput) runs(today time.Time) map[int64]time.Time {
 	return out
 }
 
-// reportsWithoutManager is every person with an employment in force today
-// that has no manager in employment today (design §9): neither the manager
-// its terms name nor the manager of its department or of a department above
-// it — whoever is not the person. The head of a top-level department, whom
-// by the structure nobody manages, is not listed. One per person, dated the
-// first such employment's start.
-func (in attentionInput) reportsWithoutManager(today time.Time) []gen.StaffStatsAttentionItem {
-	active := in.activePeople(today)
-	heads := map[int64]bool{}
-	for _, d := range in.graph.departments {
-		if d.ParentID == nil && d.Manager != nil {
-			heads[*d.Manager] = true
+// manages reports whether manager is e's manager today by the graph's
+// effectiveManager — the rule both the probation item's audience and
+// reportsWithoutManager read.
+func (in attentionInput) manages(manager int64, e store.StaffEmployment, today time.Time) bool {
+	m := in.graph.effectiveManager(asGraphEmployment(e), today)
+	return m != nil && *m == manager
+}
+
+// reportsOf is the people with an employment in force today whose manager
+// today is manager, by the same rule, each once.
+func (in attentionInput) reportsOf(manager int64, today time.Time) []int64 {
+	var out []int64
+	for _, e := range in.employments {
+		if inForce(e, today) && in.manages(manager, e, today) && !slices.Contains(out, e.PersonID) {
+			out = append(out, e.PersonID)
 		}
 	}
+	return out
+}
+
+// reportsWithoutManager is every person with an employment in force today
+// that has no manager today by the graph's effectiveManager (design §9): the
+// manager its terms name, else of its department or one above it, each one
+// someone else in employment today. A person nobody can manage by the
+// structure is not listed: one whose terms place them in a department they
+// manage, with no manager named in any department above it
+// (headsTopOfStructure). One per person, dated the first such employment's
+// start.
+func (in attentionInput) reportsWithoutManager(today time.Time) []gen.StaffStatsAttentionItem {
 	listed := map[int64]bool{}
 	var out []gen.StaffStatsAttentionItem
 	for _, e := range in.employments {
-		if listed[e.PersonID] || heads[e.PersonID] || !inForce(e, today) {
+		if listed[e.PersonID] || !inForce(e, today) {
 			continue
 		}
-		if in.hasManager(termsInForce(e, in.chains[e.ID], today), e.PersonID, active) {
+		g := asGraphEmployment(e)
+		if in.graph.effectiveManager(g, today) != nil || in.graph.headsTopOfStructure(g, today) {
 			continue
 		}
 		listed[e.PersonID] = true
 		out = append(out, personItem(gen.ReportsWithoutManager, e.PersonID, e.PersonID, in.names[e.PersonID], civil(e.StartDate)))
 	}
 	return out
-}
-
-// hasManager reports whether terms t give person a manager in employment
-// today (active): the one t names, else the first department from t's up
-// whose manager is someone else in employment.
-func (in attentionInput) hasManager(t *store.StaffEmploymentTerm, person int64, active map[int64]int64) bool {
-	if t == nil {
-		return false
-	}
-	employed := func(m *int64) bool {
-		_, ok := active[*m]
-		return ok && *m != person
-	}
-	if t.ManagerPersonID != nil && employed(t.ManagerPersonID) {
-		return true
-	}
-	if t.DepartmentID == nil {
-		return false
-	}
-	visited := map[int64]bool{}
-	for d, ok := in.graph.departments[*t.DepartmentID]; ok && !visited[d.ID]; d, ok = in.graph.parentOf(d) {
-		visited[d.ID] = true
-		if d.Manager != nil && employed(d.Manager) {
-			return true
-		}
-	}
-	return false
 }
 
 // reassessmentDue is every erased person not yet reassessed whose last
@@ -364,7 +357,7 @@ func (in attentionInput) thresholds(today time.Time) []gen.StaffStatsAttentionIt
 	}
 	headcount := int32(len(active))
 	for _, h := range headcountThresholds {
-		if _, done := in.acknowledged[h.key]; done || int(headcount) < h.count {
+		if _, done := in.acknowledged[h.key]; done || int(headcount) < h.crossed {
 			continue
 		}
 		out = append(out, gen.StaffStatsAttentionItem{
@@ -411,25 +404,58 @@ func (s *server) GetStaffStatsAttention(ctx context.Context, _ gen.GetStaffStats
 	var items []gen.StaffStatsAttentionItem
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
-		in := attentionInput{acknowledged: acknowledged, signed: map[int64]bool{}}
-		if in.register, err = loadRegister(ctx, q); err != nil {
-			return err
-		}
-		signed, err := q.SignedContractEmployments(ctx)
-		if err != nil {
-			return fmt.Errorf("staff: read the signed contract documents: %w", err)
-		}
-		for _, id := range signed {
-			in.signed[id] = true
-		}
-		if in.failing, err = q.FailingDeletions(ctx, s.deps.Clock().Add(-retentionFailingAfter)); err != nil {
-			return fmt.Errorf("staff: read the failing deletions: %w", err)
-		}
-		items = attentionFor(in, caller)
-		return nil
+		items, err = s.readAttention(ctx, q, caller, acknowledged)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 	return gen.GetStaffStatsAttention200JSONResponse(items), nil
+}
+
+// readAttention reads on q, a snapshot's, what the caller's items are judged
+// on, and judges them. Each table is read once, and only what the caller's
+// roles need: a caller who is neither staff:manage nor staff:personal-data
+// is judged as a manager — the employments, their terms and the departments
+// first, and nothing more when they manage nobody today; else the names of
+// the people they manage, for the one item a manager has.
+func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerContext, acknowledged map[string]time.Time) ([]gen.StaffStatsAttentionItem, error) {
+	in := attentionInput{acknowledged: acknowledged, signed: map[int64]bool{}}
+	var err error
+	if in.register, err = loadEmployments(ctx, q); err != nil {
+		return nil, err
+	}
+	if !c.Manage && !c.PersonalData {
+		var reports []int64
+		if c.Person != nil {
+			reports = in.reportsOf(*c.Person, c.Today)
+		}
+		if len(reports) == 0 {
+			return []gen.StaffStatsAttentionItem{}, nil
+		}
+		rows, err := q.PeopleSummaries(ctx, reports)
+		if err != nil {
+			return nil, fmt.Errorf("staff: read the names of a manager's reports: %w", err)
+		}
+		for _, p := range rows {
+			in.names[p.ID] = p.DisplayName
+		}
+		return attentionFor(in, c), nil
+	}
+	if err := in.loadPeople(ctx, q); err != nil {
+		return nil, err
+	}
+	if c.Manage {
+		signed, err := q.SignedContractEmployments(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("staff: read the signed contract documents: %w", err)
+		}
+		for _, id := range signed {
+			in.signed[id] = true
+		}
+		if in.failing, err = q.FailingDeletions(ctx, s.deps.Clock().Add(-retentionFailingAfter)); err != nil {
+			return nil, fmt.Errorf("staff: read the failing deletions: %w", err)
+		}
+	}
+	return attentionFor(in, c), nil
 }

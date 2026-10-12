@@ -39,7 +39,7 @@ const en = {
     "{{count}} employees: a whistleblowing routine and a safety representative (verneombud) are required",
   "dashboard.staffHeadcountThreshold30": "{{count}} employees: a working environment committee (AMU) is required",
   "dashboard.staffHeadcountThreshold50":
-    "{{count}} employees: above fifty, the activity and reporting duty on equality applies",
+    "{{count}} employees, more than 50: the activity and reporting duty on equality applies",
   "dashboard.invoicesOutstanding": "Outstanding",
   "dashboard.invoicesOverdueHint": "{{count}} overdue ({{amount}})",
   "dashboard.invoicesIssuedDelta": "issued vs previous period",
@@ -179,7 +179,7 @@ const nb: { [Key in keyof typeof en]: string } = {
     "OTP-terskelen er nådd: virksomheten skal ha tjenestepensjon, med mindre den eneste det gjelder er eieren",
   "dashboard.staffHeadcountThreshold5": "{{count}} ansatte: virksomheten skal ha varslingsrutine og verneombud",
   "dashboard.staffHeadcountThreshold30": "{{count}} ansatte: virksomheten skal ha arbeidsmiljøutvalg (AMU)",
-  "dashboard.staffHeadcountThreshold50": "{{count}} ansatte: over femti gjelder aktivitets- og redegjørelsesplikten",
+  "dashboard.staffHeadcountThreshold50": "{{count}} ansatte, over 50: aktivitets- og redegjørelsesplikten gjelder",
   "dashboard.invoicesOutstanding": "Utestående",
   "dashboard.invoicesOverdueHint": "{{count}} forfalte ({{amount}})",
   "dashboard.invoicesIssuedDelta": "fakturert mot forrige periode",
