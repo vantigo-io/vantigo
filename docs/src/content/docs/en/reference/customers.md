@@ -991,9 +991,10 @@ on the wire, and the uploader is not named on the response: the event beside eve
 upload names the actor.
 
 The upload's refusals come in the order that costs least: the file (400, before any
-database access — a 10 MiB body is not read twice), the customer (404), then under the
-customer's lock the read-only refusal (409 `customer_merged` / `customer_anonymised`), the
-entry (400) and the count (409). **The object is written before the transaction** and
+database access — a 10 MiB body is not read twice), the customer (404), the read-only
+refusal read on the pool (409 `customer_merged` / `customer_anonymised`, before an object
+is written for a customer that takes no writes), then under the customer's lock the same
+refusal again as the race decider, the entry (400) and the count (409). **The object is written before the transaction** and
 removed again by whatever refuses or fails after it, so a failure leaves an object
 nothing points at, never a row pointing at nothing. The download reads the row on the
 pool and the object after it, never inside a transaction, and streams the bytes with the
@@ -1008,10 +1009,13 @@ only through three accessors in `objects.go`, none of them from inside `db.WithT
 `customers.object_deletions` — Staff's ledger, column for column — in one transaction,
 then one attempt removes the object on a context detached from the request and bounded by
 thirty seconds. A store that refuses leaves the row for the
-[anonymisation worker](#what-the-worker-does), which makes a pass over the ledger after
-each cycle — a hundred rows, claimed by a conditional update with a five-minute window,
-retried with a backoff of two seconds doubling to an hour, **without a ceiling** — so an
-erase is never best-effort. With `CUSTOMERS_ANONYMISATION_ENABLED=0` the ledger's rows
+[anonymisation worker](#what-the-worker-does), which drains the ledger after each cycle —
+passes of a hundred rows, each claimed by a conditional update with a five-minute window,
+repeated while a pass finds a full batch and for at most ten minutes, so a cycle that
+anonymised fifty customers with two hundred files each still removes their objects the
+same day — and a row the store refused is due again after a backoff of two seconds
+doubling to an hour, taken on a later cycle (once a day on the default poll), **without a
+ceiling** — so an erase is never best-effort. With `CUSTOMERS_ANONYMISATION_ENABLED=0` the ledger's rows
 wait as scheduled days do; a hand delete still makes its one attempt. The rows a store
 outage leaves are visible in the worker's log line ("an object could not be removed from
 the store; the ledger retries it") and in the table; nothing is added to a settings
@@ -2610,11 +2614,11 @@ Sixteen keys, category-grouped, every one delegable. Only `view`, `create` and
 | `customers:contacts-manage` | Contacts | Create, update, and delete contacts. | yes |
 | `customers:associations-view` | Associations | View links between customers and contacts. | yes |
 | `customers:associations-manage` | Associations | Create, update, and remove customer-contact links. | yes |
-| `customers:timeline-view` | Timeline | View customer timeline entries, notes, provenance, and revisions. | yes |
-| `customers:timeline-manage` | Timeline | Create, update, and delete customer timeline entries. | yes |
+| `customers:timeline-view` | Timeline | View customer timeline entries, notes, provenance, revisions, and the customer's attachments. | yes |
+| `customers:timeline-manage` | Timeline | Create, update, and delete customer timeline entries; attach and remove the customer's files. | yes |
 | `customers:lookup-view` | Lookup | Search the external business registry for legal identities. | yes |
 | `customers:billing-manage` | Billing | Set a customer's payment terms, invoice delivery and billing addresses for documents. | yes |
-| `customers:merge` | Customers | Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it. | yes |
+| `customers:merge` | Customers | Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags, attachments and other modules' references, and archiving it. | yes |
 | `customers:personal-data` | Customers | Hand a private person all the data held about them, and schedule the anonymisation of an archived private person. | yes |
 
 `customers:billing-manage` is the one key with no earlier counterpart: writing a

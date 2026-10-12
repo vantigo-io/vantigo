@@ -291,10 +291,12 @@ func (s *server) GetCustomersByIdAttachments(ctx context.Context, req gen.GetCus
 //
 // The refusals come in the order that tells a caller least and costs the
 // server least: what was sent (400, before any database access — a 10 MiB
-// body is not read twice), whether the customer exists (404), then under the
-// customer's lock the read-only refusal (409 customer_merged or
-// customer_anonymised), the entry (400 on timelineEntryId) and the count
-// (409 attachment_count_exceeded). The object is written before the
+// body is not read twice), whether the customer exists (404), the read-only
+// refusal read on the pool (409 customer_merged or customer_anonymised —
+// before a 10 MiB object is written for a customer that takes no writes,
+// refuseReadOnlyCustomer's purpose), then under the customer's lock the same
+// refusal again as the race decider, the entry (400 on timelineEntryId) and
+// the count (409 attachment_count_exceeded). The object is written before the
 // transaction — a store that cannot write is 503 with nothing recorded — and
 // whatever refuses or fails after the write removes it. The actor is
 // resolved before the transaction opens (actor.go's rule).
@@ -311,6 +313,11 @@ func (s *server) PostCustomersByIdAttachments(ctx context.Context, req gen.PostC
 	} else if err != nil {
 		return nil, fmt.Errorf("customers: get customer: %w", err)
 	}
+	if merr := refuseReadOnlyCustomer(ctx, q, req.Id); isReadOnlyCustomer(merr) {
+		return gen.PostCustomersByIdAttachments409ApplicationProblemPlusJSONResponse(readOnlyProblem(merr)), nil
+	} else if merr != nil {
+		return nil, merr
+	}
 	act, err := s.actorFor(ctx, generatedFallbackActor)
 	if err != nil {
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
@@ -323,7 +330,10 @@ func (s *server) PostCustomersByIdAttachments(ctx context.Context, req gen.PostC
 	}
 
 	now := s.deps.Clock()
-	var created store.CustomersCustomerAttachment
+	var (
+		created store.CustomersCustomerAttachment
+		entry   *gen.CustomerAttachmentTimelineEntry
+	)
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
@@ -356,6 +366,17 @@ func (s *server) PostCustomersByIdAttachments(ctx context.Context, req gen.PostC
 		if err != nil {
 			return fmt.Errorf("record the attachment: %w", err)
 		}
+		if created.TimelineEntryID != nil {
+			// The entry as the response names it, read here rather than on
+			// the pool afterwards: a delete that won the race between the
+			// commit and a second read would turn a committed upload into a
+			// 500.
+			row, err := txq.GetCustomerAttachment(ctx, store.GetCustomerAttachmentParams{ID: created.ID, CustomerID: req.Id})
+			if err != nil {
+				return fmt.Errorf("read attachment %d's entry: %w", created.ID, err)
+			}
+			_, entry = getRowAttachment(row)
+		}
 		return recordAttachmentAdded(ctx, txq, now, created, act)
 	})
 	if err != nil {
@@ -375,14 +396,6 @@ func (s *server) PostCustomersByIdAttachments(ctx context.Context, req gen.PostC
 		return nil, fmt.Errorf("customers: attach a file to customer %d: %w", req.Id, err)
 	}
 
-	var entry *gen.CustomerAttachmentTimelineEntry
-	if created.TimelineEntryID != nil {
-		row, err := q.GetCustomerAttachment(ctx, store.GetCustomerAttachmentParams{ID: created.ID, CustomerID: req.Id})
-		if err != nil {
-			return nil, fmt.Errorf("customers: read attachment %d: %w", created.ID, err)
-		}
-		_, entry = getRowAttachment(row)
-	}
 	return gen.PostCustomersByIdAttachments201JSONResponse(attachmentResponse(created, entry)), nil
 }
 

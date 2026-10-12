@@ -173,8 +173,8 @@ The object is written before its row and removed again if the row is refused. A 
 by hand, or by a private person's anonymisation — removes the row and records the object
 in Customers' ledger of objects to remove (`customers.object_deletions`) in one
 transaction; the object is then removed, and a removal the store refuses stays in the
-ledger for the `customers-anonymisation` worker's pass after each cycle, retried until
-the store confirms, so a file that has to be erased is never left to chance. A merge
+ledger for the `customers-anonymisation` worker, which drains it after each cycle (passes
+of a hundred rows, for at most ten minutes), retried until the store confirms, so a file that has to be erased is never left to chance. A merge
 moves the rows and leaves the objects where they are. The ledger rows a store outage
 leaves are what to watch: they are the objects Customers still owes a removal, named in
 the worker's log; with `CUSTOMERS_ANONYMISATION_ENABLED=0` they wait, as scheduled

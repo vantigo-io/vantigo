@@ -43,7 +43,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { Fragment, useEffect, useRef, useState } from "react";
-import type { CustomerAttachment } from "../api/attachments";
+import { attachmentsQueryKey, type CustomerAttachment } from "../api/attachments";
 import {
   createTimelineEntry,
   defaultTimelineFilters,
@@ -413,7 +413,13 @@ export const CustomerTimeline = ({
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
   const entries = feed.data?.pages.flatMap((page) => page.data) ?? [];
-  const refresh = () => client.invalidateQueries({ queryKey: ["customers", customerId, "timeline"] });
+  const refresh = () => {
+    client.invalidateQueries({ queryKey: ["customers", customerId, "timeline"] });
+    // An entry's attachments name its type, day and state (customer
+    // attachments design D2): an edit or a delete of the entry changes what
+    // the Attachments card says beside each file.
+    client.invalidateQueries({ queryKey: attachmentsQueryKey(customerId) });
+  };
   const remove = useMutation({
     mutationFn: (entry: TimelineEntry) => deleteTimelineEntry(customerId, entry),
     onSuccess: () => {

@@ -176,7 +176,8 @@ skrives før raden og fjernes igjen hvis raden avvises. En sletting — for hån
 privatpersons anonymisering — fjerner raden og fører objektet inn i Kunders logg over
 objekter som skal fjernes (`customers.object_deletions`) i én transaksjon; deretter fjernes
 objektet, og en fjerning lageret avviser blir stående i loggen til `customers-anonymisation`-
-arbeiderens gjennomgang etter hver runde, med nye forsøk til lageret bekrefter, så en fil
+arbeideren, som tømmer den etter hver runde (gjennomganger på hundre rader, i høyst ti
+minutter), med nye forsøk til lageret bekrefter, så en fil
 som skal slettes aldri overlates til tilfeldighetene. En sammenslåing flytter radene og lar
 objektene ligge. Loggradene et lagringsbrudd etterlater, er det man bør følge med på: de er
 objektene Kunder fortsatt skylder en fjerning, navngitt i arbeiderens logg; med

@@ -36,6 +36,14 @@ const (
 	// only when the pass that took it is gone.
 	ledgerClaimWindow = 5 * time.Minute
 
+	// ledgerDrainBudget bounds the passes one cycle makes (drainLedger): the
+	// anonymisation worker polls once a day, so a cycle that stopped after a
+	// hundred rows would leave an anonymised person's objects — fifty
+	// customers' worth of them, at most ten thousand keys — in the store for
+	// days. A cycle keeps passing while a pass finds a full batch, up to this
+	// long; what is left waits for the next cycle.
+	ledgerDrainBudget = 10 * time.Minute
+
 	// maxRetryBackoff caps the wait between two attempts at one object.
 	maxRetryBackoff = time.Hour
 )
@@ -105,6 +113,28 @@ func (s *server) runLedger(ctx context.Context) (attempted, succeeded int, err e
 		}
 	}
 	return attempted, succeeded, nil
+}
+
+// drainLedger is one cycle's ledger work: passes repeated while a pass
+// attempted a full batch — a row that failed is due after its backoff, so a
+// pass over refusals ends on its own — and the whole bounded by
+// ledgerDrainBudget and ctx. It answers the totals over every pass.
+func (s *server) drainLedger(ctx context.Context) (attempted, succeeded int, err error) {
+	budget, cancel := context.WithTimeout(ctx, ledgerDrainBudget)
+	defer cancel()
+	for {
+		a, ok, err := s.runLedger(budget)
+		attempted += a
+		succeeded += ok
+		if err != nil || a < ledgerBatch || budget.Err() != nil {
+			if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+				// The budget ran out mid-pass: what was attempted counts, and
+				// the rest is the next cycle's.
+				return attempted, succeeded, nil
+			}
+			return attempted, succeeded, err
+		}
+	}
 }
 
 // finishObjectDeletion is one attempt at a ledger row's object — the hand

@@ -261,8 +261,8 @@ Se [Vedlegg](#vedlegg).
 
 Kortet **Vedlegg** er kundens dokumenter: en signert kontrakt, en taushetsavtale, et
 skannet brev — og, oppført med hendelsen de hører til, filene som er lagt på
-tidslinjehendelser. Lesing krever `customers:timeline-view`; kortet sier fra når du ikke
-kan. Hver rad viser filens navn, størrelsen og dagen den ble lastet opp, og **På: E-post ·
+tidslinjehendelser. Lesing krever `customers:timeline-view`; uten den viser kortet *Kunne ikke laste
+vedlegg*. Hver rad viser filens navn, størrelsen og dagen den ble lastet opp, og **På: E-post ·
 12. okt. 2026** for en som ligger på en hendelse (eller **På en slettet hendelse: …** når
 hendelsen siden er slettet; filen blir). Klikk på navnet for å laste den ned, med navnet
 den ble lastet opp under.
@@ -272,7 +272,8 @@ HEIC-fil** på høyst **10 MB**; velgeren tilbyr ikke noe annet, og en fil hvis 
 er det navnet sier, avvises — *An attachment must be a PDF, JPEG, PNG or HEIC file, and its
 contents must match the type and file name it is sent under*. Word- og Excel-filer tas
 ikke imot: eksporter en kontrakt til PDF først. En kunde har høyst **200** vedlegg, på
-kunden og på hendelsene til sammen; det 201. avvises med *Too many attachments*. Hver
+kunden og på hendelsene til sammen; det 201. avvises, og meldingen sier det: *A customer
+carries at most 200 attachments … Remove one first.* Hver
 opplasting og hver fjerning registreres på tidslinjen som **Vedlegg lagt til** eller
 **Vedlegg fjernet**, med navnet ditt og filens. **Slett** på en rad spør først og fjerner
 filen for godt.

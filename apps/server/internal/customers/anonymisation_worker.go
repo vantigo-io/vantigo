@@ -136,12 +136,13 @@ func (w *AnonymisationWorker) RunCycle(ctx context.Context) (bool, error) {
 	})
 }
 
-// RunLedger is one pass over the deletion ledger (object_deletions.go): the
-// rows attempted and the attempts the store confirmed. It runs on the pool,
-// not under the lease — a claim is per row, so two replicas' passes share
-// the work rather than wait on each other.
+// RunLedger is one cycle's work on the deletion ledger (object_deletions.go):
+// passes of a hundred rows repeated until a pass finds fewer or the drain
+// budget runs out, answering the rows attempted and the attempts the store
+// confirmed. It runs on the pool, not under the lease — a claim is per row,
+// so two replicas' passes share the work rather than wait on each other.
 func (w *AnonymisationWorker) RunLedger(ctx context.Context) (attempted, succeeded int, err error) {
-	return w.srv.runLedger(ctx)
+	return w.srv.drainLedger(ctx)
 }
 
 // anonymiseRecovering is anonymiseCustomer with a panic turned into that

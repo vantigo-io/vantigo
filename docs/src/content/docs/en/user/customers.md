@@ -259,7 +259,8 @@ then lists its files under its text, each a download, with a cross to remove it.
 
 The **Attachments** card is the customer's documents: a signed contract, an NDA, a
 scanned letter — and, listed with the entry they belong to, the files put on timeline
-entries. Reading needs `customers:timeline-view`; the card says so when you cannot. Each
+entries. Reading needs `customers:timeline-view`; without it the card shows *Could not load
+attachments*. Each
 row shows the file's name, its size and the day it was uploaded, and **On: Email ·
 12 Oct 2026** for one on an entry (or **On a deleted entry: …** when the entry was since
 deleted; the file stays). Click the name to download it, named as it was uploaded.
@@ -269,8 +270,8 @@ of at most **10 MB**; the picker offers nothing else, and a file whose contents 
 what its name says is refused — *An attachment must be a PDF, JPEG, PNG or HEIC file, and
 its contents must match the type and file name it is sent under*. Word and Excel files are
 not taken: export a contract to PDF first. A customer holds at most **200** attachments,
-on the customer and on its entries together; the 201st is refused with *Too many
-attachments*. Every upload and every removal is recorded on the timeline as **Attachment
+on the customer and on its entries together; the 201st is refused, and the message says
+so: *A customer carries at most 200 attachments … Remove one first.* Every upload and every removal is recorded on the timeline as **Attachment
 added** or **Attachment removed**, with your name and the file's. **Delete** on a row asks
 first and removes the file for good.
 
