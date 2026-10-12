@@ -18,10 +18,10 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { createEmployment, type StaffRelationshipType } from "../api/employments";
 import { staffMetaQueryOptions } from "../api/meta";
-import { createPerson, type StaffPerson } from "../api/people";
+import { createPerson, findSimilarErased, type StaffErasedPerson, type StaffPerson } from "../api/people";
 import { STAFF_QUERY_KEY } from "../api/request";
 import { staffSettingsQueryOptions } from "../api/settings";
 import "../i18n";
@@ -62,6 +62,16 @@ export interface NewPersonModalProps {
  * stays findable (People's `current` lists "no employment"), and the second
  * step can be done later from the person's page.
  *
+ * Before the person is created, a name and birth date that an erased person
+ * had are looked up (`POST /people/similar-erased`, design S15): the erase
+ * took the national identity number, so a former employee coming back
+ * cannot be recognised by it. The lookup runs on Save and continue, once
+ * the given name, the family name and the birth date are all filled in —
+ * not while typing, so nothing is asked for half a name — and when it finds
+ * someone the form says so and waits: open the erased record (the rehire
+ * is Rehire on its Employments tab) or create anyway. It is a courtesy,
+ * not a gate: a lookup that fails lets the create go ahead.
+ *
  * On a phone the form takes the whole screen.
  */
 export const NewPersonModal = ({ opened, onClose, onCreated }: NewPersonModalProps) => {
@@ -83,7 +93,7 @@ export const NewPersonModal = ({ opened, onClose, onCreated }: NewPersonModalPro
       {opened && (
         <Stepper active={person ? 1 : 0} allowNextStepsSelect={false} size="sm">
           <Stepper.Step label={t("stepPerson")} description={t("stepPersonDescription")}>
-            <PersonStep onSaved={setPerson} onCancel={close} />
+            <PersonStep onSaved={setPerson} onCancel={close} onOpenPerson={done} />
           </Stepper.Step>
           <Stepper.Step label={t("stepEmployment")} description={t("stepEmploymentDescription")}>
             {person && <EmploymentStep person={person} onDone={() => done(person.id)} />}
@@ -94,14 +104,44 @@ export const NewPersonModal = ({ opened, onClose, onCreated }: NewPersonModalPro
   );
 };
 
-const PersonStep = ({ onSaved, onCancel }: { onSaved: (person: StaffPerson) => void; onCancel: () => void }) => {
-  const { t } = useI18n("staff");
+/** The names and birth date a lookup was asked for, as the server compares them; null until all three are there. */
+const lookupKey = (values: PersonFormValues): string | null =>
+  values.birthDate && values.givenName.trim() && values.familyName.trim()
+    ? JSON.stringify([values.givenName.trim().toLowerCase(), values.familyName.trim().toLowerCase(), values.birthDate])
+    : null;
+
+const PersonStep = ({
+  onSaved,
+  onCancel,
+  onOpenPerson,
+}: {
+  onSaved: (person: StaffPerson) => void;
+  onCancel: () => void;
+  onOpenPerson: (personId: number) => void;
+}) => {
+  const format = useStaffFormat();
+  const t = format.t;
   const queryClient = useQueryClient();
+  const { data: meta } = useQuery(staffMetaQueryOptions());
+  // What the last lookup found, for the names and birth date it was asked
+  // for — shown only while the form still holds them — and the key HR said
+  // to create anyway for, or that found nobody.
+  const [found, setFound] = useState<{ key: string; people: StaffErasedPerson[] } | null>(null);
+  const [settled, setSettled] = useState<string | null>(null);
   // The settings are staff:manage's, as this form is; read only to say which
   // number comes next, so a failed read just says less.
   const { data: settings } = useQuery(staffSettingsQueryOptions());
   const [privateOpen, setPrivateOpen] = useState(false);
   const form = useForm<PersonFormValues>({ initialValues: emptyPerson(), validate: personValidation(t) });
+
+  const lookup = useMutation({
+    mutationFn: (values: PersonFormValues) =>
+      findSimilarErased({
+        givenName: values.givenName.trim(),
+        familyName: values.familyName.trim(),
+        birthDate: values.birthDate as string,
+      }),
+  });
 
   const save = useMutation({
     mutationFn: (values: PersonFormValues) => createPerson(personInputOf(values)),
@@ -119,8 +159,32 @@ const PersonStep = ({ onSaved, onCancel }: { onSaved: (person: StaffPerson) => v
     },
   });
 
+  const submit = async (values: PersonFormValues) => {
+    const key = lookupKey(values);
+    if (key && key !== settled) {
+      try {
+        const people = await lookup.mutateAsync(values);
+        if (people.length > 0) {
+          setFound({ key, people });
+          return;
+        }
+      } catch {
+        // Best effort: a lookup that fails never stands between HR and the create.
+      }
+      setSettled(key);
+    }
+    save.mutate(values);
+  };
+  const createAnyway = () => {
+    if (!found) return;
+    setSettled(found.key);
+    setFound(null);
+    save.mutate(form.values);
+  };
+  const warning = found && found.key === lookupKey(form.values) ? found.people : null;
+
   return (
-    <form onSubmit={form.onSubmit((values) => save.mutate(values))}>
+    <form onSubmit={form.onSubmit(submit)}>
       <Stack mt="md">
         <PersonFields
           form={form}
@@ -130,14 +194,44 @@ const PersonStep = ({ onSaved, onCancel }: { onSaved: (person: StaffPerson) => v
           privateOpen={privateOpen}
           onTogglePrivate={() => setPrivateOpen((open) => !open)}
         />
-        <Group justify="flex-end">
-          <Button type="button" variant="default" onClick={onCancel}>
-            {t("cancel")}
-          </Button>
-          <Button type="submit" loading={save.isPending}>
-            {t("saveAndContinue")}
-          </Button>
-        </Group>
+        {warning ? (
+          <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title={t("similarErasedTitle")}>
+            <Stack gap="sm">
+              <Text size="sm">{t("similarErasedExplained")}</Text>
+              {warning.map((one) => (
+                <Group key={one.id} justify="space-between" gap="xs" wrap="wrap">
+                  <Text size="sm" fw={500}>
+                    {t("similarErasedPerson", {
+                      name: one.displayName,
+                      number: one.employeeNumber,
+                      date: format.day(one.erasedAt, meta?.timeZone),
+                    })}
+                  </Text>
+                  <Button size="xs" variant="light" onClick={() => onOpenPerson(one.id)}>
+                    {t("openErasedPerson", { number: one.employeeNumber })}
+                  </Button>
+                </Group>
+              ))}
+              <Group justify="flex-end" gap="xs">
+                <Button type="button" variant="default" onClick={onCancel}>
+                  {t("cancel")}
+                </Button>
+                <Button type="button" loading={save.isPending} onClick={createAnyway}>
+                  {t("createAnyway")}
+                </Button>
+              </Group>
+            </Stack>
+          </Alert>
+        ) : (
+          <Group justify="flex-end">
+            <Button type="button" variant="default" onClick={onCancel}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" loading={save.isPending || lookup.isPending}>
+              {t("saveAndContinue")}
+            </Button>
+          </Group>
+        )}
       </Stack>
     </form>
   );
@@ -157,6 +251,47 @@ interface EmploymentFormValues {
 const foldedFields: readonly string[] = [...moreTermsFields, "relationshipType", "contractSignedAt"];
 
 const EmploymentStep = ({ person, onDone }: { person: StaffPerson; onDone: () => void }) => {
+  const { t } = useI18n("staff");
+  return (
+    <EmploymentForm
+      person={person}
+      intro={<Text size="sm">{t("personSaved", { name: person.displayName, number: person.employeeNumber })}</Text>}
+      generatedNumber={`${person.employeeNumber}-1`}
+      cancelLabel={t("addLater")}
+      onCancel={onDone}
+      onSaved={onDone}
+      savedTitle={t("personCreated", { name: person.displayName })}
+    />
+  );
+};
+
+export interface EmploymentFormProps {
+  person: StaffPerson;
+  /** What the form opens with: New person's "is saved", or what a rehire does. */
+  intro?: ReactNode;
+  /** The employment number the server will generate when HR assigns none. */
+  generatedNumber: string;
+  cancelLabel: string;
+  onCancel: () => void;
+  onSaved: () => void;
+  /** The notification once the employment is saved. */
+  savedTitle: string;
+}
+
+/**
+ * An employment with its first terms (`POST /people/{id}/employments`): New
+ * person's second step, and New employment — or, on an erased record,
+ * Rehire — on the person's Employments tab.
+ */
+export const EmploymentForm = ({
+  person,
+  intro,
+  generatedNumber,
+  cancelLabel,
+  onCancel,
+  onSaved,
+  savedTitle,
+}: EmploymentFormProps) => {
   const { t } = useI18n("staff");
   const queryClient = useQueryClient();
   const format = useStaffFormat();
@@ -204,8 +339,8 @@ const EmploymentStep = ({ person, onDone }: { person: StaffPerson; onDone: () =>
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
-      notifications.show({ color: "teal", title: t("personCreated", { name: person.displayName }), message: "" });
-      onDone();
+      notifications.show({ color: "teal", title: savedTitle, message: "" });
+      onSaved();
     },
     onError: (error) => {
       // A field error lands on a field the form can show: the folded ones
@@ -234,7 +369,7 @@ const EmploymentStep = ({ person, onDone }: { person: StaffPerson; onDone: () =>
   return (
     <form onSubmit={form.onSubmit((values) => save.mutate(values))}>
       <Stack mt="md">
-        <Text size="sm">{t("personSaved", { name: person.displayName, number: person.employeeNumber })}</Text>
+        {intro}
         {/* Not a colour alone and not a tooltip: the reason the two fields
             are required is the law's, and it is said in words. */}
         <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title={t("presumptionTitle")}>
@@ -271,7 +406,7 @@ const EmploymentStep = ({ person, onDone }: { person: StaffPerson; onDone: () =>
             />
           ) : (
             <Text size="sm" c="dimmed">
-              {t("employmentNumberGenerated", { number: `${person.employeeNumber}-1` })}
+              {t("employmentNumberGenerated", { number: generatedNumber })}
             </Text>
           )}
         </Stack>
@@ -302,8 +437,8 @@ const EmploymentStep = ({ person, onDone }: { person: StaffPerson; onDone: () =>
           </SimpleGrid>
         )}
         <Group justify="flex-end">
-          <Button type="button" variant="default" onClick={onDone}>
-            {t("addLater")}
+          <Button type="button" variant="default" onClick={onCancel}>
+            {cancelLabel}
           </Button>
           <Button type="submit" loading={save.isPending}>
             {t("saveEmployment")}

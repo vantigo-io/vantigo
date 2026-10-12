@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { withErased } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { type StaffStub, staffProblem, stubStaffApi } from "../test/server";
 
@@ -282,5 +283,91 @@ describe("New person — step 2, the first employment", () => {
     // The person page opens on the person just made.
     expect(await screen.findByRole("heading", { name: "Margaret Hamilton", level: 2 })).toBeInTheDocument();
     expect(fetchMock.state.people.find((one) => one.id === 900)?.status.state).toBe("none");
+  });
+});
+
+/** The ceiling for the lookup, the create and the render after them, which the host's one-second default does not give. */
+const slow = { timeout: 5000 };
+
+/** Fills step 1 with Charles Babbage's names and birth date — those of the erased person in `withErased`. */
+const babbage = async (dialog: HTMLElement, birthDate = "Dec 26, 1971") => {
+  await userEvent.type(within(dialog).getByRole("textbox", { name: "Given name" }), "charles");
+  await userEvent.type(within(dialog).getByRole("textbox", { name: "Family name" }), "BABBAGE");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Private details (optional)" }));
+  const field = within(dialog).getByRole("textbox", { name: "Birth date" });
+  await userEvent.type(field, birthDate);
+  await userEvent.tab();
+  await userEvent.click(within(dialog).getByRole("button", { name: "Save and continue" }));
+};
+
+describe("New person — an erased person with the same names and birth date", () => {
+  it("warns before creating, naming the erased record, and opens it on request", async () => {
+    const fetchMock = stubStaffApi(withErased());
+    const dialog = await open();
+    await babbage(dialog);
+
+    const warning = await within(dialog).findByRole(
+      "alert",
+      { name: "Someone with these names and birth date was erased" },
+      slow,
+    );
+    expect(warning).toHaveTextContent("Charles Babbage (E-6), erased on Jul 1, 2025");
+    expect(warning).toHaveTextContent(/Rehire on the Employments tab/);
+    const [lookup] = sent(fetchMock, "POST", /\/people\/similar-erased$/);
+    expect(lookup.body).toEqual({ givenName: "charles", familyName: "BABBAGE", birthDate: "1971-12-26" });
+    expect(sent(fetchMock, "POST", /\/staff\/people$/)).toHaveLength(0);
+
+    await userEvent.click(within(warning).getByRole("button", { name: "Open E-6" }));
+    expect(await screen.findByRole("heading", { name: "Charles Babbage", level: 2 }, slow)).toBeInTheDocument();
+    expect(sent(fetchMock, "POST", /\/staff\/people$/)).toHaveLength(0);
+  });
+
+  it("creates a new person anyway when HR says it is someone else", async () => {
+    const fetchMock = stubStaffApi(withErased());
+    const dialog = await open();
+    await babbage(dialog);
+
+    const warning = await within(dialog).findByRole("alert", { name: /was erased/ }, slow);
+    await userEvent.click(within(warning).getByRole("button", { name: "Create anyway" }));
+
+    await within(dialog).findByText(/charles BABBAGE \(E-8\) is saved/, {}, slow);
+    expect(sent(fetchMock, "POST", /\/staff\/people$/)[0].body).toMatchObject({
+      givenName: "charles",
+      familyName: "BABBAGE",
+      birthDate: "1971-12-26",
+    });
+  });
+
+  it("creates at once when nobody erased matches", async () => {
+    const fetchMock = stubStaffApi(withErased());
+    const dialog = await open();
+    await babbage(dialog, "Dec 27, 1971");
+
+    await within(dialog).findByText(/charles BABBAGE \(E-8\) is saved/, {}, slow);
+    expect(sent(fetchMock, "POST", /\/people\/similar-erased$/)).toHaveLength(1);
+    expect(within(dialog).queryByRole("alert", { name: /was erased/ })).not.toBeInTheDocument();
+  });
+
+  it("does not ask without a birth date", async () => {
+    const fetchMock = stubStaffApi(withErased());
+    const dialog = await open();
+    await personStep(dialog);
+
+    expect(sent(fetchMock, "POST", /\/people\/similar-erased$/)).toHaveLength(0);
+  });
+
+  it("still creates when the lookup fails — the warning is a courtesy, not a gate", async () => {
+    const fetchMock = stubStaffApi({
+      ...withErased(),
+      write: (method, path) =>
+        method === "POST" && path.endsWith("/similar-erased")
+          ? staffProblem(503, { title: "Unavailable", detail: "Try again" })
+          : undefined,
+    });
+    const dialog = await open();
+    await babbage(dialog);
+
+    await within(dialog).findByText(/charles BABBAGE \(E-8\) is saved/, {}, slow);
+    expect(sent(fetchMock, "POST", /\/staff\/people$/)).toHaveLength(1);
   });
 });

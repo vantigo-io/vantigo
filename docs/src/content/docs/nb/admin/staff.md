@@ -142,16 +142,19 @@ En person har rett til en kopi av personopplysningene som behandles om dem
 (personvernforordningen art. 15, innsyn). Ansattes fullstendige svar er
 personopplysningsfilen HR henter ut:
 
-1. Som en bruker med `staff:personal-data`, `GET /api/v1/staff/people/{id}/personal-data`.
-   Svaret er en nedlasting, `staff-<ansattnummer>-personal-data.json`: personens
-   opplysninger i alle feltgrupper, fødselsnummeret og kontonummeret i sin helhet, HRs
-   notater, pårørende, rollene, hvert arbeidsforhold med vilkårene (lønn og notater
-   medregnet), brukerkoblingen, listen over dokumenter og hele historikken.
-2. Last ned hvert dokument filen lister gjennom `GET /api/v1/staff/documents/{id}`;
-   filen har metadataene deres, ikke innholdet.
-3. Kontroller: personens historikk begynner nå med **Personopplysninger eksportert**,
-   med deg som den som gjorde det. Hver slik eksport registreres, fordi filen åpner de
-   forseglede verdiene.
+1. Som en bruker med `staff:personal-data` åpner du personen under **Personer**, trykker
+   **Last ned personopplysninger** øverst på siden og bekrefter
+   ([brukerveiledningen](/nb/user/staff/#last-ned-en-persons-opplysninger);
+   `GET /api/v1/staff/people/{id}/personal-data`). Svaret er en nedlasting,
+   `staff-<ansattnummer>-personal-data.json`: personens opplysninger i alle
+   feltgrupper, fødselsnummeret og kontonummeret i sin helhet, HRs notater, pårørende,
+   rollene, hvert arbeidsforhold med vilkårene (lønn og notater medregnet),
+   brukerkoblingen, listen over dokumenter og hele historikken.
+2. Last ned hvert dokument filen lister, fra personens fane **Dokumenter** (eller
+   `GET /api/v1/staff/documents/{id}`); filen har metadataene deres, ikke innholdet.
+3. Kontroller: personens **Historikk** begynner nå med **Personopplysninger
+   eksportert**, med deg som den som gjorde det. Hver slik eksport registreres, fordi
+   filen åpner de forseglede verdiene.
 
 Overlever filen slik bedriften overleverer personopplysninger — ikke med vanlig
 e-post. Personen kan også laste ned sin egen kopi fra Min side
@@ -165,13 +168,16 @@ En slettesperre (legal hold) holder en persons opplysninger hele — ingen slett
 oppbevaringsreglene rører dem, og personen kan ikke slettes — så lenge en tvist, et krav
 eller en undersøkelse trenger det.
 
-1. Som en bruker med `staff:personal-data`, `PUT /api/v1/staff/people/{id}/legal-hold`
-   med `{"held": true, "reason": "…"}`. Grunnen er påkrevd, inntil 500 tegn; skriv hva
-   sperren gjelder og gjerne hvor lenge.
-2. Kontroller: personens `legalHold` er `{"held": true, …}` med grunnen og tidspunktet,
-   og historikken har **Slettesperre satt**.
-3. Når saken er avsluttet, opphever du den med `{"held": false}` (uten grunn). Grunnen og
-   hvem som satte den, fjernes; historikken beholder begge.
+1. Som en bruker med `staff:personal-data` åpner du personen og trykker **Sett
+   slettesperre** øverst på siden. Skriv **Grunn** — påkrevd, inntil 500 tegn: hva
+   sperren gjelder og gjerne hvor lenge — og trykk **Sett slettesperren**
+   ([brukerveiledningen](/nb/user/staff/#en-slettesperre);
+   `PUT /api/v1/staff/people/{id}/legal-hold` med `{"held": true, "reason": "…"}`).
+2. Kontroller: siden viser **Under slettesperre** med dagen og grunnen (personens
+   `legalHold` er `{"held": true, …}`), og **Historikk** har **Slettesperre satt**.
+3. Når saken er avsluttet, trykker du **Opphev slettesperren** og bekrefter
+   (`{"held": false}`, uten grunn). Grunnen og hvem som satte den, fjernes; historikken
+   beholder begge.
 
 En slettet person kan fortsatt få og miste en slettesperre; ingenting annet ved dem
 endres.
@@ -179,26 +185,28 @@ endres.
 ## Ansett en slettet person på nytt
 
 Når oppbevaringskjøringen har slettet en tidligere ansatt, er opplysningene skrivebeskyttet:
-hver endring svarer `person_erased`, bortsett fra en slettesperre, en revurdering, å
-fjerne koblingen til brukeren og en nyansettelse.
+hver endring svarer `person_erased`, bortsett fra en slettesperre, en ny vurdering, å
+fjerne koblingen til brukeren og en nyansettelse. Personsiden sier det i en melding og
+tilbyr ikke noe annet ([brukerveiledningen](/nb/user/staff/#en-slettet-person)).
 
-1. Før du legger til noen som kan ha jobbet her før, spør
-   `POST /api/v1/staff/people/similar-erased` (`staff:manage`) med
-   `{"givenName", "familyName", "birthDate"}`. Slettede personer med samme navn og
-   fødselsdato listes med ansattnummer og når de ble slettet. Fødselsnummeret kan ikke
-   avgjøre det — slettingen fjernet det.
-2. Er det samme person, legger du det nye arbeidsforholdet til de slettede
-   opplysningene: `POST /api/v1/staff/people/{id}/employments`. Opplysningene åpnes igjen
-   under samme ansattnummer; historikken får **Ansatt på nytt** før det nye
-   arbeidsforholdet.
+1. Før du legger til noen som kan ha jobbet her før, fyller du inn **Fornavn**,
+   **Etternavn** og **Fødselsdato** i **Ny person** (`staff:manage`). Ved **Lagre og
+   fortsett** lister skjemaet slettede personer med samme navn og fødselsdato, med
+   ansattnummer og når de ble slettet (`POST /api/v1/staff/people/similar-erased` med
+   `{"givenName", "familyName", "birthDate"}`). Fødselsnummeret kan ikke avgjøre det —
+   slettingen fjernet det.
+2. Er det samme person, trykker du **Åpne** med ansattnummeret, går til
+   **Arbeidsforhold** og trykker **Ansett på nytt**
+   (`POST /api/v1/staff/people/{id}/employments`). Opplysningene åpnes igjen under samme
+   ansattnummer; historikken får **Ansatt på nytt** før det nye arbeidsforholdet.
 3. Skriv inn igjen det slettingen fjernet — kontaktopplysninger, adresse, pårørende,
    fødselsnummeret og kontonummeret (de to siste med `staff:personal-data`).
-4. Er det en annen, legger du dem til som en ny person; de slettede opplysningene blir
+4. Er det en annen, trykker du **Opprett likevel**; de slettede opplysningene blir
    stående.
 
-For å koble personens bruker til nye opplysninger i stedet, fjerner du først koblingen
-fra de slettede (`PUT /api/v1/staff/people/{id}/user` med `{"userId": null}`) — den ene
-endringen av koblingen slettede opplysninger tillater.
+For å koble personens bruker til nye opplysninger i stedet, trykker du først **Koble
+fra** under Selvbetjening på de slettede (`PUT /api/v1/staff/people/{id}/user` med
+`{"userId": null}`) — den ene endringen av koblingen slettede opplysninger tillater.
 
 ## Importer og eksporter registeret
 

@@ -1,4 +1,5 @@
 import { Badge } from "@mantine/core";
+import { useI18n } from "@vantigo/frontend-shell";
 import type { StaffPersonStatus } from "../api/people";
 import "../i18n";
 import { useStaffFormat } from "../lib/format";
@@ -32,6 +33,20 @@ export const PersonStatusBadge = ({ status }: { status: StaffPersonStatus }) => 
   return (
     <Badge variant="light" color={colors[status.state]}>
       {text}
+    </Badge>
+  );
+};
+
+/**
+ * Beside an ended status: the retention run has erased the person (design
+ * S15). It is no state of its own — an erased person is a leaver whose
+ * personnel administration is gone — so it is a second, outlined badge.
+ */
+export const ErasedBadge = () => {
+  const { t } = useI18n("staff");
+  return (
+    <Badge variant="outline" color="gray">
+      {t("erasedBadge")}
     </Badge>
   );
 };

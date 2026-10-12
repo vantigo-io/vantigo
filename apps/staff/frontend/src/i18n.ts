@@ -784,6 +784,60 @@ export const staffCatalog = {
       "An acknowledgement is permanent and cannot be undone: the threshold's item never comes back on the dashboard, whatever the headcount does later.",
     thresholdAcknowledged: "{{name}} is acknowledged",
     couldNotAcknowledgeThreshold: "Could not acknowledge {{name}}",
+
+    // The legal hold, the erased state and the rehire (design S15)
+    erasedBadge: "Erased",
+    legalHoldTitle: "Under legal hold",
+    legalHoldSince: "Since {{date}}: {{reason}}",
+    legalHoldExplained: "No retention erase touches the person while the hold stands, and they cannot be deleted.",
+    putUnderLegalHold: "Put under legal hold",
+    putUnderLegalHoldTitle: "Put {{name}} under a legal hold",
+    putUnderLegalHoldExplained:
+      "While the hold stands, the retention run erases nothing of the person and they cannot be deleted. The reason, you and the time are recorded in the person's history.",
+    holdReason: "Reason",
+    holdReasonDescription: "Up to 500 characters: what the hold is for and, if you can, until when.",
+    holdReasonRequired: "Give the reason for the hold",
+    setLegalHold: "Set the legal hold",
+    legalHoldSet: "The legal hold is set",
+    liftLegalHold: "Lift the legal hold",
+    liftLegalHoldTitle: "Lift the legal hold on {{name}}?",
+    liftLegalHoldExplained:
+      "The next retention run may then erase what has fallen due meanwhile. The history keeps the hold and its reason.",
+    legalHoldLifted: "The legal hold is lifted",
+    couldNotChangeLegalHold: "Could not change the legal hold",
+    erasedTitle: "This record was erased on {{date}}",
+    erasedExplained:
+      "The retention run erased the personnel administration: the contact details, the address, the next of kin, the national identity number, the bank account, HR's notes and the personnel documents. The employments, the history and the pay and contract documents remain. Nothing can be changed except the legal hold, the reassessment and unlinking the user — or a rehire: Rehire on the Employments tab opens the record again under the same employee number.",
+    reassessedOn: "Reassessed on {{date}}.",
+    reassessmentPending:
+      "The reassessment is not recorded yet. It is due twelve months after the last employment ended.",
+    markReassessed: "Mark as reassessed",
+    markReassessedTitle: "Record the reassessment of {{name}}?",
+    markReassessedExplained:
+      "Record that what is left of this record has been reviewed. The dashboard's Reassessment due item goes away.",
+    reassessmentRecorded: "The reassessment is recorded",
+    couldNotRecordReassessment: "Could not record the reassessment",
+    reassessmentNotDue:
+      "The reassessment is not due: it is recorded once, for an erased record, from twelve months after the last employment ended.",
+    downloadPersonalData: "Download personal data",
+    downloadPersonalDataTitle: "Download the personal data of {{name}}",
+    downloadPersonalDataExplained:
+      "The file holds everything Staff has about the person — the national identity number and the bank account in full, HR's notes, every employment and the whole history — the answer to an innsyn request. The download is recorded in the person's history with your name.",
+    download: "Download",
+    couldNotDownloadPersonalData: "Could not download the personal data",
+    newEmployment: "New employment",
+    newEmploymentTitle: "New employment for {{name}}",
+    rehire: "Rehire",
+    rehireTitle: "Rehire {{name}}",
+    rehireExplained:
+      "Adding an employment opens the erased record again under the same employee number. What the erase removed stays empty until you type it again.",
+    employmentAdded: "The employment is added",
+    similarErasedTitle: "Someone with these names and birth date was erased",
+    similarErasedExplained:
+      "The retention run erased a former employee with the same names and birth date, so Staff cannot tell whether this is them. If it is, open their record and use Rehire on the Employments tab, so their history stays in one place. If it is someone else, create a new person.",
+    similarErasedPerson: "{{name}} ({{number}}), erased on {{date}}",
+    openErasedPerson: "Open {{number}}",
+    createAnyway: "Create anyway",
   },
   nb: {
     staff: "Ansatte",
@@ -1566,6 +1620,61 @@ export const staffCatalog = {
       "En bekreftelse er permanent og kan ikke angres: terskelens punkt kommer aldri tilbake på dashbordet, uansett hva antallet ansatte gjør senere.",
     thresholdAcknowledged: "{{name}} er bekreftet",
     couldNotAcknowledgeThreshold: "Kunne ikke bekrefte {{name}}",
+
+    // Slettesperren, den slettede personen og nyansettelsen (design S15)
+    erasedBadge: "Slettet",
+    legalHoldTitle: "Under slettesperre",
+    legalHoldSince: "Siden {{date}}: {{reason}}",
+    legalHoldExplained:
+      "Ingen sletting etter oppbevaringsreglene rører personen så lenge sperren står, og personen kan ikke slettes.",
+    putUnderLegalHold: "Sett slettesperre",
+    putUnderLegalHoldTitle: "Sett slettesperre på {{name}}",
+    putUnderLegalHoldExplained:
+      "Så lenge sperren står, sletter oppbevaringskjøringen ingenting av personen, og personen kan ikke slettes. Grunnen, du og tidspunktet føres i personens historikk.",
+    holdReason: "Grunn",
+    holdReasonDescription: "Opptil 500 tegn: hva sperren gjelder og, om du kan, til når.",
+    holdReasonRequired: "Oppgi grunnen til sperren",
+    setLegalHold: "Sett slettesperren",
+    legalHoldSet: "Slettesperren er satt",
+    liftLegalHold: "Opphev slettesperren",
+    liftLegalHoldTitle: "Oppheve slettesperren på {{name}}?",
+    liftLegalHoldExplained:
+      "Neste oppbevaringskjøring kan da slette det som har forfalt i mellomtiden. Historikken beholder sperren og grunnen.",
+    legalHoldLifted: "Slettesperren er opphevet",
+    couldNotChangeLegalHold: "Kunne ikke endre slettesperren",
+    erasedTitle: "Denne personen ble slettet {{date}}",
+    erasedExplained:
+      "Oppbevaringskjøringen slettet personaladministrasjonen: kontaktopplysningene, adressen, pårørende, fødselsnummeret, bankkontoen, HRs notater og personaldokumentene. Arbeidsforholdene, historikken og lønns- og avtaledokumentene er igjen. Ingenting kan endres unntatt slettesperren, den nye vurderingen og frakoblingen av brukeren — eller en nyansettelse: Ansett på nytt under Arbeidsforhold åpner personen igjen med samme ansattnummer.",
+    reassessedOn: "Ny vurdering registrert {{date}}.",
+    reassessmentPending:
+      "Den nye vurderingen er ikke registrert ennå. Den forfaller tolv måneder etter at siste arbeidsforhold sluttet.",
+    markReassessed: "Registrer ny vurdering",
+    markReassessedTitle: "Registrere en ny vurdering av {{name}}?",
+    markReassessedExplained:
+      "Registrer at det som er igjen av personen, er gjennomgått. Dashbordets punkt Ny vurdering forsvinner.",
+    reassessmentRecorded: "Den nye vurderingen er registrert",
+    couldNotRecordReassessment: "Kunne ikke registrere den nye vurderingen",
+    reassessmentNotDue:
+      "Den nye vurderingen har ikke forfalt: den registreres én gang, for en slettet person, fra tolv måneder etter at siste arbeidsforhold sluttet.",
+    downloadPersonalData: "Last ned personopplysninger",
+    downloadPersonalDataTitle: "Last ned personopplysningene til {{name}}",
+    downloadPersonalDataExplained:
+      "Filen inneholder alt Ansatte har om personen — fødselsnummeret og bankkontoen i sin helhet, HRs notater, alle arbeidsforhold og hele historikken — svaret på en innsynsbegjæring. Nedlastingen føres i personens historikk med navnet ditt.",
+    download: "Last ned",
+    couldNotDownloadPersonalData: "Kunne ikke laste ned personopplysningene",
+    newEmployment: "Nytt arbeidsforhold",
+    newEmploymentTitle: "Nytt arbeidsforhold for {{name}}",
+    rehire: "Ansett på nytt",
+    rehireTitle: "Ansett {{name}} på nytt",
+    rehireExplained:
+      "Et nytt arbeidsforhold åpner den slettede personen igjen med samme ansattnummer. Det slettingen fjernet, forblir tomt til du fyller det inn igjen.",
+    employmentAdded: "Arbeidsforholdet er lagt til",
+    similarErasedTitle: "Noen med disse navnene og denne fødselsdatoen er slettet",
+    similarErasedExplained:
+      "Oppbevaringskjøringen slettet en tidligere ansatt med de samme navnene og den samme fødselsdatoen, så Ansatte kan ikke se om dette er vedkommende. Er det det, åpner du personen og bruker Ansett på nytt under Arbeidsforhold, så historikken blir samlet på ett sted. Er det noen andre, oppretter du en ny person.",
+    similarErasedPerson: "{{name}} ({{number}}), slettet {{date}}",
+    openErasedPerson: "Åpne {{number}}",
+    createAnyway: "Opprett likevel",
   },
 } satisfies CatalogResources;
 

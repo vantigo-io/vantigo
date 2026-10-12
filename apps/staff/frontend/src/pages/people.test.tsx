@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { people, person } from "../test/fixtures";
+import { people, person, withErased } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { type StaffStub, stubStaffApi } from "../test/server";
 
@@ -122,6 +122,23 @@ describe("PeoplePage — HR", () => {
 
     await waitFor(() => expect(router.state.location.search).not.toHaveProperty("create"));
     expect(await screen.findByRole("button", { name: "New person" })).toBeInTheDocument();
+  });
+});
+
+describe("PeoplePage — erased people", () => {
+  it("marks an erased person as erased beside their ended status, under Ended and All, and opens them", async () => {
+    stubStaffApi({ role: "manage", ...withErased() });
+    renderRoute("/staff/people?status=ended");
+
+    const babbage = await row("Charles Babbage");
+    expect(babbage).toHaveTextContent("Ended on Mar 31, 2025");
+    expect(within(babbage).getByText("Erased")).toBeInTheDocument();
+    expect(within(await row("Edsger Dijkstra")).queryByText("Erased")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("radio", { name: "All" }));
+    expect(within(await row("Charles Babbage")).getByText("Erased")).toBeInTheDocument();
+    await userEvent.click(within(await row("Charles Babbage")).getByRole("link", { name: "Charles Babbage" }));
+    expect(await screen.findByRole("heading", { name: "Charles Babbage", level: 2 })).toBeInTheDocument();
   });
 });
 

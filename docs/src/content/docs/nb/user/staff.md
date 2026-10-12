@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Personregisteret — Personer, personsiden med dokumentene, Ny person, Min side og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring og tersklene.
+description: Personregisteret — Personer, personsiden med dokumentene, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring og tersklene.
 sidebar:
   order: 45
 sources:
@@ -59,7 +59,9 @@ Med `staff:manage` ser du også **Status**-valget og en statuskolonne:
 - **Alle** lister alle.
 
 Kolonnen sier **Aktiv**, **Begynner** med første dag, **Sluttet** med siste
-arbeidsdag, eller **Ikke ansatt**. «I dag» er dagen i virksomhetens tidssone (se
+arbeidsdag, eller **Ikke ansatt**. En tidligere ansatt som oppbevaringskjøringen har
+slettet, står under **Sluttet** og **Alle** med **Slettet** ved siden av statusen — se
+[En slettet person](#en-slettet-person). «I dag» er dagen i virksomhetens tidssone (se
 [Endre innstillingene](#endre-innstillingene)), så listen skifter ved midnatt der, ikke
 i nettleseren din.
 
@@ -153,8 +155,13 @@ som gjelder i dag er merket **Gjeldende**. Hver rad viser feltene slik du kan le
 personen og HR ser alle feltene og **Lønnselementer**; en leder alle feltene unntatt
 lønnen; en kollega bare dagene, ansettelsestypen og stillingsprosenten.
 
-Med `staff:manage` tilbyr kortet og radene:
+Med `staff:manage` tilbyr fanen og kortene:
 
+- **Nytt arbeidsforhold** (over kortene) — et arbeidsforhold med de første vilkårene, i
+  skjemaet fra [steg 2 under Ny person](#steg-2-det-første-arbeidsforholdet): en stilling
+  til, en som har sluttet og ansettes igjen, eller det første arbeidsforholdet du ventet
+  med. Nummeret er ansattnummeret og neste ledige `-n` med mindre du velger et eget. På
+  en slettet person heter knappen **Ansett på nytt** — se [Ansett på nytt](#ansett-på-nytt).
 - **Nye vilkår** — en ny rad fra dagen den **Gjelder fra**, forhåndsutfylt fra raden som
   gjelder i dag. Endre det som endres, og trykk **Lagre vilkårene**; et felt du tømmer,
   fjernes fra den dagen. **Flere vilkår** har resten av § 14-6 og lønnen: **Legg til
@@ -259,6 +266,89 @@ arbeidsforholdet i stedet.
 helsekategori, er `staff:personal-data` sin oppgave: HR uten den får ikke **Endre** og
 **Fjern** på et helsedokument — heller ikke på sitt eget.
 
+### En slettesperre
+
+Med `staff:personal-data` har personsiden **Sett slettesperre** øverst. En slettesperre
+holder opplysningene hele — ingen sletting etter oppbevaringsreglene rører dem, og
+personen kan ikke slettes — så lenge en tvist, et krav eller en undersøkelse trenger det.
+
+1. Trykk **Sett slettesperre**.
+2. Skriv **Grunn** — påkrevd, opptil 500 tegn: hva sperren gjelder og, om du kan, til
+   når.
+3. Trykk **Sett slettesperren**. Siden viser **Under slettesperre** med dagen den ble
+   satt og grunnen, og Historikk har **Slettesperre satt**.
+
+For å oppheve den trykker du **Opphev slettesperren** og bekrefter. Neste
+oppbevaringskjøring kan da slette det som har forfalt i mellomtiden; Historikk beholder
+sperren og grunnen.
+
+HR med bare `staff:manage` ser **Under slettesperre** og grunnen, men kan ikke sette
+eller oppheve den. En leder og en kollega får ikke se sperren.
+
+### En slettet person
+
+Når en tidligere ansatts siste arbeidsforhold er slutt og fristen er gått, sletter
+[oppbevaringskjøringen](#oppbevaring) personaladministrasjonen deres. HR
+(`staff:manage`, `staff:personal-data`) ser da **Slettet** ved siden av personens status
+og en melding, **Denne personen ble slettet** og dagen: kontaktopplysningene, adressen,
+pårørende, fødselsnummeret, bankkontoen, HRs notater og personaldokumentene er borte;
+arbeidsforholdene, historikken og lønns- og avtaledokumentene er igjen.
+
+Personen er skrivebeskyttet, og siden tilbyr ingen av endringene — **Endre
+opplysninger**, pårørende og rollene, å registrere fødselsnummeret eller bankkontoen, å
+koble til en bruker, handlingene på arbeidsforholdene og vilkårene, og å arkivere, endre
+eller fjerne et dokument er ikke der, fordi Ansatte ville avvist dem. Dette kan
+fortsatt gjøres:
+
+- [slettesperren](#en-slettesperre) og [den nye vurderingen](#den-nye-vurderingen);
+- **Koble fra** under Selvbetjening, så brukeren kan kobles til en annen;
+- lesing: Historikk, Dokumenter og nedlastingene, og
+  [personopplysningsfilen](#last-ned-en-persons-opplysninger);
+- [Ansett på nytt](#ansett-på-nytt).
+
+#### Ansett på nytt
+
+Når en slettet tidligere ansatt kommer tilbake, ansetter du dem på nytt på deres egen
+oppføring i stedet for å legge til en ny person, så historikken blir samlet på ett sted.
+Med `staff:manage`:
+
+1. Åpne personen, gå til **Arbeidsforhold** og trykk **Ansett på nytt**.
+2. Fyll inn arbeidsforholdet som i [steg 2 under Ny person](#steg-2-det-første-arbeidsforholdet)
+   og trykk **Lagre arbeidsforholdet**.
+
+Personen åpnes igjen med samme ansattnummer: meldingen forsvinner, og Historikk har
+**Ansatt på nytt** før det nye arbeidsforholdet. Det slettingen fjernet, forblir tomt —
+skriv inn kontaktopplysningene, adressen og pårørende igjen, og, med
+`staff:personal-data`, fødselsnummeret og bankkontoen.
+
+#### Den nye vurderingen
+
+Tolv måneder etter at en slettet persons siste arbeidsforhold sluttet, viser
+[dashbordet](#dashbordet) **Ny vurdering** for `staff:personal-data`, og punktet åpner
+personsiden. Meldingen der sier om den nye vurderingen er registrert.
+
+1. Gå gjennom det som er igjen av oppføringen.
+2. Trykk **Registrer ny vurdering** i meldingen og bekreft.
+
+Meldingen sier da **Ny vurdering registrert** og dagen, og punktet på dashbordet
+forsvinner. Før den har forfalt, eller når den er registrert, avviser Ansatte den, og
+siden sier at den nye vurderingen registreres én gang, fra tolv måneder etter at siste
+arbeidsforhold sluttet. En nyansettelse fjerner den nye vurderingen sammen med
+slettingen. Med bare `staff:manage` ser du om den er registrert, men kan ikke registrere
+den.
+
+### Last ned en persons opplysninger
+
+Med `staff:personal-data` lagrer **Last ned personopplysninger** øverst på personsiden
+alt Ansatte har om personen i én fil, `staff-<ansattnummer>-personal-data.json`:
+oppføringen med fødselsnummeret og bankkontoen i sin helhet, HRs notater, pårørende,
+rollene, hvert arbeidsforhold med vilkårene, brukerkoblingen, listen over dokumenter og
+hele historikken. Den er svaret på en innsynsbegjæring — se
+[Svar på en innsynsbegjæring](/nb/admin/staff/#svar-på-en-innsynsbegjæring).
+
+Siden spør først, fordi filen åpner de forseglede verdiene: nedlastingen føres i
+personens historikk som **Personopplysninger eksportert**, med navnet ditt.
+
 ## Legg til en ny person
 
 Med `staff:manage` trykker du **Ny person** under Personer, eller velger **Ny person**
@@ -282,6 +372,19 @@ under **Nåværende** i Personer med statusen **Ikke ansatt**.
    telefon, privat e-post og hjemmeadresse. Ingen av dem kreves for å opprette
    personen.
 5. Trykk **Lagre og fortsett**. En avvisning havner på feltet den gjelder.
+
+Når fornavn, etternavn og fødselsdato er fylt inn, spør **Lagre og fortsett** først om
+en tidligere ansatt med samme navn og fødselsdato er [slettet](#en-slettet-person) —
+Ansatte kan ikke kjenne dem igjen på fødselsnummeret, som slettingen fjernet. Er det
+noen, sier skjemaet **Noen med disse navnene og denne fødselsdatoen er slettet**, lister
+dem med ansattnummer og dagen de ble slettet, og venter:
+
+- **Åpne** med ansattnummeret åpner den slettede oppføringen; er det samme person,
+  [ansetter du dem på nytt](#ansett-på-nytt) der.
+- **Opprett likevel** legger til den nye personen med et nytt ansattnummer.
+
+Uten fødselsdato spørres det ikke. Kan spørsmålet ikke besvares, opprettes personen uten
+det.
 
 ### Steg 2: det første arbeidsforholdet
 
@@ -321,7 +424,8 @@ avviser vilkår uten dem.
    en stillingsprosent utenfor området, en arkivert avdeling — havner avvisningen på
    det feltet; en som gjelder hele arbeidsforholdet, vises som en melding.
 
-**Legg det til senere** lukker skjemaet med personen lagret og åpner siden deres.
+**Legg det til senere** lukker skjemaet med personen lagret og åpner siden deres, der
+**Nytt arbeidsforhold** under Arbeidsforhold legger det til.
 
 ## Min side
 
