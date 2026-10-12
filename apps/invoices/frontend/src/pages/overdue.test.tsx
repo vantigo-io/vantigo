@@ -395,7 +395,11 @@ describe("the Overdue area", () => {
       expect(within(dialog).getByText("At most 500 letters go in one run; 501 are chosen.")).toBeInTheDocument();
       await userEvent.click(within(dialog).getByRole("checkbox", { name: "Send the letter for invoice 4000" }));
       expect(within(dialog).getByRole("button", { name: "Send 500 letters" })).toBeEnabled();
-    });
+      // 501 letters is 501 rows and checkboxes in jsdom: four seconds on a
+      // laptop, and past the file's fifteen on a loaded CI runner, which is
+      // where it timed out once. The cap is the point of the test, so the
+      // rows stay and the test gets the time they take.
+    }, 60_000);
 
     it("reads the overdue list and the runs again after a run", async () => {
       const fetchMock = overdueServer();
