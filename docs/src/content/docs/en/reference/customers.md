@@ -824,7 +824,8 @@ Generated event types: `customer.created`, `customer.updated`, `customer.type_ch
 phase 6's `customer.merged` and `customer.merged_away` ([Merging
 duplicates](#merging-duplicates)) and `customer.anonymisation_scheduled`,
 `customer.anonymisation_cancelled` and `customer.anonymised` ([Personal data and
-anonymisation](#personal-data-and-anonymisation)).
+anonymisation](#personal-data-and-anonymisation)), and `customer.attachment_added` and
+`customer.attachment_removed` ([Attachments](#attachments)).
 These are immutable — there is no edit or delete endpoint for a generated entry.
 
 - `customer.peppol_lookup` (see [Peppol lookup](#peppol-lookup)) is recorded only
@@ -935,6 +936,111 @@ every other timeline column).
   `doneAt` is the tick, and that revision's own actor and `changedAt` name the
   person and the moment. There is deliberately no `doneBy` on the entry — the
   history already holds it, and one place is better than two that can disagree.
+
+## Attachments
+
+A customer carries **documents** — a signed contract, an NDA, the email or the minutes
+behind a manual timeline entry — the way a person in [Staff](/en/reference/staff/#documents)
+carries an archive and an expense carries a receipt (phase 4 delivery E, decided in
+[`docs/superpowers/specs/2026-10-12-customers-attachments-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-12-customers-attachments-design.md)).
+The metadata is one table, `customers.customer_attachments` (migration `00044`), and the
+bytes live in the [object store](/en/admin/object-storage/#module-scopes-and-the-physical-key)
+under this module's own scope, **`customers`**, at the relative key
+**`attachments/<uuid>`** — a fresh random name that names neither the file nor the
+customer. Deliberately not keyed by customer the way Staff keys by person: an
+attachment is the one object in this installation that changes owner — a merge moves it
+to the survivor — and the port has no rename, so a key that named the customer would lie
+after a merge or force a copy outside any transaction; with the customer kept out of the
+key, a merge rewrites one column and never touches the store.
+
+**An attachment hangs off the customer, and may belong to a timeline entry.**
+`timelineEntryId` is absent for a document of the relationship itself and names a
+**manual, active** entry of the same customer for a document of a moment — a generated
+entry is immutable, a deleted one is history, and naming either (or another customer's
+entry, or an unknown id) is a field error on `timelineEntryId`, judged under the
+customer's lock. The link is set on upload and never moved: delete and upload again. An
+entry's soft delete leaves its attachments where they are, still naming the entry; the
+list carries the entry's `state` so a card can say so. An attachment on an entry is
+still the customer's in every other respect: counted against its cap, moved with it,
+listed on it, erased with it.
+
+**The bounds** are Staff's: **PDF, JPEG, PNG or HEIC**, decided by the bytes (`http.DetectContentType`,
+HEIC by its ISO base-media major brand) and never contradicted by the declared type or
+the extension — a PNG named `.pdf` is refused, a phone's `application/octet-stream` and a
+name without an extension are not evidence either way; at most **10 MiB** a file; at most
+**200** attachments a customer, on the customer and on its entries together, counted under
+the customer's lock; the file name kept without any path or control characters, 255
+characters, `attachment` when nothing usable was sent. Word and Excel files are not
+taken — a zip-based office format cannot be sniffed as what it claims and can carry
+macros — so a contract to be kept is exported to PDF first. The multipart part is `file`,
+one per request. Every refusal of the file is a 400 on `file` under the title "Invalid
+attachment" — one message for every way the bytes and the name disagree, another for the
+size — the count's a 409 `attachment_count_exceeded`, and a store that cannot be written
+or read a 503. Uploads are rate-limited at **600 an hour per client address**, this
+module's first rate-limited operation.
+
+| Endpoint | Access |
+| --- | --- |
+| `GET /customers/{id}/attachments` — newest first, each with `timelineEntry: {id, eventType, occurredOn, summary, state}` when it belongs to one | `customers:timeline-view` |
+| `POST /customers/{id}/attachments` — multipart `file`, optional `timelineEntryId` | `customers:timeline-manage` + `customers:timeline-view` |
+| `GET /customers/{id}/attachments/{attachmentId}` — the bytes | `customers:timeline-view` |
+| `DELETE /customers/{id}/attachments/{attachmentId}` | `customers:timeline-manage` + `customers:timeline-view` |
+
+No new permission key ([Permissions](#permissions) says why). The object key is never
+on the wire, and the uploader is not named on the response: the event beside every
+upload names the actor.
+
+The upload's refusals come in the order that costs least: the file (400, before any
+database access — a 10 MiB body is not read twice), the customer (404), then under the
+customer's lock the read-only refusal (409 `customer_merged` / `customer_anonymised`), the
+entry (400) and the count (409). **The object is written before the transaction** and
+removed again by whatever refuses or fails after it, so a failure leaves an object
+nothing points at, never a row pointing at nothing. The download reads the row on the
+pool and the object after it, never inside a transaction, and streams the bytes with the
+type they were sniffed as, the file name RFC 5987 encoded — inline for PDF, JPEG and PNG,
+a file to save for HEIC — `Cache-Control: private, no-store`, `X-Content-Type-Options:
+nosniff` and `Content-Security-Policy: default-src 'none'; sandbox`, on the 404 and the
+503 as on the bytes. A row whose object cannot be read is 503, a fault to be seen. No
+object-store call is ever made inside a transaction of this module: the store is reached
+only through three accessors in `objects.go`, none of them from inside `db.WithTx`.
+
+**The delete and the ledger.** The row is deleted and its object's key queued on
+`customers.object_deletions` — Staff's ledger, column for column — in one transaction,
+then one attempt removes the object on a context detached from the request and bounded by
+thirty seconds. A store that refuses leaves the row for the
+[anonymisation worker](#what-the-worker-does), which makes a pass over the ledger after
+each cycle — a hundred rows, claimed by a conditional update with a five-minute window,
+retried with a backoff of two seconds doubling to an hour, **without a ceiling** — so an
+erase is never best-effort. With `CUSTOMERS_ANONYMISATION_ENABLED=0` the ledger's rows
+wait as scheduled days do; a hand delete still makes its one attempt. The rows a store
+outage leaves are visible in the worker's log line ("an object could not be removed from
+the store; the ledger retries it") and in the table; nothing is added to a settings
+endpoint, since this module has none.
+
+**Two events.** `customer.attachment_added` and `customer.attachment_removed`, producer
+`customers.api`, written in the upload's and the delete's transaction with the caller as
+actor: summary "Attachment added: avtale.pdf" / "Attachment removed: avtale.pdf" (truncated
+to the column's 500 units), payload `{customerId, attachmentId, fileName, contentType,
+sizeBytes, timelineEntryId?}`. Attaching to an entry writes **no revision** of the entry —
+its own words did not change. `fileName` is among the
+[anonymisation](#what-the-worker-does)'s personal payload keys, and neither type is on its
+kept-summary list, so a file called after the person loses its name from both events.
+
+**A merge** moves every attachment to the survivor ([What moves](#what-moves-what-stays-what-is-recorded)),
+one on an entry following its entry, counted as `customers.attachments`; nothing moves in
+the store. **The export** names every attachment with its metadata, never the bytes
+([The export](#the-export)); **the anonymisation** deletes every one and queues its object
+([What the worker does](#what-the-worker-does)). A merged-away or anonymised customer's
+attachments are still listed and served — they are its history, and an anonymised customer
+has none left — and the upload and the delete refuse as every write does.
+
+Not built, on purpose: a rename or a move between entries, a category or a retention class
+(a customer's contract is kept as long as the customer is, and goes with the
+anonymisation), `validTo` and `signedAt` (an entry's to record, with the file on it), Word
+and Excel, a thumbnail, attachments on a contact or an address, a per-entry list endpoint
+(a customer has at most 200, and the page loads them once), a bulk download, and a sweeper
+for an object orphaned by the process dying between the Put and the compensating Delete —
+Expenses' and Staff's stated gap, unchanged.
 
 ## Follow-ups
 
@@ -1408,6 +1514,7 @@ archived when somebody noticed it.
 | Addresses | Every address moves, label and all; the absorbed primary of a type the survivor already has a primary for is demoted. The 50-address cap guards a write, not a merge: a survivor may end past 50, and adds another only once it is under again. |
 | Timeline | Every entry and every revision moves, follow-ups with them — a revision follows its entry, so the two never part. Payloads are **not** rewritten: `payload.customerId` says which customer an event happened to at the time, and the merge event says the rest. |
 | Tags | Unioned. |
+| Attachments | Every attachment moves, one on a timeline entry following its entry — the entry moved a statement earlier, so the link needs no rewrite. Nothing moves in the object store: a key names no customer ([Attachments](#attachments)). The 200-attachment cap guards a write, not a merge. |
 | Registry record, Peppol answer | The survivor keeps its own; the absorbed customer's are deleted — they described an identity the survivor either shares or does not have, and a refresh or a re-check fetches either again. |
 | Other modules | Re-pointed in the same transaction ([below](#one-transaction-every-module)). |
 | The absorbed customer | Archived, with `merged_into_customer_id` naming the survivor (migration `00029`, a foreign key to this table, `ON DELETE RESTRICT`). It keeps its name, number, identity, contact info and billing profile, so its page still reads, and its response carries `mergedInto: {id, customerNumber, name}`. A customer merged into it earlier is re-pointed at the survivor too, so a marker is always one hop: A merged into B and B later into C leaves A naming C, its revision one on. |
@@ -1427,10 +1534,11 @@ Both rows' `revision` advances. Two events are written, and no
   Acme AS", payload `{customerId, into: {id, customerNumber, name}}`.
 
 The answer is `CustomerMergeResult {customer, moved}`: the survivor as `GET` would
-answer it, and every kind with its count, a zero included — this module's four first,
+answer it, and every kind with its count, a zero included — this module's five first,
 each counting what the absorbed customer had (`customers.contacts` its associations,
 a contact the survivor already had included; `customers.addresses`;
-`customers.timelineEntries` its active entries; `customers.tags` its tags), then each
+`customers.timelineEntries` its active entries; `customers.tags` its tags;
+`customers.attachments` its attachments), then each
 other module's in the order the installation composes them — with the modules that
 provide invoiced work (projects, whose billing milestones an invoice stamps) after every
 module that provides none, invoices included. An invoice's issue locks its document and
@@ -1530,7 +1638,7 @@ shape, with `exportedAt` saying when it was made:
 
 | Part | What it holds |
 | --- | --- |
-| `customer` | id, number, name, type, status, created and updated, legal identity, contact info, addresses, the billing profile's own stored values (not the resolved profile), owner, group, tags, `mergedInto`, `anonymisation`, and `mergedFrom` — each duplicate merged into this customer as its own row still holds it: id, number, name, status, legal identity, contact info and billing values, since that row is the same person's data (absent when nothing was merged in) |
+| `customer` | id, number, name, type, status, created and updated, legal identity, contact info, addresses, the billing profile's own stored values (not the resolved profile), owner, group, tags, `mergedInto`, `anonymisation`, `attachments` — every attachment's metadata, oldest first, each on an entry naming it; never the bytes, which are downloaded one by one through `GET .../attachments/{attachmentId}` for as long as the customer is not anonymised, since the file is built in memory and streamed ([Attachments](#attachments)) — and `mergedFrom` — each duplicate merged into this customer as its own row still holds it: id, number, name, status, legal identity, contact info and billing values, since that row is the same person's data (absent when nothing was merged in) |
 | `contacts` | every contact linked to the customer as the contact is stored, with the association's title, phone, email and roles |
 | `timeline` | every entry, oldest first, deleted ones included (their `state` says so), each with its summary, its note — internal notes included: a note staff wrote about the person is data held about them — its payload, actor and follow-up, and — on an entry that was ever changed — its earlier `revisions`, oldest first: an edited note's earlier text is still held (staff read it under the entry's history, and the anonymisation rewrites it), so it is data held about the person too |
 | `modules` | each other module's section under its name — `communications` (the person's conversations: subject, status, dates, each message's direction, subject, date, text and HTML body, each when present, and its attachment names), `energy` (supply periods with the metering point's GSRN and address, and each period's `consumption` as monthly kWh sums), `projects` (code, name, status, dates), `invoices` (`documents` and `drafts`, each with its lines, buyer snapshot, references and notes, and an issued document's `payments`, `deliveries` and EHF `transmissions`, and the customer's `reminderPolicy` — its mode, note and `updatedAt` — when there is one — [Invoices](/en/reference/invoices/#retention-and-personal-data)); a module holding nothing for the customer has no key |
@@ -1617,9 +1725,10 @@ holding the first, which on a small pool is a deadlock with the other lease work
 | The row | `name` → "Anonymised person"; the **customer number stays** — it is the bookkeeping reference. The legal identity, contact info (email, phone, website) and the billing profile's identifiers (`invoiceEmail`, `reminderEmail`, `peppolId`, `gln`, `buyerReference`) are cleared; the payment terms, currency, language, delivery methods and default bill rate stay — they say how the customer was invoiced, not who it was. Owner and tags stay: staff and vocabulary. The customer leaves its group, as a merged-away one does: it refuses every write, the group PUT included, so a group it still counted in could never be deleted. Status stays archived, and `anonymise_on` stays set beside the new `anonymised_at` — the day it was scheduled for is part of the record. |
 | Addresses, Peppol answer, registry record | Deleted. |
 | Contacts | Every association detached, its roles with it; a contact linked to no other customer afterwards is deleted — it existed for this person alone. One another customer still links stays, theirs too. |
-| Timeline | Every entry **stays**, deleted ones included — its type, its day, its state and its follow-up's day and assignee as they were; an open follow-up is closed, done at the run's instant — the customer takes no more writes, so it could never be marked done and would stay overdue on somebody's Follow-ups page for ever; one already done keeps its own instant — with its content anonymised: a manual entry's summary and note become "[anonymised]" and its source URL goes; a generated entry's summary does too, unless its type's summary is built from nothing personal (`customer.status_changed`, `customer.type_changed`, `customer.contact_info_updated`, `customer.billing_profile_updated`, `customer.peppol_lookup`, `customer.tags_changed`, `customer.group_changed`, `customer.owner_changed` and the three anonymisation events — an allow-list, so an event type added later is anonymised until somebody decides otherwise); in every payload the top-level keys that carry the person — `name`, `customerName`, `identity`, `legalIdentity`, `contactInfo`, `billingProfile`, `before`, `after`, `changes`, `absorbed`, `into`, and a contact's or address's `displayName`, `firstName`, `middleName`, `lastName`, `title`, `phone`, `email`, `label`, `display` — become "[anonymised]", each replaced whole — on every event alike, so a status change's `before` and `after` go too, rather than a per-event list a new event type could slip past — and the rest (`customerId`, ids, dates, counts, statuses) is kept. Revisions the same. The author of each entry (`actorDisplay`) is staff, and stays. One set-based statement per table, in SQL. |
+| Timeline | Every entry **stays**, deleted ones included — its type, its day, its state and its follow-up's day and assignee as they were; an open follow-up is closed, done at the run's instant — the customer takes no more writes, so it could never be marked done and would stay overdue on somebody's Follow-ups page for ever; one already done keeps its own instant — with its content anonymised: a manual entry's summary and note become "[anonymised]" and its source URL goes; a generated entry's summary does too, unless its type's summary is built from nothing personal (`customer.status_changed`, `customer.type_changed`, `customer.contact_info_updated`, `customer.billing_profile_updated`, `customer.peppol_lookup`, `customer.tags_changed`, `customer.group_changed`, `customer.owner_changed` and the three anonymisation events — an allow-list, so an event type added later is anonymised until somebody decides otherwise); in every payload the top-level keys that carry the person — `name`, `customerName`, `identity`, `legalIdentity`, `contactInfo`, `billingProfile`, `before`, `after`, `changes`, `absorbed`, `into`, and a contact's or address's `displayName`, `firstName`, `middleName`, `lastName`, `title`, `phone`, `email`, `label`, `display`, and an attachment event's `fileName` — become "[anonymised]", each replaced whole — on every event alike, so a status change's `before` and `after` go too, rather than a per-event list a new event type could slip past — and the rest (`customerId`, ids, dates, counts, statuses) is kept. Revisions the same. The author of each entry (`actorDisplay`) is staff, and stays. One set-based statement per table, in SQL. |
+| Attachments | Every one deleted, on the customer and on its entries alike, and each object's key queued on the deletion ledger in the same transaction; after the commit the worker's ledger pass removes the objects, retried without a ceiling until the store confirms ([Attachments](#attachments)). |
 | Other modules | Each `contracts.CustomerPersonalData.EraseCustomerData`, inside the same transaction, one module after another in the order the installation composes them (energy first, the modules that provide invoiced work — projects — after invoices, last); by module: communications deletes the person's conversations, every message and the rows under it through the retention worker's own deletes (a message still waiting in the outbox goes with its job), queues every object key — attachments, raw payloads and staged uploads — on the cleanup ledger for the cleanup worker to delete after commit, and clears a suggestion or candidate row naming them on another conversation; energy keeps the supply periods and the consumption (a period is the metering point's history, the address the point's, the readings are needed for settlement — the period's link to the customer stays, pseudonymised, see the [holder table](#what-moves-what-stays-what-is-recorded)); projects keeps the projects (invoiced work stays, no customer name is stored there); invoices locks the person's documents and marks the customer erased, so no later send reaches them and a send racing the run has its delivery's address blanked; deletes the person's drafts, invoice and credit-note drafts alike — a draft is not a sales document and has nothing that keeps it — and keeps every issued document, its buyer snapshot and its internal note, which bokføringsloven § 13 keeps for five years after the end of the financial year; keeps the payments registered against them — bookkeeping material kept with the document, a bank reference that may name the person included — and blanks their notes, staff free text about the person that no retention rule needs; keeps the deliveries, the record of when the claim was handed to the mail server, with the recipient's address blanked; and keeps every EHF transmission — the UBL is the sales document, and the receiver's Peppol id an organisation's or the snapshot's own — except a queued one never attempted, which it cancels — leased by a worker or not, since a worker stamps its attempt only on a row still queued — so a send never attempted does not go out after the person is gone; one already attempted is settled by the worker; withdraws every reminder letter still in flight (queued, awaiting print or failed) and blanks every letter's address in every status, keeping the letters — a sent one is the claim's documentation — and leaving a printed letter to the posting and one being sent to go, both named in the log; blanks the notes of the charge payments, waivers, manual deliveries, holds and hand-offs and keeps the rows; blanks the notes of the resolved bank lines the person's payments came from, and of their events, keeping the lines with the payer data the bank wrote — the bank's record of money received; and deletes the customer's reminder policy — staff's decision and note about the person, which no retention rule keeps ([Invoices](/en/reference/invoices/#retention-and-personal-data)). |
-| Last | `anonymised_at` is set, the revision advances, and `customer.anonymised` is recorded — after the rewrite, so the one event that keeps its words: `{customerId, erased: [{kind, count}]}`, this module's four kinds first (`customers.addresses`, `customers.contactAssociations`, `customers.contacts`, `customers.timelineEntries`) and then each module's — `communications.conversations`, `communications.messages`, `communications.objects`, `communications.conversationSuggestions`, `communications.conversationCandidates`, `energy.supplyPeriods`, `projects.projects`, `invoices.drafts`, `invoices.documents`, `invoices.payments`, `invoices.deliveries`, `invoices.transmissions`, `invoices.reminders` (letters withdrawn or their address blanked), `invoices.chargePayments`, `invoices.chargeWaivers`, `invoices.manualDeliveries`, `invoices.invoiceHolds`, `invoices.collectionHandoffs` (notes blanked), `invoices.bankTransactions` (resolved bank lines' notes blanked), `invoices.customerReminderPolicies` (deleted) — a module that kept everything listed at zero ([Invoices](/en/reference/invoices/#retention-and-personal-data) gives each kind's reason); the actor is the system. |
+| Last | `anonymised_at` is set, the revision advances, and `customer.anonymised` is recorded — after the rewrite, so the one event that keeps its words: `{customerId, erased: [{kind, count}]}`, this module's five kinds first (`customers.addresses`, `customers.contactAssociations`, `customers.contacts`, `customers.timelineEntries`, `customers.attachments`) and then each module's — `communications.conversations`, `communications.messages`, `communications.objects`, `communications.conversationSuggestions`, `communications.conversationCandidates`, `energy.supplyPeriods`, `projects.projects`, `invoices.drafts`, `invoices.documents`, `invoices.payments`, `invoices.deliveries`, `invoices.transmissions`, `invoices.reminders` (letters withdrawn or their address blanked), `invoices.chargePayments`, `invoices.chargeWaivers`, `invoices.manualDeliveries`, `invoices.invoiceHolds`, `invoices.collectionHandoffs` (notes blanked), `invoices.bankTransactions` (resolved bank lines' notes blanked), `invoices.customerReminderPolicies` (deleted) — a module that kept everything listed at zero ([Invoices](/en/reference/invoices/#retention-and-personal-data) gives each kind's reason); the actor is the system. |
 
 **A failing customer is logged and tried again.** A module's error — a panic
 included, logged with its stack, since the runner never restarts a worker that panicked
@@ -2586,6 +2695,17 @@ a group's default. The trade-off is deliberate, and
 ever unwanted (`customers:billing-manage` as well on default-bearing group
 writes and on moves into or out of a group that carries a default).
 
+No new permission key was added for [Attachments](#attachments) either, and the
+question was asked: a signed contract is not a name or a number, so `customers:view` —
+the one non-sensitive read key — was wrong for it. The timeline's pair is right: an
+attachment is a record of the relationship's history, as a note of a call is, the
+timeline keys already guard the customer's correspondence (a manual `interaction.email`
+entry carries the email's text), and every attachment added or removed is a timeline
+event, so whoever can read the event can read the file and whoever can write the entry
+can attach to it. A key of its own would have been a fourth every installation remembers
+to grant for a thing that, at every point of use, sits inside the timeline's door. The
+two keys' descriptions name attachments.
+
 The [CSV import](#csv-import-and-export) adds no key either. It wants
 `customers:create`, `customers:update` and `customers:view` together — view because
 every write it stands in for needs view by hand — and checks the file's columns
@@ -2961,7 +3081,7 @@ The rules it is written to:
 ## API
 
 Every operation is under `/api/v1/customers`, authenticated with the shared identity
-session cookie. 63 operations in total, each exercised by the module's own
+session cookie. 67 operations in total, each exercised by the module's own
 contract-validated test coverage gate — every operation in `openapi/customers.yaml`
 must be exercised by at least one successful exchange, with no allow-list.
 
@@ -3006,6 +3126,8 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `POST /contacts`, `PUT /contacts/{id}` | `customers:contacts-manage` + `customers:contacts-view` |
 | `DELETE /contacts/{id}` | `customers:associations-manage` + `customers:contacts-manage` |
 | `GET /{id}/timeline`, `GET /{id}/timeline/{entryId}`, `GET /{id}/timeline/{entryId}/revisions` | `customers:timeline-view` |
+| `GET /{id}/attachments`, `GET /{id}/attachments/{attachmentId}` | `customers:timeline-view` |
+| `POST /{id}/attachments`, `DELETE /{id}/attachments/{attachmentId}` | `customers:timeline-manage` + `customers:timeline-view` |
 | `POST /{id}/timeline`, `PUT /{id}/timeline/{entryId}` | `customers:timeline-manage` + `customers:timeline-view` |
 | `DELETE /{id}/timeline/{entryId}` | `customers:timeline-manage` |
 | `POST /{id}/timeline/{entryId}/follow-up/done`, `DELETE /{id}/timeline/{entryId}/follow-up/done` | `customers:timeline-manage` + `customers:timeline-view` |
@@ -3104,8 +3226,12 @@ records every move with the names snapshotted. No permission key was added,
 which makes `customers:update` the key that steers an inherited term (see
 [Permissions](#permissions)).
 
-Still ahead in the phase: attachments on a customer and its timeline entries,
-once the storage module has a model for it.
+**Phase 4 delivery E** — [Attachments](#attachments) — has since landed, once the
+object-store port had Expenses', Invoices' and Staff's use to copy: a customer and its
+manual timeline entries carry PDF, JPEG, PNG and HEIC files under the `customers` scope,
+keyed so a merge moves the row and never the object, on the timeline's two keys with no
+new permission, recorded as two timeline events, named by the export and erased by the
+anonymisation through a deletion ledger its worker finishes. Phase 4 is complete.
 
 **Phase 5 delivery A** — [Customer 360](#customer-360) — has since landed: one
 endpoint, `GET /customers/{id}/overview`, composed server-side from the project

@@ -21,17 +21,17 @@ entry card and menu), `src/api/import-export.ts` (a multipart request).
 ## Tasks
 
 - [x] **1. The spec and this plan.**
-- [ ] **2. Schema and queries.** Migration `00044_customers_attachments.sql` (the
+- [x] **2. Schema and queries.** Migration `00044_customers_attachments.sql` (the
   table, the ledger); `sqlc.yaml`'s schema list; `queries/attachments.sql` (insert,
   list with the entry join, get, delete, count, lock the entry, the merge move, the
   export list, the erase delete) and `queries/object_deletions.sql` (Staff's five);
   `sqlc generate`.
-- [ ] **3. The contract.** `openapi/customers.yaml`: `CustomerAttachment`,
+- [x] **3. The contract.** `openapi/customers.yaml`: `CustomerAttachment`,
   `CustomerAttachmentTimelineEntry`, the four operations under
   `/customers/{id}/attachments[/{attachmentId}]`, the refusal codes on
   `CustomerConflictProblem`'s description, `CustomerPersonalDataCustomer.attachments`,
   the two permission descriptions; `go generate ./...`; `bun run gen:client`.
-- [ ] **4. The backend, tests first.** `attachments_test.go` (the spec's testing
+- [x] **4. The backend, tests first.** `attachments_test.go` (the spec's testing
   section, with a fake object store in the harness); `objects.go` (the scoped store,
   the accessors, the types, sniffing, names, keys, the disposition, the bounds, the
   rate-limit policy and the body limit); `attachments.go` (list, upload, download,
@@ -41,11 +41,11 @@ entry card and menu), `src/api/import-export.ts` (a multipart request).
   `personal_data.go` (the export's rows); `anonymisation.go` (the delete and the
   queue, the fifth kind, `fileName` in `personalPayloadKeys`); `module.go` (the
   limits, the body limits, the two descriptions).
-- [ ] **5. The frontend, tests first.** `api/attachments.ts` (the query, the upload,
+- [x] **5. The frontend, tests first.** `api/attachments.ts` (the query, the upload,
   the delete, the download path); `-customer-attachments-card.tsx` and its test;
   `-customer-timeline.tsx` (the entry's attachments, **Attach file…**, the two event
   types) and its test; `customers.$customerId.tsx` (the card); `i18n.ts` en + nb.
-- [ ] **6. Docs, both languages.** `en/reference/customers.md` (the Attachments
+- [x] **6. Docs, both languages.** `en/reference/customers.md` (the Attachments
   section, the event list, the merge and anonymisation tables, the export table,
   Permissions, API, What comes next); `en/user/customers.md` and
   `nb/user/customers.md` (the card list, an Attachments section, the timeline's

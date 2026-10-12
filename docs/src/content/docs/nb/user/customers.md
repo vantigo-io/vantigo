@@ -93,7 +93,7 @@ under. Begge krever Faktura-modulen og `invoices:access`, og kommer med lenken *
 fakturaer** til kundens Fakturaer-fane; se
 [Customer 360](/en/reference/customers/#customer-360). Under det kommer kortene
 **Kunderelasjon**, **Kontakt og adresser**, **Register**, **Fakturering**,
-**Kontakter** og **Tidslinje**, beskrevet i avsnittene som følger.
+**Kontakter**, **Vedlegg** og **Tidslinje**, beskrevet i avsnittene som følger.
 
 Et banner øverst sier fra når kunden er arkivert, slått sammen med en annen, planlagt
 anonymisert eller anonymisert; en sammenslått eller anonymisert kunde er
@@ -252,6 +252,34 @@ Alle lagrede versjoner beholdes, og **Revisjonshistorikk** lister dem som **Revi
 1**, **Revisjon 2** og så videre, med hvem som endret og når. Er en hendelse endret
 under deg, avvises lagringen med **Denne hendelsen er endret**. Se [The timeline](/en/reference/customers/#the-timeline).
 
+Menyen på en manuell hendelse tilbyr også **Legg ved fil…**, som legger en fil på den
+hendelsen — e-posten bak en **E-post**-hendelse, referatet fra et **Møte**. Hendelsen
+lister da filene sine under teksten, hver en nedlasting, med et kryss for å fjerne den.
+Se [Vedlegg](#vedlegg).
+
+## Vedlegg
+
+Kortet **Vedlegg** er kundens dokumenter: en signert kontrakt, en taushetsavtale, et
+skannet brev — og, oppført med hendelsen de hører til, filene som er lagt på
+tidslinjehendelser. Lesing krever `customers:timeline-view`; kortet sier fra når du ikke
+kan. Hver rad viser filens navn, størrelsen og dagen den ble lastet opp, og **På: E-post ·
+12. okt. 2026** for en som ligger på en hendelse (eller **På en slettet hendelse: …** når
+hendelsen siden er slettet; filen blir). Klikk på navnet for å laste den ned, med navnet
+den ble lastet opp under.
+
+**Legg til vedlegg** (`customers:timeline-manage`) tar en **PDF-, JPEG-, PNG- eller
+HEIC-fil** på høyst **10 MB**; velgeren tilbyr ikke noe annet, og en fil hvis innhold ikke
+er det navnet sier, avvises — *An attachment must be a PDF, JPEG, PNG or HEIC file, and its
+contents must match the type and file name it is sent under*. Word- og Excel-filer tas
+ikke imot: eksporter en kontrakt til PDF først. En kunde har høyst **200** vedlegg, på
+kunden og på hendelsene til sammen; det 201. avvises med *Too many attachments*. Hver
+opplasting og hver fjerning registreres på tidslinjen som **Vedlegg lagt til** eller
+**Vedlegg fjernet**, med navnet ditt og filens. **Slett** på en rad spør først og fjerner
+filen for godt.
+
+En sammenslått eller anonymisert kunde viser fortsatt filene sine, og ingenting kan
+legges til eller fjernes. Se [Attachments](/en/reference/customers/#attachments).
+
 ## Oppfølginger
 
 En oppfølging er en dato på en manuell tidslinjehendelse: det du har lovet å gjøre
@@ -302,7 +330,7 @@ og alle reglene står i [CSV import and export](/en/reference/customers/#csv-imp
 Når to oppføringer er samme kunde, åpner du den du vil beholde og trykker **Slå
 sammen…** (`customers:merge`). I **Slå et duplikat sammen med {navn}** søker du etter
 duplikatet etter navn eller nummer. Dialogen forklarer hva som skjer: duplikatets
-kontakter, adresser, tidslinje og merkelapper — og det Prosjekter, Energi og
+kontakter, adresser, tidslinje, merkelapper og vedlegg — og det Prosjekter, Energi og
 Kommunikasjon har for det — flyttes hit; opplysningene om det blir stående lesbare i
 denne kundens tidslinje; og det arkiveres. Denne kunden beholder alle sine egne
 opplysninger.
@@ -320,9 +348,11 @@ kan ikke lenger redigeres eller gjenopprettes. Se
 For en privatperson samler **Personopplysninger** (`customers:personal-data`)
 handlingene personvernforordningen ber om:
 
-- **Eksporter personopplysninger** laster ned alt som er lagret om personen som én JSON-fil.
+- **Eksporter personopplysninger** laster ned alt som er lagret om personen som én
+  JSON-fil, med vedleggene oppført ved navn — last ned hvert av dem fra kortet
+  **Vedlegg** mens personen ennå ikke er anonymisert; selve filen bærer ingen bytes.
 - **Planlegg anonymisering…** velger dagen da personens navn, juridiske identitet,
-  kontaktopplysninger, adresser, kontakter, korrespondanse og innholdet i hver
+  kontaktopplysninger, adresser, kontakter, korrespondanse, vedlegg og innholdet i hver
   tidslinjehendelse fjernes; kundenummeret, datoene og hva som skjedde når, beholdes
   for regnskapet. Det finnes ingen standarddato: velg en etter at hver
   oppbevaringsperiode etter bokføringsreglene er over. Kunden må arkiveres først —
@@ -349,8 +379,8 @@ på den kan endres, og bare eksporten står igjen. Se
 | Slå opp et selskap i Brønnøysundregistrene | `customers:lookup-view` |
 | Se kontakter / opprette, redigere og slette dem | `customers:contacts-view` / `customers:contacts-manage` |
 | Se en kundes kontakter / koble til, redigere og koble fra | `customers:associations-view` / `customers:associations-manage` |
-| Lese tidslinjen og oppfølginger | `customers:timeline-view` |
-| Legge til, redigere og slette tidslinjehendelser; sette og krysse av oppfølginger | `customers:timeline-manage` |
+| Lese tidslinjen og oppfølginger; se og laste ned vedlegg | `customers:timeline-view` |
+| Legge til, redigere og slette tidslinjehendelser; sette og krysse av oppfølginger; legge til og slette vedlegg | `customers:timeline-manage` |
 | Redigere faktureringsprofilen, sjekke og bruke EHF | `customers:billing-manage` |
 | Importere kunder | `customers:create`, `customers:update` og `customers:view` |
 | Slå sammen et duplikat | `customers:merge` |

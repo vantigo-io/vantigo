@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/invoices/reminderpdf.go
   - apps/server/internal/invoices/print_batches.go
   - apps/server/internal/staff/objects.go
+  - apps/server/internal/customers/objects.go
 ---
 Objektlagring er applikasjonsporten Kommunikasjon mellomlagrer og serverer vedlegg
 gjennom. Moduler snakker aldri med en leverandør-SDK: de får et `ObjectStore` avgrenset
@@ -130,7 +131,11 @@ lagres neste gang bunken bekreftes postlagt eller lastes ned, og hver av dem sto
 det første brevet lageret avviser, så et brudd koster en forespørsel bare ett tidsavbrudd
 ([papir og postlegging](/en/reference/invoices/#paper-and-posting)). Ansatte bruker
 omfanget `staff`: et dokuments relative nøkkel er `people/<personId>/<uuid>`, så dets
-fysiske nøkkel er `staff/people/<personId>/<uuid>` ([Ansatte](/en/reference/staff/#documents)). Et avgrenset lager
+fysiske nøkkel er `staff/people/<personId>/<uuid>` ([Ansatte](/en/reference/staff/#documents)). Kunder bruker
+omfanget `customers`: et vedleggs relative nøkkel er `attachments/<uuid>`, så dets fysiske
+nøkkel er `customers/attachments/<uuid>` — en nøkkel som ikke navngir noen kunde, siden en
+sammenslåing flytter vedleggets rad til kunden som overlever, og lageret ikke kan gi nytt
+navn ([Kunder](/en/reference/customers/#attachments)). Et avgrenset lager
 avviser en relativ nøkkel som er lik omfanget sitt eller allerede begynner med
 `{scope}/`: kallere sender bare relative nøkler og må aldri bygge prefikset selv.
 
@@ -163,6 +168,22 @@ blir objektene og loggradene liggende urørt til den slås på igjen. Se
 [Ansatte](/en/reference/staff/#documents) for opplastingsreglene og
 hastighetsbegrensningen.
 
+**Kunders vedlegg, spesielt.** En kundes dokumenter — en kontrakt, en taushetsavtale,
+korrespondansen bak en tidslinjehendelse — hver en PDF, JPEG, PNG eller HEIC på høyst 10
+MiB, høyst 200 per kunde. Et vedlegg leses med `customers:timeline-view` og skrives med
+`customers:timeline-manage`, alltid gjennom Kunders eget nedlastingsendepunkt. Objektet
+skrives før raden og fjernes igjen hvis raden avvises. En sletting — for hånd, eller av en
+privatpersons anonymisering — fjerner raden og fører objektet inn i Kunders logg over
+objekter som skal fjernes (`customers.object_deletions`) i én transaksjon; deretter fjernes
+objektet, og en fjerning lageret avviser blir stående i loggen til `customers-anonymisation`-
+arbeiderens gjennomgang etter hver runde, med nye forsøk til lageret bekrefter, så en fil
+som skal slettes aldri overlates til tilfeldighetene. En sammenslåing flytter radene og lar
+objektene ligge. Loggradene et lagringsbrudd etterlater, er det man bør følge med på: de er
+objektene Kunder fortsatt skylder en fjerning, navngitt i arbeiderens logg; med
+`CUSTOMERS_ANONYMISATION_ENABLED=0` venter de, som planlagte anonymiseringer gjør. Se
+[Kunder](/en/reference/customers/#attachments) for opplastingsreglene og
+hastighetsbegrensningen.
+
 ## Nedlastinger
 
 Nedlastinger strømmes alltid gjennom et autorisert applikasjonsendepunkt.
@@ -184,3 +205,8 @@ og filnavnet slik det ble oppgitt — aldri en lagringsplassering av noe slag. S
 Ansattes `GET /documents/{id}` gjør det samme gjennom sitt `staff`-avgrensede lager,
 med dokumentets egen synlighet; et dokument hvis objekt ikke kan leses, svarer 503
 `storage_unavailable`, ikke 404. Se [Ansatte](/en/reference/staff/#reading-changing-and-removing).
+
+Kunders `GET /customers/{id}/attachments/{attachmentId}` gjør det samme gjennom sitt
+`customers`-avgrensede lager, under tidslinjens leserettighet, med de samme hodene og den
+samme 503-en for et objekt som ikke kan leses. Se
+[Kunder](/en/reference/customers/#attachments).

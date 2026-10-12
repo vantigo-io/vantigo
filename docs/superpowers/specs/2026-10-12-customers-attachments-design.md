@@ -93,10 +93,12 @@ characters, `attachment` when nothing usable was sent. A Word or Excel file is n
 taken: a zip-based office format cannot be sniffed as what it claims and can carry
 macros, and a contract that is to be kept is exported to PDF first — the same line
 Staff drew for its archive. The multipart part is `file`; one file per request, a
-second one refused rather than dropped. The type's refusal is one message for every way
-the bytes and the name disagree (`attachment_type_unsupported`), the size's another
-(`attachment_too_large`), the count's a 409 `attachment_count_exceeded`; a store that
-cannot write or read is 503 `storage_unavailable`. Uploads are rate-limited at
+second one refused rather than dropped. The type's refusal is one message on `file` for every way
+the bytes and the name disagree, the size's another — this module's 400s are
+validation problems with field messages and no code vocabulary (`errors.go`) — the
+count's a 409 `attachment_count_exceeded` on `CustomerConflictProblem`, whose codes
+the merge and GDPR deliveries established; a store that cannot write or read is a 503
+problem. Uploads are rate-limited at
 **600 an hour per client address** — Expenses' and Staff's figure, an office behind one
 address shares it — the module's first rate-limited operation (`limits`, module.go).
 
@@ -231,16 +233,18 @@ In `apps/customers/frontend`, two things:
 - A new **Attachments** card (`-customer-attachments-card.tsx`) between **Contacts**
   and **Timeline**, rendered the way the Timeline card is (the list's 403 is the card's
   error state). It lists the customer's attachments newest first — an icon by type, the
-  name as a link that opens the file in a new tab (`GET …/attachments/{id}`, the
-  server's disposition deciding inline or download), the size, the day, and for one on
-  an entry "On: Email · 12 Oct 2026" — with **Add attachment** (a `FileButton` taking
+  name as a download (fetched with the session and handed to the browser, the
+  personal-data export's shape: a bare link would land the person on a problem page
+  when the read is refused), the size, the day, and for one on an entry "On: Email ·
+  12 Oct 2026" — with **Add attachment** (a `FileButton` taking
   `.pdf,.jpg,.jpeg,.png,.heic,.heif`) uploading to the customer, and a **Delete** per
   row with a confirmation. The type's and size's refusals are shown as the server
   words them; the count's 409 too.
 - On the **Timeline** card, a manual entry lists its attachments under its text, each a
-  link with a delete, and its actions menu gains **Attach file…** — the same upload,
-  with `timelineEntryId`. The card reads the same query, grouped by entry; an upload
-  or delete from either place invalidates it.
+  download with a delete, and its actions menu gains **Attach file…** — the same upload,
+  with `timelineEntryId`. The page reads the list once and hands it to the timeline as
+  a prop, grouped by entry there; an upload or delete from either place invalidates
+  the one query key.
 
 Both take `canManageTimeline` — the page already passes it, and
 `CustomerOverview` ANDs it with `editable`, so a merged-away or anonymised customer
