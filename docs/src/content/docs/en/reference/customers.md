@@ -24,9 +24,9 @@ stops well short of a CRM on purpose.
 Customers depends on nobody but identity (`contracts.UserDirectory`, to name who wrote
 a timeline entry) and its own Brønnøysundregisteret (Brreg) lookup. No other module is
 a dependency of it: the [Customer 360](#customer-360) overview reads the project
-directory, time's actuals and the project expenses when those modules are on —
-through their contracts, never their schemas — and leaves their sections out when
-they are not.
+directory, time's actuals, the project expenses and the invoices module's
+receivables when those modules are on — through their contracts, never their
+schemas — and leaves their sections out when they are not.
 
 ## Domain model
 
@@ -2385,18 +2385,22 @@ not keep asking an installation that has the feature switched off.
 
 `GET /api/v1/customers/{id}/overview` (`customers:view`) answers, in one call, what
 is going on with one customer across the modules that know: its projects, the work
-approved on them and not yet billed, the expenses ready to invoice, and when anything
-last happened. It is the first place this module reads another module's data, and it
-reads it the way every consumer does — through `Deps.Projects`
-(`contracts.ProjectDirectory`), `Deps.Actuals` (`contracts.ProjectActuals`, from
-time) and `Deps.Expenses` (`contracts.ProjectExpenses`), composed server-side in
-`overview.go` rather than joined in the browser, because no module endpoint takes a
-customer id for hours or expenses and the two batch contracts already take exactly
-the list of project ids a customer has. It holds no transaction and writes nothing;
-each contract method is asked at most once, and time and expenses each get every
-visible project in one batch — the project directory is asked twice only for a caller
-who sees just their role projects (the customer's projects, then theirs). Decided in
-[`docs/superpowers/specs/2026-09-23-customers-360-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-23-customers-360-design.md).
+approved on them and not yet billed, the expenses ready to invoice, what it has been
+invoiced and still owes, and when anything last happened. It is the first place this
+module reads another module's data, and it reads it the way every consumer does —
+through `Deps.Projects` (`contracts.ProjectDirectory`), `Deps.Actuals`
+(`contracts.ProjectActuals`, from time), `Deps.Expenses` (`contracts.ProjectExpenses`)
+and `Deps.Receivables` ([`contracts.CustomerReceivables`](#contractscustomerreceivables),
+from invoices), composed server-side in `overview.go` rather than joined in the
+browser, because no module endpoint takes a customer id for hours, expenses or
+receivables and the batch contracts already take exactly the list of project ids a
+customer has. It holds no transaction and writes nothing; each contract method is
+asked at most once, and time and expenses each get every visible project in one batch
+— the project directory is asked twice only for a caller who sees just their role
+projects (the customer's projects, then theirs). Decided in
+[`docs/superpowers/specs/2026-09-23-customers-360-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-23-customers-360-design.md)
+and, for the invoices section,
+[`docs/superpowers/specs/2026-10-12-customers-receivables-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-12-customers-receivables-design.md).
 
 **Sections are shaped, never refused.** Every section but `lastActivity` is absent
 when its module is off or it is not for this caller, and the response never says
@@ -2407,7 +2411,8 @@ which — the panel simply shows fewer tiles:
 | `projects` | the projects module is on and the caller holds `projects:access` | `openCount`, `totalCount`, `truncated`, and `open`: the open (`active`) projects, newest work first then by id, **at most ten** |
 | `work` | `projects` is present and the time module is on | `unbilledHoursHundredths`, `approvedHoursHundredths`, `submittedHoursHundredths`, `draftHoursHundredths`, `unpricedHoursHundredths`, `lastWorkOn`, and `unbilledAmounts` **only for** `projects:view-financials` or `projects:manage-all` |
 | `expenses` | `projects` is present, the expenses module is on, **and** the caller holds `projects:view-financials` or `projects:manage-all` | `readyCount`, `readyAmounts`, `lastExpenseOn` |
-| `lastActivity` | always | `timelineOn`, `workOn`, `expenseOn` — each absent when unknown, or when its section is |
+| `invoices` | the invoices module is on and the caller holds `invoices:access` — its own gate, with or without `projects` | `outstandingCount`, `overdueCount`, `onHoldCount`, `atCollectionCount`, `outstandingAmounts`, `overdueAmounts`, `invoicedThisYearAmounts`, `invoicedLastYearAmounts`, `oldestOverdueDueOn`, `lastIssuedOn`, `lastPaymentOn`, `asOf` |
+| `lastActivity` | always | `timelineOn`, `workOn`, `expenseOn`, `invoicedOn`, `paymentOn` — each absent when unknown, or when its section is |
 
 **Which projects.** For `projects:view-all` or `projects:manage-all`, every one of
 the customer's projects; otherwise only those the caller holds a role on — the
@@ -2443,6 +2448,29 @@ Money is per currency, by ISO code, **never added across currencies**, and a
 currency with nothing in it is left out; it is computed in exact decimals and becomes
 a JSON number only at the end. Cost never appears — the panel is about the customer,
 not the margin.
+
+**Receivables.** The `invoices` section is the receivables contract's answer carried
+to the wire as it stands: the counts and dates are the invoices module's, the money
+is per currency with a zero currency left out, and nothing is added across
+currencies. **Outstanding** is the issued invoices whose state is `open`,
+`partially_paid` or `overdue`, at their open amounts — gross less credited less paid,
+[the invoices module's own rule](/en/reference/invoices/#payments-and-the-state-of-an-invoice)
+— and **overdue** the overdue ones among them; reminder fees, compensation and
+interest are never in either, because Invoices keeps its charges apart from the
+principal. **Invoiced this year** is the invoices issued in the calendar year less the
+credit notes issued in it — a credit note counts in the year it was issued, whatever
+year the invoice it credits was — and **last year** the same for the year before. The
+provider owns "today": every state is judged on the Oslo calendar day of the
+server's clock, as every screen of the Invoices app judges it, and `asOf` says which
+day that was. `onHoldCount` and `atCollectionCount` are the outstanding invoices with
+a live hold or a live hand-off to a collection agency; a lifted hold and a withdrawn
+hand-off count for nothing. A draft is never counted. A customer with no issued
+document answers the section with zero counts and empty lists, not absence; an
+anonymised private person's issued documents stay for bookkeeping and still answer.
+The gate is `invoices:access` alone — the key that already reads every invoice, its
+open amount and the stats, and the key the customer page's Invoices tab sits behind —
+so a figure here never names what that tab would refuse, and money follows the one
+gate because the key reads amounts already.
 
 **The caps.** `ProjectsForCustomer` answers at most `contracts.MaxActualsRequests`
 (2 000) projects, the oldest by id — the batch both providers take in one call — and
@@ -2651,6 +2679,54 @@ of `BillingProfile` is ready for Invoices to read once that module exists — th
 foundation. `CustomerEntry.Group` is the other seam built ahead
 of its caller: Products phase 4's customer-group prices are the intended reader.
 
+## `contracts.CustomerReceivables`
+
+The one sanctioned way this module reads what a customer was invoiced and owes — an
+in-process, read-only port (`apps/server/internal/contracts/receivables.go`),
+implemented by the invoices module and wired into every module's `Deps` as
+`Deps.Receivables` by Compose before any module mounts; nil when invoices is off,
+which the [overview](#customer-360) reads as "invoicing is off" and answers by leaving
+its `invoices` section out. Decided in
+[`docs/superpowers/specs/2026-10-12-customers-receivables-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-12-customers-receivables-design.md).
+
+```go
+type CustomerReceivables interface {
+    ReceivablesForCustomer(ctx, customerID int32) (CustomerReceivableTotals, error)
+}
+
+type CustomerReceivableTotals struct {
+    Currencies                     []CurrencyReceivables // by ISO code; a currency with nothing is absent
+    OutstandingCount, OverdueCount int                   // across every currency
+    OnHoldCount, AtCollectionCount int                   // outstanding invoices with a live hold / hand-off
+    OldestOverdueDueOn             *string               // YYYY-MM-DD, nil when nothing is overdue
+    LastIssuedOn, LastPaymentOn    *string               // YYYY-MM-DD, nil when none
+    AsOf                           string                // the Oslo day the states were judged on
+}
+
+type CurrencyReceivables struct {
+    Currency                                                           string
+    IssuedThisYear, CreditedThisYear, IssuedLastYear, CreditedLastYear string // decimal text, two decimals
+    Outstanding, Overdue                                               string // open amounts, charges never included
+}
+```
+
+The rules it is written to:
+
+- **The provider owns "today".** Every state is judged on the Oslo calendar day of
+  the invoices module's own clock, never on a day the consumer passes, so the
+  customer page can never show a state the Invoices app does not; `AsOf` says which
+  day it was.
+- **A customer with no issued document answers the zero value** with `AsOf` set —
+  never an error, never nil. A draft is never counted. A merged-away customer's
+  documents were re-pointed to the survivor and answer there; an anonymised
+  person's documents stay and still answer.
+- **No authorization, no callback, no transaction.** The provider serves from its own
+  tables alone, never asks the customer directory anything while serving, and holds
+  no transaction; shaping to the caller is this module's job.
+- **A failure is a failure**, never zeros: the overview answers 500, because "could
+  not be read" must never read as "owes nothing".
+- **Per currency from day one**, though Invoices accepts only NOK in this phase.
+
 ## The frontend
 
 `@vantigo/customers-ui` (`apps/customers/frontend`), composed into the host SPA.
@@ -2742,11 +2818,12 @@ of its caller: Products phase 4's customer-group prices are the intended reader.
   The host puts a **Customer 360** panel at the top of the overview tab
   (`apps/host/frontend/src/routes/customers/-customer-360-panel.tsx`), above this
   package's cards: **Open projects**, **Unbilled hours**, **Expenses ready to
-  invoice** and **Last activity** tiles, one per section the
-  [overview](#customer-360) answered, and under them the open projects, each linking
-  to its project. It is the host's rather than this package's because it links
-  across modules; it takes no props from the host but the customer id, and an error
-  hides the panel, never the page.
+  invoice**, **Outstanding**, **Invoiced this year** and **Last activity** tiles, one
+  per section the [overview](#customer-360) answered, under them the open projects,
+  each linking to its project, and a **See invoices** link to the Invoices tab when
+  the invoices section is there. It is the host's rather than this package's because
+  it links across modules; it takes no props from the host but the customer id, and
+  an error hides the panel, never the page.
   **Archive and Restore** are gated on the host's permission check rather than a
   local one — the header takes `canArchive`/`canRestore` props and never fetches
   permissions itself: Archive needs `customers:delete` and goes through the shared
@@ -2919,7 +2996,7 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `PUT /tags/{tagId}`, `DELETE /tags/{tagId}` | `customers:update` |
 | `POST /{id}/peppol-lookup` | `customers:billing-manage` + `customers:view` |
 | `GET /{id}/registry-record` | `customers:view` (withheld to 204 without `customers:legal-identity-view`) |
-| `GET /{id}/overview` | `customers:view` (each section further shaped by `projects:*` keys — see [Customer 360](#customer-360)) |
+| `GET /{id}/overview` | `customers:view` (each section further shaped by `projects:*` keys and `invoices:access` — see [Customer 360](#customer-360)) |
 | `POST /{id}/registry-refresh` | `customers:legal-identity-manage` + `customers:legal-identity-view` |
 | `GET /{id}/contacts`, `GET /contacts/{id}/customers` | `customers:associations-view` + `customers:contacts-view` |
 | `POST /{id}/contacts` (attach) | `customers:associations-manage` + `customers:contacts-view` |
@@ -3047,9 +3124,17 @@ module's first money column), quoted in the profile's own currency and written u
 `BillingProfile.DefaultBillRate`, the customer's own value with no group tier; and
 the customer step of [Time's rate chain](/en/reference/time/#the-rate-chain), between the
 project default and the person card, recorded as `rateSource: "customer"`. No
-permission key was added. Still ahead in phase 5: other modules writing to the
-customer timeline (on the outbox deferred until Orders), and a customer's invoiced
-revenue and outstanding amount on its overview, read from Invoices — not built yet.
+permission key was added.
+
+**Phase 5 delivery C** — receivables on the overview — has landed, decided in
+[`docs/superpowers/specs/2026-10-12-customers-receivables-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-12-customers-receivables-design.md):
+the overview's `invoices` section — what the customer was invoiced this year and
+last, what stands outstanding and overdue, any hold or hand-off to collection — read
+through the new single-provider contract
+[`contracts.CustomerReceivables`](#contractscustomerreceivables) that Invoices
+implements, shaped by `invoices:access` alone, and two more dates in `lastActivity`.
+No permission key was added. Still ahead in phase 5: other modules writing to the
+customer timeline (on the outbox deferred until Orders).
 
 **Phase 6 delivery A** — [CSV import and export](#csv-import-and-export) — has
 landed, decided in
@@ -3089,8 +3174,7 @@ entries wait on the storage module, and other modules' timeline writers on the o
 Past that, the remaining gaps are exactly
 what [ROADMAP.md's Customers section](https://github.com/vantigo-io/vantigo/blob/main/ROADMAP.md#customers) is built around —
 `ContactsByEmail` still unused in production, other modules writing to the customer
-timeline (on the outbox, deferred until Orders), a customer's invoiced revenue and
-outstanding amount on its overview, read from Invoices — not built yet — itself drawn
+timeline (on the outbox, deferred until Orders) — itself drawn
 from
 [`docs/superpowers/research/2026-09-21-customers-module-next.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/research/2026-09-21-customers-module-next.md),
 which also compares this module against the Nordic ERP/accounting and international

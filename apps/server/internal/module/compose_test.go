@@ -1121,6 +1121,102 @@ func TestCompose_PresetExpensesSurviveWhenNoProvider(t *testing.T) {
 	}
 }
 
+type fakeCustomerReceivables struct {
+	directory contracts.CustomerDirectory // whatever Deps carried when it was built
+}
+
+func (*fakeCustomerReceivables) ReceivablesForCustomer(context.Context, int32) (contracts.CustomerReceivableTotals, error) {
+	return contracts.CustomerReceivableTotals{}, nil
+}
+
+// Receivables is the seventh provider slot (contracts.CustomerReceivables)
+// and resolves like the others: before any Mount runs, onto every module's
+// Deps — after the customer directory, which its provider may see while it
+// is built.
+func TestCompose_InjectsReceivablesProvider(t *testing.T) {
+	directory := &fakeDirectory{}
+	receivables := &fakeCustomerReceivables{}
+	var got Deps
+
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", Receivables: func(d Deps) contracts.CustomerReceivables {
+			receivables.directory = d.Directory
+			return receivables
+		}, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Directory: func(Deps) contracts.CustomerDirectory { return directory }, Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Receivables != receivables {
+		t.Errorf("Deps.Receivables = %v, want the provider's receivables", got.Receivables)
+	}
+	if receivables.directory != directory {
+		t.Errorf("the receivables provider saw Deps.Directory = %v, want the customer directory resolved before it", receivables.directory)
+	}
+}
+
+// Two modules both declaring Receivables is a compose error naming both.
+func TestCompose_DuplicateReceivablesProvider_Fails(t *testing.T) {
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Receivables: func(Deps) contracts.CustomerReceivables { return &fakeCustomerReceivables{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", Receivables: func(Deps) contracts.CustomerReceivables { return &fakeCustomerReceivables{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil {
+		t.Fatal("compose: want an error when two modules declare customer receivables")
+	}
+	if !strings.Contains(err.Error(), "customer receivables") {
+		t.Errorf("error %q does not say \"customer receivables\"", err)
+	}
+	if !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("error %q does not name both modules", err)
+	}
+}
+
+// With invoices disabled, the consumer's Deps.Receivables is nil rather than
+// the disabled module's provider — which is how customers tells "invoicing is
+// off" from "nothing is owed".
+func TestCompose_DisabledReceivablesProvider_LeavesNil(t *testing.T) {
+	var got Deps
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", Receivables: func(Deps) contracts.CustomerReceivables { return &fakeCustomerReceivables{} }, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Receivables != nil {
+		t.Errorf("Deps.Receivables = %v, want nil: beta (the receivables provider) is disabled", got.Receivables)
+	}
+}
+
+// A value preset on Deps.Receivables survives when no enabled module declares
+// Module.Receivables: the seam modtest.WithReceivables relies on.
+func TestCompose_PresetReceivablesSurviveWhenNoProvider(t *testing.T) {
+	preset := &fakeCustomerReceivables{}
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}, Receivables: preset}, fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Receivables != preset {
+		t.Errorf("Deps.Receivables = %v, want the preset value to survive with no provider", got.Receivables)
+	}
+}
+
 // The two project-shaped providers are independent: a composition with only
 // one of them leaves the other's slot nil, which is the "Time on, Expenses
 // off" (and the reverse) installation the consumer must handle.

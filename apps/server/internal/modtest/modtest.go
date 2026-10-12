@@ -126,6 +126,7 @@ type setup struct {
 	projects     contracts.ProjectDirectory
 	actuals      contracts.ProjectActuals
 	expenses     contracts.ProjectExpenses
+	receivables  contracts.CustomerReceivables
 	holders      []contracts.CustomerReferenceHolder
 	personalData []contracts.CustomerPersonalDataHolder
 	invoicedWork []contracts.InvoicedWorkHolder
@@ -244,6 +245,23 @@ func WithActuals(p contracts.ProjectActuals) Option {
 // rather than as zeroes.
 func WithExpenses(p contracts.ProjectExpenses) Option {
 	return func(s *setup) { s.expenses = p }
+}
+
+// WithReceivables sets Deps.Receivables directly to p, for a module under
+// test that reads what a customer was invoiced and owes
+// (contracts.CustomerReceivables) without composing the module that owns the
+// sales documents beside it — depguard forbids customers' own test package
+// from importing invoices, the same reason WithExpenses gives. The fake
+// decides what the module under test sees issued and open. module.Compose
+// only ever overwrites Deps.Receivables when one of the composed modules
+// declares Module.Receivables, so a value set here survives Compose
+// unchanged.
+//
+// Leaving it out is the installation without invoices: Deps.Receivables stays
+// nil, which is the case a consumer must handle as "invoicing is off" rather
+// than as zeroes.
+func WithReceivables(p contracts.CustomerReceivables) Option {
+	return func(s *setup) { s.receivables = p }
 }
 
 // WithCustomerReferenceHolders adds holders to Deps.CustomerReferenceHolders,
@@ -494,6 +512,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Projects:                 s.projects,
 		Actuals:                  s.actuals,
 		Expenses:                 s.expenses,
+		Receivables:              s.receivables,
 		CustomerReferenceHolders: s.holders,
 		CustomerPersonalData:     s.personalData,
 		InvoicedWork:             s.invoicedWork,

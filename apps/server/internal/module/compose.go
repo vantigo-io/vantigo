@@ -161,10 +161,11 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	}
 
 	// The customer directory, the user directory, the product catalog, the
-	// project directory, project actuals and project expenses are the
-	// sanctioned cross-module reads (contracts.CustomerDirectory,
-	// UserDirectory, ProductCatalog, ProjectDirectory, ProjectActuals,
-	// ProjectExpenses): at most one enabled module may declare each. Each is
+	// project directory, project actuals, project expenses and customer
+	// receivables are the sanctioned cross-module reads
+	// (contracts.CustomerDirectory, UserDirectory, ProductCatalog,
+	// ProjectDirectory, ProjectActuals, ProjectExpenses,
+	// CustomerReceivables): at most one enabled module may declare each. Each is
 	// resolved here, in this order, before any Mount runs, so its result can
 	// be copied onto every module's Deps below — including its own
 	// provider's, which may need it too — and so a later slot's provider
@@ -231,6 +232,19 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	}
 	if expensesProvider != nil {
 		deps.Expenses = expensesProvider.Expenses(deps)
+	}
+
+	// Customer receivables (contracts.CustomerReceivables) resolves beside
+	// expenses: the module that owns the sales documents reports what a
+	// customer was invoiced and owes, and the module that owns customers
+	// reads it. The provider needs nothing of Deps but the pool and the
+	// clock; it never calls the customer directory while it serves.
+	receivablesProvider, err := soleProvider(mods, "customer receivables", func(m Module) bool { return m.Receivables != nil })
+	if err != nil {
+		return nil, err
+	}
+	if receivablesProvider != nil {
+		deps.Receivables = receivablesProvider.Receivables(deps)
 	}
 
 	// The three billable reads (contracts.BillableHours, BillableExpenses,

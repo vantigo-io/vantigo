@@ -631,10 +631,84 @@ components:
                 - readyCount
                 - readyAmounts
             type: object
+        CustomerOverviewInvoices:
+            description: "What the customer has been invoiced and what they owe (customers receivables design D2), read from the invoices module and judged on the Oslo day asOf. Outstanding is the issued invoices that are open, partially paid or overdue, at their open amounts — gross less credited less paid; overdue the overdue ones among them. Reminder fees, compensation and interest are never included. Invoiced this year is the invoices issued in asOf's calendar year less the credit notes issued in it, whatever year the credited invoice was; last year the same for the year before. Present when the invoices module is on and the caller holds invoices:access. A customer with no issued document answers zero counts and empty lists, not absence."
+            properties:
+                asOf:
+                    description: The Oslo calendar day the states were judged on.
+                    format: date
+                    type: string
+                atCollectionCount:
+                    description: The outstanding invoices with a live hand-off to a collection agency.
+                    format: int32
+                    type: integer
+                invoicedLastYearAmounts:
+                    description: Issued less credited in the calendar year before asOf's, per currency, by ISO code; a currency with nothing is left out.
+                    items:
+                        $ref: '#/components/schemas/CustomerOverviewAmount'
+                    type: array
+                invoicedThisYearAmounts:
+                    description: Issued less credited in asOf's calendar year, per currency, by ISO code; a currency with nothing is left out. A credit note counts in the year it was issued.
+                    items:
+                        $ref: '#/components/schemas/CustomerOverviewAmount'
+                    type: array
+                lastIssuedOn:
+                    description: The latest issue date of any issued document of the customer, invoice or credit note.
+                    format: date
+                    type: string
+                lastPaymentOn:
+                    description: The latest paid-on date of any live payment against one of the customer's invoices.
+                    format: date
+                    type: string
+                oldestOverdueDueOn:
+                    description: The earliest due date among the overdue invoices; absent when none is overdue.
+                    format: date
+                    type: string
+                onHoldCount:
+                    description: The outstanding invoices with a live hold.
+                    format: int32
+                    type: integer
+                outstandingAmounts:
+                    description: The open amounts of the outstanding invoices, per currency, by ISO code; a currency with nothing outstanding is left out.
+                    items:
+                        $ref: '#/components/schemas/CustomerOverviewAmount'
+                    type: array
+                outstandingCount:
+                    description: The issued invoices that are open, partially paid or overdue, across every currency.
+                    format: int32
+                    type: integer
+                overdueAmounts:
+                    description: The open amounts of the overdue invoices, per currency, by ISO code; a currency with nothing overdue is left out.
+                    items:
+                        $ref: '#/components/schemas/CustomerOverviewAmount'
+                    type: array
+                overdueCount:
+                    description: The overdue invoices among the outstanding ones.
+                    format: int32
+                    type: integer
+            required:
+                - outstandingCount
+                - overdueCount
+                - onHoldCount
+                - atCollectionCount
+                - outstandingAmounts
+                - overdueAmounts
+                - invoicedThisYearAmounts
+                - invoicedLastYearAmounts
+                - asOf
+            type: object
         CustomerOverviewLastActivity:
             description: When anything last happened with this customer. Always present; each date is absent when it is unknown, or when the section it comes from is not in this response.
             properties:
                 expenseOn:
+                    format: date
+                    type: string
+                invoicedOn:
+                    description: The invoices section's lastIssuedOn.
+                    format: date
+                    type: string
+                paymentOn:
+                    description: The invoices section's lastPaymentOn.
                     format: date
                     type: string
                 timelineOn:
@@ -696,6 +770,8 @@ components:
             properties:
                 expenses:
                     $ref: '#/components/schemas/CustomerOverviewExpenses'
+                invoices:
+                    $ref: '#/components/schemas/CustomerOverviewInvoices'
                 lastActivity:
                     $ref: '#/components/schemas/CustomerOverviewLastActivity'
                 projects:
@@ -2956,7 +3032,7 @@ paths:
             x-vantigo-access: permission:customers:merge+customers:view
     /api/v1/customers/{id}/overview:
         get:
-            description: "What is going on with this customer across the modules that know (customer 360 design D1, D2): its open projects, the work approved on them and not yet invoiced, the expenses ready to invoice, and when anything last happened — composed server-side from the project directory, the time actuals and the project expenses contracts. Sections are shaped, never refused: projects needs the projects module and projects:access; work needs projects and the time module; unbilledAmounts and the whole expenses section need projects:view-financials or projects:manage-all, and expenses the expenses module too. Cost never appears. 404 when the customer does not exist; an archived customer answers normally."
+            description: "What is going on with this customer across the modules that know (customer 360 design D1, D2): its open projects, the work approved on them and not yet invoiced, the expenses ready to invoice, and when anything last happened — composed server-side from the project directory, the time actuals and the project expenses contracts. Sections are shaped, never refused: projects needs the projects module and projects:access; work needs projects and the time module; unbilledAmounts and the whole expenses section need projects:view-financials or projects:manage-all, and expenses the expenses module too; invoices — what the customer was invoiced and owes, from the invoices module (customers receivables design D2) — needs that module and invoices:access. Cost never appears. 404 when the customer does not exist; an archived customer answers normally."
             operationId: getCustomersByIdOverview
             parameters:
                 - in: path

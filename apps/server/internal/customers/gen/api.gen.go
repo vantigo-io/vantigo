@@ -314,9 +314,54 @@ type CustomerOverviewExpenses struct {
 	ReadyCount   int32                    `json:"readyCount"`
 }
 
+// CustomerOverviewInvoices What the customer has been invoiced and what they owe (customers receivables design D2), read from the invoices module and judged on the Oslo day asOf. Outstanding is the issued invoices that are open, partially paid or overdue, at their open amounts — gross less credited less paid; overdue the overdue ones among them. Reminder fees, compensation and interest are never included. Invoiced this year is the invoices issued in asOf's calendar year less the credit notes issued in it, whatever year the credited invoice was; last year the same for the year before. Present when the invoices module is on and the caller holds invoices:access. A customer with no issued document answers zero counts and empty lists, not absence.
+type CustomerOverviewInvoices struct {
+	// AsOf The Oslo calendar day the states were judged on.
+	AsOf openapi_types.Date `json:"asOf"`
+
+	// AtCollectionCount The outstanding invoices with a live hand-off to a collection agency.
+	AtCollectionCount int32 `json:"atCollectionCount"`
+
+	// InvoicedLastYearAmounts Issued less credited in the calendar year before asOf's, per currency, by ISO code; a currency with nothing is left out.
+	InvoicedLastYearAmounts []CustomerOverviewAmount `json:"invoicedLastYearAmounts"`
+
+	// InvoicedThisYearAmounts Issued less credited in asOf's calendar year, per currency, by ISO code; a currency with nothing is left out. A credit note counts in the year it was issued.
+	InvoicedThisYearAmounts []CustomerOverviewAmount `json:"invoicedThisYearAmounts"`
+
+	// LastIssuedOn The latest issue date of any issued document of the customer, invoice or credit note.
+	LastIssuedOn *openapi_types.Date `json:"lastIssuedOn,omitempty"`
+
+	// LastPaymentOn The latest paid-on date of any live payment against one of the customer's invoices.
+	LastPaymentOn *openapi_types.Date `json:"lastPaymentOn,omitempty"`
+
+	// OldestOverdueDueOn The earliest due date among the overdue invoices; absent when none is overdue.
+	OldestOverdueDueOn *openapi_types.Date `json:"oldestOverdueDueOn,omitempty"`
+
+	// OnHoldCount The outstanding invoices with a live hold.
+	OnHoldCount int32 `json:"onHoldCount"`
+
+	// OutstandingAmounts The open amounts of the outstanding invoices, per currency, by ISO code; a currency with nothing outstanding is left out.
+	OutstandingAmounts []CustomerOverviewAmount `json:"outstandingAmounts"`
+
+	// OutstandingCount The issued invoices that are open, partially paid or overdue, across every currency.
+	OutstandingCount int32 `json:"outstandingCount"`
+
+	// OverdueAmounts The open amounts of the overdue invoices, per currency, by ISO code; a currency with nothing overdue is left out.
+	OverdueAmounts []CustomerOverviewAmount `json:"overdueAmounts"`
+
+	// OverdueCount The overdue invoices among the outstanding ones.
+	OverdueCount int32 `json:"overdueCount"`
+}
+
 // CustomerOverviewLastActivity When anything last happened with this customer. Always present; each date is absent when it is unknown, or when the section it comes from is not in this response.
 type CustomerOverviewLastActivity struct {
 	ExpenseOn *openapi_types.Date `json:"expenseOn,omitempty"`
+
+	// InvoicedOn The invoices section's lastIssuedOn.
+	InvoicedOn *openapi_types.Date `json:"invoicedOn,omitempty"`
+
+	// PaymentOn The invoices section's lastPaymentOn.
+	PaymentOn *openapi_types.Date `json:"paymentOn,omitempty"`
 
 	// TimelineOn The customer's own latest timeline date, as timelineSummary.latestOccurredOn reports it.
 	TimelineOn *openapi_types.Date `json:"timelineOn,omitempty"`
@@ -351,6 +396,9 @@ type CustomerOverviewProjects struct {
 type CustomerOverviewResponse struct {
 	// Expenses The customer's expenses that are ready to invoice (customer 360 design D2): approved, billable, priced and not yet invoiced — the expenses module's own definition — over the projects in the overview's projects section. Present only with the expenses module on and for projects:view-financials or projects:manage-all.
 	Expenses *CustomerOverviewExpenses `json:"expenses,omitempty"`
+
+	// Invoices What the customer has been invoiced and what they owe (customers receivables design D2), read from the invoices module and judged on the Oslo day asOf. Outstanding is the issued invoices that are open, partially paid or overdue, at their open amounts — gross less credited less paid; overdue the overdue ones among them. Reminder fees, compensation and interest are never included. Invoiced this year is the invoices issued in asOf's calendar year less the credit notes issued in it, whatever year the credited invoice was; last year the same for the year before. Present when the invoices module is on and the caller holds invoices:access. A customer with no issued document answers zero counts and empty lists, not absence.
+	Invoices *CustomerOverviewInvoices `json:"invoices,omitempty"`
 
 	// LastActivity When anything last happened with this customer. Always present; each date is absent when it is unknown, or when the section it comes from is not in this response.
 	LastActivity CustomerOverviewLastActivity `json:"lastActivity"`

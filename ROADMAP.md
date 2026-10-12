@@ -236,7 +236,7 @@ on the same bet the tags' is.
 *Unblocks:* answering "who owns this relationship and what happens next" without
 building a deals pipeline.
 
-### Phase 5 — Customer 360 (two deliveries done)
+### Phase 5 — Customer 360 (three deliveries done)
 
 An overview panel per customer — open projects, unbilled hours and expenses, invoiced
 revenue and outstanding once Invoices exists, last activity — host-composed from
@@ -266,9 +266,21 @@ profile's own currency, and the customer step of Time's rate chain between the
 project default and the person card — the person card's currency rule, nothing
 converted. See [`docs/src/content/docs/en/reference/time.md#the-rate-chain`](docs/src/content/docs/en/reference/time.md#the-rate-chain).
 
+**Delivery C (done)** — decided in
+[`docs/superpowers/specs/2026-10-12-customers-receivables-design.md`](docs/superpowers/specs/2026-10-12-customers-receivables-design.md):
+receivables on the overview, now that Invoices exists through its phase 4B. A new
+single-provider contract, `contracts.CustomerReceivables`, implemented by Invoices
+from its own state derivation on the Oslo day of its clock — what the customer was
+invoiced this year and last (net of the credit notes issued in each year), what
+stands outstanding and overdue at the open amounts, charges never included, and the
+outstanding invoices on hold or at collection; the overview's `invoices` section,
+shaped by `invoices:access` alone and zero rather than absent for a customer with no
+documents; two tiles and a **See invoices** link on the panel, and two more dates in
+`lastActivity`. No new permission key. See
+[`docs/src/content/docs/en/reference/customers.md#customer-360`](docs/src/content/docs/en/reference/customers.md#customer-360).
+
 **Still ahead in this phase:** other modules writing to the customer timeline, riding
-on the outbox deferred until Orders; invoiced revenue and outstanding, once Invoices
-exists.
+on the outbox deferred until Orders.
 
 *Unblocks:* the reason the customer page is meant to be the hub, not just a card.
 
@@ -309,12 +321,12 @@ through `contracts.CustomerPersonalData` (communications, energy, projects); beh
 new `customers:personal-data`. See
 [`docs/src/content/docs/en/reference/customers.md#personal-data-and-anonymisation`](docs/src/content/docs/en/reference/customers.md#personal-data-and-anonymisation).
 
-Phase 6 is complete, and with it the Customers roadmap — this was its last delivery.
-Still deferred, each waiting on another module rather than on Customers: attachments on
-a customer and its timeline entries (phase 4), once the storage module has a model for
-them; and the other modules' timeline writers (phase 5), which ride on the
-domain-events outbox deferred until Orders — as do invoiced revenue and outstanding,
-once Invoices exists.
+Phase 6 is complete, and with it the Customers roadmap — this was its last delivery;
+phase 5's delivery C landed after it, once Invoices existed. Still deferred, each
+waiting on another module rather than on Customers: attachments on a customer and its
+timeline entries (phase 4), once the storage module has a model for them; and the
+other modules' timeline writers (phase 5), which ride on the domain-events outbox
+deferred until Orders.
 
 *Unblocks:* clean onboarding and offboarding, and a merge path that only gets more
 expensive the longer it waits.
@@ -324,9 +336,13 @@ expensive the longer it waits.
 Parent company (`parentId`, seedable from Brreg's `overordnetEnhet`) · customer-is-also-supplier
 (once purchasing and a supplier register arrive — a supplier invoice today names
 its supplier in free text) · custom fields · credit check integration
-(Proff/Creditsafe) · credit limit and credit hold (needs receivables to mean anything)
-· per-customer dunning settings (belongs with Invoices' own dunning) · a customer
-portal (after Invoices) · saved list views.
+(Proff/Creditsafe) · credit limit and credit hold (its prerequisite, receivables per
+customer, landed with phase 5's delivery C) · whether a buyer is bokføringspliktig,
+the fact the 2028 buyer org-number rule needs (bokføringsforskriften § 5-1-2 from
+2028-01-01; scheduled under [Invoices](#invoices), which reads it from here) · a
+customer portal (after Invoices) · saved list views. A customer's reminder policy —
+the per-customer dunning setting once listed here — landed in Invoices phase 4B, on
+the customer page's Invoices tab.
 
 **Deliberately not planned inside Customers:** a sales pipeline or quotes (its own
 module, if ever), email/calendar sync, marketing automation and a consent centre,

@@ -71,7 +71,27 @@ const everything = {
     lastWorkOn: "2026-09-12",
   },
   expenses: { readyCount: 2, readyAmounts: [{ currency: "NOK", amount: 450.5 }], lastExpenseOn: "2026-09-05" },
-  lastActivity: { timelineOn: "2026-09-01", workOn: "2026-09-12", expenseOn: "2026-09-05" },
+  invoices: {
+    outstandingCount: 4,
+    overdueCount: 3,
+    onHoldCount: 0,
+    atCollectionCount: 1,
+    outstandingAmounts: [{ currency: "NOK", amount: 2850 }],
+    overdueAmounts: [{ currency: "NOK", amount: 2350 }],
+    invoicedThisYearAmounts: [{ currency: "NOK", amount: 1650 }],
+    invoicedLastYearAmounts: [{ currency: "NOK", amount: 1499.5 }],
+    oldestOverdueDueOn: "2026-01-14",
+    lastIssuedOn: "2026-09-05",
+    lastPaymentOn: "2026-08-20",
+    asOf: "2026-09-12",
+  },
+  lastActivity: {
+    timelineOn: "2026-09-01",
+    workOn: "2026-09-12",
+    expenseOn: "2026-09-05",
+    invoicedOn: "2026-09-05",
+    paymentOn: "2026-08-20",
+  },
 };
 
 describe("the customer 360 panel", () => {
@@ -108,6 +128,9 @@ describe("the customer 360 panel", () => {
     expect(screen.queryByText("Open projects")).not.toBeInTheDocument();
     expect(screen.queryByText("Unbilled hours")).not.toBeInTheDocument();
     expect(screen.queryByText("Expenses ready to invoice")).not.toBeInTheDocument();
+    expect(screen.queryByText("Outstanding")).not.toBeInTheDocument();
+    expect(screen.queryByText("Invoiced this year")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "See invoices" })).not.toBeInTheDocument();
   });
 
   it("shows every tile and the open projects for a caller who may see them all", async () => {
@@ -135,6 +158,67 @@ describe("the customer 360 panel", () => {
     expect(within(second).getByText("—")).toBeInTheDocument();
     // Every open project is listed, so there is no "see all" line.
     expect(screen.queryByText(/See all/)).not.toBeInTheDocument();
+    // The two invoices tiles (customers receivables design D3) and the link
+    // to the Invoices tab.
+    expect(screen.getByText("Outstanding")).toBeInTheDocument();
+    expect(screen.getByText(/NOK\s2,850\.00/)).toBeInTheDocument();
+    expect(screen.getByText("4 invoices · 3 overdue, oldest due Jan 14, 2026 · 1 at collection")).toBeInTheDocument();
+    expect(screen.getByText("Invoiced this year")).toBeInTheDocument();
+    expect(screen.getByText(/NOK\s1,650\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/Last year NOK\s1,499\.50/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See invoices" })).toHaveAttribute("href", "/customers/42/invoices");
+  });
+
+  it("shows the invoices tiles with a dash and plain hints when nothing is outstanding or invoiced", async () => {
+    renderPanel({
+      invoices: {
+        outstandingCount: 0,
+        overdueCount: 0,
+        onHoldCount: 0,
+        atCollectionCount: 0,
+        outstandingAmounts: [],
+        overdueAmounts: [],
+        invoicedThisYearAmounts: [],
+        invoicedLastYearAmounts: [],
+        asOf: "2026-09-12",
+      },
+      lastActivity: {},
+    });
+
+    expect(await screen.findByText("Outstanding")).toBeInTheDocument();
+    // Outstanding, Invoiced this year and Last activity each show the dash.
+    expect(screen.getAllByText("—")).toHaveLength(3);
+    expect(screen.getByText("0 invoices")).toBeInTheDocument();
+    expect(screen.getByText("Nothing invoiced last year")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See invoices" })).toHaveAttribute("href", "/customers/42/invoices");
+  });
+
+  it("says invoice, not invoices, for one, and names a hold without an overdue part", async () => {
+    renderPanel({
+      invoices: {
+        ...everything.invoices,
+        outstandingCount: 1,
+        overdueCount: 0,
+        onHoldCount: 1,
+        atCollectionCount: 0,
+        oldestOverdueDueOn: undefined,
+        overdueAmounts: [],
+      },
+      lastActivity: {},
+    });
+
+    expect(await screen.findByText("1 invoice · 1 on hold")).toBeInTheDocument();
+  });
+
+  it("names an invoice issued or a payment received as the last activity", async () => {
+    renderPanel({ lastActivity: { timelineOn: "2026-09-01", invoicedOn: "2026-09-05" } });
+    expect(await screen.findByText("Sep 5, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Invoice issued")).toBeInTheDocument();
+    cleanup();
+
+    renderPanel({ lastActivity: { invoicedOn: "2026-09-05", paymentOn: "2026-09-08" } });
+    expect(await screen.findByText("Sep 8, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Payment received")).toBeInTheDocument();
   });
 
   it("shows the translated tiles and rows in Norwegian", async () => {
@@ -146,6 +230,10 @@ describe("the customer 360 panel", () => {
     expect(await screen.findByText("av 5 prosjekter")).toBeInTheDocument();
     expect(screen.getAllByText("Aktiv")).toHaveLength(2);
     expect(screen.getByText("12,5 t")).toBeInTheDocument();
+    expect(screen.getByText("Utestående")).toBeInTheDocument();
+    expect(screen.getByText(/^4 fakturaer · 3 forfalt, eldste forfall .*2026 · 1 til inkasso$/)).toBeInTheDocument();
+    expect(screen.getByText("Fakturert i år")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Se fakturaer" })).toBeInTheDocument();
   });
 
   it("shows a calendar date as that day in every time zone", async () => {
@@ -253,7 +341,8 @@ describe("the customer 360 panel", () => {
       projects: null,
       work: null,
       expenses: null,
-      lastActivity: { timelineOn: "2026-09-01", workOn: null, expenseOn: null },
+      invoices: null,
+      lastActivity: { timelineOn: "2026-09-01", workOn: null, expenseOn: null, invoicedOn: null, paymentOn: null },
     };
     // Stale from the start, so mounting refetches — and that refetch fails.
     queryClient.setQueryData(queryKey, cached, { updatedAt: 0 });
@@ -268,34 +357,77 @@ describe("the customer 360 panel", () => {
 
 describe("the latest activity", () => {
   it("is the customer's own timeline on a tie", () => {
-    expect(latestActivity({ timelineOn: "2026-09-12", workOn: "2026-09-12", expenseOn: "2026-09-12" })).toEqual({
+    expect(
+      latestActivity({
+        timelineOn: "2026-09-12",
+        workOn: "2026-09-12",
+        expenseOn: "2026-09-12",
+        invoicedOn: null,
+        paymentOn: null,
+      }),
+    ).toEqual({
       on: "2026-09-12",
       source: "timeline",
     });
   });
 
   it("is work over expenses on a tie", () => {
-    expect(latestActivity({ timelineOn: null, workOn: "2026-09-12", expenseOn: "2026-09-12" })).toEqual({
+    expect(
+      latestActivity({
+        timelineOn: null,
+        workOn: "2026-09-12",
+        expenseOn: "2026-09-12",
+        invoicedOn: null,
+        paymentOn: null,
+      }),
+    ).toEqual({
       on: "2026-09-12",
       source: "work",
     });
   });
 
   it("is an expense when that is all there is", () => {
-    expect(latestActivity({ timelineOn: null, workOn: null, expenseOn: "2026-09-05" })).toEqual({
+    expect(
+      latestActivity({ timelineOn: null, workOn: null, expenseOn: "2026-09-05", invoicedOn: null, paymentOn: null }),
+    ).toEqual({
       on: "2026-09-05",
       source: "expense",
     });
   });
 
   it("is work when that is all there is", () => {
-    expect(latestActivity({ timelineOn: null, workOn: "2026-09-11", expenseOn: null })).toEqual({
+    expect(
+      latestActivity({ timelineOn: null, workOn: "2026-09-11", expenseOn: null, invoicedOn: null, paymentOn: null }),
+    ).toEqual({
       on: "2026-09-11",
       source: "work",
     });
   });
 
+  it("is an invoice issued over a payment on a tie, and a payment when that is the latest", () => {
+    expect(
+      latestActivity({
+        timelineOn: null,
+        workOn: null,
+        expenseOn: null,
+        invoicedOn: "2026-09-12",
+        paymentOn: "2026-09-12",
+      }),
+    ).toEqual({ on: "2026-09-12", source: "invoiced" });
+    expect(
+      latestActivity({
+        timelineOn: "2026-09-01",
+        workOn: null,
+        expenseOn: null,
+        invoicedOn: "2026-09-05",
+        paymentOn: "2026-09-08",
+      }),
+    ).toEqual({ on: "2026-09-08", source: "payment" });
+  });
+
   it("is nothing when nothing is recorded", () => {
-    expect(latestActivity({ timelineOn: null, workOn: null, expenseOn: null })).toBeNull();
+    expect(
+      latestActivity({ timelineOn: null, workOn: null, expenseOn: null, invoicedOn: null, paymentOn: null }),
+    ).toBeNull();
   });
 });

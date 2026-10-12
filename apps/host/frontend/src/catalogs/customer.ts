@@ -26,6 +26,18 @@ const en = {
   "customer.overview360.status": "Status",
   "customer.overview360.lastWork": "Last work",
   "customer.overview360.statusActive": "Active",
+  "customer.overview360.outstanding": "Outstanding",
+  "customer.overview360.invoicesCount": "{{count}} invoices",
+  "customer.overview360.invoicesCountSingular": "{{count}} invoice",
+  "customer.overview360.overdueHint": "{{count}} overdue, oldest due {{date}}",
+  "customer.overview360.onHoldHint": "{{count}} on hold",
+  "customer.overview360.atCollectionHint": "{{count}} at collection",
+  "customer.overview360.invoicedThisYear": "Invoiced this year",
+  "customer.overview360.lastYearHint": "Last year {{amounts}}",
+  "customer.overview360.lastYearNothingHint": "Nothing invoiced last year",
+  "customer.overview360.seeInvoices": "See invoices",
+  "customer.overview360.lastActivityInvoiced": "Invoice issued",
+  "customer.overview360.lastActivityPayment": "Payment received",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -54,6 +66,18 @@ const nb: { [Key in keyof typeof en]: string } = {
   "customer.overview360.status": "Status",
   "customer.overview360.lastWork": "Sist ført",
   "customer.overview360.statusActive": "Aktiv",
+  "customer.overview360.outstanding": "Utestående",
+  "customer.overview360.invoicesCount": "{{count}} fakturaer",
+  "customer.overview360.invoicesCountSingular": "{{count}} faktura",
+  "customer.overview360.overdueHint": "{{count}} forfalt, eldste forfall {{date}}",
+  "customer.overview360.onHoldHint": "{{count}} på vent",
+  "customer.overview360.atCollectionHint": "{{count}} til inkasso",
+  "customer.overview360.invoicedThisYear": "Fakturert i år",
+  "customer.overview360.lastYearHint": "I fjor {{amounts}}",
+  "customer.overview360.lastYearNothingHint": "Ingenting fakturert i fjor",
+  "customer.overview360.seeInvoices": "Se fakturaer",
+  "customer.overview360.lastActivityInvoiced": "Faktura utstedt",
+  "customer.overview360.lastActivityPayment": "Betaling mottatt",
 };
 
 export const customerCatalog = { en, nb } as const satisfies CatalogResources;

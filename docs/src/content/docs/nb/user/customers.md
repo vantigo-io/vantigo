@@ -5,6 +5,9 @@ sidebar:
   order: 10
 sources:
   - apps/customers/frontend
+  - apps/host/frontend/src/routes/customers/-customer-360-panel.tsx
+  - apps/host/frontend/src/api/customer-overview.ts
+  - apps/host/frontend/src/catalogs/customer.ts
 ---
 
 Appen **Kunder** holder orden på selskapene og personene du gjør forretninger med,
@@ -79,11 +82,17 @@ for denne kunden og krever at modulen er på og en rettighet i den
 (`energy:metering-points-view`, `projects:access`, `invoices:access`).
 
 **Oversikt** åpner med panelet **Kunde 360**: **Åpne prosjekter**, **Ufakturerte
-timer**, **Utlegg klare til fakturering** og **Siste aktivitet** — hver flis vises
-bare når modulen er på og for deg — pluss en tabell over åpne prosjekter (**Kode**,
-**Navn**, **Status**, **Sist ført**) og **Se alle … åpne prosjekter** når det finnes
-flere; se [Customer 360](/en/reference/customers/#customer-360). Under det kommer
-kortene **Kunderelasjon**, **Kontakt og adresser**, **Register**, **Fakturering**,
+timer**, **Utlegg klare til fakturering**, **Utestående**, **Fakturert i år** og
+**Siste aktivitet** — hver flis vises bare når modulen er på og for deg — pluss en
+tabell over åpne prosjekter (**Kode**, **Navn**, **Status**, **Sist ført**) og **Se
+alle … åpne prosjekter** når det finnes flere. **Utestående** er det kunden fortsatt
+skylder på utstedte fakturaer, med hvor mange fakturaer det gjelder, hvor mange som
+er forfalt og det eldste forfallet, og eventuelle på vent eller til inkasso;
+**Fakturert i år** er årets fakturaer minus årets kreditnotaer, med fjorårets tall
+under. Begge krever Faktura-modulen og `invoices:access`, og kommer med lenken **Se
+fakturaer** til kundens Fakturaer-fane; se
+[Customer 360](/en/reference/customers/#customer-360). Under det kommer kortene
+**Kunderelasjon**, **Kontakt og adresser**, **Register**, **Fakturering**,
 **Kontakter** og **Tidslinje**, beskrevet i avsnittene som følger.
 
 Et banner øverst sier fra når kunden er arkivert, slått sammen med en annen, planlagt

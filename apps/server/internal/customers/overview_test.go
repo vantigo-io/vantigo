@@ -233,6 +233,20 @@ type overviewJSON struct {
 		ReadyAmounts  []overviewAmountJSON `json:"readyAmounts"`
 		LastExpenseOn *string              `json:"lastExpenseOn"`
 	} `json:"expenses"`
+	Invoices *struct {
+		OutstandingCount        int                  `json:"outstandingCount"`
+		OverdueCount            int                  `json:"overdueCount"`
+		OnHoldCount             int                  `json:"onHoldCount"`
+		AtCollectionCount       int                  `json:"atCollectionCount"`
+		OutstandingAmounts      []overviewAmountJSON `json:"outstandingAmounts"`
+		OverdueAmounts          []overviewAmountJSON `json:"overdueAmounts"`
+		InvoicedThisYearAmounts []overviewAmountJSON `json:"invoicedThisYearAmounts"`
+		InvoicedLastYearAmounts []overviewAmountJSON `json:"invoicedLastYearAmounts"`
+		OldestOverdueDueOn      *string              `json:"oldestOverdueDueOn"`
+		LastIssuedOn            *string              `json:"lastIssuedOn"`
+		LastPaymentOn           *string              `json:"lastPaymentOn"`
+		AsOf                    string               `json:"asOf"`
+	} `json:"invoices"`
 	// LastActivity is a map so a test can say "exactly these dates, and no
 	// others" in one comparison.
 	LastActivity map[string]string `json:"lastActivity"`

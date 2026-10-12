@@ -3613,6 +3613,30 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   `contracts.ErasedData` carries no reason field; this paragraph is where the reasons
   are written.
 
+## What Invoices reports to other modules
+
+This module provides one single-provider contract,
+[`contracts.CustomerReceivables`](/en/reference/customers/#contractscustomerreceivables)
+(`receivables.go`, `Module().Receivables`): what one customer was invoiced and owes,
+for the customers module's [Customer 360](/en/reference/customers/#customer-360)
+panel. Decided in
+[`docs/superpowers/specs/2026-10-12-customers-receivables-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-12-customers-receivables-design.md).
+
+Two queries in `queries/receivables.sql` derive each issued document's state and open
+amount exactly as the list and the stats do — the two lateral joins and
+`invoices.document_state` on the Oslo business day of this module's clock
+(`businessDay`, never `CURRENT_DATE`) — so a customer page can never disagree with
+the list. The first groups the money by currency: the invoices and the credit notes
+issued in the current Oslo calendar year and in the year before, by issue date, and
+the open amounts of the outstanding (`open`, `partially_paid`, `overdue`) and the
+overdue invoices. The second counts across currencies: the outstanding and overdue
+invoices, those among the outstanding with a live hold or a live hand-off, the oldest
+overdue due date, the latest issue date of any document and the latest live payment.
+Drafts are never read, and neither are the charges tables: the open amount is the
+principal's, as everywhere here. The provider holds no transaction and never calls the
+customer directory; it is given the pool and the clock and nothing else, and it fails
+rather than answers zeros when a query fails.
+
 ## Permissions
 
 No built-in role holds any of these; Owner has the wildcard. Phase 4 adds no key (design

@@ -26,6 +26,26 @@ export interface OverviewOpenProject {
   lastWorkOn: string | null;
 }
 
+/**
+ * What the customer was invoiced and owes (customers receivables design D2):
+ * counts and dates the invoices module's, money per currency with a zero
+ * currency left out.
+ */
+export interface OverviewInvoices {
+  outstandingCount: number;
+  overdueCount: number;
+  onHoldCount: number;
+  atCollectionCount: number;
+  outstandingAmounts: OverviewAmount[];
+  overdueAmounts: OverviewAmount[];
+  invoicedThisYearAmounts: OverviewAmount[];
+  invoicedLastYearAmounts: OverviewAmount[];
+  oldestOverdueDueOn: string | null;
+  lastIssuedOn: string | null;
+  lastPaymentOn: string | null;
+  asOf: string;
+}
+
 export interface CustomerOverview {
   projects: { openCount: number; totalCount: number; truncated: boolean; open: OverviewOpenProject[] } | null;
   work: {
@@ -37,7 +57,14 @@ export interface CustomerOverview {
     lastWorkOn: string | null;
   } | null;
   expenses: { readyCount: number; readyAmounts: OverviewAmount[]; lastExpenseOn: string | null } | null;
-  lastActivity: { timelineOn: string | null; workOn: string | null; expenseOn: string | null };
+  invoices: OverviewInvoices | null;
+  lastActivity: {
+    timelineOn: string | null;
+    workOn: string | null;
+    expenseOn: string | null;
+    invoicedOn: string | null;
+    paymentOn: string | null;
+  };
 }
 
 /** The wire shape: every optional field may simply be missing. */
@@ -57,7 +84,12 @@ interface CustomerOverviewWire {
     lastWorkOn?: string;
   };
   expenses?: { readyCount: number; readyAmounts: OverviewAmount[]; lastExpenseOn?: string };
-  lastActivity?: { timelineOn?: string; workOn?: string; expenseOn?: string };
+  invoices?: Omit<OverviewInvoices, "oldestOverdueDueOn" | "lastIssuedOn" | "lastPaymentOn"> & {
+    oldestOverdueDueOn?: string;
+    lastIssuedOn?: string;
+    lastPaymentOn?: string;
+  };
+  lastActivity?: { timelineOn?: string; workOn?: string; expenseOn?: string; invoicedOn?: string; paymentOn?: string };
 }
 
 export const normaliseCustomerOverview = (wire: CustomerOverviewWire): CustomerOverview => ({
@@ -79,12 +111,22 @@ export const normaliseCustomerOverview = (wire: CustomerOverviewWire): CustomerO
         lastExpenseOn: wire.expenses.lastExpenseOn ?? null,
       }
     : null,
+  invoices: wire.invoices
+    ? {
+        ...wire.invoices,
+        oldestOverdueDueOn: wire.invoices.oldestOverdueDueOn ?? null,
+        lastIssuedOn: wire.invoices.lastIssuedOn ?? null,
+        lastPaymentOn: wire.invoices.lastPaymentOn ?? null,
+      }
+    : null,
   // Always present on the wire (D2); read defensively all the same, because a
   // missing object here would take the whole panel down rather than one tile.
   lastActivity: {
     timelineOn: wire.lastActivity?.timelineOn ?? null,
     workOn: wire.lastActivity?.workOn ?? null,
     expenseOn: wire.lastActivity?.expenseOn ?? null,
+    invoicedOn: wire.lastActivity?.invoicedOn ?? null,
+    paymentOn: wire.lastActivity?.paymentOn ?? null,
   },
 });
 
@@ -98,7 +140,10 @@ export const normaliseCustomerOverview = (wire: CustomerOverviewWire): CustomerO
  * which is a prefix of this one, so after a new timeline note the Last
  * activity tile catches up within `staleTime` or on the next mount. Closing
  * that needs the package to tell the host about its writes, which is a new
- * prop D3 rules out; it is a follow-up, not a re-key under `"timeline"`.
+ * prop D3 rules out; it is a follow-up, not a re-key under `"timeline"`. The
+ * same holds for the Invoices tab's writes: a payment registered or an
+ * invoice issued there reaches the Outstanding tile within `staleTime` or on
+ * the next mount, not at once.
  *
  * `retry: false` is the host's rule for every query: a failing overview (one
  * failing contract fails the whole request, D2) would otherwise hold the

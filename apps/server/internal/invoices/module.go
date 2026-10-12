@@ -97,16 +97,18 @@ var limits = map[string]ratelimit.Policy{
 }
 
 // Module is invoices as a platform module: its contract mounted under
-// /api/v1/invoices/, its five permissions in the composed catalog, the two
-// slots every module holding customer ids fills (customer_slots.go): the merge
-// holder and the personal-data provider, and its workers — the two EHF
-// workers and the reminder worker.
+// /api/v1/invoices/, its five permissions in the composed catalog, the
+// customer receivables it provides to the customers module (receivables.go),
+// the two slots every module holding customer ids fills (customer_slots.go):
+// the merge holder and the personal-data provider, and its workers — the two
+// EHF workers and the reminder worker.
 func Module() module.Module {
 	return module.Module{
 		Name:                 "invoices",
 		Permissions:          permissions,
 		Mount:                mount,
 		Workers:              workers,
+		Receivables:          newCustomerReceivables,
 		CustomerReferences:   newCustomerReferenceHolder,
 		CustomerPersonalData: newCustomerPersonalData,
 	}
