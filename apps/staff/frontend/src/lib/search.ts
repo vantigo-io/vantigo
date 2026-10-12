@@ -49,8 +49,8 @@ export const validatePeopleSearch = (search: Record<string, unknown>): PeopleSea
   create: search.create === "person" ? "person" : undefined,
 });
 
-/** The tabs of the person page (design §7); the Account, Absence and Documents tabs come with later deliveries. */
-export const personTabs = ["profile", "employments", "history"] as const;
+/** The tabs of the person page and My page (design §7); the Account and Absence tabs come with later deliveries. */
+export const personTabs = ["profile", "employments", "history", "documents"] as const;
 export type PersonTab = (typeof personTabs)[number];
 
 /** The person page's and My page's URL search: the tab, so a refresh or a pasted link opens the same view. */

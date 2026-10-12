@@ -1,3 +1,4 @@
+import type { StaffDocument, StaffDocumentCategory } from "../api/documents";
 import type { StaffEmployment, StaffTerms } from "../api/employments";
 import type { StaffCapabilities, StaffMeta, StaffStructure } from "../api/meta";
 import type {
@@ -394,3 +395,117 @@ export const events = (): Record<number, StaffEvent[]> => ({
     },
   ],
 });
+
+/** The six seeded categories (classes A, A, D, D, E, D; restricted ⇔ E), a company one and an archived one. */
+export const documentCategories = (): StaffDocumentCategory[] => [
+  ...(
+    [
+      [1, "contract", "Contract", "Arbeidsavtale", "A"],
+      [2, "attest", "Attest", "Attest", "A"],
+      [3, "certificate", "Certificate", "Sertifikat", "D"],
+      [4, "correspondence", "Correspondence", "Korrespondanse", "D"],
+      [5, "health", "Health", "Helse", "E"],
+      [6, "other", "Other", "Annet", "D"],
+    ] as const
+  ).map(([id, key, en, nb, documentClass]) => ({
+    id,
+    key,
+    names: { en, nb },
+    class: documentClass,
+    restricted: documentClass === "E",
+    seeded: true,
+    sort: id,
+    revision: 1,
+  })),
+  {
+    id: 7,
+    key: "training",
+    names: { en: "Training record", nb: "Opplæringsbevis" },
+    class: "D",
+    restricted: false,
+    seeded: false,
+    sort: 7,
+    revision: 2,
+  },
+  {
+    id: 8,
+    key: "old-forms",
+    names: { en: "Old forms", nb: "Gamle skjema" },
+    class: "D",
+    restricted: false,
+    seeded: false,
+    sort: 8,
+    revision: 3,
+    archivedAt: "2026-02-01T09:00:00Z",
+  },
+];
+
+/** A document filed under one of `documentCategories()`, as every document carries its category. */
+const filed = (
+  categoryId: number,
+  document: Omit<StaffDocument, "category" | "revision" | "contentType"> &
+    Partial<Pick<StaffDocument, "revision" | "contentType">>,
+): StaffDocument => {
+  const category = documentCategories().find((one) => one.id === categoryId) as StaffDocumentCategory;
+  return {
+    contentType: "application/pdf",
+    revision: 1,
+    ...document,
+    category: {
+      id: category.id,
+      key: category.key,
+      names: category.names,
+      class: category.class,
+      restricted: category.restricted,
+    },
+  };
+};
+
+/**
+ * Ada's archive, newest first — her signed contract, a certificate that has
+ * expired, one valid until next year and a sick note (a health document) —
+ * and one document of Grace's.
+ */
+export const documents = (): StaffDocument[] => [
+  filed(5, {
+    id: 504,
+    personId: 101,
+    fileName: "sick-note.pdf",
+    sizeBytes: 48_000,
+    uploadedAt: "2026-09-20T10:00:00Z",
+  }),
+  filed(3, {
+    id: 503,
+    personId: 101,
+    fileName: "førstehjelp.png",
+    contentType: "image/png",
+    sizeBytes: 2_400_000,
+    validTo: "2027-05-01",
+    uploadedAt: "2026-05-02T10:00:00Z",
+  }),
+  filed(3, {
+    id: 502,
+    personId: 101,
+    fileName: "forklift-licence.pdf",
+    sizeBytes: 310_000,
+    validTo: "2026-06-30",
+    uploadedAt: "2025-03-01T10:00:00Z",
+  }),
+  filed(1, {
+    id: 501,
+    personId: 101,
+    employmentId: 201,
+    fileName: "employment-contract.pdf",
+    sizeBytes: 125_000,
+    signedAt: "2024-12-15",
+    uploadedAt: "2024-12-16T10:00:00Z",
+    revision: 2,
+  }),
+  filed(6, {
+    id: 505,
+    personId: 102,
+    fileName: "grace-reference.pdf",
+    sizeBytes: 90_000,
+    uploadedAt: "2026-02-01T10:00:00Z",
+  }),
+];

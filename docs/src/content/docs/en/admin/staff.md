@@ -116,7 +116,9 @@ the person's record), E for health. Six categories are there from the start: con
 and attest (A), certificate, correspondence and other (D), and health (E). A category
 of class E is restricted: its documents are health documents.
 
-To add one of your own, as a user with `staff:manage`:
+The table under **Staff settings** → **Document categories** does all of this on screen
+([the user guide](/en/user/staff/#document-categories)). Through the API, to add one of
+your own, as a user with `staff:manage`:
 
 1. `POST /api/v1/staff/document-categories` with a `key` (1–40 of `a–z`, `0–9` and
    hyphens), `names` in English and Norwegian and a `class` of `A`, `D` or `E`, for

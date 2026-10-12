@@ -1,5 +1,6 @@
 import "./i18n";
 
+export * from "./api/documents";
 export * from "./api/employments";
 export * from "./api/me";
 export { type StaffCapabilities, type StaffMeta, type StaffStructure, staffMetaQueryOptions } from "./api/meta";
@@ -10,6 +11,7 @@ export { PersonPicker, type PersonPickerProps } from "./components/person-picker
 export { PersonStatusBadge } from "./components/person-status";
 export { staffCatalog } from "./i18n";
 export * from "./lib/dates";
+export * from "./lib/documents";
 export * from "./lib/employee-number";
 export * from "./lib/errors";
 export * from "./lib/format";
