@@ -528,7 +528,7 @@ sletter resten av seg selv hver time; hva hver sletting fjerner, står i
   feltet før noe lagres. Har noen andre lagret innstillingene siden du åpnet siden,
   lastes de inn på nytt og siden sier fra.
 - **Ventende slettinger** og **Feilede slettinger** — filer slettingene og
-  dokumentslettingene har satt i kø for fjerning fra dokumentlageret, og de lageret har
+  dokumentslettingene har satt i kø for fjerning fra objektlageret, og de lageret har
   nektet minst én gang. Så lenge noen feiler, ber kortet deg sjekke at objektlageret er
   satt opp og kan nås; de prøves igjen til det bekrefter.
 - **Eldste ventende siden** og **Sist slettet** — når den eldste filen ble satt i kø, og

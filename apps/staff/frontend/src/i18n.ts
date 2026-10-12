@@ -777,7 +777,6 @@ export const staffCatalog = {
     thresholdDuty_otp:
       "An occupational pension scheme (OTP-loven § 2) when someone works 75 % or more, or the people at 20 % or more add up to two full-time positions — unless the only such person is the owner.",
     thresholdAcknowledgedOn: "Acknowledged {{date}}",
-    thresholdNotAcknowledged: "Not acknowledged",
     acknowledge: "Acknowledge",
     acknowledgeThreshold: "Acknowledge {{name}}",
     acknowledgeThresholdTitle: "Acknowledge {{name}}?",
@@ -1560,7 +1559,6 @@ export const staffCatalog = {
     thresholdDuty_otp:
       "En tjenestepensjonsordning (OTP-loven § 2) når noen jobber 75 % eller mer, eller de som jobber 20 % eller mer, til sammen utgjør to årsverk — med mindre den eneste slike personen er eieren.",
     thresholdAcknowledgedOn: "Bekreftet {{date}}",
-    thresholdNotAcknowledged: "Ikke bekreftet",
     acknowledge: "Bekreft",
     acknowledgeThreshold: "Bekreft {{name}}",
     acknowledgeThresholdTitle: "Bekrefte {{name}}?",

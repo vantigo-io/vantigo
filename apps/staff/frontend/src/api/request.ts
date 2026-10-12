@@ -1,4 +1,10 @@
-import { createApiClient } from "@vantigo/frontend-api-client";
+import {
+  ApiConflictError,
+  ApiValidationError,
+  createApiClient,
+  NotFoundError,
+  readJson,
+} from "@vantigo/frontend-api-client";
 import { appUrl } from "@vantigo/frontend-shell";
 
 const client = createApiClient({ resolveUrl: appUrl, sessionNotFoundMeansExpired: false });
@@ -41,3 +47,23 @@ export interface Paginated<T> {
     hasPreviousPage: boolean;
   };
 }
+
+/**
+ * A refused answer as the shared client throws it, so the page says it in the
+ * same words — but with the problem's `code` kept on a validation refusal
+ * too, which the shared client drops: an import's file refusals
+ * (`import_sealed_columns` …) and the payroll month's are field errors whose
+ * code is what the page words.
+ */
+export const refusalOf = async (response: Response): Promise<Error> => {
+  const problem = await readJson<{ title?: string; detail?: string; code?: string; errors?: Record<string, string[]> }>(
+    response,
+  ).catch(() => null);
+  const message = problem?.detail ?? problem?.title ?? `Request failed (HTTP ${response.status})`;
+  if (response.status === 404) return new NotFoundError(message);
+  if (problem?.errors)
+    return Object.assign(new ApiValidationError(message, problem.errors, response.status), { code: problem.code });
+  if (response.status === 409 && problem?.title)
+    return new ApiConflictError(message, { title: problem.title, detail: problem.detail, code: problem.code, problem });
+  return Object.assign(new Error(message), { status: response.status, code: problem?.code });
+};
