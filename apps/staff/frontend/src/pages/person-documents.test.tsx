@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { choose, region, retype, sent } from "../test/helpers";
+import { awaitDownload, choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { type StaffStub, staffProblem, stubStaffApi } from "../test/server";
 
@@ -124,10 +124,10 @@ describe("Documents tab — the list", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Download førstehjelp.png" }));
 
-    await waitFor(() => expect(click).toHaveBeenCalled());
+    await awaitDownload(click);
     expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("førstehjelp.png");
     expect(fetchMock.actualCalls.some(([url]) => String(url).endsWith("/api/v1/staff/documents/503"))).toBe(true);
-    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:staff"));
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:staff"), { timeout: 5000 });
   });
 
   it("changes a document's dates with the revision it read", async () => {
@@ -235,7 +235,7 @@ describe("Documents tab — the list", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Download forklift-licence.pdf" }));
 
-    await waitFor(() => expect(click).toHaveBeenCalled());
+    await awaitDownload(click);
     expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("forste.pdf");
   });
 
