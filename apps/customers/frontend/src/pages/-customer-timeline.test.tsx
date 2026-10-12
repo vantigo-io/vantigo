@@ -1404,3 +1404,120 @@ describe("the timeline's merge events", () => {
     expect(screen.getByText("Slått sammen med en annen kunde", { selector: "span" })).toBeInTheDocument();
   });
 });
+
+describe("the timeline's attachments", () => {
+  const renderWithAttachments = async (fetchMock: ReturnType<typeof vi.fn>, canManage = true) => {
+    stubFetch(fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={queryClient}>
+          <CustomerTimeline
+            customerId={42}
+            canManageTimeline={canManage}
+            attachments={[
+              {
+                id: 1001,
+                customerId: 42,
+                fileName: "epost.pdf",
+                contentType: "application/pdf",
+                sizeBytes: 2048,
+                uploadedAt: "2026-07-20T00:00:00Z",
+                timelineEntry: {
+                  id: 7,
+                  eventType: "note",
+                  occurredOn: "2020-07-20",
+                  summary: "Original note",
+                  state: "active",
+                },
+              },
+              {
+                id: 1002,
+                customerId: 42,
+                fileName: "loose.pdf",
+                contentType: "application/pdf",
+                sizeBytes: 2048,
+                uploadedAt: "2026-07-20T00:00:00Z",
+                timelineEntry: null,
+              },
+            ]}
+          />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  };
+
+  it("shows a manual entry's own attachments under it, and nothing for a file on the customer", async () => {
+    await renderWithAttachments(vi.fn().mockResolvedValue(json({ data: [entry()], nextCursor: null })));
+    expect(await screen.findByRole("button", { name: "Download epost.pdf" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download loose.pdf" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete epost.pdf" })).toBeInTheDocument();
+  });
+
+  it("offers Attach file… on a manual entry and sends the file with the entry's id", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST" && String(input).endsWith("/attachments")) {
+        const form = init.body as FormData;
+        expect((form.get("file") as File).name).toBe("vedlegg.pdf");
+        expect(form.get("timelineEntryId")).toBe("7");
+        return Promise.resolve(
+          json(
+            {
+              id: 1003,
+              customerId: 42,
+              fileName: "vedlegg.pdf",
+              contentType: "application/pdf",
+              sizeBytes: 4,
+              uploadedAt: "2026-07-20T00:00:00Z",
+            },
+            201,
+          ),
+        );
+      }
+      return Promise.resolve(json({ data: [entry()], nextCursor: null }));
+    });
+    await renderWithAttachments(fetchMock);
+    await userEvent.click(await screen.findByRole("button", { name: /actions for note/i }));
+    await userEvent.click(await screen.findByText("Attach file…"));
+    await userEvent.upload(
+      screen.getByTestId("attach-file-input"),
+      new File([new Uint8Array(4)], "vedlegg.pdf", { type: "application/pdf" }),
+    );
+    await waitFor(() =>
+      expect(notifications.show).toHaveBeenCalledWith(expect.objectContaining({ title: "Attachment added" })),
+    );
+  });
+
+  it("offers neither a delete nor Attach file… without canManageTimeline, and never on a generated entry", async () => {
+    await renderWithAttachments(
+      vi.fn().mockResolvedValue(
+        json({
+          data: [
+            entry(),
+            entry({
+              id: 8,
+              provenance: "generated",
+              eventType: "customer.attachment_added",
+              note: null,
+              summary: "Attachment added: loose.pdf",
+            }),
+          ],
+          nextCursor: null,
+        }),
+      ),
+      false,
+    );
+    expect(await screen.findByRole("button", { name: "Download epost.pdf" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete epost.pdf" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Attach file…")).not.toBeInTheDocument();
+    expect(screen.getByText("Attachment added", { selector: "p" })).toBeInTheDocument();
+  });
+
+  it("offers the two attachment events in the Event types filter", async () => {
+    await renderTimeline(vi.fn(() => Promise.resolve(json({ data: [entry({ id: 1 })], nextCursor: null }))));
+    await userEvent.click(screen.getByRole("combobox", { name: "Event types" }));
+    expect(screen.getByText("Attachment added", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("Attachment removed", { selector: "span" })).toBeInTheDocument();
+  });
+});
