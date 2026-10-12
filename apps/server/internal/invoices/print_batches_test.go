@@ -899,12 +899,23 @@ func TestPrintBatch_ReprintTakesNoInvoice(t *testing.T) {
 // A batch posted or reprinted while its own creation is still printing
 // (D18; Task 13's review, IMPORTANT-1): the request is parked right after it
 // locked its first letter, holding the batch FOR SHARE, and the posting or
-// the reprint then waits on the batch (pg_blocking_pids). The first letter
-// is printed and committed, and the posting sends it — or the reprint
-// returns it to awaiting print; the second letter's transaction then finds
-// the batch closed and leaves the letter out, print_batch_closed, still
-// awaiting print and free for another batch — never printed into a batch
-// that is closed.
+// the reprint then waits on the batch, on the print's own transaction
+// (pg_blocking_pids). The first letter is printed and committed, and the
+// posting sends it — or the reprint returns it to awaiting print; the second
+// letter's transaction then finds the batch closed and leaves the letter
+// out, print_batch_closed, still awaiting print and free for another batch —
+// never printed into a batch that is closed.
+//
+// Which transaction takes the batch after the first letter commits is
+// PostgreSQL's to decide, not the module's: the posting, woken by the
+// commit, must take the row again, while the second letter's FOR SHARE, if
+// it reaches the row first, finds it free and takes it at once, ahead of
+// the posting, which then waits for the second letter and sends both. On a
+// loaded runner the woken posting loses that race. Either order is right
+// for the module; this test wants the first, so the batch table is fenced
+// (tableFence) behind the posting once it waits: the second letter's share
+// queues behind the fence until the posting has committed, and the fence
+// gives way on its own.
 func TestPrintBatch_PostedWhilePrinting(t *testing.T) {
 	for _, tc := range []struct {
 		name, op, firstStatus string
@@ -922,15 +933,23 @@ func TestPrintBatch_PostedWhilePrinting(t *testing.T) {
 			before := deadlocks(t, probeConn)
 			var once sync.Once
 			var done <-chan raceRequest
+			var fence *tableFence
 			waited := make(chan uint32, 1)
 			restore := invoices.SetLockTaken(func(_ context.Context, what, key string) {
 				if what != "reminder" || key != idKey(a) {
 					return
 				}
 				once.Do(func() {
+					printPID := idleInTransaction(t, probeConn)
 					id := int64(h.Count(t, `SELECT max(id)::int FROM invoices.reminder_print_batches`))
 					done = startRequest(payer(t, h), http.MethodPost, batchPath(id, tc.op), tc.body)
-					waited <- newWaiter(t, probeConn)
+					waiter := newWaiter(t, probeConn)
+					if got := blockersOf(t, probeConn, waiter); !slices.Equal(got, []uint32{printPID}) {
+						t.Errorf("the %s waits on %v, want the print's transaction %d", tc.name, got, printPID)
+					}
+					fence = fenceTable(t, h, "invoices.reminder_print_batches")
+					fence.queued(t, probeConn, printPID, waiter)
+					waited <- waiter
 				})
 			})
 			r := printFor(t, h, "2026-09-12", a, b)
@@ -939,6 +958,7 @@ func TestPrintBatch_PostedWhilePrinting(t *testing.T) {
 				t.Errorf("the %s still waits after the batch was made", tc.name)
 			}
 			finished(t, "the "+tc.name, done, http.StatusOK)
+			fence.released(t)
 			if len(r.LeftOut) != 1 || r.LeftOut[0].ReminderID != b || r.LeftOut[0].Reason != "print_batch_closed" {
 				t.Errorf("left out %+v, want letter %d, print_batch_closed", r.LeftOut, b)
 			}

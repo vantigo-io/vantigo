@@ -19,9 +19,10 @@ import (
 // transaction, every NOWAIT probe and every pg_blocking_pids reader is on a
 // connection of its own, outside the pool; a row lock is proved by NOWAIT
 // probes of each mode and a wait by pg_blocking_pids — never by reading
-// pg_locks — and pg_stat_database.deadlocks is read after each race. A test
-// using the kit never runs in parallel: the seams it installs are the
-// package's.
+// pg_locks — and pg_stat_database.deadlocks is read after each race; a row
+// is handed from a parked transaction to its waiter, past a third
+// transaction, behind a table fence (tableFence). A test using the kit never
+// runs in parallel: the seams it installs are the package's.
 
 // raceHarness is an invoices installation on a pool of two connections.
 func raceHarness(t *testing.T) *harness {
@@ -70,6 +71,84 @@ func (l *rawLock) release(t *testing.T) {
 	t.Helper()
 	if err := l.tx.Commit(context.Background()); err != nil {
 		t.Fatalf("release the raw lock: %v", err)
+	}
+}
+
+// tableFence is LOCK TABLE ... IN EXCLUSIVE MODE requested, in a transaction
+// on a connection of its own, while other transactions hold the table, so it
+// queues; and rolled back by itself the moment it is granted, once the last
+// of them has ended. Queued, it makes every later request of a conflicting
+// table lock — a row lock or a write, not a plain read — wait behind it,
+// while a transaction already holding a lock on the table goes on past it:
+// PostgreSQL queues a request behind a waiting one it conflicts with unless
+// the requester already holds a lock on the table. A race test uses it to
+// hand a row from one transaction to a waiter that queued on the row before
+// a third transaction can take it: a waiter woken by the holder's commit
+// must take the row again, and a transaction that reaches the row first and
+// finds it free takes it at once — a row lock queues only on a held row —
+// so a FOR SHARE can get in ahead of a FOR NO KEY UPDATE that waited for it.
+// Behind the fence, that transaction waits for the table until the waiter
+// has committed.
+type tableFence struct {
+	pid  uint32
+	done <-chan error
+}
+
+// fenceTable requests the fence on table from a connection of its own, on a
+// goroutine, under a 30-second deadline, and answers it: the caller proves it
+// queued with queued before letting the transactions it waits on end.
+func fenceTable(t *testing.T, h *harness, table string) *tableFence {
+	t.Helper()
+	conn := ownConn(t, h)
+	done := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			done <- err
+			return
+		}
+		defer func() { _ = tx.Rollback(context.Background()) }()
+		_, err = tx.Exec(ctx, `LOCK TABLE `+table+` IN EXCLUSIVE MODE`)
+		done <- err
+	}()
+	return &tableFence{pid: conn.PgConn().PID(), done: done}
+}
+
+// queued waits until the fence waits on every one of holders — the
+// transactions holding the table it must outwait — within newWaiter's 10
+// seconds, and fails the test when it waits on anyone else.
+func (f *tableFence) queued(t *testing.T, probe *pgx.Conn, holders ...uint32) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		got := blockersOf(t, probe, f.pid)
+		if len(got) > 0 {
+			slices.Sort(got)
+			want := slices.Clone(holders)
+			slices.Sort(want)
+			if !slices.Equal(got, want) {
+				t.Fatalf("the fence waits on %v, want %v", got, want)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("the fence never came to wait on %v within 10 s", holders)
+}
+
+// released fails the test unless the fence was granted and rolled back — the
+// transactions it waited on have ended — and answers at once when it was.
+func (f *tableFence) released(t *testing.T) {
+	t.Helper()
+	select {
+	case err := <-f.done:
+		if err != nil {
+			t.Errorf("the fence: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the fence was never granted")
 	}
 }
 
