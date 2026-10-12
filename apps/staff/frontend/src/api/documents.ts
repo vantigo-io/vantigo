@@ -109,7 +109,9 @@ export const fileNameFrom = (disposition: string | null, fallback: string): stri
       // fall through
     }
   }
-  const plain = /filename="?([^";]+)"?/i.exec(disposition ?? "");
+  // Anchored to a parameter of its own and its `=`, so a `filename*` in
+  // another charset is never read as the plain name.
+  const plain = /(?:^|;)\s*filename\s*=\s*"?([^";]+)"?/i.exec(disposition ?? "");
   return plain ? plain[1] : fallback;
 };
 

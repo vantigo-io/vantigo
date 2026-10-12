@@ -163,6 +163,7 @@ export const DocumentCategoriesTable = () => {
                               size="compact-xs"
                               variant="subtle"
                               aria-label={t("restoreRow", { name: nameOf(row) })}
+                              loading={archive.isPending && archive.variables?.row.id === row.id}
                               onClick={() => archive.mutate({ row, archived: false })}
                             >
                               {t("restore")}
@@ -173,6 +174,7 @@ export const DocumentCategoriesTable = () => {
                               variant="subtle"
                               color="red"
                               aria-label={t("archiveRow", { name: nameOf(row) })}
+                              loading={archive.isPending && archive.variables?.row.id === row.id}
                               onClick={() => archive.mutate({ row, archived: true })}
                             >
                               {t("archive")}

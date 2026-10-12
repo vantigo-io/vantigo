@@ -145,6 +145,18 @@ describe("My page — my own record", () => {
 });
 
 describe("My page — my documents and my data", () => {
+  it("shows a placeholder while my documents are on their way", async () => {
+    stubStaffApi({
+      role: "access",
+      me: 101,
+      read: (path) => (path.endsWith("/me/documents") ? (new Promise(() => {}) as unknown as Response) : undefined),
+    });
+    renderRoute("/staff/me?tab=documents");
+
+    await region("My data");
+    expect(document.querySelector(".mantine-Skeleton-root")).not.toBeNull();
+  });
+
   it("lists my own documents, health included, to download and nothing to change", async () => {
     const fetchMock = stubStaffApi({ role: "access", me: 101 });
     renderRoute("/staff/me?tab=documents");

@@ -1,12 +1,12 @@
-import { Alert, Box, Button, Group, Modal, Select, Stack, Text } from "@mantine/core";
+import { Alert, Box, Button, FileButton, Group, Modal, Select, Stack, Text } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { type UseFormReturnType, useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { IconAlertCircle, IconCamera, IconFileUpload } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { type ChangeEvent, type DragEvent, useState } from "react";
+import { type DragEvent, useRef, useState } from "react";
 import { type StaffDocumentCategory, uploadDocument } from "../api/documents";
 import { STAFF_QUERY_KEY } from "../api/request";
 import "../i18n";
@@ -20,20 +20,25 @@ export interface DocumentFieldValues {
 }
 
 /**
- * The category and the two dates. A contract asks for the signing date
- * first and says what it sets: the employment's signing date, when exactly
- * one employment covers that day and has none.
+ * The category and the two dates. Filing a contract asks for the signing
+ * date first and says what it sets: the employment's signing date, when
+ * exactly one employment covers that day and has none. Only filing sets it
+ * (`POST /people/{id}/documents`); a change of the document does not, so a
+ * change says nothing of it.
  */
 export const DocumentFields = <V extends DocumentFieldValues>({
   form,
   categories,
+  filing = false,
 }: {
   form: UseFormReturnType<V>;
   categories: StaffDocumentCategory[];
+  /** The upload, whose signing date reaches the employment — not a change. */
+  filing?: boolean;
 }) => {
   const { t, locale } = useI18n("staff");
   const chosen = categories.find((category) => String(category.id) === form.values.categoryId);
-  const contract = chosen?.key === "contract";
+  const contract = filing && chosen?.key === "contract";
   const signedAt = (
     <DateInput
       key="signedAt"
@@ -134,15 +139,16 @@ const UploadForm = ({
     onError: (error) => placeDocumentRefusal(error, t, form.setErrors, setBanner),
   });
 
-  const take = (file: File | undefined) => {
+  // Cleared after each pick, so picking the same file again is a pick too.
+  const resetPicker = useRef<() => void>(null);
+  const resetCamera = useRef<() => void>(null);
+  const take = (file: File | null | undefined) => {
     if (!file) return;
     form.setFieldValue("file", file);
     // Said at once, before anything is sent.
     form.setFieldError("file", fileRefusal(file, t));
-  };
-  const pick = (event: ChangeEvent<HTMLInputElement>) => {
-    take(event.target.files?.[0]);
-    event.target.value = "";
+    resetPicker.current?.();
+    resetCamera.current?.();
   };
   const drop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -184,22 +190,44 @@ const UploadForm = ({
               {t("dropDocumentHere")}
             </Text>
             <Group gap="sm" wrap="wrap">
-              <input
-                type="file"
+              <FileButton
+                onChange={take}
                 accept={DOCUMENT_ACCEPT}
-                aria-label={t("chooseFile")}
                 disabled={upload.isPending}
-                onChange={pick}
-              />
+                resetRef={resetPicker}
+                inputProps={{ "aria-label": t("chooseFile") }}
+              >
+                {(props) => (
+                  <Button
+                    {...props}
+                    variant="light"
+                    leftSection={<IconFileUpload size={16} />}
+                    disabled={upload.isPending}
+                  >
+                    {t("chooseFile")}
+                  </Button>
+                )}
+              </FileButton>
               {touch && (
-                <input
-                  type="file"
+                <FileButton
+                  onChange={take}
                   accept="image/*"
                   capture="environment"
-                  aria-label={t("takePhoto")}
                   disabled={upload.isPending}
-                  onChange={pick}
-                />
+                  resetRef={resetCamera}
+                  inputProps={{ "aria-label": t("takePhoto") }}
+                >
+                  {(props) => (
+                    <Button
+                      {...props}
+                      variant="light"
+                      leftSection={<IconCamera size={16} />}
+                      disabled={upload.isPending}
+                    >
+                      {t("takePhoto")}
+                    </Button>
+                  )}
+                </FileButton>
               )}
             </Group>
             {form.values.file && (
@@ -214,7 +242,7 @@ const UploadForm = ({
             )}
           </Stack>
         </Box>
-        <DocumentFields form={form} categories={offered} />
+        <DocumentFields form={form} categories={offered} filing />
         <Group justify="flex-end">
           <Button type="button" variant="default" onClick={onDone} disabled={upload.isPending}>
             {t("cancel")}

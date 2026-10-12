@@ -5,22 +5,42 @@ import { fieldRefusals } from "./errors";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
-/** The four types the server keeps (design S14), by type and by extension — HEIC often arrives without a type. */
-const DOCUMENT_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/heic"];
-const DOCUMENT_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "heic"];
+/**
+ * The four kinds the server keeps (design S14) — PDF, JPEG, PNG and HEIC —
+ * by every type and extension it takes as naming one of them (`objects.go`'s
+ * documentTypes), HEIF and its sequences among HEIC's.
+ */
+const DOCUMENT_TYPES = [
+  "application/pdf",
+  "application/x-pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/pjpeg",
+  "image/png",
+  "image/heic",
+  "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
+];
+const DOCUMENT_EXTENSIONS = ["pdf", "jpg", "jpeg", "jpe", "png", "heic", "heif"];
 export const DOCUMENT_ACCEPT = [...DOCUMENT_TYPES, ...DOCUMENT_EXTENSIONS.map((extension) => `.${extension}`)].join(
   ",",
 );
 export const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
- * What the page can tell before sending: too large, or not one of the four
- * types. The server sniffs the bytes and has the last word.
+ * What the page can tell before sending: too large, or named as something
+ * else — a type or an extension outside the four (`text/plain`, `.docx`).
+ * A type that names nothing (none, `application/octet-stream`) and a name
+ * without an extension are no evidence either way, as on the server, whose
+ * reading of the bytes has the last word.
  */
 export const fileRefusal = (file: File, t: Translate): string | null => {
   if (file.size > DOCUMENT_MAX_BYTES) return t("documentTooLarge", { name: file.name });
+  const type = file.type.toLowerCase();
+  const namesType = type !== "" && type !== "application/octet-stream";
   const extension = file.name.includes(".") ? file.name.split(".").pop()?.toLowerCase() : undefined;
-  if (!DOCUMENT_TYPES.includes(file.type) && !(extension && DOCUMENT_EXTENSIONS.includes(extension)))
+  if ((namesType && !DOCUMENT_TYPES.includes(type)) || (extension && !DOCUMENT_EXTENSIONS.includes(extension)))
     return t("documentWrongType", { name: file.name });
   return null;
 };

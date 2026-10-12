@@ -456,4 +456,23 @@ describe("SettingsPage — the document categories", () => {
       expect(await tableRow("Document categories", "training")).not.toHaveTextContent("Archived"),
     );
   });
+
+  it("sends an archive once, however often it is pressed while on its way", async () => {
+    const fetchMock = stubStaffApi({
+      write: (method, path) =>
+        method === "PUT" && path.endsWith("/document-categories/7")
+          ? (new Promise(() => {}) as unknown as Response)
+          : undefined,
+    });
+    renderRoute("/staff/settings");
+
+    const archive = within(await tableRow("Document categories", "training")).getByRole("button", {
+      name: "Archive Training record",
+    });
+    await userEvent.click(archive);
+    await userEvent.click(archive);
+
+    expect(archive).toBeDisabled();
+    expect(fetchMock.actualCalls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+  });
 });
