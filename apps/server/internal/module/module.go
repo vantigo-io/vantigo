@@ -83,6 +83,13 @@ type Deps struct {
 	// though never while it serves; it is nil when expenses is disabled,
 	// which a caller reads as "expense tracking is off".
 	Expenses contracts.ProjectExpenses
+	// Receivables is what a customer has been invoiced and owes, the one
+	// sanctioned way a module reads another's record of sales documents and
+	// payments (see contracts.CustomerReceivables). Compose sets it, on every
+	// module's Deps copy, from whichever enabled module declares
+	// Module.Receivables; it is nil when invoices is disabled, which a caller
+	// reads as "invoicing is off".
+	Receivables contracts.CustomerReceivables
 	// CustomerReferenceHolders are every given module's
 	// contracts.CustomerReferenceHolder (customers merge design D1), enabled
 	// or not, in the order the modules were given to Compose — the one
@@ -225,6 +232,12 @@ type Module struct {
 	// the result on every module's Deps, including the provider's own, the
 	// same way it resolves Actuals.
 	Expenses func(Deps) contracts.ProjectExpenses
+	// Receivables builds this module's contracts.CustomerReceivables
+	// implementation, if it provides one (invoices). At most one enabled
+	// module may set it; Compose calls it before any Mount runs — after it
+	// has resolved Directory — and puts the result on every module's Deps,
+	// including the provider's own, the same way it resolves Expenses.
+	Receivables func(Deps) contracts.CustomerReceivables
 	// Workers builds this module's background workers (worker.Worker), if
 	// it has any. Unlike Directory, any number of enabled modules may set
 	// it; Workers (workers.go) resolves it from deps the same way — before

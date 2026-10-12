@@ -235,7 +235,7 @@ export interface paths {
         };
         /**
          * Get a customer's overview across modules
-         * @description What is going on with this customer across the modules that know (customer 360 design D1, D2): its open projects, the work approved on them and not yet invoiced, the expenses ready to invoice, and when anything last happened — composed server-side from the project directory, the time actuals and the project expenses contracts. Sections are shaped, never refused: projects needs the projects module and projects:access; work needs projects and the time module; unbilledAmounts and the whole expenses section need projects:view-financials or projects:manage-all, and expenses the expenses module too. Cost never appears. 404 when the customer does not exist; an archived customer answers normally.
+         * @description What is going on with this customer across the modules that know (customer 360 design D1, D2): its open projects, the work approved on them and not yet invoiced, the expenses ready to invoice, and when anything last happened — composed server-side from the project directory, the time actuals and the project expenses contracts. Sections are shaped, never refused: projects needs the projects module and projects:access; work needs projects and the time module; unbilledAmounts and the whole expenses section need projects:view-financials or projects:manage-all, and expenses the expenses module too; invoices — what the customer was invoiced and owes, from the invoices module (customers receivables design D2) — needs that module and invoices:access. Cost never appears. 404 when the customer does not exist; an archived customer answers normally.
          */
         get: operations["getCustomersByIdOverview"];
         put?: never;
@@ -1074,10 +1074,71 @@ export interface components {
             /** Format: int32 */
             readyCount: number;
         };
+        /** @description What the customer has been invoiced and what they owe (customers receivables design D2), read from the invoices module and judged on the Oslo day asOf. Outstanding is the issued invoices that are open, partially paid or overdue, at their open amounts — gross less credited less paid; overdue the overdue ones among them. Reminder fees, compensation and interest are never included. Invoiced this year is the invoices issued in asOf's calendar year less the credit notes issued in it, whatever year the credited invoice was; last year the same for the year before. Present when the invoices module is on and the caller holds invoices:access. A customer with no issued document answers zero counts and empty lists, not absence. */
+        CustomerOverviewInvoices: {
+            /**
+             * Format: date
+             * @description The Oslo calendar day the states were judged on.
+             */
+            asOf: string;
+            /**
+             * Format: int32
+             * @description The outstanding invoices with a live hand-off to a collection agency.
+             */
+            atCollectionCount: number;
+            /** @description Issued less credited in the calendar year before asOf's, per currency, by ISO code; a currency with nothing is left out. */
+            invoicedLastYearAmounts: components["schemas"]["CustomerOverviewAmount"][];
+            /** @description Issued less credited in asOf's calendar year, per currency, by ISO code; a currency with nothing is left out. A credit note counts in the year it was issued. */
+            invoicedThisYearAmounts: components["schemas"]["CustomerOverviewAmount"][];
+            /**
+             * Format: date
+             * @description The latest issue date of any issued document of the customer, invoice or credit note.
+             */
+            lastIssuedOn?: string;
+            /**
+             * Format: date
+             * @description The latest paid-on date of any live payment against one of the customer's invoices.
+             */
+            lastPaymentOn?: string;
+            /**
+             * Format: date
+             * @description The earliest due date among the overdue invoices; absent when none is overdue.
+             */
+            oldestOverdueDueOn?: string;
+            /**
+             * Format: int32
+             * @description The outstanding invoices with a live hold.
+             */
+            onHoldCount: number;
+            /** @description The open amounts of the outstanding invoices, per currency, by ISO code; a currency with nothing outstanding is left out. */
+            outstandingAmounts: components["schemas"]["CustomerOverviewAmount"][];
+            /**
+             * Format: int32
+             * @description The issued invoices that are open, partially paid or overdue, across every currency.
+             */
+            outstandingCount: number;
+            /** @description The open amounts of the overdue invoices, per currency, by ISO code; a currency with nothing overdue is left out. */
+            overdueAmounts: components["schemas"]["CustomerOverviewAmount"][];
+            /**
+             * Format: int32
+             * @description The overdue invoices among the outstanding ones.
+             */
+            overdueCount: number;
+        };
         /** @description When anything last happened with this customer. Always present; each date is absent when it is unknown, or when the section it comes from is not in this response. */
         CustomerOverviewLastActivity: {
             /** Format: date */
             expenseOn?: string;
+            /**
+             * Format: date
+             * @description The invoices section's lastIssuedOn.
+             */
+            invoicedOn?: string;
+            /**
+             * Format: date
+             * @description The invoices section's lastPaymentOn.
+             */
+            paymentOn?: string;
             /**
              * Format: date
              * @description The customer's own latest timeline date, as timelineSummary.latestOccurredOn reports it.
@@ -1116,6 +1177,7 @@ export interface components {
         /** @description What is going on with one customer across the modules that know (customer 360 design D1, D2). Every section but lastActivity may be absent, and absent means the module is off or the section is not for this caller — the response never says which, and never answers 403 for it. */
         CustomerOverviewResponse: {
             expenses?: components["schemas"]["CustomerOverviewExpenses"];
+            invoices?: components["schemas"]["CustomerOverviewInvoices"];
             lastActivity: components["schemas"]["CustomerOverviewLastActivity"];
             projects?: components["schemas"]["CustomerOverviewProjects"];
             work?: components["schemas"]["CustomerOverviewWork"];

@@ -6,19 +6,21 @@ import { KpiCard, WidgetCard } from "@vantigo/frontend-shell/ui";
 import { type CustomerOverview, customerOverviewQueryOptions, type OverviewAmount } from "../../api/customer-overview";
 import "../../i18n";
 
-type LastActivitySource = "timeline" | "work" | "expense";
+type LastActivitySource = "timeline" | "work" | "expense" | "invoiced" | "payment";
 
 const lastActivityKeys = {
   timeline: "customer.overview360.lastActivityTimeline",
   work: "customer.overview360.lastActivityWork",
   expense: "customer.overview360.lastActivityExpense",
+  invoiced: "customer.overview360.lastActivityInvoiced",
+  payment: "customer.overview360.lastActivityPayment",
 } as const;
 
 /**
- * The latest of the three dates and which it was. They are YYYY-MM-DD, which
+ * The latest of the five dates and which it was. They are YYYY-MM-DD, which
  * compares as text exactly as it does as dates, and the strict `>` keeps the
  * first-listed source on a tie — the customer's own timeline, then work, then
- * expenses.
+ * expenses, then an invoice issued, then a payment received.
  */
 export const latestActivity = (
   activity: CustomerOverview["lastActivity"],
@@ -27,6 +29,8 @@ export const latestActivity = (
     [activity.timelineOn, "timeline"],
     [activity.workOn, "work"],
     [activity.expenseOn, "expense"],
+    [activity.invoicedOn, "invoiced"],
+    [activity.paymentOn, "payment"],
   ];
   let latest: { on: string; source: LastActivitySource } | null = null;
   for (const [on, source] of candidates) {
@@ -38,11 +42,18 @@ export const latestActivity = (
 /**
  * One grid for the loaded tiles and the skeleton alike, sized by the tiles it
  * holds: a lone tile is full width at every breakpoint rather than half at `xs`
- * and whole at `md`. Every KpiCard is the same minimum height, so the grid
- * growing from the skeleton's one card to the loaded tiles does not move what
- * is below it.
+ * and whole at `md`. Up to four tiles share a row at `md`; with the two
+ * invoices tiles (customers receivables design D3) there are six, which is
+ * three per row at `md` and all of them at `lg`. Every KpiCard is the same
+ * minimum height, so the grid growing from the skeleton's one card to the
+ * loaded tiles does not move what is below it.
  */
-const tileColumns = (tiles: number) => ({ base: 1, xs: Math.min(2, tiles), md: tiles });
+const tileColumns = (tiles: number) => ({
+  base: 1,
+  xs: Math.min(2, tiles),
+  md: tiles > 4 ? Math.min(3, tiles) : tiles,
+  lg: tiles,
+});
 
 /**
  * The Customer 360 panel (customer 360 design D3): what is going on with this
@@ -75,7 +86,7 @@ export const Customer360Panel = ({ customerId }: { customerId: number }) => {
     );
   }
 
-  const { projects, work, expenses, lastActivity } = overview.data;
+  const { projects, work, expenses, invoices, lastActivity } = overview.data;
   const count = (value: number) => formatters.formatNumber(value);
   // One currency per entry, never a sum across them (D2): the tile's second line.
   const amounts = (list: OverviewAmount[] | null) =>
@@ -85,7 +96,36 @@ export const Customer360Panel = ({ customerId }: { customerId: number }) => {
   // Calendar dates from the server, shown as the calendar date they are.
   const date = (on: string) => formatters.formatDate(on, { dateStyle: "medium", timeZone: "UTC" });
   const latest = latestActivity(lastActivity);
-  const tiles = 1 + [projects, work, expenses].filter((section) => section !== null).length;
+  const tiles = 1 + [projects, work, expenses].filter((section) => section !== null).length + (invoices ? 2 : 0);
+  // The Outstanding tile's hint (customers receivables design D3): how many
+  // invoices, the overdue ones with the oldest due date, and — because a
+  // relationship owner should learn it here rather than from the agency —
+  // any on hold or at collection. The counts go in formatted, as text, hence
+  // the host's own singular key for one invoice.
+  const outstandingHint = (section: NonNullable<typeof invoices>) => {
+    const parts = [
+      t(
+        section.outstandingCount === 1
+          ? "customer.overview360.invoicesCountSingular"
+          : "customer.overview360.invoicesCount",
+        { count: count(section.outstandingCount) },
+      ),
+    ];
+    if (section.overdueCount > 0 && section.oldestOverdueDueOn) {
+      parts.push(
+        t("customer.overview360.overdueHint", {
+          count: count(section.overdueCount),
+          date: date(section.oldestOverdueDueOn),
+        }),
+      );
+    }
+    if (section.onHoldCount > 0)
+      parts.push(t("customer.overview360.onHoldHint", { count: count(section.onHoldCount) }));
+    if (section.atCollectionCount > 0) {
+      parts.push(t("customer.overview360.atCollectionHint", { count: count(section.atCollectionCount) }));
+    }
+    return parts.join(" · ");
+  };
 
   return (
     <section aria-label={title}>
@@ -128,12 +168,41 @@ export const Customer360Panel = ({ customerId }: { customerId: number }) => {
               hint={amounts(expenses.readyAmounts)}
             />
           )}
+          {invoices && (
+            <KpiCard
+              label={t("customer.overview360.outstanding")}
+              value={amounts(invoices.outstandingAmounts) ?? "—"}
+              hint={outstandingHint(invoices)}
+            />
+          )}
+          {invoices && (
+            <KpiCard
+              label={t("customer.overview360.invoicedThisYear")}
+              value={amounts(invoices.invoicedThisYearAmounts) ?? "—"}
+              hint={
+                amounts(invoices.invoicedLastYearAmounts)
+                  ? t("customer.overview360.lastYearHint", { amounts: amounts(invoices.invoicedLastYearAmounts) })
+                  : t("customer.overview360.lastYearNothingHint")
+              }
+            />
+          )}
           <KpiCard
             label={t("customer.overview360.lastActivity")}
             value={latest ? date(latest.on) : "—"}
             hint={latest ? t(lastActivityKeys[latest.source]) : t("customer.overview360.noActivity")}
           />
         </SimpleGrid>
+        {/* The Invoices tab lists every document; the section is only here
+            when that tab is too (Invoices on and invoices:access), so the link
+            never leads nowhere. */}
+        {invoices && (
+          <Anchor
+            size="sm"
+            renderRoot={(props) => <Link to="/customers/$customerId/invoices" params={{ customerId }} {...props} />}
+          >
+            {t("customer.overview360.seeInvoices")}
+          </Anchor>
+        )}
         {projects && projects.open.length > 0 && (
           <WidgetCard title={t("customer.overview360.openProjects")}>
             <Table.ScrollContainer minWidth={480}>

@@ -54,20 +54,22 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are nine single-provider slots, each filled by at most one enabled module:
+   There are ten single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Products` (`contracts.ProductCatalog`,
    products), `Projects` (`contracts.ProjectDirectory`, projects), `Actuals`
    (`contracts.ProjectActuals`, time), `Expenses`
-   (`contracts.ProjectExpenses`, expenses), and the three line-level reads an
+   (`contracts.ProjectExpenses`, expenses), `Receivables`
+   (`contracts.CustomerReceivables`, invoices), and the three line-level reads an
    invoice is built from — `BillableHours` (`contracts.BillableHours`, time),
    `BillableExpenses` (`contracts.BillableExpenses`, expenses) and
    `BillableMilestones` (`contracts.BillableMilestones`, projects). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
    `Mount` runs, so a module's `Deps` already carries what it consumes; `Actuals`,
-   `Expenses` and the three `Billable*` are resolved last, after `Projects`, so
-   those providers' *constructors* are allowed to read the project directory (none
-   does, but a future provider could).
+   `Expenses`, `Receivables` and the three `Billable*` are resolved last, after
+   `Projects` and `Directory`, so those providers' *constructors* are allowed to read
+   the project directory or the customer directory (none does, but a future
+   provider could).
    Four slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CustomerReferences`

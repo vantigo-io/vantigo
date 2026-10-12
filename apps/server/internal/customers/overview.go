@@ -19,14 +19,15 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 )
 
-// This file is GET /customers/{id}/overview (customer 360 design D1, D2): what
-// is going on with one customer across the modules that know — its projects,
-// the work approved on them and not yet billed, the expenses ready to invoice,
+// This file is GET /customers/{id}/overview (customer 360 design D1, D2;
+// customers receivables design D2): what is going on with one customer across
+// the modules that know — its projects, the work approved on them and not yet
+// billed, the expenses ready to invoice, what it has been invoiced and owes,
 // and when anything last happened. It is the first place this module reads
 // another module's data, and it reads it the way every consumer does: through
-// the three contracts Compose hands every module (Deps.Projects, Deps.Actuals,
-// Deps.Expenses), each nil when its module is off — a state this endpoint
-// answers by leaving the section out, never by failing.
+// the four contracts Compose hands every module (Deps.Projects, Deps.Actuals,
+// Deps.Expenses, Deps.Receivables), each nil when its module is off — a state
+// this endpoint answers by leaving the section out, never by failing.
 //
 // Three rules shape it.
 //
@@ -62,6 +63,13 @@ const (
 	projectsManageAll      = "projects:manage-all"
 	projectsViewFinancials = "projects:view-financials"
 )
+
+// invoicesAccess is the invoices module's key the invoices section is shaped
+// by (customers receivables design D2): the key that already reads every
+// invoice, its open amount and the stats, and the key the customer page's
+// Invoices tab sits behind — so a figure here never names what the tab would
+// refuse. Money follows the one gate, because the key reads amounts already.
+const invoicesAccess = "invoices:access"
 
 // overviewOpenLimit is how many open projects the overview names. Ten is a
 // panel's worth; the counts are never cut, and the Projects tab lists them all.
@@ -119,13 +127,36 @@ func (s *server) GetCustomersByIdOverview(ctx context.Context, req gen.GetCustom
 		LastActivity: gen.CustomerOverviewLastActivity{TimelineOn: dateFromPgtype(summary.LatestOccurredOn)},
 	}
 
-	rights := s.overviewRights(ctx)
-	if !rights.projects {
-		return gen.GetCustomersByIdOverview200JSONResponse(resp), nil
+	if rights := s.overviewRights(ctx); rights.projects {
+		if err := s.overviewProjectSections(ctx, req.Id, rights, &resp); err != nil {
+			return nil, err
+		}
 	}
-	visible, truncated, err := s.overviewVisibleProjects(ctx, req.Id, rights.allProjects)
+
+	// Invoicing stands on its own gate: a caller who may see nothing of the
+	// projects may still be the one chasing the money.
+	if s.deps.Receivables != nil && s.hasPermission(ctx, invoicesAccess) {
+		totals, err := s.deps.Receivables.ReceivablesForCustomer(ctx, req.Id)
+		if err != nil {
+			return nil, fmt.Errorf("customers: overview: receivables for customer: %w", err)
+		}
+		invoices, err := overviewInvoices(totals)
+		if err != nil {
+			return nil, err
+		}
+		resp.Invoices = &invoices
+		resp.LastActivity.InvoicedOn = invoices.LastIssuedOn
+		resp.LastActivity.PaymentOn = invoices.LastPaymentOn
+	}
+	return gen.GetCustomersByIdOverview200JSONResponse(resp), nil
+}
+
+// overviewProjectSections fills the projects, work and expenses sections for
+// a caller with projects:access, and the two last-activity dates they carry.
+func (s *server) overviewProjectSections(ctx context.Context, customerID int32, rights overviewRights, resp *gen.CustomerOverviewResponse) error {
+	visible, truncated, err := s.overviewVisibleProjects(ctx, customerID, rights.allProjects)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Work first, because the open rows are ordered by it.
@@ -139,18 +170,18 @@ func (s *server) GetCustomersByIdOverview(ctx context.Context, req gen.GetCustom
 			reqs = append(reqs, contracts.ActualsRequest{ProjectID: p.ID, Currency: p.Currency})
 		}
 		if actuals, err = s.deps.Actuals.ActualsForProjects(ctx, reqs); err != nil {
-			return nil, fmt.Errorf("customers: overview: actuals for projects: %w", err)
+			return fmt.Errorf("customers: overview: actuals for projects: %w", err)
 		}
 		work, err := overviewWork(visible, actuals, rights.financials)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		resp.Work = &work
 		resp.LastActivity.WorkOn = work.LastWorkOn
 	}
 	projects, err := overviewProjectsSection(visible, truncated, actuals)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	resp.Projects = &projects
 
@@ -161,16 +192,16 @@ func (s *server) GetCustomersByIdOverview(ctx context.Context, req gen.GetCustom
 		}
 		totals, err := s.deps.Expenses.ExpensesForProjects(ctx, ids)
 		if err != nil {
-			return nil, fmt.Errorf("customers: overview: expenses for projects: %w", err)
+			return fmt.Errorf("customers: overview: expenses for projects: %w", err)
 		}
 		expenses, err := overviewExpenses(visible, totals)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		resp.Expenses = &expenses
 		resp.LastActivity.ExpenseOn = expenses.LastExpenseOn
 	}
-	return gen.GetCustomersByIdOverview200JSONResponse(resp), nil
+	return nil
 }
 
 // overviewVisibleProjects is the customer's projects the caller may see, and
@@ -368,6 +399,75 @@ func overviewExpenses(visible []contracts.ProjectEntry, totals map[int32]contrac
 			return gen.CustomerOverviewExpenses{}, err
 		}
 		section.LastExpenseOn = on
+	}
+	return section, nil
+}
+
+// overviewInvoices is the invoices section (customers receivables design D2):
+// the receivables contract's figures carried to the wire as they stand. The
+// counts and dates are the provider's; the money is per currency, each
+// figure its own list with a zero currency left out, and "invoiced this
+// year" is issued less credited by the year the credit note was issued in —
+// the provider reports the two apart so the subtraction is exact here, in
+// math/big.Rat, and becomes a JSON number only at the end. Nothing is ever
+// added across currencies.
+func overviewInvoices(totals contracts.CustomerReceivableTotals) (gen.CustomerOverviewInvoices, error) {
+	outstanding, overdue, thisYear, lastYear := map[string]*big.Rat{}, map[string]*big.Rat{}, map[string]*big.Rat{}, map[string]*big.Rat{}
+	for _, c := range totals.Currencies {
+		for _, f := range []struct {
+			into            map[string]*big.Rat
+			plus, minusText string
+		}{
+			{outstanding, c.Outstanding, ""},
+			{overdue, c.Overdue, ""},
+			{thisYear, c.IssuedThisYear, c.CreditedThisYear},
+			{lastYear, c.IssuedLastYear, c.CreditedLastYear},
+		} {
+			sum, err := overviewAmount(f.plus)
+			if err != nil {
+				return gen.CustomerOverviewInvoices{}, err
+			}
+			if f.minusText != "" {
+				minus, err := overviewAmount(f.minusText)
+				if err != nil {
+					return gen.CustomerOverviewInvoices{}, err
+				}
+				sum.Sub(sum, minus)
+			}
+			f.into[c.Currency] = sum
+		}
+	}
+	section := gen.CustomerOverviewInvoices{
+		OutstandingCount:        int32(totals.OutstandingCount),
+		OverdueCount:            int32(totals.OverdueCount),
+		OnHoldCount:             int32(totals.OnHoldCount),
+		AtCollectionCount:       int32(totals.AtCollectionCount),
+		OutstandingAmounts:      overviewAmounts(outstanding),
+		OverdueAmounts:          overviewAmounts(overdue),
+		InvoicedThisYearAmounts: overviewAmounts(thisYear),
+		InvoicedLastYearAmounts: overviewAmounts(lastYear),
+	}
+	asOf, err := overviewDate(totals.AsOf)
+	if err != nil {
+		return gen.CustomerOverviewInvoices{}, err
+	}
+	section.AsOf = *asOf
+	for _, d := range []struct {
+		into **openapi_types.Date
+		text *string
+	}{
+		{&section.OldestOverdueDueOn, totals.OldestOverdueDueOn},
+		{&section.LastIssuedOn, totals.LastIssuedOn},
+		{&section.LastPaymentOn, totals.LastPaymentOn},
+	} {
+		if d.text == nil {
+			continue
+		}
+		on, err := overviewDate(*d.text)
+		if err != nil {
+			return gen.CustomerOverviewInvoices{}, err
+		}
+		*d.into = on
 	}
 	return section, nil
 }

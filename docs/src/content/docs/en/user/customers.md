@@ -5,6 +5,9 @@ sidebar:
   order: 10
 sources:
   - apps/customers/frontend
+  - apps/host/frontend/src/routes/customers/-customer-360-panel.tsx
+  - apps/host/frontend/src/api/customer-overview.ts
+  - apps/host/frontend/src/catalogs/customer.ts
 ---
 
 The **Customers** app holds the companies and people you do business with, the
@@ -81,11 +84,17 @@ for this customer and need the module on and a permission in it
 (`energy:metering-points-view`, `projects:access`, `invoices:access`).
 
 **Overview** opens with the **Customer 360** panel: **Open projects**, **Unbilled
-hours**, **Expenses ready to invoice** and **Last activity** — each tile present only
-when its module is on and for you — plus a table of open projects (**Code**, **Name**,
-**Status**, **Last work**) and **See all … open projects** when there are more. The
-rule is [Customer 360](/en/reference/customers/#customer-360). Under it come the cards
-of the next sections: **Relationship**, **Contact & addresses**, **Registry**,
+hours**, **Expenses ready to invoice**, **Outstanding**, **Invoiced this year** and
+**Last activity** — each tile present only when its module is on and for you — plus a
+table of open projects (**Code**, **Name**, **Status**, **Last work**) and **See all …
+open projects** when there are more. **Outstanding** is what the customer still owes
+on issued invoices, with how many invoices that is, how many are overdue and the
+oldest due date, and any on hold or at collection; **Invoiced this year** is this
+calendar year's invoices less its credit notes, with last year's figure beneath. Both
+need the Invoices module and `invoices:access`, and come with a **See invoices** link
+to the customer's Invoices tab. The rule is
+[Customer 360](/en/reference/customers/#customer-360). Under it come the cards of
+the next sections: **Relationship**, **Contact & addresses**, **Registry**,
 **Billing**, **Contacts** and **Timeline**.
 
 A banner at the top says when the customer is archived, merged into another, scheduled
