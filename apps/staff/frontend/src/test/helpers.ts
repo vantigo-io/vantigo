@@ -1,5 +1,6 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { expect, type MockInstance } from "vitest";
 import type { StaffStub } from "./server";
 
 /** The writes the fake received, matching a method and a path, with their bodies and If-Match. */
@@ -27,3 +28,12 @@ export const retype = async (field: HTMLElement, text: string) => {
   await userEvent.clear(field);
   if (text) await userEvent.type(field, text);
 };
+
+/**
+ * Waits for a download's anchor click. Fetch, `response.blob()`, the object
+ * URL and the click take turns of their own, which on a loaded CI runner
+ * outlast testing-library's one-second default — and the host's suite runs
+ * these tests under its own setup, which does not raise it.
+ */
+export const awaitDownload = (click: MockInstance) =>
+  waitFor(() => expect(click).toHaveBeenCalled(), { timeout: 5000 });

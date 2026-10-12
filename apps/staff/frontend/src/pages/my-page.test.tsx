@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { region, retype, sent } from "../test/helpers";
+import { awaitDownload, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
 
@@ -186,7 +186,7 @@ describe("My page — my documents and my data", () => {
     expect(within(data).getByText(/without the values HR keeps sealed and without HR's notes/)).toBeInTheDocument();
     await userEvent.click(within(data).getByRole("button", { name: "Download my data" }));
 
-    await waitFor(() => expect(click).toHaveBeenCalled());
+    await awaitDownload(click);
     expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("staff-E-1-personal-data.json");
     expect(fetchMock.actualCalls.some(([url]) => String(url).endsWith("/api/v1/staff/me/export"))).toBe(true);
   });
