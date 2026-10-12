@@ -32,7 +32,7 @@ export const staffCatalog = {
     // Settings
     settingsTitle: "Staff settings",
     settingsDescription:
-      "The business time zone, how employee numbers are generated, the pension provider and the insurer, and the company's structure.",
+      "The business time zone, how employee numbers are generated, the pension provider and the insurer, the company's structure, the document categories, the register's import and export, the payroll export, retention and the thresholds.",
     failedToLoadSettings: "Could not load the settings",
     generalSettings: "General",
     businessTimeZone: "Business time zone",
@@ -658,6 +658,133 @@ export const staffCatalog = {
     couldNotChangeCategory: "Could not change {{name}}",
     seedImmutable: "The six seeded categories never change.",
     categoryInUse: "Documents are filed under {{name}}. Move them to another category first.",
+
+    // The register's import and export
+    dataTitle: "Import and export people",
+    dataDescription:
+      "The register as one semicolon-separated CSV file. The export holds every person's work and private details and where each stands today — never the national identity number or the bank account, only whether a number is on file. Every export is recorded in the history with your name.",
+    importPeople: "Import people",
+    exportPeople: "Export people",
+    downloadTemplate: "Download template",
+    couldNotExportPeople: "Could not export the register",
+    couldNotDownloadTemplate: "Could not download the template",
+    exportTooMany:
+      "The register holds more people than one file may hold. Ask the administrator to raise STAFF_IMPORT_MAX_ROWS.",
+    importIntro:
+      "Choose a CSV file — semicolon-separated, at most 5 MiB — and check it first: the check runs every row and keeps nothing. Then import it. Every row needs its employeeNumber: a number no person has adds the person, a number a person has changes them.",
+    importFailedRowsIntro:
+      "When rows fail, Download failed rows gives them back with an error column saying what is wrong. Fix them and import that file: the import ignores the error column.",
+    importSealedNote:
+      "The sealed columns — nationalIdKind, nationalIdCountry, nationalId, bankAccountKind and bankAccount — need the staff:personal-data permission as well. Without it, a file that carries any of them is refused whole.",
+    importChooseFile: "Choose CSV file",
+    importChosenFile: "Chosen: {{name}}",
+    importFileTooLarge: "{{name}} is larger than 5 MiB, the most one import takes. Import it in slices.",
+    importFileUnreadable: "The file could not be read. Choose it again.",
+    importCheck: "Check",
+    importRun: "Import",
+    importClose: "Close",
+    importRunning: "Importing… Keep this window open until it answers.",
+    importCountRows: "Rows",
+    importCountWouldCreate: "Would be created",
+    importCountWouldUpdate: "Would be updated",
+    importCountHaveErrors: "Have errors",
+    importCountCreated: "Created",
+    importCountUpdated: "Updated",
+    importCountFailed: "Failed",
+    importCheckIntro: "Nothing is saved yet. Import runs the same file for real; the rows with errors are skipped.",
+    importNothingToImport: "No row in this file can be imported. Fix the rows below and check again.",
+    importErrorsCaption: "Problems in the file, by row",
+    importErrorRow: "Row",
+    importErrorColumn: "Column",
+    importErrorMessage: "Problem",
+    importDownloadFailedRows: "Download failed rows",
+    importFailedRowsHint: "Fix the rows in the file and import it as it is.",
+    importDone: "Import finished",
+    importDoneSummary: "{{created}} created, {{updated}} updated, {{failed}} failed.",
+    importRefused: "The file was refused",
+    importCouldNotRun: "The import could not run",
+    importRefusal_import_sealed_columns:
+      "The file has sealed columns — the national identity number or the bank account — and importing them needs staff:personal-data as well. Remove those columns, or ask someone who holds it.",
+    importRefusal_import_not_semicolon:
+      "The file is separated by commas. Save it from the spreadsheet as CSV with semicolons — the form the export writes.",
+    importRefusal_import_too_many_rows: "The file has more rows than one import takes. Import it in slices.",
+    importRefusal_import_too_large: "The file is larger than 5 MiB, the most one import takes. Import it in slices.",
+    importUnreachable: "The server could not be reached. Nothing was checked; try again.",
+    importCutShort:
+      "The import stopped before it answered — the connection was lost, or the server failed. The rows that were imported before it stopped stay imported; check the file and run it again.",
+
+    // The payroll export
+    payrollTitle: "Payroll export",
+    payrollDescription:
+      "One month's employments as a CSV file for your payroll system, with the terms in force on the month's last day. The file holds no national identity numbers and no bank accounts. Every export is recorded in the history with your name and the file's SHA-256 hash.",
+    payrollMonth: "Month",
+    exportForPayroll: "Export for payroll",
+    payrollCaveat:
+      "The codes of the three appointment forms added in 2025 (hired out, and on call) are not verified against Skatteetaten's code list: check them with your payroll system before you rely on them.",
+    couldNotExportPayroll: "Could not export the month",
+    payrollMonthInvalid: "Choose the month to export.",
+
+    // Retention
+    retentionTitle: "Retention",
+    retentionDescription:
+      "A former employee's record is kept only as long as the law allows, and the retention worker erases the rest on its own: the personnel administration a grace period after the last employment ended, health documents after a period of their own, and the pay five years after the year the employment ended. People under a legal hold are passed over.",
+    retentionGraceDays: "Grace period (days)",
+    retentionGraceDaysDescription: "Days from the last employment's end until the personnel administration is erased.",
+    healthRetentionDays: "Health documents (days)",
+    healthRetentionDaysDescription: "Days from the last employment's end until the health documents are deleted.",
+    retentionGraceInvalid: "0 to 3650 days",
+    healthRetentionInvalid: "30 to 3650 days",
+    savePeriods: "Save periods",
+    periodsSaved: "The retention periods are saved",
+    pendingDeletions: "Pending deletions",
+    failingDeletions: "Failing deletions",
+    failingDeletionsHint:
+      "The object store has refused to delete some files, and they are tried again until it confirms: check that the object store is configured and reachable, and read the server log.",
+    oldestPendingSince: "Oldest pending since",
+    lastErasedAt: "Last erased",
+    never: "Never",
+    runRetentionNow: "Run retention now",
+    runRetentionExplained:
+      "Runs the worker's erase and a pass over the deletion ledger now. The pass stops after 30 seconds: what is not finished in 30 seconds the worker finishes on its next look.",
+    runRetentionTitle: "Run retention now?",
+    runRetentionConfirm:
+      "It erases for good what is due under the retention rules, and it cannot be undone. People under a legal hold are passed over.",
+    run: "Run",
+    retentionRunErased: "Erased: {{kinds}}.",
+    retentionRunNothing: "Nothing was due to be erased.",
+    retentionRunDeletions: "Deletions from the object store: {{attempted}} attempted, {{succeeded}} succeeded.",
+    erasedKindCount: "{{kind}} {{count}}",
+    erasedKind_D: "personnel administration",
+    erasedKind_health: "health documents",
+    erasedKind_A: "pay and contract",
+    retentionBusy: "The retention worker is running right now. Try again in a moment.",
+    couldNotRunRetention: "Could not run retention",
+
+    // Thresholds
+    thresholdsTitle: "Thresholds",
+    thresholdsDescription:
+      "Four thresholds bring the employer a duty. While one is crossed and not acknowledged, the dashboard shows an item for it under Needs attention. Acknowledge a threshold when the duty is dealt with, or does not apply: it is acknowledged once and for good.",
+    threshold: "Threshold",
+    thresholdDuty: "The duty",
+    threshold_5: "5 or more employees",
+    threshold_30: "30 or more employees",
+    threshold_50: "More than 50 employees",
+    threshold_otp: "Occupational pension (OTP)",
+    thresholdDuty_5: "Written whistleblowing routines (aml. § 2 A-6) and a safety representative, verneombud (§ 6-1).",
+    thresholdDuty_30: "A working environment committee, AMU (§ 7-1).",
+    thresholdDuty_50:
+      "The activity and reporting duty on equality, ARP (likestillings- og diskrimineringsloven § 26) — from 51 employees; at exactly 50 there is none.",
+    thresholdDuty_otp:
+      "An occupational pension scheme (OTP-loven § 2) when someone works 75 % or more, or the people at 20 % or more add up to two full-time positions — unless the only such person is the owner.",
+    thresholdAcknowledgedOn: "Acknowledged {{date}}",
+    thresholdNotAcknowledged: "Not acknowledged",
+    acknowledge: "Acknowledge",
+    acknowledgeThreshold: "Acknowledge {{name}}",
+    acknowledgeThresholdTitle: "Acknowledge {{name}}?",
+    acknowledgeThresholdExplained:
+      "An acknowledgement is permanent and cannot be undone: the threshold's item never comes back on the dashboard, whatever the headcount does later.",
+    thresholdAcknowledged: "{{name}} is acknowledged",
+    couldNotAcknowledgeThreshold: "Could not acknowledge {{name}}",
   },
   nb: {
     staff: "Ansatte",
@@ -690,7 +817,7 @@ export const staffCatalog = {
     // Innstillinger
     settingsTitle: "Ansatteinnstillinger",
     settingsDescription:
-      "Virksomhetens tidssone, hvordan ansattnumre lages, pensjonsleverandøren og yrkesskadeforsikreren, og selskapets struktur.",
+      "Virksomhetens tidssone, hvordan ansattnumre lages, pensjonsleverandøren og yrkesskadeforsikreren, selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring og tersklene.",
     failedToLoadSettings: "Kunne ikke hente innstillingene",
     generalSettings: "Generelt",
     businessTimeZone: "Virksomhetens tidssone",
@@ -1314,6 +1441,133 @@ export const staffCatalog = {
     couldNotChangeCategory: "Kunne ikke endre {{name}}",
     seedImmutable: "De seks forhåndsdefinerte kategoriene endres aldri.",
     categoryInUse: "Det er arkivert dokumenter under {{name}}. Flytt dem til en annen kategori først.",
+
+    // Import og eksport av registeret
+    dataTitle: "Importer og eksporter personer",
+    dataDescription:
+      "Registeret som én semikolonseparert CSV-fil. Eksporten inneholder hver persons jobb- og privatopplysninger og hvor hver enkelt står i dag — aldri fødselsnummeret eller kontonummeret, bare om et nummer er registrert. Hver eksport føres i historikken med navnet ditt.",
+    importPeople: "Importer personer",
+    exportPeople: "Eksporter personer",
+    downloadTemplate: "Last ned mal",
+    couldNotExportPeople: "Kunne ikke eksportere registeret",
+    couldNotDownloadTemplate: "Kunne ikke laste ned malen",
+    exportTooMany: "Registeret har flere personer enn én fil kan romme. Be administratoren øke STAFF_IMPORT_MAX_ROWS.",
+    importIntro:
+      "Velg en CSV-fil — semikolonseparert, høyst 5 MiB — og kontroller den først: kontrollen kjører hver rad og lagrer ingenting. Importer den deretter. Hver rad trenger employeeNumber: et nummer ingen har, legger til personen, et nummer en person har, endrer vedkommende.",
+    importFailedRowsIntro:
+      "Når rader feiler, gir Last ned feilede rader deg dem tilbake med en error-kolonne som sier hva som er galt. Rett dem og importer den filen: importen ser bort fra error-kolonnen.",
+    importSealedNote:
+      "De forseglede kolonnene — nationalIdKind, nationalIdCountry, nationalId, bankAccountKind og bankAccount — krever i tillegg tillatelsen staff:personal-data. Uten den avvises en fil med noen av dem i sin helhet.",
+    importChooseFile: "Velg CSV-fil",
+    importChosenFile: "Valgt: {{name}}",
+    importFileTooLarge: "{{name}} er større enn 5 MiB, det meste én import tar. Importer den i deler.",
+    importFileUnreadable: "Filen kunne ikke leses. Velg den på nytt.",
+    importCheck: "Kontroller",
+    importRun: "Importer",
+    importClose: "Lukk",
+    importRunning: "Importerer … Hold vinduet åpent til den svarer.",
+    importCountRows: "Rader",
+    importCountWouldCreate: "Blir opprettet",
+    importCountWouldUpdate: "Blir oppdatert",
+    importCountHaveErrors: "Har feil",
+    importCountCreated: "Opprettet",
+    importCountUpdated: "Oppdatert",
+    importCountFailed: "Feilet",
+    importCheckIntro:
+      "Ingenting er lagret ennå. Importer kjører den samme filen på ordentlig; radene med feil hoppes over.",
+    importNothingToImport: "Ingen rad i denne filen kan importeres. Rett radene nedenfor og kontroller på nytt.",
+    importErrorsCaption: "Problemer i filen, rad for rad",
+    importErrorRow: "Rad",
+    importErrorColumn: "Kolonne",
+    importErrorMessage: "Problem",
+    importDownloadFailedRows: "Last ned feilede rader",
+    importFailedRowsHint: "Rett radene i filen og importer den som den er.",
+    importDone: "Importen er ferdig",
+    importDoneSummary: "{{created}} opprettet, {{updated}} oppdatert, {{failed}} feilet.",
+    importRefused: "Filen ble avvist",
+    importCouldNotRun: "Importen kunne ikke kjøres",
+    importRefusal_import_sealed_columns:
+      "Filen har forseglede kolonner — fødselsnummeret eller kontonummeret — og å importere dem krever i tillegg staff:personal-data. Fjern de kolonnene, eller be noen som har tillatelsen.",
+    importRefusal_import_not_semicolon:
+      "Filen er kommaseparert. Lagre den fra regnearket som CSV med semikolon — formen eksporten skriver.",
+    importRefusal_import_too_many_rows: "Filen har flere rader enn én import tar. Importer den i deler.",
+    importRefusal_import_too_large: "Filen er større enn 5 MiB, det meste én import tar. Importer den i deler.",
+    importUnreachable: "Serveren kunne ikke nås. Ingenting ble kontrollert; prøv igjen.",
+    importCutShort:
+      "Importen stoppet før den svarte — forbindelsen ble brutt, eller serveren feilet. Radene som ble importert før den stoppet, forblir importert; kontroller filen og kjør den på nytt.",
+
+    // Lønnseksport
+    payrollTitle: "Lønnseksport",
+    payrollDescription:
+      "Én måneds arbeidsforhold som en CSV-fil til lønnssystemet, med vilkårene som gjelder månedens siste dag. Filen inneholder ingen fødselsnumre og ingen kontonumre. Hver eksport føres i historikken med navnet ditt og filens SHA-256-sjekksum.",
+    payrollMonth: "Måned",
+    exportForPayroll: "Eksporter til lønn",
+    payrollCaveat:
+      "Kodene for de tre ansettelsesformene som kom i 2025 (utleid, og tilkallingsvikar) er ikke kontrollert mot Skatteetatens kodeliste: sjekk dem med lønnssystemet før du stoler på dem.",
+    couldNotExportPayroll: "Kunne ikke eksportere måneden",
+    payrollMonthInvalid: "Velg måneden som skal eksporteres.",
+
+    // Oppbevaring
+    retentionTitle: "Oppbevaring",
+    retentionDescription:
+      "En tidligere ansatts opplysninger oppbevares bare så lenge loven tillater, og oppbevaringskjøringen sletter resten av seg selv: personaladministrasjonen en frist etter at siste arbeidsforhold sluttet, helsedokumenter etter en egen frist, og lønnen fem år etter året arbeidsforholdet sluttet. Personer med slettesperre hoppes over.",
+    retentionGraceDays: "Frist (dager)",
+    retentionGraceDaysDescription: "Dager fra siste arbeidsforhold sluttet til personaladministrasjonen slettes.",
+    healthRetentionDays: "Helsedokumenter (dager)",
+    healthRetentionDaysDescription: "Dager fra siste arbeidsforhold sluttet til helsedokumentene slettes.",
+    retentionGraceInvalid: "0 til 3650 dager",
+    healthRetentionInvalid: "30 til 3650 dager",
+    savePeriods: "Lagre fristene",
+    periodsSaved: "Oppbevaringsfristene er lagret",
+    pendingDeletions: "Ventende slettinger",
+    failingDeletions: "Feilede slettinger",
+    failingDeletionsHint:
+      "Objektlageret har nektet å slette noen filer, og de prøves igjen til det bekrefter: sjekk at objektlageret er satt opp og kan nås, og les serverloggen.",
+    oldestPendingSince: "Eldste ventende siden",
+    lastErasedAt: "Sist slettet",
+    never: "Aldri",
+    runRetentionNow: "Kjør sletting nå",
+    runRetentionExplained:
+      "Kjører oppbevaringskjøringens sletting og en runde over sletteloggen nå. Runden stopper etter 30 sekunder: det som ikke er ferdig på 30 sekunder, gjør oppbevaringsarbeideren ferdig neste gang den ser etter.",
+    runRetentionTitle: "Kjøre sletting nå?",
+    runRetentionConfirm:
+      "Den sletter for godt det som er forfalt etter oppbevaringsreglene, og det kan ikke angres. Personer med slettesperre hoppes over.",
+    run: "Kjør",
+    retentionRunErased: "Slettet: {{kinds}}.",
+    retentionRunNothing: "Ingenting var forfalt til sletting.",
+    retentionRunDeletions: "Slettinger fra objektlageret: {{attempted}} forsøkt, {{succeeded}} lyktes.",
+    erasedKindCount: "{{kind}} {{count}}",
+    erasedKind_D: "personaladministrasjon",
+    erasedKind_health: "helsedokumenter",
+    erasedKind_A: "lønn og avtale",
+    retentionBusy: "Oppbevaringsarbeideren kjører akkurat nå. Prøv igjen om et øyeblikk.",
+    couldNotRunRetention: "Kunne ikke kjøre sletting",
+
+    // Terskler
+    thresholdsTitle: "Terskler",
+    thresholdsDescription:
+      "Fire terskler gir arbeidsgiveren en plikt. Så lenge en er nådd og ikke bekreftet, viser dashbordet et punkt for den under Trenger oppfølging. Bekreft en terskel når plikten er ivaretatt, eller ikke gjelder: den bekreftes én gang og for godt.",
+    threshold: "Terskel",
+    thresholdDuty: "Plikten",
+    threshold_5: "5 eller flere ansatte",
+    threshold_30: "30 eller flere ansatte",
+    threshold_50: "Flere enn 50 ansatte",
+    threshold_otp: "Tjenestepensjon (OTP)",
+    thresholdDuty_5: "Skriftlige varslingsrutiner (aml. § 2 A-6) og et verneombud (§ 6-1).",
+    thresholdDuty_30: "Et arbeidsmiljøutvalg, AMU (§ 7-1).",
+    thresholdDuty_50:
+      "Aktivitets- og redegjørelsesplikten for likestilling, ARP (likestillings- og diskrimineringsloven § 26) — fra 51 ansatte; ved nøyaktig 50 gjelder den ikke.",
+    thresholdDuty_otp:
+      "En tjenestepensjonsordning (OTP-loven § 2) når noen jobber 75 % eller mer, eller de som jobber 20 % eller mer, til sammen utgjør to årsverk — med mindre den eneste slike personen er eieren.",
+    thresholdAcknowledgedOn: "Bekreftet {{date}}",
+    thresholdNotAcknowledged: "Ikke bekreftet",
+    acknowledge: "Bekreft",
+    acknowledgeThreshold: "Bekreft {{name}}",
+    acknowledgeThresholdTitle: "Bekrefte {{name}}?",
+    acknowledgeThresholdExplained:
+      "En bekreftelse er permanent og kan ikke angres: terskelens punkt kommer aldri tilbake på dashbordet, uansett hva antallet ansatte gjør senere.",
+    thresholdAcknowledged: "{{name}} er bekreftet",
+    couldNotAcknowledgeThreshold: "Kunne ikke bekrefte {{name}}",
   },
 } satisfies CatalogResources;
 

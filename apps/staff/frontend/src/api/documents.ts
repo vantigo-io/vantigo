@@ -116,28 +116,39 @@ export const fileNameFrom = (disposition: string | null, fallback: string): stri
 };
 
 /**
+ * A refused answer as the shared client throws it, so the page says it in the
+ * same words — but with the problem's `code` kept on a validation refusal
+ * too, which the shared client drops: an import's file refusals
+ * (`import_sealed_columns` …) and the payroll month's are field errors whose
+ * code is what the page words.
+ */
+export const refusalOf = async (response: Response): Promise<Error> => {
+  const problem = await readJson<{ title?: string; detail?: string; code?: string; errors?: Record<string, string[]> }>(
+    response,
+  ).catch(() => null);
+  const message = problem?.detail ?? problem?.title ?? `Request failed (HTTP ${response.status})`;
+  if (response.status === 404) return new NotFoundError(message);
+  if (problem?.errors)
+    return Object.assign(new ApiValidationError(message, problem.errors, response.status), { code: problem.code });
+  if (response.status === 409 && problem?.title)
+    return new ApiConflictError(message, { title: problem.title, detail: problem.detail, code: problem.code, problem });
+  return Object.assign(new Error(message), { status: response.status, code: problem?.code });
+};
+
+/**
  * A file fetched with the session rather than navigated to — the customers
  * download: a bare link would land the person on a problem page when the
  * read is refused, and the bytes are only theirs to read over the session
- * cookie. A refusal is thrown as the shared client throws it, so the page
- * says it in the same words.
+ * cookie.
  */
-const downloadFile = async (path: string, fallback: string): Promise<FileDownload> => {
+export const downloadFile = async (path: string, fallback: string): Promise<FileDownload> => {
   const response = await fetch(appUrl(path), { credentials: "include" });
   if (response.ok)
     return {
       blob: await response.blob(),
       fileName: fileNameFrom(response.headers.get("Content-Disposition"), fallback),
     };
-  const problem = await readJson<{ title?: string; detail?: string; code?: string; errors?: Record<string, string[]> }>(
-    response,
-  ).catch(() => null);
-  const message = problem?.detail ?? problem?.title ?? `Request failed (HTTP ${response.status})`;
-  if (response.status === 404) throw new NotFoundError(message);
-  if (problem?.errors) throw new ApiValidationError(message, problem.errors, response.status);
-  if (response.status === 409 && problem?.title)
-    throw new ApiConflictError(message, { title: problem.title, detail: problem.detail, code: problem.code, problem });
-  throw Object.assign(new Error(message), { status: response.status, code: problem?.code });
+  throw await refusalOf(response);
 };
 
 /** One document's bytes, named as the server names them. */

@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: The people register — People, a person's page with its documents, New person, My page and the Staff settings with the company's structure and the document categories.
+description: The people register — People, a person's page with its documents, New person, My page and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention and the thresholds.
 sidebar:
   order: 45
 sources:
@@ -377,13 +377,15 @@ people they manage, and the reassessment is `staff:personal-data`'s:
 | 5, 30 or more than 50 employees | The headcount has crossed a threshold that brings a duty: a whistleblowing routine and a safety representative at 5, a working environment committee at 30, the duty to report on equality above 50. | Staff settings |
 
 An item goes away when what it asks for is done. A threshold's item stays until HR
-acknowledges the threshold — once, for good; how is in the
-[administration guide](/en/admin/staff/#the-thresholds).
+acknowledges the threshold — once, for good — under [Thresholds](#thresholds) in the
+Staff settings.
 
 ## Change the settings
 
 **Staff settings** (`staff:manage`) has the general settings first, then the company's
-structure, then the document categories.
+structure, the document categories, and four cards for the data: **Import and export
+people**, **Payroll export**, **Retention** and **Thresholds**. Someone without
+`staff:manage` who opens the page by its address sees none of the four.
 
 ### General
 
@@ -451,3 +453,102 @@ in the category is erased. On a category of your own, the pencil changes the nam
 **Archive** stops offering it for new documents, and **Restore** offers it again. A
 category documents are filed under is not archived — the page says so: move them to
 another category first.
+
+### Import and export people
+
+The register travels as one semicolon-separated CSV file, the form a Norwegian Excel
+opens and saves as it is. The columns and the rules for each are in
+[the reference](/en/reference/staff/#the-registers-import-and-export).
+
+- **Export people** downloads every person — erased ones too — with their work and
+  private details and where each stands today, as `staff-people-<today>.csv`. The
+  national identity number and the bank account are never in it, only whether a number
+  is on file. Every export is recorded in the history with your name. A register larger
+  than one file may hold is refused, and the page says so: the administrator can raise
+  the bound.
+- **Download template** downloads the header row alone, with every column you may
+  import: the sealed columns are in it only when you also hold `staff:personal-data`.
+
+To import:
+
+1. Press **Import people**, then **Choose CSV file** — semicolon-separated, at most
+   5 MiB. A larger file is refused on the spot. Every row needs its `employeeNumber`: a
+   number no person has adds the person, a number a person has changes them.
+2. Press **Check**. Every row runs and nothing is kept: the page shows the **Rows** and
+   how many **Would be created**, **Would be updated** and **Have errors**, and under
+   them **Problems in the file, by row**, each with its row, column and the server's own
+   sentence. Fix the file and check again until you are happy.
+3. Press **Import**. The same file runs for real; the rows with errors are skipped,
+   and the page shows what was **Created**, **Updated** and what **Failed**. Keep the
+   window open until it answers — it cannot be closed while the import runs.
+4. When rows failed, press **Download failed rows**. The file holds those rows exactly
+   as you wrote them, behind an `error` column saying what is wrong with each. Fix
+   them and import that file as it is: the import ignores the `error` column.
+
+A file is refused whole — nothing in it is imported — when it is comma-separated,
+holds more rows than one import takes, or carries a column the import does not know
+(the page names it). The **sealed columns** — `nationalIdKind`, `nationalIdCountry`,
+`nationalId`, `bankAccountKind` and `bankAccount` — need `staff:personal-data` as well:
+without it, a file carrying any of them is refused whole, and the page says so before
+you choose a file. Remove those columns, or ask someone who holds the permission.
+
+If the import stops before it answers — the connection drops, or the server fails —
+the page says so: the rows imported before it stopped stay imported. Press **Check**
+again, then **Import**; the rows already in count as updated and change nothing.
+
+### Export a month for payroll
+
+**Payroll export** hands a month's employments to your payroll system.
+
+1. Pick the **Month**. The month before today is chosen when you open the page.
+2. Press **Export for payroll**. The file downloads as `staff-payroll-<YYYY-MM>.csv`.
+
+The file has one row per employment that was in the month, with the terms in force on
+the month's last day; the columns and the codes are in
+[the reference](/en/reference/staff/#the-payroll-export). It carries no national
+identity numbers and no bank accounts. Every export is recorded in the history with
+your name and the file's SHA-256 hash, so the file payroll received can be recognised
+later. The codes of the three appointment forms added in 2025 (hired out, and on call)
+are not verified against Skatteetaten's code list — the card says so: check them with
+your payroll system before you rely on them.
+
+### Retention
+
+Staff keeps a former employee's record only as long as the law lets it, and erases the
+rest on its own every hour; what each erase removes is in the
+[administration guide](/en/admin/staff/#retention). **Retention** shows:
+
+- **Grace period (days)** — how long after a person's last employment ended their
+  personnel administration is erased: 0 to 3650 days, 90 unless changed.
+- **Health documents (days)** — how long after the last employment ended their health
+  documents are deleted: 30 to 3650 days, 365 unless changed.
+
+  Change either and press **Save periods**. A period outside its bounds is refused on
+  its field before anything is saved. If somebody else saved the settings since you
+  opened the page, they are reloaded and the page says so.
+- **Pending deletions** and **Failing deletions** — files the erases and the document
+  deletes have queued for removal from the document store, and those the store has
+  refused at least once. While any are failing, the card asks you to check that the
+  object store is configured and reachable; they are tried again until it confirms.
+- **Oldest pending since** and **Last erased** — when the oldest file was queued, and
+  when an erase last ran (**Never** when none has).
+
+**Run retention now** runs the hourly erase now, after asking: it erases for good what
+is due, and cannot be undone. People under a legal hold are passed over. The card then
+says what was erased — the personnel administration, health documents, and pay and
+contract, each with a count — and how many files were deleted from the store. The
+deletions stop after 30 seconds: what is not finished, the worker finishes on its next
+look. While the worker is running already, the page says so: try again in a moment.
+
+### Thresholds
+
+**Thresholds** lists the four thresholds that bring the employer a duty — **5 or more
+employees**, **30 or more employees**, **More than 50 employees** and **Occupational
+pension (OTP)** — each with the duty in one line. While one is crossed and not
+acknowledged, the dashboard shows an item for it. The headcount itself is on the
+dashboard, not here.
+
+When the duty is dealt with — or does not apply — press **Acknowledge** on its row and
+confirm. An acknowledgement is **permanent**: it cannot be undone, and the threshold's
+item never comes back, whatever the headcount does later. The row then says
+**Acknowledged** with the date. A threshold can be acknowledged before it is crossed.

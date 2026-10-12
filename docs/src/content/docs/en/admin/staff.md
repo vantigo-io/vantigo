@@ -195,14 +195,16 @@ link an erased record allows.
 ## Import and export the register
 
 The register travels as one semicolon-separated CSV file — the form a Norwegian Excel
-opens and saves as CSV without an import dialog. All three steps need `staff:manage`;
-the columns, the rules and the codes are in
+opens and saves as CSV without an import dialog. All three steps need `staff:manage`
+and are on the **Import and export people** card in **Staff settings**
+([the user guide](/en/user/staff/#import-and-export-people)); each is also an endpoint,
+named below. The columns, the rules and the codes are in
 [the reference](/en/reference/staff/#the-registers-import-and-export).
 
 ### Import a register
 
-1. Download the template: `GET /api/v1/staff/people/import-template.csv`. It is the
-   header row alone — the person's columns, the first employment's, and the sealed ones
+1. Download the template: **Download template**
+   (`GET /api/v1/staff/people/import-template.csv`). It is the header row alone — the person's columns, the first employment's, and the sealed ones
    only if you hold `staff:personal-data`. Or start from an export.
 2. Fill in one row per person. `employeeNumber` is required on every row: a number no
    person has adds the person, a number a person has changes them. For a new person,
@@ -211,18 +213,20 @@ the columns, the rules and the codes are in
    name, `managerEmployeeNumber` by the manager's employee number. A manager the file
    adds must come on an earlier row. A person already in the register only has their
    own columns changed — never an employment: change those in the app.
-3. Save it as CSV UTF-8 with semicolons, and check it: `POST /api/v1/staff/people/import`
-   with the file in the multipart part `file`. Without `dryRun=false` the import is a
-   **dry run**: every row runs and is rolled back, and the answer says what each row
-   would do — `created`, `updated`, `failed`, and each problem with its row and column.
-4. Fix what failed and check again. When the dry run is clean, send the same file with
-   `?dryRun=false`.
-5. Verify: the answer's counts are what you expect, the people are in the list, and each
+3. Save it as CSV UTF-8 with semicolons, and check it: **Import people**, choose the
+   file, **Check** (`POST /api/v1/staff/people/import` with the file in the multipart
+   part `file`). The check is a **dry run**: every row runs and is rolled back, and the
+   page shows what the rows would do — created, updated, with errors — and each problem
+   with its row and column. Without `dryRun=false` the endpoint does the same.
+4. Fix what failed and check again. When the check is clean, press **Import**, which
+   sends the same file with `?dryRun=false`.
+5. Verify: the counts are what you expect, the people are in the list, and each
    person's history shows the import's changes under your name.
 
 A row that fails writes nothing and does not stop the others; rows already imported stay
-imported, so send a corrected file of the failed rows alone, or the whole file again —
-rows that change nothing write nothing. An import cut short — the connection dropped
+imported, so send a corrected file of the failed rows alone — **Download failed rows**
+gives them back as written, behind an `error` column the import ignores — or the whole
+file again: rows that change nothing write nothing. An import cut short — the connection dropped
 mid-file — keeps the rows it ran, and the installation's history still records it with
 the counts so far: `rows` is the whole file, and the created, updated and failed rows
 add up to fewer. The file is at most 5 MiB and
@@ -233,8 +237,8 @@ add up to fewer. The file is at most 5 MiB and
 
 `nationalIdKind`, `nationalIdCountry`, `nationalId`, `bankAccountKind` and `bankAccount`
 need `staff:personal-data` as well. A file carrying any of them from someone without it
-is refused whole (`import_sealed_columns`) — remove the columns or ask for the
-permission. A filled cell sets the value with the same checks as on the person's
+is refused whole (`import_sealed_columns`), and the import says so in words — remove the
+columns or ask for the permission. A filled cell sets the value with the same checks as on the person's
 record; a blank one leaves the value on file as it is. A bank account the import changes
 mails the person, as a change by hand does ([The bank-change mail](#the-bank-change-mail)),
 once their row is saved — never in a dry run. No answer, log line or history entry
@@ -252,7 +256,8 @@ first the new `nationalId` with the `birthDate` cell blank, then the new `birthD
 
 ### Export the register
 
-`GET /api/v1/staff/people/export.csv` downloads `staff-people-<today>.csv`: every person
+**Export people** (`GET /api/v1/staff/people/export.csv`) downloads
+`staff-people-<today>.csv`: every person
 — erased ones too — with the work and private groups and where each stands today. The
 national identity number and the bank account are never in it: `nationalIdOnFile` says
 `yes` or `no`. Every export is recorded in the installation's history with your name and
@@ -269,9 +274,10 @@ the row is refused `person_erased`.
 The payroll file hands a month's employments to your payroll system. You need
 `staff:manage`.
 
-1. Ask for the month, as `YYYY-MM`:
-   `GET /api/v1/staff/payroll/export?month=2026-09`. The Staff app's Settings page gains
-   a month picker for it in a later release; until then, call the endpoint. `format`
+1. In **Staff settings**, under **Payroll export**, pick the **Month** — the month
+   before today is chosen to begin with — and press **Export for payroll**
+   ([the user guide](/en/user/staff/#export-a-month-for-payroll)). The page asks for
+   `GET /api/v1/staff/payroll/export?month=2026-09&format=csv`; called directly, `format`
    may be left out — `csv` is the one format there is.
 2. Save the download, `staff-payroll-2026-09.csv`, and import it into payroll.
 
@@ -332,12 +338,14 @@ employment, or one still employed, is never erased.
 
 ### Set the periods
 
-1. As a user with `staff:manage`, read the settings: `GET /api/v1/staff/settings`.
-2. `PUT /api/v1/staff/settings` with the revision you read in `If-Match` and
-   `retentionGraceDays` (0 to 3650 days) and `healthRetentionDays` (30 to 3650). A body
-   that leaves either out keeps it.
-3. Verify: the answer carries the new periods. The next run judges by them; a period
-   made shorter can make many people due at once, and the worker takes fifty a run.
+1. As a user with `staff:manage`, open **Staff settings**; the **Retention** card shows
+   the periods ([the user guide](/en/user/staff/#retention)).
+2. Change **Grace period (days)** (`retentionGraceDays`, 0 to 3650) and **Health
+   documents (days)** (`healthRetentionDays`, 30 to 3650), and press **Save periods**.
+   Through the API it is `PUT /api/v1/staff/settings` with the revision you read in
+   `If-Match`; a body that leaves either period out keeps it.
+3. Verify: the card shows the new periods. The next run judges by them; a period made
+   shorter can make many people due at once, and the worker takes fifty a run.
 
 ### Turn the worker off, or change how often it looks
 
@@ -352,14 +360,13 @@ the run by hand below still works.
 
 ### Run it by hand
 
-`POST /api/v1/staff/retention/run` (`staff:manage`) runs the worker's erase and a pass
-over the deletion ledger now, with you as the erased entries' author. The answer says
-what was erased per kind and how many objects were deleted from the store. Its pass
-over the deletion ledger stops after thirty seconds, so a slow object store does not
-hold the request; the worker deletes the rest on its next look. While the worker is
-running, it answers `retention_busy` (409); try again in a minute. For now the run is
-triggered through this endpoint; the Staff app's Settings page gains a button for it in
-a later release.
+**Run retention now** on the **Retention** card in **Staff settings** (`staff:manage`;
+`POST /api/v1/staff/retention/run`) runs the worker's erase and a pass over the
+deletion ledger now, with you as the erased entries' author, after you confirm. The
+card then says what was erased per kind and how many objects were deleted from the
+store. Its pass over the deletion ledger stops after thirty seconds, so a slow object
+store does not hold the request; the worker deletes the rest on its next look. While
+the worker is running, the card says so (`retention_busy`, 409); try again in a minute.
 
 ### The legal hold
 
@@ -374,10 +381,12 @@ object store; so does deleting a document by hand, when the store does not confi
 once. The worker asks the store again on every look, waiting longer after each refusal
 (at most an hour), and never gives up — a legal erase is not best-effort.
 
-`GET /api/v1/staff/settings` reports the ledger in its `retention` block:
-`pendingDeletions` (files waiting), `failingDeletions` (files the store has refused at
-least once), `oldestPendingSince` and `lastErasedAt` (the last erase). A
-`failingDeletions` that stays above zero means the object store is refusing: check that
+The **Retention** card in **Staff settings** shows the ledger — **Pending deletions**,
+**Failing deletions**, **Oldest pending since** and **Last erased** — as
+`GET /api/v1/staff/settings` reports it in its `retention` block: `pendingDeletions`
+(files waiting), `failingDeletions` (files the store has refused at least once),
+`oldestPendingSince` and `lastErasedAt` (the last erase). A `failingDeletions` that
+stays above zero means the object store is refusing: check that
 storage is configured and reachable ([Object storage](/en/admin/object-storage/)) and
 the server log, which names the store's error. Once the store answers, the queued files
 go at the next look.
@@ -405,11 +414,13 @@ When the duty is dealt with — or does not apply — acknowledge the threshold.
 acknowledged **once and for good**: its item never comes back, whatever the headcount
 does later, and a threshold can be acknowledged before it is crossed.
 
-1. As someone with `staff:manage`, send
+1. As someone with `staff:manage`, open **Staff settings**, press **Acknowledge** on the
+   threshold's row under **Thresholds**, and confirm
+   ([the user guide](/en/user/staff/#thresholds)). Through the API it is
    `POST /api/v1/staff/thresholds/{key}/acknowledge` with the key — `5`, `30`, `50` or
-   `otp`. The Staff settings screen has no control for it yet.
-2. Verify: the answer, and `thresholdsAcknowledged` in `GET /api/v1/staff/settings`,
-   carry the time it was acknowledged; the item is gone from the dashboard.
+   `otp`.
+2. Verify: the row says **Acknowledged** with the date, as `thresholdsAcknowledged` in
+   `GET /api/v1/staff/settings` does; the item is gone from the dashboard.
 
 Each acknowledgement is recorded in the settings with its time, and as a
 `threshold_acknowledged` event of the installation naming who acknowledged it.

@@ -1,3 +1,4 @@
+import type { StaffImportResult } from "../api/data";
 import type { StaffDocument, StaffDocumentCategory } from "../api/documents";
 import type { StaffEmployment, StaffTerms } from "../api/employments";
 import type { StaffCapabilities, StaffMeta, StaffStructure } from "../api/meta";
@@ -11,6 +12,7 @@ import type {
   StaffPersonListItem,
   StaffPersonRole,
 } from "../api/people";
+import type { StaffRetentionRun } from "../api/retention";
 import type { StaffSettings } from "../api/settings";
 import type { StaffBusinessUnit, StaffDepartment, StaffLegalEntity, StaffLocation } from "../api/structure";
 
@@ -509,3 +511,28 @@ export const documents = (): StaffDocument[] => [
     uploadedAt: "2026-02-01T10:00:00Z",
   }),
 ];
+
+/**
+ * What the fake's import answers for any file, dry or real (the `dryRun` its
+ * own): three rows, one created, one updated and one failed on its work
+ * email — row 2 of the import modal's test file.
+ */
+export const importTally = (): Omit<StaffImportResult, "dryRun"> => ({
+  rows: 3,
+  created: 1,
+  updated: 1,
+  failed: 1,
+  errors: [{ row: 2, column: "workEmail", message: "A work email must look like name@example.com, but was 'nope'" }],
+});
+
+/** A run by hand that erased one person's personnel record and another's health documents and pay. */
+export const retentionRun = (): StaffRetentionRun => ({
+  erased: {
+    kinds: [
+      { kind: "D", count: 3 },
+      { kind: "health", count: 1 },
+      { kind: "A", count: 2 },
+    ],
+  },
+  deletions: { attempted: 4, succeeded: 4 },
+});

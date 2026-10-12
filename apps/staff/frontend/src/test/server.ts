@@ -1,3 +1,4 @@
+import type { StaffImportResult } from "../api/data";
 import type { StaffDocument, StaffDocumentCategory } from "../api/documents";
 import type {
   StaffContractCheckItem,
@@ -8,7 +9,8 @@ import type {
 } from "../api/employments";
 import type { StaffMeta } from "../api/meta";
 import type { StaffAssignableUser, StaffEvent, StaffPerson, StaffPersonInput } from "../api/people";
-import type { StaffSettings } from "../api/settings";
+import type { StaffRetentionRun } from "../api/retention";
+import type { StaffSettings, StaffSettingsInput, StaffThreshold } from "../api/settings";
 import type { StaffBusinessUnit, StaffDepartment, StaffLegalEntity, StaffLocation } from "../api/structure";
 import { defaultFullTimeHours, fullTimeHoursMismatch } from "../lib/terms";
 import { jsonResponse } from "./api";
@@ -22,10 +24,12 @@ import {
   documents as defaultDocuments,
   employments as defaultEmployments,
   events as defaultEvents,
+  importTally as defaultImportTally,
   legalEntities as defaultLegalEntities,
   locations as defaultLocations,
   meta as defaultMeta,
   peopleWithRecords as defaultPeople,
+  retentionRun as defaultRetentionRun,
   settings as defaultSettings,
   terms as defaultTerms,
   holdsPersonalData,
@@ -59,6 +63,10 @@ export interface StaffServer {
   /** Every person's documents, newest first, as `staff:personal-data` reads them; the fake shapes them per reader. */
   documents?: StaffDocument[];
   documentCategories?: StaffDocumentCategory[];
+  /** What an import answers for any file, dry or real; the `dryRun` is the request's. */
+  importTally?: Omit<StaffImportResult, "dryRun">;
+  /** What `POST /retention/run` answers. */
+  retentionRun?: StaffRetentionRun;
   pageSize?: number;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
@@ -413,7 +421,14 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     row.isDefault = true;
   };
 
-  const settingsRefusal = (body: StaffSettings): Response | undefined => {
+  const settingsRefusal = (body: StaffSettingsInput): Response | undefined => {
+    const errors: Record<string, string[]> = {};
+    const outside = (value: number | undefined, min: number) =>
+      value !== undefined && (!Number.isInteger(value) || value < min || value > 3650);
+    if (outside(body.retentionGraceDays, 0)) errors.retentionGraceDays = ["The grace period is 0 to 3650 days"];
+    if (outside(body.healthRetentionDays, 30))
+      errors.healthRetentionDays = ["The health documents' period is 30 to 3650 days"];
+    if (Object.keys(errors).length > 0) return staffProblem(400, { title: "Invalid Staff settings", errors });
     const longest = `${body.employeeNumberPrefix ?? ""}${body.nextEmployeeNumber}`;
     if (longest.length <= 16) return undefined;
     const message = `The prefix and the next number make ${longest}, which is longer than 16 characters`;
@@ -1333,6 +1348,86 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     return undefined;
   };
 
+  /**
+   * The data operations, retention and the thresholds (design S15, S18–S20),
+   * every one `staff:manage`'s: the import answering `importTally` with the
+   * request's `dryRun` (a file refused whole — `import_sealed_columns` and
+   * the rest — is staged with `write`), the register's export and template
+   * and the payroll month as attachments named as the server names them, a
+   * run of retention by hand (`retention_busy` staged with `write`), and a
+   * threshold acknowledged once and for good.
+   */
+  const dataRoutes = (method: string, path: string, url: URL): Response | undefined => {
+    const file = (text: string, fileName: string) =>
+      new Response(text, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+        },
+      });
+    const known = [
+      "/api/v1/staff/people/import",
+      "/api/v1/staff/people/export.csv",
+      "/api/v1/staff/people/import-template.csv",
+      "/api/v1/staff/payroll/export",
+      "/api/v1/staff/retention/run",
+    ];
+    const threshold = /^\/api\/v1\/staff\/thresholds\/([^/]+)\/acknowledge$/.exec(path);
+    if (!known.includes(path) && !threshold) return undefined;
+    if (!manages(role)) return forbidden();
+
+    if (path === "/api/v1/staff/people/import" && method === "POST") {
+      const dryRun = url.searchParams.get("dryRun") ?? "true";
+      if (dryRun !== "true" && dryRun !== "false")
+        return staffProblem(400, { title: "Invalid import", errors: { dryRun: ["dryRun is true or false"] } });
+      return jsonResponse(200, { ...(server.importTally ?? defaultImportTally()), dryRun: dryRun === "true" });
+    }
+    if (path === "/api/v1/staff/people/export.csv" && method === "GET")
+      return file(
+        `\ufeffemployeeNumber;givenName;familyName\r\n${state.people
+          .map((one) => `${one.employeeNumber};${one.givenName};${one.familyName}\r\n`)
+          .join("")}`,
+        `staff-people-${TODAY}.csv`,
+      );
+    if (path === "/api/v1/staff/people/import-template.csv" && method === "GET")
+      return file(
+        `\ufeffemployeeNumber;givenName;familyName${holdsPersonalData(role) ? ";nationalIdKind;nationalId" : ""};startDate\r\n`,
+        "staff-people-import-template.csv",
+      );
+    if (path === "/api/v1/staff/payroll/export" && method === "GET") {
+      const month = url.searchParams.get("month") ?? "";
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
+        return staffProblem(400, {
+          code: "payroll_month_invalid",
+          title: "Invalid payroll export",
+          errors: { month: [`A month is YYYY-MM with a month from 01 to 12, but was '${month}'`] },
+        });
+      return file("\ufeffEmployee number;Name\r\nE-1;Ada Lovelace\r\n", `staff-payroll-${month}.csv`);
+    }
+    if (path === "/api/v1/staff/retention/run" && method === "POST")
+      return jsonResponse(200, server.retentionRun ?? defaultRetentionRun());
+    if (threshold && method === "POST") {
+      const key = threshold[1] as StaffThreshold;
+      if (!["5", "30", "50", "otp"].includes(key))
+        return staffProblem(404, {
+          code: "threshold_unknown",
+          title: "Unknown threshold",
+          detail: "A threshold is 5, 30, 50 or otp.",
+        });
+      // Once and for good: a second acknowledgement keeps the first date.
+      state.settings = {
+        ...state.settings,
+        thresholdsAcknowledged: {
+          [key]: "2026-10-11T12:00:00Z",
+          ...state.settings.thresholdsAcknowledged,
+        },
+      };
+      return jsonResponse(200, state.settings.thresholdsAcknowledged);
+    }
+    return undefined;
+  };
+
   const stub = stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     const path = url.pathname;
@@ -1353,7 +1448,18 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (method === "PUT") {
         const refused = staleRevision(init, state.settings.revision, "settings") ?? settingsRefusal(body);
         if (refused) return Promise.resolve(refused);
-        state.settings = { ...body, revision: state.settings.revision + 1 };
+        // A replace — but the retention periods left out keep their values,
+        // and the derived block and the acknowledgements are not the body's.
+        const { retention, thresholdsAcknowledged, retentionGraceDays, healthRetentionDays } = state.settings;
+        state.settings = {
+          retentionGraceDays,
+          healthRetentionDays,
+          employeeNumberPrefix: "",
+          ...(body as StaffSettingsInput),
+          retention,
+          thresholdsAcknowledged,
+          revision: state.settings.revision + 1,
+        };
         return Promise.resolve(jsonResponse(200, state.settings));
       }
     }
@@ -1412,6 +1518,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     const employments = /^\/api\/v1\/staff\/people\/(\d+)\/employments$/.exec(path);
     if (employments && method === "POST")
       return Promise.resolve(manages(role) ? createEmployment(Number(employments[1]), body) : forbidden());
+
+    const dataAnswer = dataRoutes(method, path, url);
+    if (dataAnswer) return Promise.resolve(dataAnswer);
 
     const documentsAnswer = documentRoutes(method, path, init, body);
     if (documentsAnswer) return Promise.resolve(documentsAnswer);
