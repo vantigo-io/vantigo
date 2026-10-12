@@ -76,7 +76,8 @@ func parkFirstImport(t *testing.T) (parked <-chan int64, release chan<- struct{}
 }
 
 // idleInTransaction is the one backend of the installation's database
-// holding a transaction open and doing nothing: the parked import's.
+// holding a transaction open and doing nothing: the parked request's — an
+// import at its seam, a print at its first letter's lock.
 func idleInTransaction(t *testing.T, probe *pgx.Conn) uint32 {
 	t.Helper()
 	rows, err := probe.Query(context.Background(), `
@@ -87,7 +88,7 @@ func idleInTransaction(t *testing.T, probe *pgx.Conn) uint32 {
 	}
 	pids, err := pgx.CollectRows(rows, pgx.RowTo[uint32])
 	if err != nil || len(pids) != 1 {
-		t.Fatalf("the idle transactions = %v (%v), want the parked import's alone", pids, err)
+		t.Fatalf("the idle transactions = %v (%v), want the parked request's alone", pids, err)
 	}
 	return pids[0]
 }
