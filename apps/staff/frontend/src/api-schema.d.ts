@@ -709,7 +709,7 @@ export interface paths {
         };
         /**
          * Get a person
-         * @description One person, shaped by who is asking (design §5): the person themselves through their self-service link, a manager of theirs today (a person linked to the caller is the manager of one of their employments in force today, by the terms or the department), staff:view for a person active today (an employment that has started and not ended), staff:manage and staff:personal-data each see the field groups theirs to read. Anyone else — staff:view alone for a person not active today included — gets a 404 identical to an unknown id.
+         * @description One person, shaped by who is asking (design §5): the person themselves through their self-service link, a manager of theirs today (a person linked to the caller is the manager of one of their employments in force today — the manager its terms name when they are employed today, else the department's manager climbing the parents, a manager who has left skipped), staff:view for a person active today (an employment that has started and not ended), staff:manage and staff:personal-data each see the field groups theirs to read. Anyone else — staff:view alone for a person not active today included — gets a 404 identical to an unknown id.
          */
         get: operations["getStaffPeopleById"];
         /**
@@ -929,7 +929,7 @@ export interface paths {
         };
         /**
          * Get a person's place in the organisation
-         * @description The person's managers up the chain — each the manager of the one before, by the terms in force today or the department's manager — and their direct reports today, each as the work group names them. A caller holding staff:view alone is not shown a manager in the chain who is not active today. Anyone who may see the person reads it; anyone else gets a 404 identical to an unknown id.
+         * @description The person's managers up the chain — each the manager of the one before today, the manager the terms in force name when they are employed today, else the department's manager climbing the parents, a manager who has left skipped — and their direct reports today by the same rule, each as the work group names them. Anyone who may see the person reads it; anyone else gets a 404 identical to an unknown id.
          */
         get: operations["getStaffPeopleByIdOrg"];
         put?: never;
@@ -1790,7 +1790,7 @@ export interface components {
         };
         /** @enum {string} */
         StaffPayPeriod: "monthly" | "yearly" | "hourly" | "once";
-        /** @description A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the terms' own or else the department's (design §4 Managers), absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone; erasedAt, legalHold and reassessedAt (the hold group) are staff:manage's and staff:personal-data's. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person. */
+        /** @description A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the one who manages them today — the manager the terms name when they are employed today, else the department's manager climbing the parents, a manager who has left skipped (design §4 Managers, §9) — absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone; erasedAt, legalHold and reassessedAt (the hold group) are staff:manage's and staff:personal-data's. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person. */
         StaffPerson: {
             bankAccount?: components["schemas"]["StaffPersonBankAccount"];
             /**
@@ -1888,7 +1888,7 @@ export interface components {
             /** Format: uuid */
             userId: string | null;
         };
-        /** @description A person in the directory — the work group, with the manager, the department, the title and the location from the terms in force today and the business unit of their employment (each absent when there is none; to a caller holding staff:view alone the manager is absent too when not active today), and where the person stands today. */
+        /** @description A person in the directory — the work group, with the manager, the department, the title and the location from the terms in force today and the business unit of their employment (each absent when there is none; the manager is the one who manages them today — the manager the terms name when they are employed today, else the department's manager climbing the parents, a manager who has left skipped), and where the person stands today. */
         StaffPersonListItem: {
             businessUnit?: components["schemas"]["StaffBusinessUnitSummary"];
             department?: components["schemas"]["StaffDepartmentSummary"];

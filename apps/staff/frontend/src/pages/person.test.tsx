@@ -92,11 +92,15 @@ describe("Person page — the profile as others read it", () => {
     expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
   });
 
-  it("leaves a colleague's org view without a manager who is not active today, the walk going on above", async () => {
-    // Grace's manager is Ada, whose terms name Edsger, who has left: a
-    // colleague reads Ada up the chain and not him.
+  it.each([
+    ["a colleague", "view"],
+    ["HR", "manage"],
+  ] as const)("shows %s the chain of whoever manages today, a manager who has left skipped", async (_, role) => {
+    // Grace's manager is Ada, whose terms name Edsger, who has left: Ada
+    // heads the top department, so nobody manages her today, and the chain
+    // above Grace is Ada alone — for a colleague and HR alike.
     stubStaffApi({
-      role: "view",
+      role,
       people: people().map((one) =>
         one.id === 101 ? { ...one, manager: { id: 104, displayName: "Edsger Dijkstra", employeeNumber: "E-4" } } : one,
       ),
