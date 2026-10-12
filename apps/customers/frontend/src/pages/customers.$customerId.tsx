@@ -16,7 +16,7 @@ import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tansta
 import { Link } from "@tanstack/react-router";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
-
+import { customerAttachmentsQueryOptions } from "../api/attachments";
 import {
   ApiConflictError,
   archiveCustomer,
@@ -40,6 +40,7 @@ import { isReadOnlyCustomer } from "../lib/customer-read-only";
 import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { formatDateOnly } from "../lib/format-date-only";
 import { getLegalSource } from "../lib/legal-sources";
+import { CustomerAttachmentsCard } from "./-customer-attachments-card";
 import { CustomerBillingCard } from "./-customer-billing-card";
 import { CustomerContactCard } from "./-customer-contact-card";
 import { CustomerContactsCard } from "./-customer-contacts-card";
@@ -480,6 +481,11 @@ export const CustomerOverview = ({
     ...customerRegistryRecordQueryOptions(customerId),
     enabled: showRegistry,
   });
+  // The attachments (customer attachments design D7), read once here and
+  // shared: the card lists them, and the timeline shows a manual entry's own
+  // under it. A reader without customers:timeline-view gets the card's error
+  // state and nothing on the timeline, which they cannot read either.
+  const { data: attachments } = useQuery(customerAttachmentsQueryOptions(customerId));
   return (
     <Stack gap="lg">
       <CustomerRelationshipCard customerId={customerId} canEdit={canEdit && editable} />
@@ -497,7 +503,12 @@ export const CustomerOverview = ({
         canManageBilling={canManageBilling && editable}
       />
       <CustomerContactsCard customerId={customerId} readOnly={!editable} />
-      <CustomerTimeline customerId={customerId} canManageTimeline={canManageTimeline && editable} />
+      <CustomerAttachmentsCard customerId={customerId} canManageTimeline={canManageTimeline && editable} />
+      <CustomerTimeline
+        customerId={customerId}
+        canManageTimeline={canManageTimeline && editable}
+        attachments={attachments ?? []}
+      />
     </Stack>
   );
 };

@@ -33,14 +33,17 @@ import {
   IconExternalLink,
   IconFlag,
   IconHistory,
+  IconPaperclip,
   IconPlus,
   IconTrash,
   IconWand,
+  IconX,
 } from "@tabler/icons-react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import type { CustomerAttachment } from "../api/attachments";
 import {
   createTimelineEntry,
   defaultTimelineFilters,
@@ -58,10 +61,17 @@ import {
 } from "../api/timeline";
 import { UserPicker } from "../components/user-picker";
 import { actorLabel } from "../lib/actor-label";
+import {
+  ATTACHMENT_ACCEPT,
+  confirmDeleteAttachment,
+  useDeleteAttachment,
+  useUploadAttachment,
+} from "../lib/attachments";
 import { billingLanguageLabel, deliveryMethodLabel } from "../lib/billing-labels";
 import { customerWriteErrorMessage, isCustomerReadOnly } from "../lib/customer-write-error";
 import { isOverdue, utcToday } from "../lib/follow-up-dates";
 import { formatDateOnly } from "../lib/format-date-only";
+import { AttachmentLink } from "./-customer-attachments-card";
 import "../i18n";
 
 const manualTypes = [
@@ -94,6 +104,8 @@ const typeKey: Record<string, string> = {
   "customer.anonymisation_scheduled": "customerAnonymisationScheduledEvent",
   "customer.anonymisation_cancelled": "customerAnonymisationCancelledEvent",
   "customer.anonymised": "customerAnonymisedEvent",
+  "customer.attachment_added": "customerAttachmentAddedEvent",
+  "customer.attachment_removed": "customerAttachmentRemovedEvent",
 };
 const iconFor = (type: string) =>
   type.startsWith("interaction.") ? IconCalendarEvent : type === "note" ? IconEdit : IconWand;
@@ -351,11 +363,26 @@ const dateValue = (value: Date | string | null) =>
 export const CustomerTimeline = ({
   customerId,
   canManageTimeline,
+  attachments = [],
 }: {
   customerId: number;
   canManageTimeline?: boolean;
+  /**
+   * The customer's attachments (customer attachments design D7), read once
+   * by the page and shown under the manual entry each belongs to; the
+   * Attachments card lists them all.
+   */
+  attachments?: CustomerAttachment[];
 }) => {
   const { t, formatters } = useI18n("customers");
+  const attachmentsOf = (entry: TimelineEntry) =>
+    attachments.filter((attachment) => attachment.timelineEntry?.id === Number(entry.id));
+  const uploadToEntry = useUploadAttachment(customerId);
+  const removeAttachment = useDeleteAttachment(customerId);
+  // The hidden file input Attach file… opens: one for the card, the entry it
+  // is for remembered until the person has picked a file.
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [attachingTo, setAttachingTo] = useState<TimelineEntry | null>(null);
   const manualTypeOptions = manualTypes.map((value) => ({ value, label: t(typeKey[value]) }));
   const eventTypeOptions = [
     ...manualTypeOptions,
@@ -677,6 +704,25 @@ export const CustomerTimeline = ({
                           {t("openSource")}
                         </Button>
                       )}
+                      {attachmentsOf(entry).map((attachment) => (
+                        <Group key={attachment.id} gap={4} wrap="nowrap">
+                          <AttachmentLink attachment={attachment} />
+                          {canManageTimeline && entry.provenance === "manual" && (
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              size="sm"
+                              aria-label={t("deleteNamedAttachment", { name: attachment.fileName })}
+                              loading={removeAttachment.isPending && removeAttachment.variables?.id === attachment.id}
+                              onClick={() =>
+                                confirmDeleteAttachment(t, attachment, () => removeAttachment.mutate(attachment))
+                              }
+                            >
+                              <IconX size={14} />
+                            </ActionIcon>
+                          )}
+                        </Group>
+                      ))}
                     </Stack>
                     {/* Revision history is a read and could in principle stay for a reader, but
                         it lives inside this menu and a menu with one item is worse than no menu.
@@ -706,6 +752,15 @@ export const CustomerTimeline = ({
                           >
                             {t("edit")}
                           </Menu.Item>
+                          <Menu.Item
+                            leftSection={<IconPaperclip size={15} />}
+                            onClick={() => {
+                              setAttachingTo(entry);
+                              fileInput.current?.click();
+                            }}
+                          >
+                            {t("attachFile")}
+                          </Menu.Item>
                           <Menu.Item leftSection={<IconHistory size={15} />} onClick={() => setRevisions(entry)}>
                             {t("revisionHistory")}
                           </Menu.Item>
@@ -731,6 +786,21 @@ export const CustomerTimeline = ({
           </Button>
         )}
       </Stack>
+      <input
+        ref={fileInput}
+        type="file"
+        accept={ATTACHMENT_ACCEPT}
+        hidden
+        data-testid="attach-file-input"
+        aria-label={t("attachFile")}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          const entry = attachingTo;
+          event.currentTarget.value = "";
+          setAttachingTo(null);
+          if (file && entry) uploadToEntry.mutate({ file, timelineEntryId: Number(entry.id) });
+        }}
+      />
       <TimelineForm
         customerId={customerId}
         entry={editing}

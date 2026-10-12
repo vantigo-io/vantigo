@@ -1,6 +1,7 @@
 import "./i18n";
 
 export * from "./api/account-lifecycle";
+export * from "./api/attachments";
 export * from "./api/auth";
 export * from "./api/contacts";
 export * from "./api/customers";
