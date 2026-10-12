@@ -33,8 +33,10 @@ tabellen står under [rettighetene](/en/reference/staff/#permissions) i referans
 ## Finn noen under Personer
 
 **Personer** (i sidemenyen: **Ansattoversikt**) lister selskapets personer etter navn, med ansattnummer, tittel, avdeling,
-leder og e-post på jobb. Tittelen, avdelingen og lederen er de som står i vilkårene som
-gjelder i dag; en strek betyr at det ikke finnes noen.
+leder og e-post på jobb. Tittelen og avdelingen er de som står i vilkårene som gjelder i
+dag, og lederen er den som leder personen i dag: den vilkårene oppgir, eller, når de ikke
+oppgir noen eller den som er oppgitt har sluttet, avdelingens leder eller nærmeste leder
+over som fortsatt er ansatt; en strek betyr at det ikke finnes noen.
 
 - **Søk** matcher hvert ord du skriver mot navnene, ansattnummeret og e-posten på
   jobb. Listen oppdateres et øyeblikk etter at du slutter å skrive.
@@ -95,7 +97,8 @@ referansen. En person du ikke kan se, svarer akkurat som en som ikke finnes.
   underordnede**. Trykk på et navn for å åpne siden deres.
 
 En leder ser jobbgruppen, rollene og organisasjonen til dem de leder; en kollega det
-samme for alle som er aktive i dag.
+samme for alle som er aktive i dag. En leder som har sluttet, leder ingen: folkene deres
+går til avdelingens leder, eller nærmeste leder over.
 
 #### Endre opplysningene (HR)
 

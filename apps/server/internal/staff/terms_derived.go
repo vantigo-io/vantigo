@@ -197,12 +197,15 @@ func (g managerGraph) inForce(e graphEmployment, date time.Time) *graphTerms {
 	return found
 }
 
-// managerOf is the person's managers on date, sorted and each once: for each
-// employment in force that day, the manager its terms name, else the
-// manager of its department — unless that is the person, or nobody, when
-// the parent departments are climbed to the first whose manager is someone
-// else — else none. Concurrent employments may give two. The climb carries a
-// visited set, so departments that loop (written past this module) end it.
+// managerOf is the person's managers on date as the structure names them,
+// sorted and each once: for each employment in force that day, the manager
+// its terms name, else the manager of its department — unless that is the
+// person, or nobody, when the parent departments are climbed to the first
+// whose manager is someone else — else none, whether or not the one named is
+// in employment that day. Concurrent employments may give two. The climb
+// carries a visited set, so departments that loop (written past this module)
+// end it. Only the cycle check reads it: a loop is one of the edges written,
+// whoever has left; who manages whom is managersOf's.
 func (g managerGraph) managerOf(person int64, date time.Time) []int64 {
 	var out []int64
 	for _, e := range g.employments[person] {
@@ -241,9 +244,9 @@ func (g managerGraph) departmentManager(id, person int64) *int64 {
 // leaves: their reports route to the department's manager"): the manager the
 // terms in force name, else the first department from the terms' up whose
 // manager is someone else — each candidate in employment on date — else nil.
-// It is the dashboard's one manager rule, for the probation item's audience
-// and for reports without a manager; managerOf, which the org view and the
-// Manager audience read, keeps a manager who has left.
+// It is the module's one manager rule: the Manager audience, the org view,
+// the manager a person's work group shows and the dashboard's items all read
+// it, through managersOf or directly.
 func (g managerGraph) effectiveManager(e graphEmployment, date time.Time) *int64 {
 	t := g.inForce(e, date)
 	if t == nil {
@@ -264,6 +267,20 @@ func (g managerGraph) effectiveManager(e graphEmployment, date time.Time) *int64
 		}
 	}
 	return nil
+}
+
+// managersOf is the person's managers on date by effectiveManager, sorted and
+// each once: one for each employment in force that day that has one, so
+// concurrent employments may give two.
+func (g managerGraph) managersOf(person int64, date time.Time) []int64 {
+	var out []int64
+	for _, e := range g.employments[person] {
+		if m := g.effectiveManager(e, date); m != nil && !slices.Contains(out, *m) {
+			out = append(out, *m)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // headsTopOfStructure reports whether e's person is, on date and by the

@@ -120,8 +120,9 @@ func (s *server) GetStaffPeople(ctx context.Context, req gen.GetStaffPeopleReque
 // placement is where a person stands today and whom their terms in force
 // place them under: the status, and the manager, the department, the title,
 // the location and the business unit of their earliest employment in force
-// today — the manager its terms name, else the department's (design §4
-// Managers) — each nil when there is none.
+// today — the manager by effectiveManager, the one who manages them (design
+// §4 Managers, §9 "a manager who leaves"), so always someone in employment
+// today — each nil when there is none.
 type placement struct {
 	status       gen.StaffPersonStatus
 	manager      *gen.StaffPersonSummary
@@ -129,9 +130,6 @@ type placement struct {
 	title        *string
 	businessUnit *gen.StaffBusinessUnitSummary
 	location     *gen.StaffLocationSummary
-	// managerActive is whether the manager is active today, without which a
-	// colleague alone is not shown them (shownManager).
-	managerActive bool
 }
 
 // statusOf is where a person with these employments stands on today: active
@@ -217,11 +215,7 @@ func placementsOf(ctx context.Context, q *store.Queries, ids []int64, today time
 					p.location = &gen.StaffLocationSummary{Id: *t.LocationID, Name: name}
 				}
 			}
-			m := t.Manager
-			if m == nil && t.DepartmentID != nil {
-				m = g.departmentManager(*t.DepartmentID, id)
-			}
-			if m != nil {
+			if m := g.effectiveManager(e, today); m != nil {
 				managers[id] = *m
 				managerIDs = append(managerIDs, *m)
 			}
@@ -234,15 +228,10 @@ func placementsOf(ctx context.Context, q *store.Queries, ids []int64, today time
 		if err != nil {
 			return nil, err
 		}
-		active, err := q.PeopleActiveOn(ctx, store.PeopleActiveOnParams{Ids: managerIDs, Today: dayParam(today)})
-		if err != nil {
-			return nil, fmt.Errorf("staff: read which managers are active today: %w", err)
-		}
 		for id, m := range managers {
 			if name, ok := names[m]; ok {
 				p := out[id]
 				p.manager = &name
-				p.managerActive = slices.Contains(active, m)
 				out[id] = p
 			}
 		}

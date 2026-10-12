@@ -40,10 +40,12 @@ dashboard's [figures and attention items](#stats-and-attention) and the
 
 ## The schema
 
-One migration, `00042_staff_foundation.sql`, creates the whole of this delivery's
-schema at once: `people` (with every column the phase needs — the sealed identifiers,
-the care-day inputs, the account flag, the legal hold and the erase stamps — so later
-deliveries never add a column to it), `next_of_kin`, `person_roles`, `employments`,
+One migration, `00042_staff_foundation.sql`, creates the whole of delivery A1's
+schema at once, and a second, `00043_staff_records.sql`, adds A2's tables
+(`documents`, `document_categories` and `object_deletions`, below). 00042's are
+`people` (with every column the phase needs — the sealed identifiers, the care-day
+inputs, the account flag, the legal hold and the erase stamps — so later deliveries
+never add a column to it), `next_of_kin`, `person_roles`, `employments`,
 `employment_terms`, the four structure tables, `identity_links`, `events` and
 `settings`. No table has a CHECK constraint: the module's own validation owns the
 domain rules and reports them per field. The exceptions to "the index is only a
@@ -286,9 +288,10 @@ names, the employee number and the work email — never a private field. Every r
   employment ended before today), or `none` (no employment yet).
 - **`manager`** and **`department`** — `{id, displayName, employeeNumber}` and `{id,
   code, name}` from the terms in force today on the person's earliest employment in
-  force: the manager the terms name, else [the department's](#managers-and-the-org-view);
-  absent when there is none. A caller holding `staff:view` alone, who sees only the
-  people active today, is not shown a manager who is not active today either.
+  force: the manager is the one who manages the person today by [the manager
+  rule](#managers-and-the-org-view) — the one the terms name when they are in employment
+  today, else the department's or one above it — so always someone active today;
+  absent when there is none.
 
 Who lists whom:
 
@@ -669,12 +672,18 @@ marked not applicable: sixteen items.
 ## Managers and the org view
 
 A person's **manager on a day** is, for each of their employments in force that day,
-the manager the terms in force name; when they name none, the manager of the terms'
-department — unless that is the person themselves, or the department has none, when the
-parent departments are climbed to the first whose manager is someone else; else nobody.
-So the head of a department is managed by the head of the department above, never by
-themselves, and concurrent employments may give two managers. The climb carries a
-visited set, so a department graph that loops ends it.
+the manager the terms in force name when that manager is in employment that day; else
+the manager of the terms' department — unless that is the person themselves, nobody, or
+someone not in employment that day, when the parent departments are climbed to the
+first whose manager is someone else in employment that day; else nobody. So the head
+of a department is managed by the head of the department above, never by themselves,
+and concurrent employments may give two managers. A manager who has left manages
+nobody from the day after their last employment ends (design §9, "a manager who
+leaves: their reports route to the department's manager"): the people who name them,
+and the people of a department they still head, go to the department's manager, then
+up the parents. The climb carries a visited set, so a department graph that loops ends
+it. This one rule decides the Manager audience, the org view, the `manager` a person's
+work group shows and the dashboard's [attention items](#attention-items).
 
 Nobody manages themselves (`self_manager`, 409), and the graph never loops: a write
 that names, clears or changes a manager or a department on a terms row — adding,
@@ -685,18 +694,18 @@ changes** (each terms row's day, each start, each day after an end). A person wh
 manage themselves through anyone is `manager_cycle` (409), naming the first such day:
 a row of B's naming A from March is refused when A's row naming B takes effect in June.
 Two such writes at once are judged one after the other, so exactly one of a pair that
-would close a loop is written.
+would close a loop is written. The check judges the edges as written — the manager a
+terms row names and each department's, whether or not they are in employment that
+day — since a leaver's edge is still there to come back into force on a rehire.
 
 `GET /people/{id}/org` answers `{person, chain, reports}` as the work group names them
 (`{id, displayName, employeeNumber}`): `chain` is the person's manager, that manager's
 manager and so on up, following each one's earliest employment in force today and
 stopping where nobody manages or where the walk would come back on itself; `reports`
 are the people whose manager the person is today. Anyone who may see the person reads
-it; to a caller holding `staff:view` alone a manager in the chain who is not active
-today is left out, as they are from the directory.
-
-The org view and the Manager audience keep a manager who has left; the dashboard's
-attention items skip one ([the dashboard's manager rule](#attention-items)).
+it; everyone in the chain and the reports is in employment today, by the rule, so a
+caller holding `staff:view` alone, who sees only the people active today, reads it
+whole.
 
 The **Manager audience** is resolved from the same rule on today: a caller whose
 self-service link names a manager of the person reads the person as the
@@ -1478,10 +1487,10 @@ items, `staff:personal-data`'s and a manager's for the employments they manage t
 manager on the employments, their terms and the departments alone, and gets `[]` at
 once when they manage nobody today; a manager's read adds only their reports' names.
 
-The **dashboard's manager rule** is the [manager rule](#managers-and-the-org-view)
-with a manager who has left skipped (design §9, "a manager who leaves: their reports
-route to the department's manager"), judged per employment on its terms in force
-today: the manager the terms name when they are in employment today; else the manager
+The **dashboard's manager rule** is the [manager rule](#managers-and-the-org-view) —
+the one the Manager audience and the org view read, a manager who has left skipped
+(design §9, "a manager who leaves: their reports route to the department's manager") —
+judged per employment on its terms in force today: the manager the terms name when they are in employment today; else the manager
 of the terms' department, else of the first department above it, whose manager is
 someone else in employment today; else nobody. It decides both the probation item's
 manager and whether a person has a manager at all, so the two items never disagree. A
@@ -1669,6 +1678,10 @@ All under `/api/v1/staff`.
 | `PUT /people/{id}/user`, `GET /assignable-users` | `staff:manage` |
 | `PUT /people/{id}/national-id`, `POST /people/{id}/national-id/reveal`, `PUT /people/{id}/bank-account`, `POST /people/{id}/bank-account/reveal` | `staff:personal-data` |
 | `GET /me`, `PUT /me`, `GET /me/events`, `GET /me/documents`, `GET /me/export` | `staff:access`, then a self-service link (otherwise `no_person`) |
+| `GET /people/{id}/documents`, `GET /documents/{id}` | `staff:access`, then the person, `staff:manage` (not health documents) or `staff:personal-data` (otherwise 404) |
+| `POST /people/{id}/documents`, `PUT /documents/{id}`, `DELETE /documents/{id}` | `staff:access`, then `staff:manage` or `staff:personal-data`, a health document `staff:personal-data` (judged in the module; otherwise 403) |
+| `GET /document-categories` | `staff:view`, `staff:manage` or `staff:personal-data` (judged in the module; otherwise 403) |
+| `POST /document-categories`, `PUT /document-categories/{id}` | `staff:manage` |
 | `GET /people/{id}/personal-data`, `PUT /people/{id}/legal-hold`, `POST /people/{id}/reassessed` | `staff:personal-data` |
 | `POST /people/similar-erased` | `staff:manage` |
 | `POST /people/import`, `GET /people/export.csv`, `GET /people/import-template.csv` | `staff:manage`; an import file's sealed columns `staff:personal-data` too (`import_sealed_columns`) |
@@ -1677,10 +1690,6 @@ All under `/api/v1/staff`.
 | `GET /stats` | `staff:view` or `staff:manage` (judged in the module; otherwise 403) |
 | `GET /stats/attention` | `staff:access`, shaped per caller: `staff:manage`, `staff:personal-data` and a manager for their reports (otherwise `[]`) |
 | `POST /thresholds/{key}/acknowledge` | `staff:manage` |
-| `GET /people/{id}/documents`, `GET /documents/{id}` | `staff:access`, then the person, `staff:manage` (not health documents) or `staff:personal-data` (otherwise 404) |
-| `POST /people/{id}/documents`, `PUT /documents/{id}`, `DELETE /documents/{id}` | `staff:access`, then `staff:manage` or `staff:personal-data`, a health document `staff:personal-data` (judged in the module; otherwise 403) |
-| `GET /document-categories` | `staff:view`, `staff:manage` or `staff:personal-data` (judged in the module; otherwise 403) |
-| `POST /document-categories`, `PUT /document-categories/{id}` | `staff:manage` |
 | `GET /people/{id}/employments`, `GET /employments/{id}`, `GET /employments/{id}/terms`, `GET /people/{id}/org` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
 | `GET /employments/{id}/contract-check` | `staff:access`, then the person, a manager of theirs or HR (otherwise 404) |
 | `POST /people/{id}/employments`, `PUT /employments/{id}`, `POST /employments/{id}/end`, `POST /employments/{id}/reopen`, `POST /employments/{id}/terms`, `PUT /terms/{id}`, `DELETE /terms/{id}` | `staff:manage` |

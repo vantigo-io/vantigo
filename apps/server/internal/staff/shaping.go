@@ -238,23 +238,6 @@ func (a audience) readsDocument(restricted bool) bool {
 	return a.reads(groupDocuments)
 }
 
-// colleagueOnly is whether the audience is staff:view and nothing more: the
-// one that sees only the people active today (plan reading 15), so a person
-// it is shown — a manager on a summary, a link up the org chain — must be
-// active today too.
-func (a audience) colleagueOnly() bool {
-	return a.Colleague && !a.Self && !a.Manager && !a.Manage && !a.PersonalData
-}
-
-// shownManager is a placement's manager as the audience may read it: absent
-// for a colleague alone when the manager is not active today.
-func shownManager(a audience, p placement) *gen.StaffPersonSummary {
-	if a.colleagueOnly() && !p.managerActive {
-		return nil
-	}
-	return shown(a, "manager", p.manager)
-}
-
 // seesPerson is whether the person exists for this audience at all; to
 // anyone else they are the 404 an unknown id is.
 func (a audience) seesPerson() bool { return a.reads(groupWork) }
@@ -288,7 +271,7 @@ func shown[T any](a audience, field string, v *T) *T {
 func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.StaffPersonUser) gen.StaffPerson {
 	out := gen.StaffPerson{
 		Status:            p.status,
-		Manager:           shownManager(a, p),
+		Manager:           shown(a, "manager", p.manager),
 		Department:        shown(a, "department", p.department),
 		Title:             shownOnPerson(a, "title", p.title),
 		BusinessUnit:      shown(a, "businessUnit", p.businessUnit),
@@ -346,7 +329,7 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 func personListItemResponse(row store.ListPeopleRow, p placement, a audience) gen.StaffPersonListItem {
 	return gen.StaffPersonListItem{
 		Status:            p.status,
-		Manager:           shownManager(a, p),
+		Manager:           shown(a, "manager", p.manager),
 		Department:        shown(a, "department", p.department),
 		Title:             shownOnPerson(a, "title", p.title),
 		BusinessUnit:      shown(a, "businessUnit", p.businessUnit),

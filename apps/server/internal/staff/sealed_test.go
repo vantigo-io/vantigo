@@ -192,14 +192,14 @@ func TestNationalID_RefusalsEchoNoDigit(t *testing.T) {
 		if r.Status != http.StatusBadRequest {
 			t.Errorf("%s: %d %s, want 400", c.name, r.Status, r.Body)
 		}
-		if leaks(string(r.Body), number) || leaks(string(r.Body), wrong) {
+		if body := scrubRandom(string(r.Body)); leaks(body, number) || leaks(body, wrong) {
 			t.Errorf("%s: the refusal carries the number: %s", c.name, r.Body)
 		}
 	}
 	if n := h.Count(t, `SELECT count(*) FROM staff.people WHERE national_id_mac IS NOT NULL`); n != 0 {
 		t.Errorf("%d numbers stored, want none", n)
 	}
-	if leaks(h.Logs(), number) || leaks(h.Logs(), wrong) {
+	if logs := scrubRandom(h.Logs()); leaks(logs, number) || leaks(logs, wrong) {
 		t.Error("a log line carries the number")
 	}
 }

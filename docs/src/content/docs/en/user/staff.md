@@ -32,8 +32,10 @@ The full table is under [Permissions](/en/reference/staff/#permissions).
 ## Find someone in People
 
 **People** (sidebar: **Staff directory**) lists the company's people by name, with their employee number, title, department,
-manager and work email. The title, the department and the manager are the ones in the
-terms in force today; a dash means there is none.
+manager and work email. The title and the department are the ones in the terms in force
+today, and the manager is the one who manages the person today: the one the terms name,
+or, when they name none or the one named has left, the department's manager or the next
+one up who is still employed; a dash means there is none.
 
 - **Search** matches every word you type against the names, the employee number and
   the work email. The list follows a moment after you stop typing.
@@ -94,7 +96,8 @@ you may not see answers exactly as one who does not exist.
   the **Direct reports**. Press a name to open their page.
 
 A manager sees the work group, the roles and the organisation of the people they
-manage; a colleague the same of anyone active today.
+manage; a colleague the same of anyone active today. A manager who has left manages
+nobody: their people go to the department's manager, or the next one up.
 
 #### Change the details (HR)
 

@@ -785,39 +785,6 @@ func (q *Queries) ListPersonRoles(ctx context.Context, personID int64) ([]ListPe
 	return items, nil
 }
 
-const peopleActiveOn = `-- name: PeopleActiveOn :many
-SELECT DISTINCT person_id FROM staff.employments
-WHERE person_id = ANY($1::bigint[]) AND start_date <= $2::date
-  AND (end_date IS NULL OR end_date >= $2::date)
-`
-
-type PeopleActiveOnParams struct {
-	Ids   []int64
-	Today pgtype.Date
-}
-
-// PeopleActiveOn is which of @ids are active on @today, as PersonActiveOn
-// judges one person.
-func (q *Queries) PeopleActiveOn(ctx context.Context, arg PeopleActiveOnParams) ([]int64, error) {
-	rows, err := q.db.Query(ctx, peopleActiveOn, arg.Ids, arg.Today)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []int64
-	for rows.Next() {
-		var person_id int64
-		if err := rows.Scan(&person_id); err != nil {
-			return nil, err
-		}
-		items = append(items, person_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const personActiveOn = `-- name: PersonActiveOn :one
 SELECT EXISTS (
     SELECT 1 FROM staff.employments e
