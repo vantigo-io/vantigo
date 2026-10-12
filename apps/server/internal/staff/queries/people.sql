@@ -269,13 +269,6 @@ DELETE FROM staff.person_roles WHERE person_id = @person_id;
 INSERT INTO staff.person_roles (person_id, role, from_date, to_date, created_at, updated_at)
 VALUES (@person_id, @role, @from_date, @to_date, @now::timestamptz, @now::timestamptz);
 
--- name: PeopleActiveOn :many
--- PeopleActiveOn is which of @ids are active on @today, as PersonActiveOn
--- judges one person.
-SELECT DISTINCT person_id FROM staff.employments
-WHERE person_id = ANY(@ids::bigint[]) AND start_date <= @today::date
-  AND (end_date IS NULL OR end_date >= @today::date);
-
 -- name: SetLegalHold :exec
 -- SetLegalHold sets or lifts a person's legal hold (design S15, class F): set,
 -- with the reason, who set it and when; lifted, all three cleared. The

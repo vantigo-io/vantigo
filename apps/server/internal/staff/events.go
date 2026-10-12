@@ -87,8 +87,9 @@ const (
 // eventPayrollExported is a month's payroll file (design S18, plan reading
 // 13): an installation event naming its actor, the month, the format, the
 // rows and the SHA-256 of the file answered, so the very file payroll
-// received can be recognised later. Its classes are A: the payroll exports'
-// lineage is pay documentation (S15).
+// received can be recognised later. It records no payload class: its payload
+// names no person and holds no personal data, only the export's lineage —
+// pay documentation (S15).
 const (
 	eventPayrollExported = "payroll_exported"
 )

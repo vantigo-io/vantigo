@@ -16,8 +16,10 @@ import (
 // the chain up and the direct reports, as the work group names them.
 
 // loadManagerGraph is the manager graph of personIDs — their employments and
-// terms — with every department, which a climb may cross; nil personIDs is
-// everyone's. Read under the graph's lock it is the graph a cycle check
+// terms — with every department, which a climb may cross, and the
+// employments of everyone their terms or a department name as manager, whom
+// effectiveManager asks whether they are in employment that day; nil
+// personIDs is everyone's. Read under the graph's lock it is the graph a cycle check
 // judges; read outside it, a snapshot for the audience and the org view.
 func loadManagerGraph(ctx context.Context, q *store.Queries, personIDs []int64) (managerGraph, error) {
 	g, _, err := loadManagerGraphAndDepartments(ctx, q, personIDs)
@@ -38,6 +40,27 @@ func loadManagerGraphAndDepartments(ctx context.Context, q *store.Queries, perso
 	departments, err := q.ListDepartments(ctx)
 	if err != nil {
 		return managerGraph{}, nil, fmt.Errorf("staff: read the departments of the manager graph: %w", err)
+	}
+	if personIDs != nil {
+		var named []int64
+		add := func(m *int64) {
+			if m != nil && !slices.Contains(personIDs, *m) && !slices.Contains(named, *m) {
+				named = append(named, *m)
+			}
+		}
+		for _, t := range terms {
+			add(t.ManagerPersonID)
+		}
+		for _, d := range departments {
+			add(d.ManagerPersonID)
+		}
+		if len(named) > 0 {
+			more, err := q.GraphEmployments(ctx, named)
+			if err != nil {
+				return managerGraph{}, nil, fmt.Errorf("staff: read the employments of the managers in the graph: %w", err)
+			}
+			employments = append(employments, more...)
+		}
 	}
 	ge := make([]graphEmployment, 0, len(employments))
 	for _, e := range employments {
@@ -92,22 +115,13 @@ func checkDepartmentManagerCycle(ctx context.Context, txq *store.Queries, depart
 	return nil
 }
 
-// primaryManagerOf is the manager the org view's chain follows: the one of
-// the person's earliest employment in force on date that has one, nil when
-// none does.
+// primaryManagerOf is the manager the org view's chain follows: the
+// effectiveManager of the person's earliest employment in force on date that
+// has one, nil when none does.
 func (g managerGraph) primaryManagerOf(person int64, date time.Time) *int64 {
 	for _, e := range g.employments[person] {
-		t := g.inForce(e, date)
-		if t == nil {
-			continue
-		}
-		if t.Manager != nil {
-			return t.Manager
-		}
-		if t.DepartmentID != nil {
-			if m := g.departmentManager(*t.DepartmentID, person); m != nil {
-				return m
-			}
+		if m := g.effectiveManager(e, date); m != nil {
+			return m
 		}
 	}
 	return nil
@@ -123,11 +137,12 @@ func (g managerGraph) activeOn(person int64, date time.Time) bool {
 	return false
 }
 
-// reportsOf is everyone whose manager person is on date, sorted.
+// reportsOf is everyone whose manager person is on date by managersOf,
+// sorted.
 func (g managerGraph) reportsOf(person int64, date time.Time) []int64 {
 	var out []int64
 	for p := range g.employments {
-		if slices.Contains(g.managerOf(p, date), person) {
+		if slices.Contains(g.managersOf(p, date), person) {
 			out = append(out, p)
 		}
 	}
@@ -152,9 +167,11 @@ func personSummaries(ctx context.Context, q *store.Queries, ids []int64) (map[in
 // (GET /api/v1/staff/people/{id}/org)
 //
 // Read in one snapshot: the chain up — each person's manager by their
-// earliest employment in force today, with a visited set, so a graph that
-// loops (written past this module) ends the walk — and the people whose
-// manager the person is today.
+// earliest employment in force today that has one, by effectiveManager, with
+// a visited set, so a graph that loops (written past this module) ends the
+// walk — and the people whose manager the person is today by the same rule.
+// Everyone in the chain is in employment today, so a colleague, who sees
+// only the people active today (plan reading 15), reads it whole.
 func (s *server) GetStaffPeopleByIdOrg(ctx context.Context, req gen.GetStaffPeopleByIdOrgRequestObject) (gen.GetStaffPeopleByIdOrgResponseObject, error) {
 	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
 	if err != nil {
@@ -180,12 +197,6 @@ func (s *server) GetStaffPeopleByIdOrg(ctx context.Context, req gen.GetStaffPeop
 		visited := map[int64]bool{req.Id: true}
 		for m := g.primaryManagerOf(req.Id, caller.Today); m != nil && !visited[*m]; m = g.primaryManagerOf(*m, caller.Today) {
 			visited[*m] = true
-			// A colleague sees only the people active today (plan reading
-			// 15), so a manager who is not — a leaver the terms still name —
-			// is left out of the chain they read; the walk goes on above.
-			if a.colleagueOnly() && !g.activeOn(*m, caller.Today) {
-				continue
-			}
 			chain = append(chain, *m)
 		}
 		reports := g.reportsOf(req.Id, caller.Today)

@@ -135,10 +135,11 @@ func personAudience(ctx context.Context, q *store.Queries, c *callerContext, per
 
 // managesPerson reports whether the caller is a manager of personID today
 // (design §5, plan reading 6): the person the caller's self-service link
-// names is a manager of personID by the terms in force today — the manager
-// they name, or the department's — on any of personID's employments, since
-// concurrent employments may give two. A caller linked to nobody manages
-// nobody.
+// names is a manager of personID by effectiveManager on any of personID's
+// employments in force today, since concurrent employments may give two —
+// the manager the terms name when in employment today, else the first
+// department's up whose manager is (design §9, "a manager who leaves").
+// A caller linked to nobody manages nobody.
 func managesPerson(ctx context.Context, q *store.Queries, c *callerContext, personID int64) (bool, error) {
 	if c.Person == nil {
 		return false, nil
@@ -147,7 +148,7 @@ func managesPerson(ctx context.Context, q *store.Queries, c *callerContext, pers
 	if err != nil {
 		return false, err
 	}
-	return slices.Contains(g.managerOf(personID, c.Today), *c.Person), nil
+	return slices.Contains(g.managersOf(personID, c.Today), *c.Person), nil
 }
 
 // civilToday is the calendar day of now in zone, as a date at midnight UTC.

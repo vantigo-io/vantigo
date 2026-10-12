@@ -171,10 +171,13 @@ func TestPeopleList_FiltersFindAnUpcomingHire(t *testing.T) {
 	}
 }
 
-// A colleague, who sees only the people active today, is shown a manager —
-// on the list, on the person and up the org chain — only while that manager
-// is active today too; HR sees the manager whoever they are.
-func TestPeopleList_AColleagueSeesOnlyAnActiveManager(t *testing.T) {
+// The manager shown — on the list, on the person and up the org chain — is
+// the one who manages the person today (design §9, "a manager who leaves:
+// their reports route to the department's manager"), the same to a
+// colleague, who sees only the people active today, as to HR: a named
+// manager who has left is shown to nobody, and the department's manager is
+// shown in their place; with no department, nobody is.
+func TestPeopleList_ADepartedManagerIsShownToNobody(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	hr, _ := signIn(t, h, "staff:manage")
@@ -183,21 +186,43 @@ func TestPeopleList_AColleagueSeesOnlyAnActiveManager(t *testing.T) {
 	gone := createPerson(t, hr, newPerson("Gunnar", "Gone"))
 	g := createEmployment(t, hr, gone.Id, newEmployment(start, terms()))
 	do(t, hr, http.MethodPost, endPath(g.Id), map[string]any{"endDate": shiftDay(t, today(t, h), -1), "endReason": "employee_resigned"}, http.StatusOK, nil)
-	report := createPerson(t, hr, with(newPerson("Rita", "Report"), "employeeNumber", "M-REP"))
-	createEmployment(t, hr, report.Id, newEmployment(start, terms("managerPersonId", gone.Id)))
+	head := createPerson(t, hr, newPerson("Hilde", "Head"))
+	dept := createDepartment(t, hr, map[string]any{"code": "OPS", "name": "Operations", "managerPersonId": head.Id})
+	createEmployment(t, hr, head.Id, newEmployment(start, terms()))
+	routed := createPerson(t, hr, with(newPerson("Rita", "Routed"), "employeeNumber", "M-REP"))
+	createEmployment(t, hr, routed.Id, newEmployment(start, terms("managerPersonId", gone.Id, "departmentId", dept.Id)))
+	alone := createPerson(t, hr, with(newPerson("Arne", "Alone"), "employeeNumber", "M-ALN"))
+	createEmployment(t, hr, alone.Id, newEmployment(start, terms("managerPersonId", gone.Id)))
 
 	colleague, _ := signIn(t, h, "staff:view")
-	for name, c := range map[string]struct {
-		client *modtest.Client
-		want   bool
-	}{"colleague": {colleague, false}, "staff:manage": {hr, true}} {
-		row := listPeople(t, c.client, "?q=Rita").Data[0]
-		var person gen.StaffPerson
-		do(t, c.client, http.MethodGet, personPath(report.Id), nil, http.StatusOK, &person)
-		var org gen.StaffOrg
-		do(t, c.client, http.MethodGet, orgPath(report.Id), nil, http.StatusOK, &org)
-		if (row.Manager != nil) != c.want || (person.Manager != nil) != c.want || (len(org.Chain) == 1) != c.want {
-			t.Errorf("%s: list %+v person %+v chain %+v, want the manager shown %v", name, row.Manager, person.Manager, org.Chain, c.want)
+	for name, client := range map[string]*modtest.Client{"colleague": colleague, "staff:manage": hr} {
+		for _, c := range []struct {
+			q      string
+			person int64
+			want   int64 // 0: none
+		}{{"?q=Rita", routed.Id, head.Id}, {"?q=Arne", alone.Id, 0}} {
+			row := listPeople(t, client, c.q).Data[0]
+			var person gen.StaffPerson
+			do(t, client, http.MethodGet, personPath(c.person), nil, http.StatusOK, &person)
+			var org gen.StaffOrg
+			do(t, client, http.MethodGet, orgPath(c.person), nil, http.StatusOK, &org)
+			id := func(p *gen.StaffPersonSummary) int64 {
+				if p == nil {
+					return 0
+				}
+				return p.Id
+			}
+			var chain []int64
+			for _, p := range org.Chain {
+				chain = append(chain, p.Id)
+			}
+			wantChain := []int64{c.want}
+			if c.want == 0 {
+				wantChain = nil
+			}
+			if id(row.Manager) != c.want || id(person.Manager) != c.want || !slices.Equal(chain, wantChain) {
+				t.Errorf("%s, %s: list %+v person %+v chain %v, want %d", name, c.q, row.Manager, person.Manager, chain, c.want)
+			}
 		}
 	}
 }

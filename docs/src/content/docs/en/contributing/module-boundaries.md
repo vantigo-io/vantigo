@@ -490,7 +490,13 @@ the module's transactions (the marking Invoices introduced, copied rather than
 imported), and the harness records every call and fails a test that makes one under an
 open transaction. So a document's object is written before its row's transaction and
 removed after a refusal, read after the row's snapshot, and removed after the delete
-commits. See [Staff](/en/reference/staff/#locks).
+commits. Its one background worker, `staff-retention`, is contributed through `Workers`
+behind `STAFF_RETENTION_ENABLED` and keeps two connection disciplines: the erase runs on
+the advisory lease's own connection — the due queries and every person's transaction,
+the person's lock included, never asking the pool for a second, which is how a lease
+holder deadlocked the customers worker with a pool of four (PR #124) — and the ledger
+pass over `staff.object_deletions` takes no lease and holds no connection across
+`objectDelete`. See [Staff](/en/reference/staff/#locks).
 
 ## Adding a module
 
