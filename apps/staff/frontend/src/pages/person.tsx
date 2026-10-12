@@ -9,18 +9,20 @@ import { personEventsQueryOptions, personQueryOptions } from "../api/people";
 import { NotFoundError } from "../api/request";
 import { PersonStatusBadge } from "../components/person-status";
 import "../i18n";
+import { readsDocuments } from "../lib/documents";
 import { PEOPLE_ROUTE_PATH } from "../lib/routes";
 import type { PersonSearch, PersonTab } from "../lib/search";
+import { PersonDocuments } from "./-person-documents";
 import { PersonEmployments } from "./-person-employments";
 import { PersonHistory } from "./-person-history";
 import { PersonProfile } from "./-person-profile";
 
 /**
- * The person page (design §7): Profile, Employments and History, the tab in
- * the URL. What it shows is what `GET /people/{id}` and its sub-resources
- * answer this reader (§5); what it offers follows the person's
- * capabilities. The Account, Absence and Documents tabs belong to later
- * deliveries and are not drawn at all until they exist.
+ * The person page (design §7): Profile, Employments, History and Documents,
+ * the tab in the URL. What it shows is what `GET /people/{id}` and its
+ * sub-resources answer this reader (§5); what it offers follows the person's
+ * capabilities. The Account and Absence tabs belong to later deliveries and
+ * are not drawn at all until they exist.
  */
 export const PersonPage = () => {
   const { t } = useI18n("staff");
@@ -58,6 +60,7 @@ export const PersonPage = () => {
     { value: "profile" as const, label: t("tab_profile") },
     { value: "employments" as const, label: t("tab_employments") },
     ...(historyReadable ? [{ value: "history" as const, label: t("tab_history") }] : []),
+    ...(readsDocuments(data) ? [{ value: "documents" as const, label: t("tab_documents") }] : []),
   ];
   const current: PersonTab = tabs.some((one) => one.value === tab) ? tab : "profile";
 
@@ -95,6 +98,17 @@ export const PersonPage = () => {
               person={data}
               structure={meta.data.structure}
             />
+          </Tabs.Panel>
+        )}
+        {readsDocuments(data) && (
+          <Tabs.Panel value="documents" pt="lg">
+            {current === "documents" && (
+              <PersonDocuments
+                person={data}
+                today={meta.data.today}
+                canSeeHealth={meta.data.capabilities.canSeeHealth}
+              />
+            )}
           </Tabs.Panel>
         )}
       </PageTabs>

@@ -1,3 +1,4 @@
+import type { StaffDocument, StaffDocumentCategory } from "../api/documents";
 import type {
   StaffContractCheckItem,
   StaffEmployment,
@@ -17,6 +18,8 @@ import {
   assignableUsers as defaultAssignableUsers,
   businessUnits as defaultBusinessUnits,
   departments as defaultDepartments,
+  documentCategories as defaultDocumentCategories,
+  documents as defaultDocuments,
   employments as defaultEmployments,
   events as defaultEvents,
   legalEntities as defaultLegalEntities,
@@ -53,6 +56,9 @@ export interface StaffServer {
   /** Each person's history, newest first, as HR reads it; the fake shapes it for everyone else. */
   events?: Record<number, StaffEvent[]>;
   users?: (StaffAssignableUser & { active: boolean })[];
+  /** Every person's documents, newest first, as `staff:personal-data` reads them; the fake shapes them per reader. */
+  documents?: StaffDocument[];
+  documentCategories?: StaffDocumentCategory[];
   pageSize?: number;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
@@ -71,6 +77,8 @@ export interface StaffState {
   employments: StaffEmployment[];
   terms: StaffTerms[];
   events: Record<number, StaffEvent[]>;
+  documents: StaffDocument[];
+  documentCategories: StaffDocumentCategory[];
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -347,6 +355,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     employments: server.employments ?? defaultEmployments(),
     terms: server.terms ?? defaultTerms(),
     events: server.events ?? defaultEvents(),
+    documents: server.documents ?? defaultDocuments(),
+    documentCategories: server.documentCategories ?? defaultDocumentCategories(),
   };
   const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
@@ -1097,11 +1107,226 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     return undefined;
   };
 
+  /**
+   * The documents and their categories (design S14), as the server judges
+   * them: a person's archive is theirs, `staff:manage`'s without the health
+   * documents and `staff:personal-data`'s — anyone else the unknown id's 404;
+   * a write is `staff:manage`'s or `staff:personal-data`'s, a restricted
+   * category the latter's alone (`category_restricted`); the type, the size
+   * and the count refused as the server words them; the categories read by
+   * view, manage and personal data, written by manage, a seed never changed
+   * (`seed_immutable`) and a category in use never archived
+   * (`category_in_use`). It does not model the signing date a contract sets.
+   */
+  const documentRoutes = (
+    method: string,
+    path: string,
+    init: RequestInit | undefined,
+    body: Record<string, unknown> | undefined,
+  ): Response | undefined => {
+    const writer = manages(role) || holdsPersonalData(role);
+    const readerOf = (personId: number) => {
+      const stored = findPerson(personId);
+      if (!stored) return undefined;
+      const self = server.me === personId;
+      if (!self && !manages(role) && !holdsPersonalData(role)) return undefined;
+      return { stored, health: self || holdsPersonalData(role) };
+    };
+    const visible = (document: StaffDocument, health: boolean) => health || !document.category.restricted;
+    const restrictedRefusal = () =>
+      staffProblem(403, {
+        code: "category_restricted",
+        title: "Restricted category",
+        detail:
+          "Documents in this category are health documents, which only staff:personal-data files, moves or removes.",
+      });
+    const summaryOf = (category: StaffDocumentCategory) => ({
+      id: category.id,
+      key: category.key,
+      names: category.names,
+      class: category.class,
+      restricted: category.restricted,
+    });
+
+    if (path === "/api/v1/staff/me/documents" || path === "/api/v1/staff/me/export") {
+      const stored = server.me === undefined ? undefined : findPerson(server.me);
+      if (!stored) return meProblem();
+      const own = state.documents.filter((one) => one.personId === stored.id);
+      if (path.endsWith("/documents")) return jsonResponse(200, own);
+      return new Response(
+        JSON.stringify({ exportedAt: "2026-10-11T08:00:00Z", person: personOf(stored), documents: own }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Disposition": `attachment; filename="staff-${stored.employeeNumber}-personal-data.json"`,
+          },
+        },
+      );
+    }
+
+    const archive = /^\/api\/v1\/staff\/people\/(\d+)\/documents$/.exec(path);
+    if (archive) {
+      const reader = readerOf(Number(archive[1]));
+      if (method === "GET") {
+        if (!reader) return notFound();
+        return jsonResponse(
+          200,
+          state.documents.filter((one) => one.personId === reader.stored.id && visible(one, reader.health)),
+        );
+      }
+      if (method === "POST") {
+        if (!writer) return forbidden();
+        if (!findPerson(Number(archive[1]))) return notFound();
+        const form = init?.body as FormData;
+        const file = form.get("file");
+        const category = state.documentCategories.find((one) => one.id === Number(form.get("categoryId")));
+        if (category?.restricted && !holdsPersonalData(role)) return restrictedRefusal();
+        const errors: Record<string, string[]> = {};
+        let code: string | undefined;
+        if (!(file instanceof File) || file.size === 0) errors.file = ["A document file is required"];
+        else if (file.size > 10 * 1024 * 1024) {
+          errors.file = ["A document is at most 10 MiB"];
+          code = "document_too_large";
+        } else if (!["application/pdf", "image/jpeg", "image/png", "image/heic"].includes(file.type)) {
+          errors.file = [
+            "A document must be a PDF, JPEG, PNG or HEIC file, and its contents must match the type and file name it is sent under",
+          ];
+          code = "document_type_unsupported";
+        }
+        if (!category) errors.categoryId = [`No document category has id ${form.get("categoryId")}`];
+        if (Object.keys(errors).length > 0) return staffProblem(400, { code, title: "Invalid document", errors });
+        const personId = Number(archive[1]);
+        if (state.documents.filter((one) => one.personId === personId).length >= 200)
+          return staffProblem(409, {
+            code: "document_count_exceeded",
+            title: "Too many documents",
+            detail: "A person has at most 200 documents, counted whatever you may read. Remove one first.",
+          });
+        const upload = file as File;
+        const created: StaffDocument = {
+          id: nextId++,
+          personId,
+          category: summaryOf(category as StaffDocumentCategory),
+          fileName: upload.name,
+          contentType: upload.type,
+          sizeBytes: upload.size,
+          uploadedAt: "2026-10-11T08:00:00Z",
+          revision: 1,
+          ...(form.get("validTo") ? { validTo: String(form.get("validTo")) } : {}),
+          ...(form.get("signedAt") ? { signedAt: String(form.get("signedAt")) } : {}),
+        };
+        state.documents.unshift(created);
+        return jsonResponse(201, created);
+      }
+    }
+
+    const one = /^\/api\/v1\/staff\/documents\/(\d+)$/.exec(path);
+    if (one) {
+      const document = state.documents.find((row) => row.id === Number(one[1]));
+      const reader = document ? readerOf(document.personId) : undefined;
+      if (!document || !reader || !visible(document, reader.health)) return notFound();
+      if (method === "GET")
+        return new Response(new Blob([`bytes of ${document.fileName}`], { type: document.contentType }), {
+          status: 200,
+          headers: {
+            "Content-Type": document.contentType,
+            "Content-Disposition": `inline; filename="${document.fileName.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(document.fileName)}`,
+          },
+        });
+      if (!writer) return forbidden();
+      if (document.category.restricted && !holdsPersonalData(role)) return restrictedRefusal();
+      if (method === "DELETE") {
+        state.documents.splice(state.documents.indexOf(document), 1);
+        return new Response(null, { status: 204 });
+      }
+      if (method === "PUT") {
+        const stale = staleRevision(init, document.revision, "document");
+        if (stale) return stale;
+        const input = body as { categoryId: number; validTo?: string; signedAt?: string };
+        const category = state.documentCategories.find((row) => row.id === input.categoryId);
+        if (!category || category.archivedAt)
+          return staffProblem(400, {
+            title: "Invalid document",
+            errors: { categoryId: ["Choose a category that is in use"] },
+          });
+        if (category.restricted && !holdsPersonalData(role)) return restrictedRefusal();
+        delete document.validTo;
+        delete document.signedAt;
+        Object.assign(document, {
+          category: summaryOf(category),
+          ...(input.validTo ? { validTo: input.validTo } : {}),
+          ...(input.signedAt ? { signedAt: input.signedAt } : {}),
+          revision: document.revision + 1,
+        });
+        return jsonResponse(200, document);
+      }
+    }
+
+    const categories = /^\/api\/v1\/staff\/document-categories(?:\/(\d+))?$/.exec(path);
+    if (categories) {
+      if (method === "GET")
+        return readsDirectory(role) || writer ? jsonResponse(200, state.documentCategories) : forbidden();
+      if (!manages(role)) return forbidden();
+      if (method === "POST" && !categories[1]) {
+        const input = body as { key: string; names: { en: string; nb: string }; class: "A" | "D" | "E" };
+        if (!/^[a-z0-9-]{1,40}$/.test(input.key ?? ""))
+          return staffProblem(400, {
+            title: "Invalid document category",
+            errors: { key: ["A key is 1 to 40 characters of a–z, 0–9 and hyphens"] },
+          });
+        if (state.documentCategories.some((row) => row.key === input.key))
+          return staffProblem(400, {
+            title: "Invalid document category",
+            errors: { key: ["Another category already has this key"] },
+          });
+        const created: StaffDocumentCategory = {
+          id: nextId++,
+          key: input.key,
+          names: input.names,
+          class: input.class,
+          restricted: input.class === "E",
+          seeded: false,
+          sort: state.documentCategories.length + 1,
+          revision: 1,
+        };
+        state.documentCategories.push(created);
+        return jsonResponse(201, created);
+      }
+      const category = state.documentCategories.find((row) => row.id === Number(categories[1]));
+      if (!category) return notFound();
+      if (method === "PUT") {
+        const stale = staleRevision(init, category.revision, "document category");
+        if (stale) return stale;
+        if (category.seeded)
+          return staffProblem(409, {
+            code: "seed_immutable",
+            title: "A seeded category",
+            detail: "The six seeded categories never change.",
+          });
+        const input = body as { names: { en: string; nb: string }; archived: boolean };
+        if (input.archived && !category.archivedAt && state.documents.some((row) => row.category.id === category.id))
+          return staffProblem(409, {
+            code: "category_in_use",
+            title: "Category in use",
+            detail: "Documents are filed under this category. Move them first.",
+          });
+        category.names = input.names;
+        if (input.archived) category.archivedAt = category.archivedAt ?? "2026-10-11T08:00:00Z";
+        else delete category.archivedAt;
+        category.revision += 1;
+        return jsonResponse(200, category);
+      }
+    }
+    return undefined;
+  };
+
   const stub = stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     const path = url.pathname;
     const method = init?.method ?? "GET";
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    // A document's upload is multipart: its fields are read by the route.
+    const body = init?.body && !(init.body instanceof FormData) ? JSON.parse(String(init.body)) : undefined;
     const answered = method === "GET" ? server.read?.(path) : server.write?.(method, path, body);
     if (answered) return Promise.resolve(answered);
 
@@ -1175,6 +1400,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     const employments = /^\/api\/v1\/staff\/people\/(\d+)\/employments$/.exec(path);
     if (employments && method === "POST")
       return Promise.resolve(manages(role) ? createEmployment(Number(employments[1]), body) : forbidden());
+
+    const documentsAnswer = documentRoutes(method, path, init, body);
+    if (documentsAnswer) return Promise.resolve(documentsAnswer);
 
     return Promise.resolve(personRoutes(method, path, url, init, body) ?? notFound());
   }) as StaffStub;

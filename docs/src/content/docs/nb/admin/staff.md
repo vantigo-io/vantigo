@@ -119,7 +119,9 @@ personens opplysninger), E for helse. Seks kategorier finnes fra start: arbeidsa
 attest (A), sertifikat, korrespondanse og annet (D), og helse (E). En kategori i klasse
 E er begrenset: dokumentene i den er helsedokumenter.
 
-Slik legger du til en egen, som en bruker med `staff:manage`:
+Tabellen under **Ansatteinnstillinger** → **Dokumentkategorier** gjør alt dette på
+skjermen ([brukerveiledningen](/nb/user/staff/#dokumentkategorier)). Gjennom API-et legger
+du til en egen slik, som en bruker med `staff:manage`:
 
 1. `POST /api/v1/staff/document-categories` med en `key` (1–40 av `a–z`, `0–9` og
    bindestreker), `names` på engelsk og norsk og en `class` som er `A`, `D` eller `E`,

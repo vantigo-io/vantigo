@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
@@ -141,6 +141,42 @@ describe("My page — my own record", () => {
     expect(screen.queryByText(/supplied revision/)).not.toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit my details" })).not.toBeInTheDocument());
     expect(await within(await region("Private")).findByText("Bergen")).toBeInTheDocument();
+  });
+});
+
+describe("My page — my documents and my data", () => {
+  it("lists my own documents, health included, to download and nothing to change", async () => {
+    const fetchMock = stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/me?tab=documents");
+
+    expect(within(await region("Health")).getByText("sick-note.pdf")).toBeInTheDocument();
+    expect(within(await region("Contract")).getByText("employment-contract.pdf")).toBeInTheDocument();
+    expect(screen.queryByText("grace-reference.pdf")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download sick-note.pdf" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add document" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^(Change|Remove) / })).not.toBeInTheDocument();
+    expect(sent(fetchMock, "GET", /\/me\/documents$/)).toHaveLength(1);
+  });
+
+  it("downloads my data under the name the server gives it, and says what it holds", async () => {
+    const { createObjectURL, revokeObjectURL } = URL;
+    URL.createObjectURL = vi.fn(() => "blob:my-data");
+    URL.revokeObjectURL = vi.fn();
+    onTestFinished(() => {
+      URL.createObjectURL = createObjectURL;
+      URL.revokeObjectURL = revokeObjectURL;
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const fetchMock = stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/me?tab=documents");
+
+    const data = await region("My data");
+    expect(within(data).getByText(/without the values HR keeps sealed and without HR's notes/)).toBeInTheDocument();
+    await userEvent.click(within(data).getByRole("button", { name: "Download my data" }));
+
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("staff-E-1-personal-data.json");
+    expect(fetchMock.actualCalls.some(([url]) => String(url).endsWith("/api/v1/staff/me/export"))).toBe(true);
   });
 });
 

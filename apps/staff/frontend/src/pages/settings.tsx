@@ -27,12 +27,13 @@ import {
   nextGeneratedNumber,
 } from "../lib/employee-number";
 import { fieldRefusals, isRevisionConflict } from "../lib/errors";
+import { DocumentCategoriesTable } from "./-document-categories";
 import { BusinessUnitsTable, DepartmentsTable, LegalEntitiesTable, LocationsTable } from "./-structure-tables";
 
 /**
  * Staff settings (design §7): the A1 settings — the business zone, how an
- * employee number is generated, the pension provider and the insurer — and
- * the company's structure. The page is `staff:manage`'s; the host guards the
+ * employee number is generated, the pension provider and the insurer — the
+ * company's structure, and the document categories. The page is `staff:manage`'s; the host guards the
  * route, and every read here is that permission's.
  */
 export const SettingsPage = () => {
@@ -53,6 +54,7 @@ export const SettingsPage = () => {
       <BusinessUnitsTable />
       <DepartmentsTable />
       <LocationsTable />
+      <DocumentCategoriesTable />
     </Stack>
   );
 };

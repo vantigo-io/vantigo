@@ -313,3 +313,147 @@ describe("SettingsPage — the structure", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("SettingsPage — the document categories", () => {
+  it("lists the categories with their class, the seeds fixed and the archived one marked", async () => {
+    stubStaffApi();
+    renderRoute("/staff/settings");
+
+    const health = await tableRow("Document categories", "health");
+    expect(health).toHaveTextContent("Helse");
+    expect(within(health).getByText("E · Health")).toBeInTheDocument();
+    expect(health).toHaveTextContent("Yes");
+    expect(health).toHaveTextContent("Seeded");
+    expect(within(health).queryByRole("button")).not.toBeInTheDocument();
+    const training = await tableRow("Document categories", "training");
+    expect(within(training).getByText("D · Personnel")).toBeInTheDocument();
+    expect(within(training).getByRole("button", { name: "Change Training record" })).toBeInTheDocument();
+    expect(within(training).getByRole("button", { name: "Archive Training record" })).toBeInTheDocument();
+    const old = await tableRow("Document categories", "old-forms");
+    expect(old).toHaveTextContent("Archived");
+    expect(within(old).getByRole("button", { name: "Restore Old forms" })).toBeInTheDocument();
+  });
+
+  it("adds a company category, its class fixed and restricted following from it", async () => {
+    const fetchMock = stubStaffApi();
+    renderRoute("/staff/settings");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add category" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add document category" });
+    expect(within(dialog).getByText(/cannot be changed once the category is created/)).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Key/ }), "occupational-health");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /English name/ }), "Occupational health");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Norwegian name/ }), "Bedriftshelse");
+    await choose(dialog, "Class", /^E · Health/);
+    expect(within(dialog).getByText(/Restricted: its documents are health documents/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(write(fetchMock, "POST", "/document-categories").body).toBeDefined());
+    expect(write(fetchMock, "POST", "/document-categories").body).toEqual({
+      key: "occupational-health",
+      names: { en: "Occupational health", nb: "Bedriftshelse" },
+      class: "E",
+    });
+    expect(await tableRow("Document categories", "occupational-health")).toHaveTextContent("Yes");
+  });
+
+  it("changes a company category's names only, with the revision it read", async () => {
+    const fetchMock = stubStaffApi();
+    renderRoute("/staff/settings");
+
+    await userEvent.click(
+      within(await tableRow("Document categories", "training")).getByRole("button", {
+        name: "Change Training record",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Change document category" });
+    expect(within(dialog).queryByRole("textbox", { name: /Key/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("combobox", { name: "Class" })).not.toBeInTheDocument();
+    const nb = within(dialog).getByRole("textbox", { name: /Norwegian name/ });
+    await userEvent.clear(nb);
+    await userEvent.type(nb, "Kursbevis");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(write(fetchMock, "PUT", "/document-categories/7").body).toBeDefined());
+    const put = write(fetchMock, "PUT", "/document-categories/7");
+    expect(put.ifMatch).toBe("2");
+    expect(put.body).toEqual({ names: { en: "Training record", nb: "Kursbevis" }, archived: false });
+  });
+
+  it("says category_in_use in words when documents are filed under it", async () => {
+    stubStaffApi({
+      documents: [
+        {
+          id: 590,
+          personId: 101,
+          category: {
+            id: 7,
+            key: "training",
+            names: { en: "Training record", nb: "Opplæringsbevis" },
+            class: "D",
+            restricted: false,
+          },
+          fileName: "course.pdf",
+          contentType: "application/pdf",
+          sizeBytes: 1000,
+          uploadedAt: "2026-01-01T10:00:00Z",
+          revision: 1,
+        },
+      ],
+    });
+    renderRoute("/staff/settings");
+
+    await userEvent.click(
+      within(await tableRow("Document categories", "training")).getByRole("button", {
+        name: "Archive Training record",
+      }),
+    );
+
+    expect(
+      await screen.findByText("Documents are filed under Training record. Move them to another category first."),
+    ).toBeInTheDocument();
+    expect(await tableRow("Document categories", "training")).not.toHaveTextContent("Archived");
+  });
+
+  it("says seed_immutable in words", async () => {
+    stubStaffApi({
+      write: (method, path) =>
+        method === "PUT" && path.endsWith("/document-categories/7")
+          ? staffProblem(409, { code: "seed_immutable", title: "A seeded category", detail: "seed" })
+          : undefined,
+    });
+    renderRoute("/staff/settings");
+
+    await userEvent.click(
+      within(await tableRow("Document categories", "training")).getByRole("button", {
+        name: "Archive Training record",
+      }),
+    );
+
+    expect(await screen.findByText("The six seeded categories never change.")).toBeInTheDocument();
+  });
+
+  it("archives a category nothing is filed under, and restores it", async () => {
+    const fetchMock = stubStaffApi();
+    renderRoute("/staff/settings");
+
+    await userEvent.click(
+      within(await tableRow("Document categories", "training")).getByRole("button", {
+        name: "Archive Training record",
+      }),
+    );
+    await waitFor(async () => expect(await tableRow("Document categories", "training")).toHaveTextContent("Archived"));
+    expect(write(fetchMock, "PUT", "/document-categories/7").body).toEqual({
+      names: { en: "Training record", nb: "Opplæringsbevis" },
+      archived: true,
+    });
+    await userEvent.click(
+      within(await tableRow("Document categories", "training")).getByRole("button", {
+        name: "Restore Training record",
+      }),
+    );
+    await waitFor(async () =>
+      expect(await tableRow("Document categories", "training")).not.toHaveTextContent("Archived"),
+    );
+  });
+});

@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Personregisteret — Personer, personsiden, Ny person, Min side og Ansatteinnstillinger med selskapets struktur.
+description: Personregisteret — Personer, personsiden med dokumentene, Ny person, Min side og Ansatteinnstillinger med selskapets struktur og dokumentkategoriene.
 sidebar:
   order: 45
 sources:
@@ -67,7 +67,7 @@ Trykk på et navn for å åpne [personsiden](#personsiden).
 
 ## Personsiden
 
-En persons side har tre faner — **Profil**, **Arbeidsforhold** og **Historikk** — og
+En persons side har fire faner — **Profil**, **Arbeidsforhold**, **Historikk** og **Dokumenter** — og
 fanen du står på, ligger i sidens adresse. Siden viser det du kan se av personen og
 ikke noe annet: en gruppe felt som ikke er din å lese, står ikke på siden i det hele
 tatt, heller ikke som en tom overskrift. Personen selv, en leder av dem, en kollega med
@@ -198,6 +198,67 @@ lønnskorrigering vises bare som typen endring, merket *(detaljene er ikke synli
 deg)*. Personen selv, en leder av dem og HR ser
 fanen Historikk; en kollega gjør det ikke.
 
+### Dokumenter
+
+**Dokumenter** er personens arkiv: arbeidsavtalen, attester, sertifikater, brev og
+lignende, hver en PDF-, JPEG-, PNG- eller HEIC-fil. Personen selv, HR
+(`staff:manage`) og `staff:personal-data` ser fanen; en leder og en kollega gjør det
+ikke.
+
+Dokumentene står etter kategori, hver kategori med sin **klasse**, som avgjør når
+filene slettes etter at personen har sluttet — hold pekeren over klassen for regelen:
+
+- **A · Lønn og avtale** — fem år etter året arbeidsforholdet dokumentet er arkivert
+  på, sluttet.
+- **D · Personal** — sammen med resten av personalmappen, en frist etter at siste
+  arbeidsforhold sluttet.
+- **E · Helse** — en fastsatt tid etter at siste arbeidsforhold sluttet.
+
+Reglene i sin helhet står under [oppbevaring](/en/reference/staff/#retention) i
+referansen. Hver rad viser filen, størrelsen, **Gyldig til** — merket **Utløpt** når
+den dagen er passert — **Signert** og når den ble **Lagt til**.
+
+**Helsedokumenter** — de i en kategori i klasse E, som **Helse** — ser bare personen
+selv og `staff:personal-data`. HR uten `staff:personal-data` ser dem ikke i listen og
+får ikke tilbud om en helsekategori.
+
+#### Arkiver et dokument (HR)
+
+Med `staff:manage` eller `staff:personal-data`:
+
+1. Trykk **Legg til dokument**.
+2. Slipp en fil i boksen, eller trykk **Velg en fil**. På mobilen åpner **Ta et bilde**
+   kameraet.
+3. Velg **Kategori**, og fyll ut **Gyldig til** — siste dag et sertifikat gjelder — og
+   **Signert** hvis de passer.
+4. Trykk **Last opp**. Dokumentet står under kategorien sin.
+
+Én fil om gangen: en PDF-, JPEG-, PNG- eller HEIC-fil på høyst 10 MiB, og høyst 200
+dokumenter per person. En fil som er større eller av en annen type, avvises før den
+sendes. Ansatte leser også selve innholdet i filen, og en fil som ikke er det navnet
+sier, avvises på filen. De 200 regner med helsedokumenter du ikke kan se, så HR kan få
+beskjed om at en person har 200 og selv se færre.
+
+En **arbeidsavtale** spør etter **Signert** først, og sier hva den gjør: når nøyaktig
+ett arbeidsforhold dekker den dagen og ikke har noen signeringsdato ennå, får
+arbeidsforholdet denne, og [avtalekontrollen](#avtalekontrollen) regner avtalen som
+signert. Når to arbeidsforhold dekker dagen, settes ingenting — skriv datoen på
+arbeidsforholdet i stedet.
+
+#### Last ned, endre eller fjern et dokument
+
+- **Last ned** (pilen) henter filen og lagrer den under navnet sitt. Alle som ser et
+  dokument, kan laste det ned.
+- **Endre** (blyanten) endrer **Kategori**, **Gyldig til** og **Signert**; filen endres
+  aldri. En dato du tømmer, fjernes. Har noen andre endret dokumentet i mellomtiden,
+  lukkes skjemaet på det som står der nå, og siden sier fra.
+- **Fjern** (søppelbøtta) spør først. Filen fjernes for godt og kan ikke gjenopprettes;
+  Historikk beholder en linje om at den ble fjernet.
+
+Å endre eller fjerne et helsedokument, og å flytte et dokument inn i eller ut av en
+helsekategori, er `staff:personal-data` sin oppgave: HR uten den får ikke **Endre** og
+**Fjern** på et helsedokument — heller ikke på sitt eget.
+
 ## Legg til en ny person
 
 Med `staff:manage` trykker du **Ny person** under Personer, eller velger **Ny person**
@@ -266,7 +327,7 @@ avviser vilkår uten dem.
 
 **Min side** (`staff:access`) er din egen oppføring i Ansatte, funnet gjennom brukeren
 HR koblet den til, og viser det du ser av deg selv — uansett hvilke andre rettigheter du
-har. Den har de samme tre fanene som en persons side:
+har. Den har de samme fire fanene som en persons side:
 
 - **Profil** — jobbopplysningene, de private opplysningene, fødselsnummeret som
   **Registrert** og de fire siste sifrene i bankkontoen, de pårørende, rollene og hvor
@@ -278,6 +339,13 @@ har. Den har de samme tre fanene som en persons side:
 - **Arbeidsforhold** — arbeidsforholdene dine og vilkårene, lønnen medregnet: det er
   din arbeidsavtale.
 - **Historikk** — endringene i oppføringen din, uten HRs notater.
+- **Dokumenter** — dokumentene dine, helsedokumenter medregnet, til nedlasting; HR
+  arkiverer og endrer dem. Under **Mine data** lagrer **Last ned mine data** en fil
+  (JSON) med oppføringen din, pårørende, roller, arbeidsforhold og vilkår,
+  opplysninger om dokumentene dine og historikken din — uten verdiene HR holder
+  forseglet (hele fødselsnummeret og bankkontoen) og uten HRs notater. Filen lister
+  dokumentene uten innholdet: last ned hvert av dem fra listen. Å laste ned dataene
+  dine registrerer ingenting.
 
 Har HR ikke koblet brukeren din til en oppføring ennå, sier Min side *Du har ingen
 oppføring i Ansatte ennå* og forklarer hvordan den kommer på plass; spør HR hvis du
@@ -317,7 +385,7 @@ bekrefter terskelen — én gang, for godt; hvordan står i
 ## Endre innstillingene
 
 **Ansatteinnstillinger** (`staff:manage`) har de generelle innstillingene først, så
-selskapets struktur.
+selskapets struktur, og til sist dokumentkategoriene.
 
 ### Generelt
 
@@ -362,3 +430,25 @@ som allerede nevner den, merket **Arkivert** og uten handlinger. Ingenting slett
 Noen arkiveringer avvises, og meldingen forklarer hvorfor med serverens egne ord —
 standarden arkiveres for eksempel aldri: gjør en annen rad til standard først. Reglene
 står under [strukturen](/en/reference/staff/#the-structure) i referansen.
+
+### Dokumentkategorier
+
+**Dokumentkategorier** lister det et dokument kan arkiveres under: **Nøkkel**,
+**Engelsk navn** og **Norsk navn**, **Klasse**, om den er **Begrenset** — klasse E:
+dokumentene er helsedokumenter — og status. De seks kategoriene merket
+**Forhåndsdefinert** (arbeidsavtale, attest, sertifikat, korrespondanse, helse og annet)
+endres aldri og har ingen handlinger.
+
+Slik legger du til en egen:
+
+1. Trykk **Legg til kategori**.
+2. Skriv en **Nøkkel** — 1 til 40 tegn av a–z, 0–9 og bindestrek — **Engelsk navn** og
+   **Norsk navn**.
+3. Velg **Klasse**. Skjemaet sier om kategorien blir begrenset.
+4. Trykk **Lagre**. Kategorien står etter de andre og tilbys når et dokument arkiveres.
+
+Nøkkelen og klassen kan ikke endres senere: klassen avgjør når hvert dokument i
+kategorien slettes. På en egen kategori endrer blyanten navnene, **Arkiver** slutter å
+tilby den for nye dokumenter, og **Gjenopprett** tilbyr den igjen. En kategori det er
+arkivert dokumenter under, arkiveres ikke — siden sier fra: flytt dem til en annen
+kategori først.

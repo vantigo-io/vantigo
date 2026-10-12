@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: The people register — People, a person's page, New person, My page and the Staff settings with the company's structure.
+description: The people register — People, a person's page with its documents, New person, My page and the Staff settings with the company's structure and the document categories.
 sidebar:
   order: 45
 sources:
@@ -66,7 +66,7 @@ Press a name to open [the person's page](#a-persons-page).
 
 ## A person's page
 
-A person's page has three tabs — **Profile**, **Employments** and **History** — and the
+A person's page has four tabs — **Profile**, **Employments**, **History** and **Documents** — and the
 tab you are on is in the page's address. It shows what you may see of the person and
 nothing else: a group of fields that is not yours to read is not on the page at all,
 not even as an empty heading. The person themselves, a manager of theirs, a colleague
@@ -196,6 +196,68 @@ changed*); a change of the pay is left out for a manager, so a pay correction sh
 the kind of change alone, marked *(details not visible to you)*. The person, a manager of theirs and HR see the History tab;
 a colleague does not.
 
+### Documents
+
+**Documents** is the person's archive: the contract, attests, certificates, letters and
+the like, each a PDF, JPEG, PNG or HEIC file. The person themselves, HR
+(`staff:manage`) and `staff:personal-data` see the tab; a manager and a colleague do
+not.
+
+The documents are listed by category, each category with its **class**, which decides
+when its files are erased once the person has left — hold the pointer over the class
+for the rule:
+
+- **A · Pay and contract** — five years after the year the employment the document is
+  filed against ended.
+- **D · Personnel** — with the rest of the personnel record, a grace period after the
+  last employment ended.
+- **E · Health** — a set time after the last employment ended.
+
+The rules in full are under [Retention](/en/reference/staff/#retention). Each row shows
+the file, its size, **Valid to** — marked **Expired** once that day has passed —
+**Signed on** and when it was **Added**.
+
+**Health documents** — those in a category of class E, such as **Health** — are seen
+only by the person themselves and by `staff:personal-data`. HR without
+`staff:personal-data` does not see them in the list and is not offered a health
+category.
+
+#### File a document (HR)
+
+With `staff:manage` or `staff:personal-data`:
+
+1. Press **Add document**.
+2. Drop a file on the box, or press **Choose a file**. On a phone, **Take a photo** opens
+   the camera.
+3. Choose the **Category**, and fill in **Valid to** — a certificate's last valid day —
+   and **Signed on** if they apply.
+4. Press **Upload**. The document is listed under its category.
+
+One file at a time: a PDF, JPEG, PNG or HEIC file of at most 10 MiB, and at most 200
+documents per person. A file that is larger or of another type is refused before it is
+sent. Staff also reads the file's own contents, and a file that is not what its name
+says is refused on the file. The 200 include health documents you may not see, so HR
+can be told a person has 200 while seeing fewer.
+
+A **contract** asks for **Signed on** first, and says what it does: when exactly one
+employment covers that day and has no signing date yet, the employment gets this one,
+and [the contract check](#the-contract-check) counts the contract as signed. When two
+employments cover the day, nothing is set — type the date on the employment instead.
+
+#### Download, change or remove a document
+
+- **Download** (the arrow) fetches the file and saves it under its name. Everyone who
+  sees a document can download it.
+- **Change** (the pencil) changes the **Category**, **Valid to** and **Signed on**; the
+  file never changes. A date you empty is cleared. If somebody else changed the
+  document meanwhile, the form closes on what is there now and says so.
+- **Remove** (the bin) asks first. The file is removed for good and cannot be
+  restored; the History keeps a line saying it was removed.
+
+Changing or removing a health document, and moving a document into or out of a health
+category, is `staff:personal-data`'s: HR without it is not offered **Change** and
+**Remove** on a health document — not even on their own.
+
 ## Add a new person
 
 With `staff:manage`, press **New person** in People, or choose **New person** in the
@@ -264,7 +326,7 @@ refuses the terms without them.
 
 **My page** (`staff:access`) is your own record in Staff, found through the user HR
 linked it to, and shows what you see of yourself — whatever else you may hold. It has
-the same three tabs as a person's page:
+the same four tabs as a person's page:
 
 - **Profile** — your work details, your private details, your national identity number
   as **On file** and your bank account's last four digits, your next of kin, your roles
@@ -277,6 +339,12 @@ the same three tabs as a person's page:
 - **Employments** — your employments and their terms, the pay included: it is your
   contract.
 - **History** — the changes to your record, without HR's notes.
+- **Documents** — your documents, health documents included, to download; HR files and
+  changes them. Under **My data**, **Download my data** saves a file (JSON) with your
+  record, your next of kin, roles, employments and terms, your documents' details and
+  your history — without the values HR keeps sealed (your national identity number and
+  bank account in full) and without HR's notes. The file lists your documents without
+  their contents: download each from the list. Downloading your data records nothing.
 
 If HR has not linked your user to a record yet, My page says *You have no record in
 Staff yet* and explains how it comes to be; ask HR if you think yours is missing.
@@ -315,7 +383,7 @@ acknowledges the threshold — once, for good; how is in the
 ## Change the settings
 
 **Staff settings** (`staff:manage`) has the general settings first, then the company's
-structure.
+structure, then the document categories.
 
 ### General
 
@@ -360,3 +428,26 @@ everything that already names it, marked **Archived**, with no actions left. Not
 deleted. Some archives are refused, and the message says why in the server's own
 words — the default is never archived, for one: make another row the default first.
 The rules are under [the structure](/en/reference/staff/#the-structure).
+
+### Document categories
+
+**Document categories** lists what a document can be filed under: the **Key**, the
+**English name** and the **Norwegian name**, the **Class**, whether it is
+**Restricted** — class E: its documents are health documents — and its status. The six
+**Seeded** categories (contract, attest, certificate, correspondence, health and other)
+never change and have no actions.
+
+To add one of your own:
+
+1. Press **Add category**.
+2. Type a **Key** — 1 to 40 characters of a–z, 0–9 and hyphens — the **English name**
+   and the **Norwegian name**.
+3. Choose the **Class**. The form says whether the category will be restricted.
+4. Press **Save**. The category is listed after the others and offered when a
+   document is filed.
+
+The key and the class cannot be changed later: the class decides when every document
+in the category is erased. On a category of your own, the pencil changes the names,
+**Archive** stops offering it for new documents, and **Restore** offers it again. A
+category documents are filed under is not archived — the page says so: move them to
+another category first.

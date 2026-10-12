@@ -2,15 +2,18 @@ import { Alert, Button, Group, Modal, SimpleGrid, Stack, Tabs, Text, TextInput }
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconPencil, IconUserQuestion } from "@tabler/icons-react";
+import { IconAlertCircle, IconDownload, IconPencil, IconUserQuestion } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { downloadMyData, myDocumentsQueryOptions, saveFile } from "../api/documents";
 import { meQueryOptions, myEventsQueryOptions, updateMe } from "../api/me";
 import { staffMetaQueryOptions } from "../api/meta";
 import { nextOfKinQueryOptions, type StaffNextOfKin, type StaffPerson } from "../api/people";
 import { NotFoundError, STAFF_QUERY_KEY } from "../api/request";
+import { DocumentList } from "../components/document-list";
+import { FieldGroup } from "../components/field-group";
 import "../i18n";
 import { isRevisionConflict, listPath, mappedRefusals } from "../lib/errors";
 import {
@@ -30,7 +33,8 @@ import { PersonProfile } from "./-person-profile";
  * My page (design §7, S17, S28): the caller's own record through their
  * self-service link, read as themselves — whatever else they hold — with the
  * private group theirs to edit (`PUT /me`), their employments and terms with
- * the pay (it is their contract), and their history. A caller HR has not
+ * the pay (it is their contract), their history, and their documents with
+ * the copy of their data they may take (design S16). A caller HR has not
  * linked yet gets a plain explanation, not an error: `no_person` is the
  * expected state of somebody new. Laid out for a phone first.
  */
@@ -73,6 +77,7 @@ export const MyPage = () => {
           { value: "profile", label: t("tab_profile") },
           { value: "employments", label: t("tab_employments") },
           { value: "history", label: t("tab_history") },
+          { value: "documents", label: t("tab_documents") },
         ]}
         value={current}
         onChange={(next) => navigate({ search: { tab: next === "profile" ? undefined : next }, replace: true })}
@@ -94,8 +99,54 @@ export const MyPage = () => {
         <Tabs.Panel value="history" pt="lg">
           <PersonHistory page={myEventsQueryOptions} person={person} structure={meta.data.structure} />
         </Tabs.Panel>
+        <Tabs.Panel value="documents" pt="lg">
+          {current === "documents" && <MyDocuments today={meta.data.today} />}
+        </Tabs.Panel>
       </PageTabs>
       <MyDetailsModal person={person} opened={editing} onClose={() => setEditing(false)} />
+    </Stack>
+  );
+};
+
+/**
+ * My own documents (`GET /me/documents`), health documents included, to
+ * download — HR files them — and my own copy of my data (`GET /me/export`),
+ * saved under the name the server gives it.
+ */
+const MyDocuments = ({ today }: { today: string }) => {
+  const { t } = useI18n("staff");
+  const documents = useQuery(myDocumentsQueryOptions());
+  const myData = useMutation({
+    mutationFn: downloadMyData,
+    onSuccess: saveFile,
+    onError: (error) =>
+      notifications.show({ color: "red", title: t("couldNotDownloadMyData"), message: error.message }),
+  });
+  return (
+    <Stack gap="md">
+      {documents.isError && (
+        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadDocuments")}>
+          {documents.error.message}
+        </Alert>
+      )}
+      {documents.data?.length === 0 && <EmptyState title={t("noDocuments")} />}
+      {documents.data && documents.data.length > 0 && <DocumentList documents={documents.data} today={today} />}
+      <FieldGroup
+        title={t("myData")}
+        description={t("myDataExplained")}
+        actions={
+          <Button
+            variant="light"
+            leftSection={<IconDownload size={16} />}
+            loading={myData.isPending}
+            onClick={() => myData.mutate()}
+          >
+            {t("downloadMyData")}
+          </Button>
+        }
+      >
+        {null}
+      </FieldGroup>
     </Stack>
   );
 };
