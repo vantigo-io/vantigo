@@ -44,6 +44,6 @@ derivation), `apps/host/frontend/src/routes/customers/-customer-360-panel.tsx`,
   (a "What Invoices reports to other modules" section); `en/user/customers.md` and
   `nb/user/customers.md` (the two tiles, the link, the permission); `ROADMAP.md`
   (phase 5 delivery C, the Later list's two corrections).
-- [ ] **6. Gates and the pull request.** `mise run server:check`, `server:test`,
+- [x] **6. Gates and the pull request.** `mise run server:check`, `server:test`,
   `frontend:check`, `docs:check`; `bun run gen:client`; Conventional Commits; the
   PR on `feat/customers-receivables` with CI green.
