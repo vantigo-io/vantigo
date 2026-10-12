@@ -352,8 +352,8 @@ const shapeEvent = (audience: Audience, event: StaffEvent): StaffEvent => {
  * employee and employment numbers, the required terms fields and the hours
  * rule; the person page's reads shaped per audience (Self and Manager by
  * the `me` link, the colleague, HR, personal data alone) with the field
- * groups of design §5 — a colleague alone shown no manager who is not active
- * today, on a row, a person or up the org chain — every write but the
+ * groups of design §5 — the manager on a row, a person or up the org chain
+ * whoever manages them today by the server's one rule — every write but the
  * sealed fields' refused without `staff:manage` (the uniform 403), a request
  * property `PUT /me` or a person's write does not take refused by name, the
  * next of kin, roles and link with the person's revision,
@@ -491,7 +491,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
   const audienceOf = (stored: StoredPerson): Audience | undefined => {
     const audience: Audience = {
       self: server.me === stored.id,
-      manager: server.me !== undefined && stored.manager?.id === server.me,
+      manager: server.me !== undefined && managerToday(stored)?.id === server.me,
       hr: manages(role),
       personalData: holdsPersonalData(role),
       // Reading 15: the directory reaches the people active today alone.
@@ -502,16 +502,39 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       : undefined;
   };
 
-  const activeToday = (id: number) => state.people.find((one) => one.id === id)?.status.state === "active";
-
   /**
-   * A stored person's wire row with the manager as the audience reads them:
-   * a colleague alone is not shown a manager who is not active today
-   * (`shaping.go`'s shownManager).
+   * Whom a stored person's manager today is, by the server's one manager rule
+   * (`terms_derived.go`'s effectiveManager): the manager their terms name when
+   * active today, else the manager of their department or of the first one
+   * above it who is someone else and active today — a manager who has left is
+   * skipped, for every audience alike; nobody for a person not active today.
    */
+  const managerToday = (stored: StoredPerson): StoredPerson | undefined => {
+    if (stored.status.state !== "active") return undefined;
+    const present = (id: number | undefined) => {
+      const found = id === undefined || id === stored.id ? undefined : findPerson(id);
+      return found?.status.state === "active" ? found : undefined;
+    };
+    const named = present(stored.manager?.id);
+    if (named) return named;
+    const visited = new Set<number>();
+    let department = state.departments.find((one) => one.id === stored.department?.id);
+    while (department && !visited.has(department.id)) {
+      visited.add(department.id);
+      const head = present(department.managerPersonId);
+      if (head) return head;
+      const parentId = department.parentId;
+      department = state.departments.find((one) => one.id === parentId);
+    }
+    return undefined;
+  };
+
+  /** A stored person's wire row, with the manager who manages them today. */
   const placed = (stored: StoredPerson, onlyColleague: boolean) => {
     const item = listItem(stored);
-    if (onlyColleague && item.manager && !activeToday(item.manager.id)) delete item.manager;
+    const manager = managerToday(stored);
+    if (manager) item.manager = summaryOf(manager);
+    else delete item.manager;
     // `erasedAt` is the hold group's: staff:manage's on a list row.
     if (onlyColleague) delete item.erasedAt;
     return item;
@@ -644,18 +667,17 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     employeeNumber: stored.employeeNumber,
   });
 
-  const orgOf = (stored: StoredPerson, audience: Audience) => {
+  /** The org view: the chain and the reports by the one manager rule (`org.go`). */
+  const orgOf = (stored: StoredPerson) => {
     const chain = [];
     const visited = new Set([stored.id]);
-    let manager = stored.manager ? findPerson(stored.manager.id) : undefined;
+    let manager = managerToday(stored);
     while (manager && !visited.has(manager.id)) {
       visited.add(manager.id);
-      // A colleague alone is not shown a manager who is not active today;
-      // the walk goes on above them (`org.go`).
-      if (!colleagueOnly(audience) || manager.status.state === "active") chain.push(summaryOf(manager));
-      manager = manager.manager ? findPerson(manager.manager.id) : undefined;
+      chain.push(summaryOf(manager));
+      manager = managerToday(manager);
     }
-    const reports = state.people.filter((one) => one.manager?.id === stored.id).map(summaryOf);
+    const reports = state.people.filter((one) => managerToday(one)?.id === stored.id).map(summaryOf);
     return { person: summaryOf(stored), chain, reports };
   };
 
@@ -1000,7 +1022,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           return jsonResponse(200, linkOf());
         }
       }
-      if (sub === "org" && method === "GET") return jsonResponse(200, orgOf(stored, audience));
+      if (sub === "org" && method === "GET") return jsonResponse(200, orgOf(stored));
       if (sub === "events" && method === "GET") {
         // §5's Events row: the person, a manager of theirs and HR — a colleague gets the unknown id's 404.
         if (!audience.self && !audience.manager && !audience.hr && !audience.personalData) return notFound();

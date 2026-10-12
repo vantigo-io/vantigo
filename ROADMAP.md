@@ -1019,9 +1019,8 @@ the object store, under categories HR keeps, each with a retention class and the
 category behind `staff:personal-data`; the register's CSV import, checked before it
 writes, and its CSV export; the month's payroll CSV behind an adapter port, so a
 Tripletex or PowerOffice adapter plugs in later without touching the register; the
-personal-data exports — the person's own copy and HR's — and the audited one-at-a-time
-reveal of the sealed identifiers; the legal hold and the erased state, with the warning
-when an erased person is hired again; the `staff-retention` worker that erases what the
+personal-data exports — the person's own copy and HR's, the latter audited; the legal
+hold and the erased state, with the warning when an erased person is hired again; the `staff-retention` worker that erases what the
 law no longer lets the company keep, and the ledger that removes their objects from the
 store; the dashboard's figures, attention items and thresholds, one manager rule for
 the dashboard, the Manager audience and the org view; and the Staff app's screens for
