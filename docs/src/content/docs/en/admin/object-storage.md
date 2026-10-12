@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/invoices/reminderpdf.go
   - apps/server/internal/invoices/print_batches.go
   - apps/server/internal/staff/objects.go
+  - apps/server/internal/customers/objects.go
 ---
 Object storage is the application port Communications stages and serves attachments
 through. Modules never talk to a provider SDK: they receive an `ObjectStore` scoped
@@ -128,7 +129,11 @@ each of those stops at the first letter the store fails, so an outage holds a re
 one store timeout
 ([paper and posting](/en/reference/invoices/#paper-and-posting)). Staff uses the scope
 `staff`: a document's relative key is `people/<personId>/<uuid>`, so its physical key is
-`staff/people/<personId>/<uuid>` ([Staff](/en/reference/staff/#documents)). A scoped store refuses a
+`staff/people/<personId>/<uuid>` ([Staff](/en/reference/staff/#documents)). Customers uses the
+scope `customers`: an attachment's relative key is `attachments/<uuid>`, so its physical key
+is `customers/attachments/<uuid>` — a key that names no customer, since a merge moves the
+attachment's row to the surviving customer and the store has no rename
+([Customers](/en/reference/customers/#attachments)). A scoped store refuses a
 relative key that equals its scope or already begins with `{scope}/`: callers pass
 relative keys only and must never construct the prefix themselves.
 
@@ -160,6 +165,22 @@ still owes a removal. Switching the module off leaves its objects and its ledger
 where they are, untouched, until it is switched on again. See
 [Staff](/en/reference/staff/#documents) for the upload rules and the rate limit.
 
+**Customers' attachments, specifically.** A customer's documents — a contract, an NDA,
+the correspondence behind a timeline entry — each a PDF, JPEG, PNG or HEIC of at most 10
+MiB, at most 200 a customer. An attachment is read with `customers:timeline-view` and
+written with `customers:timeline-manage`, always through Customers' own download endpoint.
+The object is written before its row and removed again if the row is refused. A delete —
+by hand, or by a private person's anonymisation — removes the row and records the object
+in Customers' ledger of objects to remove (`customers.object_deletions`) in one
+transaction; the object is then removed, and a removal the store refuses stays in the
+ledger for the `customers-anonymisation` worker's pass after each cycle, retried until
+the store confirms, so a file that has to be erased is never left to chance. A merge
+moves the rows and leaves the objects where they are. The ledger rows a store outage
+leaves are what to watch: they are the objects Customers still owes a removal, named in
+the worker's log; with `CUSTOMERS_ANONYMISATION_ENABLED=0` they wait, as scheduled
+anonymisations do. See [Customers](/en/reference/customers/#attachments) for the upload
+rules and the rate limit.
+
 ## Downloads
 
 Downloads always stream through an authorized application endpoint.
@@ -180,3 +201,8 @@ location of any kind. See [Expenses](/en/reference/expenses/#receipts).
 Staff's `GET /documents/{id}` does the same through its `staff`-scoped store, with
 the document's own visibility; a document whose object cannot be read answers 503
 `storage_unavailable`, not 404. See [Staff](/en/reference/staff/#reading-changing-and-removing).
+
+Customers' `GET /customers/{id}/attachments/{attachmentId}` does the same through its
+`customers`-scoped store, under the timeline's read permission, with the same headers and
+the same 503 for an object that cannot be read. See
+[Customers](/en/reference/customers/#attachments).

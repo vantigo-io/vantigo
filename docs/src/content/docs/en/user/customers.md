@@ -95,7 +95,7 @@ need the Invoices module and `invoices:access`, and come with a **See invoices**
 to the customer's Invoices tab. The rule is
 [Customer 360](/en/reference/customers/#customer-360). Under it come the cards of
 the next sections: **Relationship**, **Contact & addresses**, **Registry**,
-**Billing**, **Contacts** and **Timeline**.
+**Billing**, **Contacts**, **Attachments** and **Timeline**.
 
 A banner at the top says when the customer is archived, merged into another, scheduled
 for anonymisation or anonymised. A merged-away or anonymised customer is read-only, and
@@ -250,6 +250,33 @@ is kept, and **Revision history** lists them as **Revision 1**, **Revision 2** a
 on with who changed it and when. If an entry changed under you, the save is refused
 with **This event changed**. See [The timeline](/en/reference/customers/#the-timeline).
 
+The menu on a manual entry also offers **Attach file…**, which puts a file on that
+entry — the email behind an **Email** entry, the minutes of a **Meeting**. The entry
+then lists its files under its text, each a download, with a cross to remove it. See
+[Attachments](#attachments).
+
+## Attachments
+
+The **Attachments** card is the customer's documents: a signed contract, an NDA, a
+scanned letter — and, listed with the entry they belong to, the files put on timeline
+entries. Reading needs `customers:timeline-view`; the card says so when you cannot. Each
+row shows the file's name, its size and the day it was uploaded, and **On: Email ·
+12 Oct 2026** for one on an entry (or **On a deleted entry: …** when the entry was since
+deleted; the file stays). Click the name to download it, named as it was uploaded.
+
+**Add attachment** (`customers:timeline-manage`) takes a **PDF, JPEG, PNG or HEIC** file
+of at most **10 MB**; the picker offers nothing else, and a file whose contents are not
+what its name says is refused — *An attachment must be a PDF, JPEG, PNG or HEIC file, and
+its contents must match the type and file name it is sent under*. Word and Excel files are
+not taken: export a contract to PDF first. A customer holds at most **200** attachments,
+on the customer and on its entries together; the 201st is refused with *Too many
+attachments*. Every upload and every removal is recorded on the timeline as **Attachment
+added** or **Attachment removed**, with your name and the file's. **Delete** on a row asks
+first and removes the file for good.
+
+A merged-away or anonymised customer still shows its files, and nothing can be added or
+removed. See [Attachments](/en/reference/customers/#attachments).
+
 ## Follow-ups
 
 A follow-up is a date on a manual timeline entry: what you promised to do next, and
@@ -302,7 +329,7 @@ The file format and every rule are in
 When two records are the same customer, open the one to keep and press **Merge…**
 (`customers:merge`). In **Merge a duplicate into {name}**, search for the duplicate by
 name or number. The dialog explains what happens: the duplicate's contacts, addresses,
-timeline and tags — and what Projects, Energy and Communications hold for it — move to
+timeline, tags and attachments — and what Projects, Energy and Communications hold for it — move to
 this customer; its own details stay readable in this customer's timeline; and it is
 archived. This customer keeps every detail of its own.
 
@@ -319,10 +346,11 @@ For a private person, **Personal data** (`customers:personal-data`) gathers the 
 the GDPR asks for:
 
 - **Export personal data** downloads everything held about the person as one JSON
-  file.
+  file, its attachments listed by name — download each from the **Attachments** card
+  while the person is not yet anonymised; the file itself carries no bytes.
 - **Schedule anonymisation…** chooses the day on which the person's name, legal
-  identity, contact details, addresses, contacts, correspondence and the content of
-  every timeline entry are removed; the customer number, the dates and what happened
+  identity, contact details, addresses, contacts, correspondence, attachments and the
+  content of every timeline entry are removed; the customer number, the dates and what happened
   when are kept for bookkeeping. There is no default day: choose one after every
   retention period under Norwegian bookkeeping rules has passed. The customer must be
   archived first — the item is greyed out with *Archive the customer first* until it
@@ -348,8 +376,8 @@ nothing on it can be changed, and only the export remains. See
 | Look up a company in Brønnøysundregistrene | `customers:lookup-view` |
 | See contacts / create, edit and delete them | `customers:contacts-view` / `customers:contacts-manage` |
 | See a customer's contacts / link, edit and unlink them | `customers:associations-view` / `customers:associations-manage` |
-| Read the timeline and follow-ups | `customers:timeline-view` |
-| Add, edit and delete timeline entries; set and tick follow-ups | `customers:timeline-manage` |
+| Read the timeline and follow-ups; see and download attachments | `customers:timeline-view` |
+| Add, edit and delete timeline entries; set and tick follow-ups; add and delete attachments | `customers:timeline-manage` |
 | Edit the billing profile, check and use EHF | `customers:billing-manage` |
 | Import customers | `customers:create`, `customers:update` and `customers:view` |
 | Merge a duplicate | `customers:merge` |

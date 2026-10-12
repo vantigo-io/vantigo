@@ -136,7 +136,7 @@ per cycle through a Postgres advisory lease and are configured per installation
 once, and more behind the one endpoint (`/stats/attention`) and the one event type
 (`registry.change`) this module already declared.
 
-### Phase 4 — Light CRM (four deliveries done)
+### Phase 4 — Light CRM (five deliveries done)
 
 An owner/account manager (single user) and a "my customers" filter. Tags, then
 customer groups that can carry defaults (payment terms, later the customer-group
@@ -212,9 +212,21 @@ term with no record on any customer. No new permission key, and
 `contracts.CustomerEntry.Group` is the seam Products phase 4's customer-group
 prices will read. See [`docs/src/content/docs/en/reference/customers.md#groups`](docs/src/content/docs/en/reference/customers.md#groups).
 
-**Still ahead in this phase:** attachments on a customer and its timeline
-entries, once the storage module has a model for it. Also left for later on
-purpose: the tag vocabulary is **unpaged**
+**Delivery E (done)** — decided in
+[`docs/superpowers/specs/2026-10-12-customers-attachments-design.md`](docs/superpowers/specs/2026-10-12-customers-attachments-design.md):
+attachments on a customer and on its manual timeline entries — a contract, an NDA, the
+correspondence behind an entry — PDF, JPEG, PNG or HEIC, 10 MiB, two hundred a customer,
+Staff's bounds and sniffing, in the object store under the `customers` scope keyed
+`attachments/<uuid>` so a merge moves the row and never the object. On the timeline's
+two keys (`customers:timeline-view` reads, `customers:timeline-manage` writes), no new
+permission; `customer.attachment_added` and `customer.attachment_removed` on the
+timeline; moved by a merge as `customers.attachments`, named by the personal-data export
+and deleted by the anonymisation through a deletion ledger the anonymisation worker
+finishes, so an erase is never best-effort. An **Attachments** card on the customer page
+and **Attach file…** on a manual entry. See
+[`docs/src/content/docs/en/reference/customers.md#attachments`](docs/src/content/docs/en/reference/customers.md#attachments).
+
+**Left for later on purpose** in this phase: the tag vocabulary is **unpaged**
 (`GET /customers/tags` answers all of it, and both the
 picker and the Manage tags modal want the whole list), which is a bet that a
 vocabulary stays in the tens or low hundreds — paging it is an additive contract
@@ -322,11 +334,10 @@ new `customers:personal-data`. See
 [`docs/src/content/docs/en/reference/customers.md#personal-data-and-anonymisation`](docs/src/content/docs/en/reference/customers.md#personal-data-and-anonymisation).
 
 Phase 6 is complete, and with it the Customers roadmap — this was its last delivery;
-phase 5's delivery C landed after it, once Invoices existed. Still deferred, each
-waiting on another module rather than on Customers: attachments on a customer and its
-timeline entries (phase 4), once the storage module has a model for them; and the
-other modules' timeline writers (phase 5), which ride on the domain-events outbox
-deferred until Orders.
+phase 5's delivery C landed after it, once Invoices existed, and phase 4's delivery E
+once the storage port had a model to copy. One thing is still deferred, waiting on
+another module rather than on Customers: the other modules' timeline writers (phase
+5), which ride on the domain-events outbox deferred until Orders.
 
 *Unblocks:* clean onboarding and offboarding, and a merge path that only gets more
 expensive the longer it waits.
