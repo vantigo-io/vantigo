@@ -1349,8 +1349,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       const document = state.documents.find((row) => row.id === Number(one[1]));
       const reader = document ? readerOf(document.personId) : undefined;
       if (!document || !reader || !visible(document, reader.health)) return notFound();
+      // A string body, not a Blob: the suite's Blob is jsdom's, which the
+      // undici of Node 22 (CI's) takes for a blob and calls a stream() it lacks.
       if (method === "GET")
-        return new Response(new Blob([`bytes of ${document.fileName}`], { type: document.contentType }), {
+        return new Response(`bytes of ${document.fileName}`, {
           status: 200,
           headers: {
             "Content-Type": document.contentType,
