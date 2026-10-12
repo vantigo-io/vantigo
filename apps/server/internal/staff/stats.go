@@ -23,7 +23,7 @@ import (
 const soonDays = 30
 
 // register is the snapshot the dashboard judges: everyone, every employment
-// with its terms chain, and the manager graph.
+// with its terms chain, and the manager graph built from those same rows.
 type register struct {
 	people      []store.StatsPeopleRow
 	employments []store.StaffEmployment // by person, by start
@@ -35,18 +35,23 @@ type register struct {
 
 // loadRegister reads the register on q, which is a snapshot's.
 func loadRegister(ctx context.Context, q *store.Queries) (register, error) {
+	r, err := loadEmployments(ctx, q)
+	if err != nil {
+		return r, err
+	}
+	return r, r.loadPeople(ctx, q)
+}
+
+// loadEmployments reads on q every employment, their terms and the
+// departments, and builds the manager graph from those rows — each table
+// read once. The people are loadPeople's, and names is empty until then.
+func loadEmployments(ctx context.Context, q *store.Queries) (register, error) {
 	var r register
 	var err error
-	if r.people, err = q.StatsPeople(ctx); err != nil {
-		return r, fmt.Errorf("staff: read the people for the dashboard: %w", err)
-	}
 	if r.employments, err = q.ListAllEmployments(ctx); err != nil {
 		return r, fmt.Errorf("staff: read the employments for the dashboard: %w", err)
 	}
 	r.names, r.counts = map[int64]string{}, map[int64]int{}
-	for _, p := range r.people {
-		r.names[p.ID] = p.DisplayName
-	}
 	ids := make([]int64, 0, len(r.employments))
 	for _, e := range r.employments {
 		ids = append(ids, e.ID)
@@ -60,10 +65,44 @@ func loadRegister(ctx context.Context, q *store.Queries) (register, error) {
 	for _, t := range terms {
 		r.chains[t.EmploymentID] = append(r.chains[t.EmploymentID], t)
 	}
-	if r.graph, err = loadManagerGraph(ctx, q, nil); err != nil {
-		return r, err
+	departments, err := q.ListDepartments(ctx)
+	if err != nil {
+		return r, fmt.Errorf("staff: read the departments for the dashboard: %w", err)
 	}
+	ge := make([]graphEmployment, 0, len(r.employments))
+	for _, e := range r.employments {
+		ge = append(ge, asGraphEmployment(e))
+	}
+	gt := make([]graphTerms, 0, len(terms))
+	for _, t := range terms {
+		gt = append(gt, graphTerms{
+			EmploymentID: t.EmploymentID, ValidFrom: civil(t.ValidFrom), DepartmentID: t.DepartmentID, Manager: t.ManagerPersonID,
+			Title: t.Title, LocationID: t.LocationID,
+		})
+	}
+	gd := make([]graphDepartment, 0, len(departments))
+	for _, d := range departments {
+		gd = append(gd, graphDepartment{ID: d.ID, Manager: d.ManagerPersonID, ParentID: d.ParentID})
+	}
+	r.graph = newManagerGraph(ge, gt, gd)
 	return r, nil
+}
+
+// loadPeople reads everyone onto r, with their names.
+func (r *register) loadPeople(ctx context.Context, q *store.Queries) error {
+	var err error
+	if r.people, err = q.StatsPeople(ctx); err != nil {
+		return fmt.Errorf("staff: read the people for the dashboard: %w", err)
+	}
+	for _, p := range r.people {
+		r.names[p.ID] = p.DisplayName
+	}
+	return nil
+}
+
+// asGraphEmployment is e as the manager graph reads it.
+func asGraphEmployment(e store.StaffEmployment) graphEmployment {
+	return graphEmployment{ID: e.ID, PersonID: e.PersonID, BusinessUnitID: e.BusinessUnitID, Start: civil(e.StartDate), End: civilPtr(e.EndDate)}
 }
 
 // inForce reports whether e is in force on day: started on or before it and

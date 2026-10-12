@@ -247,6 +247,10 @@ func TestAttention_ContractOverdue(t *testing.T) {
 	seedWork(t, h, seedPerson(t, h, "Ended", "Unsigned"), work{start: day(t, h, -60), end: day(t, h, -1)})
 	future := seedPerson(t, h, "Future", "Start")
 	seedWork(t, h, future, work{start: day(t, h, 3), form: "fast_utleid"})
+	// Ended early by hand: the end typed later is not what was agreed at
+	// the start, so it is seven days, not at once.
+	endedEarly := seedPerson(t, h, "Ended", "Early")
+	seedWork(t, h, endedEarly, work{start: day(t, h, -10), end: day(t, h, 0)})
 	twice := seedPerson(t, h, "Two", "Contracts")
 	first := seedWork(t, h, twice, work{start: day(t, h, -20), fte: 50})
 	seedWork(t, h, twice, work{start: day(t, h, -20), fte: 50, signed: day(t, h, -20)})
@@ -259,6 +263,7 @@ func TestAttention_ContractOverdue(t *testing.T) {
 		at(hired, day(t, h, -1)),
 		at(unattached, day(t, h, -23)),
 		at(twice, day(t, h, -13)),
+		at(endedEarly, day(t, h, -3)),
 	)
 	if got := entities(items); !slices.Equal(got, want) {
 		t.Fatalf("contractOverdue = %v, want %v", got, want)
@@ -431,6 +436,115 @@ func TestAttention_ReportsWithoutManager(t *testing.T) {
 	}
 }
 
+// A manager who has left is no one's manager (design §9): the people who
+// name them, or whose department they manage, route to the next manager up
+// the departments who is in employment — for the probation item's audience
+// and for "reports without a manager" alike, one rule for both.
+func TestAttention_DepartedManagerRoutes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	carolClient, carolUser := signIn(t, h)
+	aliceClient, aliceUser := signIn(t, h)
+
+	carol := seedPerson(t, h, "Carol", "Above")
+	alice := seedPerson(t, h, "Alice", "Left")
+	top := seedDepartment(t, h, "TOP", carol, 0)
+	sub := seedDepartment(t, h, "SUB", alice, top)
+	alone := seedDepartment(t, h, "ALONE", 0, 0)
+	seedWork(t, h, carol, work{start: "2020-01-01", department: top, signed: "2020-01-01"})
+	link(t, h, carol, carolUser)
+	seedWork(t, h, alice, work{start: "2020-01-01", end: "2026-06-30", department: sub, signed: "2020-01-01"})
+	link(t, h, alice, aliceUser)
+
+	// Bob's department's manager left; Ben names the one who left.
+	bob := seedPerson(t, h, "Bob", "Bydepartment")
+	seedWork(t, h, bob, work{start: day(t, h, -100), department: sub, probationEnd: day(t, h, 10), signed: day(t, h, -100)})
+	ben := seedPerson(t, h, "Ben", "Named")
+	seedWork(t, h, ben, work{start: day(t, h, -100), manager: alice, department: sub, probationEnd: day(t, h, 12), signed: day(t, h, -100)})
+	// Dan names the one who left, and nobody manages his department or above.
+	dan := seedPerson(t, h, "Dan", "Nobody")
+	seedWork(t, h, dan, work{start: "2024-01-01", manager: alice, department: alone, signed: "2024-01-01"})
+
+	if got, want := entities(ofType(getAttention(t, carolClient), gen.ProbationEnding)), sorted(
+		at(bob, day(t, h, 10)), at(ben, day(t, h, 12)),
+	); !slices.Equal(got, want) {
+		t.Errorf("the manager above = %v, want %v", got, want)
+	}
+	if got := getAttention(t, aliceClient); len(got) != 0 {
+		t.Errorf("the manager who left sees %v, want nothing", got)
+	}
+	if got, want := entities(ofType(getAttention(t, hr), gen.ReportsWithoutManager)), []string{at(dan, "2024-01-01")}; !slices.Equal(got, want) {
+		t.Errorf("reportsWithoutManager = %v, want only %v", got, want)
+	}
+}
+
+// A person nobody can manage by the structure is not listed without a
+// manager: one who manages the department their own terms place them in,
+// with no manager named in any department above it — whichever of the
+// top-level departments it is, and whether or not the manager their terms
+// name has left, since their climb ends in their own department. Managing a
+// top-level department while placed elsewhere, with no manager there, is
+// listed.
+func TestAttention_ReportsWithoutManager_Heads(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+
+	gone := seedPerson(t, h, "Gone", "Ceo")
+	seedWork(t, h, gone, work{start: "2019-01-01", end: "2026-01-31", signed: "2019-01-01"})
+	sales := seedPerson(t, h, "Head", "Sales")
+	salesDept := seedDepartment(t, h, "SALES", sales, 0)
+	seedWork(t, h, sales, work{start: "2020-01-01", department: salesDept, signed: "2020-01-01"})
+	ops := seedPerson(t, h, "Head", "Ops")
+	opsDept := seedDepartment(t, h, "OPS", ops, 0)
+	seedWork(t, h, ops, work{start: "2020-01-01", manager: gone, department: opsDept, signed: "2020-01-01"})
+	elsewhere := seedPerson(t, h, "Head", "Elsewhere")
+	seedDepartment(t, h, "LAB", elsewhere, 0)
+	seedWork(t, h, elsewhere, work{start: "2021-01-01", signed: "2021-01-01"})
+
+	if got, want := entities(ofType(getAttention(t, hr), gen.ReportsWithoutManager)), []string{at(elsewhere, "2021-01-01")}; !slices.Equal(got, want) {
+		t.Errorf("reportsWithoutManager = %v, want only %v", got, want)
+	}
+}
+
+// A manager is judged on each employment's own terms: of a person's two
+// concurrent employments, each manager sees the probation of the one they
+// manage, not the other's.
+func TestAttention_ProbationEndingPerEmployment(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	oneClient, oneUser := signIn(t, h)
+	twoClient, twoUser := signIn(t, h)
+
+	one := seedPerson(t, h, "First", "Manager")
+	seedWork(t, h, one, work{start: "2020-01-01", signed: "2020-01-01"})
+	link(t, h, one, oneUser)
+	two := seedPerson(t, h, "Second", "Manager")
+	seedWork(t, h, two, work{start: "2020-01-01", signed: "2020-01-01"})
+	link(t, h, two, twoUser)
+	both := seedPerson(t, h, "Two", "Jobs")
+	first := seedWork(t, h, both, work{start: day(t, h, -100), fte: 50, manager: one, probationEnd: day(t, h, 10), signed: day(t, h, -100)})
+	second := seedWork(t, h, both, work{start: day(t, h, -90), fte: 50, manager: two, probationEnd: day(t, h, 20), signed: day(t, h, -90)})
+
+	for _, tc := range []struct {
+		name   string
+		client *modtest.Client
+		want   string
+	}{
+		{"the first employment's manager", oneClient, "probationEnding/" + idString(first)},
+		{"the second employment's manager", twoClient, "probationEnding/" + idString(second)},
+	} {
+		var got []string
+		for _, i := range ofType(getAttention(t, tc.client), gen.ProbationEnding) {
+			got = append(got, i.Id)
+		}
+		if !slices.Equal(got, []string{tc.want}) {
+			t.Errorf("%s sees %v, want only %s", tc.name, got, tc.want)
+		}
+	}
+}
+
 // The reassessment of an erased person falls due twelve months after their
 // last employment ended (design S15) and is staff:personal-data's item until
 // it is recorded.
@@ -560,9 +674,10 @@ func seedHeadcount(t *testing.T, h *harness, n int) {
 	}
 }
 
-// A headcount threshold (design S20, R §4.10) is one item per threshold the
-// headcount has reached and not acknowledged, its count the headcount; an
-// acknowledged one is never shown again.
+// A headcount threshold (design S20, R §4.10, §4.12) is one item per
+// threshold the headcount has crossed and not acknowledged — 5 or more, 30 or
+// more, more than 50 — its count the headcount; an acknowledged one is never
+// shown again.
 func TestAttention_HeadcountThreshold(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -598,13 +713,32 @@ func TestAttention_HeadcountThreshold(t *testing.T) {
 	if got := thresholds(); len(got) != 0 {
 		t.Fatalf("five people, acknowledged: %v, want none", got)
 	}
-	seedHeadcount(t, h, 45)
-	if got, want := thresholds(), []string{"30:50", "50:50"}; !slices.Equal(got, want) {
+	seedHeadcount(t, h, 24)
+	if got := thresholds(); len(got) != 0 {
+		t.Fatalf("twenty-nine people: %v, want none", got)
+	}
+	seedHeadcount(t, h, 1)
+	if got, want := thresholds(), []string{"30:30"}; !slices.Equal(got, want) {
+		t.Fatalf("thirty people: %v, want %v", got, want)
+	}
+	// The equality duty is an employer's with more than fifty (ldl. § 26):
+	// fifty is not yet over it.
+	seedHeadcount(t, h, 20)
+	if got, want := thresholds(), []string{"30:50"}; !slices.Equal(got, want) {
 		t.Fatalf("fifty people: %v, want %v", got, want)
 	}
+	seedHeadcount(t, h, 1)
+	if got, want := thresholds(), []string{"30:51", "50:51"}; !slices.Equal(got, want) {
+		t.Fatalf("fifty-one people: %v, want %v", got, want)
+	}
+	for _, i := range ofType(getAttention(t, hr), gen.HeadcountThreshold) {
+		if i.EntityId == "50" && !strings.Contains(i.Title, "More than 50") {
+			t.Errorf("title = %q, want the duty's boundary, more than 50", i.Title)
+		}
+	}
 	do(t, hr, http.MethodPost, thresholdPath("30"), nil, http.StatusOK, nil)
-	if got, want := thresholds(), []string{"50:50"}; !slices.Equal(got, want) {
-		t.Errorf("fifty people, 30 acknowledged: %v, want %v", got, want)
+	if got, want := thresholds(), []string{"50:51"}; !slices.Equal(got, want) {
+		t.Errorf("fifty-one people, 30 acknowledged: %v, want %v", got, want)
 	}
 	if got := getAttention(t, viewer); len(got) != 0 {
 		t.Errorf("staff:view sees %v, want nothing", got)

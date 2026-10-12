@@ -236,6 +236,60 @@ func (g managerGraph) departmentManager(id, person int64) *int64 {
 	return nil
 }
 
+// effectiveManager is the manager employment e gives its person on date with
+// anyone not in employment that day skipped (design §9, "a manager who
+// leaves: their reports route to the department's manager"): the manager the
+// terms in force name, else the first department from the terms' up whose
+// manager is someone else — each candidate in employment on date — else nil.
+// It is the dashboard's one manager rule, for the probation item's audience
+// and for reports without a manager; managerOf, which the org view and the
+// Manager audience read, keeps a manager who has left.
+func (g managerGraph) effectiveManager(e graphEmployment, date time.Time) *int64 {
+	t := g.inForce(e, date)
+	if t == nil {
+		return nil
+	}
+	present := func(m *int64) bool { return m != nil && *m != e.PersonID && g.activeOn(*m, date) }
+	if present(t.Manager) {
+		return t.Manager
+	}
+	if t.DepartmentID == nil {
+		return nil
+	}
+	visited := map[int64]bool{}
+	for cur, ok := g.departments[*t.DepartmentID]; ok && !visited[cur.ID]; cur, ok = g.parentOf(cur) {
+		visited[cur.ID] = true
+		if present(cur.Manager) {
+			return cur.Manager
+		}
+	}
+	return nil
+}
+
+// headsTopOfStructure reports whether e's person is, on date and by the
+// structure, nobody's report: the terms in force place them in a department
+// they manage, and no department above it names a manager other than them —
+// their department climb starts and ends in their own department, whatever
+// manager the terms name.
+func (g managerGraph) headsTopOfStructure(e graphEmployment, date time.Time) bool {
+	t := g.inForce(e, date)
+	if t == nil || t.DepartmentID == nil {
+		return false
+	}
+	d, ok := g.departments[*t.DepartmentID]
+	if !ok || d.Manager == nil || *d.Manager != e.PersonID {
+		return false
+	}
+	visited := map[int64]bool{d.ID: true}
+	for cur, ok := g.parentOf(d); ok && !visited[cur.ID]; cur, ok = g.parentOf(cur) {
+		visited[cur.ID] = true
+		if cur.Manager != nil && *cur.Manager != e.PersonID {
+			return false
+		}
+	}
+	return true
+}
+
 // parentOf is d's parent department, false at the top.
 func (g managerGraph) parentOf(d graphDepartment) (graphDepartment, bool) {
 	if d.ParentID == nil {

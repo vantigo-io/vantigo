@@ -396,7 +396,7 @@ attention** on the dashboard ([the dashboard](/en/user/staff/#the-dashboard)):
 | --- | --- | --- |
 | `5` | 5 or more people are employed today | Have written whistleblowing routines (aml. § 2 A-6) and a safety representative, verneombud (§ 6-1). |
 | `30` | 30 or more | Have a working environment committee, AMU (§ 7-1). |
-| `50` | 50 or more | The activity and reporting duty on equality, ARP (likestillings- og diskrimineringsloven § 26), applies above fifty — the item comes one person early. |
+| `50` | More than 50 — 51 or more | The activity and reporting duty on equality, ARP (likestillings- og diskrimineringsloven § 26), which applies to an employer with more than fifty employees. At exactly 50 there is no item yet. |
 | `otp` | Someone is at 75 % or more, or the people at 20 % or more add up to two full-time positions — the percentages employed today, summed per person | Have an occupational pension scheme, OTP (OTP-loven § 2) — unless the only such person is the owner, which Staff cannot tell, since it records no owner. |
 
 When the duty is dealt with — or does not apply — acknowledge the threshold. It is
@@ -456,8 +456,9 @@ changing the settings at once cannot overwrite each other unseen.
   erased ([Retention](#retention)). Left out of a replace, each keeps its value.
 - **Retention state** (`retention`, read-only): the deletion ledger's pending and
   failing files, the oldest pending, and the last erase ([The deletion
-  ledger](#the-deletion-ledger)). Files the store has refused for more than a day also
-  raise an item on the dashboard for `staff:manage`.
+  ledger](#the-deletion-ledger)). Files the store has refused at least once and that
+  were queued more than 24 hours ago also raise an item on the dashboard for
+  `staff:manage`.
 - **Thresholds acknowledged** (`thresholdsAcknowledged`, read-only): when each
   threshold was acknowledged ([The thresholds](#the-thresholds)).
 

@@ -298,15 +298,15 @@ people they manage, and the reassessment is `staff:personal-data`'s:
 
 | Item | It means | Opens |
 | --- | --- | --- |
-| No signed contract | An employment started seven days ago — or today, for one under a month or a hired-out person — with no signing date and no signed contract document filed for it. File the signed contract on the person's page, or type the date it was signed. | The person |
-| Probation ending | The probation, or its extension, ends within 30 days. A manager sees this for their own people. | The person |
+| No signed contract | An employment started seven days ago — or today, for a hired-out person or a temporary employment agreed at the start to last under a month — with no signing date and no signed contract document filed for it. File the signed contract on the person's page, or type the date it was signed. | The person |
+| Probation ending | The probation, or its extension, ends within 30 days. A manager sees this for the employments they manage. | The person |
 | Temporary for a year | A temporary employment has lasted a year: the person is owed a month's written notice of when it ends. | The person |
 | Temporary for three years | A run of temporary employments on ground a or b has lasted three years, and the person may have a right to a permanent position. | The person |
-| No manager | Someone employed today has no manager in employment: none named, the one named has left, and no department above them has one. | The person |
+| No manager | Someone employed today has no manager in employment: none named, or the one named has left, and nobody in employment manages their department or one above it. A manager who has left is skipped: their people go to the next manager up, who also sees their probation items. | The person |
 | Reassessment due | An erased person's last employment ended a year ago: record the reassessment. | The person |
 | Documents not deleted | The document store has refused to delete documents for more than a day. | Staff settings |
 | OTP threshold | By the percentages employed today, the company needs an occupational pension scheme — unless the only such person is the owner. | Staff settings |
-| 5, 30 or 50 employees | The headcount has reached a threshold that brings a duty: a whistleblowing routine and a safety representative at 5, a working environment committee at 30, the duty to report on equality above 50. | Staff settings |
+| 5, 30 or more than 50 employees | The headcount has crossed a threshold that brings a duty: a whistleblowing routine and a safety representative at 5, a working environment committee at 30, the duty to report on equality above 50. | Staff settings |
 
 An item goes away when what it asks for is done. A threshold's item stays until HR
 acknowledges the threshold — once, for good; how is in the
