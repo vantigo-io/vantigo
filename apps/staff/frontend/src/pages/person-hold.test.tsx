@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
-import { adaRecord, erasedPerson, heldPeople, withErased } from "../test/fixtures";
+import { adaRecord, employments, erasedPerson, heldPeople, withErased } from "../test/fixtures";
 import { awaitDownload, region, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
@@ -306,5 +306,62 @@ describe("Person page — the reassessment", () => {
     await heading("Charles Babbage");
     expect(screen.queryByRole("button", { name: "Mark as reassessed" })).not.toBeInTheDocument();
     expect(screen.queryByRole("alert", { name: /This record was erased/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("Person page — New employment", () => {
+  it("adds an employment to a person who is not erased, numbered after the ones they have", async () => {
+    const fetchMock = stubStaffApi({ role: "manage" });
+    renderRoute("/staff/people/101?tab=employments");
+
+    await region("Employment E-1-1");
+    expect(screen.queryByRole("button", { name: "Rehire" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "New employment" }));
+    const dialog = await screen.findByRole("dialog", { name: "New employment for Ada Lovelace" });
+    expect(dialog).toHaveTextContent(/E-1-2/);
+    expect(dialog).not.toHaveTextContent(/opens the erased record/);
+    await userEvent.click(within(dialog).getByRole("combobox", { name: "Employment type" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Permanent (fast)" }));
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Percentage of a full position" }), "80");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save employment" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/employments$/)).toHaveLength(1), slow);
+    const [request] = sent(fetchMock, "POST", /\/employments$/);
+    expect(request.url).toBe("/api/v1/staff/people/101/employments");
+    expect(request.body).toEqual({
+      businessUnitId: 11,
+      startDate: "2026-10-11",
+      terms: {
+        employmentType: "fast",
+        appointmentForm: "fast",
+        ftePercent: 80,
+        workingHoursScheme: "not_shift",
+        fullTimeHoursPerWeek: 37.5,
+      },
+    });
+    expect(await screen.findByRole("region", { name: "Employment E-1-2" }, slow)).toBeInTheDocument();
+  });
+
+  it("names the next number however the ones taken are cased, as the server does", async () => {
+    stubStaffApi({
+      role: "manage",
+      employments: employments().map((one) => (one.id === 201 ? { ...one, employmentNumber: "e-1-1" } : one)),
+    });
+    renderRoute("/staff/people/101?tab=employments");
+
+    await region("Employment e-1-1");
+    await userEvent.click(screen.getByRole("button", { name: "New employment" }));
+    const dialog = await screen.findByRole("dialog", { name: "New employment for Ada Lovelace" });
+    expect(dialog).toHaveTextContent(/E-1-2/);
+  });
+
+  it.each([["view"], ["personalDataOnly"]] as const)("is not offered to %s", async (role) => {
+    stubStaffApi({ role });
+    renderRoute("/staff/people/101?tab=employments");
+
+    // A colleague does not read the employment number: the card is named by its start.
+    await region(/^Employment /);
+    expect(screen.queryByRole("button", { name: "New employment" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rehire" })).not.toBeInTheDocument();
   });
 });

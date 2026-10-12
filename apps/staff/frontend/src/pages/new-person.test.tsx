@@ -338,6 +338,54 @@ describe("New person — an erased person with the same names and birth date", (
     });
   });
 
+  it("checks the form again on Create anyway, so a field changed meanwhile is not sent unchecked", async () => {
+    const fetchMock = stubStaffApi(withErased());
+    const dialog = await open();
+    await babbage(dialog);
+    const warning = await within(dialog).findByRole("alert", { name: /was erased/ }, slow);
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Work email" }), "nope");
+    await userEvent.click(within(warning).getByRole("button", { name: "Create anyway" }));
+
+    expect(await within(dialog).findByText("Not an email address")).toBeInTheDocument();
+    expect(sent(fetchMock, "POST", /\/staff\/people$/)).toHaveLength(0);
+  });
+
+  it("takes the warning away when a name or the birth date changes", async () => {
+    stubStaffApi(withErased());
+    const dialog = await open();
+    await babbage(dialog);
+    await within(dialog).findByRole("alert", { name: /was erased/ }, slow);
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Given name" }), "s");
+    expect(within(dialog).queryByRole("alert", { name: /was erased/ })).not.toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Given name" }), "{Backspace}");
+    expect(within(dialog).getByRole("alert", { name: /was erased/ })).toBeInTheDocument();
+    const date = within(dialog).getByRole("textbox", { name: "Birth date" });
+    await userEvent.clear(date);
+    await userEvent.type(date, "Dec 27, 1971");
+    await userEvent.tab();
+    expect(within(dialog).queryByRole("alert", { name: /was erased/ })).not.toBeInTheDocument();
+  });
+
+  it("asks once for the same names and birth date", async () => {
+    const fetchMock = stubStaffApi({
+      ...withErased(),
+      // The create is refused, so Save and continue can be pressed again on the same values.
+      write: (method, path) =>
+        method === "POST" && path === "/api/v1/staff/people"
+          ? staffProblem(400, { title: "Invalid person", errors: { workEmail: ["Taken"] } })
+          : undefined,
+    });
+    const dialog = await open();
+    await babbage(dialog, "Dec 27, 1971");
+    expect(await within(dialog).findByText("Taken", {}, slow)).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save and continue" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/staff\/people$/)).toHaveLength(2), slow);
+    expect(sent(fetchMock, "POST", /\/people\/similar-erased$/)).toHaveLength(1);
+  });
+
   it("creates at once when nobody erased matches", async () => {
     const fetchMock = stubStaffApi(withErased());
     const dialog = await open();

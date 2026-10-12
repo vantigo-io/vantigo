@@ -730,7 +730,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
 
     // The first free `<employee number>-n`, as the server generates it.
     let n = 1;
-    while (state.employments.some((one) => one.employmentNumber === `${stored.employeeNumber}-${n}`)) n += 1;
+    const taken = (number: string) =>
+      state.employments.some((one) => one.employmentNumber?.toLowerCase() === number.toLowerCase());
+    while (taken(`${stored.employeeNumber}-${n}`)) n += 1;
     const employmentNumber = body.employmentNumber ?? `${stored.employeeNumber}-${n}`;
     // On an erased person this is a rehire: the erasure and the reassessment are cleared.
     delete stored.erasedAt;
@@ -1066,7 +1068,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       const row = state.employments.find((one) => one.id === Number(employment[1]));
       const found = row ? seen(row.personId) : undefined;
       if (!row || !found) return notFound();
-      const { audience } = found;
+      const { stored: owner, audience } = found;
       const sub = employment[2];
       if (method === "GET" && sub === undefined) return jsonResponse(200, shape(audience, row, ["id", "personId"]));
       if (method === "GET" && sub === "terms")
@@ -1083,6 +1085,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         return jsonResponse(200, { ...check, items });
       }
       if (!audience.hr) return forbidden();
+      // An erased person's employments and terms are read-only (design S15).
+      if (owner.erasedAt) return erasedRefusal();
       if (method === "PUT" && sub === undefined) {
         const stale = staleRevision(init, row.revision, "employment");
         if (stale) return stale;
@@ -1165,6 +1169,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       const found = row ? seen(row.personId) : undefined;
       if (!stored || !row || !found) return notFound();
       if (!found.audience.hr) return forbidden();
+      if (found.stored.erasedAt) return erasedRefusal();
       const chain = chainOf(row.id);
       const latest = chain[chain.length - 1].id === stored.id;
       const first = chain[0].id === stored.id;

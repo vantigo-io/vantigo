@@ -81,9 +81,11 @@ export const PersonEmployments = ({ person, today, structure, asSelf, rehire = f
   if (isPending) return null;
 
   const canAdd = person.capabilities.canEdit || rehire;
-  // The number the server generates: the employee number and the first free -n.
+  // The number the server generates: the employee number and the first free
+  // -n, a number taken however it is cased.
+  const taken = new Set(data.map((one) => one.employmentNumber?.toLowerCase()));
   let next = 1;
-  while (data.some((one) => one.employmentNumber === `${person.employeeNumber}-${next}`)) next += 1;
+  while (taken.has(`${person.employeeNumber}-${next}`.toLowerCase())) next += 1;
   const add = canAdd && (
     <Button leftSection={<IconPlus size={16} />} onClick={() => setAdding(true)}>
       {t(rehire ? "rehire" : "newEmployment")}
