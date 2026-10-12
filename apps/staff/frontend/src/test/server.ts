@@ -1148,6 +1148,18 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       restricted: category.restricted,
     });
 
+    // The fake cannot read the bytes: a file is taken when its type or its
+    // extension names one of the four, or when neither names anything — the
+    // server's sniff would decide that one — as `documentTypeOf` takes it.
+    const sniffsAsDocument = (file: File) => {
+      const type = file.type.toLowerCase();
+      const extension = file.name.includes(".") ? file.name.split(".").pop()?.toLowerCase() : undefined;
+      const knownType = ["application/pdf", "image/jpeg", "image/png", "image/heic", "image/heif"].includes(type);
+      const knownExtension = ["pdf", "jpg", "jpeg", "png", "heic", "heif"].includes(extension ?? "");
+      const namesNothing = (type === "" || type === "application/octet-stream") && extension === undefined;
+      return knownType || knownExtension || namesNothing;
+    };
+
     if (path === "/api/v1/staff/me/documents" || path === "/api/v1/staff/me/export") {
       const stored = server.me === undefined ? undefined : findPerson(server.me);
       if (!stored) return meProblem();
@@ -1188,7 +1200,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         else if (file.size > 10 * 1024 * 1024) {
           errors.file = ["A document is at most 10 MiB"];
           code = "document_too_large";
-        } else if (!["application/pdf", "image/jpeg", "image/png", "image/heic"].includes(file.type)) {
+        } else if (!sniffsAsDocument(file)) {
           errors.file = [
             "A document must be a PDF, JPEG, PNG or HEIC file, and its contents must match the type and file name it is sent under",
           ];

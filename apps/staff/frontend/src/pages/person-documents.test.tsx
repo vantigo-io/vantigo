@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { choose, region, retype, sent } from "../test/helpers";
@@ -148,14 +148,95 @@ describe("Documents tab — the list", () => {
     expect(within(row).queryByText("Expired")).not.toBeInTheDocument();
   });
 
-  it("explains on a contract that the signing date reaches the employment", async () => {
+  it("does not promise on a change that the signing date reaches the employment — only filing sets it", async () => {
     stubStaffApi({ role: "manage" });
     renderRoute("/staff/people/101?tab=documents");
 
     await userEvent.click(await screen.findByRole("button", { name: "Change employment-contract.pdf" }));
     const dialog = await screen.findByRole("dialog", { name: "Change employment-contract.pdf" });
     expect(within(dialog).getByRole("textbox", { name: "Signed on" })).toHaveValue("Dec 15, 2024");
-    expect(within(dialog).getByText(/sets the employment's signing date/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/sets the employment's signing date/)).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByText("The day the document was signed, when it is one that is signed."),
+    ).toBeInTheDocument();
+  });
+
+  it("closes a change on a document somebody else changed meanwhile, and says so", async () => {
+    stubStaffApi({
+      role: "manage",
+      write: (method, path) =>
+        method === "PUT" && path.endsWith("/documents/502")
+          ? staffProblem(409, {
+              code: "revision_conflict",
+              title: "Revision conflict",
+              detail: "The document has revision 2; the supplied revision was 1.",
+            })
+          : undefined,
+    });
+    renderRoute("/staff/people/101?tab=documents");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Change forklift-licence.pdf" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change forklift-licence.pdf" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Somebody else saved this; it has been reloaded")).toBeInTheDocument();
+    expect(screen.queryByText(/supplied revision/)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Change forklift-licence.pdf" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("says a refused removal and keeps the row", async () => {
+    stubStaffApi({
+      role: "manage",
+      write: (method, path) =>
+        method === "DELETE" && path.endsWith("/documents/502")
+          ? staffProblem(409, { code: "person_erased", title: "Erased", detail: "This person has been erased." })
+          : undefined,
+    });
+    renderRoute("/staff/people/101?tab=documents");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Remove forklift-licence.pdf" }));
+    const confirm = await screen.findByRole("dialog", { name: "Remove forklift-licence.pdf?" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "Remove" }));
+
+    expect(await screen.findByText("Could not remove forklift-licence.pdf")).toBeInTheDocument();
+    expect(screen.getByText("This person has been erased.")).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /forklift-licence\.pdf/ })).toBeInTheDocument();
+  });
+
+  it("offers HR no change to their own health document, which they read as its person", async () => {
+    stubStaffApi({ role: "manage", me: 101 });
+    renderRoute("/staff/people/101?tab=documents");
+
+    expect(within(await region("Health")).getByText("sick-note.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download sick-note.pdf" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change sick-note.pdf" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove sick-note.pdf" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change forklift-licence.pdf" })).toBeInTheDocument();
+  });
+
+  it("saves under the plain name when filename* is in a charset other than UTF-8", async () => {
+    const click = catchDownloads();
+    stubStaffApi({
+      role: "manage",
+      read: (path) =>
+        path.endsWith("/documents/502")
+          ? new Response("bytes", {
+              status: 200,
+              headers: {
+                "Content-Type": "application/pdf",
+                "Content-Disposition": `inline; filename*=ISO-8859-1''f%F8rste.pdf; filename="forste.pdf"`,
+              },
+            })
+          : undefined,
+    });
+    renderRoute("/staff/people/101?tab=documents");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Download forklift-licence.pdf" }));
+
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("forste.pdf");
   });
 
   it("removes a document for good after asking", async () => {
@@ -299,6 +380,97 @@ describe("Documents tab — filing a document", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("The document store could not be reached");
   });
 
+  it("says the upload allowance as a banner", async () => {
+    stubStaffApi({
+      role: "manage",
+      write: (method, path) =>
+        method === "POST" && path.endsWith("/documents")
+          ? staffProblem(429, { title: "Too many requests" })
+          : undefined,
+    });
+    renderRoute("/staff/people/101?tab=documents");
+
+    const dialog = await openUpload();
+    await userEvent.upload(within(dialog).getByLabelText("Choose a file"), pdf());
+    await choose(dialog, /Category/, "Certificate");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Upload" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Too many uploads from here in the last hour");
+  });
+
+  it("lets staff:personal-data alone file a health document", async () => {
+    const fetchMock = stubStaffApi({ role: "personalDataOnly" });
+    renderRoute("/staff/people/101?tab=documents");
+
+    const dialog = await openUpload();
+    await userEvent.upload(within(dialog).getByLabelText("Choose a file"), pdf("doctor.pdf"));
+    await choose(dialog, /Category/, "Health");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Upload" }));
+
+    await waitFor(() => expect(uploads(fetchMock)).toHaveLength(1));
+    expect(uploads(fetchMock)[0].form.get("categoryId")).toBe("5");
+    expect(await within(await region("Health")).findByText("doctor.pdf")).toBeInTheDocument();
+  });
+
+  it("takes a HEIF photo, and a HEIC the browser gives no type", async () => {
+    const fetchMock = stubStaffApi({ role: "manage" });
+    renderRoute("/staff/people/101?tab=documents");
+
+    for (const file of [
+      new File(["heif"], "photo.heif", { type: "image/heif" }),
+      new File(["heic"], "IMG_0001.HEIC", { type: "" }),
+    ]) {
+      const dialog = await openUpload();
+      await userEvent.upload(within(dialog).getByLabelText("Choose a file"), file);
+      await choose(dialog, /Category/, "Certificate");
+      expect(within(dialog).queryByText(/is not a PDF, JPEG, PNG or HEIC file/)).not.toBeInTheDocument();
+      await userEvent.click(within(dialog).getByRole("button", { name: "Upload" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add document" })).not.toBeInTheDocument());
+    }
+    expect(uploads(fetchMock).map(({ form }) => (form.get("file") as File).name)).toEqual([
+      "photo.heif",
+      "IMG_0001.HEIC",
+    ]);
+  });
+
+  it("refuses a file that names another type before sending, and leaves one that names none to the server", async () => {
+    // A picker's "All files" hands over what the accept list would not.
+    const pickAnyway = (input: HTMLElement, file: File) => fireEvent.change(input, { target: { files: [file] } });
+    const fetchMock = stubStaffApi({ role: "manage" });
+    renderRoute("/staff/people/101?tab=documents");
+
+    let dialog = await openUpload();
+    pickAnyway(
+      within(dialog).getByLabelText("Choose a file"),
+      new File(["doc"], "letter.docx", {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      }),
+    );
+    expect(await within(dialog).findByText("letter.docx is not a PDF, JPEG, PNG or HEIC file")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add document" })).not.toBeInTheDocument());
+
+    dialog = await openUpload();
+    pickAnyway(
+      within(dialog).getByLabelText("Choose a file"),
+      new File(["%PDF-1.7"], "scan", { type: "application/octet-stream" }),
+    );
+    await choose(dialog, /Category/, "Certificate");
+    expect(within(dialog).queryByText(/is not a PDF, JPEG, PNG or HEIC file/)).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Upload" }));
+
+    await waitFor(() => expect(uploads(fetchMock)).toHaveLength(1));
+    expect((uploads(fetchMock)[0].form.get("file") as File).name).toBe("scan");
+  });
+
+  it("names the pickers on the screen as the guide does", async () => {
+    stubStaffApi({ role: "manage" });
+    renderRoute("/staff/people/101?tab=documents");
+
+    const dialog = await openUpload();
+    expect(within(dialog).getByRole("button", { name: "Choose a file" })).toBeInTheDocument();
+  });
+
   it("offers HR no health category, nor an archived one", async () => {
     stubStaffApi({ role: "manage" });
     renderRoute("/staff/people/101?tab=documents");
@@ -356,7 +528,8 @@ describe("Documents tab — on a phone", () => {
     renderRoute("/staff/people/101?tab=documents");
 
     const dialog = await openUpload();
-    const camera = within(dialog).getByLabelText("Take a photo");
+    expect(within(dialog).getByRole("button", { name: "Take a photo" })).toBeInTheDocument();
+    const camera = within(dialog).getByLabelText("Take a photo", { selector: "input" });
     expect(camera).toHaveAttribute("capture", "environment");
     expect(camera).toHaveAttribute("accept", "image/*");
   });

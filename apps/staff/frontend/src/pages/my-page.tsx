@@ -129,6 +129,7 @@ const MyDocuments = ({ today }: { today: string }) => {
           {documents.error.message}
         </Alert>
       )}
+      {documents.isPending && <ContentSkeleton rows={3} rowHeight={44} />}
       {documents.data?.length === 0 && <EmptyState title={t("noDocuments")} />}
       {documents.data && documents.data.length > 0 && <DocumentList documents={documents.data} today={today} />}
       <FieldGroup
