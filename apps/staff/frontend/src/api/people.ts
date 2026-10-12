@@ -1,5 +1,6 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import type { components } from "../api-schema";
+import { downloadFile, type FileDownload } from "./documents";
 import { json, type Paginated, request, STAFF_QUERY_KEY } from "./request";
 
 type Schemas = components["schemas"];
@@ -158,3 +159,34 @@ export const revealBankAccount = (id: number) =>
     method: "POST",
     cache: "no-store",
   });
+
+// The hold group (design S15): the legal hold and the reassessment are
+// `staff:personal-data`'s, and the only writes an erased person still takes
+// besides an unlink and a rehire (`POST …/employments`).
+
+export type StaffLegalHold = Schemas["StaffLegalHold"];
+export type StaffErasedPerson = Schemas["StaffErasedPerson"];
+
+/** Sets the hold with its reason, or lifts it — `{held: false}` and no reason. Answers the person. */
+export const setLegalHold = (id: number, held: boolean, reason?: string) =>
+  request<StaffPerson>(`/api/v1/staff/people/${id}/legal-hold`, json("PUT", held ? { held, reason } : { held }));
+
+/** Records the reassessment of an erased person; `reassessment_not_due` (409) before it is due. */
+export const markReassessed = (id: number) =>
+  request<StaffPerson>(`/api/v1/staff/people/${id}/reassessed`, { method: "POST" });
+
+/**
+ * The erased people with the same names, however cased, and birth date — the
+ * New person warning (`staff:manage`). A body, not a query, so the names
+ * stay out of access logs.
+ */
+export const findSimilarErased = (input: Schemas["StaffSimilarErasedRequest"]) =>
+  request<StaffErasedPerson[]>("/api/v1/staff/people/similar-erased", json("POST", input));
+
+/**
+ * The complete personal-data file (`staff:personal-data`), the answer to an
+ * innsyn request — named `staff-<employeeNumber>-personal-data.json` by the
+ * server, and recorded in the person's history as an audited reveal.
+ */
+export const downloadPersonalData = (person: StaffPerson): Promise<FileDownload> =>
+  downloadFile(`/api/v1/staff/people/${person.id}/personal-data`, `staff-${person.employeeNumber}-personal-data.json`);

@@ -19,7 +19,7 @@ import { ContentSkeleton, EmptyState, PageHeader, useDebouncedListSearch, useI18
 import { useState } from "react";
 import { staffMetaQueryOptions } from "../api/meta";
 import { type PeopleStatusFilter, peopleQueryOptions } from "../api/people";
-import { PersonStatusBadge } from "../components/person-status";
+import { ErasedBadge, PersonStatusBadge } from "../components/person-status";
 import "../i18n";
 import { personLinkOptions } from "../lib/routes";
 import type { PeopleSearch } from "../lib/search";
@@ -195,7 +195,11 @@ export const PeoplePage = () => {
                       <Table.Td>{person.workEmail ?? t("notSet")}</Table.Td>
                       {canEdit && (
                         <Table.Td>
-                          <PersonStatusBadge status={person.status} />
+                          {/* An erased person is a leaver: their state stays ended, the erase beside it. */}
+                          <Group gap={4} wrap="nowrap">
+                            <PersonStatusBadge status={person.status} />
+                            {person.erasedAt && <ErasedBadge />}
+                          </Group>
                         </Table.Td>
                       )}
                     </Table.Tr>

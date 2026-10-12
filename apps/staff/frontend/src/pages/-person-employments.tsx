@@ -1,7 +1,15 @@
-import { Alert, Badge, Button, Card, Group, Stack, Text, Title } from "@mantine/core";
+import { Alert, Badge, Button, Card, Group, Modal, Stack, Text, Title } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconDoorExit, IconPencil, IconPlus, IconRotateClockwise } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconDoorExit,
+  IconInfoCircle,
+  IconPencil,
+  IconPlus,
+  IconRotateClockwise,
+} from "@tabler/icons-react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -24,6 +32,7 @@ import { useStaffFormat } from "../lib/format";
 import { inForceOn } from "../lib/terms";
 import { EmploymentEditModal } from "./-employment-edit-modal";
 import { EndEmploymentModal } from "./-end-employment-modal";
+import { EmploymentForm } from "./-new-person-modal";
 import { TermsFormModal, type TermsModalMode } from "./-terms-form-modal";
 
 export interface PersonEmploymentsProps {
@@ -33,16 +42,27 @@ export interface PersonEmploymentsProps {
   structure?: StaffStructure;
   /** My page: the person reads their own terms, without HR's note. */
   asSelf?: boolean;
+  /**
+   * The person is erased and the caller is HR: their record is read-only
+   * (the person comes without `canEdit`), but an employment may still be
+   * added — the rehire, which opens the record again (design S15).
+   */
+  rehire?: boolean;
 }
 
 /**
  * The Employments tab (design §7): one card per employment, oldest first as
  * the server lists them, each with its terms as a timeline and — for a
  * reader of the employment group — its § 14-6 check. HR's actions are on
- * the card and the rows; everyone else reads.
+ * the card and the rows, and New employment above them — a second
+ * position, a leaver hired again, or the first employment New person left
+ * for later; on an erased record it is Rehire, the one change it takes.
+ * Everyone else reads.
  */
-export const PersonEmployments = ({ person, today, structure, asSelf }: PersonEmploymentsProps) => {
+export const PersonEmployments = ({ person, today, structure, asSelf, rehire = false }: PersonEmploymentsProps) => {
   const { t } = useI18n("staff");
+  const phone = useMediaQuery("(max-width: 48em)");
+  const [adding, setAdding] = useState(false);
   const { data, isPending, isError, error } = useQuery(personEmploymentsQueryOptions(person.id));
   // People a terms row names as manager are named from what this page
   // already knows — the person's manager today and the org view — before a
@@ -59,9 +79,56 @@ export const PersonEmployments = ({ person, today, structure, asSelf }: PersonEm
       </Alert>
     );
   if (isPending) return null;
-  if (data.length === 0) return <EmptyState title={t("noEmployments")} />;
+
+  const canAdd = person.capabilities.canEdit || rehire;
+  // The number the server generates: the employee number and the first free -n.
+  let next = 1;
+  while (data.some((one) => one.employmentNumber === `${person.employeeNumber}-${next}`)) next += 1;
+  const add = canAdd && (
+    <Button leftSection={<IconPlus size={16} />} onClick={() => setAdding(true)}>
+      {t(rehire ? "rehire" : "newEmployment")}
+    </Button>
+  );
+  const close = () => setAdding(false);
+  const dialog = canAdd && (
+    <Modal
+      opened={adding}
+      onClose={close}
+      title={t(rehire ? "rehireTitle" : "newEmploymentTitle", { name: person.displayName })}
+      size="xl"
+      fullScreen={phone}
+    >
+      {adding && (
+        <EmploymentForm
+          person={person}
+          intro={
+            rehire && (
+              <Alert color="blue" icon={<IconInfoCircle size={16} />}>
+                {t("rehireExplained")}
+              </Alert>
+            )
+          }
+          generatedNumber={`${person.employeeNumber}-${next}`}
+          cancelLabel={t("cancel")}
+          onCancel={close}
+          onSaved={close}
+          savedTitle={t("employmentAdded")}
+        />
+      )}
+    </Modal>
+  );
+
+  if (data.length === 0)
+    return (
+      <>
+        <EmptyState title={t("noEmployments")} action={add || undefined} />
+        {dialog}
+      </>
+    );
   return (
     <Stack gap="lg">
+      {add && <Group justify="flex-end">{add}</Group>}
+      {dialog}
       {data.map((employment) => (
         <EmploymentCard
           key={employment.id}

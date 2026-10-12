@@ -15,5 +15,8 @@ export const useStaffFormat = () => {
     t,
     date: (date: string) => formatCalendarDate(date, formatters.formatDate),
     number: (value: number) => formatters.formatNumber(value, { maximumFractionDigits: 2 }),
+    /** The calendar day a moment (an erase, a hold) fell on in the business time zone, not the browser's. */
+    day: (instant: string, timeZone?: string) =>
+      formatters.formatDate(new Date(instant), { dateStyle: "medium", timeZone }),
   };
 };

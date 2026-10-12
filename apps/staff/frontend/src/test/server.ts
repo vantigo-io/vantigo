@@ -106,6 +106,15 @@ export const staffProblem = (
 
 const notFound = () => new Response(null, { status: 404 });
 
+/** A write on an erased person (design S15): read-only but for the hold, the reassessment, an unlink and a rehire. */
+const erasedRefusal = () =>
+  staffProblem(409, {
+    code: "person_erased",
+    title: "Person erased",
+    detail:
+      "This person was erased under the retention rules; their record is read-only but for a legal hold, the reassessment, an unlink and a rehire.",
+  });
+
 /** The calendar day before `date` (YYYY-MM-DD), in UTC as every Staff date is. */
 const dayBefore = (date: string): string => {
   const day = new Date(`${date}T00:00:00.000Z`);
@@ -154,7 +163,7 @@ interface Audience {
   colleague: boolean;
 }
 
-type Group = "work" | "dates" | "employment" | "pay" | "private" | "notes" | "sealed";
+type Group = "work" | "dates" | "employment" | "pay" | "private" | "notes" | "sealed" | "hold";
 
 /** Design §5's field groups, as `shaping.go` keys them; a field not named is the employment group's. */
 const groupOf: Record<string, Group> = {
@@ -210,6 +219,11 @@ const groupOf: Record<string, Group> = {
   nationalId: "sealed",
   bankAccount: "sealed",
   user: "sealed",
+  // The hold group (design §5): staff:manage's and staff:personal-data's alone.
+  erasedAt: "hold",
+  legalHold: "hold",
+  legalHoldReason: "hold",
+  reassessedAt: "hold",
 };
 
 /**
@@ -233,6 +247,7 @@ const reads = (audience: Audience, group: Group): boolean => {
     case "sealed":
       return audience.self || hr;
     case "notes":
+    case "hold":
       return hr;
   }
 };
@@ -497,13 +512,15 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
   const placed = (stored: StoredPerson, onlyColleague: boolean) => {
     const item = listItem(stored);
     if (onlyColleague && item.manager && !activeToday(item.manager.id)) delete item.manager;
+    // `erasedAt` is the hold group's: staff:manage's on a list row.
+    if (onlyColleague) delete item.erasedAt;
     return item;
   };
 
   /** A person as the audience reads them, with what the caller may do with them. */
   const personOf = (stored: StoredPerson, audience: Audience = audienceOf(stored) as Audience): StaffPerson => {
     const record: PersonRecord = stored.record ?? {};
-    const { sealed, user, revision = 1, ...rest } = record;
+    const { sealed, user, revision = 1, legalHold, ...rest } = record;
     // The next of kin and the roles are read through their own endpoints.
     const fields: Partial<PersonRecord> = { ...rest };
     delete fields.nextOfKin;
@@ -516,6 +533,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         ? { bankAccount: { kind: sealed.bankAccount.kind, last4: sealed.bankAccount.value.slice(-4) } }
         : {}),
       ...(user ? { user } : {}),
+      // `{held: false}` when there is none — the hold group's readers always get it.
+      legalHold: legalHold ?? { held: false },
       revision,
       capabilities: {
         canEdit: audience.hr,
@@ -709,7 +728,13 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       coded("terms.fullTimeHoursPerWeek", "full_time_hours_mismatch", `The hours do not fit ${scheme}`);
     if (Object.keys(errors).length > 0) return staffProblem(400, { code, title: "Invalid employment", errors });
 
-    const employmentNumber = body.employmentNumber ?? `${stored.employeeNumber}-1`;
+    // The first free `<employee number>-n`, as the server generates it.
+    let n = 1;
+    while (state.employments.some((one) => one.employmentNumber === `${stored.employeeNumber}-${n}`)) n += 1;
+    const employmentNumber = body.employmentNumber ?? `${stored.employeeNumber}-${n}`;
+    // On an erased person this is a rehire: the erasure and the reassessment are cleared.
+    delete stored.erasedAt;
+    if (stored.record) delete stored.record.reassessedAt;
     const employment: StaffEmployment = {
       id: nextId++,
       personId,
@@ -829,9 +854,74 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       const record = recordOf(stored);
       const sub = person[2];
       const privateReader = reads(audience, "private");
-      // Every write on a person but the sealed fields' is staff:manage's
-      // (the access layer's uniform 403); the sealed ones check their own.
-      if (method !== "GET" && !/^(national-id|bank-account)/.test(sub ?? "") && !audience.hr) return forbidden();
+      // Every write on a person but the sealed fields' and the hold's is
+      // staff:manage's (the access layer's uniform 403); those check their own.
+      if (method !== "GET" && !/^(national-id|bank-account|legal-hold|reassessed)/.test(sub ?? "") && !audience.hr)
+        return forbidden();
+      // An erased person is read-only (design S15) but for the hold, the
+      // reassessment, an unlink and the reads — a reveal among them, which
+      // finds nothing. The rehire is `POST …/employments`, routed before.
+      const unlink = sub === "user" && method === "PUT" && (body as { userId?: unknown })?.userId === null;
+      if (
+        stored.erasedAt &&
+        method !== "GET" &&
+        sub !== "legal-hold" &&
+        sub !== "reassessed" &&
+        !unlink &&
+        !/\/reveal$/.test(sub ?? "")
+      )
+        return erasedRefusal();
+
+      if (sub === "legal-hold" && method === "PUT") {
+        if (!audience.personalData) return forbidden();
+        const input = body as { held?: boolean; reason?: string | null };
+        if (typeof input.held !== "boolean")
+          return staffProblem(400, { title: "Invalid legal hold", errors: { held: ["held is true or false"] } });
+        const reason = input.reason?.trim() ?? "";
+        if (input.held && (reason === "" || reason.length > 500))
+          return staffProblem(400, {
+            title: "Invalid legal hold",
+            errors: { reason: ["A legal hold states its reason, 1 to 500 characters"] },
+          });
+        if (!input.held && input.reason !== undefined && input.reason !== null)
+          return staffProblem(400, {
+            title: "Invalid legal hold",
+            errors: { reason: ["A hold is lifted without a reason"] },
+          });
+        record.legalHold = input.held ? { held: true, reason, at: "2026-10-11T08:00:00Z" } : { held: false };
+        return jsonResponse(200, personOf(stored, audience));
+      }
+      if (sub === "reassessed" && method === "POST") {
+        if (!audience.personalData) return forbidden();
+        const own = state.employments.filter((one) => one.personId === stored.id);
+        const lastEnd = own.every((one) => one.endDate)
+          ? own.map((one) => one.endDate as string).sort()[own.length - 1]
+          : undefined;
+        const due = lastEnd ? `${Number(lastEnd.slice(0, 4)) + 1}${lastEnd.slice(4)}` : undefined;
+        if (!stored.erasedAt || record.reassessedAt || !due || due > TODAY)
+          return staffProblem(409, {
+            code: "reassessment_not_due",
+            title: "Reassessment not due",
+            detail:
+              "A reassessment is due for an erased person not yet reassessed, twelve months after their last employment ended.",
+          });
+        record.reassessedAt = "2026-10-11T08:00:00Z";
+        return jsonResponse(200, personOf(stored, audience));
+      }
+      if (sub === "personal-data" && method === "GET") {
+        if (!audience.personalData) return forbidden();
+        return new Response(
+          JSON.stringify({ exportedAt: "2026-10-11T08:00:00Z", person: personOf(stored, audience), events: [] }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Content-Disposition": `attachment; filename="staff-${stored.employeeNumber}-personal-data.json"`,
+              "Cache-Control": "private, no-store",
+            },
+          },
+        );
+      }
 
       if (sub === undefined) {
         if (method === "GET") return jsonResponse(200, personOf(stored, audience));
@@ -1205,6 +1295,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (method === "POST") {
         if (!writer) return forbidden();
         if (!findPerson(Number(archive[1]))) return notFound();
+        if (findPerson(Number(archive[1]))?.erasedAt) return erasedRefusal();
         const form = init?.body as FormData;
         const file = form.get("file");
         const category = state.documentCategories.find((one) => one.id === Number(form.get("categoryId")));
@@ -1263,6 +1354,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         });
       if (!writer) return forbidden();
       if (document.category.restricted && !holdsPersonalData(role)) return restrictedRefusal();
+      if (reader.stored.erasedAt) return erasedRefusal();
       if (method === "DELETE") {
         state.documents.splice(state.documents.indexOf(document), 1);
         return new Response(null, { status: 204 });
@@ -1506,6 +1598,39 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         row.revision += 1;
         return Promise.resolve(jsonResponse(200, row));
       }
+    }
+
+    if (path === "/api/v1/staff/people/similar-erased" && method === "POST") {
+      if (!manages(role)) return Promise.resolve(forbidden());
+      const input = body as { givenName?: string; familyName?: string; birthDate?: string };
+      const missing = (["givenName", "familyName", "birthDate"] as const).filter((field) => !input[field]?.trim());
+      if (missing.length > 0)
+        return Promise.resolve(
+          staffProblem(400, {
+            title: "Invalid lookup",
+            errors: Object.fromEntries(missing.map((field) => [field, [`Give the ${field}`]])),
+          }),
+        );
+      const same = (a: string, b?: string) => a.trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+      return Promise.resolve(
+        jsonResponse(
+          200,
+          state.people
+            .filter(
+              (one) =>
+                one.erasedAt &&
+                same(one.givenName, input.givenName) &&
+                same(one.familyName, input.familyName) &&
+                one.record?.birthDate === input.birthDate,
+            )
+            .map((one) => ({
+              id: one.id,
+              employeeNumber: one.employeeNumber,
+              displayName: one.displayName,
+              erasedAt: one.erasedAt,
+            })),
+        ),
+      );
     }
 
     if (path === "/api/v1/staff/people") {

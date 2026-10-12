@@ -18,6 +18,9 @@ import { fieldRefusals } from "../lib/errors";
  * active user, Owners included, and unlinks. The wording says what it is
  * and is not — linked, not managed by Staff — since delivery C's managed
  * accounts are another thing.
+ *
+ * An erased record takes the unlink — so the user can be linked to someone
+ * else — and no link (design S15): the picker is not offered on it.
  */
 export const PersonLinkGroup = ({ person }: { person: StaffPerson }) => {
   const { t } = useI18n("staff");
@@ -74,6 +77,10 @@ export const PersonLinkGroup = ({ person }: { person: StaffPerson }) => {
             {t("unlink")}
           </Button>
         </Group>
+      ) : person.erasedAt ? (
+        <Text size="sm" c="dimmed">
+          {t("notLinked")}
+        </Text>
       ) : (
         <Stack gap="xs">
           <Text size="sm" c="dimmed">

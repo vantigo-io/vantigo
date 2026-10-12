@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: The people register — People, a person's page with its documents, New person, My page and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention and the thresholds.
+description: The people register — People, a person's page with its documents, the legal hold, an erased record and its rehire, New person, My page and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention and the thresholds.
 sidebar:
   order: 45
 sources:
@@ -58,7 +58,9 @@ With `staff:manage` you also see the **Status** control and a status column:
 - **All** lists everyone.
 
 The column says **Active**, **Starts on** with the first day, **Ended on** with the
-last day worked, or **No employment**. "Today" is the business time zone's day
+last day worked, or **No employment**. A former employee whose record the retention run
+has erased is listed under **Ended** and **All** with **Erased** beside the status — see
+[An erased record](#an-erased-record). "Today" is the business time zone's day
 (see [Change the settings](#change-the-settings)), so the list turns over at midnight
 there, not in your browser.
 
@@ -152,8 +154,13 @@ row in force today marked **In force**. Each row shows its fields as you may rea
 the person and HR see every field and the **Pay components**; a manager every field
 but the pay; a colleague only the days, the employment type and the percentage.
 
-With `staff:manage` the card and its rows offer:
+With `staff:manage` the tab and the cards offer:
 
+- **New employment** (above the cards) — an employment with its first terms, in the
+  form of [New person's second step](#step-2-the-first-employment): a second position,
+  a leaver hired again, or the first employment you left for later. Its number is the
+  employee number and the next free `-n` unless you assign your own. On an erased
+  record the button is **Rehire** — see [Rehire](#rehire).
 - **New terms** — a new row from the day it **Takes effect**, prefilled from the row in
   force today. Change what changes and press **Save terms**; a field you empty is
   cleared from that day. **More terms** holds the rest of § 14-6 and the pay: **Add pay
@@ -258,6 +265,89 @@ Changing or removing a health document, and moving a document into or out of a h
 category, is `staff:personal-data`'s: HR without it is not offered **Change** and
 **Remove** on a health document — not even on their own.
 
+### A legal hold
+
+With `staff:personal-data`, a person's page has **Put under legal hold** at the top. A
+legal hold keeps the record whole — no retention erase touches it, and the person
+cannot be deleted — for as long as a dispute, a claim or an investigation needs it.
+
+1. Press **Put under legal hold**.
+2. Write the **Reason** — required, up to 500 characters: what the hold is for and, if
+   you can, until when.
+3. Press **Set the legal hold**. The page shows **Under legal hold** with the day it
+   was set and the reason, and the History has **Legal hold set**.
+
+To lift it, press **Lift the legal hold** and confirm. The next retention run may then
+erase what has fallen due meanwhile; the History keeps the hold and its reason.
+
+HR with `staff:manage` alone sees **Under legal hold** and the reason but cannot set or
+lift it. A manager and a colleague are not shown the hold.
+
+### An erased record
+
+Once a former employee's last employment has ended and the grace period has passed,
+the [retention run](#retention) erases their personnel administration. HR
+(`staff:manage`, `staff:personal-data`) then sees **Erased** beside the person's status
+and a notice, **This record was erased on** and the day: the contact details, the
+address, the next of kin, the national identity number, the bank account, HR's notes
+and the personnel documents are gone; the employments, the history and the pay and
+contract documents remain.
+
+The record is read-only, and the page offers none of its changes — **Edit details**,
+the next of kin and the roles, setting the national identity number or the bank
+account, linking a user, the employments' and the terms' actions, and filing, changing
+or removing a document are not there, because Staff would refuse them. What may still
+be done:
+
+- the [legal hold](#a-legal-hold) and [the reassessment](#the-reassessment);
+- **Unlink** under Self-service, so the user can be linked to someone else;
+- reading: the History, the Documents and their downloads, and
+  [the personal-data file](#download-a-persons-data);
+- [Rehire](#rehire).
+
+#### Rehire
+
+When an erased former employee comes back, rehire them on their own record rather than
+adding a new person, so their history stays in one place. With `staff:manage`:
+
+1. Open the person, go to **Employments** and press **Rehire**.
+2. Fill in the employment as in [New person's second step](#step-2-the-first-employment)
+   and press **Save employment**.
+
+The record opens again under the same employee number: the notice goes, and the History
+has **Rehired** before the new employment. What the erase removed stays empty — type
+the contact details, the address and the next of kin again, and, with
+`staff:personal-data`, the national identity number and the bank account.
+
+#### The reassessment
+
+Twelve months after an erased person's last employment ended, the
+[dashboard](#the-dashboard) shows **Reassessment due** to `staff:personal-data`, and
+the item opens the person's page. The notice there says whether the reassessment is
+recorded.
+
+1. Review what is left of the record.
+2. Press **Mark as reassessed** in the notice and confirm.
+
+The notice then says **Reassessed on** and the day, and the dashboard's item goes away.
+Before it is due, or once it is recorded, Staff refuses it, and the page says that the
+reassessment is recorded once, from twelve months after the last employment ended. A
+rehire clears the reassessment with the erasure. `staff:manage` alone sees whether it
+is recorded but cannot record it.
+
+### Download a person's data
+
+With `staff:personal-data`, **Download personal data** at the top of a person's page
+saves everything Staff has about them in one file,
+`staff-<employee number>-personal-data.json`: the record with the national identity
+number and the bank account in full, HR's notes, the next of kin, the roles, every
+employment with its terms, the user link, the documents' list and the whole history.
+It is the answer to an innsyn request — see
+[Answer an innsyn request](/en/admin/staff/#answer-an-innsyn-request).
+
+The page asks first, because the file opens the sealed values: the download is recorded
+in the person's history as **Personal data exported**, with your name.
+
 ## Add a new person
 
 With `staff:manage`, press **New person** in People, or choose **New person** in the
@@ -281,6 +371,20 @@ so you can stop after it and add the employment later — they stay in People un
    phone, private email and home address. None of them is required to create the
    person.
 5. Press **Save and continue**. A refusal lands on the field it is about.
+
+When the given name, the family name and the birth date are all filled in, **Save and
+continue** first asks whether a former employee with the same names and birth date has
+been [erased](#an-erased-record) — Staff cannot recognise them by the national identity
+number, which the erase removed. If one has, the form says **Someone with these names
+and birth date was erased**, lists them with their employee number and the day they
+were erased, and waits:
+
+- **Open** with the employee number opens the erased record; if it is the same person,
+  [rehire](#rehire) them there.
+- **Create anyway** adds the new person under a new employee number.
+
+Without a birth date nothing is asked. If the question cannot be answered, the person
+is created without it.
 
 ### Step 2: the first employment
 
@@ -320,7 +424,8 @@ refuses the terms without them.
    — a percentage out of range, an archived department — the refusal lands on that
    field; one about the whole employment is shown as a message.
 
-**Add it later** closes the form with the person saved and opens their page.
+**Add it later** closes the form with the person saved and opens their page, where
+**New employment** on the Employments tab adds it.
 
 ## My page
 

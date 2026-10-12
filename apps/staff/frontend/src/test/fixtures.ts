@@ -144,6 +144,8 @@ export type PersonRecord = Pick<
   | "city"
   | "country"
   | "notes"
+  | "legalHold"
+  | "reassessedAt"
 > & {
   revision?: number;
   sealed?: Sealed;
@@ -258,6 +260,78 @@ export const peopleWithRecords = (): StoredPerson[] =>
       : one.id === 102
         ? { ...one, record: { revision: 1, birthDate: "1985-06-01", phoneMobile: "+47 999 88 777" } }
         : one,
+  );
+
+/**
+ * Charles Babbage, a former employee the retention run erased in July 2025:
+ * his last employment ended on 31 March 2025, so his reassessment has been
+ * due since 31 March 2026. What is left is the C class — his names, his
+ * birth date, his employment and the history; his contact details, next of
+ * kin and sealed values are gone. Overrides give the held and the
+ * reassessed variants.
+ */
+export const erasedPerson = (overrides: Partial<StoredPerson> = {}, record: PersonRecord = {}): StoredPerson =>
+  person({
+    id: 106,
+    givenName: "Charles",
+    familyName: "Babbage",
+    displayName: "Charles Babbage",
+    employeeNumber: "E-6",
+    workEmail: undefined,
+    status: { state: "ended", date: "2025-03-31" },
+    erasedAt: "2025-07-01T02:00:00Z",
+    department: undefined,
+    ...unplaced,
+    record: { revision: 7, birthDate: "1971-12-26", legalHold: { held: false }, ...record },
+    ...overrides,
+  });
+
+/** Charles Babbage's one employment, ended on 31 March 2025, with its one terms row. */
+export const erasedEmployment = (): StaffEmployment => ({
+  id: 206,
+  personId: 106,
+  employmentNumber: "E-6-1",
+  startDate: "2019-02-01",
+  endDate: "2025-03-31",
+  endReason: "employee_resigned",
+  businessUnitId: 11,
+  relationshipType: "ordinary",
+  fteChangedAt: "2019-02-01",
+  revision: 3,
+});
+
+export const erasedTerms = (): StaffTerms => ({
+  id: 306,
+  employmentId: 206,
+  validFrom: "2019-02-01",
+  employmentType: "fast",
+  appointmentForm: "fast",
+  ftePercent: 100,
+  workingHoursScheme: "not_shift",
+  fullTimeHoursPerWeek: 37.5,
+  title: "Analyst",
+  revision: 1,
+});
+
+/** The register with Charles Babbage erased among the others, for `stubStaffApi`. */
+export const withErased = (person: StoredPerson = erasedPerson()) => ({
+  people: [...peopleWithRecords(), person],
+  employments: [...employments(), erasedEmployment()],
+  terms: [...terms(), erasedTerms()],
+});
+
+/** Ada under a legal hold HR set in September. */
+export const heldPeople = (): StoredPerson[] =>
+  peopleWithRecords().map((one) =>
+    one.id === 101
+      ? {
+          ...one,
+          record: {
+            ...(one.record as PersonRecord),
+            legalHold: { held: true, reason: "Wage claim before the court", at: "2026-09-02T10:00:00Z" },
+          },
+        }
+      : one,
   );
 
 /** The users the link picker finds. */

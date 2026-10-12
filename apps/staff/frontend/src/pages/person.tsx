@@ -5,17 +5,20 @@ import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { staffMetaQueryOptions } from "../api/meta";
-import { personEventsQueryOptions, personQueryOptions } from "../api/people";
+import { personEventsQueryOptions, personQueryOptions, type StaffPerson } from "../api/people";
 import { NotFoundError } from "../api/request";
-import { PersonStatusBadge } from "../components/person-status";
+import { ErasedBadge, PersonStatusBadge } from "../components/person-status";
 import "../i18n";
 import { readsDocuments } from "../lib/documents";
 import { PEOPLE_ROUTE_PATH } from "../lib/routes";
 import type { PersonSearch, PersonTab } from "../lib/search";
+import { ErasedBanner } from "./-erased-banner";
+import { LegalHoldAlert, LegalHoldButton } from "./-legal-hold";
 import { PersonDocuments } from "./-person-documents";
 import { PersonEmployments } from "./-person-employments";
 import { PersonHistory } from "./-person-history";
 import { PersonProfile } from "./-person-profile";
+import { PersonalDataDownload } from "./-personal-data-download";
 
 /**
  * The person page (design §7): Profile, Employments, History and Documents,
@@ -23,6 +26,14 @@ import { PersonProfile } from "./-person-profile";
  * sub-resources answer this reader (§5); what it offers follows the person's
  * capabilities. The Account and Absence tabs belong to later deliveries and
  * are not drawn at all until they exist.
+ *
+ * The hold group (design S15) sits above the tabs: the legal hold and an
+ * erased record's banner for `staff:manage` and `staff:personal-data`, and
+ * for `staff:personal-data` (`canHold`) the hold, the reassessment and the
+ * complete personal-data file. An erased record is read-only but for those,
+ * an unlink and a rehire, so the tabs are handed the person without the
+ * capabilities to change anything else — the page offers nothing the
+ * server would refuse with `person_erased`.
  */
 export const PersonPage = () => {
   const { t } = useI18n("staff");
@@ -55,6 +66,14 @@ export const PersonPage = () => {
     );
   if (!person.data || !meta.data) return <ContentSkeleton rows={6} rowHeight={44} />;
   const data = person.data;
+  const erased = data.erasedAt !== undefined;
+  const shown: StaffPerson = erased
+    ? {
+        ...data,
+        capabilities: { ...data.capabilities, canEdit: false, canRevealIdentifiers: false, canHold: false },
+      }
+    : data;
+  const timeZone = meta.data.timeZone;
 
   const tabs = [
     { value: "profile" as const, label: t("tab_profile") },
@@ -73,9 +92,20 @@ export const PersonPage = () => {
           <Group gap="xs" component="span">
             <Text component="span">{data.employeeNumber}</Text>
             <PersonStatusBadge status={data.status} />
+            {erased && <ErasedBadge />}
           </Group>
         }
+        actions={
+          data.capabilities.canHold && (
+            <Group gap="xs" wrap="wrap">
+              <PersonalDataDownload person={data} />
+              <LegalHoldButton person={data} />
+            </Group>
+          )
+        }
       />
+      <ErasedBanner person={data} timeZone={timeZone} />
+      <LegalHoldAlert person={data} timeZone={timeZone} />
       <PageTabs
         aria-label={t("personViews")}
         items={tabs}
@@ -84,18 +114,23 @@ export const PersonPage = () => {
       >
         <Tabs.Panel value="profile" pt="lg">
           <PersonProfile
-            person={data}
+            person={shown}
             canOpenPeople={meta.data.capabilities.canViewDirectory || meta.data.capabilities.canEdit}
           />
         </Tabs.Panel>
         <Tabs.Panel value="employments" pt="lg">
-          <PersonEmployments person={data} today={meta.data.today} structure={meta.data.structure} />
+          <PersonEmployments
+            person={shown}
+            today={meta.data.today}
+            structure={meta.data.structure}
+            rehire={erased && data.capabilities.canEdit}
+          />
         </Tabs.Panel>
         {historyReadable && (
           <Tabs.Panel value="history" pt="lg">
             <PersonHistory
               page={(page) => personEventsQueryOptions(personId, page)}
-              person={data}
+              person={shown}
               structure={meta.data.structure}
             />
           </Tabs.Panel>
@@ -104,7 +139,7 @@ export const PersonPage = () => {
           <Tabs.Panel value="documents" pt="lg">
             {current === "documents" && (
               <PersonDocuments
-                person={data}
+                person={shown}
                 today={meta.data.today}
                 canSeeHealth={meta.data.capabilities.canSeeHealth}
               />
