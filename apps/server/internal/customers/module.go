@@ -48,7 +48,7 @@ var permissions = []contracts.Permission{
 	{Key: "customers:timeline-manage", Display: "Manage customer timeline", Description: "Create, update, and delete customer timeline entries; attach and remove the customer's files.", Category: "Timeline", Sensitive: true, Delegable: true},
 	{Key: "customers:lookup-view", Display: "Use registry lookup", Description: "Search the external business registry for legal identities.", Category: "Lookup", Sensitive: true, Delegable: true},
 	{Key: "customers:billing-manage", Display: "Manage billing profiles", Description: "Set a customer's payment terms, invoice delivery and billing addresses for documents.", Category: "Billing", Sensitive: true, Delegable: true},
-	{Key: "customers:merge", Display: "Merge customers", Description: "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it.", Category: "Customers", Sensitive: true, Delegable: true},
+	{Key: "customers:merge", Display: "Merge customers", Description: "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags, attachments and other modules' references, and archiving it.", Category: "Customers", Sensitive: true, Delegable: true},
 	{Key: "customers:personal-data", Display: "Manage personal data", Description: "Hand a private person all the data held about them, and schedule the anonymisation of an archived private person.", Category: "Customers", Sensitive: true, Delegable: true},
 }
 
