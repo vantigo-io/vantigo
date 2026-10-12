@@ -151,7 +151,7 @@ Task 1 (documents) → Task 2 (erased, hold, the exports, the read-only guard pl
 ### Task 8: Verify the whole branch and open the PR
 
 - [x] **Step 1:** the full gates as A1's Task 7; a whole-branch review; a closing wave; `ROADMAP.md` (A2 done); the plan ticked.
-- [ ] **Step 2:** the PR in A1's shape; CI green; mark ready.
+- [x] **Step 2:** the PR in A1's shape; CI green; mark ready.
 
 ## Readings of the spec
 
