@@ -585,7 +585,7 @@ func TestPostCustomersByIdMerge_CallsEveryHolderInsideItsTransaction(t *testing.
 	}
 	want := []mergeMoveJSON{
 		{"customers.contacts", 0}, {"customers.addresses", 1}, {"customers.timelineEntries", 2}, {"customers.tags", 0},
-		{"projects.projects", 2}, {"energy.supplyPeriods", 0}, {"somewhere.else", 1},
+		{"customers.attachments", 0}, {"projects.projects", 2}, {"energy.supplyPeriods", 0}, {"somewhere.else", 1},
 	}
 	if !slices.Equal(result.Moved, want) {
 		t.Errorf("moved = %+v, want %+v", result.Moved, want)

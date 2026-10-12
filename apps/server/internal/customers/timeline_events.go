@@ -660,6 +660,7 @@ var mergeKindNouns = map[string][2]string{
 	mergeKindAddresses:                       {"address", "addresses"},
 	mergeKindTimelineEntries:                 {"timeline entry", "timeline entries"},
 	mergeKindTags:                            {"tag", "tags"},
+	mergeKindAttachments:                     {"attachment", "attachments"},
 	"projects.projects":                      {"project", "projects"},
 	"energy.supplyPeriods":                   {"supply period", "supply periods"},
 	"invoices.invoices":                      {"invoice document", "invoice documents"},

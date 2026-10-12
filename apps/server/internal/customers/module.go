@@ -44,18 +44,22 @@ var permissions = []contracts.Permission{
 	{Key: "customers:contacts-manage", Display: "Manage contacts", Description: "Create, update, and delete contacts.", Category: "Contacts", Sensitive: true, Delegable: true},
 	{Key: "customers:associations-view", Display: "View customer associations", Description: "View links between customers and contacts.", Category: "Associations", Sensitive: true, Delegable: true},
 	{Key: "customers:associations-manage", Display: "Manage customer associations", Description: "Create, update, and remove customer-contact links.", Category: "Associations", Sensitive: true, Delegable: true},
-	{Key: "customers:timeline-view", Display: "View customer timeline", Description: "View customer timeline entries, notes, provenance, and revisions.", Category: "Timeline", Sensitive: true, Delegable: true},
-	{Key: "customers:timeline-manage", Display: "Manage customer timeline", Description: "Create, update, and delete customer timeline entries.", Category: "Timeline", Sensitive: true, Delegable: true},
+	{Key: "customers:timeline-view", Display: "View customer timeline", Description: "View customer timeline entries, notes, provenance, revisions, and the customer's attachments.", Category: "Timeline", Sensitive: true, Delegable: true},
+	{Key: "customers:timeline-manage", Display: "Manage customer timeline", Description: "Create, update, and delete customer timeline entries; attach and remove the customer's files.", Category: "Timeline", Sensitive: true, Delegable: true},
 	{Key: "customers:lookup-view", Display: "Use registry lookup", Description: "Search the external business registry for legal identities.", Category: "Lookup", Sensitive: true, Delegable: true},
 	{Key: "customers:billing-manage", Display: "Manage billing profiles", Description: "Set a customer's payment terms, invoice delivery and billing addresses for documents.", Category: "Billing", Sensitive: true, Delegable: true},
 	{Key: "customers:merge", Display: "Merge customers", Description: "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it.", Category: "Customers", Sensitive: true, Delegable: true},
 	{Key: "customers:personal-data", Display: "Manage personal data", Description: "Hand a private person all the data held about them, and schedule the anonymisation of an archived private person.", Category: "Customers", Sensitive: true, Delegable: true},
 }
 
-// limits maps each rate-limited operationId to its policy. It is empty and
-// stays empty: no Customers endpoint calls RequireRateLimiting (inventory §6),
-// unlike identity's nine authentication policies.
-var limits = map[string]ratelimit.Policy{}
+// limits maps each rate-limited operationId to its policy. It was empty
+// through the port — no Customers endpoint called RequireRateLimiting
+// (inventory §6) — until the attachment upload (customer attachments design
+// D2), the one operation that writes bytes outside the database, took the
+// platform's rate limit as Expenses' and Staff's uploads do.
+var limits = map[string]ratelimit.Policy{
+	"postCustomersByIdAttachments": policyAttachmentUpload,
+}
 
 // Module is customers as a platform module: its contract mounted under
 // /api/v1/customers/, its sixteen permissions in the composed catalog, and
@@ -122,8 +126,8 @@ func workers(d module.Deps) []worker.Worker {
 // mount registers every contract operation on the platform router, which wraps
 // each in its access rule and request-body cap before the generated wrapper
 // decodes it. Every body is capped at the router's default
-// (module.DefaultMaxBodyBytes) except the CSV import's, which gets
-// maxImportRequestBytes (importBodyLimits, import.go). It fails when the
+// (module.DefaultMaxBodyBytes) except the CSV import's and the attachment
+// upload's (bodyLimits, objects.go). It fails when the
 // router reports a problem: an operation never registered, a rule that does
 // not parse, a permission missing from the catalog, or a BodyLimits entry
 // naming no operation.
@@ -134,7 +138,7 @@ func mount(d module.Deps) (http.Handler, error) {
 		Limiter:    d.Limiter,
 		Limits:     limits,
 		Catalog:    d.Catalog,
-		BodyLimits: importBodyLimits,
+		BodyLimits: bodyLimits,
 	})
 	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),
