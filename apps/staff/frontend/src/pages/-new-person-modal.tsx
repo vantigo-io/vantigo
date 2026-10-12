@@ -176,7 +176,8 @@ const PersonStep = ({
     save.mutate(values);
   };
   const createAnyway = () => {
-    if (!found) return;
+    // The form may have changed while the warning was up: it is checked again, as a submit would.
+    if (!found || form.validate().hasErrors) return;
     setSettled(found.key);
     setFound(null);
     save.mutate(form.values);

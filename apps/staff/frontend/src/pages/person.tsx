@@ -66,7 +66,7 @@ export const PersonPage = () => {
     );
   if (!person.data || !meta.data) return <ContentSkeleton rows={6} rowHeight={44} />;
   const data = person.data;
-  const erased = data.erasedAt !== undefined;
+  const erased = Boolean(data.erasedAt);
   const shown: StaffPerson = erased
     ? {
         ...data,
