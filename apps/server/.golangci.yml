@@ -459,6 +459,7 @@ linters:
             - "**/internal/management/**"
             - "**/internal/netguard/**"
             - "**/internal/openapi/**"
+            - "**/internal/payments/**"
             - "**/internal/peppol/**"
             - "**/internal/ratelimit/**"
             - "**/internal/secrets/**"

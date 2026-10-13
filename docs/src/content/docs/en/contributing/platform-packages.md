@@ -1,16 +1,17 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — today the secrets box that seals and MACs values under keys derived from APP_SECRET.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, and the payments port with its Vipps MobilePay adapter.
 sidebar:
   order: 5
 sources:
   - apps/server/internal/secrets
+  - apps/server/internal/payments
 ---
 
 A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
-clear.
+clear, and when it takes a payment.
 
 ## The secrets box
 
@@ -74,3 +75,105 @@ that exists, `APP_SECRET` is not rotated in place. The operator's side of this i
 A module that adds a purpose names it in the table above, and a module that stores
 sealed values or MACs says on its own administration page what a rotation costs its
 data.
+
+## The payments port
+
+[`apps/server/internal/payments`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/payments)
+is the port between a module and a payment provider, shared by Invoices and a later
+Point of sale so both use the same adapters. It holds interfaces and values only:
+no SQL — each consumer keeps its attempts and payments in its own schema (module
+boundaries rule 4) — and it imports nothing but the standard library and
+`internal/buildinfo`, which `TestPayments_Purity` and depguard's `platform` list
+enforce.
+
+### The interface
+
+`payments.Provider` is one provider account (for Vipps, one sales unit):
+`Create` a payment request under the caller's reference — `FlowRedirect` with a return
+URL, or `FlowQR` answering the provider's own SVG — `Get` its state and its four
+amounts (authorized, captured, cancelled, refunded), `Capture`, `Cancel` and
+`Refund`, `CaptureTime` (the first capture's time from the provider's event log),
+`VerifyWebhook` and `Verify`, the cheapest authenticated call for a settings page.
+
+**Amounts cross the port in minor units only**: `payments.Money{Currency, Minor}`,
+øre for NOK. A module keeps its exact decimals inside and converts at the call,
+refusing anything that is not a whole number of øre.
+
+### Errors and "outcome unknown"
+
+An adapter answers typed errors: `ErrUnauthorized` (the keys), `ErrNotFound`,
+`ErrConflict{Code}` (a 409), `ErrRefused{Code}` (a 400), `ErrThrottled{RetryAfter}`
+(a 429 or 423), `ErrInsufficientFunds` and `ErrCaptureFailed` (a capture that took
+nothing), `ErrInvalidSignature`, and `ErrInvalidRequest` — a request the adapter
+refused **before sending it** because it breaks a documented rule of the provider's.
+Anything else — a transport failure, a timeout, a 5xx, a redirect, an answer that
+does not decode — is a plain error meaning **the outcome is unknown**: the request may
+have taken effect, and the caller learns which by reading the payment again.
+
+What is final depends on the operation, so there is no generic predicate, only one per
+operation: `IsDefinitiveCreateRefusal` (refused keys, a request never sent, or a 400
+or 409 naming a code — no payment exists, the attempt may fail) and
+`IsCaptureFailure` (`ErrInsufficientFunds` or `ErrCaptureFailed` and nothing else). A
+409, a 401 or a 404 on a capture is **not** a failed capture: its money may have
+moved.
+
+### Idempotency keys and retries
+
+The `Idempotency-Key` on create, capture, cancel and refund is **the caller's**: it
+persists the key with the operation's row and reuses it on every retry, so a timeout
+after the provider accepted cannot become a second payment or capture. An adapter
+never makes one up and refuses a call without one. It **never retries** either —
+not even the transport's own replay of an idempotent request on a broken connection,
+which the Vipps adapter turns off. The one repeat is a call answered 401, made once
+more under a freshly fetched token.
+
+### The Vipps MobilePay adapter
+
+`internal/payments/vipps` speaks the ePayment API: `vipps.New(Options{BaseURL,
+ClientID, ClientSecret, SubscriptionKey, MSN, SystemVersion, Transport, Now})`. It
+fetches the access token from `/accesstoken/get`, caches it until a minute before it
+expires by `Now` (one fetch at a time), and sends on every call the subscription key,
+the `Merchant-Serial-Number` and the four `Vipps-System-*` headers (`vantigo`,
+`vantigo-invoices`, the release). It refuses before any request an amount outside
+1.00–650 000.00 NOK, a reference outside `^[a-zA-Z0-9-]{8,64}$` and a description
+outside 3–100 characters. A call is bounded by thirty seconds and never follows a
+redirect. `RegisterWebhook` and `DeleteWebhook` manage a webhook registration for
+`vipps.Events`, the eight ePayment events.
+
+**Webhooks are verified against the registered URL**, never the request line: the
+content hash of the raw body against `x-ms-content-sha256`, then HMAC-SHA256 under the
+secret over `POST\n<path and query>\n<x-ms-date>;<host>;<content hash>`, where the
+path, query and host are those of the URL the webhook was registered at — a reverse
+proxy may rewrite the request line, and what Vipps signs is the URL it was given.
+Vipps' published test vector's signature does not reproduce, so the hash step is
+pinned to that vector, the signature step to a self-generated one (flagged as such)
+and, once captured, to a real callback in `testdata/webhook-captured.json`.
+
+### Testing against it
+
+`internal/payments/vipps/vippstest` is an `httptest` TLS server speaking the token,
+ePayment and Webhooks APIs, for every suite that touches a payment: states scripted
+per reference, the test environment's special amount 151 øre (insufficient funds),
+any status or error code on demand, a reset connection, idempotency by key, partial
+captures, a refund made in the business portal and a signed webhook posted to a URL
+the test gives. A harness passes its `Transport()` as the module's HTTP transport.
+Only tests import it.
+
+The tagged test `vipps_test_env_test.go` (`//go:build vipps`) runs the adapter
+against Vipps' own test environment:
+
+```sh
+cd apps/server
+go test -tags vipps -run TestVippsTestEnv ./internal/payments/vipps/
+```
+
+It needs a test sales unit's five variables — `VIPPS_TEST_CLIENT_ID`,
+`VIPPS_TEST_CLIENT_SECRET`, `VIPPS_TEST_SUBSCRIPTION_KEY`, `VIPPS_TEST_MSN` and
+`VIPPS_TEST_PHONE` (a test user who has approved one payment in the test app by hand)
+— and skips without them; `VIPPS_TEST_BASE_URL` overrides
+`https://apitest.vipps.no`. It creates, force-approves, captures (and repeats the
+capture under the same key), refunds part, reads the event log, cancels a second
+request, tries 151 øre and a QR. With `VIPPS_TEST_WEBHOOK_URL` — a public https URL
+forwarded to `VIPPS_TEST_WEBHOOK_LISTEN` (default `127.0.0.1:8089`) — it also registers
+a webhook, captures one signed callback, verifies it, writes it as the fixture and
+deletes the registration.

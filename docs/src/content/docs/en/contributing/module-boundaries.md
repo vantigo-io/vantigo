@@ -25,8 +25,13 @@ Communications' outbox is the working example.
    SML/SMP lookup, shared by Customers and Invoices — `internal/netguard`
    — the shared table of addresses the guarded outbound clients refuse to
    dial (today `internal/mail`'s SMTP guard and `internal/peppol`'s SMP
-   client; Brreg, OIDC and the AI client use `http.DefaultTransport`) — …)
-   and its own subpackages, never another module's.
+   client; Brreg, OIDC and the AI client use `http.DefaultTransport`) —
+   `internal/payments` — the payments port, shared by Invoices and a later Point of
+   sale, with its Vipps MobilePay adapter `internal/payments/vipps`; interfaces,
+   values and the adapter only, no SQL, so each consumer keeps its own tables
+   (rule 4) — …) and its own subpackages, never another module's.
+   `internal/payments/vipps/vippstest`, the adapter's fake, is imported by tests
+   only.
 
    `internal/mail` is such a platform import, and a module that sends mail goes through
    its guarded path (`mail.SendOutbound`, or the test seam `Deps.SMTPSend`).

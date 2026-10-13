@@ -1,0 +1,10 @@
+{
+  "source": "Vipps MobilePay's request-authentication page, as R4 §4.7 read it on 2026-10-06. The content hash reproduces; the signature does not under the documented string-to-sign (R4 §7 item 37), so only the hash step is pinned to it.",
+  "secret": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+  "date": "Thu, 30 Mar 2023 08:38:32 GMT",
+  "host": "webhook.site",
+  "pathAndQuery": "/e2cee29b-012e-4f1d-8ef4-e95fd74a7a63",
+  "body": "{\"some-unique-content\":\"ee6e441b-cc4a-46f8-895d-a5af79bcc233/hello-world\"}",
+  "contentSha256": "lNlsp1XA03N34HrQsVzPgJKtC+r7l/RBF4V3JQUWMj4=",
+  "signature": "agAiSyogQbDHpeucoNwYz+yAr5nJ+v+zasdkSbqzv+U="
+}
