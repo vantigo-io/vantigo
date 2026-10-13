@@ -1540,7 +1540,9 @@ registrert, fakturaen, kjøperen, beløpet, om den ble betalt **På stedet** ell
 måte. **Last ned CSV** gir den samme dagen som en fil til et regneark. En betaling står
 på dagen Vipps trakk pengene, som i Vipps-oppgjøret, også når Vantigo registrerte den
 senere. Betalingslenke-betalinger er med, siden Vantigo ikke kan vite hvor kunden var da
-de betalte. En refusjon vises ved siden av betalingen og endrer ikke summene. Dagens
+de betalte. En refusjon vises ved siden av betalingen og endrer ikke summene, og en
+betaling som er fjernet senere, står fortsatt på listen og telles med: summene er det
+Vipps trakk den dagen. Dagens
 betalinger kan leses med `invoices:access`; selve området Innbetalinger vises for
 `invoices:payments`.
 

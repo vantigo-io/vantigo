@@ -150,8 +150,8 @@ FOR NO KEY UPDATE OF l;
 
 -- name: LockPaymentCredentials :one
 -- LockPaymentCredentials takes the payment provider's credentials FOR
--- UPDATE: a credentials PUT's, a DELETE's and a webhook registration's only
--- lock, under which the live attempts are counted (D14, I20).
+-- UPDATE: a credentials PUT's and a DELETE's only lock, under which the live
+-- attempts are counted (D14, I20).
 SELECT * FROM invoices.payment_provider_credentials WHERE id = 1 FOR UPDATE;
 
 -- name: SharePaymentCredentials :one

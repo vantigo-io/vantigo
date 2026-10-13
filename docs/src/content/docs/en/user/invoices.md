@@ -1525,7 +1525,8 @@ way. **Download CSV** gives the same day as a file for a spreadsheet. A payment 
 listed on the day Vipps took the money, as in the Vipps settlement, even when Vantigo
 registered it later. Pay-link payments are included, since Vantigo cannot know where the
 customer was when they paid. A refund is shown beside its payment and does not change
-the totals. The day's payments are readable with `invoices:access`; the Payments area
+the totals, and a payment removed since stays listed and counted: the totals are what
+Vipps took that day. The day's payments are readable with `invoices:access`; the Payments area
 itself is shown to `invoices:payments`.
 
 Once a day is over, someone with `invoices:payments` compares it with the Vipps
