@@ -179,8 +179,8 @@ func (c *Client) existing(ctx context.Context, r payments.CreateRequest) (paymen
 	return createdOf(r, held.RedirectURL)
 }
 
-// createdOf is the answer to r: the redirect URL, or the QR rendered from
-// the target URL Vipps answered to its create.
+// createdOf is the answer to r: the redirect URL, or the target URL Vipps
+// answered to its create and the QR rendered from it.
 func createdOf(r payments.CreateRequest, redirectURL string) (payments.Created, error) {
 	if r.Flow != payments.FlowQR {
 		return payments.Created{Reference: r.Reference, RedirectURL: redirectURL}, nil
@@ -189,5 +189,5 @@ func createdOf(r payments.CreateRequest, redirectURL string) (payments.Created, 
 	if err != nil {
 		return payments.Created{}, fmt.Errorf("vipps: render the QR: %w", err)
 	}
-	return payments.Created{Reference: r.Reference, QRSVG: svg}, nil
+	return payments.Created{Reference: r.Reference, QRTarget: redirectURL, QRSVG: svg}, nil
 }

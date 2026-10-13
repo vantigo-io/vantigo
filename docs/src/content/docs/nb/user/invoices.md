@@ -564,7 +564,7 @@ stedet** når du utsteder, utstedes fakturaen og en Vipps-QR-kode lages for kund
 slengen; kan QR-koden ikke lages — betaling på stedet er slått av, kjøperen er ikke
 navngitt med adresse eller organisasjonsnummer, Vipps avviser — utstedes fakturaen like
 fullt, og du får vite hvorfor. Å utstede på nytt etter at forbindelsen falt, lager aldri en
-QR-kode til: du får beskjed om den som allerede er laget. Hurtigfakturaens eget
+QR-kode til: du får den som allerede er laget, vist igjen mens kunden ikke har svart. Hurtigfakturaens eget
 skjermbilde kommer med Vipps i appen; forespørselen bak den er på plass nå
 ([hurtigfakturaen](/en/reference/invoices/#the-quick-invoice)).
 
@@ -1425,21 +1425,26 @@ kontantsalget, og derfor vises lenken bare på skjermen mens betaling på stedet
 på. En kunde som betaler senere, hjemme, gjør et vanlig kredittsalg.
 
 Du kan avbryte en forespørsel kunden ikke har godkjent; en som er godkjent, fullføres og
-registreres.
+registreres. Mister skjermen QR-koden — forbindelsen falt — åpner du forespørselen igjen:
+den samme QR-koden vises mens kunden ikke har svart. Ellers avbryter du den og lager en
+ny.
 
 ### Dagens Vipps-betalinger og avstemming
 
-Alle med `invoices:access` kan liste **én dags Vipps-betalinger** — tidspunktet,
-fakturaen, kjøperen, beløpet og om det ble betalt på stedet eller via en betalingslenke,
-med dagens summer — på skjermen eller som en CSV-fil til et regneark.
-Betalingslenke-betalinger er med, siden Vantigo ikke kan vite hvor kunden var da de
-betalte.
+Alle med `invoices:access` kan liste **én dags Vipps-betalinger** — hver betaling Vipps trakk den dagen, med
+fakturaen, kjøperen, beløpet, om det ble betalt på stedet eller via en betalingslenke, og
+en eventuell tilbakebetaling gjort siden, med dagens summer — på skjermen eller som en
+CSV-fil til et regneark. En betaling står på dagen Vipps trakk pengene, som i
+Vipps-oppgjøret, også når Vantigo registrerte den senere. Betalingslenke-betalinger er
+med, siden Vantigo ikke kan vite hvor kunden var da de betalte. En tilbakebetaling vises
+ved siden av betalingen og endrer ikke summene.
 
 Når en dag er over, sammenligner den som har `invoices:payments`, den med
 Vipps-oppgjøret og **registrerer dagen som avstemt**, med en merknad om noe trengte en
 forklaring. Registreringen beholder summene slik de var da, og hvem som registrerte den
 og når; den kan aldri endres eller registreres to ganger. En betaling som registreres
-senere for den dagen, vises i listen ved siden av registreringen. I dag kan ikke avstemmes
+senere for den dagen — en Vipps trakk den dagen og som Vantigo fikk vite om sent — vises i
+listen ved siden av registreringen. I dag kan ikke avstemmes
 før dagen er over. Skjermbildene kommer med Vipps i appen; forespørslene bak dem er på
 plass nå ([dagens Vipps-betalinger](/en/reference/invoices/#the-days-vipps-payments)).
 

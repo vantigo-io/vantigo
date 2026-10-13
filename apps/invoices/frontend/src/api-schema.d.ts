@@ -1053,7 +1053,7 @@ export interface paths {
         put?: never;
         /**
          * Take a Vipps payment on site
-         * @description Takes a Vipps payment on site (invoices payments and reminders design D17): the customer, standing in front of the caller, scans a one-time QR code. On-site payment is kontantsalg, which Vantigo offers only as a kontantfaktura, under hard rules that no setting relaxes. Judged on the pool and then again under the invoice's lock, in order: on_site_payments_unavailable (on-site payment is not available — INVOICES_VIPPS_ENABLED, Vipps credentials stored and not refused, and the payment settings' switch, which is turned on only with the kontantsalg acknowledgement); 404 when there is no document; credit_note_no_payments; invoice_draft; buyer_identity_missing (the stored buyer snapshot has no name, or neither an organisation number nor a complete address — line 1, city, country and for NO the postal code — or the customer was anonymised); payment_request_active (the invoice has a live on-site request — created, authorized, being captured or of unknown outcome — or one the payments worker gave up on, which a manager abandons first); invoice_settled, invoice_fully_credited, invoice_handed_off, payment_in_progress, amount_out_of_range (the open amount below 1.00 or above 650 000.00), too_many_attempts. Then the payment attempt is inserted creating, flow on_site, by the caller, for the whole open amount, with its idempotency keys; after the commit, outside any lock, Vipps is asked for a QR payment with the customer present and the QR code's target URL, rendered here. 201 with the request; 502 provider_failed when Vipps refused it (the attempt failed) or its outcome is unknown (the attempt left creating for the payments worker, which still holds the invoice's one request); 503 payments_unavailable when the stored keys cannot be opened, were refused or replaced meanwhile.
+         * @description Takes a Vipps payment on site (invoices payments and reminders design D17): the customer, standing in front of the caller, scans a one-time QR code. On-site payment is kontantsalg, which Vantigo offers only as a kontantfaktura, under hard rules that no setting relaxes. Judged on the pool and then again under the invoice's lock, in order: on_site_payments_unavailable (on-site payment is not available — INVOICES_VIPPS_ENABLED, Vipps credentials stored and not refused, and the payment settings' switch, which is turned on only with the kontantsalg acknowledgement); 404 when there is no document; credit_note_no_payments; invoice_draft; buyer_identity_missing (the stored buyer snapshot has no name, or neither an organisation number nor a complete address — line 1, city, country and for NO the postal code — or the customer was anonymised); payment_request_active (the invoice has a live on-site request — created, authorized, being captured or of unknown outcome — or one the payments worker gave up on, which a manager abandons first; attemptId names it); invoice_settled, invoice_fully_credited, invoice_handed_off, payment_in_progress, amount_out_of_range (the open amount below 1.00 or above 650 000.00), too_many_attempts. Then the payment attempt is inserted creating, flow on_site, by the caller, for the whole open amount, with its idempotency keys; after the commit, outside any lock, Vipps is asked for a QR payment with the customer present and the QR code's target URL, rendered here. 201 with the request; 502 provider_failed when Vipps refused it (the attempt failed) or its outcome is unknown (the attempt left creating for the payments worker, which still holds the invoice's one request); 503 payments_unavailable when the stored keys cannot be opened, were refused or replaced meanwhile.
          */
         post: operations["postInvoicesByIdPaymentRequests"];
         delete?: never;
@@ -1071,7 +1071,7 @@ export interface paths {
         };
         /**
          * Read an on-site payment request
-         * @description An on-site payment request's state (D17), as the tablet polls it every two seconds: the attempt's state as the payments worker knows it, and capturedAt once the payment is captured and registered. It reads the database only, never Vipps. 404 unless attemptId is an on-site attempt of the invoice.
+         * @description An on-site payment request's state (D17), as the tablet polls it every two seconds: the attempt's state as the payments worker knows it, the same QR code again while it is created, and capturedAt once the payment is captured and registered. It reads the database only, never Vipps. 404 unless attemptId is an on-site attempt of the invoice.
          */
         get: operations["getInvoicesByIdPaymentRequestsByAttemptId"];
         put?: never;
@@ -1093,7 +1093,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel an on-site payment request
-         * @description Cancels an on-site payment request (D17): the attempt alone is locked, and a request Vipps created and the customer has not been seen to approve is moved to cancelling, due at once — the payments worker cancels it at Vipps, releasing anything the customer approved meanwhile, and records it cancelled. A request already over (cancelling, cancelled, aborted, expired, terminated, failed, abandoned) is answered as it stands, nothing changed. 409 payment_request_active for one Vipps has not confirmed yet (creating — the payments worker finds out) and for one approved, being captured or captured: the payment is being completed, never cancelled. 404 unless attemptId is an on-site attempt of the invoice.
+         * @description Cancels an on-site payment request (D17): the attempt alone is locked, and a request Vipps created and the customer has not been seen to approve is moved to cancelling, due at once — the payments worker cancels it at Vipps, releasing anything the customer approved meanwhile, and records it cancelled. A request already over (cancelling, cancelled, aborted, expired, terminated, failed, abandoned) is answered as it stands, nothing changed. 409 payment_request_active for one Vipps has not confirmed yet (creating — the payments worker finds out, or gave up on it and a manager abandons it) and for one approved, being captured or captured: the payment is being completed, never cancelled. 404 unless attemptId is an on-site attempt of the invoice.
          */
         post: operations["postInvoicesByIdPaymentRequestsByAttemptIdCancel"];
         delete?: never;
@@ -1111,7 +1111,7 @@ export interface paths {
         };
         /**
          * List a day's Vipps payments
-         * @description One Oslo day's Vipps payments (invoices payments and reminders design D17 rule 4, M15): every attempt captured from that day's midnight to the next, in Oslo, oldest first — the time, the invoice, the buyer, the amount and the flow, pay-link payments with the on-site ones — with the count and the totals per flow, and the day's reconciliation when one is recorded. It takes no lock.
+         * @description One Oslo day's Vipps payments (invoices payments and reminders design D17 rule 4, M15): every registered Vipps payment paid on that day — the Oslo day of Vipps' capture event, the payment's day in the ledger and in the Vipps settlement, however late the payments worker registered it — oldest registration first: the invoice, the buyer, the amount, the flow, the refund made since, pay-link payments with the on-site ones — with the count and the totals per flow, and the day's reconciliation when one is recorded. It takes no lock.
          */
         get: operations["getInvoicesVippsPayments"];
         put?: never;
@@ -1131,7 +1131,7 @@ export interface paths {
         };
         /**
          * Export a day's Vipps payments as CSV
-         * @description The day's Vipps payments as a file (D17 rule 4; plan reading 15): the rows of GET /invoices/vipps-payments in the module's CSV form (GET /invoices/export.csv) — UTF-8 with a byte order mark, semicolons, the decimal comma, CRLF after every row, RFC 4180 quoting, the formula guard on the text columns only. The header row is Date;Time;Invoice number;Buyer;Flow;Amount;Reference, the date and time of the capture in Oslo (YYYY-MM-DD, HH:MM:SS).
+         * @description The day's Vipps payments as a file (D17 rule 4; plan reading 15): the rows of GET /invoices/vipps-payments in the module's CSV form (GET /invoices/export.csv) — UTF-8 with a byte order mark, semicolons, the decimal comma, CRLF after every row, RFC 4180 quoting, the formula guard on the text columns only. The header row is Paid on;Registered at;Invoice number;Buyer;Flow;Amount;Refunded;Reference — the day Vipps captured the payment, when it was registered in Oslo (YYYY-MM-DD HH:MM:SS), and the refund made since, empty when none.
          */
         get: operations["getInvoicesVippsPaymentsCsv"];
         put?: never;
@@ -1153,7 +1153,7 @@ export interface paths {
         put?: never;
         /**
          * Reconcile a day's Vipps payments
-         * @description Records that a day's Vipps payments were reconciled against the Vipps settlement (D17 rule 4, M15; bokføringsforskriften § 5-4-5's daily count, built in though it is uncertain whether it binds a kontantfaktura): one statement inserts the totals as they stand — the payments captured that Oslo day, the total and the totals per flow — with the caller, the time and the note. No lock is taken. The record is immutable; a capture dated that day later changes the list, never the record. 409 day_not_over for today or a later day, day_already_reconciled when the day has a record.
+         * @description Records that a day's Vipps payments were reconciled against the Vipps settlement (D17 rule 4, M15; bokføringsforskriften § 5-4-5's daily count, built in though it is uncertain whether it binds a kontantfaktura): one statement inserts the totals as they stand — the Vipps payments paid on that day, the total and the totals per flow, refunds not deducted — with the caller, the time and the note. No lock is taken. The record is immutable; a capture Vipps made that day and the payments worker registers later changes the list, never the record. 409 day_not_over for today or a later day, day_already_reconciled when the day has a record.
          */
         post: operations["postInvoicesVippsPaymentsReconciliations"];
         delete?: never;
@@ -1788,6 +1788,11 @@ export interface components {
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
+            /**
+             * Format: int64
+             * @description On payment_request_active, the invoice's live on-site payment attempt, so a client whose answer was lost can read it (GET /invoices/{id}/payment-requests/{attemptId}) or cancel it. Absent otherwise.
+             */
+            attemptId?: number;
             /**
              * Format: int64
              * @description On bank_file_duplicate, the earlier import of the same file — the same bytes or the same file identity. Absent otherwise.
@@ -3522,7 +3527,7 @@ export interface components {
             qrSvg?: string;
             url?: string;
         };
-        /** @description An on-site Vipps payment request (invoices payments and reminders design D17): attemptId and reference are the payment attempt's, expiresAt when Vipps ends the request unanswered (ten minutes after it was made). qrSvg is Vipps' one-time QR code for the customer standing at the counter to scan — the target URL Vipps answered to the create, rendered by Vantigo as SVG markup, never an image fetched from Vipps; show it as an image, <img src="data:image/svg+xml;base64,…">, never inlined, and never print it. It is answered only by the request that made the payment: a quick invoice's replay reports the live request without it. */
+        /** @description An on-site Vipps payment request (invoices payments and reminders design D17): attemptId and reference are the payment attempt's, expiresAt when Vipps ends the request unanswered (ten minutes after it was made). qrSvg is Vipps' one-time QR code for the customer standing at the counter to scan — the target URL Vipps answered to the create, rendered by Vantigo as SVG markup, never an image fetched from Vipps; show it as an image, <img src="data:image/svg+xml;base64,…">, never inlined, and never print it. The target URL is kept with the attempt (never logged), so the same code is answered again while the customer has not answered (the attempt created) — by GET /invoices/{id}/payment-requests/{attemptId} and a quick invoice's replay — and never once the request is over. */
         InvoicesOnSitePayment: {
             /** Format: int64 */
             attemptId: number;
@@ -3536,10 +3541,12 @@ export interface components {
             /** @enum {string} */
             flow: "on_site";
         };
-        /** @description An on-site payment request's state as the tablet polls it (D17): the attempt's state as the payments worker knows it — created while the customer has not answered, authorized and capturing while the money is taken, captured (with capturedAt) once it is registered as a payment of the invoice, cancelling and cancelled after a cancel, aborted, expired or terminated when Vipps ended it, failed or capture_failed when it could not be made or captured. */
+        /** @description An on-site payment request's state as the tablet polls it (D17): the attempt's state as the payments worker knows it — created while the customer has not answered, authorized and capturing while the money is taken, captured (with capturedAt) once it is registered as a payment of the invoice, cancelling and cancelled after a cancel, aborted, expired or terminated when Vipps ended it, failed or capture_failed when it could not be made or captured. A tablet that lost the request's answer shows qrSvg again while it is present; otherwise it cancels the request and makes a new one. */
         InvoicesOnSitePaymentStatus: {
             /** Format: date-time */
             capturedAt?: string;
+            /** @description While the request is created and the customer has not answered, the same QR code the request answered, rendered again from the target URL Vipps answered its create — never read back from Vipps. Absent otherwise. */
+            qrSvg?: string;
             /** @enum {string} */
             state: "creating" | "created" | "authorized" | "capturing" | "capture_unknown" | "captured" | "cancelling" | "cancelled" | "aborted" | "expired" | "terminated" | "capture_failed" | "failed" | "abandoned";
         };
@@ -3703,7 +3710,7 @@ export interface components {
             day: string;
             note?: string;
         };
-        /** @description One Vipps payment of the day's list (D17): the attempt and its reference at Vipps, the invoice and its number, the buyer as the invoice names it (blank once the customer was anonymised), the flow — on_site, or pay_link, which is listed too since Vantigo cannot know where the customer stood — the amount captured and when. */
+        /** @description One Vipps payment of the day's list (D17): the attempt and its reference at Vipps, the invoice and its number, the buyer as the invoice names it (blank once the customer was anonymised), the flow — on_site, or pay_link, which is listed too since Vantigo cannot know where the customer stood — the amount of its registered payment, paidOn, the day Vipps captured it (the payment's day in the ledger and the settlement's), capturedAt, when the payments worker registered it, which may be later, and refundedAmount, a refund made in the Vipps portal since, when there is one; a refund never changes the day's totals. */
         InvoicesVippsPayment: {
             /** Format: double */
             amount: number;
@@ -3718,9 +3725,13 @@ export interface components {
             invoiceId: number;
             /** Format: int64 */
             invoiceNumber: number;
+            /** Format: date */
+            paidOn: string;
             reference: string;
+            /** Format: double */
+            refundedAmount?: number;
         };
-        /** @description One Oslo day's Vipps payments (D17 rule 4): every payment captured on that day, oldest first, count and the totals — total, onSiteTotal, payLinkTotal — and the day's reconciliation once one is recorded. */
+        /** @description One day's Vipps payments (D17 rule 4): every Vipps payment paid on that day — the day Vipps captured it, however late it was registered — oldest registration first, count and the totals — total, onSiteTotal, payLinkTotal — and the day's reconciliation once one is recorded. */
         InvoicesVippsPaymentsDay: {
             /** Format: int32 */
             count: number;
@@ -3956,7 +3967,7 @@ export interface components {
             requestId?: string;
             yourReference?: string;
         };
-        /** @description The quick invoice's answer (D17): the issued invoice, and — when the request asked payOnSite — paymentRequest, the on-site payment request made with its QR, or paymentRequestError, the refusal the request met (on_site_payments_unavailable, buyer_identity_missing, provider_failed, …); the invoice is issued either way. A replay (200) answers paymentRequest with the invoice's live on-site request, read and never made, without its QR, and no paymentRequestError. */
+        /** @description The quick invoice's answer (D17): the issued invoice, and — when the request asked payOnSite — paymentRequest, the on-site payment request made with its QR, or paymentRequestError, the refusal the request met (on_site_payments_unavailable, buyer_identity_missing, payment_request_active, provider_failed, …), or, when the request failed unexpectedly, a problem with status 500 and no code (logged); the invoice is issued either way. A replay (200) answers paymentRequest with the invoice's live on-site request, read and never made — with its QR while the customer has not answered — and no paymentRequestError. */
         InvoicesQuickInvoiceResponse: {
             invoice: components["schemas"]["InvoicesInvoiceResponse"];
             paymentRequest?: components["schemas"]["InvoicesOnSitePayment"];

@@ -1739,6 +1739,7 @@ export const vippsPayment = (overrides: Partial<VippsPayment> = {}): VippsPaymen
   buyerName: "Acme AS",
   flow: "on_site",
   amount: 1250,
+  paidOn: "2026-09-12",
   capturedAt: "2026-09-12T10:31:05Z",
   ...overrides,
 });

@@ -554,7 +554,7 @@ when you issue it, and the invoice is issued and a Vipps QR code made for the cu
 in one go; if the QR cannot be made — payment on site is off, the buyer is not named
 with an address or an organisation number, Vipps refuses — the invoice is issued all the
 same and you are told why. Issuing again after a lost connection never makes a second
-QR code: you are told the one already made. The quick invoice's own screen arrives with
+QR code: you get the one already made, shown again while the customer has not answered. The quick invoice's own screen arrives with
 Vipps in the app; the request behind it is in place now
 ([the quick invoice](/en/reference/invoices/#the-quick-invoice)).
 
@@ -1406,20 +1406,26 @@ sale, which is why the link is only shown on screen while payment on site is on.
 customer who pays later, at home, makes an ordinary credit sale.
 
 You can cancel a request the customer has not approved; one they approved is completed
-and registered.
+and registered. If the screen loses the QR code — the connection dropped — open the
+request again: the same QR code is shown while the customer has not answered.
+Otherwise cancel it and make a new one.
 
 ### The day's Vipps payments and reconciliation
 
-Anyone with `invoices:access` can list **one day's Vipps payments** — the time, the
-invoice, the buyer, the amount and whether it was paid on site or through a pay link,
-with the day's totals — on screen or as a CSV file for a spreadsheet. Pay-link payments
-are included, since Vantigo cannot know where the customer was when they paid.
+Anyone with `invoices:access` can list **one day's Vipps payments** — every payment Vipps took on that day, with the
+invoice, the buyer, the amount, whether it was paid on site or through a pay link, and
+any refund made since, with the day's totals — on screen or as a CSV file for a
+spreadsheet. A payment is listed on the day Vipps took the money, as in the Vipps
+settlement, even when Vantigo registered it later. Pay-link payments are included, since
+Vantigo cannot know where the customer was when they paid. A refund is shown beside its
+payment and does not change the totals.
 
 Once a day is over, someone with `invoices:payments` compares it with the Vipps
 settlement and **records the day as reconciled**, with a note if something needed
 explaining. The record keeps the totals as they were then, and who recorded it and
 when; it can never be changed or recorded twice. A payment registered later for that
-day shows in the list beside the record. Today cannot be reconciled until it is over.
+day — one Vipps took that day that Vantigo learned of late — shows in the list beside
+the record. Today cannot be reconciled until it is over.
 The screens arrive with Vipps in the app; the requests behind them are in place now
 ([the day's Vipps payments](/en/reference/invoices/#the-days-vipps-payments)).
 

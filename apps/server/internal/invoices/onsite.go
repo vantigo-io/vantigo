@@ -12,6 +12,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
+	"github.com/vantigo-io/vantigo/server/internal/payments/qrsvg"
 )
 
 // This file is on-site Vipps payment (invoices payments and reminders design
@@ -39,8 +40,11 @@ import (
 // under the invoice's lock with its keys, the credentials shared and their
 // version compared, Vipps asked after the commit, the answer recorded under
 // the attempt's lock. Vipps' QR is asked for as its target URL and rendered
-// by the adapter (payments/qrsvg); it is answered once, to the request that
-// made it, and never read back from Vipps.
+// by the adapter (payments/qrsvg). The target URL is kept with the attempt
+// (redirect_url, never logged), so while the customer has not answered the
+// status read and a quick invoice's replay answer the same code again — a
+// tablet whose answer was lost shows it again, or else cancels and makes a
+// new one; it is never read back from Vipps.
 
 const (
 	invalidOnSiteTitle = "Invalid payment request"
@@ -101,14 +105,42 @@ func (s *server) onSiteRefusal(ctx context.Context, q *store.Queries, inv store.
 	case err != nil:
 		return nil, fmt.Errorf("invoices: read document %d's on-site request: %w", inv.ID, err)
 	}
-	if (live.State == "creating" || live.State == "created") && live.NextPollAt == nil {
-		return ptr(conflict(codePaymentRequestActive, cannotOnSiteTitle, fmt.Sprintf(
-			"An earlier payment request (%s) was never confirmed by Vipps and the payments worker gave up on it. Check it in the Vipps portal; someone with invoices:manage must abandon it before a new one can be made.",
-			live.Reference))), nil
-	}
-	return ptr(conflict(codePaymentRequestActive, cannotOnSiteTitle, fmt.Sprintf(
+	c := conflict(codePaymentRequestActive, cannotOnSiteTitle, fmt.Sprintf(
 		"A payment request of this invoice is in progress (%s, %s). Cancel it, or wait for it to end, before making a new one.",
-		live.Reference, live.State))), nil
+		live.Reference, live.State))
+	if parked(live) {
+		c = conflict(codePaymentRequestActive, cannotOnSiteTitle, parkedDetail(live))
+	}
+	// The live attempt named, so a client whose answer was lost finds it.
+	c.AttemptId = &live.ID
+	return &c, nil
+}
+
+// parked is a create the payments worker gave up on: creating or created,
+// never polled again, until a manager abandons it.
+func parked(a store.InvoicesPaymentAttempt) bool {
+	return (a.State == "creating" || a.State == "created") && a.NextPollAt == nil
+}
+
+// parkedDetail says what a parked request needs.
+func parkedDetail(a store.InvoicesPaymentAttempt) string {
+	return fmt.Sprintf("The payment request %s was never confirmed by Vipps and the payments worker gave up on it. Check it in the Vipps portal; someone with invoices:manage must abandon it before a new one can be made.",
+		a.Reference)
+}
+
+// onSiteQR is an on-site request's QR again while the customer has not
+// answered it — rendered from the target URL Vipps answered its create, the
+// same code the request answered, never read back from Vipps — nil once
+// the request is over or when no target was kept.
+func onSiteQR(a store.InvoicesPaymentAttempt) (*string, error) {
+	if a.Flow != flowOnSite || a.State != "created" || a.RedirectUrl == nil || *a.RedirectUrl == "" {
+		return nil, nil
+	}
+	svg, err := qrsvg.Render(*a.RedirectUrl)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: render payment attempt %d's QR: %w", a.ID, err)
+	}
+	return &svg, nil
 }
 
 // requestOnSite makes an on-site payment request of invoice id: on-site
@@ -158,9 +190,14 @@ func (s *server) PostInvoicesByIdPaymentRequests(ctx context.Context, req gen.Po
 	return gen.PostInvoicesByIdPaymentRequests201JSONResponse(*out), nil
 }
 
-// onSiteStatusWire is an attempt's state as the tablet reads it.
-func onSiteStatusWire(a store.InvoicesPaymentAttempt) gen.InvoicesOnSitePaymentStatus {
-	return gen.InvoicesOnSitePaymentStatus{State: gen.InvoicesOnSitePaymentStatusState(a.State), CapturedAt: a.CapturedAt}
+// onSiteStatusWire is an attempt's state as the tablet reads it, its QR
+// again while it is created.
+func onSiteStatusWire(a store.InvoicesPaymentAttempt) (gen.InvoicesOnSitePaymentStatus, error) {
+	qr, err := onSiteQR(a)
+	if err != nil {
+		return gen.InvoicesOnSitePaymentStatus{}, err
+	}
+	return gen.InvoicesOnSitePaymentStatus{State: gen.InvoicesOnSitePaymentStatusState(a.State), CapturedAt: a.CapturedAt, QrSvg: qr}, nil
 }
 
 // GetInvoicesByIdPaymentRequestsByAttemptId Read an on-site payment request
@@ -177,7 +214,11 @@ func (s *server) GetInvoicesByIdPaymentRequestsByAttemptId(ctx context.Context, 
 	case a.InvoiceID != req.Id || a.Flow != flowOnSite:
 		return gen.GetInvoicesByIdPaymentRequestsByAttemptId404Response{}, nil
 	}
-	return gen.GetInvoicesByIdPaymentRequestsByAttemptId200JSONResponse(onSiteStatusWire(a)), nil
+	w, err := onSiteStatusWire(a)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetInvoicesByIdPaymentRequestsByAttemptId200JSONResponse(w), nil
 }
 
 // PostInvoicesByIdPaymentRequestsByAttemptIdCancel Cancel an on-site payment
@@ -210,8 +251,11 @@ func (s *server) PostInvoicesByIdPaymentRequestsByAttemptIdCancel(ctx context.Co
 				return fmt.Errorf("invoices: cancel payment attempt %d: %w", a.ID, err)
 			}
 		case "creating":
-			refusal = ptr(conflict(codePaymentRequestActive, cannotCancelTitle,
-				"Vipps has not confirmed this request yet; the payments worker is finding out. Try again in a minute."))
+			detail := "Vipps has not confirmed this request yet; the payments worker is finding out. Try again in a minute."
+			if parked(a) {
+				detail = parkedDetail(a)
+			}
+			refusal = ptr(conflict(codePaymentRequestActive, cannotCancelTitle, detail))
 		case "authorized", "capturing", "capture_unknown", "captured", "capture_failed":
 			refusal = ptr(conflict(codePaymentRequestActive, cannotCancelTitle, fmt.Sprintf(
 				"The customer approved this payment (%s): it is being completed, not cancelled.", a.State)))
@@ -226,12 +270,16 @@ func (s *server) PostInvoicesByIdPaymentRequestsByAttemptIdCancel(ctx context.Co
 	case refusal != nil:
 		return gen.PostInvoicesByIdPaymentRequestsByAttemptIdCancel409ApplicationProblemPlusJSONResponse(*refusal), nil
 	}
-	return gen.PostInvoicesByIdPaymentRequestsByAttemptIdCancel200JSONResponse(onSiteStatusWire(out)), nil
+	w, err := onSiteStatusWire(out)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PostInvoicesByIdPaymentRequestsByAttemptIdCancel200JSONResponse(w), nil
 }
 
 // liveOnSiteRequest is an invoice's live on-site request as a quick
-// invoice's replay reports it — read, never made, and without its QR,
-// which is answered only to the request that made it. nil when none lives.
+// invoice's replay reports it — read, never made — with its QR while the
+// customer has not answered. nil when none lives.
 func liveOnSiteRequest(ctx context.Context, q *store.Queries, invoiceID int64) (*gen.InvoicesOnSitePayment, error) {
 	a, err := q.LiveOnSiteAttempt(ctx, invoiceID)
 	switch {
@@ -240,5 +288,9 @@ func liveOnSiteRequest(ctx context.Context, q *store.Queries, invoiceID int64) (
 	case err != nil:
 		return nil, fmt.Errorf("invoices: read document %d's on-site request: %w", invoiceID, err)
 	}
-	return &gen.InvoicesOnSitePayment{AttemptId: a.ID, Reference: a.Reference, ExpiresAt: a.ExpiresAt}, nil
+	qr, err := onSiteQR(a)
+	if err != nil {
+		return nil, err
+	}
+	return &gen.InvoicesOnSitePayment{AttemptId: a.ID, Reference: a.Reference, ExpiresAt: a.ExpiresAt, QrSvg: qr}, nil
 }

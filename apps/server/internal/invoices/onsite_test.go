@@ -1,17 +1,21 @@
 package invoices_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/boombuler/barcode/qr"
+	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/payments/vipps/vippstest"
 )
@@ -37,6 +41,7 @@ type onSiteJSON struct {
 // onSiteStatusJSON is a request's status as the tablet polls it.
 type onSiteStatusJSON struct {
 	State      string     `json:"state"`
+	QrSvg      *string    `json:"qrSvg"`
 	CapturedAt *time.Time `json:"capturedAt"`
 }
 
@@ -208,6 +213,9 @@ func TestOnSite_HardRules(t *testing.T) {
 		t.Errorf("Vipps saw %+v, want one create of 150000 øre", creates)
 	}
 	onSiteRefused(t, "a second request", requestOnSite(t, h, part.ID), "payment_request_active")
+	if id := refusedAttemptID(t, requestOnSite(t, h, part.ID)); id == nil || *id != first.AttemptID {
+		t.Errorf("the refusal names attempt %v, want the live %d, so a client whose 201 was lost can find it", id, first.AttemptID)
+	}
 	_, err := h.Pool().Exec(t.Context(), `INSERT INTO invoices.payment_attempts (invoice_id, provider, msn, flow, amount, cancel_key, state, created_at, expires_at)
 		VALUES ($1, 'vipps', '123456', 'on_site', 1500, gen_random_uuid(), 'created', now(), now() + interval '10 minutes')`, part.ID)
 	if err == nil || !strings.Contains(err.Error(), "ux_payment_attempts_on_site_live") {
@@ -216,7 +224,15 @@ func TestOnSite_HardRules(t *testing.T) {
 
 	// A parked create holds the invoice until a manager abandons it.
 	parked := issuedAcme(t, h)
-	plantParkedCreate(t, h, parked.ID)
+	parkedRef := plantParkedCreate(t, h, parked.ID)
+	parkedID := modtest.One[int64](t, h.Harness, `SELECT id FROM invoices.payment_attempts WHERE reference = $1`, parkedRef)
+	if id := refusedAttemptID(t, requestOnSite(t, h, parked.ID)); id == nil || *id != parkedID {
+		t.Errorf("the parked create's refusal names attempt %v, want %d", id, parkedID)
+	}
+	if detail := onSiteRefused(t, "a cancel of the parked create", issuer(t, h).Do(http.MethodPost, onSiteCancelPath(parked.ID, parkedID), nil),
+		"payment_request_active"); !strings.Contains(detail, "abandon") {
+		t.Errorf("the parked create's cancel = %q, want it to say the request must be abandoned", detail)
+	}
 	if detail := onSiteRefused(t, "a parked create", requestOnSite(t, h, parked.ID), "payment_request_active"); !strings.Contains(detail, "abandon") {
 		t.Errorf("the parked create's refusal = %q, want it to say the request must be abandoned", detail)
 	}
@@ -310,8 +326,8 @@ func TestOnSite_ProviderFailed(t *testing.T) {
 	if res := requestOnSite(t, h, inv.ID); res.Status != http.StatusBadGateway || problemOf(t, res).Code != "provider_failed" {
 		t.Fatalf("the refused create = %d %s, want 502 provider_failed", res.Status, res.Body)
 	}
-	if n := h.Count(t, `SELECT count(*) FROM invoices.payment_attempts WHERE invoice_id = $1 AND state = 'failed'`, inv.ID); n != 1 {
-		t.Errorf("%d failed attempts, want 1", n)
+	if n := h.Count(t, `SELECT count(*) FROM invoices.payment_attempts WHERE invoice_id = $1 AND state = 'failed' AND redirect_url IS NULL`, inv.ID); n != 1 {
+		t.Errorf("%d failed attempts with no address, want 1", n)
 	}
 
 	h.vipps.Fail(vippstest.OpCreate, vippstest.Failure{Status: http.StatusConflict, Code: vippstest.CodeReferenceReused, Times: 1})
@@ -484,8 +500,8 @@ type quickOnSiteJSON struct {
 // on-site request after the issue — 201 with the invoice and
 // paymentRequest — or, when the request cannot be made, 201 with the
 // invoice issued all the same and paymentRequestError. A replay of the
-// same requestId reports the live request, read only, without a QR, and
-// Vipps is never asked again.
+// same requestId reports the live request, read only, with the same QR
+// while the customer has not answered, and Vipps is never asked again.
 func TestQuickInvoice_PayOnSite(t *testing.T) {
 	t.Parallel()
 	h, _ := payReady(t)
@@ -514,8 +530,9 @@ func TestQuickInvoice_PayOnSite(t *testing.T) {
 	var replay quickOnSiteJSON
 	res.JSON(&replay)
 	if replay.Invoice.ID != got.Invoice.ID || replay.PaymentRequest == nil || replay.PaymentRequest.AttemptID != got.PaymentRequest.AttemptID ||
-		replay.PaymentRequest.Reference != got.PaymentRequest.Reference || replay.PaymentRequest.QrSvg != nil || replay.PaymentRequestError != nil {
-		t.Errorf("the replay = %+v, want the first's invoice and its live request, without a QR", replay)
+		replay.PaymentRequest.Reference != got.PaymentRequest.Reference || replay.PaymentRequest.QrSvg == nil ||
+		*replay.PaymentRequest.QrSvg != *got.PaymentRequest.QrSvg || replay.PaymentRequestError != nil {
+		t.Errorf("the replay = %+v, want the first's invoice and its live request with the same QR", replay)
 	}
 	if creates := vippsCreates(t, h); len(creates) != 1 {
 		t.Errorf("Vipps saw %d creates, want one: a replay never asks again", len(creates))
@@ -547,5 +564,118 @@ func TestQuickInvoice_PayOnSite(t *testing.T) {
 	if res.Status != http.StatusCreated || off.Invoice.Status != "issued" || off.PaymentRequest != nil ||
 		off.PaymentRequestError == nil || off.PaymentRequestError.Code != "on_site_payments_unavailable" {
 		t.Errorf("the quick invoice with on-site off = %d %+v, want it issued with on_site_payments_unavailable", res.Status, off)
+	}
+}
+
+// refusedAttemptID is a 409's attemptId.
+func refusedAttemptID(t *testing.T, res *modtest.Response) *int64 {
+	t.Helper()
+	var p struct {
+		AttemptID *int64 `json:"attemptId"`
+	}
+	if res.Status != http.StatusConflict {
+		t.Errorf("= %d %s, want 409", res.Status, res.Body)
+		return nil
+	}
+	res.JSON(&p)
+	return p.AttemptID
+}
+
+// TestOnSite_QRShownAgain: the target URL Vipps answered the create is kept
+// with the attempt (never an empty string: NULL when there is none), so
+// while the customer has not answered the status read answers the same QR
+// again — a tablet that lost the 201 shows it again — and once the request
+// is over, no QR.
+func TestOnSite_QRShownAgain(t *testing.T) {
+	t.Parallel()
+	h := workerReady(t)
+	inv := issuedAcme(t, h)
+	req := requestedOnSite(t, h, inv.ID)
+	if target := modtest.One[string](t, h.Harness, `SELECT redirect_url FROM invoices.payment_attempts WHERE id = $1`, req.AttemptID); target != vippstest.QRTarget(req.Reference) {
+		t.Errorf("the attempt keeps %q, want the QR's target %q", target, vippstest.QRTarget(req.Reference))
+	}
+	got := onSiteStatus(t, h, inv.ID, req.AttemptID)
+	if got.QrSvg == nil || *got.QrSvg != *req.QrSvg {
+		t.Fatalf("the status = %+v, want the request's QR again", got)
+	}
+	if res := issuer(t, h).Do(http.MethodPost, onSiteCancelPath(inv.ID, req.AttemptID), nil); res.Status != http.StatusOK {
+		t.Fatalf("the cancel = %d %s", res.Status, res.Body)
+	}
+	if got := onSiteStatus(t, h, inv.ID, req.AttemptID); got.QrSvg != nil {
+		t.Errorf("a cancelling request's status = %+v, want no QR", got)
+	}
+}
+
+// TestOnSite_CreateOutlivesAHangUp (the review's MEDIUM 2): a tablet that
+// hangs up while Vipps is asked does not cut the create short — it is made
+// on a context the request's cancellation does not reach, so the attempt is
+// created with its QR kept, and the status or a cancel can find it, rather
+// than left creating, holding the invoice's one request.
+func TestOnSite_CreateOutlivesAHangUp(t *testing.T) {
+	t.Parallel()
+	h, _ := payReady(t)
+	inv := issuedAcme(t, h)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var cut atomic.Bool
+	h.vippsWire.observeRequests(func(r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/epayment/v1/payments" {
+			return
+		}
+		cancel()
+		for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			if r.Context().Err() != nil {
+				cut.Store(true)
+				return
+			}
+		}
+	})
+	if res := issuer(t, h).Do(http.MethodPost, onSitePath(inv.ID), onSiteBody, modtest.Context(ctx)); res.Status != 0 {
+		t.Fatalf("the request = %d, want it hung up", res.Status)
+	}
+	if cut.Load() {
+		t.Fatal("the create sent to Vipps was cancelled with the request")
+	}
+	var state string
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if state = modtest.One[string](t, h.Harness, `SELECT state FROM invoices.payment_attempts WHERE invoice_id = $1`, inv.ID); state == "created" {
+			break
+		}
+	}
+	if state != "created" {
+		t.Fatalf("the attempt is %s, want created", state)
+	}
+	id := modtest.One[int64](t, h.Harness, `SELECT id FROM invoices.payment_attempts WHERE invoice_id = $1`, inv.ID)
+	if got := onSiteStatus(t, h, inv.ID, id); got.State != "created" || got.QrSvg == nil {
+		t.Errorf("the status after the hang-up = %+v, want created with its QR", got)
+	}
+}
+
+// TestOnSite_RejudgedUnderTheLock: on-site payment turned off between the
+// request's read on the pool and the invoice's lock is refused under the
+// lock — on_site_payments_unavailable, nothing inserted, Vipps not asked.
+// Not parallel: the seam is the package's.
+func TestOnSite_RejudgedUnderTheLock(t *testing.T) {
+	h, _ := payReady(t)
+	inv := issuedAcme(t, h)
+	var once atomic.Bool
+	t.Cleanup(invoices.SetAttemptInvoiceLocked(func(ctx context.Context, _ pgx.Tx) {
+		if once.Swap(true) {
+			return
+		}
+		if _, err := h.Pool().Exec(ctx, `UPDATE invoices.payment_settings SET on_site_payments_enabled = false,
+			kontantsalg_acknowledged_at = NULL, kontantsalg_acknowledged_by_user_id = NULL`); err != nil {
+			t.Errorf("turn on-site payment off: %v", err)
+		}
+	}))
+	onSiteRefused(t, "on-site turned off before the lock", requestOnSite(t, h, inv.ID), "on_site_payments_unavailable")
+	if !once.Load() {
+		t.Fatal("the hook never ran")
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.payment_attempts`); n != 0 {
+		t.Errorf("%d attempts, want none", n)
+	}
+	if creates := vippsCreates(t, h); len(creates) != 0 {
+		t.Errorf("Vipps saw %d creates, want none", len(creates))
 	}
 }

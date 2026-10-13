@@ -1123,10 +1123,9 @@ own: the answer carries `paymentRequest` (`{attemptId, reference, qrSvg, expires
 `buyer_identity_missing`, `provider_failed` and the rest, or a codeless 500-status problem
 when it failed unexpectedly (logged) — and the invoice is issued either way. Only the
 request that issues the invoice makes one: **a replay never makes a second request**; it
-answers the invoice's live on-site request — read, never made, and without `qrSvg`,
-which only the request that made it is answered — as `paymentRequest`, so a client that
-lost the first answer knows a QR exists (it can poll it, or cancel it and make a new one
-on the invoice). It gets a pay link at
+answers the invoice's live on-site request — read, never made, with `qrSvg` while the
+customer has not answered — as `paymentRequest`, so a client that lost the first answer
+shows the same QR again, or else cancels it and makes a new one on the invoice. It gets a pay link at
 issue only when on-site payment is available; otherwise the e-mail send makes one
 ([Pay links](#pay-links)). A quick invoice paid later —
 by KID through the bank, or by a pay link once the tradesperson has left — is a **credit
@@ -1169,10 +1168,11 @@ relaxes, each enforced by the server:
 3. **One payment, one invoice.** The request takes no amount: the attempt is always the
    invoice's **whole open amount**. One live on-site attempt per invoice
    (`ux_payment_attempts_on_site_live`: `creating`, `created`, `authorized`, `capturing`,
-   `capture_unknown`) — judged under the lock, 409 `payment_request_active`, with the
-   index as the last word (a unique violation on it is answered the same). A create the
-   payments worker gave up on (`creating` or `created`, never polled again) holds the
-   invoice too, and the refusal says a manager must abandon it first ([Abandon](#abandon)).
+   `capture_unknown`) — judged under the lock, 409 `payment_request_active` naming the
+   live attempt in `attemptId`, with the index as the last word (a unique violation on
+   it is answered the same). A create the payments worker gave up on (`creating` or
+   `created`, never polled again) holds the invoice too, and the refusal says a manager
+   must abandon it first ([Abandon](#abandon)).
 4. **The notice.** On-site payment is off until an `invoices:manage` holder turns it on
    with the kontantsalg acknowledgement, recorded with who and when
    ([Credentials and payment settings](#credentials-and-payment-settings)); the settings
@@ -1195,10 +1195,14 @@ in order, `on_site_payments_unavailable`, `credit_note_no_payments`, `invoice_dr
 `payment_in_progress`, `amount_out_of_range`, `too_many_attempts`), shares the
 credentials row and compares its version (a retryable 503 `payments_unavailable`), and
 inserts the attempt `creating` with `flow = on_site`, `created_by_user_id` the caller and
-its idempotency keys; after the commit, outside any lock, Vipps is asked for a QR
+its idempotency keys; after the commit, outside any lock and on a context the request's
+cancellation does not reach (bounded at 45 seconds, for both flows — a tablet that hangs
+up mid-call does not cut the create short), Vipps is asked for a QR
 (`userFlow: QR`, `customerInteraction: CUSTOMER_PRESENT`, `qrFormat: TEXT/TARGETURL`) and
 the code of the target URL it answers is rendered by the server (`payments/qrsvg`) —
-never an image fetched from Vipps. 201 `{attemptId, reference, qrSvg, expiresAt}`; the
+never an image fetched from Vipps. The target URL is kept in the attempt's `redirect_url`
+(never logged or answered as a URL; NULL, never empty, when Vipps answered none). 201
+`{attemptId, reference, qrSvg, expiresAt}`; the
 client shows `qrSvg` only as `<img src="data:image/svg+xml;base64,…">`, never inlined,
 and never prints it. A definitive refusal fails the attempt (502 `provider_failed`, and
 a new request may follow); an unknown outcome — no answer, or a QR whose reference or key
@@ -1207,14 +1211,16 @@ Vipps says is in use (4150, 4020), which is never read back because a read's
 leaves the attempt `creating` for the payments worker, holding the invoice's one request
 until it ends or is abandoned.
 
-`GET /{id}/payment-requests/{attemptId}` (`invoices:issue`) answers `{state,
-capturedAt?}` from the database only — the tablet polls it every two seconds; 404 unless
-the attempt is an on-site attempt of that invoice. `POST
+`GET /{id}/payment-requests/{attemptId}` (`invoices:issue`) answers `{state, qrSvg?,
+capturedAt?}` from the database only — the tablet polls it every two seconds; `qrSvg` is
+the same QR rendered again from the kept target while the request is `created`, so a
+tablet whose 201 was lost shows it again — the recovery is that, or a cancel and a new
+request; 404 unless the attempt is an on-site attempt of that invoice. `POST
 /{id}/payment-requests/{attemptId}/cancel` (`invoices:issue`) locks the attempt alone: a
 `created` request moves to `cancelling`, due at once, and the payments worker cancels it
 at Vipps — releasing anything the customer approved meanwhile — and records it
 `cancelled`; a request already over is answered as it stands; one Vipps has not confirmed
-yet (`creating`) or that the customer approved (`authorized`, `capturing`,
+yet (`creating`; a parked one's refusal says a manager abandons it) or that the customer approved (`authorized`, `capturing`,
 `capture_unknown`, `captured`, `capture_failed`) is refused 409 `payment_request_active`.
 
 ## Credit notes
@@ -3946,28 +3952,36 @@ nothing to acknowledge: the item is the stored refund on a payment still live.
 ### The day's Vipps payments
 
 Every attempt records `authorized_at` and `captured_at`. `GET /vipps-payments?date=`
-(`invoices:access`) lists one **Oslo day**'s Vipps payments — every attempt with a
-captured amount whose `captured_at` falls from that day's midnight in Oslo to the next
-(23 or 25 hours on a clock change), oldest first: the attempt and its reference, the
-invoice and its number, the buyer as the snapshot names it (blank once anonymised), the
-flow and the amount captured. **Pay-link payments are listed with the on-site ones**:
+(`invoices:access`) lists one day's Vipps payments — every registered Vipps payment
+**paid on** that day, oldest registration first. A Vipps payment's `paid_on` is the Oslo
+day of Vipps' capture event ([Capture and the reservation](#capture-and-the-reservation)),
+the payment's day in the ledger and in the Vipps settlement, so a capture the payments
+worker learns of and registers after midnight, or days later, is listed on the day Vipps
+took the money — never on the day of its registration (`captured_at`). Each row: the
+attempt and its reference, the invoice and its number, the buyer as the snapshot names
+it (blank once anonymised), the flow, the payment's amount, `paidOn`, `capturedAt` (when
+it was registered) and `refundedAmount`, a refund the refund watch saw since — shown
+beside the payment, **never deducted from the totals**: the day's totals are what Vipps
+captured that day. **Pay-link payments are listed with the on-site ones**:
 Invoices cannot know where the customer stood. The answer carries `count`, `total`,
 `onSiteTotal` and `payLinkTotal`, and the day's `reconciliation` once one is recorded; a
 missing or impossible `date` is a 400. `GET /vipps-payments.csv?date=` is the same rows
 as a file in the module's CSV form ([The CSV export](#the-csv-export)) — a byte order
 mark, semicolons, the decimal comma, CRLF, RFC 4180 quoting, the formula guard on the
-buyer and the reference — with the header `Date;Time;Invoice number;Buyer;Flow;Amount;Reference`,
-the capture's date and time in Oslo, served as `vipps-payments-<date>.csv` and never
+buyer and the reference — with the header `Paid on;Registered at;Invoice number;Buyer;Flow;Amount;Refunded;Reference`,
+the registration's time in Oslo, served as `vipps-payments-<date>.csv` and never
 cached.
 
 **The reconciliation.** `POST /vipps-payments/reconciliations` (`invoices:payments`)
 `{day, note?}` records, in `invoices.vipps_day_reconciliations`, that the day was
-reconciled against the Vipps settlement: one insert sums the day as it stands —
-`payments`, `total`, `on_site_total`, `pay_link_total` — with the caller, the time and the
+reconciled against the Vipps settlement: one insert sums the Vipps payments paid on the
+day as they stand — `payments`, `total`, `on_site_total`, `pay_link_total`, refunds not
+deducted — with the caller, the time and the
 note (trimmed, at most 500 characters). It takes no lock. 409 **`day_not_over`** for today
 or a later day in Oslo; 409 **`day_already_reconciled`** when the day has a record. The
-record is immutable (a trigger refuses any update or delete): a capture registered later
-and dated that day changes the list, never the record, and the list shows both. It is
+record is immutable (a trigger refuses any update or delete): a capture Vipps made that
+day and the payments worker registers later changes the list, never the record, and the
+list shows both. It is
 built in as bokføringsforskriften § 5-4-5's daily count, which arguably reaches
 kontantfaktura sales (R4 §9.6 item 4 — uncertain).
 

@@ -130,7 +130,7 @@ func TestVipps_Create(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Create: %v", err)
 		}
-		if created.Reference != "acme01-10001-1001" || !strings.HasPrefix(created.RedirectURL, vt.URL()+"/landing") || created.QRSVG != "" {
+		if created.Reference != "acme01-10001-1001" || !strings.HasPrefix(created.RedirectURL, vt.URL()+"/landing") || created.QRSVG != "" || created.QRTarget != "" {
 			t.Errorf("Created = %+v, want the reference and the redirect URL Vipps answered", created)
 		}
 		got := requestsTo(vt, http.MethodPost, "/epayment/v1/payments")
@@ -334,8 +334,8 @@ func TestVipps_QRCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.QRSVG != want || created.RedirectURL != "" {
-		t.Errorf("Created = %+v, want the target URL's code rendered here and no redirect URL", created)
+	if created.QRSVG != want || created.QRTarget != vippstest.QRTarget("acme01-10001-2001") || created.RedirectURL != "" {
+		t.Errorf("Created = %+v, want the target URL and its code rendered here, and no redirect URL", created)
 	}
 	creates := requestsTo(vt, http.MethodPost, "/epayment/v1/payments")
 	if len(creates) != 1 {

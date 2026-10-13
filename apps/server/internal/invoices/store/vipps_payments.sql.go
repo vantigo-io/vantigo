@@ -84,12 +84,13 @@ INSERT INTO invoices.vipps_day_reconciliations (
     day, payments, total, on_site_total, pay_link_total, reconciled_by_user_id, reconciled_at, note
 )
 SELECT $1::date, count(*)::integer,
-       coalesce(sum(captured_amount), 0),
-       coalesce(sum(captured_amount) FILTER (WHERE flow = 'on_site'), 0),
-       coalesce(sum(captured_amount) FILTER (WHERE flow = 'pay_link'), 0),
+       coalesce(sum(p.amount), 0),
+       coalesce(sum(p.amount) FILTER (WHERE a.flow = 'on_site'), 0),
+       coalesce(sum(p.amount) FILTER (WHERE a.flow = 'pay_link'), 0),
        $2::uuid, $3::timestamptz, $4::text
-FROM invoices.payment_attempts
-WHERE captured_at >= $5::timestamptz AND captured_at < $6::timestamptz AND captured_amount IS NOT NULL
+FROM invoices.payments p
+JOIN invoices.payment_attempts a ON a.id = p.payment_attempt_id
+WHERE p.source = 'vipps' AND p.paid_on = $1::date
 ON CONFLICT (day) DO NOTHING
 RETURNING day, payments, total, on_site_total, pay_link_total, reconciled_by_user_id, reconciled_at, note
 `
@@ -99,13 +100,11 @@ type InsertVippsDayReconciliationParams struct {
 	ReconciledByUserID uuid.UUID
 	Now                time.Time
 	Note               string
-	DayStart           time.Time
-	DayEnd             time.Time
 }
 
 // InsertVippsDayReconciliation records a day reconciled with its totals as
-// they stand, in one statement — the payments captured from @day_start
-// to before @day_end counted and summed per flow — once: a day reconciled before
+// they stand, in one statement — the Vipps payments paid on @day counted
+// and summed per flow, refunds not deducted — once: a day reconciled before
 // inserts nothing (pgx.ErrNoRows).
 func (q *Queries) InsertVippsDayReconciliation(ctx context.Context, arg InsertVippsDayReconciliationParams) (InvoicesVippsDayReconciliation, error) {
 	row := q.db.QueryRow(ctx, insertVippsDayReconciliation,
@@ -113,8 +112,6 @@ func (q *Queries) InsertVippsDayReconciliation(ctx context.Context, arg InsertVi
 		arg.ReconciledByUserID,
 		arg.Now,
 		arg.Note,
-		arg.DayStart,
-		arg.DayEnd,
 	)
 	var i InvoicesVippsDayReconciliation
 	err := row.Scan(
@@ -221,50 +218,50 @@ func (q *Queries) VippsDayReconciliation(ctx context.Context, day pgtype.Date) (
 	return i, err
 }
 
-const vippsPaymentsBetween = `-- name: VippsPaymentsBetween :many
-SELECT a.id, a.reference, a.flow, a.captured_amount, a.captured_at,
+const vippsPaymentsOn = `-- name: VippsPaymentsOn :many
+SELECT a.id, a.reference, a.flow, p.amount, p.paid_on, a.captured_at, a.refunded_amount,
        i.id AS invoice_id, i.number AS invoice_number, i.buyer_name
-FROM invoices.payment_attempts a
+FROM invoices.payments p
+JOIN invoices.payment_attempts a ON a.id = p.payment_attempt_id
 JOIN invoices.invoices i ON i.id = a.invoice_id
-WHERE a.captured_at >= $1::timestamptz AND a.captured_at < $2::timestamptz
-  AND a.captured_amount IS NOT NULL
+WHERE p.source = 'vipps' AND p.paid_on = $1::date
 ORDER BY a.captured_at, a.id
 `
 
-type VippsPaymentsBetweenParams struct {
-	DayStart time.Time
-	DayEnd   time.Time
-}
-
-type VippsPaymentsBetweenRow struct {
+type VippsPaymentsOnRow struct {
 	ID             int64
 	Reference      string
 	Flow           string
-	CapturedAmount pgtype.Numeric
+	Amount         pgtype.Numeric
+	PaidOn         pgtype.Date
 	CapturedAt     *time.Time
+	RefundedAmount pgtype.Numeric
 	InvoiceID      int64
 	InvoiceNumber  *int64
 	BuyerName      *string
 }
 
-// VippsPaymentsBetween is every attempt captured from @day_start to before
-// @day_end — one Oslo day — with its invoice's number and buyer, oldest
-// first.
-func (q *Queries) VippsPaymentsBetween(ctx context.Context, arg VippsPaymentsBetweenParams) ([]VippsPaymentsBetweenRow, error) {
-	rows, err := q.db.Query(ctx, vippsPaymentsBetween, arg.DayStart, arg.DayEnd)
+// VippsPaymentsOn is every registered Vipps payment paid on @day — the
+// Oslo day of Vipps' capture event, the payment's day in the ledger and in
+// the Vipps settlement, however late the worker registered it — with its
+// attempt, its invoice's number and buyer, oldest registration first.
+func (q *Queries) VippsPaymentsOn(ctx context.Context, day pgtype.Date) ([]VippsPaymentsOnRow, error) {
+	rows, err := q.db.Query(ctx, vippsPaymentsOn, day)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []VippsPaymentsBetweenRow
+	var items []VippsPaymentsOnRow
 	for rows.Next() {
-		var i VippsPaymentsBetweenRow
+		var i VippsPaymentsOnRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Reference,
 			&i.Flow,
-			&i.CapturedAmount,
+			&i.Amount,
+			&i.PaidOn,
 			&i.CapturedAt,
+			&i.RefundedAmount,
 			&i.InvoiceID,
 			&i.InvoiceNumber,
 			&i.BuyerName,

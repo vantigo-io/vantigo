@@ -465,7 +465,7 @@ func (c *paymentClaim) recreate(ctx context.Context) error {
 	case err == nil:
 		return c.attemptTx(ctx, false, nil, nil, func(ctx context.Context, txq *store.Queries, _ store.InvoicesPaymentAttempt, _ store.InvoicesInvoice) error {
 			n, err := txq.RecreatedAttempt(ctx, store.RecreatedAttemptParams{
-				RedirectUrl: ptr(created.RedirectURL), NextPollAt: c.now.Add(createdPoll), ID: c.row.ID, LeaseID: c.lease,
+				RedirectUrl: createdAddress(created), NextPollAt: c.now.Add(createdPoll), ID: c.row.ID, LeaseID: c.lease,
 			})
 			return one(n, err, "record the create of", c.row.ID)
 		})

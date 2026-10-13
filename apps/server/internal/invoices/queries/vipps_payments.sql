@@ -26,16 +26,17 @@ SET state = 'cancelling', next_poll_at = @now::timestamptz, failures = 0
 WHERE id = @id AND flow = 'on_site' AND state = 'created'
 RETURNING *;
 
--- name: VippsPaymentsBetween :many
--- VippsPaymentsBetween is every attempt captured from @day_start to before
--- @day_end — one Oslo day — with its invoice's number and buyer, oldest
--- first.
-SELECT a.id, a.reference, a.flow, a.captured_amount, a.captured_at,
+-- name: VippsPaymentsOn :many
+-- VippsPaymentsOn is every registered Vipps payment paid on @day — the
+-- Oslo day of Vipps' capture event, the payment's day in the ledger and in
+-- the Vipps settlement, however late the worker registered it — with its
+-- attempt, its invoice's number and buyer, oldest registration first.
+SELECT a.id, a.reference, a.flow, p.amount, p.paid_on, a.captured_at, a.refunded_amount,
        i.id AS invoice_id, i.number AS invoice_number, i.buyer_name
-FROM invoices.payment_attempts a
+FROM invoices.payments p
+JOIN invoices.payment_attempts a ON a.id = p.payment_attempt_id
 JOIN invoices.invoices i ON i.id = a.invoice_id
-WHERE a.captured_at >= @day_start::timestamptz AND a.captured_at < @day_end::timestamptz
-  AND a.captured_amount IS NOT NULL
+WHERE p.source = 'vipps' AND p.paid_on = @day::date
 ORDER BY a.captured_at, a.id;
 
 -- name: VippsDayReconciliation :one
@@ -45,18 +46,19 @@ SELECT * FROM invoices.vipps_day_reconciliations WHERE day = @day;
 
 -- name: InsertVippsDayReconciliation :one
 -- InsertVippsDayReconciliation records a day reconciled with its totals as
--- they stand, in one statement — the payments captured from @day_start
--- to before @day_end counted and summed per flow — once: a day reconciled before
+-- they stand, in one statement — the Vipps payments paid on @day counted
+-- and summed per flow, refunds not deducted — once: a day reconciled before
 -- inserts nothing (pgx.ErrNoRows).
 INSERT INTO invoices.vipps_day_reconciliations (
     day, payments, total, on_site_total, pay_link_total, reconciled_by_user_id, reconciled_at, note
 )
 SELECT @day::date, count(*)::integer,
-       coalesce(sum(captured_amount), 0),
-       coalesce(sum(captured_amount) FILTER (WHERE flow = 'on_site'), 0),
-       coalesce(sum(captured_amount) FILTER (WHERE flow = 'pay_link'), 0),
+       coalesce(sum(p.amount), 0),
+       coalesce(sum(p.amount) FILTER (WHERE a.flow = 'on_site'), 0),
+       coalesce(sum(p.amount) FILTER (WHERE a.flow = 'pay_link'), 0),
        @reconciled_by_user_id::uuid, @now::timestamptz, @note::text
-FROM invoices.payment_attempts
-WHERE captured_at >= @day_start::timestamptz AND captured_at < @day_end::timestamptz AND captured_amount IS NOT NULL
+FROM invoices.payments p
+JOIN invoices.payment_attempts a ON a.id = p.payment_attempt_id
+WHERE p.source = 'vipps' AND p.paid_on = @day::date
 ON CONFLICT (day) DO NOTHING
 RETURNING *;

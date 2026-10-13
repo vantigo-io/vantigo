@@ -61,6 +61,11 @@ var (
 // invoice's lock, before the attempt is inserted; nil in production.
 var attemptAfterInvoiceLock func(ctx context.Context, tx pgx.Tx)
 
+// attemptInvoiceLocked, when a test sets it (export_test.go), runs inside an
+// attempt's create right after the invoice's lock, before anything is judged
+// under it; nil in production.
+var attemptInvoiceLocked func(ctx context.Context, tx pgx.Tx)
+
 // abandonAfterAttemptLock, when a test sets it (export_test.go), runs inside
 // an abandon's transaction right after the attempt's lock; nil in
 // production.
@@ -239,8 +244,9 @@ type attemptInput struct {
 // createAttempt makes one attempt: one locked transaction — the invoice, the
 // facts judged again, the credentials FOR SHARE and their version compared,
 // the cap, the insert as creating with amount the open amount — then, after
-// the commit and outside any lock, Provider.Create, then the answer recorded
-// under the attempt's lock. It answers the attempt and what Vipps created, or
+// the commit and outside any lock, Provider.Create — on a context the
+// request's cancellation does not reach — then the answer recorded under the
+// attempt's lock: the payer's address or the QR's target kept. It answers the attempt and what Vipps created, or
 // a refusal (409, 503 or 502 by its status); errDocumentGone when the invoice
 // is gone.
 func (s *server) createAttempt(ctx context.Context, in attemptInput, now time.Time) (store.InvoicesPaymentAttempt, payments.Created, *gen.InvoicesConflictProblem, error) {
@@ -261,6 +267,9 @@ func (s *server) createAttempt(ctx context.Context, in attemptInput, now time.Ti
 				return errDocumentGone
 			}
 			return fmt.Errorf("invoices: lock document %d: %w", in.invoiceID, err)
+		}
+		if hook := attemptInvoiceLocked; hook != nil {
+			hook(ctx, tx)
 		}
 		if in.flow == flowOnSite {
 			// D17's hard rules, judged again under the invoice's lock
@@ -284,6 +293,9 @@ func (s *server) createAttempt(ctx context.Context, in attemptInput, now time.Ti
 		}
 		if ok, reason := payableOf(facts); !ok {
 			refusal = ptr(payRefusal(reason))
+			if in.flow == flowOnSite && reason == gen.InvoicesPayReasonUnavailable {
+				refusal = ptr(onSiteUnavailable())
+			}
 			return errRefused
 		}
 		live, err := txq.LiveAttemptsOfInvoice(ctx, store.LiveAttemptsOfInvoiceParams{InvoiceID: inv.ID, PayLinkID: in.payLinkID, Now: now})
@@ -376,7 +388,26 @@ func (s *server) createAttempt(ctx context.Context, in attemptInput, now time.Ti
 	return attempt, payments.Created{}, &c, nil
 }
 
-// callCreate asks the provider for the attempt's payment, outside any lock.
+// providerCreateTimeout bounds a create made on a context the request's
+// cancellation does not reach.
+const providerCreateTimeout = 45 * time.Second
+
+// createdAddress is where a created payment is reached — the address the
+// payer is sent to, or the QR's target URL — NULL when Vipps answered none.
+func createdAddress(c payments.Created) *string {
+	if c.RedirectURL != "" {
+		return &c.RedirectURL
+	}
+	if c.QRTarget != "" {
+		return &c.QRTarget
+	}
+	return nil
+}
+
+// callCreate asks the provider for the attempt's payment, outside any lock,
+// on a context the request's cancellation does not reach: the attempt is
+// committed, and a client that hangs up mid-call must not leave a create
+// half sent — an on-site one would hold the invoice's one request.
 func (s *server) callCreate(ctx context.Context, provider payments.Provider, attempt store.InvoicesPaymentAttempt,
 	inv store.InvoicesInvoice, settings store.InvoicesPaymentSetting, in attemptInput) (payments.Created, error) {
 	amount, err := ratFromNumeric(attempt.Amount)
@@ -402,6 +433,8 @@ func (s *server) callCreate(ctx context.Context, provider payments.Provider, att
 		req.Flow, req.CustomerPresent = payments.FlowRedirect, false
 		req.ReturnURL = s.deps.Config.PublicBaseURL + "/pay?attempt=" + attempt.Reference + "&nonce=" + in.nonce
 	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), providerCreateTimeout)
+	defer cancel()
 	return provider.Create(ctx, req)
 }
 
@@ -415,7 +448,7 @@ func (s *server) recordCreated(ctx context.Context, id int64, created payments.C
 			return fmt.Errorf("invoices: lock payment attempt %d: %w", id, err)
 		}
 		_, err := txq.MarkAttemptCreated(ctx, store.MarkAttemptCreatedParams{
-			ID: id, RedirectUrl: ptr(created.RedirectURL), NextPollAt: now.Add(attemptFirstPoll),
+			ID: id, RedirectUrl: createdAddress(created), NextPollAt: now.Add(attemptFirstPoll),
 		})
 		if err != nil {
 			return fmt.Errorf("invoices: record payment attempt %d as created: %w", id, err)
