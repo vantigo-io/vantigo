@@ -505,7 +505,6 @@ kodet `/`, `%2F`), står ikke på noen liste.
 | `POST` | `/api/v1/invoices/pay/read` (sidens lesing; tokenet i innholdet) |
 | `POST` | `/api/v1/invoices/pay/attempts` (en betaling startet) |
 | `GET` | `/api/v1/invoices/pay/attempts/{reference}` (statusen dens) |
-| `GET` | `/api/v1/identity/system/status` (vedlikeholdssjekken; betalingssiden selv gjør ingen) |
 | `GET`, `HEAD` | `/health/…` (prober) |
 
 **Kontroller** utenfra, mot den offentlige verten:
