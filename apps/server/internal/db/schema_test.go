@@ -349,6 +349,8 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"customers_contacts",
 		"customers_timeline_entries",
 		"customers_timeline_entries_revisions",
+		"import_rows",
+		"imports",
 		"object_deletions",
 		"registry_feed_cursor",
 		"tags",

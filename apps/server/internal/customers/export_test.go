@@ -55,6 +55,21 @@ type FeedEntryForTest struct {
 // for the same reason.
 const RegistryFeedLeaseKeyForTest = registryFeedLeaseKey
 
+// SetImportRunHook makes f run inside every import run the worker starts,
+// before its first row (import_worker.go's importRunHookForTest); it answers
+// the function that takes the hook away again. The hook is the package's, so
+// the test that sets it does not run in parallel.
+func SetImportRunHook(f func(ctx context.Context, importID int32) error) func() {
+	previous := importRunHookForTest
+	importRunHookForTest = f
+	return func() { importRunHookForTest = previous }
+}
+
+// ImportLeaseKeyForTest is the import worker's advisory-lease key, exported so
+// a test can take the same lock from a second connection and prove a cycle
+// skips (customers import wizard design D6).
+const ImportLeaseKeyForTest = importLeaseKey
+
 // PeppolRecheckLeaseKeyForTest is this worker's advisory-lease key, exported so
 // a test can take the same lock from a second connection and prove a cycle
 // skips (design D5).
@@ -78,20 +93,6 @@ func SetRegistryFeedPageSize(n int) func() {
 // organisation numbers is one this module will actually act on
 // (TestValidOrgNumbersFixture).
 func ValidNorwegianOrgNumberForTest(s string) bool { return validNorwegianOrgNumber(s) }
-
-// SetImportHeldHook makes f run inside every POST /customers/import once the
-// import lock is held and the vocabularies are read, before the first row,
-// the rows then running under the context f answers (import.go's
-// importHeldForTest); it answers the function that takes the hook away again.
-// It is how a test holds one import open while a second one is sent, deletes
-// a group or tag the file already named, or cancels an import as a caller
-// that went away would. The test that uses it does not run in parallel,
-// because the hook is the package's.
-func SetImportHeldHook(f func(context.Context) context.Context) func() {
-	previous := importHeldForTest
-	importHeldForTest = f
-	return func() { importHeldForTest = previous }
-}
 
 // NationalIDForTest builds an eleven-digit Norwegian national identity number
 // for a test (customers GDPR design D1): birth is six digits, DDMMYY, and the

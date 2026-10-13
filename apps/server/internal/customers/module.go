@@ -32,7 +32,10 @@ import (
 // GDPR design D3, D4) is the third: handing a person their whole file reads
 // what legal-identity-view and contacts-view each guard, and an anonymisation
 // removes more than any delete, so it is its own sensitive key, implied by
-// nothing.
+// nothing. customers:import (customers import wizard design D4) is the
+// fourth: the door to the import, sensitive because one import writes
+// thousands of customers under one name — and only the door: the mapping is
+// still checked against the keys each field needs by hand.
 var permissions = []contracts.Permission{
 	{Key: "customers:view", Display: "View customers", Description: "View customer names, identifiers, and a sanitized activity summary.", Category: "Customers", Sensitive: false, Delegable: true},
 	{Key: "customers:create", Display: "Create customers", Description: "Create customers without legal identity data.", Category: "Customers", Sensitive: false, Delegable: true},
@@ -50,6 +53,7 @@ var permissions = []contracts.Permission{
 	{Key: "customers:billing-manage", Display: "Manage billing profiles", Description: "Set a customer's payment terms, invoice delivery and billing addresses for documents.", Category: "Billing", Sensitive: true, Delegable: true},
 	{Key: "customers:merge", Display: "Merge customers", Description: "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags, attachments and other modules' references, and archiving it.", Category: "Customers", Sensitive: true, Delegable: true},
 	{Key: "customers:personal-data", Display: "Manage personal data", Description: "Hand a private person all the data held about them, and schedule the anonymisation of an archived private person.", Category: "Customers", Sensitive: true, Delegable: true},
+	{Key: "customers:import", Display: "Import customers", Description: "Upload a file of customers, map its columns, check it and import it; each field written needs the permission it needs by hand.", Category: "Customers", Sensitive: true, Delegable: true},
 }
 
 // limits maps each rate-limited operationId to its policy. It was empty
@@ -59,10 +63,11 @@ var permissions = []contracts.Permission{
 // platform's rate limit as Expenses' and Staff's uploads do.
 var limits = map[string]ratelimit.Policy{
 	"postCustomersByIdAttachments": policyAttachmentUpload,
+	"postCustomersImports":         policyImportUpload,
 }
 
 // Module is customers as a platform module: its contract mounted under
-// /api/v1/customers/, its sixteen permissions in the composed catalog, and
+// /api/v1/customers/, its seventeen permissions in the composed catalog, and
 // the customer directory it publishes to every other module.
 func Module() module.Module {
 	return module.Module{
@@ -78,7 +83,8 @@ func Module() module.Module {
 // Brreg update-feed worker and the Peppol re-check worker. And, since
 // customers GDPR design D4, the anonymisation worker, which keeps the days
 // people schedule; it asks no network, so it has one condition, its own
-// switch. cmd/vantigo starts these through module.Workers in worker mode, and
+// switch. And, since customers import wizard design D6, the import worker,
+// which checks and runs the files people upload — one condition too. cmd/vantigo starts these through module.Workers in worker mode, and
 // in api mode when WORKERS_IN_PROCESS=1 — never in server mode.
 //
 // Each worker is registered only when its own switch is on, rather than
@@ -92,7 +98,7 @@ func Module() module.Module {
 // "effective only alongside the lookup" (design D6) is spelled here as never
 // started rather than started and idle.
 //
-// All three take an advisory lease, unlike communications' outbox and
+// All four take an advisory lease, unlike communications' outbox and
 // cleanup workers: they have no per-row claim to fall back on — a cursor is
 // one row for the whole installation, and a re-check is a network call with no
 // row to claim first — so one replica at a time is the exclusion (design D5).
@@ -119,6 +125,9 @@ func workers(d module.Deps) []worker.Worker {
 	}
 	if d.Config.CustomersAnonymisationEnabled {
 		out = append(out, NewAnonymisationWorker(d))
+	}
+	if d.Config.CustomersImportEnabled {
+		out = append(out, NewImportWorker(d))
 	}
 	return out
 }

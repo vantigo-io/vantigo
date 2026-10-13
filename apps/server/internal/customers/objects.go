@@ -79,11 +79,11 @@ const (
 const attachmentFallbackName = "attachment"
 
 // bodyLimits raises the router's request-body cap for the attachment upload
-// and the CSV import (import.go); every other operation keeps the platform
+// and the import upload (imports_read.go); every other operation keeps the platform
 // default (1 MiB).
 var bodyLimits = map[string]int64{
 	"postCustomersByIdAttachments": maxAttachmentRequestBytes,
-	"postCustomersImport":          maxImportRequestBytes,
+	"postCustomersImports":         maxImportUploadRequestBytes,
 }
 
 // attachmentUploadsPerHour is how many uploads one client address may make.

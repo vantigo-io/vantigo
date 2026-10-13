@@ -110,7 +110,7 @@ var mergeKeys = []string{"customers:view", "customers:create", "customers:update
 	"customers:legal-identity-view", "customers:legal-identity-manage",
 	"customers:contacts-view", "customers:contacts-manage",
 	"customers:associations-view", "customers:associations-manage",
-	"customers:timeline-view", "customers:timeline-manage", "customers:billing-manage"}
+	"customers:timeline-view", "customers:timeline-manage", "customers:billing-manage", "customers:import"}
 
 // mergeClient signs in a caller holding mergeKeys.
 func mergeClient(t *testing.T, h *modtest.Harness) *modtest.Client {
@@ -826,7 +826,7 @@ func TestAMergedAwayCustomerRefusesEveryWrite(t *testing.T) {
 	}
 
 	file := csvFileOf([]string{"customerNumber", "name", "status"}, []string{strconv.FormatInt(absorbed.CustomerNumber, 10), "Acme Norge AS", "active"})
-	result := importResultOf(t, postImport(t, c, "?dryRun=false", file))
+	result := importFileNow(t, c, h, file)
 	if result.Updated != 0 || result.Failed != 1 || len(result.Errors) != 1 || result.Errors[0].Column != "customerNumber" ||
 		!strings.Contains(result.Errors[0].Message, fmt.Sprintf("was merged into #%d Acme AS", survivor.CustomerNumber)) {
 		t.Errorf("import of the merged-away customer's row = %+v, want it refused on customerNumber, naming the survivor", result)

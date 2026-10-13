@@ -212,6 +212,40 @@ type CustomersCustomersTimelineEntry struct {
 	FollowUpDoneAt         *time.Time
 }
 
+type CustomersImport struct {
+	ID              int32
+	State           string
+	FileName        string
+	SizeBytes       int64
+	Encoding        string
+	Separator       string
+	Header          []string
+	RowCount        int32
+	Mapping         []byte
+	Processed       int32
+	Created         int32
+	Updated         int32
+	Failed          int32
+	StopRequested   bool
+	Error           *string
+	CreatedByUserID *uuid.UUID
+	CreatedByName   *string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	RequestedAt     *time.Time
+	StartedAt       *time.Time
+	FinishedAt      *time.Time
+}
+
+type CustomersImportRow struct {
+	ImportID   int32
+	RowNo      int32
+	Cells      []string
+	Outcome    *string
+	CustomerID *int32
+	Errors     []byte
+}
+
 type CustomersObjectDeletion struct {
 	ID            int32
 	ObjectKey     string

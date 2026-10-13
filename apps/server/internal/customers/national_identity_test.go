@@ -47,10 +47,10 @@ func TestNationalIdentityNumber_IsRefusedByEveryWriteOfAnIdentity(t *testing.T) 
 		t.Errorf("legal-identity PUT errors = %v, want id [%q]", put.Errors, refusal)
 	}
 
-	result := importResultOf(t, postImport(t, c, "?dryRun=false", csvFileOf(
+	result := importFileNow(t, c, h, csvFileOf(
 		cells([]string{"name", "type"}, legalHeader),
 		[]string{"Kari Nordmann", "person", "no", "person", fnr[:6] + " " + fnr[6:], "Kari Nordmann"},
-	)))
+	))
 	want := []importErrorJSON{{Row: 1, Column: "legalId", Message: refusal}}
 	if result.Failed != 1 || result.Created != 0 || fmt.Sprint(result.Errors) != fmt.Sprint(want) {
 		t.Errorf("import = %+v, want only %+v", result, want)

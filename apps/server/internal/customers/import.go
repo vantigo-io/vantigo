@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"mime/multipart"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,301 +13,140 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/text/unicode/norm"
 
-	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 )
 
-// This file is POST /customers/import (customers import/export design D3):
-// the customers file (csvfile.go) read back into customers. Four things about
-// it are worth saying once, because every function below follows from them:
+// This file is a row of an import becoming a customer (customers import
+// wizard design D3, D5): the mapping read into a layout, a row planned
+// through it, and the row written through the functions the endpoints
+// themselves call. Four things about it are worth saying once, because every
+// function below follows from them:
 //
-//   - A file may only say what its sender could say by hand. There is no
-//     import key: the router admits customers:create and customers:update
-//     together, and the file's columns are then checked against the caller
-//     before a row is read — the legal identity's against
-//     customers:legal-identity-manage, the billing profile's against
-//     customers:billing-manage. A column the sender may not write refuses the
-//     file whole rather than being skipped: a skipped column is a change the
-//     sender believes was made.
+//   - A mapped field is written; an unmapped field is left as it is. On an
+//     update the row's group is the customer's current group with the mapped
+//     fields laid over it (resolve), then validated and written as a whole
+//     through the same function the endpoint uses — so mapping the email
+//     column alone keeps the phone and the website. On a create an unmapped
+//     field is blank. A mapped cell that is blank still clears its field: the
+//     file said blank.
 //   - Each row is written through the functions the endpoints themselves call
 //     (insertNewCustomer, writeCustomerCore, writeContactInfo,
 //     insertAddress/replaceAddress/removeAddress, writeBillingProfile,
 //     writeCustomerGroup, replaceCustomerTags), behind the same validators and
-//     followed by the same events, the importer as actor — so a row that
+//     followed by the same events, the uploader as actor — so a row that
 //     succeeds is indistinguishable from the same edits made by hand, and one
 //     that fails leaves nothing half-written. No batch marker and no
 //     customer.imported event: the granular events are the audit trail.
 //   - A dry run is the real run minus the commit: each row in its own
-//     transaction, rolled back when the row has run. Nothing is held past a
-//     row — no lock, no customer-number counter increment, no event. (The
-//     tables' own id sequences are identity columns, which a rollback does not
-//     rewind, so internal ids skip; nothing a user sees.) What it cannot see is an
-//     earlier row's effect on a later one; the one such case a file makes
-//     likely — two rows creating one legal identity — is checked in memory
-//     before any row runs (inFileDuplicates), and any other the real run still
-//     refuses cleanly, as that row's error.
+//     transaction, rolled back when the row has run (import_worker.go). What
+//     it cannot see is an earlier row's effect on a later one; the one such
+//     case a file makes likely — two rows with one legal identity — is found
+//     on the file before any row runs (import_worker.go's duplicate pass).
 //   - Nothing leaves the database while a row's transaction is open: the actor
 //     and the group and tag vocabularies are resolved once, before the first
-//     row, and every access check the file needs is made on its header.
+//     row, and every permission the mapping needs was checked when it was
+//     saved (imports_mapping.go).
 
-// The upload's bounds (design D3). maxImportRequestBytes is the router's cap
-// for the operation (module.RouterOptions.BodyLimits): the file plus room for
-// the multipart framing, expenses' receipt margin. The router's
-// http.MaxBytesReader is in place before the generated wrapper hands the
-// multipart reader over, so a body past it fails the part read, which
-// importFilePart answers as the same 400 an oversized part gets.
-const (
-	maxImportFileBytes    = 5 * 1024 * 1024
-	maxImportRequestBytes = maxImportFileBytes + 64*1024
-	importFormField       = "file"
-	// importErrorColumn is the column the browser's failed-rows file adds
-	// (design D4), ignored so that file imports as it is.
-	importErrorColumn = "error"
-	// maxImportRows is how many data rows one import takes: the export's cap
-	// (customersFileMaxRows), so a round trip always fits. The timing test
-	// (csvimport_cap_test.go) measured a real run at the cap at about 30 s on
-	// four CPUs, inside the ~100 s a hosted installation's proxy allows; were a
-	// run ever to need more, this is the number to lower, and
-	// docs/src/content/docs/en/reference/customers.md the paragraph that says so.
-	maxImportRows = customersFileMaxRows
-	// maxNamelessColumnsNamed is how many positions of nameless columns the
-	// refusal lists before it counts the rest.
-	maxNamelessColumnsNamed = 10
-)
-
-// maxImportHeaderWidth is the widest header the table can describe: every
-// column once, the export-only four included, and the error column. A wider
-// one cannot be a customers file, and is refused before its cells are looked
-// at one by one — a 5 MB header of semicolons is five million cells, and a
-// refusal per cell would be a response hundreds of MB large.
-var maxImportHeaderWidth = len(customerCSVColumns) + 1
-
-// The file-level 400: every refusal on "file", under one title.
-const (
-	invalidImportFileTitle     = "Invalid import file"
-	invalidImportUploadMessage = "A customer import is one CSV file of at most 5 MB, sent as the multipart part named 'file'"
-)
-
-// The 409 a second import gets while one runs (PostCustomersImport).
-const (
-	importRunningTitle  = "An import is already running"
-	importRunningDetail = "Another customer import is running. Try again once it has finished."
-)
-
-// importHeldForTest, when set, runs once the import lock is held and the
-// vocabularies are read, before the first row, and the rows run under the
-// context it answers: the one point a test can hold an import open at (a
-// second import meanwhile is the 409), change the database under it (a group
-// or tag deleted after the file named it) or cancel it (the caller gone).
-// Set only through export_test.go's SetImportHeldHook, by a test that does not
-// run in parallel; nil in production.
-var importHeldForTest func(context.Context) context.Context
-
-func invalidImportFile(messages ...string) apicommon.HttpValidationProblemDetails {
-	return apicommon.ValidationProblem(invalidImportFileTitle, map[string][]string{"file": messages})
-}
-
-// importFilePart reads the one multipart part named "file" — expenses'
-// receiptPart for a CSV. A missing part, a second one, an empty one, one past
-// maxImportFileBytes and a read that fails (a malformed body, or the router's
-// cap firing) are all ok=false.
-func importFilePart(mr *multipart.Reader) ([]byte, bool) {
-	if mr == nil {
-		return nil, false
-	}
-	var data []byte
-	found := false
-	for {
-		part, err := mr.NextPart()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, false
-		}
-		if part.FormName() != importFormField {
-			_ = part.Close()
-			continue
-		}
-		if found {
-			_ = part.Close()
-			return nil, false
-		}
-		found = true
-		data, err = io.ReadAll(io.LimitReader(part, maxImportFileBytes+1))
-		_ = part.Close()
-		if err != nil {
-			return nil, false
-		}
-	}
-	return data, found && len(data) > 0 && len(data) <= maxImportFileBytes
-}
-
-// importFlag is one of the two query flags: absent is fallback, and anything
-// but the literals 'true' and 'false' is refused in the list's own words.
-func importFlag(name string, raw *string, fallback bool) (bool, string) {
-	if raw == nil {
-		return fallback, ""
-	}
-	switch *raw {
-	case "true":
-		return true, ""
-	case "false":
-		return false, ""
-	}
-	return fallback, fmt.Sprintf("'%s' must be one of 'true' or 'false', but was '%s'.", name, *raw)
-}
-
-// importLayout is a header read against the column table: where each column a
-// row is written from sits, how the file spells it, which groups the file
-// carries, and how many cells a row must have.
+// importLayout is a mapping read against a file's header
+// (imports_mapping.go's layoutFor): where each field comes from — a column
+// of the file, or one value for every row — and the mode and match key the
+// rows run under.
 type importLayout struct {
-	index    map[string]int
-	spelling map[string]string
-	groups   map[csvGroup]bool
-	width    int
+	column                 map[string]int
+	fixed                  map[string]string
+	width                  int
+	mode                   gen.CustomerImportMappingMode
+	matchBy                gen.CustomerImportMappingMatchBy
+	allowDuplicateIdentity bool
 }
 
-func (l importLayout) has(g csvGroup) bool { return l.groups[g] }
-
-// cell is rec's value in column, "" for a column the file does not carry.
-func (l importLayout) cell(rec csvRecord, column string) string {
-	if i, ok := l.index[column]; ok {
-		return rec.Cells[i]
-	}
-	return ""
+// mapped reports whether field is written at all.
+func (l importLayout) mapped(field string) bool {
+	_, c := l.column[field]
+	_, f := l.fixed[field]
+	return c || f
 }
 
-// spelt is column as the file's header spells it — headers match without
-// regard to case, and an error names the cell the person will look for —
-// and "" (a row-level error) as it is.
-func (l importLayout) spelt(column string) string {
-	if s, ok := l.spelling[column]; ok {
-		return s
+// has reports whether any field of the group is mapped — the group is then
+// touched, and the row's unmapped fields of it are overlaid (resolve).
+func (l importLayout) has(g csvGroup) bool {
+	for _, name := range csvColumnsOf(g) {
+		if l.mapped(name) {
+			return true
+		}
 	}
-	return column
+	return false
 }
 
-// position orders a row's errors by where their column sits in the file, a
-// row-level error first.
-func (l importLayout) position(column string) int {
-	if i, ok := l.index[column]; ok {
-		return i
+// creates reports whether the mode makes every row a new customer.
+func (l importLayout) creates() bool { return l.mode == gen.Create }
+
+// columnOf is the file column a field's error points at: nil for a fixed
+// value and for a field that is not mapped (a row-level problem).
+func (l importLayout) columnOf(field string) *int32 {
+	if i, ok := l.column[field]; ok {
+		c := int32(i)
+		return &c
 	}
-	return -1
+	return nil
 }
 
-// importLayoutFor reads the header (design D3): every column one the table
-// names, the export-only four or the error column, each at most once, matched
-// without regard to case; a group's columns all together or not at all; and
-// no column the caller could not write by hand. It answers every refusal at
-// once, so a file is fixed in one pass rather than one error at a time — but
-// never more refusals than the table has columns: a header wider than the
-// table can describe is one refusal, and nameless columns are one between
-// them, so the answer stays small whatever the file holds.
-func (s *server) importLayoutFor(ctx context.Context, header []string) (importLayout, []string) {
-	if len(header) == 1 && strings.Contains(header[0], ",") {
-		return importLayout{}, []string{"The file is comma-separated; the import reads semicolon-separated files, the form the export writes and a Norwegian Excel saves as CSV"}
-	}
-	if len(header) > maxImportHeaderWidth {
-		return importLayout{}, []string{fmt.Sprintf("The header has %d columns, but the file describes at most %d", len(header), maxImportHeaderWidth)}
-	}
-	known := make(map[string]csvColumn, len(customerCSVColumns))
-	for _, c := range customerCSVColumns {
-		known[strings.ToLower(c.Name)] = c
-	}
-	l := importLayout{index: map[string]int{}, spelling: map[string]string{}, groups: map[csvGroup]bool{}, width: len(header)}
-	var refusals, unknown []string
-	var nameless []int
-	for i, raw := range header {
-		name := strings.TrimSpace(raw)
-		if name == "" {
-			nameless = append(nameless, i+1)
-			continue
-		}
-		if strings.EqualFold(name, importErrorColumn) {
-			continue
-		}
-		c, ok := known[strings.ToLower(name)]
-		if !ok {
-			unknown = append(unknown, "'"+name+"'")
-			continue
-		}
-		if c.Group == csvGroupExportOnly {
-			continue
-		}
-		if _, repeated := l.index[c.Name]; repeated {
-			refusals = append(refusals, fmt.Sprintf("The column %s appears more than once", c.Name))
-			continue
-		}
-		l.index[c.Name] = i
-		l.spelling[c.Name] = name
-		l.groups[c.Group] = true
-	}
-	if len(nameless) > 0 {
-		refusals = append(refusals, namelessColumnsRefusal(nameless))
-	}
-	if len(unknown) > 0 {
-		refusals = append(refusals, fmt.Sprintf("Unknown columns: %s. A column is one the export and the template carry, and a misspelt one is refused rather than ignored", strings.Join(unknown, ", ")))
-	}
-	for _, g := range csvImportGroups {
-		if !l.groups[g] {
-			continue
-		}
-		var missing []string
-		for _, name := range csvColumnsOf(g) {
-			if _, ok := l.index[name]; !ok {
-				missing = append(missing, name)
-			}
-		}
-		if len(missing) > 0 {
-			refusals = append(refusals, fmt.Sprintf("The file carries some of the %s columns but not %s; a group's columns are imported together, all of them or none", g, strings.Join(missing, ", ")))
+// raw is a row's value for every mapped field: the cell, or the fixed value.
+// A row shorter than its column is blank there — a spreadsheet drops its
+// trailing empty cells — and a row longer than the header is the row's own
+// problem (plan).
+func (l importLayout) raw(rec csvRecord) map[string]string {
+	values := make(map[string]string, len(l.column)+len(l.fixed))
+	for field, i := range l.column {
+		if i < len(rec.Cells) {
+			values[field] = rec.Cells[i]
+		} else {
+			values[field] = ""
 		}
 	}
-	if len(l.index) == 0 && len(refusals) == 0 {
-		refusals = append(refusals, "The file carries no column an import writes")
+	for field, v := range l.fixed {
+		values[field] = v
 	}
-	if l.groups[csvGroupIdentity] && !s.hasPermission(ctx, legalIdentityManage) {
-		refusals = append(refusals, importPermissionRefusal(csvGroupIdentity, legalIdentityManage))
-	}
-	if l.groups[csvGroupBilling] && !s.hasPermission(ctx, billingManage) {
-		refusals = append(refusals, importPermissionRefusal(csvGroupBilling, billingManage))
-	}
-	return l, refusals
+	return values
 }
 
-// namelessColumnsRefusal is every header cell with no name, as one refusal:
-// "Column 3 has no name", "Columns 3, 7 and 12 have no name", and past
-// maxNamelessColumnsNamed positions the rest counted rather than listed.
-func namelessColumnsRefusal(positions []int) string {
-	if len(positions) == 1 {
-		return fmt.Sprintf("Column %d has no name", positions[0])
-	}
-	named := positions
-	rest := 0
-	if len(named) > maxNamelessColumnsNamed {
-		named, rest = positions[:maxNamelessColumnsNamed], len(positions)-maxNamelessColumnsNamed
-	}
-	list := make([]string, len(named))
-	for i, p := range named {
-		list[i] = strconv.Itoa(p)
-	}
-	if rest > 0 {
-		return fmt.Sprintf("Columns %s and %d more have no name", strings.Join(list, ", "), rest)
-	}
-	return fmt.Sprintf("Columns %s and %s have no name", strings.Join(list[:len(list)-1], ", "), list[len(list)-1])
+// importError is one problem of one row: Field is the import field it is
+// about ("" for the row as a whole), which the layout turns into a file
+// column for the answer.
+type importError struct {
+	Row     int
+	Field   string
+	Message string
 }
 
-// importPermissionRefusal names a group's columns and the key they need.
-func importPermissionRefusal(g csvGroup, key string) string {
-	return fmt.Sprintf("The columns %s need the %s permission, which you do not have: remove them from the file, or ask for the permission",
-		strings.Join(csvColumnsOf(g), ", "), key)
+// wire is the error as the contract carries it (CustomerImportRowError): the
+// field's file column when it has one, else none.
+func (l importLayout) wire(e importError) gen.CustomerImportRowError {
+	return gen.CustomerImportRowError{Column: l.columnOf(e.Field), Message: e.Message}
+}
+
+// importRowRefusal is a row's errors travelling out of its transaction as the
+// error that rolls it back — errDuplicateIdentity's technique, one row wide.
+type importRowRefusal struct {
+	errs []importError
+}
+
+func (r *importRowRefusal) Error() string {
+	return fmt.Sprintf("customers: import row %d refused", r.errs[0].Row)
+}
+
+func refuseRow(row int, field, message string) error {
+	return &importRowRefusal{errs: []importError{{Row: row, Field: field, Message: message}}}
+}
+
+func refuseRowAll(errs []importError) error {
+	return &importRowRefusal{errs: errs}
 }
 
 // importVocabulary is the group and tag names a file may use, read once per
-// file and matched through vocabKey — without regard to case, the
+// run and matched through vocabKey — without regard to case, the
 // vocabularies' own uniqueness (lower(name) indexes, migrations 00024 and
 // 00027), and in their own normal form.
 type importVocabulary struct {
@@ -328,7 +164,7 @@ func vocabKey(name string) string {
 
 func importVocabularyFor(ctx context.Context, q *store.Queries, l importLayout) (importVocabulary, error) {
 	vocab := importVocabulary{groups: map[string]groupSnapshot{}, tags: map[string]tagSnapshot{}}
-	if l.has(csvGroupMembership) {
+	if l.mapped("group") {
 		groups, err := q.ListCustomerGroups(ctx)
 		if err != nil {
 			return importVocabulary{}, fmt.Errorf("customers: read the group vocabulary: %w", err)
@@ -337,7 +173,7 @@ func importVocabularyFor(ctx context.Context, q *store.Queries, l importLayout) 
 			vocab.groups[vocabKey(g.Name)] = groupSnapshot{GroupID: g.ID, Name: g.Name}
 		}
 	}
-	if l.has(csvGroupTags) {
+	if l.mapped("tags") {
 		tags, err := q.ListCustomerTags(ctx)
 		if err != nil {
 			return importVocabulary{}, fmt.Errorf("customers: read the tag vocabulary: %w", err)
@@ -349,198 +185,348 @@ func importVocabularyFor(ctx context.Context, q *store.Queries, l importLayout) 
 	return vocab, nil
 }
 
-// importError is one entry of CustomerImportResult.errors: Column "" is a
-// problem with the row as a whole.
-type importError struct {
-	Row     int
-	Column  string
-	Message string
+// identityKey is a legal identity as the match and the duplicate pass compare
+// it: the country lowercased and the id without its whitespace — the
+// duplicate guard's own comparison (identityCountryAndIDEqual), with the
+// import's default country applied.
+type identityKey struct {
+	Country string
+	ID      string
 }
 
-// importRowRefusal is a row's errors travelling out of its transaction as the
-// error that rolls it back — errDuplicateIdentity's technique, one row wide.
-type importRowRefusal struct {
-	errs []importError
+// importDefaultCountry is the country a legal id is taken to be from when the
+// file says none (design D3): a Norwegian file has an organisation number and
+// nothing else about the identity.
+const importDefaultCountry = "no"
+
+// identityKeyOf is the key of a raw country and id, ok=false for a blank id.
+func identityKeyOf(country, id string) (identityKey, bool) {
+	id = stripWhitespace(id)
+	if id == "" {
+		return identityKey{}, false
+	}
+	country = strings.ToLower(strings.TrimSpace(country))
+	if country == "" {
+		country = importDefaultCountry
+	}
+	return identityKey{Country: country, ID: id}, true
 }
 
-func (r *importRowRefusal) Error() string {
-	return fmt.Sprintf("customers: import row %d refused", r.errs[0].Row)
-}
-
-func refuseRow(row int, column, message string) error {
-	return &importRowRefusal{errs: []importError{{Row: row, Column: column, Message: message}}}
-}
-
-// importPlan is one row, validated and in the shapes its write paths take.
-// Each group carries a has flag — false is "not in the file, leave it alone" —
-// and inside a carried group a nil pointer is "clear it": no identity, no
-// primary address of that type, no group.
+// importPlan is one row read through the layout: its raw values, and the key
+// it matches a customer by. Everything else — the typed, validated groups —
+// is resolve's, since on an update it depends on the customer found.
 type importPlan struct {
 	Row            int
+	Raw            map[string]string
 	CustomerNumber *int64
-	HasCore        bool
-	Name           string
-	Type           string // "" is blank: a create takes business, an update checks nothing
-	Status         string // "" is blank: a create takes active, an update keeps its own
-	HasIdentity    bool
-	Identity       *legalIdentity
-	HasContact     bool
-	Contact        contactInfo
-	HasPostal      bool
-	Postal         *validatedAddress
-	HasInvoice     bool
-	Invoice        *validatedAddress
-	HasBilling     bool
-	Billing        billingProfile
-	HasGroup       bool
-	Group          *groupSnapshot
-	HasTags        bool
-	Tags           []tagSnapshot
+	MatchIdentity  *identityKey
 }
 
-// identityColumns is validateLegalIdentity's field keys as the file's columns.
-var identityColumns = map[string]string{"country": "legalCountry", "type": "legalType", "id": "legalId", "name": "legalName"}
-
-// plan reads one row through the endpoints' own validators, before any
-// transaction: everything wrong with the row's cells, each keyed by the column
-// it came from and in the file's column order. Only what needs the database —
-// the customer a number names, a duplicate identity, the type on file — is
-// left for importRow.
-func (l importLayout) plan(rec csvRecord, vocab importVocabulary) (importPlan, []importError) {
-	p := importPlan{Row: rec.Row}
-	if len(rec.Cells) != l.width {
+// plan reads one row (design D3): its raw values, its match key, and the
+// errors its cells get before any database is asked — strict is "every
+// unmapped field is blank", the truth for a create, and false when the row
+// may be an update whose unmapped fields come from the customer, in which
+// case only the mapped fields' own errors are kept (the rest are judged
+// again, laid over the customer, in importRow).
+func (l importLayout) plan(rec csvRecord, vocab importVocabulary, strict bool) (importPlan, []importError) {
+	p := importPlan{Row: rec.Row, Raw: l.raw(rec)}
+	if len(rec.Cells) > l.width {
 		return p, []importError{{Row: rec.Row, Message: fmt.Sprintf("This row has %d cells, but the header has %d", len(rec.Cells), l.width)}}
 	}
 	var errs []importError
-	fail := func(column, message string) {
-		errs = append(errs, importError{Row: rec.Row, Column: column, Message: message})
-	}
-	failAll := func(columnOf func(string) string, fieldErrs map[string][]string) {
-		for field, messages := range fieldErrs {
-			for _, m := range messages {
-				fail(columnOf(field), m)
+	if l.matchBy == gen.CustomerNumber && !l.creates() {
+		if n := strings.TrimSpace(p.Raw["customerNumber"]); n != "" {
+			if v, err := strconv.ParseInt(n, 10, 64); err != nil || v < 1 {
+				errs = append(errs, importError{Row: rec.Row, Field: "customerNumber", Message: fmt.Sprintf("A customer number must be a whole number, but was '%s'", n)})
+			} else {
+				p.CustomerNumber = &v
 			}
 		}
 	}
-	trimmed := func(column string) string { return strings.TrimSpace(l.cell(rec, column)) }
-	raw := func(column string) *string { v := l.cell(rec, column); return &v }
-
-	if n := trimmed("customerNumber"); n != "" {
-		if v, err := strconv.ParseInt(n, 10, 64); err != nil || v < 1 {
-			fail("customerNumber", fmt.Sprintf("A customer number must be a whole number, but was '%s'", n))
-		} else {
-			p.CustomerNumber = &v
+	if l.matchBy == gen.LegalId && !l.creates() {
+		if key, ok := identityKeyOf(p.Raw["legalCountry"], p.Raw["legalId"]); ok {
+			p.MatchIdentity = &key
 		}
 	}
+	_, resolveErrs := l.resolve(p, nil, vocab, strict)
+	errs = append(errs, resolveErrs...)
+	return p, l.sorted(errs)
+}
 
-	if _, ok := l.index["name"]; ok {
-		p.HasCore = true
-		if name, msg := validateFriendlyName(l.cell(rec, "name")); msg != "" {
+// sorted orders a row's errors by where their column sits in the file, a
+// row-level error and a fixed value's first.
+func (l importLayout) sorted(errs []importError) []importError {
+	position := func(field string) int {
+		if i, ok := l.column[field]; ok {
+			return i
+		}
+		return -1
+	}
+	sort.SliceStable(errs, func(i, j int) bool { return position(errs[i].Field) < position(errs[j].Field) })
+	return errs
+}
+
+// customerState is what is on file for the customer a row updates — the
+// values an unmapped field keeps — read under the customer's lock
+// (importUpdate). nil is a create: every unmapped field blank.
+type customerState struct {
+	Name     string
+	Type     string
+	Status   string
+	Identity *legalIdentity
+	Contact  contactInfo
+	Postal   *addressSnapshot
+	Invoice  *addressSnapshot
+	Billing  billingProfile
+	Group    *groupSnapshot
+	Tags     []tagSnapshot
+}
+
+// resolvedRow is a row as the write paths take it: each group with a has
+// flag — false is "no field of it is mapped, leave it alone" — and inside a
+// touched group the whole value, the customer's own fields laid under the
+// mapped ones. A nil pointer inside a touched group is "clear it": no
+// identity, no primary address of that type, no group.
+type resolvedRow struct {
+	Name        string
+	Type        string
+	Status      string
+	HasIdentity bool
+	Identity    *legalIdentity
+	HasContact  bool
+	Contact     contactInfo
+	HasPostal   bool
+	Postal      *validatedAddress
+	HasInvoice  bool
+	Invoice     *validatedAddress
+	HasBilling  bool
+	Billing     billingProfile
+	HasGroup    bool
+	Group       *groupSnapshot
+	HasTags     bool
+	Tags        []tagSnapshot
+}
+
+// identityColumns is validateLegalIdentity's field keys as the import's fields.
+var identityColumns = map[string]string{"country": "legalCountry", "type": "legalType", "id": "legalId", "name": "legalName"}
+
+// importCustomerType is a type cell as a Norwegian file spells it (design D3):
+// the words for a business and a private person folded onto the two values,
+// in the import alone, before the validator judges the rest.
+func importCustomerType(raw string) (string, string) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "bedrift", "firma", "selskap", "company":
+		return "business", ""
+	case "privat", "privatperson", "private":
+		return "person", ""
+	}
+	return validateCustomerType(raw)
+}
+
+// resolve is a row's values laid over cur (design D3): a mapped field from the
+// row, an unmapped one from the customer, blank on a create; each touched
+// group validated whole through its endpoint's validator; the identity's
+// defaults applied (country NO, type the customer type, name the customer's
+// name) when a legal id is there. Errors are keyed by field; with strict
+// false only the mapped fields' are kept.
+func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVocabulary, strict bool) (resolvedRow, []importError) {
+	var r resolvedRow
+	var errs []importError
+	fail := func(field, message string) {
+		errs = append(errs, importError{Row: p.Row, Field: field, Message: message})
+	}
+	failAll := func(fieldOf func(string) string, fieldErrs map[string][]string) {
+		for field, messages := range fieldErrs {
+			for _, m := range messages {
+				fail(fieldOf(field), m)
+			}
+		}
+	}
+	// value is a field's value for this row: the cell when mapped, else what
+	// the customer has — "" on a create — through current.
+	value := func(field string, current func() string) string {
+		if v, ok := p.Raw[field]; ok {
+			return v
+		}
+		if cur != nil && current != nil {
+			return current()
+		}
+		return ""
+	}
+	trimmed := func(field string, current func() string) string { return strings.TrimSpace(value(field, current)) }
+	ptr := func(s string) *string { return &s }
+	derefCur := func(get func() *string) func() string {
+		return func() string { return deref(get()) }
+	}
+
+	// The row: name, type, status.
+	if l.mapped("name") {
+		if name, msg := validateFriendlyName(p.Raw["name"]); msg != "" {
 			fail("name", msg)
 		} else {
-			p.Name = name
+			r.Name = name
 		}
-	} else if p.CustomerNumber == nil {
-		// The row's, not a cell's: the column it would name is not in the file.
-		fail("", "A new customer needs a name, and this file has no name column")
+	} else if cur != nil {
+		r.Name = cur.Name
+	} else {
+		fail("", "A new customer needs a name, and no name column is mapped")
 	}
-	// typeFailed keeps a refused type cell to its own error: the identity
-	// below is then judged against no type rather than the business a blank
-	// cell would default to.
 	typeFailed := false
-	if v := trimmed("type"); v != "" {
-		if t, msg := validateCustomerType(v); msg != "" {
+	if v := trimmed("type", nil); v != "" {
+		if t, msg := importCustomerType(v); msg != "" {
 			fail("type", msg)
 			typeFailed = true
 		} else {
-			p.Type = t
+			r.Type = t
 		}
+	} else if cur != nil {
+		r.Type = cur.Type
+	} else {
+		r.Type = "business"
 	}
-	if v := trimmed("status"); v != "" {
+	if v := trimmed("status", nil); v != "" {
 		if st, msg := validateCustomerStatus(v); msg != "" {
 			fail("status", msg)
 		} else {
-			p.Status, p.HasCore = st, true
+			r.Status = st
 		}
+	} else if cur != nil {
+		r.Status = cur.Status
+	} else {
+		r.Status = "active"
 	}
 
+	// The legal identity, with the defaults a legal id brings (design D3).
 	if l.has(csvGroupIdentity) {
-		p.HasIdentity = true
-		country, typ, id, name := trimmed("legalCountry"), trimmed("legalType"), trimmed("legalId"), trimmed("legalName")
-		if country != "" || typ != "" || id != "" || name != "" {
-			// A file says nothing about where an identity came from: a new one
-			// is manual (design D1). importedIdentity keeps a repeated one's.
+		r.HasIdentity = true
+		curIdentity := func(get func(*legalIdentity) string) func() string {
+			return func() string {
+				if cur.Identity == nil {
+					return ""
+				}
+				return get(cur.Identity)
+			}
+		}
+		id := trimmed("legalId", curIdentity(func(i *legalIdentity) string { return i.ID }))
+		if id != "" {
+			country := trimmed("legalCountry", curIdentity(func(i *legalIdentity) string { return i.Country }))
+			typ := trimmed("legalType", curIdentity(func(i *legalIdentity) string { return i.Type }))
+			name := trimmed("legalName", curIdentity(func(i *legalIdentity) string { return i.Name }))
+			if country == "" {
+				country = importDefaultCountry
+			}
+			if typ == "" {
+				typ = r.Type
+			}
+			if name == "" {
+				name = r.Name
+			}
 			identity, idErrs := validateLegalIdentity(country, typ, id, name, "manual")
 			failAll(func(field string) string { return identityColumns[field] }, idErrs)
 			if idErrs == nil {
-				p.Identity = &identity
-				if p.CustomerNumber == nil && !typeFailed {
-					customerType := p.Type
-					if customerType == "" {
-						customerType = "business"
-					}
-					if mismatch := identityTypeMismatch(customerType, p.Identity); mismatch != "" {
+				r.Identity = &identity
+				if !typeFailed {
+					if mismatch := identityTypeMismatch(r.Type, r.Identity); mismatch != "" {
 						fail("legalType", mismatch)
 					}
 				}
 			}
 		}
+	} else if cur != nil {
+		r.Identity = cur.Identity
 	}
 
+	// Contact info.
 	if l.has(csvGroupContact) {
-		p.HasContact = true
-		info, ciErrs := validateContactInfo(raw("email"), raw("phone"), raw("website"))
+		r.HasContact = true
+		cc := func(get func() *string) func() string {
+			return derefCur(func() *string {
+				if cur == nil {
+					return nil
+				}
+				return get()
+			})
+		}
+		info, ciErrs := validateContactInfo(
+			ptr(value("email", cc(func() *string { return cur.Contact.Email }))),
+			ptr(value("phone", cc(func() *string { return cur.Contact.Phone }))),
+			ptr(value("website", cc(func() *string { return cur.Contact.Website }))),
+		)
 		failAll(func(field string) string { return field }, ciErrs)
-		p.Contact = info
+		r.Contact = info
 	}
 
-	p.HasPostal, p.Postal = l.address(rec, csvGroupPostal, "postal", failAll)
-	p.HasInvoice, p.Invoice = l.address(rec, csvGroupInvoice, "invoice", failAll)
+	// The two primary addresses.
+	var curPostal, curInvoice *addressSnapshot
+	if cur != nil {
+		curPostal, curInvoice = cur.Postal, cur.Invoice
+	}
+	r.HasPostal, r.Postal = l.address(p, csvGroupPostal, "postal", curPostal, failAll)
+	r.HasInvoice, r.Invoice = l.address(p, csvGroupInvoice, "invoice", curInvoice, failAll)
 
+	// The billing profile.
 	if l.has(csvGroupBilling) {
-		p.HasBilling = true
+		r.HasBilling = true
+		var current billingProfile
+		if cur != nil {
+			current = cur.Billing
+		}
 		req := gen.PutCustomerBillingProfileRequest{
-			InvoiceEmail: raw("invoiceEmail"), ReminderEmail: raw("reminderEmail"), Currency: raw("currency"),
-			Language: raw("language"), InvoiceDelivery: raw("invoiceDelivery"), ReminderDelivery: raw("reminderDelivery"),
-			PeppolId: raw("peppolId"), Gln: raw("gln"), BuyerReference: raw("buyerReference"),
+			InvoiceEmail:     ptr(value("invoiceEmail", derefCur(func() *string { return current.InvoiceEmail }))),
+			ReminderEmail:    ptr(value("reminderEmail", derefCur(func() *string { return current.ReminderEmail }))),
+			Currency:         ptr(value("currency", derefCur(func() *string { return current.Currency }))),
+			Language:         ptr(value("language", derefCur(func() *string { return current.Language }))),
+			InvoiceDelivery:  ptr(value("invoiceDelivery", derefCur(func() *string { return current.InvoiceDelivery }))),
+			ReminderDelivery: ptr(value("reminderDelivery", derefCur(func() *string { return current.ReminderDelivery }))),
+			PeppolId:         ptr(value("peppolId", derefCur(func() *string { return current.PeppolID }))),
+			Gln:              ptr(value("gln", derefCur(func() *string { return current.Gln }))),
+			BuyerReference:   ptr(value("buyerReference", derefCur(func() *string { return current.BuyerReference }))),
 		}
-		if v := trimmed("paymentTermsDays"); v != "" {
-			if n, err := strconv.ParseInt(v, 10, 32); err != nil {
-				fail("paymentTermsDays", fmt.Sprintf("Payment terms must be a whole number of days, but was '%s'", v))
-			} else {
-				days := int32(n)
-				req.PaymentTermsDays = &days
+		if l.mapped("paymentTermsDays") {
+			if v := strings.TrimSpace(p.Raw["paymentTermsDays"]); v != "" {
+				if n, err := strconv.ParseInt(v, 10, 32); err != nil {
+					fail("paymentTermsDays", fmt.Sprintf("Payment terms must be a whole number of days, but was '%s'", v))
+				} else {
+					days := int32(n)
+					req.PaymentTermsDays = &days
+				}
 			}
+		} else {
+			req.PaymentTermsDays = current.PaymentTermsDays
 		}
-		if v := trimmed("defaultBillRate"); v != "" {
-			if rate, ok := parseCSVDecimal(v); !ok {
-				fail("defaultBillRate", fmt.Sprintf("A default bill rate must be a number, but was '%s'", v))
-			} else {
-				req.DefaultBillRate = &rate
+		if l.mapped("defaultBillRate") {
+			if v := strings.TrimSpace(p.Raw["defaultBillRate"]); v != "" {
+				if rate, ok := parseCSVDecimal(v); !ok {
+					fail("defaultBillRate", fmt.Sprintf("A default bill rate must be a number, but was '%s'", v))
+				} else {
+					req.DefaultBillRate = &rate
+				}
 			}
+		} else {
+			req.DefaultBillRate = current.DefaultBillRate
 		}
 		profile, bErrs := validateBillingProfile(req)
 		failAll(func(field string) string { return field }, bErrs)
-		p.Billing = profile
+		r.Billing = profile
 	}
 
-	if l.has(csvGroupMembership) {
-		p.HasGroup = true
-		if name := trimmed("group"); name != "" {
+	// The group and the tags: vocabulary by name, never a word created.
+	if l.mapped("group") {
+		r.HasGroup = true
+		if name := strings.TrimSpace(p.Raw["group"]); name != "" {
 			if g, ok := vocab.groups[vocabKey(name)]; ok {
-				p.Group = &g
+				r.Group = &g
 			} else {
 				fail("group", fmt.Sprintf("No customer group is named '%s'", name))
 			}
 		}
 	}
-
-	if l.has(csvGroupTags) {
+	if l.mapped("tags") {
 		// The cell is the export's: names joined by csvTagSeparator, which no
 		// tag name may hold (validateTagName), so every piece is one name.
-		p.HasTags = true
+		r.HasTags = true
 		seen := map[uuid.UUID]bool{}
-		for _, part := range strings.Split(l.cell(rec, "tags"), csvTagSeparator) {
+		for _, part := range strings.Split(p.Raw["tags"], csvTagSeparator) {
 			name := strings.TrimSpace(part)
 			if name == "" {
 				continue
@@ -552,46 +538,69 @@ func (l importLayout) plan(rec csvRecord, vocab importVocabulary) (importPlan, [
 			}
 			if !seen[tag.TagID] {
 				seen[tag.TagID] = true
-				p.Tags = append(p.Tags, tag)
+				r.Tags = append(r.Tags, tag)
 			}
 		}
 	}
 
-	sort.SliceStable(errs, func(i, j int) bool { return l.position(errs[i].Column) < l.position(errs[j].Column) })
-	return p, errs
+	if !strict {
+		kept := errs[:0]
+		for _, e := range errs {
+			if e.Field != "" && l.mapped(e.Field) {
+				kept = append(kept, e)
+			}
+		}
+		errs = kept
+	}
+	return r, errs
 }
 
-// address reads one address group (design D3): not in the file, left alone;
-// every cell blank, "no primary address of this type" (importPrimaryAddress
-// says when that can be); otherwise validateAddress's request, its field
-// errors keyed back to the file's columns ("line1" → "postalLine1").
-func (l importLayout) address(rec csvRecord, g csvGroup, addrType string, failAll func(func(string) string, map[string][]string)) (bool, *validatedAddress) {
+// address reads one address group (design D3): no field of it mapped, left
+// alone; the mapped fields laid over the address on file; every resulting
+// cell blank, "no primary address of this type" (importPrimaryAddress says
+// when that can be); otherwise validateAddress's request, its field errors
+// keyed back to the import's fields ("line1" → "postalLine1").
+func (l importLayout) address(p importPlan, g csvGroup, addrType string, cur *addressSnapshot, failAll func(func(string) string, map[string][]string)) (bool, *validatedAddress) {
 	if !l.has(g) {
 		return false, nil
 	}
-	column := func(field string) string { return addrType + strings.ToUpper(field[:1]) + field[1:] }
-	value := func(field string) string { return l.cell(rec, column(field)) }
-	optional := func(field string) *string { v := value(field); return &v }
-	if allBlank([]string{value("line1"), value("line2"), value("postalCode"), value("city"), value("region"), value("country")}) {
+	field := func(part string) string { return addrType + strings.ToUpper(part[:1]) + part[1:] }
+	value := func(part string, current string) string {
+		if v, ok := p.Raw[field(part)]; ok {
+			return v
+		}
+		if cur != nil {
+			return current
+		}
+		return ""
+	}
+	var line1, line2, postalCode, city, region, country string
+	if cur != nil {
+		line1, line2, postalCode, city, region, country = cur.Line1, deref(cur.Line2), deref(cur.PostalCode), deref(cur.City), deref(cur.Region), cur.Country
+	}
+	line1, line2, postalCode = value("line1", line1), value("line2", line2), value("postalCode", postalCode)
+	city, region, country = value("city", city), value("region", region), value("country", country)
+	if allBlank([]string{line1, line2, postalCode, city, region, country}) {
 		return true, nil
 	}
+	optional := func(v string) *string { return &v }
 	parsed, errs := validateAddress(gen.CustomerAddressRequest{
-		Type: addrType, Line1: value("line1"), Line2: optional("line2"), PostalCode: optional("postalCode"),
-		City: optional("city"), Region: optional("region"), Country: value("country"),
+		Type: addrType, Line1: line1, Line2: optional(line2), PostalCode: optional(postalCode),
+		City: optional(city), Region: optional(region), Country: country,
 	})
-	failAll(column, errs)
+	failAll(field, errs)
 	if errs != nil {
 		return true, nil
 	}
 	return true, &parsed
 }
 
-// importOptions is what every row of one request shares, resolved before the
+// importOptions is what every row of one run shares, resolved before the
 // first row's transaction opens.
 type importOptions struct {
-	act                    actor
-	allowDuplicateIdentity bool
-	nameHolders            bool
+	act         actor
+	vocab       importVocabulary
+	nameHolders bool
 }
 
 // importOutcome is what a row that succeeded did.
@@ -602,60 +611,118 @@ const (
 	importUpdated
 )
 
-// importRow writes one planned row inside the transaction txq belongs to.
-// Anything wrong that only the database can tell — an unknown number, a
-// duplicate identity, a type change — is an importRowRefusal, which rolls the
-// row back; any other error is the request's.
-func (s *server) importRow(ctx context.Context, txq *store.Queries, p importPlan, o importOptions) (importOutcome, error) {
-	now := s.deps.Clock()
-	if p.CustomerNumber == nil {
-		id, err := s.importCreate(ctx, txq, p, o, now)
-		if err != nil {
-			return 0, err
-		}
-		return importCreated, s.importRelations(ctx, txq, id, p, o, now)
+// importRow writes one planned row inside the transaction txq belongs to:
+// the customer it matches is found and updated, or none is and one is
+// created, as the mode says. Anything wrong that only the database can tell —
+// an unknown number, two holders of an identity, a duplicate identity, a type
+// change, a group that needs a line — is an importRowRefusal, which rolls the
+// row back; any other error is the run's.
+func (s *server) importRow(ctx context.Context, txq *store.Queries, l importLayout, p importPlan, o importOptions) (importOutcome, int32, error) {
+	if l.creates() {
+		id, err := s.importCreate(ctx, txq, l, p, o)
+		return importCreated, id, err
 	}
-	id, err := s.importUpdate(ctx, txq, p, o, now)
+	id, found, err := s.importFind(ctx, txq, l, p)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return importUpdated, s.importRelations(ctx, txq, id, p, o, now)
+	if !found {
+		// In createOrUpdate a row that names nobody creates — unless it names
+		// a customer number nobody has: a blank number is a new customer, a
+		// number that is not on file is a typo, never a customer with another
+		// number. A legal id nobody holds is the case the mode is for.
+		if l.mode == gen.Update || (l.matchBy == gen.CustomerNumber && p.CustomerNumber != nil) {
+			return 0, 0, refuseRow(p.Row, string(l.matchBy), importNoMatchMessage(l, p))
+		}
+		id, err := s.importCreate(ctx, txq, l, p, o)
+		return importCreated, id, err
+	}
+	err = s.importUpdate(ctx, txq, l, p, o, id)
+	return importUpdated, id, err
 }
 
-// importCreate is POST /customers for a row: its name, type, status, identity
-// and contact info in the create's own insert.
-func (s *server) importCreate(ctx context.Context, txq *store.Queries, p importPlan, o importOptions, now time.Time) (int32, error) {
-	customerType, status := p.Type, p.Status
-	if customerType == "" {
-		customerType = "business"
+// importNoMatchMessage is the update-mode refusal of a row that found no
+// customer, in the match key's own words.
+func importNoMatchMessage(l importLayout, p importPlan) string {
+	if l.matchBy == gen.CustomerNumber {
+		if p.CustomerNumber == nil {
+			return "This row has no customer number to find the customer by"
+		}
+		return fmt.Sprintf("No customer has number %d", *p.CustomerNumber)
 	}
-	if status == "" {
-		status = "active"
+	if p.MatchIdentity == nil {
+		return "This row has no legal id to find the customer by"
 	}
+	return fmt.Sprintf("No customer has the legal identity %s %s", strings.ToUpper(p.MatchIdentity.Country), p.MatchIdentity.ID)
+}
+
+// importFind is the customer a row matches (design D3): by number, or by legal
+// identity — the duplicate guard's own query, every status included — where
+// two holders are the row's error naming both, since the file cannot say
+// which it means.
+func (s *server) importFind(ctx context.Context, txq *store.Queries, l importLayout, p importPlan) (int32, bool, error) {
+	switch l.matchBy {
+	case gen.CustomerNumber:
+		if p.CustomerNumber == nil {
+			return 0, false, nil
+		}
+		id, err := txq.CustomerIDByNumber(ctx, *p.CustomerNumber)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, false, nil
+		}
+		return id, err == nil, err
+	default:
+		if p.MatchIdentity == nil {
+			return 0, false, nil
+		}
+		rows, err := txq.CustomersByLegalIdentity(ctx, store.CustomersByLegalIdentityParams{
+			Country: p.MatchIdentity.Country, LegalID: p.MatchIdentity.ID, ExcludeID: 0,
+		})
+		if err != nil {
+			return 0, false, err
+		}
+		switch len(rows) {
+		case 0:
+			return 0, false, nil
+		case 1:
+			return rows[0].ID, true, nil
+		}
+		holders := make([]string, 0, len(rows))
+		for _, r := range rows {
+			holders = append(holders, fmt.Sprintf("%d %s", r.CustomerNumber, r.Name))
+		}
+		return 0, false, refuseRow(p.Row, "legalId", fmt.Sprintf("%d customers have this legal identity (%s); the file cannot say which one is meant", len(rows), strings.Join(holders, ", ")))
+	}
+}
+
+// importCreate is POST /customers for a row: every unmapped field blank, the
+// row validated whole (strict), its name, type, status, identity and contact
+// info in the create's own insert, and the rest through importRelations.
+func (s *server) importCreate(ctx context.Context, txq *store.Queries, l importLayout, p importPlan, o importOptions) (int32, error) {
+	r, errs := l.resolve(p, nil, o.vocab, true)
+	if len(errs) > 0 {
+		return 0, refuseRowAll(l.sorted(errs))
+	}
+	now := s.deps.Clock()
 	created, conflict, err := s.insertNewCustomer(ctx, txq,
-		newCustomer{Name: p.Name, Status: status, Type: customerType, Identity: p.Identity, Contact: p.Contact},
-		p.Identity != nil && !o.allowDuplicateIdentity, o.nameHolders, now, o.act)
+		newCustomer{Name: r.Name, Status: r.Status, Type: r.Type, Identity: r.Identity, Contact: r.Contact},
+		r.Identity != nil && !l.allowDuplicateIdentity, o.nameHolders, now, o.act)
 	if errors.Is(err, errDuplicateIdentity) {
 		return 0, refuseRow(p.Row, "legalId", duplicateIdentityRowMessage(conflict))
 	}
 	if err != nil {
 		return 0, err
 	}
-	return created.ID, nil
+	return created.ID, s.importRelations(ctx, txq, created.ID, p.Row, customerState{}, r, o)
 }
 
 // importUpdate is PUT /customers/{id} and PUT …/contact-info for a row, on the
-// customer its number names, under that customer's row lock — the lock every
-// address and tag write takes first, so nothing a colleague does lands between
-// a read here and the write it decides.
-func (s *server) importUpdate(ctx context.Context, txq *store.Queries, p importPlan, o importOptions, now time.Time) (int32, error) {
-	id, err := txq.CustomerIDByNumber(ctx, *p.CustomerNumber)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, refuseRow(p.Row, "customerNumber", fmt.Sprintf("No customer has number %d", *p.CustomerNumber))
-	}
-	if err != nil {
-		return 0, err
-	}
+// customer the row matched, under that customer's row lock — the lock every
+// address and tag write takes first, so nothing a colleague does lands
+// between a read here and the write it decides. What is on file is read
+// first, the row laid over it (resolve, strict), and only what differs is
+// written.
+func (s *server) importUpdate(ctx context.Context, txq *store.Queries, l importLayout, p importPlan, o importOptions, id int32) error {
 	if _, err := lockWritableCustomer(ctx, txq, id); isReadOnlyCustomer(err) {
 		// A customer merged away or anonymised takes no more changes (customers
 		// merge design D2, GDPR design D4) — this row would otherwise restore it,
@@ -663,126 +730,165 @@ func (s *server) importUpdate(ctx context.Context, txq *store.Queries, p importP
 		// kept for bookkeeping. The row is refused; a merged-away customer's
 		// survivor is the one to import it under.
 		if isAnonymisedRefusal(err) {
-			return 0, refuseRow(p.Row, "customerNumber", fmt.Sprintf("Customer %d was anonymised and takes no more changes", *p.CustomerNumber))
+			return refuseRow(p.Row, string(l.matchBy), fmt.Sprintf("Customer %s was anonymised and takes no more changes", importMatchPhrase(l, p)))
 		}
-		return 0, refuseRow(p.Row, "customerNumber", fmt.Sprintf("Customer %d was merged into %s and takes no more changes; use that customer's number instead",
-			*p.CustomerNumber, mergedAwayInto(err)))
+		return refuseRow(p.Row, string(l.matchBy), fmt.Sprintf("Customer %s was merged into %s and takes no more changes; use that customer instead",
+			importMatchPhrase(l, p), mergedAwayInto(err)))
 	} else if err != nil {
-		return 0, err
+		return err
 	}
 	existing, err := txq.GetCustomer(ctx, id)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	if p.Type != "" && p.Type != existing.Type {
-		return 0, refuseRow(p.Row, "type", fmt.Sprintf("A customer's type is changed on its own, never by an import; this row says '%s', but customer %d is '%s'", p.Type, existing.CustomerNumber, existing.Type))
+	cur, err := s.importCurrentState(ctx, txq, l, id, existing)
+	if err != nil {
+		return err
+	}
+	r, errs := l.resolve(p, &cur, o.vocab, true)
+	if len(errs) > 0 {
+		return refuseRowAll(l.sorted(errs))
+	}
+	if l.mapped("type") && r.Type != existing.Type {
+		return refuseRow(p.Row, "type", fmt.Sprintf("A customer's type is changed on its own, never by an import; this row says '%s', but customer %d is '%s'", r.Type, existing.CustomerNumber, existing.Type))
 	}
 
+	now := s.deps.Clock()
 	before := customerCoreFrom(existing)
-	after := before
-	if p.HasCore {
-		if p.Name != "" {
-			after.Name = p.Name
-		}
-		if p.Status != "" {
-			after.Status = p.Status
-		}
-	}
-	if p.HasIdentity {
-		after.Identity = importedIdentity(before.Identity, p.Identity)
-		if mismatch := identityTypeMismatch(existing.Type, after.Identity); mismatch != "" {
-			return 0, refuseRow(p.Row, "legalType", mismatch)
-		}
+	after := customerCore{Name: r.Name, Status: r.Status, Identity: before.Identity}
+	if r.HasIdentity {
+		after.Identity = importedIdentity(before.Identity, r.Identity)
 	}
 	if !customerCoreEqual(before, after) {
-		duplicateCheck := after.Identity != nil && !identityCountryAndIDEqual(before.Identity, after.Identity) && !o.allowDuplicateIdentity
+		duplicateCheck := after.Identity != nil && !identityCountryAndIDEqual(before.Identity, after.Identity) && !l.allowDuplicateIdentity
 		if _, conflict, err := s.writeCustomerCore(ctx, txq, id, existing.Type, before, after, nil, duplicateCheck, o.nameHolders, now, o.act); err != nil {
 			if errors.Is(err, errDuplicateIdentity) {
-				return 0, refuseRow(p.Row, "legalId", duplicateIdentityRowMessage(conflict))
+				return refuseRow(p.Row, "legalId", duplicateIdentityRowMessage(conflict))
 			}
-			return 0, err
+			return err
 		}
 	}
-	if p.HasContact {
-		current := contactInfoFromRow(existing.Email, existing.Phone, existing.Website)
-		if !contactInfoEqual(current, p.Contact) {
-			if _, err := writeContactInfo(ctx, txq, id, current, p.Contact, nil, now, o.act); err != nil {
-				return 0, err
-			}
+	if r.HasContact && !contactInfoEqual(cur.Contact, r.Contact) {
+		if _, err := writeContactInfo(ctx, txq, id, cur.Contact, r.Contact, nil, now, o.act); err != nil {
+			return err
 		}
 	}
-	return id, nil
+	return s.importRelations(ctx, txq, id, p.Row, cur, r, o)
+}
+
+// importMatchPhrase names the customer a row matched, as the row named it.
+func importMatchPhrase(l importLayout, p importPlan) string {
+	if l.matchBy == gen.CustomerNumber && p.CustomerNumber != nil {
+		return strconv.FormatInt(*p.CustomerNumber, 10)
+	}
+	if p.MatchIdentity != nil {
+		return "with legal id " + p.MatchIdentity.ID
+	}
+	return "this row names"
+}
+
+// importCurrentState is what is on file for the groups the mapping touches,
+// read under the customer's lock: the row's own fields always, each other
+// group only when a field of it is mapped, so a row that maps the email alone
+// reads nothing about addresses or billing.
+func (s *server) importCurrentState(ctx context.Context, txq *store.Queries, l importLayout, id int32, existing store.GetCustomerRow) (customerState, error) {
+	cur := customerState{
+		Name: existing.Name, Type: existing.Type, Status: existing.Status,
+		Identity: identityFromRow(existing.LegalCountry, existing.LegalID, existing.LegalName, existing.LegalSource, existing.LegalType),
+		Contact:  contactInfoFromRow(existing.Email, existing.Phone, existing.Website),
+	}
+	for _, addr := range []struct {
+		group csvGroup
+		typ   string
+		into  **addressSnapshot
+	}{{csvGroupPostal, "postal", &cur.Postal}, {csvGroupInvoice, "invoice", &cur.Invoice}} {
+		if !l.has(addr.group) {
+			continue
+		}
+		row, err := txq.PrimaryCustomerAddressOfType(ctx, store.PrimaryCustomerAddressOfTypeParams{CustomerID: id, Type: addr.typ})
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return customerState{}, err
+		}
+		snapshot := addressSnapshotFromRow(row)
+		*addr.into = &snapshot
+	}
+	if l.has(csvGroupBilling) {
+		row, err := txq.GetCustomerBillingProfile(ctx, id)
+		if err != nil {
+			return customerState{}, err
+		}
+		rate, err := floatPtrFromNumeric(row.DefaultBillRate)
+		if err != nil {
+			return customerState{}, err
+		}
+		cur.Billing = billingProfileFromRow(row.InvoiceEmail, row.ReminderEmail, row.PaymentTermsDays, row.Currency, row.Language,
+			row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference, rate)
+	}
+	if l.mapped("group") {
+		membership, err := txq.CustomerGroupMembership(ctx, id)
+		if err != nil {
+			return customerState{}, err
+		}
+		if membership.GroupID != nil {
+			cur.Group = &groupSnapshot{GroupID: *membership.GroupID, Name: deref(membership.GroupName)}
+		}
+	}
+	if l.mapped("tags") {
+		links, err := txq.CustomerTagsForCustomers(ctx, []int32{id})
+		if err != nil {
+			return customerState{}, err
+		}
+		cur.Tags = make([]tagSnapshot, 0, len(links))
+		for _, link := range links {
+			cur.Tags = append(cur.Tags, tagSnapshot{TagID: link.ID, Name: link.Name})
+		}
+	}
+	return cur, nil
 }
 
 // importRelations is everything a create does not insert with the row, and an
 // update does after it: the two primary addresses, the billing profile, the
-// group and the tags — each read under the transaction, compared, and written
-// through its endpoint's function only when it differs, so a row that repeats
-// what is on file writes nothing.
-func (s *server) importRelations(ctx context.Context, txq *store.Queries, id int32, p importPlan, o importOptions, now time.Time) error {
-	if p.HasPostal {
-		if err := importPrimaryAddress(ctx, txq, id, "postal", p.Postal, now, o.act); err != nil {
-			return addressRefusal(p.Row, "postalLine1", err)
+// group and the tags — each compared with what is on file (cur, empty for a
+// create) and written through its endpoint's function only when it differs,
+// so a row that repeats what is on file writes nothing.
+func (s *server) importRelations(ctx context.Context, txq *store.Queries, id int32, row int, cur customerState, r resolvedRow, o importOptions) error {
+	now := s.deps.Clock()
+	if r.HasPostal {
+		if err := importPrimaryAddress(ctx, txq, id, "postal", r.Postal, now, o.act); err != nil {
+			return addressRefusal(row, "postalLine1", err)
 		}
 	}
-	if p.HasInvoice {
-		if err := importPrimaryAddress(ctx, txq, id, "invoice", p.Invoice, now, o.act); err != nil {
-			return addressRefusal(p.Row, "invoiceLine1", err)
+	if r.HasInvoice {
+		if err := importPrimaryAddress(ctx, txq, id, "invoice", r.Invoice, now, o.act); err != nil {
+			return addressRefusal(row, "invoiceLine1", err)
 		}
 	}
-	if p.HasBilling {
-		row, err := txq.GetCustomerBillingProfile(ctx, id)
-		if err != nil {
+	if r.HasBilling && !billingProfileEqual(cur.Billing, r.Billing) {
+		if _, err := writeBillingProfile(ctx, txq, id, cur.Billing, r.Billing, nil, now, o.act); err != nil {
 			return err
 		}
-		rate, err := floatPtrFromNumeric(row.DefaultBillRate)
-		if err != nil {
-			return err
-		}
-		current := billingProfileFromRow(row.InvoiceEmail, row.ReminderEmail, row.PaymentTermsDays, row.Currency, row.Language,
-			row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference, rate)
-		if !billingProfileEqual(current, p.Billing) {
-			if _, err := writeBillingProfile(ctx, txq, id, current, p.Billing, nil, now, o.act); err != nil {
-				return err
+	}
+	if r.HasGroup && !uuidPtrEqual(groupIDOf(cur.Group), groupIDOf(r.Group)) {
+		if _, err := writeCustomerGroup(ctx, txq, id, cur.Group, r.Group, nil, now, o.act); err != nil {
+			if db.IsForeignKeyViolation(err, customersGroupFK) {
+				return refuseRow(row, "group", groupNotFound(r.Group.GroupID))
 			}
-		}
-	}
-	if p.HasGroup {
-		membership, err := txq.CustomerGroupMembership(ctx, id)
-		if err != nil {
 			return err
 		}
-		var current *groupSnapshot
-		if membership.GroupID != nil {
-			current = &groupSnapshot{GroupID: *membership.GroupID, Name: deref(membership.GroupName)}
-		}
-		if !uuidPtrEqual(groupIDOf(current), groupIDOf(p.Group)) {
-			if _, err := writeCustomerGroup(ctx, txq, id, current, p.Group, nil, now, o.act); err != nil {
-				if db.IsForeignKeyViolation(err, customersGroupFK) {
-					return refuseRow(p.Row, "group", groupNotFound(p.Group.GroupID))
-				}
-				return err
-			}
-		}
 	}
-	if p.HasTags {
-		links, err := txq.CustomerTagsForCustomers(ctx, []int32{id})
-		if err != nil {
-			return err
-		}
-		current := make([]tagSnapshot, 0, len(links))
-		for _, link := range links {
-			current = append(current, tagSnapshot{TagID: link.ID, Name: link.Name})
-		}
-		added, removed := tagSetDiff(current, p.Tags)
+	if r.HasTags {
+		added, removed := tagSetDiff(cur.Tags, r.Tags)
 		if len(added) > 0 || len(removed) > 0 {
-			wanted := make([]uuid.UUID, 0, len(p.Tags))
-			for _, tag := range p.Tags {
+			wanted := make([]uuid.UUID, 0, len(r.Tags))
+			for _, tag := range r.Tags {
 				wanted = append(wanted, tag.TagID)
 			}
 			if err := replaceCustomerTags(ctx, txq, id, wanted, added, removed, now, o.act); err != nil {
 				if db.IsForeignKeyViolation(err, customerTagsTagFK) {
-					return refuseRow(p.Row, "tags", "A tag this row names was deleted while the file was being imported")
+					return refuseRow(row, "tags", "A tag this row names was deleted while the file was being imported")
 				}
 				return err
 			}
@@ -849,15 +955,15 @@ func (e otherAddressesOfType) Error() string {
 }
 
 // addressRefusal is the address cap, and a blank address group that cannot
-// clear, as the row's error on the group's first column; anything else passes
+// clear, as the row's error on the group's first field; anything else passes
 // through.
-func addressRefusal(row int, column string, err error) error {
+func addressRefusal(row int, field string, err error) error {
 	if errors.Is(err, errAddressCapReached) {
-		return refuseRow(row, column, addressCapMessage)
+		return refuseRow(row, field, addressCapMessage)
 	}
 	var others otherAddressesOfType
 	if errors.As(err, &others) {
-		return refuseRow(row, column, fmt.Sprintf(
+		return refuseRow(row, field, fmt.Sprintf(
 			"This customer has %d %s addresses; the file can only describe the primary one — remove the others by hand before clearing it",
 			others.count, others.addrType))
 	}
@@ -891,7 +997,7 @@ func customerCoreEqual(a, b customerCore) bool {
 }
 
 // importedIdentity is the identity a row asks for. A new one is manual
-// (design D1); a row repeating the identity on file in all four of the file's
+// (design D3); a row repeating the identity on file in all four of the file's
 // fields keeps the identity on file, source included, so re-importing an
 // export never turns a Brreg pick into a manual entry.
 func importedIdentity(current, row *legalIdentity) *legalIdentity {
@@ -915,214 +1021,64 @@ func duplicateIdentityRowMessage(problem *gen.CustomerConflictProblem) string {
 		}
 		message += " (" + strings.Join(holders, ", ") + ")"
 	}
-	return message + ". Import with allowDuplicateIdentity=true to keep both."
-}
-
-// importTally is what the rows did.
-type importTally struct {
-	rows, created, updated, failed int
-	errs                           []importError
-}
-
-func (t importTally) result(dryRun bool) gen.CustomerImportResult {
-	errs := make([]gen.CustomerImportError, 0, len(t.errs))
-	for _, e := range t.errs {
-		item := gen.CustomerImportError{Row: int32(e.Row), Message: e.Message}
-		if e.Column != "" {
-			column := e.Column
-			item.Column = &column
-		}
-		errs = append(errs, item)
-	}
-	return gen.CustomerImportResult{
-		DryRun: dryRun, Rows: int32(t.rows), Created: int32(t.created), Updated: int32(t.updated),
-		Failed: int32(t.failed), Errors: errs,
-	}
-}
-
-// importRows runs every row in file order. Every row is planned first — its
-// cells validated, no database — and then the file's own rows are checked
-// against each other (inFileDuplicates) before any row is applied, so a dry
-// run, whose rows cannot see each other's writes, still refuses what the real
-// run would. A refusal is that row's failure and the next row runs; any other
-// error ends the request.
-//
-// So does a cancelled request, checked before each row's transaction opens:
-// a caller that went away — a Check abandoned, a tab closed, a proxy that
-// gave up — has nobody left to read the result, and a run at the cap would
-// otherwise go on for half a minute holding the one-import lock, the next
-// Check refused until it ended. The rows already run stay as they are (a real
-// run's committed, a dry run's rolled back); the deferred unlock frees the
-// lock as the handler returns.
-func importRows(ctx context.Context, file csvFile, l importLayout, vocab importVocabulary, allowDuplicateIdentity bool, apply func(importPlan) (importOutcome, error)) (importTally, error) {
-	tally := importTally{rows: len(file.Rows), errs: []importError{}}
-	plans := make([]importPlan, len(file.Rows))
-	planErrs := make([][]importError, len(file.Rows))
-	for i, rec := range file.Rows {
-		plans[i], planErrs[i] = l.plan(rec, vocab)
-	}
-	if !allowDuplicateIdentity {
-		inFileDuplicates(plans, planErrs)
-	}
-	for i, p := range plans {
-		errs := planErrs[i]
-		if len(errs) == 0 {
-			if err := ctx.Err(); err != nil {
-				return importTally{}, err
-			}
-			outcome, err := apply(p)
-			var refused *importRowRefusal
-			switch {
-			case errors.As(err, &refused):
-				errs = refused.errs
-			case err != nil:
-				return importTally{}, err
-			case outcome == importCreated:
-				tally.created++
-			default:
-				tally.updated++
-			}
-		}
-		if len(errs) > 0 {
-			tally.failed++
-			for _, e := range errs {
-				e.Column = l.spelt(e.Column)
-				tally.errs = append(tally.errs, e)
-			}
-		}
-	}
-	return tally, nil
-}
-
-// inFileDuplicates is the duplicate-legal-identity guard (customers foundation
-// design D6) within one file (customers import/export design D3): of two rows
-// that create customers with the same identity — country and id, the guard's
-// own comparison — the second is refused on legalId, in both runs alike. The
-// database check cannot see it in a dry run, whose rows each roll back before
-// the next one runs; this check needs no database, so the two runs agree. A
-// row whose cells already failed takes no identity for itself.
-func inFileDuplicates(plans []importPlan, planErrs [][]importError) {
-	first := map[string]int{}
-	for i, p := range plans {
-		if p.CustomerNumber != nil || p.Identity == nil || len(planErrs[i]) > 0 {
-			continue
-		}
-		key := p.Identity.Country + "\x00" + p.Identity.ID
-		if row, seen := first[key]; seen {
-			planErrs[i] = []importError{{Row: p.Row, Column: "legalId", Message: fmt.Sprintf(
-				"Row %d of this file already creates a customer with this legal identity. Import with allowDuplicateIdentity=true to keep both.", row)}}
-			continue
-		}
-		first[key] = p.Row
-	}
+	return message + ". Tick 'Allow a customer to share a legal identity' to keep both."
 }
 
 // errImportDryRun rolls a dry-run row's transaction back once the row ran.
 var errImportDryRun = errors.New("customers: import dry run rolled back")
 
-// importFile runs the file a transaction per row — the real run and the dry
-// run alike, the dry run's rolled back at its end instead of committed, so a
-// checked row takes the very statements, locks and events an imported one
-// does, and keeps none of them: the customer-number counter's increment rolls
-// back with the rest (the row ids' identity sequences do not, so internal ids
-// skip), and no lock outlives its row. Each row is retried on the
-// deadlock a tag replace can lose to a tag delete (tagWriteAttempts, tags.go),
-// the tags PUT's own retry, in both runs.
-func (s *server) importFile(ctx context.Context, file csvFile, l importLayout, vocab importVocabulary, o importOptions, dryRun bool) (importTally, error) {
-	return importRows(ctx, file, l, vocab, o.allowDuplicateIdentity, func(p importPlan) (importOutcome, error) {
-		var outcome importOutcome
-		err := db.RetrySerializable(ctx, tagWriteAttempts, func() error {
-			return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-				var err error
-				outcome, err = s.importRow(ctx, store.New(tx), p, o)
-				if err == nil && dryRun {
-					return errImportDryRun
-				}
+// importRowResult is what one row did: its outcome, the customer it made or
+// changed, and the errors that refused it.
+type importRowResult struct {
+	Outcome    string
+	CustomerID *int32
+	Errs       []importError
+}
+
+// runImportRow runs one row (design D5) in its own transaction on `on`, the
+// real run and the dry run alike — the dry run's rolled back at its end
+// instead of committed, so a checked row takes the very statements, locks and
+// events an imported one does, and keeps none of them (the customer-number
+// counter's increment rolls back with the rest; the row ids' identity
+// sequences do not, so internal ids skip). In the real run the row's outcome
+// is written inside the same transaction (WriteImportRowOutcome), so the
+// customer and its outcome commit together or not at all. Each row is retried
+// on the deadlock a tag replace can lose to a tag delete (tagWriteAttempts,
+// tags.go), the tags PUT's own retry, in both runs. A refusal is the row's
+// result; any other error is the run's.
+func (s *server) runImportRow(ctx context.Context, on db.TxBeginner, importID int32, l importLayout, p importPlan, planErrs []importError, o importOptions, dryRun bool) (importRowResult, error) {
+	if len(planErrs) > 0 {
+		return importRowResult{Outcome: "failed", Errs: planErrs}, nil
+	}
+	var result importRowResult
+	err := db.RetrySerializable(ctx, tagWriteAttempts, func() error {
+		result = importRowResult{}
+		return db.WithTx(ctx, on, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			txq := store.New(tx)
+			outcome, id, err := s.importRow(ctx, txq, l, p, o)
+			if err != nil {
 				return err
+			}
+			result.Outcome, result.CustomerID = "updated", &id
+			if outcome == importCreated {
+				result.Outcome = "created"
+			}
+			if dryRun {
+				return errImportDryRun
+			}
+			return txq.WriteImportRowOutcome(ctx, store.WriteImportRowOutcomeParams{
+				ImportID: importID, RowNo: int32(p.Row), Outcome: &result.Outcome, CustomerID: &id, Errors: nil,
 			})
 		})
-		if errors.Is(err, errImportDryRun) {
-			return outcome, nil
-		}
-		return outcome, err
 	})
-}
-
-// PostCustomersImport Import customers from CSV
-// (POST /api/v1/customers/import)
-//
-// The order of refusals is the order that costs least: the flags, the part,
-// the file's bytes, then its header against the table and the caller — every
-// one a 400 before a single row is read — and only then the rows, whose
-// problems are the result rather than a refusal.
-func (s *server) PostCustomersImport(ctx context.Context, req gen.PostCustomersImportRequestObject) (gen.PostCustomersImportResponseObject, error) {
-	dryRun, dryRunMsg := importFlag("dryRun", req.Params.DryRun, true)
-	allowDuplicateIdentity, allowMsg := importFlag("allowDuplicateIdentity", req.Params.AllowDuplicateIdentity, false)
-	if paramErrs := nonEmptyMessages(map[string]string{"dryRun": dryRunMsg, "allowDuplicateIdentity": allowMsg}); len(paramErrs) > 0 {
-		return gen.PostCustomersImport400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid query parameters", paramErrs)), nil
+	var refused *importRowRefusal
+	switch {
+	case errors.Is(err, errImportDryRun):
+		return result, nil
+	case errors.As(err, &refused):
+		return importRowResult{Outcome: "failed", Errs: l.sorted(refused.errs)}, nil
+	case err != nil:
+		return importRowResult{}, err
 	}
-
-	data, ok := importFilePart(req.Body)
-	if !ok {
-		return gen.PostCustomersImport400ApplicationProblemPlusJSONResponse(invalidImportFile(invalidImportUploadMessage)), nil
-	}
-	file, refusal := readCSVFile(data, maxImportRows)
-	if refusal != "" {
-		return gen.PostCustomersImport400ApplicationProblemPlusJSONResponse(invalidImportFile(refusal)), nil
-	}
-	layout, refusals := s.importLayoutFor(ctx, file.Header)
-	if len(refusals) > 0 {
-		return gen.PostCustomersImport400ApplicationProblemPlusJSONResponse(invalidImportFile(refusals...)), nil
-	}
-
-	// One import at a time, real or dry: a run at the cap is half a minute of
-	// row transactions, and two of them side by side — a Check clicked twice,
-	// a script in a loop — would only share the pool between them. Taken after
-	// every refusal, so a file that cannot run never holds it, and never
-	// waited for: the second caller is told, not queued behind the first.
-	if !s.importing.TryLock() {
-		return gen.PostCustomersImport409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(importRunningTitle, importRunningDetail, http.StatusConflict)), nil
-	}
-	defer s.importing.Unlock()
-
-	vocab, err := importVocabularyFor(ctx, store.New(s.deps.Pool), layout)
-	if err != nil {
-		return nil, err
-	}
-	if importHeldForTest != nil {
-		ctx = importHeldForTest(ctx)
-	}
-	tally := importTally{errs: []importError{}}
-	if len(file.Rows) > 0 {
-		// Resolved once, before any row's transaction, and only when there is a
-		// row to write (customers foundation design D1, actor.go).
-		act, err := s.actorFor(ctx, generatedFallbackActor)
-		if err != nil {
-			return nil, fmt.Errorf("customers: resolve actor: %w", err)
-		}
-		o := importOptions{
-			act:                    act,
-			allowDuplicateIdentity: allowDuplicateIdentity,
-			// Whether a duplicate may name its holder (duplicates.go). The router
-			// admits an import only with customers:view (the rule in
-			// customers.yaml), so the answer is yes whenever a row could raise it.
-			nameHolders: layout.has(csvGroupIdentity) && !allowDuplicateIdentity,
-		}
-		tally, err = s.importFile(ctx, file, layout, vocab, o, dryRun)
-		if err != nil {
-			return nil, fmt.Errorf("customers: import customers: %w", err)
-		}
-	}
-	return gen.PostCustomersImport200JSONResponse(tally.result(dryRun)), nil
-}
-
-// nonEmptyMessages is a field error map of the messages that were set.
-func nonEmptyMessages(messages map[string]string) map[string][]string {
-	errs := map[string][]string{}
-	for field, message := range messages {
-		if message != "" {
-			errs[field] = []string{message}
-		}
-	}
-	return errs
+	return result, nil
 }

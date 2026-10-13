@@ -316,11 +316,12 @@ func TestGetCustomersExport_MoreThan5000Customers_IsRefusedAskingForANarrowerFil
 // caller's import can write — the legal identity's four only with
 // customers:legal-identity-manage, the billing profile's eleven only with
 // customers:billing-manage — and nothing else, so the template sent straight
-// back by the one who downloaded it is never refused for its header.
+// back by the one who downloaded it, mapped column for column, is a mapping
+// the import accepts (customers import wizard design D3, D4).
 func TestGetCustomersImportTemplate_IsWhatItsCallerCanImport(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	importer := []string{"customers:view", "customers:create", "customers:update"}
+	importer := []string{"customers:view", "customers:create", "customers:update", "customers:import"}
 	identity := "legalCountry;legalType;legalId;legalName;"
 	billing := "invoiceEmail;reminderEmail;paymentTermsDays;currency;language;invoiceDelivery;reminderDelivery;peppolId;gln;buyerReference;defaultBillRate;"
 	for _, tc := range []struct {
@@ -344,9 +345,9 @@ func TestGetCustomersImportTemplate_IsWhatItsCallerCanImport(t *testing.T) {
 		if got, want := r.Header("Content-Disposition"), `attachment; filename="customers-import-template.csv"`; got != want {
 			t.Errorf("%s: Content-Disposition = %q, want %q", tc.name, got, want)
 		}
-		contentType, body := multipartBody(t, "file", r.Body)
-		if back := c.Do(http.MethodPost, "/api/v1/customers/import", nil, modtest.RawBody(contentType, body)); back.Status != http.StatusOK {
-			t.Errorf("%s: the template sent back: status %d body %s, want 200", tc.name, back.Status, back.Body)
+		back := uploadImport(t, c, r.Body)
+		if mapped := putMapping(t, c, back.ID, mappingByHeader(back.Header, false)); mapped.Status != http.StatusOK {
+			t.Errorf("%s: the template sent back and mapped by header: status %d body %s, want 200", tc.name, mapped.Status, mapped.Body)
 		}
 	}
 

@@ -2,7 +2,6 @@ package customers
 
 import (
 	"context"
-	"sync"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
@@ -18,11 +17,6 @@ type server struct {
 	deps         module.Deps
 	brreg        *brregClient
 	peppolLookup func(ctx context.Context, participant string) (peppol.Result, error)
-	// importing is held for the length of one POST /customers/import
-	// (import.go): one import at a time. A process mounts the module once,
-	// so this is the process's one lock — per server rather than per package
-	// only so that each test harness, its own installation, has its own.
-	importing sync.Mutex
 	// objects is the module's scoped object store (objects.go), the
 	// attachments' bytes; objectsErr the error it was built with, which every
 	// object call answers, so a process that never touches an attachment
@@ -116,10 +110,11 @@ const legalIdentityView = "customers:legal-identity-view"
 // should claim to be the only one.
 const legalIdentityManage = "customers:legal-identity-manage"
 
-// billingManage is the permission the CSV import asks for itself (customers
-// import/export design D3): a file carrying the billing profile's columns is
-// refused whole without it, because the importer may never write more than
-// its sender could by hand, and the billing profile's own PUT wants this key.
+// billingManage is the permission the import's mapping asks for itself
+// (customers import wizard design D4): a mapping writing the billing
+// profile's fields is refused without it, because the importer may never
+// write more than its sender could by hand, and the billing profile's own
+// PUT wants this key.
 // module.Router enforces it everywhere else, from x-vantigo-access.
 const billingManage = "customers:billing-manage"
 
