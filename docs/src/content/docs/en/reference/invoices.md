@@ -1045,6 +1045,44 @@ instead — snapshots are immutable, so credit and re-issue one where it matters
 A merge that re-points the draft between the directory read and the lock is
 `invoice_changed`.
 
+### The quick invoice
+
+For a job finished on site, `POST /invoices/quick` (`invoices:create` **and**
+`invoices:issue`, the rule `permission:invoices:access+invoices:create+invoices:issue`)
+creates an invoice and issues it **in one transaction** (payments and reminders design
+D17). The body is `{customerId, lines, deliveryDate?, paymentTermsDays?, yourReference?,
+note?, payOnSite?}`, one to ten lines of `{description, quantity, unit?, unitPrice,
+discountPercent?, vatCodeId}`, every field by a draft's rules ([Drafts](#drafts)); the
+delivery date is today in Oslo when omitted, and the terms and the reference fall back
+to the billing profile's and then the settings' as a create's do.
+
+Before the transaction, in order: the body (a 400 naming the field; `lines` when there
+are none or more than ten); 503 `storage_unavailable` without an object store; the
+billing profile and the customer gates (409 `customer_merged`, `customer_archived`,
+`customer_blocked`, `customer_missing`); the VAT codes on the delivery date and the
+document's bound (a 400). Then one transaction:
+
+1. inserts the draft and its lines, as a create does — the row the transaction now holds,
+   so the lock order stays the issue's: **the document, the settings row `FOR SHARE`, the
+   counter**;
+2. issues it with the issue's own body (`issueLocked`, which `POST /{id}/issue` runs
+   after its `LockInvoice`): the settings, the number, every check of
+   [Issuing](#issuing) — `seller_incomplete`, `issue_date_not_allowed`,
+   `buyer_incomplete`, the VAT checks, `kid_length_exceeded` — and the writes;
+3. records a **manual delivery `handed_over`** on the issue date, by the caller
+   ([The delivery fact](#the-delivery-fact)), since the invoice was handed over on site.
+
+**Any refusal rolls everything back**: no draft is left behind and no number is taken.
+The PDF is stored after the commit, as an issue's is. The answer is 201
+`{invoice, paymentRequestError?}`: the issued invoice, an ordinary invoice in the
+ordinary series with terms and a due date like any other. `payOnSite: true` asks for a
+Vipps payment on site; on-site payment is not offered yet, so the invoice is issued and
+`paymentRequestError` carries `on_site_payments_unavailable`. A quick invoice paid later —
+by KID through the bank, or by a pay link once the tradesperson has left — is a **credit
+sale**; paid on site with Vipps it is kontantsalg, which Invoices offers only as a
+kontantfaktura ([Vipps payments](#vipps-payments)). Meta answers
+`capabilities.canQuickInvoice`, `invoices:create` and `invoices:issue` both.
+
 ## Credit notes
 
 `POST /invoices/{id}/credit` makes a credit-note draft of an issued invoice: the
@@ -3754,6 +3792,10 @@ administrator reads when building a role, say so.
 | `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the Vipps credentials and the payment settings, the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); the attention items about the bank lines, the letters and the print batches ([Attention](#attention)). |
 
+**The quick invoice needs `invoices:create` and `invoices:issue` both** ([The quick
+invoice](#the-quick-invoice)): it creates a draft and issues it in one step, so it asks
+for what each step asks for apart.
+
 **Why reminders are `invoices:payments` and not `invoices:issue`.** A reminder is not a
 sales document and takes no number; it is credit control — what the company says it is
 owed, the very reason `invoices:payments` is sensitive. A manual delivery is
@@ -3808,7 +3850,8 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 `permission:invoices:access` and, with the key under "Also needs",
 `permission:invoices:access+invoices:create`, `permission:invoices:access+invoices:issue`,
 `permission:invoices:access+invoices:manage` and
-`permission:invoices:access+invoices:payments`.
+`permission:invoices:access+invoices:payments`; the quick invoice needs two keys,
+`permission:invoices:access+invoices:create+invoices:issue`.
 
 | Operation | Also needs | Refusals |
 | --- | --- | --- |
@@ -3852,6 +3895,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `DELETE /vat-codes/{id}/rates/{rateId}` | `invoices:manage` | 404; 409 `rate_period_not_latest`, `rate_period_last`, `rate_period_in_use` |
 | `GET /work` | `invoices:create` | 400 neither or both of `customerId` and `projectId`; 409 `work_unavailable`, `projects_unavailable`; 404 an unknown project |
 | `POST /from-work` | `invoices:create` | 400 on the field (`customerId`, `sources`, `sources[i]`, `grouping`, `revision`, `deliveryTo`, `invoiceId`, `vatCodes.<kind>`, `note`, `lines` — the document total too large); 404 the target; 409 `invoice_issued`, `too_many_sources`, the customer gates, `projects_unavailable`, `source_not_for_customer`, `source_not_selectable`, `source_not_invoiceable`, `source_changed`, `mixed_currency`, `currency_not_nok`, `too_many_lines` (with `suggestedGrouping`), a stale revision, `source_held_elsewhere` (with `heldBy`) |
+| `POST /quick` | `invoices:create` and `invoices:issue` | 400 on the field (`customerId`, `lines` — none, more than ten, or the document total too large — `lines[i].<field>`, `deliveryDate`, `paymentTermsDays`, `yourReference`, `note`); 409 the customer gates and every code under [Issuing](#issuing), nothing left behind; 503 `storage_unavailable` |
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included; a deduction line's `quantity`, `unitPrice`, `discountPercent`, `deductsInvoiceId`, `vatCodeId`, `sources`); 409 the customer gates, `deduction_duplicated` (with `linePosition`) |
 | `GET /{id}` | | 404 (an invoice draft's work is judged fresh — `source_changed`, `source_not_invoiceable` — only for a caller holding `invoices:create`) |

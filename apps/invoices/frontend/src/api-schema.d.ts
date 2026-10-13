@@ -634,6 +634,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/quick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create and issue a quick invoice
+         * @description The quick invoice (invoices payments and reminders design D17): an invoice created and issued in one transaction, for a job finished on site. Before the transaction, in order — the body by a draft's rules and one to ten lines (a 400); 503 storage_unavailable without an object store; the billing profile and the customer gates (409); the VAT codes on the delivery date (a 400). Then one transaction inserts the draft and its lines, issues it as POST /invoices/{id}/issue does — the document it holds, the settings row FOR SHARE, the number, and only then every check — and records a manual delivery handed_over on the issue date by the caller. Any refusal rolls everything back: no draft is left and no number is taken. The PDF is stored after the commit. 201 with the issued invoice.
+         */
+        post: operations["postInvoicesQuick"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/{id}": {
         parameters: {
             query?: never;
@@ -1448,6 +1468,8 @@ export interface components {
             canSend: boolean;
             /** @description invoices:issue and ehfAvailable — send an issued document to the customer as EHF over Peppol. */
             canSendEhf: boolean;
+            /** @description invoices:create and invoices:issue — create and issue a quick invoice in one step, handed over on site (invoices payments and reminders design D1, D17). */
+            canQuickInvoice: boolean;
             /** @description invoices:issue and onSitePaymentsAvailable — take a Vipps payment on site, and see an invoice's pay link and its QR code on screen (invoices payments and reminders design D1, D17). */
             canTakeOnSitePayment: boolean;
         };
@@ -3472,6 +3494,37 @@ export interface components {
         InvoicesIssueRequest: {
             /** Format: date */
             issueDate?: string;
+        };
+        /** @description One line of a quick invoice, by a draft line's rules (D5) — description 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20; vatCodeId an active code. */
+        InvoicesQuickInvoiceLine: {
+            description: string;
+            /** Format: double */
+            discountPercent?: number;
+            /** Format: double */
+            quantity: number;
+            unit?: string;
+            /** Format: double */
+            unitPrice: number;
+            /** Format: int32 */
+            vatCodeId: number;
+        };
+        /** @description POST /invoices/quick's body (invoices payments and reminders design D17): an invoice for customerId with one to ten lines, created and issued in one step. Every field is judged by a draft's rules (D4, D5). deliveryDate is today (Oslo) when omitted; an omitted paymentTermsDays is the billing profile's terms, else the settings' default, and an omitted yourReference the profile's buyer reference. note is at most 1000 characters, yourReference 100. payOnSite asks for a Vipps payment request on site after the issue; on-site payment is not offered yet, so it is answered paymentRequestError on_site_payments_unavailable beside the issued invoice. */
+        InvoicesQuickInvoiceRequest: {
+            /** Format: int32 */
+            customerId: number;
+            /** Format: date */
+            deliveryDate?: string;
+            lines: components["schemas"]["InvoicesQuickInvoiceLine"][];
+            note?: string;
+            payOnSite?: boolean;
+            /** Format: int32 */
+            paymentTermsDays?: number;
+            yourReference?: string;
+        };
+        /** @description The quick invoice's answer (D17): the issued invoice, and — when the request asked payOnSite and no payment request could be made — paymentRequestError, the refusal the request met; the invoice is issued either way. */
+        InvoicesQuickInvoiceResponse: {
+            invoice: components["schemas"]["InvoicesInvoiceResponse"];
+            paymentRequestError?: components["schemas"]["InvoicesConflictProblem"];
         };
         /** @description One (SAF-T code, category, rate) of the journal's VAT, credit notes signed negative. */
         InvoicesJournalCode: {
@@ -5981,6 +6034,75 @@ export interface operations {
             };
             /** @description Conflict — too_many_sources, a customer gate, projects_unavailable, source_not_for_customer, source_not_selectable, source_not_invoiceable, source_changed, mixed_currency, currency_not_nok, too_many_lines (with suggestedGrouping), source_held_elsewhere (with heldBy), invoice_issued (the target), or a stale revision of the target. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesQuick: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesQuickInvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — the issued invoice, with paymentRequestError when payOnSite could not be honoured. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesQuickInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it (customerId, lines — none, more than ten, or the document total too large — lines[i].<field>, deliveryDate, paymentTermsDays, yourReference, note). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — customer_merged, customer_archived, customer_blocked, customer_missing, and every refusal of the issue: seller_incomplete, issue_date_not_allowed (with allowedIssueDates), buyer_incomplete, vat_code_inactive and vat_code_not_valid (with linePosition), vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, kid_length_exceeded. Nothing is left behind. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable, before anything is written. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

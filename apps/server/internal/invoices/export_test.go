@@ -645,3 +645,14 @@ func SetVippsVerifyBeforeClear(hook func()) func() {
 	vippsVerifyBeforeClear = hook
 	return func() { vippsVerifyBeforeClear = nil }
 }
+
+// SetQuickAfterInsert installs a hook the quick invoice calls inside its
+// transaction right after its draft and lines are inserted and before the
+// issue, with the new document's id, and answers the function that removes
+// it. A test parks the quick invoice there, or reads from outside that the
+// draft is not yet visible. A test using it does not run in parallel: the
+// hook is the package's.
+func SetQuickAfterInsert(hook func(ctx context.Context, invoiceID int64) error) func() {
+	quickAfterInsert = hook
+	return func() { quickAfterInsert = nil }
+}

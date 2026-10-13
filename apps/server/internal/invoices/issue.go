@@ -312,227 +312,12 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			refusal = ptr(invoiceIssued())
 			return errRefused
 		}
-		// 2. A merge may have re-pointed the draft since the profile was read.
-		if locked.Kind == kindInvoice && locked.CustomerID != draft.CustomerID {
-			refusal = ptr(conflict(codeInvoiceChanged, cannotIssueTitle, "The invoice changed; try again."))
-			return errRefused
-		}
-		// 3. The settings row FOR SHARE: the seller snapshot and the start.
-		settings, err := txq.ShareSettings(ctx)
-		if err != nil {
-			return fmt.Errorf("invoices: share the settings: %w", err)
-		}
-		// 4. The number.
-		number, err := txq.AllocateNumber(ctx, settings.SeriesStart)
-		if err != nil {
-			return fmt.Errorf("invoices: allocate a number: %w", err)
-		}
-		if issueAfterAllocation != nil {
-			if err := issueAfterAllocation(ctx, tx, locked.ID); err != nil {
-				return err
-			}
-		}
-		// "Today" is read only now, after the counter: an issue that waited
-		// on it across Oslo midnight is dated the day it is issued, the day
-		// its issued_at falls on. The issue's clock is read here once: today,
-		// every stamp's time and the document's issued_at, so the issue date
-		// and issued_at never straddle midnight.
-		now := s.deps.Clock()
-		today := businessDay(now)
-		issueDate := today
-		if req.Body.IssueDate != nil {
-			issueDate = utcDay(req.Body.IssueDate.Time)
-		}
-		// 5. Only now, the checks.
-		lines, err := txq.Lines(ctx, locked.ID)
-		if err != nil {
-			return fmt.Errorf("invoices: read document %d's lines: %w", locked.ID, err)
-		}
-		deliveryEnd := deliveryEndOf(locked)
-		latest, err := txq.LatestIssueDate(ctx)
-		if err != nil {
-			return fmt.Errorf("invoices: read the latest issue date: %w", err)
-		}
-		// A NULL latest (nothing issued yet) is the zero time: no floor.
-		var latestDay time.Time
-		if latest.Valid {
-			latestDay = latest.Time
-		}
-		allowed := allowedIssueDates(today, deliveryEnd, latestDay)
-		switch missing := sellerMissingFields(settings); {
-		case len(missing) > 0:
-			refusal = cannotIssue(codeSellerIncomplete, "The seller record still lacks: "+strings.Join(missing, ", ")+".")
-		case len(lines) == 0:
-			refusal = cannotIssue(codeNoLines, "A document needs at least one line.")
-		case deliveryEnd.IsZero():
-			refusal = cannotIssue(codeDeliveryDateMissing, "A document states when it was delivered: a day or a period (§ 5-1-1 nr. 4).")
-		case !containsDate(allowed, issueDate):
-			refusal = cannotIssue(codeIssueDateNotAllowed, fmt.Sprintf(
-				"This document may be issued today with: %s (§ 5-1-3).", dateList(allowed)))
-			dates := make([]openapi_types.Date, 0, len(allowed))
-			for _, d := range allowed {
-				dates = append(dates, wireDate(d))
-			}
-			refusal.AllowedIssueDates = &dates
-		}
-		if refusal != nil {
-			return errRefused
-		}
-		var plan issuePlan
-		switch locked.Kind {
-		case kindInvoice:
-			plan, refusal, err = invoiceIssueChecks(ctx, txq, profile, settings, issueDate, locked, lines)
-		case kindCreditNote:
-			plan, refusal, err = creditIssueChecks(ctx, txq, locked, lines)
-		default:
-			return fmt.Errorf("invoices: document %d is a %s, which this module cannot issue", locked.ID, locked.Kind)
-		}
+		issued, refusal, err = s.issueLocked(ctx, tx, txq, locked, draft, profile, work, req.Body.IssueDate)
 		if err != nil {
 			return err
 		}
 		if refusal != nil {
 			return errRefused
-		}
-		exchangeRate, err := ratFromNumeric(locked.ExchangeRate)
-		if err != nil {
-			return err
-		}
-		taxed := make([]taxedLine, 0, len(plan.lines))
-		for _, l := range plan.lines {
-			taxed = append(taxed, l.taxed)
-		}
-		rows, totals, ambiguous := summarize(taxed, exchangeRate)
-		if plan.summary != nil {
-			rows, totals, ambiguous = plan.summary.rows, plan.summary.totals, plan.summary.ambiguous
-		}
-		if ambiguous {
-			refusal = cannotIssue(codeVatCodesAmbiguous,
-				"Two lines share a VAT category and rate but carry different SAF-T codes, so one VAT summary row could not name its code.")
-			return errRefused
-		}
-		// A settlement whose gross is not positive could never be credited,
-		// nor the a-kontos it deducted (invoices work design D7).
-		if plan.settlement && totals.gross.Sign() <= 0 {
-			refusal = cannotIssue(codeInvoiceTotalNotPositive, fmt.Sprintf(
-				"This settlement's total is %s: a settlement deducts less than it bills. A fixed price billed in full on account ends with its last a-konto.",
-				totals.gross.FloatString(2)))
-			return errRefused
-		}
-		// An invoice under the KID agreement gets its KID from the number
-		// just allocated (EHF and KID design D3); a number the agreement no
-		// longer fits refuses the issue, and the number rolls back with it.
-		var documentKid, kidAlgorithm *string
-		if locked.Kind == kindInvoice && settings.KidLength != nil && settings.KidAlgorithm != nil {
-			k, err := kid.Compute(number, int(*settings.KidLength), *settings.KidAlgorithm)
-			if errors.Is(err, kid.ErrLengthExceeded) {
-				refusal = cannotIssue(codeKidLengthExceeded, fmt.Sprintf(
-					"Number %d does not fit the KID agreement's %d digits; the agreement was shortened. Change it in the settings.",
-					number, *settings.KidLength))
-				return errRefused
-			}
-			if err != nil {
-				return fmt.Errorf("invoices: document %d's KID: %w", locked.ID, err)
-			}
-			documentKid, kidAlgorithm = &k, settings.KidAlgorithm
-		}
-
-		// The work, last of the checks and first of the writes: the holders
-		// stamp an invoice's invoiced on this transaction (D1, rule 10), and
-		// take back the stamps of what a credit note releases (D8) — before
-		// anything of the document is written.
-		switch locked.Kind {
-		case kindInvoice:
-			ref := contracts.InvoiceRef{
-				ID: locked.ID, Number: number, IssueDate: issueDate, IssuedAt: now,
-				IssuedBy: callerID(ctx), IssuedByDisplay: work.display,
-			}
-			if refusal, err = s.markIssueWork(ctx, tx, txq, work, ref); err != nil {
-				return err
-			}
-			if refusal != nil {
-				return errRefused
-			}
-		case kindCreditNote:
-			// The stamp taken back is the original's: its id, number and
-			// date; who took it back, and when, is this issue's.
-			if len(plan.releases) > 0 {
-				o := plan.original
-				if o.Number == nil {
-					return fmt.Errorf("invoices: credit note %d's original %d has no number", locked.ID, o.ID)
-				}
-				ref := contracts.InvoiceRef{
-					ID: o.ID, Number: *o.Number, IssueDate: o.IssueDate.Time, IssuedAt: now,
-					IssuedBy: callerID(ctx), IssuedByDisplay: work.display,
-				}
-				if err := s.releaseCreditWork(ctx, tx, txq, locked.ID, work, plan.releases, ref); err != nil {
-					return err
-				}
-			}
-		}
-
-		// 6. The writes: the lines' snapshots, the summaries, and last the
-		// row itself — the trigger refuses line writes under an issued one.
-		for _, l := range plan.lines {
-			if a := l.amounts; a != nil {
-				p := store.SquareCreditLineParams{ID: l.id}
-				for _, c := range []struct {
-					dst *pgtype.Numeric
-					v   *big.Rat
-				}{{&p.LineGross, a.gross}, {&p.LineAllowance, a.allowance}, {&p.LineNet, a.net}} {
-					if *c.dst, err = numericFromRat(c.v, 2); err != nil {
-						return err
-					}
-				}
-				if err := txq.SquareCreditLine(ctx, p); err != nil {
-					return fmt.Errorf("invoices: square line %d: %w", l.id, err)
-				}
-			}
-			rate, err := numericFromRat(l.taxed.rate, 2)
-			if err != nil {
-				return err
-			}
-			if err := txq.SnapshotLine(ctx, store.SnapshotLineParams{
-				ID: l.id, VatRatePercent: rate, VatCategory: &l.taxed.category, SafTCode: &l.taxed.safT,
-				ExemptionReason: l.taxed.reason,
-			}); err != nil {
-				return fmt.Errorf("invoices: snapshot line %d: %w", l.id, err)
-			}
-		}
-		for _, r := range rows {
-			p := store.InsertVatSummaryParams{InvoiceID: locked.ID, VatCategory: r.category, SafTCode: r.safT, ExemptionReason: r.reason}
-			for _, c := range []struct {
-				dst *pgtype.Numeric
-				v   *big.Rat
-			}{{&p.RatePercent, r.rate}, {&p.TaxableAmount, r.taxable}, {&p.VatAmount, r.vat}, {&p.VatAmountNok, r.vatNOK}} {
-				if *c.dst, err = numericFromRat(c.v, 2); err != nil {
-					return err
-				}
-			}
-			if err := txq.InsertVatSummary(ctx, p); err != nil {
-				return fmt.Errorf("invoices: write document %d's VAT: %w", locked.ID, err)
-			}
-		}
-		params := store.IssueDocumentParams{}
-		if plan.buyer != nil {
-			params = *plan.buyer
-		}
-		params.ID, params.Number, params.IssueDate = locked.ID, &number, pgDate(issueDate)
-		if locked.Kind == kindInvoice && locked.PaymentTermsDays != nil {
-			params.DueDate = pgDate(issueDate.AddDate(0, 0, int(*locked.PaymentTermsDays)))
-		}
-		sellerSnapshot(&params, settings)
-		params.Kid, params.KidAlgorithm = documentKid, kidAlgorithm
-		if params.NetTotal, params.VatTotal, params.GrossTotal, params.VatTotalNok, err = numerics(totals); err != nil {
-			return err
-		}
-		params.Now, params.IssuedByUserID = now, ptr(callerID(ctx))
-		if plan.buyer == nil {
-			// A credit note keeps the buyer snapshot its draft copied.
-			keepBuyer(&params, locked)
-		}
-		issued, err = txq.IssueDocument(ctx, params)
-		if err != nil {
-			return fmt.Errorf("invoices: issue document %d: %w", locked.ID, err)
 		}
 		return nil
 	})
@@ -553,6 +338,249 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		return nil, err
 	}
 	return gen.PostInvoicesByIdIssue200JSONResponse(resp), nil
+}
+
+// issueLocked runs the issue's steps 2–6 on a document the transaction tx
+// already holds — locked by LockInvoice, or inserted by the quick invoice on
+// the same transaction, so the order stays the document, the settings row,
+// the counter: the merge check, the settings FOR SHARE, the number, the
+// checks, the work's write-back and the writes. draft is the document as it
+// was read before the transaction, with the billing profile and the work read
+// then. It answers the issued document, or the refusal that must roll the
+// transaction back, or an error. issueAfterAllocation runs here.
+func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries, locked store.InvoicesInvoice,
+	draft store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, work issueWork, issueDateReq *openapi_types.Date,
+) (store.InvoicesInvoice, *gen.InvoicesConflictProblem, error) {
+	var refusal *gen.InvoicesConflictProblem
+	refused := func() (store.InvoicesInvoice, *gen.InvoicesConflictProblem, error) {
+		return store.InvoicesInvoice{}, refusal, nil
+	}
+	failed := func(err error) (store.InvoicesInvoice, *gen.InvoicesConflictProblem, error) {
+		return store.InvoicesInvoice{}, nil, err
+	}
+	// 2. A merge may have re-pointed the draft since the profile was read.
+	if locked.Kind == kindInvoice && locked.CustomerID != draft.CustomerID {
+		return store.InvoicesInvoice{}, ptr(conflict(codeInvoiceChanged, cannotIssueTitle, "The invoice changed; try again.")), nil
+	}
+	// 3. The settings row FOR SHARE: the seller snapshot and the start.
+	settings, err := txq.ShareSettings(ctx)
+	if err != nil {
+		return failed(fmt.Errorf("invoices: share the settings: %w", err))
+	}
+	// 4. The number.
+	number, err := txq.AllocateNumber(ctx, settings.SeriesStart)
+	if err != nil {
+		return failed(fmt.Errorf("invoices: allocate a number: %w", err))
+	}
+	if issueAfterAllocation != nil {
+		if err := issueAfterAllocation(ctx, tx, locked.ID); err != nil {
+			return failed(err)
+		}
+	}
+	// "Today" is read only now, after the counter: an issue that waited
+	// on it across Oslo midnight is dated the day it is issued, the day
+	// its issued_at falls on. The issue's clock is read here once: today,
+	// every stamp's time and the document's issued_at, so the issue date
+	// and issued_at never straddle midnight.
+	now := s.deps.Clock()
+	today := businessDay(now)
+	issueDate := today
+	if issueDateReq != nil {
+		issueDate = utcDay(issueDateReq.Time)
+	}
+	// 5. Only now, the checks.
+	lines, err := txq.Lines(ctx, locked.ID)
+	if err != nil {
+		return failed(fmt.Errorf("invoices: read document %d's lines: %w", locked.ID, err))
+	}
+	deliveryEnd := deliveryEndOf(locked)
+	latest, err := txq.LatestIssueDate(ctx)
+	if err != nil {
+		return failed(fmt.Errorf("invoices: read the latest issue date: %w", err))
+	}
+	// A NULL latest (nothing issued yet) is the zero time: no floor.
+	var latestDay time.Time
+	if latest.Valid {
+		latestDay = latest.Time
+	}
+	allowed := allowedIssueDates(today, deliveryEnd, latestDay)
+	switch missing := sellerMissingFields(settings); {
+	case len(missing) > 0:
+		refusal = cannotIssue(codeSellerIncomplete, "The seller record still lacks: "+strings.Join(missing, ", ")+".")
+	case len(lines) == 0:
+		refusal = cannotIssue(codeNoLines, "A document needs at least one line.")
+	case deliveryEnd.IsZero():
+		refusal = cannotIssue(codeDeliveryDateMissing, "A document states when it was delivered: a day or a period (§ 5-1-1 nr. 4).")
+	case !containsDate(allowed, issueDate):
+		refusal = cannotIssue(codeIssueDateNotAllowed, fmt.Sprintf(
+			"This document may be issued today with: %s (§ 5-1-3).", dateList(allowed)))
+		dates := make([]openapi_types.Date, 0, len(allowed))
+		for _, d := range allowed {
+			dates = append(dates, wireDate(d))
+		}
+		refusal.AllowedIssueDates = &dates
+	}
+	if refusal != nil {
+		return refused()
+	}
+	var plan issuePlan
+	switch locked.Kind {
+	case kindInvoice:
+		plan, refusal, err = invoiceIssueChecks(ctx, txq, profile, settings, issueDate, locked, lines)
+	case kindCreditNote:
+		plan, refusal, err = creditIssueChecks(ctx, txq, locked, lines)
+	default:
+		return failed(fmt.Errorf("invoices: document %d is a %s, which this module cannot issue", locked.ID, locked.Kind))
+	}
+	if err != nil {
+		return failed(err)
+	}
+	if refusal != nil {
+		return refused()
+	}
+	exchangeRate, err := ratFromNumeric(locked.ExchangeRate)
+	if err != nil {
+		return failed(err)
+	}
+	taxed := make([]taxedLine, 0, len(plan.lines))
+	for _, l := range plan.lines {
+		taxed = append(taxed, l.taxed)
+	}
+	rows, totals, ambiguous := summarize(taxed, exchangeRate)
+	if plan.summary != nil {
+		rows, totals, ambiguous = plan.summary.rows, plan.summary.totals, plan.summary.ambiguous
+	}
+	if ambiguous {
+		refusal = cannotIssue(codeVatCodesAmbiguous,
+			"Two lines share a VAT category and rate but carry different SAF-T codes, so one VAT summary row could not name its code.")
+		return refused()
+	}
+	// A settlement whose gross is not positive could never be credited,
+	// nor the a-kontos it deducted (invoices work design D7).
+	if plan.settlement && totals.gross.Sign() <= 0 {
+		refusal = cannotIssue(codeInvoiceTotalNotPositive, fmt.Sprintf(
+			"This settlement's total is %s: a settlement deducts less than it bills. A fixed price billed in full on account ends with its last a-konto.",
+			totals.gross.FloatString(2)))
+		return refused()
+	}
+	// An invoice under the KID agreement gets its KID from the number
+	// just allocated (EHF and KID design D3); a number the agreement no
+	// longer fits refuses the issue, and the number rolls back with it.
+	var documentKid, kidAlgorithm *string
+	if locked.Kind == kindInvoice && settings.KidLength != nil && settings.KidAlgorithm != nil {
+		k, err := kid.Compute(number, int(*settings.KidLength), *settings.KidAlgorithm)
+		if errors.Is(err, kid.ErrLengthExceeded) {
+			refusal = cannotIssue(codeKidLengthExceeded, fmt.Sprintf(
+				"Number %d does not fit the KID agreement's %d digits; the agreement was shortened. Change it in the settings.",
+				number, *settings.KidLength))
+			return refused()
+		}
+		if err != nil {
+			return failed(fmt.Errorf("invoices: document %d's KID: %w", locked.ID, err))
+		}
+		documentKid, kidAlgorithm = &k, settings.KidAlgorithm
+	}
+
+	// The work, last of the checks and first of the writes: the holders
+	// stamp an invoice's invoiced on this transaction (D1, rule 10), and
+	// take back the stamps of what a credit note releases (D8) — before
+	// anything of the document is written.
+	switch locked.Kind {
+	case kindInvoice:
+		ref := contracts.InvoiceRef{
+			ID: locked.ID, Number: number, IssueDate: issueDate, IssuedAt: now,
+			IssuedBy: callerID(ctx), IssuedByDisplay: work.display,
+		}
+		if refusal, err = s.markIssueWork(ctx, tx, txq, work, ref); err != nil {
+			return failed(err)
+		}
+		if refusal != nil {
+			return refused()
+		}
+	case kindCreditNote:
+		// The stamp taken back is the original's: its id, number and
+		// date; who took it back, and when, is this issue's.
+		if len(plan.releases) > 0 {
+			o := plan.original
+			if o.Number == nil {
+				return failed(fmt.Errorf("invoices: credit note %d's original %d has no number", locked.ID, o.ID))
+			}
+			ref := contracts.InvoiceRef{
+				ID: o.ID, Number: *o.Number, IssueDate: o.IssueDate.Time, IssuedAt: now,
+				IssuedBy: callerID(ctx), IssuedByDisplay: work.display,
+			}
+			if err := s.releaseCreditWork(ctx, tx, txq, locked.ID, work, plan.releases, ref); err != nil {
+				return failed(err)
+			}
+		}
+	}
+
+	// 6. The writes: the lines' snapshots, the summaries, and last the
+	// row itself — the trigger refuses line writes under an issued one.
+	for _, l := range plan.lines {
+		if a := l.amounts; a != nil {
+			p := store.SquareCreditLineParams{ID: l.id}
+			for _, c := range []struct {
+				dst *pgtype.Numeric
+				v   *big.Rat
+			}{{&p.LineGross, a.gross}, {&p.LineAllowance, a.allowance}, {&p.LineNet, a.net}} {
+				if *c.dst, err = numericFromRat(c.v, 2); err != nil {
+					return failed(err)
+				}
+			}
+			if err := txq.SquareCreditLine(ctx, p); err != nil {
+				return failed(fmt.Errorf("invoices: square line %d: %w", l.id, err))
+			}
+		}
+		rate, err := numericFromRat(l.taxed.rate, 2)
+		if err != nil {
+			return failed(err)
+		}
+		if err := txq.SnapshotLine(ctx, store.SnapshotLineParams{
+			ID: l.id, VatRatePercent: rate, VatCategory: &l.taxed.category, SafTCode: &l.taxed.safT,
+			ExemptionReason: l.taxed.reason,
+		}); err != nil {
+			return failed(fmt.Errorf("invoices: snapshot line %d: %w", l.id, err))
+		}
+	}
+	for _, r := range rows {
+		p := store.InsertVatSummaryParams{InvoiceID: locked.ID, VatCategory: r.category, SafTCode: r.safT, ExemptionReason: r.reason}
+		for _, c := range []struct {
+			dst *pgtype.Numeric
+			v   *big.Rat
+		}{{&p.RatePercent, r.rate}, {&p.TaxableAmount, r.taxable}, {&p.VatAmount, r.vat}, {&p.VatAmountNok, r.vatNOK}} {
+			if *c.dst, err = numericFromRat(c.v, 2); err != nil {
+				return failed(err)
+			}
+		}
+		if err := txq.InsertVatSummary(ctx, p); err != nil {
+			return failed(fmt.Errorf("invoices: write document %d's VAT: %w", locked.ID, err))
+		}
+	}
+	params := store.IssueDocumentParams{}
+	if plan.buyer != nil {
+		params = *plan.buyer
+	}
+	params.ID, params.Number, params.IssueDate = locked.ID, &number, pgDate(issueDate)
+	if locked.Kind == kindInvoice && locked.PaymentTermsDays != nil {
+		params.DueDate = pgDate(issueDate.AddDate(0, 0, int(*locked.PaymentTermsDays)))
+	}
+	sellerSnapshot(&params, settings)
+	params.Kid, params.KidAlgorithm = documentKid, kidAlgorithm
+	if params.NetTotal, params.VatTotal, params.GrossTotal, params.VatTotalNok, err = numerics(totals); err != nil {
+		return failed(err)
+	}
+	params.Now, params.IssuedByUserID = now, ptr(callerID(ctx))
+	if plan.buyer == nil {
+		// A credit note keeps the buyer snapshot its draft copied.
+		keepBuyer(&params, locked)
+	}
+	issued, err := txq.IssueDocument(ctx, params)
+	if err != nil {
+		return failed(fmt.Errorf("invoices: issue document %d: %w", locked.ID, err))
+	}
+
+	return issued, nil, nil
 }
 
 // containsDate reports whether d is one of dates.

@@ -27,6 +27,9 @@ components:
                 canSendEhf:
                     description: invoices:issue and ehfAvailable — send an issued document to the customer as EHF over Peppol.
                     type: boolean
+                canQuickInvoice:
+                    description: invoices:create and invoices:issue — create and issue a quick invoice in one step, handed over on site (invoices payments and reminders design D1, D17).
+                    type: boolean
                 canTakeOnSitePayment:
                     description: invoices:issue and onSitePaymentsAvailable — take a Vipps payment on site, and see an invoice's pay link and its QR code on screen (invoices payments and reminders design D1, D17).
                     type: boolean
@@ -35,6 +38,7 @@ components:
                 - canImportBankFiles
                 - canIssue
                 - canManage
+                - canQuickInvoice
                 - canRegisterPayments
                 - canRunReminders
                 - canSend
@@ -4271,6 +4275,67 @@ components:
                     format: date
                     type: string
             type: object
+        InvoicesQuickInvoiceLine:
+            description: One line of a quick invoice, by a draft line's rules (D5) — description 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20; vatCodeId an active code.
+            properties:
+                description:
+                    type: string
+                discountPercent:
+                    format: double
+                    type: number
+                quantity:
+                    format: double
+                    type: number
+                unit:
+                    type: string
+                unitPrice:
+                    format: double
+                    type: number
+                vatCodeId:
+                    format: int32
+                    type: integer
+            required:
+                - description
+                - quantity
+                - unitPrice
+                - vatCodeId
+            type: object
+        InvoicesQuickInvoiceRequest:
+            description: 'POST /invoices/quick''s body (invoices payments and reminders design D17): an invoice for customerId with one to ten lines, created and issued in one step. Every field is judged by a draft''s rules (D4, D5). deliveryDate is today (Oslo) when omitted; an omitted paymentTermsDays is the billing profile''s terms, else the settings'' default, and an omitted yourReference the profile''s buyer reference. note is at most 1000 characters, yourReference 100. payOnSite asks for a Vipps payment request on site after the issue; on-site payment is not offered yet, so it is answered paymentRequestError on_site_payments_unavailable beside the issued invoice.'
+            properties:
+                customerId:
+                    format: int32
+                    type: integer
+                deliveryDate:
+                    format: date
+                    type: string
+                lines:
+                    items:
+                        $ref: '#/components/schemas/InvoicesQuickInvoiceLine'
+                    type: array
+                note:
+                    type: string
+                payOnSite:
+                    type: boolean
+                paymentTermsDays:
+                    format: int32
+                    type: integer
+                yourReference:
+                    type: string
+            required:
+                - customerId
+                - lines
+            type: object
+        InvoicesQuickInvoiceResponse:
+            description: 'The quick invoice''s answer (D17): the issued invoice, and — when the request asked payOnSite and no payment request could be made — paymentRequestError, the refusal the request met; the invoice is issued either way.'
+            properties:
+                invoice:
+                    $ref: '#/components/schemas/InvoicesInvoiceResponse'
+                paymentRequestError:
+                    $ref: '#/components/schemas/InvoicesConflictProblem'
+            required:
+                - invoice
+            type: object
         InvoicesJournalCode:
             description: One (SAF-T code, category, rate) of the journal's VAT, credit notes signed negative.
             properties:
@@ -6375,6 +6440,57 @@ paths:
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access+invoices:create
+    /api/v1/invoices/quick:
+        post:
+            description: 'The quick invoice (invoices payments and reminders design D17): an invoice created and issued in one transaction, for a job finished on site. Before the transaction, in order — the body by a draft''s rules and one to ten lines (a 400); 503 storage_unavailable without an object store; the billing profile and the customer gates (409); the VAT codes on the delivery date (a 400). Then one transaction inserts the draft and its lines, issues it as POST /invoices/{id}/issue does — the document it holds, the settings row FOR SHARE, the number, and only then every check — and records a manual delivery handed_over on the issue date by the caller. Any refusal rolls everything back: no draft is left and no number is taken. The PDF is stored after the commit. 201 with the issued invoice.'
+            operationId: postInvoicesQuick
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InvoicesQuickInvoiceRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesQuickInvoiceResponse'
+                    description: Created — the issued invoice, with paymentRequestError when payOnSite could not be honoured.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — a field did not pass; the errors name it (customerId, lines — none, more than ten, or the document total too large — lines[i].<field>, deliveryDate, paymentTermsDays, yourReference, note).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: 'Conflict — customer_merged, customer_archived, customer_blocked, customer_missing, and every refusal of the issue: seller_incomplete, issue_date_not_allowed (with allowedIssueDates), buyer_incomplete, vat_code_inactive and vat_code_not_valid (with linePosition), vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, kid_length_exceeded. Nothing is left behind.'
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Service Unavailable — storage_unavailable, before anything is written.
+            summary: Create and issue a quick invoice
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:create+invoices:issue
     /api/v1/invoices/{id}:
         delete:
             description: Deletes a draft, its lines with it. An issued document is never deleted (409 invoice_issued).

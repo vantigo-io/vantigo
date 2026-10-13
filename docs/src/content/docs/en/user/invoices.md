@@ -527,6 +527,28 @@ off, since the work then cannot be checked, or when the draft was saved by someo
 while you issued. Nothing is issued and no number is used: refresh the work or edit the
 line, and issue again ([the write-back](/en/reference/invoices/#the-write-back)).
 
+## The quick invoice
+
+The quick invoice is for a job finished on site: you choose the customer, enter up to
+ten lines, and **Issue** — the invoice is created and issued in one step, numbered in the
+same series as every other, with the customer's terms and a due date. Because you hand
+it over there and then, Invoices also records it as **handed over** on the issue day,
+under your name; that record is the delivery a later reminder relies on
+([recording a delivery](#recording-a-delivery)). It needs both `invoices:create` and
+`invoices:issue`.
+
+If anything stops the invoice — a field that is not filled in right, a customer who
+cannot be invoiced, a buyer without a complete address or an organisation number, a VAT
+code that cannot be used, or anything else that refuses an ordinary issue — nothing is
+kept: no draft is left behind and no number is used. Correct it and issue again.
+
+A quick invoice the customer pays later — by bank with the KID, or through a pay link —
+is an ordinary credit sale. Paying on site with Vipps is a cash sale and comes with
+payment on site ([pay links and payment on site](#pay-links-and-payment-on-site)); until
+that is offered, the invoice is issued and you are told that payment on site is not
+available. The quick invoice's own screen arrives with Vipps in the app; the request
+behind it is in place now ([the quick invoice](/en/reference/invoices/#the-quick-invoice)).
+
 ## Downloading the PDF
 
 An issued document's page offers **Download PDF**. The file is named after the document
@@ -1404,6 +1426,7 @@ No built-in role holds these; an Owner holds everything
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one | `invoices:issue` |
 | Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; see the dashboard's notices about bank lines, letters and print batches | `invoices:payments` |
+| Make a quick invoice — created and issued in one step, recorded as handed over | `invoices:create` and `invoices:issue` |
 | Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments**, which also needs `invoices:payments` to open | `invoices:manage` |
 
 Payments and reminders add no permission of their own. Reminders, the exception queue,
