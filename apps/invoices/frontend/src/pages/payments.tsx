@@ -45,6 +45,7 @@ import "../i18n";
 import { accountNumber, useWho } from "../lib/bank";
 import { fieldRefusals, refusalCode, refusalMessage, refusalProblem } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
+import { PaymentsTabs } from "./vipps-payments";
 
 export interface PaymentsPageProps {
   /** The signed-in user's id, so an import or an event of theirs says "you". */
@@ -73,6 +74,7 @@ export const PaymentsPage = ({ currentUserId }: PaymentsPageProps) => {
   return (
     <Stack gap="lg">
       <PageHeader title={t("bank.title")} description={t("bank.description")} />
+      <PaymentsTabs active="bank" />
       {meta.isError && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMeta")}>
           {refusalMessage(meta.error, t, date)}

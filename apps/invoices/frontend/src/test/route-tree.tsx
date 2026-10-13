@@ -20,11 +20,13 @@ import {
   PAYMENTS_ROUTE_PATH,
   REMINDER_PRINT_ROUTE_PATH,
   REMINDER_RUN_ROUTE_PATH,
+  VIPPS_PAYMENTS_ROUTE_PATH,
 } from "../lib/routes";
 import { InvoicesPage } from "../pages/invoices";
 import { OverduePage } from "../pages/overdue";
 import { PaymentsPage } from "../pages/payments";
 import { ReminderPrintPage } from "../pages/reminder-print";
+import { VippsPaymentsPage } from "../pages/vipps-payments";
 import { BankFileRoute } from "./bank-file-route";
 import { CURRENT_USER_ID } from "./fixtures";
 import { InvoiceRoute } from "./invoice-route";
@@ -53,6 +55,11 @@ const makeRouteTree = (canViewCustomers: boolean) => {
       getParentRoute: () => rootRoute,
       path: PAYMENTS_ROUTE_PATH,
       component: () => <PaymentsPage currentUserId={CURRENT_USER_ID} />,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: VIPPS_PAYMENTS_ROUTE_PATH,
+      component: VippsPaymentsPage,
     }),
     createRoute({
       getParentRoute: () => rootRoute,

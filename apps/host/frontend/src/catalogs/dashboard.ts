@@ -92,6 +92,11 @@ const en = {
   "dashboard.invoiceRemindersHeldRegime_other": "{{count}} reminders wait for the review of the collection-law regime",
   "dashboard.invoiceBatchUnposted_one": "The print batch for {{date}} ({{count}} letter) is not confirmed posted",
   "dashboard.invoiceBatchUnposted_other": "The print batch for {{date}} ({{count}} letters) is not confirmed posted",
+  "dashboard.invoicePaymentCaptureUnknown":
+    "A Vipps payment from {{name}} needs a check: whether the money was taken is unknown",
+  "dashboard.invoicePaymentCaptureFailed": "A Vipps payment from {{name}} could not be taken",
+  "dashboard.invoicePaymentReservationStranded": "A Vipps payment from {{name}} is stuck and needs a person",
+  "dashboard.invoiceVippsRefundSeen": "A Vipps payment from {{name}} was refunded in the Vipps portal",
   "dashboard.readyMilestonesHint": "{{count}} milestones ready to invoice",
   "dashboard.projectBudgetWarning": "{{name}} has used most of its budget",
   "dashboard.projectBudgetExceeded": "{{name}} is over budget",
@@ -232,6 +237,11 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.invoiceRemindersHeldRegime_other": "{{count}} purringer venter på gjennomgangen av inkassoregelverket",
   "dashboard.invoiceBatchUnposted_one": "Utskriftsbunken for {{date}} ({{count}} brev) er ikke bekreftet postlagt",
   "dashboard.invoiceBatchUnposted_other": "Utskriftsbunken for {{date}} ({{count}} brev) er ikke bekreftet postlagt",
+  "dashboard.invoicePaymentCaptureUnknown":
+    "En Vipps-betaling fra {{name}} må sjekkes: det er ukjent om pengene ble trukket",
+  "dashboard.invoicePaymentCaptureFailed": "En Vipps-betaling fra {{name}} kunne ikke trekkes",
+  "dashboard.invoicePaymentReservationStranded": "En Vipps-betaling fra {{name}} står fast og trenger en person",
+  "dashboard.invoiceVippsRefundSeen": "En Vipps-betaling fra {{name}} ble refundert i Vipps-portalen",
   "dashboard.readyMilestonesHint": "{{count}} milepæler klare til fakturering",
   "dashboard.projectBudgetWarning": "{{name}} har brukt opp mesteparten av budsjettet",
   "dashboard.projectBudgetExceeded": "{{name}} har gått over budsjett",

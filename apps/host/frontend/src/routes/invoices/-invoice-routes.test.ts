@@ -33,6 +33,7 @@ describe("the invoices route tree", () => {
   it.each([
     ["/invoices/payments", "/invoices/payments/"],
     ["/invoices/payments/files/1001", "/invoices/payments/files/$bankFileId"],
+    ["/invoices/payments/vipps", "/invoices/payments/vipps"],
   ])("matches %s on the Payments route, not a document's", (path, routeId) => {
     const ids = matchedRouteIds(path);
 
