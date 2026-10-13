@@ -920,3 +920,55 @@ func TestVipps_NewRefusesIncompleteOptions(t *testing.T) {
 		}
 	}
 }
+
+// TestVipps_CreateRefusesAnAddressThatIsNotHTTPS: the address Vipps answers
+// is where the pay page sends the payer, or what an on-site QR encodes, so
+// anything but an absolute https URL — another scheme, no host, a relative
+// path — is no answer at all: an unknown outcome the caller polls, never a
+// definitive refusal and never an address handed on. Both the create's own
+// answer and a reused reference's read-back are held to it.
+func TestVipps_CreateRefusesAnAddressThatIsNotHTTPS(t *testing.T) {
+	t.Parallel()
+	bad := []string{"http://vipps.example/landing", "javascript:alert(1)", "/landing", "https:///landing", "data:text/html,x"}
+	for _, flow := range []payments.Flow{payments.FlowRedirect, payments.FlowQR} {
+		for i, address := range bad {
+			t.Run(string(flow)+" "+address, func(t *testing.T) {
+				t.Parallel()
+				vt := vippstest.New(t)
+				reference := "acme01-10001-" + string(rune('a'+i)) + string(flow)
+				r := redirectRequest(reference, "key-"+reference, 12345)
+				if flow == payments.FlowQR {
+					r.Flow, r.ReturnURL, r.CustomerPresent = payments.FlowQR, "", true
+				}
+				answer, _ := json.Marshal(map[string]string{"reference": reference, "redirectUrl": address})
+				vt.Fail(vippstest.OpCreate, vippstest.Failure{Status: http.StatusCreated, Body: answer})
+				created, err := adapter(t, vt, nil).Create(context.Background(), r)
+				if err == nil {
+					t.Fatalf("Create answered %q / %q, want an error for %q", created.RedirectURL, created.QRTarget, address)
+				}
+				if payments.IsDefinitiveCreateRefusal(err) {
+					t.Errorf("err = %v is a definitive refusal; want an unknown outcome", err)
+				}
+			})
+		}
+	}
+
+	t.Run("a reused reference read back", func(t *testing.T) {
+		t.Parallel()
+		vt := vippstest.New(t)
+		r := redirectRequest("acme01-10001-3001", "key-3001", 12345)
+		vt.Fail(vippstest.OpCreate, vippstest.Failure{Status: http.StatusConflict, Code: "4150"})
+		held, _ := json.Marshal(map[string]any{
+			"reference": "acme01-10001-3001", "state": "CREATED", "redirectUrl": "http://vipps.example/landing",
+			"amount": map[string]any{"currency": "NOK", "value": 12345},
+		})
+		vt.Fail(vippstest.OpGet, vippstest.Failure{Body: held})
+		created, err := adapter(t, vt, nil).Create(context.Background(), r)
+		if err == nil {
+			t.Fatalf("Create answered %q, want an error for a read-back http address", created.RedirectURL)
+		}
+		if payments.IsDefinitiveCreateRefusal(err) {
+			t.Errorf("err = %v is a definitive refusal; want an unknown outcome", err)
+		}
+	})
+}

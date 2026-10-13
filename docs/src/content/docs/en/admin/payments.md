@@ -226,6 +226,11 @@ issued invoices, and payment on site. This is the operator's side of it; the rul
 **Verify:** the verify answers *ok*. It fetches an access token with the keys and reads
 the sales unit's webhook registrations, which needs the keys and the MSN together.
 
+**The address Vipps answers.** Vantigo sends a payer, or encodes in an on-site QR
+code, only an absolute `https` address that Vipps answers to a new payment. Any other
+answer counts as an outcome not yet known: the pay page says Vipps could not start the
+payment, and the payments worker reads the payment again.
+
 **Rotating a key.** A new client secret for the same sales unit may be stored at any
 time; enter only the secret, and the other two keys are kept. A change of the MSN, the
 client id or the subscription key — another sales unit — is refused while a Vipps

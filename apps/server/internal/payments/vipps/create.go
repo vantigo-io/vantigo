@@ -180,8 +180,13 @@ func (c *Client) existing(ctx context.Context, r payments.CreateRequest) (paymen
 }
 
 // createdOf is the answer to r: the redirect URL, or the target URL Vipps
-// answered to its create and the QR rendered from it.
+// answered to its create and the QR rendered from it. Either is where a payer
+// is sent, so anything but an absolute https URL is no answer — an unknown
+// outcome the caller polls, never an address handed on.
 func createdOf(r payments.CreateRequest, redirectURL string) (payments.Created, error) {
+	if !httpsURL(redirectURL) {
+		return payments.Created{}, errors.New("vipps: Vipps answered an address that is not an absolute https URL")
+	}
 	if r.Flow != payments.FlowQR {
 		return payments.Created{Reference: r.Reference, RedirectURL: redirectURL}, nil
 	}
