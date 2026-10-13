@@ -634,19 +634,51 @@ func TestPaymentAttempts_Triggers(t *testing.T) {
 
 	// Captured money is always registered: a failed capture whose money Vipps
 	// then shows captured becomes captured — with what was captured, never
-	// without — released or not; no other terminal state does.
+	// without, once its payment is registered in the same transaction, and
+	// with nothing else of the capture changed — released or not; no other
+	// terminal state does.
+	toCaptured := `UPDATE invoices.payment_attempts SET state = 'captured', captured_amount = 80, captured_at = now(),
+		release_pending = false, refund_watch_until = now() + interval '30 days'`
+	failedAttempt := func(extraColumns, extraValues string) int64 {
+		return f.mustAttempt(other, "capture_failed",
+			", release_pending, authorized_amount, capture_key, capture_attempts, insufficient_funds"+extraColumns,
+			", true, 100, gen_random_uuid(), 2, 1"+extraValues)
+	}
 	for _, released := range []bool{false, true} {
-		failed := f.mustAttempt(other, "capture_failed", ", release_pending, authorized_amount", ", true, 100")
+		failed := failedAttempt("", "")
 		if released {
 			f.mustExec("release", `UPDATE invoices.payment_attempts SET release_pending = false, cancelled_amount = 20 WHERE id = $1`, failed)
 		}
-		if err := f.exec(`UPDATE invoices.payment_attempts SET state = 'captured' WHERE id = $1`, failed); !refusedWith(err, attemptFinal("capture_failed")) {
-			t.Errorf("capture_failed to captured with nothing captured: %v, want %q", err, attemptFinal("capture_failed"))
+		if err := f.exec(toCaptured+` WHERE id = $1`, failed); !refusedWith(err, attemptFinal("capture_failed")) {
+			t.Errorf("capture_failed to captured with no payment registered: %v, want %q", err, attemptFinal("capture_failed"))
 		}
-		if err := f.exec(`UPDATE invoices.payment_attempts SET state = 'captured', captured_amount = 80, captured_at = now(),
-			release_pending = false, refund_watch_until = now() + interval '30 days' WHERE id = $1`, failed); err != nil {
-			t.Errorf("capture_failed (released %v) to captured with 80 captured: %v, want it allowed", released, err)
+		if _, err := f.insert(paymentsPortPaymentInsert, other, nil, "vipps", nil, failed); err != nil {
+			t.Fatalf("register the capture of %d: %v", failed, err)
 		}
+		for _, set := range []string{
+			"state = 'captured'",
+			"state = 'captured', captured_amount = 0",
+			"state = 'captured', captured_amount = 80, capture_key = gen_random_uuid()",
+			"state = 'captured', captured_amount = 80, authorized_amount = 99",
+			"state = 'captured', captured_amount = 80, capture_attempts = 3",
+			"state = 'captured', captured_amount = 80, insufficient_funds = 2",
+		} {
+			if err := f.exec(`UPDATE invoices.payment_attempts SET `+set+` WHERE id = $1`, failed); !refusedWith(err, attemptFinal("capture_failed")) {
+				t.Errorf("capture_failed to captured, SET %s: %v, want %q", set, err, attemptFinal("capture_failed"))
+			}
+		}
+		if err := f.exec(toCaptured+` WHERE id = $1`, failed); err != nil {
+			t.Errorf("capture_failed (released %v) to captured with 80 captured and registered: %v, want it allowed", released, err)
+		}
+	}
+	// A failed capture that holds a captured amount already is not one this
+	// transition is for.
+	held := failedAttempt(", captured_amount", ", 10")
+	if _, err := f.insert(paymentsPortPaymentInsert, other, nil, "vipps", nil, held); err != nil {
+		t.Fatalf("register the capture of %d: %v", held, err)
+	}
+	if err := f.exec(toCaptured+` WHERE id = $1`, held); !refusedWith(err, attemptFinal("capture_failed")) {
+		t.Errorf("capture_failed holding a captured amount to captured: %v, want %q", err, attemptFinal("capture_failed"))
 	}
 
 	// The parent guard: never under a draft or a credit note, never for an

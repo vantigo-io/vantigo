@@ -281,7 +281,9 @@ $function$;
 -- uncaptured rest and the refund watch keep polling a finished attempt. One
 -- terminal state moves on: money Vipps shows captured is always registered,
 -- so a capture_failed attempt becomes captured — with what was captured,
--- never without — when a later read shows the capture landed after all.
+-- never without, its payment registered first in the same transaction and
+-- nothing else of the capture changed — when a later read shows the capture
+-- landed after all.
 -- +goose StatementBegin
 CREATE FUNCTION invoices.refuse_payment_attempt_change()
 RETURNS trigger LANGUAGE plpgsql AS $function$
@@ -299,7 +301,14 @@ BEGIN
         NEW.reference, NEW.amount, NEW.cancel_key, NEW.created_at, NEW.created_by_user_id) THEN
         RAISE EXCEPTION 'invoices: a payment attempt keeps its identity' USING ERRCODE = 'P0001';
     END IF;
-    IF OLD.state = 'capture_failed' AND NEW.state = 'captured' AND NEW.captured_amount > 0 THEN
+    -- The registration of a capture that landed after it failed: what was
+    -- captured, its payment already registered in this transaction, and
+    -- nothing else of the capture changed.
+    IF OLD.state = 'capture_failed' AND NEW.state = 'captured' AND NEW.captured_amount > 0
+       AND OLD.captured_amount IS NULL
+       AND (NEW.capture_key, NEW.authorized_amount, NEW.capture_attempts, NEW.insufficient_funds)
+           IS NOT DISTINCT FROM (OLD.capture_key, OLD.authorized_amount, OLD.capture_attempts, OLD.insufficient_funds)
+       AND EXISTS (SELECT 1 FROM invoices.payments WHERE payment_attempt_id = NEW.id) THEN
         RETURN NEW;
     END IF;
     IF OLD.state IN ('captured', 'cancelled', 'aborted', 'expired', 'terminated', 'capture_failed', 'failed', 'abandoned') THEN
