@@ -209,6 +209,9 @@ Communications' outbox is the working example.
   package stays **test-only**: it has no production code and nothing imports it,
   so it buys a test and costs no coupling. Anything non-test added there needs a
   depguard rule of its own; see its `doc.go`.
+  A rule set of a different kind, `test-fakes`, covers every non-test file and
+  refuses a provider's fake — `internal/payments/vipps/vippstest` — outside
+  `_test.go` files, so a fake can serve every package's tests and never ship.
 - **Rule 4**: `apps/server/internal/db/schema_test.go` scans every migration and
   query file and fails when one module's SQL names another module's schema.
 - **Rule 5**: `module.Compose` itself. It fails on a duplicate module name, an

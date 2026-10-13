@@ -3,6 +3,7 @@ module github.com/vantigo-io/vantigo/server
 go 1.27.2
 
 require (
+	github.com/boombuler/barcode v1.1.0
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/exaring/otelpgx v0.12.0
 	github.com/getkin/kin-openapi v0.149.0
@@ -38,7 +39,6 @@ require (
 
 require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
-	github.com/boombuler/barcode v1.1.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect

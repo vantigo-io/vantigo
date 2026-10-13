@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,6 +44,41 @@ import (
 
 func testEnv(t *testing.T) (*vipps.Client, string) {
 	t.Helper()
+	return testEnvWith(t, nil)
+}
+
+// statusLog records the status Vipps answered each request with, so a test
+// can report what Vipps really sends where the docs are unclear.
+type statusLog struct {
+	mu   sync.Mutex
+	seen []string
+}
+
+func (l *statusLog) RoundTrip(r *http.Request) (*http.Response, error) {
+	resp, err := http.DefaultTransport.RoundTrip(r)
+	if err == nil {
+		l.mu.Lock()
+		l.seen = append(l.seen, fmt.Sprintf("%s %s %d", r.Method, r.URL.Path, resp.StatusCode))
+		l.mu.Unlock()
+	}
+	return resp, err
+}
+
+// of is the statuses of the requests of method whose path ends in suffix.
+func (l *statusLog) of(method, suffix string) []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var out []string
+	for _, s := range l.seen {
+		if strings.HasPrefix(s, method+" ") && strings.Contains(s, suffix+" ") {
+			out = append(out, s[strings.LastIndex(s, " ")+1:])
+		}
+	}
+	return out
+}
+
+func testEnvWith(t *testing.T, statuses *statusLog) (*vipps.Client, string) {
+	t.Helper()
 	vars := map[string]string{}
 	for _, name := range []string{"VIPPS_TEST_CLIENT_ID", "VIPPS_TEST_CLIENT_SECRET", "VIPPS_TEST_SUBSCRIPTION_KEY", "VIPPS_TEST_MSN", "VIPPS_TEST_PHONE"} {
 		vars[name] = os.Getenv(name)
@@ -57,11 +93,20 @@ func testEnv(t *testing.T) (*vipps.Client, string) {
 	c, err := vipps.New(vipps.Options{
 		BaseURL: base, ClientID: vars["VIPPS_TEST_CLIENT_ID"], ClientSecret: vars["VIPPS_TEST_CLIENT_SECRET"],
 		SubscriptionKey: vars["VIPPS_TEST_SUBSCRIPTION_KEY"], MSN: vars["VIPPS_TEST_MSN"], SystemVersion: "test",
+		Transport: transportOf(statuses),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	return c, vars["VIPPS_TEST_PHONE"]
+}
+
+// transportOf is statuses as a transport, nil (the default) when none.
+func transportOf(statuses *statusLog) http.RoundTripper {
+	if statuses == nil {
+		return nil
+	}
+	return statuses
 }
 
 // reference is a fresh reference for one scenario.
@@ -151,7 +196,8 @@ func TestVippsTestEnv_CancelBeforeAuthorization(t *testing.T) {
 // 151 øre is the test environment's insufficient funds: whichever step Vipps
 // refuses it at, the refusal is typed, never an unknown outcome.
 func TestVippsTestEnv_InsufficientFunds(t *testing.T) {
-	c, phone := testEnv(t)
+	statuses := &statusLog{}
+	c, phone := testEnvWith(t, statuses)
 	ctx := context.Background()
 	ref := reference("funds")
 	create(t, c, ref, 151)
@@ -169,6 +215,7 @@ func TestVippsTestEnv_InsufficientFunds(t *testing.T) {
 		return
 	}
 	_, err = c.Capture(ctx, ref, payments.NOK(151), "capture-1")
+	t.Logf("the capture of 151 øre: HTTP %v, %v", statuses.of(http.MethodPost, "/capture"), err)
 	if !payments.IsCaptureFailure(err) {
 		t.Errorf("the capture of 151 øre = %v, want a capture failure", err)
 	}

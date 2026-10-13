@@ -16,6 +16,11 @@ const (
 	codeCaptureFailed       = "6280"
 	codeAlreadyCancelled    = "6050"
 	codeAlreadyCancelledToo = "6190"
+	// A reference or an idempotency key already used, or a key reused with
+	// another body: a payment may exist under it (R4 §4.5).
+	codeReferenceExists = "4150"
+	codeKeyExists       = "4020"
+	codeKeyReused       = "4010"
 )
 
 // problem is the part of Vipps' RFC 7807 problem the port reads.
@@ -52,8 +57,11 @@ func alreadyCancelled(a answer) bool {
 }
 
 // classify is an answer as the port's errors: nil for a 2xx. Vipps' own
-// codes for a failed capture come first, on any 4xx; then the status. What
-// is left — a 3xx, a 5xx, any other status — is a plain error, an unknown
+// codes come first: a reference or key already in use is a conflict on any
+// 4xx — never a refusal for good, since the payment may be this request's —
+// and a failed capture (6260, 6280) is one only on a 400, as Vipps documents
+// it; on any other status the outcome is unknown. Then the status. What is
+// left — a 3xx, a 5xx, any other status — is a plain error, an unknown
 // outcome; Vipps' body never goes into it.
 func (c *Client) classify(op string, a answer) error {
 	if a.status >= 200 && a.status < 300 {
@@ -63,9 +71,15 @@ func (c *Client) classify(op string, a answer) error {
 	if a.status >= 400 && a.status < 500 {
 		code = codeOf(a.body)
 		switch code {
-		case codeInsufficientFunds:
-			return payments.ErrInsufficientFunds
-		case codeCaptureFailed:
+		case codeReferenceExists, codeKeyExists, codeKeyReused:
+			return &payments.ErrConflict{Code: code}
+		case codeInsufficientFunds, codeCaptureFailed:
+			if a.status != http.StatusBadRequest {
+				return fmt.Errorf("vipps: %s answered %d with a capture failure's code", op, a.status)
+			}
+			if code == codeInsufficientFunds {
+				return payments.ErrInsufficientFunds
+			}
 			return payments.ErrCaptureFailed
 		}
 	}

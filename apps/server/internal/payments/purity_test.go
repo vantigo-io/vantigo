@@ -8,15 +8,18 @@ import (
 
 // The port and its adapter are platform (D13, module boundaries rules 1, 2
 // and 4): the standard library, internal/buildinfo and the port's own
-// packages, nothing else — no module, no store, no driver.
+// packages, nothing else — no module, no store, no driver. The one outside
+// import is the QR encoder, and only qrsvg, the leaf that renders with it,
+// holds it.
 func TestPayments_Purity(t *testing.T) {
 	t.Parallel()
 	const (
 		module    = "github.com/vantigo-io/vantigo/server/internal/"
 		own       = module + "payments"
 		buildinfo = module + "buildinfo"
+		encoder   = "github.com/boombuler/barcode"
 	)
-	for _, dir := range []string{".", "vipps", "vipps/vippstest"} {
+	for _, dir := range []string{".", "qrsvg", "vipps", "vipps/vippstest"} {
 		p, err := build.ImportDir(dir, 0)
 		if err != nil {
 			t.Fatalf("%s: %v", dir, err)
@@ -29,7 +32,10 @@ func TestPayments_Purity(t *testing.T) {
 			if std || imp == buildinfo || imp == own || strings.HasPrefix(imp, own+"/") {
 				continue
 			}
-			t.Errorf("%s imports %s: only the standard library, internal/buildinfo and internal/payments are allowed", dir, imp)
+			if dir == "qrsvg" && (imp == encoder || strings.HasPrefix(imp, encoder+"/")) {
+				continue
+			}
+			t.Errorf("%s imports %s: only the standard library, internal/buildinfo, internal/payments and, in qrsvg, the QR encoder are allowed", dir, imp)
 		}
 	}
 }

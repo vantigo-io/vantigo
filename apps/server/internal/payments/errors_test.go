@@ -11,7 +11,8 @@ import (
 
 // Every error a provider answers, alone and wrapped, against both
 // per-operation predicates (I2: there is no generic one). A create is refused
-// for good only by a coded 400 or 409, refused keys or a request never sent;
+// for good only by a coded 400, refused keys or a request never sent — never
+// by a conflict, which may be the same request made before;
 // a capture fails only on insufficient funds or the provider's failure —
 // above all, a 401, 404, 409, 423/429 or an unknown error never fails a
 // capture whose money may have moved.
@@ -27,7 +28,7 @@ func TestPayments_PerOperationPredicates(t *testing.T) {
 		{"ErrInvalidRequest", payments.ErrInvalidRequest, true, false},
 		{"ErrRefused with a code", &payments.ErrRefused{Code: "6080"}, true, false},
 		{"ErrRefused without a code", &payments.ErrRefused{}, false, false},
-		{"ErrConflict with a code", &payments.ErrConflict{Code: "4150"}, true, false},
+		{"ErrConflict with a code", &payments.ErrConflict{Code: "4150"}, false, false},
 		{"ErrConflict without a code", &payments.ErrConflict{}, false, false},
 		{"ErrNotFound", payments.ErrNotFound, false, false},
 		{"ErrThrottled", &payments.ErrThrottled{RetryAfter: 5}, false, false},

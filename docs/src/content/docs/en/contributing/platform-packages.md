@@ -90,7 +90,7 @@ enforce.
 
 `payments.Provider` is one provider account (for Vipps, one sales unit):
 `Create` a payment request under the caller's reference — `FlowRedirect` with a return
-URL, or `FlowQR` answering the provider's own SVG — `Get` its state and its four
+URL, or `FlowQR` answering a QR code as SVG — `Get` its state and its four
 amounts (authorized, captured, cancelled, refunded), `Capture`, `Cancel` and
 `Refund`, `CaptureTime` (the first capture's time from the provider's event log),
 `VerifyWebhook` and `Verify`, the cheapest authenticated call for a settings page.
@@ -102,20 +102,26 @@ refusing anything that is not a whole number of øre.
 ### Errors and "outcome unknown"
 
 An adapter answers typed errors: `ErrUnauthorized` (the keys), `ErrNotFound`,
-`ErrConflict{Code}` (a 409), `ErrRefused{Code}` (a 400), `ErrThrottled{RetryAfter}`
-(a 429 or 423), `ErrInsufficientFunds` and `ErrCaptureFailed` (a capture that took
-nothing), `ErrInvalidSignature`, and `ErrInvalidRequest` — a request the adapter
+`ErrConflict{Code}` (a 409, or a reference or key already in use), `ErrRefused{Code}`
+(a 400), `ErrThrottled{RetryAfter}` (a 429 or 423), `ErrInsufficientFunds` and
+`ErrCaptureFailed` (a capture that took nothing — **not final**: Vipps asks for a retry,
+and the caller decides when to capture again and when to give up),
+`ErrInvalidSignature`, and `ErrInvalidRequest` — a request the adapter
 refused **before sending it** because it breaks a documented rule of the provider's.
 Anything else — a transport failure, a timeout, a 5xx, a redirect, an answer that
-does not decode — is a plain error meaning **the outcome is unknown**: the request may
+does not decode, a payment answered without one of its four amounts or in another
+currency — is a plain error meaning **the outcome is unknown**: the request may
 have taken effect, and the caller learns which by reading the payment again.
 
 What is final depends on the operation, so there is no generic predicate, only one per
 operation: `IsDefinitiveCreateRefusal` (refused keys, a request never sent, or a 400
-or 409 naming a code — no payment exists, the attempt may fail) and
-`IsCaptureFailure` (`ErrInsufficientFunds` or `ErrCaptureFailed` and nothing else). A
-409, a 401 or a 404 on a capture is **not** a failed capture: its money may have
-moved.
+naming a code — no payment exists, the attempt may fail) and `IsCaptureFailure`
+(`ErrInsufficientFunds` or `ErrCaptureFailed` and nothing else). A conflict is never a
+definitive refusal: "the reference already exists" may be this very request, made by
+an earlier try whose answer was lost — the Vipps adapter reads the payment back then
+(4150, 4020) and answers it as created when it is the one asked for. A 409, a 401 or a
+404 on a capture is **not** a failed capture: its money may have moved; and Vipps'
+capture codes count only on the 400 it documents them with.
 
 ### Idempotency keys and retries
 
@@ -136,8 +142,14 @@ expires by `Now` (one fetch at a time), and sends on every call the subscription
 the `Merchant-Serial-Number` and the four `Vipps-System-*` headers (`vantigo`,
 `vantigo-invoices`, the release). It refuses before any request an amount outside
 1.00–650 000.00 NOK, a reference outside `^[a-zA-Z0-9-]{8,64}$` and a description
-outside 3–100 characters. A call is bounded by thirty seconds and never follows a
-redirect. `RegisterWebhook` and `DeleteWebhook` manage a webhook registration for
+outside 3–100 characters, and a return URL or legal link that is not https or is
+longer than 2500 characters. A call is bounded by thirty seconds and never follows a
+redirect. A QR is asked for as Vipps' target URL (`TEXT/TARGETURL`) and rendered here
+by `internal/payments/qrsvg` — the one QR renderer, which a module's own QR codes use
+too — so the adapter never fetches a URL an answer names. The SVG holds only `svg`,
+`rect` and `path`, never the encoded text; a page shows it as an image,
+`<img src="data:image/svg+xml;base64,…">`, never inlined into its markup.
+`RegisterWebhook` and `DeleteWebhook` manage a webhook registration for
 `vipps.Events`, the eight ePayment events.
 
 **Webhooks are verified against the registered URL**, never the request line: the
@@ -145,6 +157,9 @@ content hash of the raw body against `x-ms-content-sha256`, then HMAC-SHA256 und
 secret over `POST\n<path and query>\n<x-ms-date>;<host>;<content hash>`, where the
 path, query and host are those of the URL the webhook was registered at — a reverse
 proxy may rewrite the request line, and what Vipps signs is the URL it was given.
+The `x-ms-date` must be an RFC 1123 date at most eight days old — Vipps retries a
+callback for seven — and at most five minutes ahead, so a captured callback cannot be
+replayed for ever.
 Vipps' published test vector's signature does not reproduce, so the hash step is
 pinned to that vector, the signature step to a self-generated one (flagged as such)
 and, once captured, to a real callback in `testdata/webhook-captured.json`.
@@ -157,7 +172,7 @@ per reference, the test environment's special amount 151 øre (insufficient fund
 any status or error code on demand, a reset connection, idempotency by key, partial
 captures, a refund made in the business portal and a signed webhook posted to a URL
 the test gives. A harness passes its `Transport()` as the module's HTTP transport.
-Only tests import it.
+Only tests import it: depguard's `test-fakes` rule refuses it in any other file.
 
 The tagged test `vipps_test_env_test.go` (`//go:build vipps`) runs the adapter
 against Vipps' own test environment:
@@ -173,7 +188,8 @@ It needs a test sales unit's five variables — `VIPPS_TEST_CLIENT_ID`,
 — and skips without them; `VIPPS_TEST_BASE_URL` overrides
 `https://apitest.vipps.no`. It creates, force-approves, captures (and repeats the
 capture under the same key), refunds part, reads the event log, cancels a second
-request, tries 151 øre and a QR. With `VIPPS_TEST_WEBHOOK_URL` — a public https URL
+request, tries 151 øre (logging the HTTP status Vipps really answers its capture
+with) and a QR. With `VIPPS_TEST_WEBHOOK_URL` — a public https URL
 forwarded to `VIPPS_TEST_WEBHOOK_LISTEN` (default `127.0.0.1:8089`) — it also registers
 a webhook, captures one signed callback, verifies it, writes it as the fixture and
 deletes the registration.

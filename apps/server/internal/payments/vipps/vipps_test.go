@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/payments"
+	"github.com/vantigo-io/vantigo/server/internal/payments/qrsvg"
 	"github.com/vantigo-io/vantigo/server/internal/payments/vipps"
 	"github.com/vantigo-io/vantigo/server/internal/payments/vipps/vippstest"
 )
@@ -172,12 +173,64 @@ func TestVipps_Create(t *testing.T) {
 		if events := vt.Events("acme01-10001-1002"); len(events) != 1 {
 			t.Errorf("%d events, want one CREATED", len(events))
 		}
-		_, err = c.Create(context.Background(), redirectRequest("acme01-10001-1002", "key-3", 12345))
-		if conflict, ok := errors.AsType[*payments.ErrConflict](err); !ok || conflict.Code != vippstest.CodeReferenceReused {
-			t.Errorf("the reference under another key = %v, want ErrConflict %s", err, vippstest.CodeReferenceReused)
+	})
+
+	// A reference already in use (4150) or a key already used (4020) may be
+	// this very request, made by an earlier try whose answer was lost: the
+	// payment is read, and answered as created when it is the one asked for;
+	// otherwise the outcome is unknown — never a refusal for good.
+	t.Run("a reference in use is read back", func(t *testing.T) {
+		t.Parallel()
+		vt := vippstest.New(t)
+		c := adapter(t, vt, nil)
+		ctx := context.Background()
+		first, err := c.Create(ctx, redirectRequest("acme01-10001-1005", "key-a", 12345))
+		if err != nil {
+			t.Fatalf("Create: %v", err)
 		}
-		if !payments.IsDefinitiveCreateRefusal(err) {
-			t.Error("a reused reference is not a definitive create refusal")
+		again, err := c.Create(ctx, redirectRequest("acme01-10001-1005", "key-b", 12345))
+		if err != nil || again != first {
+			t.Errorf("4150, the same payment = %+v, %v; want the payment held, %+v", again, err, first)
+		}
+		vt.Fail(vippstest.OpCreate, vippstest.Failure{Status: http.StatusConflict, Code: "4020", Times: 1})
+		if again, err := c.Create(ctx, redirectRequest("acme01-10001-1005", "key-c", 12345)); err != nil || again != first {
+			t.Errorf("4020, the same payment = %+v, %v; want the payment held", again, err)
+		}
+		if n := len(vt.Events("acme01-10001-1005")); n != 1 {
+			t.Errorf("%d events, want the one CREATED", n)
+		}
+
+		qr := redirectRequest("acme01-10001-1006", "key-qr", 5000)
+		qr.Flow, qr.ReturnURL = payments.FlowQR, ""
+		firstQR, err := c.Create(ctx, qr)
+		if err != nil {
+			t.Fatalf("Create QR: %v", err)
+		}
+		qr.IdempotencyKey = "key-qr-2"
+		if again, err := c.Create(ctx, qr); err != nil || again != firstQR {
+			t.Errorf("4150 on a QR = %+v, %v; want the same QR", again, err)
+		}
+
+		for name, call := range map[string]func() error{
+			"another amount": func() error {
+				_, err := c.Create(ctx, redirectRequest("acme01-10001-1005", "key-d", 12346))
+				return err
+			},
+			"4020 and nothing held": func() error {
+				vt.Fail(vippstest.OpCreate, vippstest.Failure{Status: http.StatusConflict, Code: "4020", Times: 1})
+				_, err := c.Create(ctx, redirectRequest("acme01-10001-1007", "key-e", 12345))
+				return err
+			},
+			"4010 (a key reused with another body)": func() error {
+				vt.Fail(vippstest.OpCreate, vippstest.Failure{Status: http.StatusBadRequest, Code: "4010", Times: 1})
+				_, err := c.Create(ctx, redirectRequest("acme01-10001-1008", "key-f", 12345))
+				return err
+			},
+		} {
+			err := call()
+			if err == nil || payments.IsDefinitiveCreateRefusal(err) {
+				t.Errorf("%s: %v, want an error that is no definitive refusal", name, err)
+			}
 		}
 	})
 
@@ -199,6 +252,16 @@ func TestVipps_Create(t *testing.T) {
 			"a 51-char key":          func(r *payments.CreateRequest) { r.IdempotencyKey = strings.Repeat("k", 51) },
 			"a redirect with no URL": func(r *payments.CreateRequest) { r.ReturnURL = "" },
 			"an unknown flow":        func(r *payments.CreateRequest) { r.Flow = "push" },
+			"an http return URL":     func(r *payments.CreateRequest) { r.ReturnURL = "http://pay.example.no/pay" },
+			"a relative return URL":  func(r *payments.CreateRequest) { r.ReturnURL = "/pay?token=abc" },
+			"a 2501-char return URL": func(r *payments.CreateRequest) {
+				r.ReturnURL = "https://pay.example.no/" + strings.Repeat("p", 2501-23)
+			},
+			"an http terms link":   func(r *payments.CreateRequest) { r.TermsURL = "http://seller.example.no/terms" },
+			"an http privacy link": func(r *payments.CreateRequest) { r.PrivacyURL = "http://seller.example.no/privacy" },
+			"a 2501-char terms link": func(r *payments.CreateRequest) {
+				r.TermsURL = "https://seller.example.no/" + strings.Repeat("t", 2501-26)
+			},
 		} {
 			r := redirectRequest("acme01-10001-1003", "key-4", 12345)
 			mutate(&r)
@@ -211,7 +274,9 @@ func TestVipps_Create(t *testing.T) {
 			}
 		}
 		for reference, edge := range map[string]int64{"acme01-edge-low": 100, "acme01-edge-high": 65_000_000} {
-			if _, err := c.Create(context.Background(), redirectRequest(reference, "key-"+reference, edge)); err != nil {
+			r := redirectRequest(reference, "key-"+reference, edge)
+			r.ReturnURL = "https://pay.example.no/" + strings.Repeat("p", 2500-23)
+			if _, err := c.Create(context.Background(), r); err != nil {
 				t.Errorf("%d øre: %v, want accepted", edge, err)
 			}
 		}
@@ -229,9 +294,9 @@ func TestVipps_Create(t *testing.T) {
 	})
 }
 
-// A QR create asks for an SVG with the customer present, and answers the
-// image Vipps links to — fetched without the keys, which must never travel
-// with it.
+// A QR create asks Vipps for the code's target URL with the customer
+// present and renders the image itself: no request follows the create, so
+// nothing an answer names is ever fetched, and the image is qrsvg's.
 func TestVipps_QRCreate(t *testing.T) {
 	t.Parallel()
 	vt := vippstest.New(t)
@@ -241,8 +306,12 @@ func TestVipps_QRCreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if created.QRSVG != vippstest.QRSVG("acme01-10001-2001") || created.RedirectURL != "" {
-		t.Errorf("Created = %+v, want the SVG Vipps served and no redirect URL", created)
+	want, err := qrsvg.Render(vippstest.QRTarget("acme01-10001-2001"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.QRSVG != want || created.RedirectURL != "" {
+		t.Errorf("Created = %+v, want the target URL's code rendered here and no redirect URL", created)
 	}
 	creates := requestsTo(vt, http.MethodPost, "/epayment/v1/payments")
 	if len(creates) != 1 {
@@ -250,20 +319,14 @@ func TestVipps_QRCreate(t *testing.T) {
 	}
 	body := decode(t, creates[0].Body)
 	if body["userFlow"] != "QR" || body["customerInteraction"] != "CUSTOMER_PRESENT" ||
-		!reflect.DeepEqual(body["qrFormat"], map[string]any{"format": "IMAGE/SVG+XML"}) {
-		t.Errorf("body = %s, want QR, an SVG and the customer present", creates[0].Body)
+		!reflect.DeepEqual(body["qrFormat"], map[string]any{"format": "TEXT/TARGETURL"}) {
+		t.Errorf("body = %s, want QR, a target URL and the customer present", creates[0].Body)
 	}
 	if _, ok := body["returnUrl"]; ok {
 		t.Errorf("a QR create sent a returnUrl: %s", creates[0].Body)
 	}
-	images := requestsTo(vt, http.MethodGet, "/qr/acme01-10001-2001.svg")
-	if len(images) != 1 {
-		t.Fatalf("%d image fetches, want 1", len(images))
-	}
-	for _, h := range []string{"Authorization", "Ocp-Apim-Subscription-Key", "Merchant-Serial-Number", "client_secret"} {
-		if images[0].Header.Get(h) != "" {
-			t.Errorf("the image fetch carried %s", h)
-		}
+	if n := len(vt.Requests()); n != 2 {
+		t.Errorf("%d requests, want the token and the create only", n)
 	}
 }
 
@@ -498,6 +561,8 @@ func TestVipps_ErrorMapping(t *testing.T) {
 			e, ok := errors.AsType[*payments.ErrThrottled](err)
 			return ok && e.RetryAfter == 90*time.Second
 		}},
+		{"409 with 6280", vippstest.Failure{Status: 409, Code: "6280"}, func(err error) bool { return err != nil && !isTyped(err) }},
+		{"423 with 6260", vippstest.Failure{Status: 423, Code: "6260"}, func(err error) bool { return err != nil && !isTyped(err) }},
 		{"503", vippstest.Failure{Status: 503}, func(err error) bool { return err != nil && !isTyped(err) }},
 		{"500 with a code", vippstest.Failure{Status: 500, Code: "6260"}, func(err error) bool { return err != nil && !isTyped(err) }},
 		{"reset", vippstest.Failure{Reset: true}, func(err error) bool { return err != nil && !isTyped(err) }},
@@ -521,7 +586,7 @@ func TestVipps_ErrorMapping(t *testing.T) {
 			if !tc.check(err) {
 				t.Errorf("Create answered %v (%T)", err, err)
 			}
-			wantDefinitive := tc.name == "401" || tc.name == "403" || tc.name == "409" || tc.name == "400"
+			wantDefinitive := tc.name == "401" || tc.name == "403" || tc.name == "400"
 			if got := payments.IsDefinitiveCreateRefusal(err); got != wantDefinitive {
 				t.Errorf("IsDefinitiveCreateRefusal(%s) = %v, want %v", tc.name, got, wantDefinitive)
 			}
@@ -652,8 +717,9 @@ func TestVipps_NoRedirectNoRetry(t *testing.T) {
 	}
 }
 
-// CaptureTime is the first successful CAPTURED event's time in the event
-// log — not a later capture's, not a failed one's; none is ok = false.
+// CaptureTime is the earliest successful CAPTURED event's time in the event
+// log — not a later capture's, not a failed one's, whatever the log's order;
+// none is ok = false.
 func TestVipps_CaptureTimeFromEvents(t *testing.T) {
 	t.Parallel()
 	vt := vippstest.New(t)
@@ -692,6 +758,73 @@ func TestVipps_CaptureTimeFromEvents(t *testing.T) {
 	}
 	if _, _, err := c.CaptureTime(ctx, "acme01-nobody-home"); !errors.Is(err, payments.ErrNotFound) {
 		t.Errorf("an unknown reference = %v, want ErrNotFound", err)
+	}
+
+	stamp := func(t time.Time) string { return t.Format(time.RFC3339Nano) }
+	shuffled, _ := json.Marshal([]vippstest.Event{
+		{Reference: reference, Name: "CREATED", Timestamp: stamp(first.Add(-time.Hour)), Success: true},
+		{Reference: reference, Name: "CAPTURED", Timestamp: stamp(first.Add(time.Hour)), Success: true},
+		{Reference: reference, Name: "CAPTURED", Timestamp: stamp(first.Add(-time.Minute)), Success: false},
+		{Reference: reference, Name: "CAPTURED", Timestamp: stamp(first), Success: true},
+	})
+	vt.Fail(vippstest.OpEvents, vippstest.Failure{Body: shuffled, Times: 1})
+	if at, ok, err := c.CaptureTime(ctx, reference); err != nil || !ok || !at.Equal(first) {
+		t.Errorf("a log out of order = %v, %v, %v; want the earliest successful capture %v", at, ok, err, first)
+	}
+}
+
+// A payment answered without its aggregate, without one of the four amounts
+// or with one in another currency is an unknown outcome — never zero.
+func TestVipps_PaymentWithoutItsAmounts(t *testing.T) {
+	t.Parallel()
+	vt := vippstest.New(t)
+	c := adapter(t, vt, nil)
+	ctx := context.Background()
+	const reference = "acme01-10001-9501"
+	authorized(t, vt, c, reference, 10000)
+	nok := func(v int64) map[string]any { return map[string]any{"currency": "NOK", "value": v} }
+	body := func(aggregate map[string]any, amount any) []byte {
+		b := map[string]any{"reference": reference, "pspReference": "1", "state": "AUTHORIZED"}
+		if amount != nil {
+			b["amount"] = amount
+		}
+		if aggregate != nil {
+			b["aggregate"] = aggregate
+		}
+		raw, _ := json.Marshal(b)
+		return raw
+	}
+	whole := func() map[string]any {
+		return map[string]any{"authorizedAmount": nok(10000), "capturedAmount": nok(0), "cancelledAmount": nok(0), "refundedAmount": nok(0)}
+	}
+	without := func(k string) map[string]any { m := whole(); delete(m, k); return m }
+	sek := whole()
+	sek["refundedAmount"] = map[string]any{"currency": "SEK", "value": 0}
+
+	vt.Fail(vippstest.OpGet, vippstest.Failure{Body: body(whole(), nok(10000)), Times: 1})
+	if p, err := c.Get(ctx, reference); err != nil || p.Authorized != payments.NOK(10000) {
+		t.Fatalf("a whole answer = %+v, %v", p, err)
+	}
+	for name, raw := range map[string][]byte{
+		"no aggregate":                 body(nil, nok(10000)),
+		"no authorizedAmount":          body(without("authorizedAmount"), nok(10000)),
+		"no capturedAmount":            body(without("capturedAmount"), nok(10000)),
+		"no cancelledAmount":           body(without("cancelledAmount"), nok(10000)),
+		"no refundedAmount":            body(without("refundedAmount"), nok(10000)),
+		"a refund in SEK":              body(sek, nok(10000)),
+		"no amount to read a currency": body(whole(), nil),
+	} {
+		vt.Fail(vippstest.OpGet, vippstest.Failure{Body: raw, Times: 1})
+		if p, err := c.Get(ctx, reference); err == nil || isTyped(err) {
+			t.Errorf("Get, %s = %+v, %v; want an unknown outcome", name, p, err)
+		}
+	}
+	dkk := func(v int64) map[string]any { return map[string]any{"currency": "DKK", "value": v} }
+	vt.Fail(vippstest.OpCapture, vippstest.Failure{Body: body(map[string]any{
+		"authorizedAmount": dkk(10000), "capturedAmount": dkk(10000), "cancelledAmount": dkk(0), "refundedAmount": dkk(0),
+	}, dkk(10000)), Times: 1})
+	if p, err := c.Capture(ctx, reference, payments.NOK(10000), "cap-dkk"); err == nil || isTyped(err) {
+		t.Errorf("a capture answered in DKK = %+v, %v; want an unknown outcome", p, err)
 	}
 }
 

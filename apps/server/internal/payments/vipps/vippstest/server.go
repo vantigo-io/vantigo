@@ -14,10 +14,12 @@
 // four amounts move with capture, cancel and refund as Vipps documents them,
 // and every operation lands in its event log. Create, capture, cancel and
 // refund are idempotent by key — the same key twice answers the first answer
-// again and changes nothing. A created amount of 151 øre is the test
+// again and changes nothing; a reference already used answers 409 with 4150.
+// A QR is asked for as TEXT/TARGETURL and answered as a target URL
+// (QRTarget), which the adapter renders itself. A created amount of 151 øre is the test
 // environment's insufficient funds: its capture is refused with 6260. Fail
 // answers an operation with any status and error code, a reset connection or
-// a redirect, on demand. RefundInPortal is a refund made in the business
+// a redirect or a body of the test's own, on demand. RefundInPortal is a refund made in the business
 // portal; SignAndPost a signed webhook to a URL the test gives.
 //
 // A client reaches it through Transport, which trusts the server's
@@ -101,6 +103,9 @@ type Failure struct {
 	Reset bool
 	// Redirect answers 302 to this URL.
 	Redirect string
+	// Body, when set, is answered as it is under Status (200 when zero), in
+	// place of a problem.
+	Body []byte
 	// Times is how many requests it answers; 0 is every one until Clear.
 	Times int
 }
@@ -131,8 +136,8 @@ type Amount struct {
 
 // Payment is a payment as the server holds it.
 type Payment struct {
-	Reference, PSPReference, State string
-	Amount                         int64
+	Reference, PSPReference, State, RedirectURL string
+	Amount                                      int64
 	// The four aggregate amounts.
 	Authorized, Captured, Cancelled, Refunded int64
 	// UserFlow, CustomerInteraction and the rest of the create request as
@@ -312,9 +317,10 @@ func (s *Server) Webhooks() []Webhook {
 	return append([]Webhook(nil), s.webhooks...)
 }
 
-// QRSVG is the image the server serves for a QR payment under reference.
-func QRSVG(reference string) string {
-	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><title>` + reference + `</title><rect width="10" height="10"/></svg>`
+// QRTarget is the target URL the server answers for a QR payment under
+// reference: what the code encodes, never fetched.
+func QRTarget(reference string) string {
+	return "https://qr.vippstest.example/p/" + url.PathEscape(reference)
 }
 
 // Sign is the headers Vipps sends with a webhook to registeredURL under
@@ -387,11 +393,6 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	s.requests = append(s.requests, Request{Method: r.Method, Path: r.URL.RequestURI(), Header: r.Header.Clone(), Body: body})
 	s.mu.Unlock()
 
-	if strings.HasPrefix(r.URL.Path, "/qr/") {
-		w.Header().Set("Content-Type", "image/svg+xml")
-		_, _ = io.WriteString(w, QRSVG(strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/qr/"), ".svg")))
-		return
-	}
 	if r.Method == http.MethodPost && r.URL.Path == "/accesstoken/get" {
 		if s.failed(w, OpToken) {
 			return
@@ -498,6 +499,12 @@ func (s *Server) failed(w http.ResponseWriter, op Op) bool {
 	case f.Redirect != "":
 		w.Header().Set("Location", f.Redirect)
 		w.WriteHeader(http.StatusFound)
+	case f.Body != nil:
+		status := f.Status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		writeRaw(w, status, f.Body)
 	default:
 		if f.RetryAfter != "" {
 			w.Header().Set("Retry-After", f.RetryAfter)
@@ -563,6 +570,9 @@ type createBody struct {
 	Reference string `json:"reference"`
 	UserFlow  string `json:"userFlow"`
 	ReturnURL string `json:"returnUrl"`
+	QRFormat  *struct {
+		Format string `json:"format"`
+	} `json:"qrFormat"`
 }
 
 func (s *Server) create(raw []byte, key string) (int, []byte) {
@@ -572,7 +582,8 @@ func (s *Server) create(raw []byte, key string) (int, []byte) {
 	}
 	if body.Amount.Currency != "NOK" || body.Amount.Value < 100 || body.Amount.Value > 65_000_000 ||
 		body.PaymentMethod.Type != "WALLET" || body.Reference == "" ||
-		(body.UserFlow == "WEB_REDIRECT" && body.ReturnURL == "") || (body.UserFlow != "WEB_REDIRECT" && body.UserFlow != "QR") {
+		(body.UserFlow == "WEB_REDIRECT" && body.ReturnURL == "") || (body.UserFlow != "WEB_REDIRECT" && body.UserFlow != "QR") ||
+		(body.UserFlow == "QR" && (body.QRFormat == nil || body.QRFormat.Format != "TEXT/TARGETURL")) {
 		return problemBody(http.StatusBadRequest, "1000")
 	}
 	var request map[string]any
@@ -590,11 +601,11 @@ func (s *Server) create(raw []byte, key string) (int, []byte) {
 	delete(s.scripts, body.Reference)
 	s.payments[body.Reference] = p
 	s.log(p, "CREATED", p.Amount, key)
-	redirect := s.srv.URL + "/landing?token=" + url.QueryEscape(p.Reference)
+	p.RedirectURL = s.srv.URL + "/landing?token=" + url.QueryEscape(p.Reference)
 	if body.UserFlow == "QR" {
-		redirect = s.srv.URL + "/qr/" + url.PathEscape(p.Reference) + ".svg"
+		p.RedirectURL = QRTarget(p.Reference)
 	}
-	raw, _ = json.Marshal(map[string]string{"reference": p.Reference, "redirectUrl": redirect})
+	raw, _ = json.Marshal(map[string]string{"reference": p.Reference, "redirectUrl": p.RedirectURL})
 	return http.StatusCreated, raw
 }
 
@@ -778,6 +789,7 @@ func (s *Server) paymentBody(p *Payment, withGet bool) []byte {
 	}
 	if withGet {
 		body["paymentMethod"] = map[string]string{"type": "WALLET"}
+		body["redirectUrl"] = p.RedirectURL
 		if p.CaptureGuaranteedUntil != nil {
 			body["captureGuaranteedUntil"] = p.CaptureGuaranteedUntil.UTC().Format(time.RFC3339)
 		}
