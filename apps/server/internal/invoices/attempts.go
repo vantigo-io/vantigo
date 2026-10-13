@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,6 +59,11 @@ var (
 // an attempt's create right after the credentials row is shared under the
 // invoice's lock, before the attempt is inserted; nil in production.
 var attemptAfterInvoiceLock func(ctx context.Context, tx pgx.Tx)
+
+// abandonAfterAttemptLock, when a test sets it (export_test.go), runs inside
+// an abandon's transaction right after the attempt's lock; nil in
+// production.
+var abandonAfterAttemptLock func(ctx context.Context, tx pgx.Tx)
 
 // payNonce, when a test sets it (export_test.go), answers every new return
 // nonce in place of 16 random bytes; nil in production.
@@ -412,6 +418,45 @@ func (s *server) recordFailed(ctx context.Context, id int64, cause error, now ti
 	})
 }
 
+// paymentAttemptWire is an attempt as the wire answers it — never the
+// address the payer is sent to.
+func paymentAttemptWire(a store.InvoicesPaymentAttempt) (gen.InvoicesPaymentAttempt, error) {
+	optional := func(n pgtype.Numeric) (*float64, error) {
+		if !n.Valid {
+			return nil, nil
+		}
+		r, err := ratFromNumeric(n)
+		if err != nil {
+			return nil, err
+		}
+		return ptr(floatFromRat(r, 2)), nil
+	}
+	amount, err := ratFromNumeric(a.Amount)
+	if err != nil {
+		return gen.InvoicesPaymentAttempt{}, err
+	}
+	w := gen.InvoicesPaymentAttempt{
+		Id: a.ID, Reference: a.Reference, Flow: gen.InvoicesPaymentAttemptFlow(a.Flow),
+		State: gen.InvoicesPaymentAttemptState(a.State), Amount: floatFromRat(amount, 2),
+		ReleasePending: a.ReleasePending, CreatedAt: a.CreatedAt, CreatedByUserId: a.CreatedByUserID,
+		ExpiresAt: a.ExpiresAt, AuthorizedAt: a.AuthorizedAt, CapturedAt: a.CapturedAt, FinishedAt: a.FinishedAt,
+		AbandonedAt: a.AbandonedAt, AbandonedByUserId: a.AbandonedByUserID, AbandonReason: a.AbandonReason,
+	}
+	for _, f := range []struct {
+		n   pgtype.Numeric
+		out **float64
+	}{
+		{a.AuthorizedAmount, &w.AuthorizedAmount}, {a.CapturedAmount, &w.CapturedAmount},
+		{a.CancelledAmount, &w.CancelledAmount}, {a.RefundedAmount, &w.RefundedAmount},
+		{a.ReservedAmount, &w.ReservedAmount},
+	} {
+		if *f.out, err = optional(f.n); err != nil {
+			return gen.InvoicesPaymentAttempt{}, err
+		}
+	}
+	return w, nil
+}
+
 // deref64 is *p, or 0.
 func deref64(p *int64) int64 {
 	if p == nil {
@@ -427,42 +472,196 @@ func withPaymentAttempts(ctx context.Context, q *store.Queries, inv store.Invoic
 	if err != nil {
 		return fmt.Errorf("invoices: read document %d's payment attempts: %w", inv.ID, err)
 	}
-	optional := func(n pgtype.Numeric) (*float64, error) {
-		if !n.Valid {
-			return nil, nil
-		}
-		r, err := ratFromNumeric(n)
-		if err != nil {
-			return nil, err
-		}
-		return ptr(floatFromRat(r, 2)), nil
-	}
 	out := make([]gen.InvoicesPaymentAttempt, 0, len(rows))
 	for _, a := range rows {
-		amount, err := ratFromNumeric(a.Amount)
+		w, err := paymentAttemptWire(a)
 		if err != nil {
 			return err
-		}
-		w := gen.InvoicesPaymentAttempt{
-			Id: a.ID, Reference: a.Reference, Flow: gen.InvoicesPaymentAttemptFlow(a.Flow),
-			State: gen.InvoicesPaymentAttemptState(a.State), Amount: floatFromRat(amount, 2),
-			ReleasePending: a.ReleasePending, CreatedAt: a.CreatedAt, CreatedByUserId: a.CreatedByUserID,
-			ExpiresAt: a.ExpiresAt, AuthorizedAt: a.AuthorizedAt, CapturedAt: a.CapturedAt, FinishedAt: a.FinishedAt,
-		}
-		for _, f := range []struct {
-			n   pgtype.Numeric
-			out **float64
-		}{
-			{a.AuthorizedAmount, &w.AuthorizedAmount}, {a.CapturedAmount, &w.CapturedAmount},
-			{a.CancelledAmount, &w.CancelledAmount}, {a.RefundedAmount, &w.RefundedAmount},
-			{a.ReservedAmount, &w.ReservedAmount},
-		} {
-			if *f.out, err = optional(f.n); err != nil {
-				return err
-			}
 		}
 		out = append(out, w)
 	}
 	resp.PaymentAttempts = &out
 	return nil
+}
+
+const (
+	invalidAbandon         = "Invalid abandon"
+	cannotAbandonTitle     = "The Vipps payment cannot be abandoned"
+	abandonLease           = 2 * time.Minute
+	maxAbandonReasonLength = 500
+)
+
+// abandonable is an attempt an abandon may take as read on the pool: a
+// capture of unknown outcome, a capture in progress (stranded only, judged
+// later), or a create the worker gave up on.
+func abandonable(a store.InvoicesPaymentAttempt) bool {
+	switch a.State {
+	case "capturing", "capture_unknown":
+		return true
+	case "creating", "created":
+		return a.NextPollAt == nil
+	}
+	return false
+}
+
+// PostInvoicesPaymentAttemptsByIdAbandon Abandon a stuck Vipps payment
+// attempt (POST /api/v1/invoices/payment-attempts/{id}/abandon).
+//
+// Abandon must never lose money (D16, B5): wherever Vipps can be read for
+// the attempt it is read first, outside any lock, under a lease of the
+// abandon's own that keeps every worker claim off the attempt until the
+// write — money captured is registered as the worker registers it, a payment
+// still capturable is refused, a create Vipps knows is handed back to the
+// worker. Where Vipps cannot be read — switched off, or the attempt made
+// under another sales unit — only a capture never sent is abandoned. The
+// write takes the attempt alone (D18).
+func (s *server) PostInvoicesPaymentAttemptsByIdAbandon(ctx context.Context, req gen.PostInvoicesPaymentAttemptsByIdAbandonRequestObject) (gen.PostInvoicesPaymentAttemptsByIdAbandonResponseObject, error) {
+	reason := strings.TrimSpace(req.Body.Reason)
+	switch {
+	case !req.Body.ConfirmNotCaptured:
+		return gen.PostInvoicesPaymentAttemptsByIdAbandon400ApplicationProblemPlusJSONResponse(invalid(invalidAbandon,
+			fieldError("confirmNotCaptured", "Confirm that you checked in the Vipps portal that nothing was captured"))), nil
+	case reason == "":
+		return gen.PostInvoicesPaymentAttemptsByIdAbandon400ApplicationProblemPlusJSONResponse(invalid(invalidAbandon,
+			fieldError("reason", "An abandon needs a reason"))), nil
+	case maxLength("The reason", reason, maxAbandonReasonLength) != "":
+		return gen.PostInvoicesPaymentAttemptsByIdAbandon400ApplicationProblemPlusJSONResponse(invalid(invalidAbandon,
+			fieldError("reason", maxLength("The reason", reason, maxAbandonReasonLength)))), nil
+	}
+	now := s.deps.Clock().UTC() // the request's one clock read (D18)
+	a, err := store.New(s.deps.Pool).GetPaymentAttempt(ctx, req.Id)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return gen.PostInvoicesPaymentAttemptsByIdAbandon404Response{}, nil
+	case err != nil:
+		return nil, fmt.Errorf("invoices: read payment attempt %d: %w", req.Id, err)
+	}
+	refuse := func(detail string) (gen.PostInvoicesPaymentAttemptsByIdAbandonResponseObject, error) {
+		return gen.PostInvoicesPaymentAttemptsByIdAbandon409ApplicationProblemPlusJSONResponse(
+			conflict(codeAttemptNotAbandonable, cannotAbandonTitle, detail)), nil
+	}
+	if a.ReleasePending && a.NextPollAt == nil {
+		// A release Vipps refused for good: never abandoned, but handed
+		// back to the worker once the person released the rest in the portal.
+		n, err := store.New(s.deps.Pool).UnparkAttempt(ctx, store.UnparkAttemptParams{Now: now, ID: a.ID})
+		if err != nil {
+			return nil, fmt.Errorf("invoices: hand payment attempt %d back: %w", a.ID, err)
+		}
+		if n == 1 {
+			return refuse("The payment is registered; only the release of its uncaptured rest was stuck. It is handed back to the payments worker, which reads Vipps again now.")
+		}
+	}
+	if !abandonable(a) {
+		return refuse(fmt.Sprintf("The payment is %s. Only a payment whose capture's outcome is unknown, one the payments worker cannot complete, or a request it gave up on is abandoned.", a.State))
+	}
+
+	provider, creds, perr := s.paymentProvider(ctx)
+	if perr != nil {
+		if _, known := paymentsUnavailable(perr); !known {
+			return nil, perr
+		}
+	}
+	if perr != nil || creds.msn != a.Msn {
+		// Stranded: Vipps cannot be read for this attempt. Only a capture
+		// never sent can have moved no money.
+		if a.State == "creating" || a.State == "created" || a.CaptureAttempts > 0 {
+			return refuse("Vipps cannot be read for this payment from this installation now, and it may have moved money. It can be abandoned once Vipps can be read again.")
+		}
+		return s.abandonAttempt(ctx, a, "", reason, now)
+	}
+	if a.State == "capturing" {
+		return refuse("The payments worker is completing this payment; it is abandoned only once its outcome is unknown.")
+	}
+
+	lease := strings.ReplaceAll(uuid.NewString(), "-", "")
+	n, err := store.New(s.deps.Pool).LeaseAttemptForAbandon(ctx, store.LeaseAttemptForAbandonParams{
+		LeaseID: lease, LeaseUntil: now.Add(abandonLease), ID: a.ID, State: a.State, CaptureAttempts: a.CaptureAttempts, Now: now,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("invoices: lease payment attempt %d: %w", a.ID, err)
+	}
+	if n != 1 {
+		return refuse("The payments worker is reading this payment right now. Read it again in a minute.")
+	}
+	a.LeaseID = &lease
+	release := func() {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if _, err := store.New(s.deps.Pool).ReleaseAttemptLease(ctx, store.ReleaseAttemptLeaseParams{ID: a.ID, LeaseID: lease}); err != nil {
+			s.deps.Logger.WarnContext(ctx, "invoices: an abandon's lease could not be given back; it runs out by itself",
+				"attempt_id", a.ID, "error", err.Error())
+		}
+	}
+
+	p, err := provider.Get(ctx, a.Reference)
+	creating := a.State == "creating" || a.State == "created"
+	switch {
+	case creating && errors.Is(err, payments.ErrNotFound):
+		return s.abandonAttempt(ctx, a, lease, reason, now)
+	case err != nil:
+		release()
+		c := conflict(codeProviderFailed, "Vipps could not be read", "Vipps could not be read; nothing was changed. Try again in a minute.")
+		c.Status = ptr(int32(http.StatusBadGateway))
+		return gen.PostInvoicesPaymentAttemptsByIdAbandon502ApplicationProblemPlusJSONResponse(c), nil
+	case creating && (p.Captured.Minor > 0 || p.State == payments.StateCreated || p.State == payments.StateAuthorized):
+		if _, err := store.New(s.deps.Pool).UnparkAttempt(ctx, store.UnparkAttemptParams{Now: now, ID: a.ID, LeaseID: lease}); err != nil {
+			release()
+			return nil, fmt.Errorf("invoices: hand payment attempt %d back: %w", a.ID, err)
+		}
+		return refuse(fmt.Sprintf("Vipps knows this payment (%s) and it is not over. It is handed back to the payments worker, which completes it and registers anything captured.", p.State))
+	case p.Captured.Minor > 0:
+		w := &PaymentWorker{srv: s, deps: s.deps}
+		c := &paymentClaim{s: s, w: w, row: a, lease: lease, now: now, provider: provider}
+		if err := c.register(ctx, p.Captured.Minor); err != nil && !errors.Is(err, errClaimLost) {
+			return nil, err
+		}
+		return refuse(fmt.Sprintf("Vipps shows %s captured: it is registered as a payment of the invoice, not abandoned.",
+			ratOfMinor(p.Captured.Minor).FloatString(2)))
+	case !creating && !endedAtVipps(p):
+		release()
+		return refuse("Vipps still holds this payment's authorization, and it may yet be captured. Release it in the Vipps portal first.")
+	}
+	return s.abandonAttempt(ctx, a, lease, reason, now)
+}
+
+// abandonAttempt is an abandon's write, the attempt alone locked (D18): the
+// attempt still as the abandon judged it — its state and captures sent, and
+// leased by this abandon (lease) or by no live claim (no lease) — abandoned.
+func (s *server) abandonAttempt(ctx context.Context, read store.InvoicesPaymentAttempt, lease, reason string, now time.Time) (gen.PostInvoicesPaymentAttemptsByIdAbandonResponseObject, error) {
+	by := callerID(ctx)
+	var out store.InvoicesPaymentAttempt
+	var refusal *gen.InvoicesConflictProblem
+	err := s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+		a, err := lockPaymentAttempt(ctx, txq, read.ID)
+		if err != nil {
+			return fmt.Errorf("invoices: lock payment attempt %d: %w", read.ID, err)
+		}
+		if hook := abandonAfterAttemptLock; hook != nil {
+			hook(ctx, tx)
+		}
+		leased := a.LeaseID != nil && a.LeaseUntil != nil && a.LeaseUntil.After(now)
+		ours := lease != "" && a.LeaseID != nil && *a.LeaseID == lease
+		if a.State != read.State || a.CaptureAttempts != read.CaptureAttempts || (lease != "" && !ours) || (lease == "" && leased) {
+			refusal = ptr(conflict(codeAttemptNotAbandonable, cannotAbandonTitle,
+				"The payment moved while it was being abandoned. Read it again."))
+			return errRefused
+		}
+		if out, err = txq.AbandonPaymentAttempt(ctx, store.AbandonPaymentAttemptParams{
+			AbandonedByUserID: &by, Now: now, AbandonReason: reason, ID: a.ID,
+		}); err != nil {
+			return fmt.Errorf("invoices: abandon payment attempt %d: %w", a.ID, err)
+		}
+		return nil
+	})
+	if refusal != nil {
+		return gen.PostInvoicesPaymentAttemptsByIdAbandon409ApplicationProblemPlusJSONResponse(*refusal), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	w, err := paymentAttemptWire(out)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PostInvoicesPaymentAttemptsByIdAbandon200JSONResponse(w), nil
 }

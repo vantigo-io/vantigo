@@ -162,3 +162,13 @@ UPDATE invoices.payment_attempts
 SET release_pending = false, cancelled_amount = @cancelled_amount,
     next_poll_at = sqlc.narg(next_poll_at)::timestamptz, last_error = NULL, failures = 0, lease_id = NULL, lease_until = NULL
 WHERE id = @id AND lease_id = @lease_id::text AND release_pending;
+
+-- name: RecordAttemptRefund :execrows
+-- RecordAttemptRefund is the refund watch's (D16): a captured attempt Vipps
+-- shows refunded more than recorded — a refund made in the Vipps portal —
+-- the amount stored, read again at @next_poll_at or, the watch over, never.
+-- No payment moves: the person removes it (vippsRefundSeen).
+UPDATE invoices.payment_attempts
+SET refunded_amount = @refunded_amount, next_poll_at = sqlc.narg(next_poll_at)::timestamptz,
+    last_error = NULL, failures = 0, lease_id = NULL, lease_until = NULL
+WHERE id = @id AND lease_id = @lease_id::text AND state = 'captured';

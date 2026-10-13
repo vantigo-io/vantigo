@@ -273,8 +273,20 @@ reference](/en/reference/invoices/#capture-and-the-reservation).
 **While a capture is being completed, its amount is reserved** on the invoice: a manual
 payment, a bank file or a reminder cannot take it, and a refusal says a Vipps payment is
 being completed. With `INVOICES_VIPPS_ENABLED=0` the worker does not run and no payment
-moves on, but the reservations stay — switch Vipps back on, or have a manager abandon
-each payment in progress after checking it in the portal.
+moves on, but the reservations stay, each shown on the dashboard as a stranded
+reservation — switch Vipps back on, or have a manager abandon each payment whose capture
+was never sent after checking it in the portal. One whose capture was sent can be
+abandoned only once Vipps can be read again.
+
+**Abandoning a payment** (*Abandon* on the invoice's Vipps payment, `invoices:manage`)
+takes a reason and the confirmation that the portal shows nothing captured. Vantigo does
+not take the confirmation on trust: wherever it can read Vipps it reads the payment
+first. Money Vipps shows captured is registered as a payment of the invoice and the
+abandon refused; a payment Vipps still holds capturable is refused until it is released
+in the portal; a payment request Vipps knows and has not ended is handed back to the
+worker. Only then is the attempt abandoned: its reserved amount released, who, when and
+why recorded. A capture discovered later is registered by hand. The rules are in [the
+reference](/en/reference/invoices/#abandon).
 
 **Verify:** a test payment of a small invoice, approved in the Vipps app (or the test
 environment's), is registered on the invoice within seconds as a Vipps payment.
@@ -287,8 +299,10 @@ environment's), is registered on the invoice within seconds as a Vipps payment.
   payment, hourly, for up to 180 days. Look the payment up in the Vipps business portal
   by its reference (`<prefix>-<invoice number>-<attempt id>`, shown on the invoice):
   captured there, it is registered at the next read once Vipps answers again; not
-  captured, a manager abandons the attempt, which releases the reservation. Check the
-  keys first — a refused key (*Refused* on verify) leaves every capture unknown.
+  captured, release the authorization in the portal and have a manager abandon the
+  attempt, which releases the reservation. Check the keys first — a refused key
+  (*Refused* on verify) leaves every capture unknown. It is on the dashboard as a capture
+  of unknown outcome.
 - *A failed capture* (`capture_failed`). Vipps refused the capture for lack of funds or
   as failed, and kept refusing it until the authorization ran out, or Vipps ended the
   payment. Nothing was taken; the invoice is open again and the customer pays another
@@ -296,17 +310,32 @@ environment's), is registered on the invoice within seconds as a Vipps payment.
   in the portal — the worker registers it as soon as it reads it.
 - *A payment's create that never settles.* When the create of a payment was never
   answered and sending it again keeps conflicting, the worker stops after ten tries and
-  the payment's last error says to look the reference up in the Vipps portal.
+  the payment's last error says to look the reference up in the Vipps portal. It shows
+  on the dashboard as stranded, and on site it holds the invoice's one live payment
+  request, so no new one can be made: a manager abandons it. Vantigo reads Vipps first —
+  a payment Vipps does not know, or has ended, is abandoned; one it knows and has not
+  ended is handed back to the worker, which completes it and registers anything
+  captured.
 - *A capture that cannot be registered.* The money is captured but the payment could
   not be written; the attempt keeps its reservation, its last error says why, and the
-  worker tries again.
+  worker tries again. It shows on the dashboard as a capture of unknown outcome until it
+  is registered.
 - *A release that never ends.* When Vipps refuses for good to release an amount it
   authorized and did not capture, the worker stops asking: the payment's last error says
   to release it in the Vipps portal. Such a payment still counts as in progress, so the
-  sales unit and its keys cannot be changed until it is abandoned or finished.
+  sales unit and its keys cannot be changed until it is finished, and it shows on the
+  dashboard as stranded. Once the rest is released in the portal, *Abandon* hands it
+  back to the worker — the payment itself is registered and is never abandoned — which
+  reads Vipps again and records the release.
 - *The sales unit was changed.* A payment made under another sales unit than the one
-  stored is never sent to the new one; it waits, its amount reserved, until a manager
-  abandons it.
+  stored is never sent to the new one; it waits, its amount reserved and shown on the
+  dashboard as stranded, until a manager abandons it — only while its capture was never
+  sent, since Vantigo cannot read it under the new sales unit.
+- *A refund made in the Vipps portal.* For 30 days after a capture the worker reads the
+  payment once a day; a refund made in the portal is recorded and shown on the dashboard
+  until someone with `invoices:payments` removes the payment (and registers the part
+  kept, if any). Vantigo never removes a payment on its own, and a read that fails
+  changes nothing.
 
 ## The public host
 

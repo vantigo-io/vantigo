@@ -2854,25 +2854,29 @@ type InvoicesPayment struct {
 // InvoicesPaymentSource manual, ocr, camt054 or vipps (a Vipps capture, which paymentAttemptId names).
 type InvoicesPaymentSource string
 
-// InvoicesPaymentAttempt One Vipps payment attempt of an invoice (invoices payments and reminders design D16): its reference at Vipps, flow (pay_link, made from the pay page, or on_site), state as the payments worker knows it, amount (the open amount when it was made), the amounts Vipps reported — authorized, captured, cancelled and refunded — the reservation while a capture is decided and not yet registered (reservedAmount), whether the uncaptured rest is still to be released (releasePending), and when it was made, by whom (absent for the pay page's), when it expires, was authorized, captured and finished. The address the payer is sent to is never answered.
+// InvoicesPaymentAttempt One Vipps payment attempt of an invoice (invoices payments and reminders design D16): its reference at Vipps, flow (pay_link, made from the pay page, or on_site), state as the payments worker knows it, amount (the open amount when it was made), the amounts Vipps reported — authorized, captured, cancelled and refunded — the reservation while a capture is decided and not yet registered (reservedAmount), whether the uncaptured rest is still to be released (releasePending), and when it was made, by whom (absent for the pay page's), when it expires, was authorized, captured and finished, and — abandoned — who abandoned it, when and why. The address the payer is sent to is never answered.
 type InvoicesPaymentAttempt struct {
-	Amount           float64                     `json:"amount"`
-	AuthorizedAmount *float64                    `json:"authorizedAmount,omitempty"`
-	AuthorizedAt     *time.Time                  `json:"authorizedAt,omitempty"`
-	CancelledAmount  *float64                    `json:"cancelledAmount,omitempty"`
-	CapturedAmount   *float64                    `json:"capturedAmount,omitempty"`
-	CapturedAt       *time.Time                  `json:"capturedAt,omitempty"`
-	CreatedAt        time.Time                   `json:"createdAt"`
-	CreatedByUserId  *openapi_types.UUID         `json:"createdByUserId,omitempty"`
-	ExpiresAt        time.Time                   `json:"expiresAt"`
-	FinishedAt       *time.Time                  `json:"finishedAt,omitempty"`
-	Flow             InvoicesPaymentAttemptFlow  `json:"flow"`
-	Id               int64                       `json:"id"`
-	Reference        string                      `json:"reference"`
-	RefundedAmount   *float64                    `json:"refundedAmount,omitempty"`
-	ReleasePending   bool                        `json:"releasePending"`
-	ReservedAmount   *float64                    `json:"reservedAmount,omitempty"`
-	State            InvoicesPaymentAttemptState `json:"state"`
+	// AbandonReason Why a person abandoned the attempt; with abandonedAt and abandonedByUserId, only on an abandoned one.
+	AbandonReason     *string                     `json:"abandonReason,omitempty"`
+	AbandonedAt       *time.Time                  `json:"abandonedAt,omitempty"`
+	AbandonedByUserId *openapi_types.UUID         `json:"abandonedByUserId,omitempty"`
+	Amount            float64                     `json:"amount"`
+	AuthorizedAmount  *float64                    `json:"authorizedAmount,omitempty"`
+	AuthorizedAt      *time.Time                  `json:"authorizedAt,omitempty"`
+	CancelledAmount   *float64                    `json:"cancelledAmount,omitempty"`
+	CapturedAmount    *float64                    `json:"capturedAmount,omitempty"`
+	CapturedAt        *time.Time                  `json:"capturedAt,omitempty"`
+	CreatedAt         time.Time                   `json:"createdAt"`
+	CreatedByUserId   *openapi_types.UUID         `json:"createdByUserId,omitempty"`
+	ExpiresAt         time.Time                   `json:"expiresAt"`
+	FinishedAt        *time.Time                  `json:"finishedAt,omitempty"`
+	Flow              InvoicesPaymentAttemptFlow  `json:"flow"`
+	Id                int64                       `json:"id"`
+	Reference         string                      `json:"reference"`
+	RefundedAmount    *float64                    `json:"refundedAmount,omitempty"`
+	ReleasePending    bool                        `json:"releasePending"`
+	ReservedAmount    *float64                    `json:"reservedAmount,omitempty"`
+	State             InvoicesPaymentAttemptState `json:"state"`
 }
 
 // InvoicesPaymentAttemptFlow defines model for InvoicesPaymentAttempt.Flow.
@@ -2880,6 +2884,12 @@ type InvoicesPaymentAttemptFlow string
 
 // InvoicesPaymentAttemptState defines model for InvoicesPaymentAttempt.State.
 type InvoicesPaymentAttemptState string
+
+// InvoicesPaymentAttemptAbandonRequest POST /invoices/payment-attempts/{id}/abandon's body (D16): reason is why the attempt is abandoned, 1-500 characters once trimmed; confirmNotCaptured must be true — the person has checked in the Vipps portal that nothing was captured.
+type InvoicesPaymentAttemptAbandonRequest struct {
+	ConfirmNotCaptured bool   `json:"confirmNotCaptured"`
+	Reason             string `json:"reason"`
+}
 
 // InvoicesPaymentRemovalRequest POST /invoices/{id}/payments/{paymentId}/remove's body (D2). reason is why the registration is removed: 1-200 characters once trimmed. A removal is never undone; a mistake is registered again. The same body removes a charge payment and a manual delivery (invoices payments and reminders design D8, D9).
 type InvoicesPaymentRemovalRequest struct {
@@ -3411,7 +3421,15 @@ type InvoicesSourcesBlock struct {
 //
 // `reminderBatchUnposted`: one per print batch neither confirmed posted nor reprinted from two days after its posting day; id 'reminderBatchUnposted/<batchId>', entityId the batch id, title its posting day, occurredAt two days after it at UTC midnight, count its printed letters. It clears when the batch is confirmed posted or reprinted.
 //
-// `paymentCaptureFailed`, `paymentCaptureUnknown`, `paymentReservationStranded` and `vippsRefundSeen` are the Vipps payments' (design D12, D16), declared ahead of the payments port; no item of these types is answered yet.
+// The Vipps payments' four (design D12, D16), each id '<type>/<attemptId>', entityId the attempt's invoice id, title the buyer's name:
+//
+// `paymentCaptureUnknown`: one per attempt whose capture's outcome is unknown (capture_unknown), and one per attempt whose money Vipps shows captured but whose registration as a payment failed; occurredAt its authorization. It clears when Vipps' answer resolves it, the capture is registered, or a manager abandons it.
+//
+// `paymentCaptureFailed`: one per failed capture (capture_failed) of the last 14 days whose invoice is still open; occurredAt its end. It clears after 14 days, when the invoice is settled, or when a later attempt of the invoice captures.
+//
+// `paymentReservationStranded`: one per attempt the payments worker cannot carry — a capture in progress or of unknown outcome while INVOICES_VIPPS_ENABLED=0 or made under a sales unit that is no longer the stored one, and an attempt parked for a person: a create given up after ten tries, or a release of the uncaptured rest Vipps refuses for good; occurredAt its authorization, or its creation. It clears when the switch or the sales unit is back, when the attempt is abandoned, or — a release — once the rest is released in the Vipps portal and an abandon hands the attempt back to the worker, which reads it again.
+//
+// `vippsRefundSeen`: one per captured attempt Vipps shows refunded in part or whole (a refund made in the Vipps portal, seen by the 30-day refund watch) whose payment is still live; occurredAt its capture. It clears when the payment is removed (and the part kept registered again).
 type InvoicesStatsAttentionItem struct {
 	// Count How many things the item stands for, when it stands for more than one — a file's open lines, the letters waiting on one cause, a batch's printed letters. Absent on an item about a single invoice or letter. It is here because a count inside a server-written title could never be translated.
 	Count      *int32                         `json:"count,omitempty"`
@@ -3938,6 +3956,9 @@ type PostInvoicesPayAttemptsJSONRequestBody = InvoicesPayAttemptRequest
 // PostInvoicesPayReadJSONRequestBody defines body for PostInvoicesPayRead for application/json ContentType.
 type PostInvoicesPayReadJSONRequestBody = InvoicesPayReadRequest
 
+// PostInvoicesPaymentAttemptsByIdAbandonJSONRequestBody defines body for PostInvoicesPaymentAttemptsByIdAbandon for application/json ContentType.
+type PostInvoicesPaymentAttemptsByIdAbandonJSONRequestBody = InvoicesPaymentAttemptAbandonRequest
+
 // PostInvoicesQuickJSONRequestBody defines body for PostInvoicesQuick for application/json ContentType.
 type PostInvoicesQuickJSONRequestBody = InvoicesQuickInvoiceRequest
 
@@ -4111,6 +4132,9 @@ type ServerInterface interface {
 	// PostInvoicesPayRead Read an invoice for the pay page
 	// (POST /api/v1/invoices/pay/read)
 	PostInvoicesPayRead(w http.ResponseWriter, r *http.Request)
+	// PostInvoicesPaymentAttemptsByIdAbandon Abandon a stuck Vipps payment attempt
+	// (POST /api/v1/invoices/payment-attempts/{id}/abandon)
+	PostInvoicesPaymentAttemptsByIdAbandon(w http.ResponseWriter, r *http.Request, id int64)
 	// PostInvoicesQuick Create and issue a quick invoice
 	// (POST /api/v1/invoices/quick)
 	PostInvoicesQuick(w http.ResponseWriter, r *http.Request)
@@ -5410,6 +5434,32 @@ func (siw *ServerInterfaceWrapper) PostInvoicesPayRead(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostInvoicesPayRead(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesPaymentAttemptsByIdAbandon operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesPaymentAttemptsByIdAbandon(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesPaymentAttemptsByIdAbandon(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7189,6 +7239,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/pay/read", wrapper.PostInvoicesPayRead)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/pay/attempts", wrapper.PostInvoicesPayAttempts)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/pay/attempts/{reference}", wrapper.GetInvoicesPayAttemptsByReference)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/payment-attempts/{id}/abandon", wrapper.PostInvoicesPaymentAttemptsByIdAbandon)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/hold", wrapper.PostInvoicesByIdHold)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/hold/lift", wrapper.PostInvoicesByIdHoldLift)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/collection", wrapper.PostInvoicesByIdCollection)
@@ -9302,6 +9353,107 @@ func (response PostInvoicesPayRead429JSONResponse) VisitPostInvoicesPayReadRespo
 		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
 	}
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPaymentAttemptsByIdAbandonRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesPaymentAttemptsByIdAbandonJSONRequestBody
+}
+
+type PostInvoicesPaymentAttemptsByIdAbandonResponseObject interface {
+	VisitPostInvoicesPaymentAttemptsByIdAbandonResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesPaymentAttemptsByIdAbandon200JSONResponse InvoicesPaymentAttempt
+
+func (response PostInvoicesPaymentAttemptsByIdAbandon200JSONResponse) VisitPostInvoicesPaymentAttemptsByIdAbandonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPaymentAttemptsByIdAbandon400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesPaymentAttemptsByIdAbandon400ApplicationProblemPlusJSONResponse) VisitPostInvoicesPaymentAttemptsByIdAbandonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPaymentAttemptsByIdAbandon401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesPaymentAttemptsByIdAbandon401JSONResponse) VisitPostInvoicesPaymentAttemptsByIdAbandonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPaymentAttemptsByIdAbandon403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesPaymentAttemptsByIdAbandon403JSONResponse) VisitPostInvoicesPaymentAttemptsByIdAbandonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPaymentAttemptsByIdAbandon404Response struct {
+}
+
+func (response PostInvoicesPaymentAttemptsByIdAbandon404Response) VisitPostInvoicesPaymentAttemptsByIdAbandonResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesPaymentAttemptsByIdAbandon409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesPaymentAttemptsByIdAbandon409ApplicationProblemPlusJSONResponse) VisitPostInvoicesPaymentAttemptsByIdAbandonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPaymentAttemptsByIdAbandon502ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesPaymentAttemptsByIdAbandon502ApplicationProblemPlusJSONResponse) VisitPostInvoicesPaymentAttemptsByIdAbandonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14182,6 +14334,9 @@ type StrictServerInterface interface {
 	// PostInvoicesPayRead Read an invoice for the pay page
 	// (POST /api/v1/invoices/pay/read)
 	PostInvoicesPayRead(ctx context.Context, request PostInvoicesPayReadRequestObject) (PostInvoicesPayReadResponseObject, error)
+	// PostInvoicesPaymentAttemptsByIdAbandon Abandon a stuck Vipps payment attempt
+	// (POST /api/v1/invoices/payment-attempts/{id}/abandon)
+	PostInvoicesPaymentAttemptsByIdAbandon(ctx context.Context, request PostInvoicesPaymentAttemptsByIdAbandonRequestObject) (PostInvoicesPaymentAttemptsByIdAbandonResponseObject, error)
 	// PostInvoicesQuick Create and issue a quick invoice
 	// (POST /api/v1/invoices/quick)
 	PostInvoicesQuick(ctx context.Context, request PostInvoicesQuickRequestObject) (PostInvoicesQuickResponseObject, error)
@@ -15220,6 +15375,39 @@ func (sh *strictHandler) PostInvoicesPayRead(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostInvoicesPayReadResponseObject); ok {
 		if err := validResponse.VisitPostInvoicesPayReadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesPaymentAttemptsByIdAbandon operation middleware
+func (sh *strictHandler) PostInvoicesPaymentAttemptsByIdAbandon(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesPaymentAttemptsByIdAbandonRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesPaymentAttemptsByIdAbandonJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesPaymentAttemptsByIdAbandon(ctx, request.(PostInvoicesPaymentAttemptsByIdAbandonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesPaymentAttemptsByIdAbandon")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesPaymentAttemptsByIdAbandonResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesPaymentAttemptsByIdAbandonResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

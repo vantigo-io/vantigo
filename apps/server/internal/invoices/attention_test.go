@@ -1,6 +1,7 @@
 package invoices_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"slices"
@@ -392,4 +393,158 @@ func TestAttention_EachTypeAndItsClearing(t *testing.T) {
 			t.Errorf("posted and reprinted = %+v, want none", got)
 		}
 	})
+}
+
+// plantFailedCapture writes a capture_failed attempt of invoice id that
+// finished at at.
+func plantFailedCapture(t *testing.T, h *harness, id int64, at time.Time) int64 {
+	t.Helper()
+	return plantID(t, h, `
+		INSERT INTO invoices.payment_attempts (invoice_id, provider, msn, flow, amount, cancel_key, state, created_at, expires_at,
+		    authorized_amount, authorized_at, capture_key, capture_attempts, finished_at, cancelled_amount)
+		VALUES ($1, 'vipps', '123456', 'on_site', 2500, gen_random_uuid(), 'capture_failed', $2::timestamptz,
+		    $2::timestamptz + interval '10 minutes', 2500, $2::timestamptz, gen_random_uuid(), 1, $2::timestamptz, 2500)
+		RETURNING id`, id, at)
+}
+
+// attemptIDOf is the id of the attempt under reference.
+func attemptIDOf(t *testing.T, h *harness, reference string) int64 {
+	t.Helper()
+	return modtest.One[int64](t, h.Harness, `SELECT id FROM invoices.payment_attempts WHERE reference = $1`, reference)
+}
+
+// itemIDs is the ids of items.
+func itemIDs(items []attentionItemJSON) []string {
+	out := []string{}
+	for _, i := range items {
+		out = append(out, i.ID)
+	}
+	return out
+}
+
+// TestAttention_PaymentTypes (D12's 4C types, D16, plan reading 18): each
+// Vipps type for invoices:payments alone, its id, title, occurredAt and its
+// clearing. paymentCaptureUnknown: a capture_unknown attempt, and money
+// captured whose registration failed; paymentCaptureFailed: a failed capture
+// of the last 14 days on an invoice still open; paymentReservationStranded:
+// a reservation the worker cannot carry — the switch off, another sales
+// unit — and an attempt parked for a person; vippsRefundSeen: the refund
+// watch's (TestRefundWatch_RaisesAndClears). invoices:access alone is
+// answered none of them, never a 403.
+func TestAttention_PaymentTypes(t *testing.T) {
+	t.Parallel()
+	vippsTypes := []string{"paymentCaptureUnknown", "paymentCaptureFailed", "paymentReservationStranded", "vippsRefundSeen"}
+
+	t.Run("paymentCaptureUnknown", func(t *testing.T) {
+		t.Parallel()
+		h := workerReady(t)
+		inv := issuedAcme(t, h)
+		ref := plantReservation(t, h, inv.ID, "capture_unknown", "2500")
+		id := attemptIDOf(t, h, ref)
+		items := ofType(attentionOf(t, payer(t, h)), "paymentCaptureUnknown")
+		if len(items) != 1 || items[0].ID != fmt.Sprintf("paymentCaptureUnknown/%d", id) || items[0].EntityID != entity(inv.ID) ||
+			items[0].Title != "Acme AS Norge" || items[0].OccurredAt != h.Now().UTC().Format(time.RFC3339) {
+			t.Errorf("the items = %+v, want one: the attempt's, about the invoice, the buyer, from its authorization", items)
+		}
+		for _, typ := range vippsTypes {
+			if got := ofType(attentionOf(t, reader(t, h)), typ); len(got) != 0 {
+				t.Errorf("invoices:access alone is answered %v", got)
+			}
+		}
+		setAttempt(t, h, ref, "state = 'abandoned', reserved_amount = NULL, abandoned_by_user_id = gen_random_uuid(), abandoned_at = now(), abandon_reason = 'x'")
+		if got := ofType(attentionOf(t, payer(t, h)), "paymentCaptureUnknown"); len(got) != 0 {
+			t.Errorf("after the abandon = %v, want none", got)
+		}
+	})
+
+	t.Run("a failed registration", func(t *testing.T) {
+		t.Parallel()
+		h := workerReady(t)
+		inv, ref := approvedAttempt(t, h)
+		h.Exec(t, `CREATE FUNCTION invoices.test_refuse_vipps() RETURNS trigger LANGUAGE plpgsql AS $$
+			BEGIN RAISE EXCEPTION 'test: registration refused'; END $$`)
+		h.Exec(t, `CREATE TRIGGER tr_test_refuse_vipps BEFORE INSERT ON invoices.payments FOR EACH ROW
+			WHEN (NEW.source = 'vipps') EXECUTE FUNCTION invoices.test_refuse_vipps()`)
+		_ = invoices.NewPaymentWorker(h.Deps()).RunCycle(context.Background())
+		items := ofType(attentionOf(t, payer(t, h)), "paymentCaptureUnknown")
+		if len(items) != 1 || items[0].ID != fmt.Sprintf("paymentCaptureUnknown/%d", attemptIDOf(t, h, ref)) || items[0].EntityID != entity(inv.ID) {
+			t.Errorf("a capture not registered = %+v, want one paymentCaptureUnknown", items)
+		}
+		h.Exec(t, `DROP TRIGGER tr_test_refuse_vipps ON invoices.payments`)
+		h.Advance(10 * time.Minute)
+		cycle(t, h)
+		if got := ofType(attentionOf(t, payer(t, h)), "paymentCaptureUnknown"); len(got) != 0 {
+			t.Errorf("once registered = %v, want none", got)
+		}
+	})
+
+	t.Run("paymentCaptureFailed", func(t *testing.T) {
+		t.Parallel()
+		h := workerReady(t)
+		open := issuedAcme(t, h)
+		failed := plantFailedCapture(t, h, open.ID, h.Now())
+		paid := issuedAcme(t, h)
+		plantFailedCapture(t, h, paid.ID, h.Now())
+		registered(t, h, paid.ID, pay(2500, "2026-09-12"))
+		old := issuedAcme(t, h)
+		plantFailedCapture(t, h, old.ID, h.Now().Add(-15*24*time.Hour))
+		retried := issuedAcme(t, h)
+		plantFailedCapture(t, h, retried.ID, h.Now().Add(-time.Hour))
+		ref := plantReservation(t, h, retried.ID, "capturing", "1000")
+		setAttempt(t, h, ref, "state = 'captured', reserved_amount = NULL, captured_amount = 1000, captured_at = now(), finished_at = now()")
+
+		items := ofType(attentionOf(t, payer(t, h)), "paymentCaptureFailed")
+		if !slices.Equal(itemIDs(items), []string{fmt.Sprintf("paymentCaptureFailed/%d", failed)}) || items[0].EntityID != entity(open.ID) ||
+			items[0].OccurredAt != h.Now().UTC().Format(time.RFC3339) {
+			t.Errorf("the items = %+v, want the open invoice's alone: not paid, not older than 14 days, not captured since", items)
+		}
+		h.Advance(14*24*time.Hour + time.Second)
+		if got := ofType(attentionOf(t, payer(t, h)), "paymentCaptureFailed"); len(got) != 0 {
+			t.Errorf("after 14 days = %v, want none", got)
+		}
+	})
+
+	t.Run("paymentReservationStranded", func(t *testing.T) {
+		t.Parallel()
+		off := newHarness(t, modtest.WithEnv("INVOICES_VIPPS_ENABLED", "0"))
+		saveSeller(t, off, completeSeller(1))
+		inv := issuedAcme(t, off)
+		ref := plantReservation(t, off, inv.ID, "capturing", "2500")
+		plantReservation(t, off, issuedAcme(t, off).ID, "authorized", "2500") // no reservation: no item
+		items := ofType(attentionOf(t, payer(t, off)), "paymentReservationStranded")
+		if !slices.Equal(itemIDs(items), []string{fmt.Sprintf("paymentReservationStranded/%d", attemptIDOf(t, off, ref))}) ||
+			items[0].EntityID != entity(inv.ID) || items[0].Title != "Acme AS Norge" {
+			t.Errorf("with the switch off = %+v, want the reservation's alone", items)
+		}
+
+		h := workerReady(t)
+		carried := plantReservation(t, h, issuedAcme(t, h).ID, "capturing", "2500")
+		foreign := plantReservation(t, h, issuedAcme(t, h).ID, "capture_unknown", "2500")
+		setAttempt(t, h, foreign, "msn = '999999'")
+		parked := plantParkedCreate(t, h, issuedAcme(t, h).ID)
+		want := []string{fmt.Sprintf("paymentReservationStranded/%d", attemptIDOf(t, h, foreign)),
+			fmt.Sprintf("paymentReservationStranded/%d", attemptIDOf(t, h, parked))}
+		if got := itemIDs(ofType(attentionOf(t, payer(t, h)), "paymentReservationStranded")); !slices.Equal(got, want) {
+			t.Errorf("another sales unit and a parked create = %v, want %v (not %s, which the worker carries)", got, want, carried)
+		}
+		abandoned(t, h, attemptIDOf(t, h, parked))
+		if got := itemIDs(ofType(attentionOf(t, payer(t, h)), "paymentReservationStranded")); !slices.Equal(got, want[:1]) {
+			t.Errorf("after the parked create's abandon = %v, want %v", got, want[:1])
+		}
+	})
+}
+
+// TestAttention_OverdueDropsAFullyReservedInvoice (m14): an overdue invoice
+// whose open amount a Vipps capture in progress reserves whole leaves
+// invoiceOverdue, as it leaves the overdue list; one reserved in part stays.
+func TestAttention_OverdueDropsAFullyReservedInvoice(t *testing.T) {
+	t.Parallel()
+	h := workerReady(t)
+	whole := plantOverdue(t, h, overdueSpec{number: 9001, customer: customerAcme, issue: "2026-07-01", due: "2026-08-03"})
+	part := plantOverdue(t, h, overdueSpec{number: 9002, customer: customerAcme, issue: "2026-07-01", due: "2026-08-03"})
+	plantReservation(t, h, whole, "capturing", "1000")
+	plantReservation(t, h, part, "capture_unknown", "400")
+	if got := entitiesOf(ofType(attentionOf(t, reader(t, h)), "invoiceOverdue")); !slices.Equal(got, []string{entity(part)}) {
+		t.Errorf("the overdue items = %v, want the partly reserved invoice alone", got)
+	}
 }

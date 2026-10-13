@@ -2,9 +2,12 @@ package invoices
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
@@ -16,8 +19,8 @@ import (
 // /stats/attention shares: the 20 most overdue invoices and every refund due
 // for every caller, and — for a caller holding invoices:payments, never a
 // 403 for one without — the bank files with open lines, the failed letters,
-// the letters held by a cause and the print batches not confirmed posted.
-// Every item is derived from the rows as they are, so none needs dismissing:
+// the letters held by a cause, the print batches not confirmed posted, and
+// the Vipps payments needing a person (attentionPayments). Every item is derived from the rows as they are, so none needs dismissing:
 // each clears when what it is about is done. One clock read; every read on
 // the pool with no lock, the refunds' charges through the rule-input loader
 // on a snapshot of its own, as the overdue list reads them.
@@ -35,7 +38,8 @@ var heldCauses = map[string]string{
 // GetInvoicesStatsAttention Get the invoices dashboard attention items
 // (GET /api/v1/invoices/stats/attention)
 func (s *server) GetInvoicesStatsAttention(ctx context.Context, _ gen.GetInvoicesStatsAttentionRequestObject) (gen.GetInvoicesStatsAttentionResponseObject, error) {
-	today := businessDay(s.deps.Clock())
+	now := s.deps.Clock()
+	today := businessDay(now)
 	q := store.New(s.deps.Pool)
 	items := []gen.InvoicesStatsAttentionItem{}
 	overdue, err := s.attentionOverdue(ctx, q, today)
@@ -55,7 +59,12 @@ func (s *server) GetInvoicesStatsAttention(ctx context.Context, _ gen.GetInvoice
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetInvoicesStatsAttention200JSONResponse(append(items, queue...)), nil
+	vipps, err := s.attentionPayments(ctx, q, now)
+	if err != nil {
+		return nil, err
+	}
+	items = append(items, queue...)
+	return gen.GetInvoicesStatsAttention200JSONResponse(append(items, vipps...)), nil
 }
 
 // attentionItem is one item; count is left out when it is 0.
@@ -170,6 +179,76 @@ func attentionQueue(ctx context.Context, q *store.Queries, today time.Time) ([]g
 	for _, b := range batches {
 		items = append(items, attentionItem(gen.ReminderBatchUnposted, idString(b.ID), b.PostOn.Time.Format(time.DateOnly),
 			b.PostOn.Time.AddDate(0, 0, 2), b.Letters))
+	}
+	return items, nil
+}
+
+// captureFailedWindow is how long a failed capture is an attention item
+// (plan reading 18).
+const captureFailedWindow = 14 * 24 * time.Hour
+
+// attentionPayments is the Vipps payments' four types (D12, D16), for
+// invoices:payments alone, each item about one attempt — id
+// '<type>/<attemptId>', entity its invoice, title the buyer's name:
+// paymentCaptureUnknown (a capture of unknown outcome, and captured money
+// whose registration failed), paymentCaptureFailed (a failed capture of the
+// last 14 days on an invoice still open), paymentReservationStranded (a
+// reservation the worker cannot carry — the switch off, another sales unit —
+// and an attempt parked for a person) and vippsRefundSeen (a refund seen by
+// the watch while its payment is live).
+func (s *server) attentionPayments(ctx context.Context, q *store.Queries, now time.Time) ([]gen.InvoicesStatsAttentionItem, error) {
+	items := []gen.InvoicesStatsAttentionItem{}
+	add := func(typ gen.InvoicesStatsAttentionItemType, attempt, invoice int64, buyer *string, at time.Time) {
+		item := attentionItem(typ, idString(invoice), orEmpty(buyer), at, 0)
+		item.Id = string(typ) + "/" + idString(attempt)
+		items = append(items, item)
+	}
+	unknown, err := q.AttentionCaptureUnknown(ctx, registrationFailed)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the Vipps captures of unknown outcome: %w", err)
+	}
+	for _, r := range unknown {
+		add(gen.PaymentCaptureUnknown, r.ID, r.InvoiceID, r.BuyerName, r.OccurredAt)
+	}
+	failed, err := q.AttentionCaptureFailed(ctx, store.AttentionCaptureFailedParams{
+		Since: now.Add(-captureFailedWindow), RegistrationFailed: registrationFailed,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the failed Vipps captures: %w", err)
+	}
+	for _, r := range failed {
+		add(gen.PaymentCaptureFailed, r.ID, r.InvoiceID, r.BuyerName, r.OccurredAt)
+	}
+	candidates, err := q.AttentionStrandedCandidates(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the Vipps reservations: %w", err)
+	}
+	if len(candidates) > 0 {
+		enabled := s.deps.Config != nil && s.deps.Config.InvoicesVippsEnabled
+		stored := ""
+		row, err := q.GetPaymentCredentials(ctx)
+		switch {
+		case err == nil:
+			settings, err := vippsSettingsOf(row)
+			if err != nil {
+				return nil, err
+			}
+			stored = settings.MSN
+		case !errors.Is(err, pgx.ErrNoRows):
+			return nil, fmt.Errorf("invoices: read the Vipps credentials: %w", err)
+		}
+		for _, r := range candidates {
+			if r.Parked || !enabled || r.Msn != stored {
+				add(gen.PaymentReservationStranded, r.ID, r.InvoiceID, r.BuyerName, r.OccurredAt)
+			}
+		}
+	}
+	refunds, err := q.AttentionRefundSeen(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the Vipps refunds: %w", err)
+	}
+	for _, r := range refunds {
+		add(gen.VippsRefundSeen, r.ID, r.InvoiceID, r.BuyerName, r.OccurredAt)
 	}
 	return items, nil
 }

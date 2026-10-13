@@ -13,6 +13,135 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const abandonPaymentAttempt = `-- name: AbandonPaymentAttempt :one
+UPDATE invoices.payment_attempts
+SET state = 'abandoned', reserved_amount = NULL, abandoned_by_user_id = $1,
+    abandoned_at = $2::timestamptz, abandon_reason = $3::text, finished_at = $2::timestamptz,
+    next_poll_at = NULL, lease_id = NULL, lease_until = NULL
+WHERE id = $4 AND state IN ('creating', 'created', 'capturing', 'capture_unknown')
+RETURNING id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, abandoned_by_user_id, abandoned_at, abandon_reason
+`
+
+type AbandonPaymentAttemptParams struct {
+	AbandonedByUserID *uuid.UUID
+	Now               time.Time
+	AbandonReason     string
+	ID                int64
+}
+
+// AbandonPaymentAttempt is an abandon's write (D16), under the attempt's own
+// lock: abandoned, the reservation released, who, when and why recorded,
+// never polled again. The caller has judged the state, the captures sent and
+// the lease under that lock.
+func (q *Queries) AbandonPaymentAttempt(ctx context.Context, arg AbandonPaymentAttemptParams) (InvoicesPaymentAttempt, error) {
+	row := q.db.QueryRow(ctx, abandonPaymentAttempt,
+		arg.AbandonedByUserID,
+		arg.Now,
+		arg.AbandonReason,
+		arg.ID,
+	)
+	var i InvoicesPaymentAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.InvoiceID,
+		&i.Provider,
+		&i.Msn,
+		&i.ReturnNonceSha256,
+		&i.Flow,
+		&i.PayLinkID,
+		&i.Reference,
+		&i.Amount,
+		&i.CreateKey,
+		&i.CaptureKey,
+		&i.CancelKey,
+		&i.State,
+		&i.ReleasePending,
+		&i.PspReference,
+		&i.RedirectUrl,
+		&i.AuthorizedAmount,
+		&i.CapturedAmount,
+		&i.CancelledAmount,
+		&i.RefundedAmount,
+		&i.ReservedAmount,
+		&i.CapturePspReference,
+		&i.CaptureGuaranteedUntil,
+		&i.CreatedAt,
+		&i.CreatedByUserID,
+		&i.ExpiresAt,
+		&i.AuthorizedAt,
+		&i.CapturedAt,
+		&i.FinishedAt,
+		&i.RefundWatchUntil,
+		&i.NextPollAt,
+		&i.Polls,
+		&i.CaptureAttempts,
+		&i.Failures,
+		&i.InsufficientFunds,
+		&i.LeaseID,
+		&i.LeaseUntil,
+		&i.LastError,
+		&i.AbandonedByUserID,
+		&i.AbandonedAt,
+		&i.AbandonReason,
+	)
+	return i, err
+}
+
+const getPaymentAttempt = `-- name: GetPaymentAttempt :one
+SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE id = $1
+`
+
+// GetPaymentAttempt is one attempt by id, read on the pool before an
+// abandon judges it; no row is pgx.ErrNoRows.
+func (q *Queries) GetPaymentAttempt(ctx context.Context, id int64) (InvoicesPaymentAttempt, error) {
+	row := q.db.QueryRow(ctx, getPaymentAttempt, id)
+	var i InvoicesPaymentAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.InvoiceID,
+		&i.Provider,
+		&i.Msn,
+		&i.ReturnNonceSha256,
+		&i.Flow,
+		&i.PayLinkID,
+		&i.Reference,
+		&i.Amount,
+		&i.CreateKey,
+		&i.CaptureKey,
+		&i.CancelKey,
+		&i.State,
+		&i.ReleasePending,
+		&i.PspReference,
+		&i.RedirectUrl,
+		&i.AuthorizedAmount,
+		&i.CapturedAmount,
+		&i.CancelledAmount,
+		&i.RefundedAmount,
+		&i.ReservedAmount,
+		&i.CapturePspReference,
+		&i.CaptureGuaranteedUntil,
+		&i.CreatedAt,
+		&i.CreatedByUserID,
+		&i.ExpiresAt,
+		&i.AuthorizedAt,
+		&i.CapturedAt,
+		&i.FinishedAt,
+		&i.RefundWatchUntil,
+		&i.NextPollAt,
+		&i.Polls,
+		&i.CaptureAttempts,
+		&i.Failures,
+		&i.InsufficientFunds,
+		&i.LeaseID,
+		&i.LeaseUntil,
+		&i.LastError,
+		&i.AbandonedByUserID,
+		&i.AbandonedAt,
+		&i.AbandonReason,
+	)
+	return i, err
+}
+
 const insertPaymentAttempt = `-- name: InsertPaymentAttempt :one
 INSERT INTO invoices.payment_attempts (
     invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount,
@@ -103,6 +232,42 @@ func (q *Queries) InsertPaymentAttempt(ctx context.Context, arg InsertPaymentAtt
 		&i.AbandonReason,
 	)
 	return i, err
+}
+
+const leaseAttemptForAbandon = `-- name: LeaseAttemptForAbandon :execrows
+UPDATE invoices.payment_attempts
+SET lease_id = $1::text, lease_until = $2::timestamptz
+WHERE id = $3 AND state = $4::text AND capture_attempts = $5
+  AND (lease_until IS NULL OR lease_until <= $6::timestamptz)
+`
+
+type LeaseAttemptForAbandonParams struct {
+	LeaseID         string
+	LeaseUntil      time.Time
+	ID              int64
+	State           string
+	CaptureAttempts int32
+	Now             time.Time
+}
+
+// LeaseAttemptForAbandon takes an abandon's lease on an attempt it may
+// abandon, while no claim's lease is live: one statement, its row lock held
+// for it alone, as the worker's claim (m11). While the lease lives no worker
+// claims the attempt, so nothing is sent to Vipps between the abandon's read
+// and its write. Nothing leased when a claim holds it or it moved.
+func (q *Queries) LeaseAttemptForAbandon(ctx context.Context, arg LeaseAttemptForAbandonParams) (int64, error) {
+	result, err := q.db.Exec(ctx, leaseAttemptForAbandon,
+		arg.LeaseID,
+		arg.LeaseUntil,
+		arg.ID,
+		arg.State,
+		arg.CaptureAttempts,
+		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const liveAttemptsOfInvoice = `-- name: LiveAttemptsOfInvoice :one
@@ -345,4 +510,49 @@ func (q *Queries) PaymentAttemptsOf(ctx context.Context, invoiceID int64) ([]Inv
 		return nil, err
 	}
 	return items, nil
+}
+
+const releaseAttemptLease = `-- name: ReleaseAttemptLease :execrows
+UPDATE invoices.payment_attempts
+SET lease_id = NULL, lease_until = NULL
+WHERE id = $1 AND lease_id = $2::text
+`
+
+type ReleaseAttemptLeaseParams struct {
+	ID      int64
+	LeaseID string
+}
+
+// ReleaseAttemptLease gives an abandon's lease back, nothing else changed.
+func (q *Queries) ReleaseAttemptLease(ctx context.Context, arg ReleaseAttemptLeaseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseAttemptLease, arg.ID, arg.LeaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const unparkAttempt = `-- name: UnparkAttempt :execrows
+UPDATE invoices.payment_attempts
+SET next_poll_at = $1::timestamptz, failures = 0, lease_id = NULL, lease_until = NULL
+WHERE id = $2 AND next_poll_at IS NULL
+  AND (lease_id = $3::text OR lease_until IS NULL OR lease_until <= $1::timestamptz)
+`
+
+type UnparkAttemptParams struct {
+	Now     time.Time
+	ID      int64
+	LeaseID string
+}
+
+// UnparkAttempt hands an attempt parked for a person back to the payments
+// worker, due at @now: a create Vipps turns out to know, or a release the
+// person made in the Vipps portal. Its lease, the abandon's or none live,
+// ends; its failures in a row start again.
+func (q *Queries) UnparkAttempt(ctx context.Context, arg UnparkAttemptParams) (int64, error) {
+	result, err := q.db.Exec(ctx, unparkAttempt, arg.Now, arg.ID, arg.LeaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

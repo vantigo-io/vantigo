@@ -1392,6 +1392,33 @@ prøve igjen senere, og å trekke tilbake lenken og lage en ny begynner på nytt
 Hver Vipps-betaling som er startet for en faktura, vises på den, med status og beløp,
 enten den kom fra betalingssiden eller ble tatt på stedet.
 
+### Når en Vipps-betaling trenger deg
+
+Vantigo fullfører Vipps-betalinger på egen hånd: den trekker det kunden godkjente, og
+registrerer det som en betaling av fakturaen. Noen tilfeller trenger en person, og hvert
+av dem vises i dashbordets liste **Trenger oppfølging** for dem med `invoices:payments`:
+
+- **En betaling der utfallet av trekket er ukjent.** Vipps har ikke på en uke sagt om
+  pengene ble tatt, eller pengene ble tatt og kunne ikke registreres. Slå opp betalingen
+  i Vipps-portalen på referansen (vist på fakturaen). Er den trukket der, registrerer
+  Vantigo den så snart Vipps svarer; er den ikke det, frigi den i portalen og la noen
+  med `invoices:manage` **forlate** den, med en begrunnelse og en bekreftelse på at
+  ingenting ble trukket. Vantigo leser Vipps før den slipper: penger Vipps viser som
+  trukket, registreres i stedet, og en betaling Vipps fortsatt holder, avvises til den
+  er frigitt. Beløpet den holdt av på fakturaen, er da ledig for en annen betaling.
+- **En mislykket betaling.** Vipps avviste å trekke pengene (for eksempel for manglende
+  dekning). Ingenting ble tatt, og fakturaen er åpen; kunden betaler på annen måte.
+  Punktet forsvinner etter 14 dager, eller når fakturaen er betalt.
+- **En strandet betaling.** Vipps er slått av på denne installasjonen, betalingen ble
+  laget under en annen salgsenhet, eller Vantigo ga opp en betalingsforespørsel (på
+  stedet hindrer den en ny forespørsel for fakturaen) eller å frigi det som ikke ble
+  trukket. Slå Vipps på igjen, eller sjekk betalingen i portalen og la en leder forlate
+  den.
+- **En refusjon gjort i Vipps-portalen.** I 30 dager etter en betaling sjekker Vantigo
+  den hos Vipps én gang i døgnet. Ser den en refusjon gjort i portalen, fjerner den
+  ingenting: fjern Vipps-betalingen fra fakturaen, og registrer den delen bedriften
+  beholdt, om noen. Punktet forsvinner når betalingen er fjernet.
+
 ## Kontrollere journalen
 
 **Fakturajournal** i sidemenyen er beviset bokføringsforskriften krever: hvert utstedte
@@ -1443,7 +1470,9 @@ vært forfalt lengst) og *… skal ha penger tilbake på en faktura* for alle me
 fil; en purring som ikke kunne sendes; purringene som venter på en sats eller på
 gjennomgangen av inkassoregelverket, som leder til **Forfalt**; og en utskriftsbunke som
 ikke er bekreftet postlagt to dager etter postleggingsdagen, med antallet utskrevne brev
-som fortsatt ligger i den, som leder til **Papirbrev**
+som fortsatt ligger i den, som leder til **Papirbrev**; og Vipps-betalingene som trenger
+en person ([Når en Vipps-betaling trenger deg](#når-en-vipps-betaling-trenger-deg)). En
+faktura som en pågående Vipps-betaling dekker helt, vises ikke som forfalt
 ([oppmerksomhet](/en/reference/invoices/#stats)).
 
 ## En kundes fakturaer

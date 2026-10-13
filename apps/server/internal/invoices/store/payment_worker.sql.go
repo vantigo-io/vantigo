@@ -376,6 +376,37 @@ func (q *Queries) FailAttemptCapture(ctx context.Context, arg FailAttemptCapture
 	return result.RowsAffected(), nil
 }
 
+const recordAttemptRefund = `-- name: RecordAttemptRefund :execrows
+UPDATE invoices.payment_attempts
+SET refunded_amount = $1, next_poll_at = $2::timestamptz,
+    last_error = NULL, failures = 0, lease_id = NULL, lease_until = NULL
+WHERE id = $3 AND lease_id = $4::text AND state = 'captured'
+`
+
+type RecordAttemptRefundParams struct {
+	RefundedAmount pgtype.Numeric
+	NextPollAt     *time.Time
+	ID             int64
+	LeaseID        string
+}
+
+// RecordAttemptRefund is the refund watch's (D16): a captured attempt Vipps
+// shows refunded more than recorded — a refund made in the Vipps portal —
+// the amount stored, read again at @next_poll_at or, the watch over, never.
+// No payment moves: the person removes it (vippsRefundSeen).
+func (q *Queries) RecordAttemptRefund(ctx context.Context, arg RecordAttemptRefundParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordAttemptRefund,
+		arg.RefundedAmount,
+		arg.NextPollAt,
+		arg.ID,
+		arg.LeaseID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const recreatedAttempt = `-- name: RecreatedAttempt :execrows
 UPDATE invoices.payment_attempts
 SET state = 'created', redirect_url = $1, next_poll_at = $2::timestamptz,

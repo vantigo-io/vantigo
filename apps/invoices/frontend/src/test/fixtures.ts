@@ -1698,3 +1698,19 @@ export const paymentAttempt = (overrides: Partial<PaymentAttempt> = {}): Payment
   expiresAt: "2026-09-12T10:40:00Z",
   ...overrides,
 });
+
+// A Vipps payment whose capture's outcome stayed unknown, abandoned by a
+// manager after a check in the Vipps portal: who, when and why recorded, the
+// reservation released.
+export const abandonedPaymentAttempt = (overrides: Partial<PaymentAttempt> = {}): PaymentAttempt =>
+  paymentAttempt({
+    flow: "on_site",
+    state: "abandoned",
+    authorizedAmount: 124.99,
+    authorizedAt: "2026-09-12T10:31:00Z",
+    finishedAt: "2026-09-21T09:00:00Z",
+    abandonedAt: "2026-09-21T09:00:00Z",
+    abandonedByUserId: "00000000-0000-4000-8000-000000000002",
+    abandonReason: "Sjekket i Vipps-portalen: ingenting trukket",
+    ...overrides,
+  });
