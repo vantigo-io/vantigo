@@ -196,11 +196,29 @@ func TestPaymentSettings_Rules(t *testing.T) {
 	if res := manager.Do(http.MethodPut, paymentSettingsPath, paymentSettingsBody(off.Revision, map[string]any{"onSitePaymentsEnabled": true})); res.Status != http.StatusBadRequest {
 		t.Errorf("on again without an acknowledgement = %d %s, want 400", res.Status, res.Body)
 	}
+	// A stale revision and a missing acknowledgement: the 400 comes first.
+	res := manager.Do(http.MethodPut, paymentSettingsPath, paymentSettingsBody(1, map[string]any{"onSitePaymentsEnabled": true}))
+	if res.Status != http.StatusBadRequest || len(problemOf(t, res).Errors["acknowledgeKontantsalg"]) == 0 {
+		t.Errorf("a stale revision without an acknowledgement = %d %s, want 400 on acknowledgeKontantsalg", res.Status, res.Body)
+	}
+	// Refused credentials do not stop a setting from being turned on: meta
+	// says it is unavailable until the keys are good again.
+	h.Exec(t, `UPDATE invoices.payment_provider_credentials SET rejected_at = now()`)
+	putPaymentSettings(t, h, paymentSettingsBody(off.Revision, map[string]any{
+		"termsUrl": termsURL, "privacyUrl": privacyURL, "onSitePaymentsEnabled": true, "acknowledgeKontantsalg": true,
+	}))
+
+	// Nor does the switch: an installation with Vipps off may be set up ahead.
+	switchedOff := newHarness(t, modtest.WithEnv("PUBLIC_BASE_URL", publicBaseURL), modtest.WithEnv("INVOICES_VIPPS_ENABLED", "0"))
+	putVipps(t, switchedOff, vippstestKeys())
+	if got := putPaymentSettings(t, switchedOff, paymentSettingsBody(1, everythingOn())); !got.PayLinksEnabled || !got.OnSitePaymentsEnabled {
+		t.Errorf("turned on with the switch off = %+v, want both on", got)
+	}
 
 	// Pay links need PUBLIC_BASE_URL; on-site payment does not.
 	noPublic := newHarness(t)
 	putVipps(t, noPublic, vippstestKeys())
-	res := vippsManager(t, noPublic).Do(http.MethodPut, paymentSettingsPath, paymentSettingsBody(1, everythingOn()))
+	res = vippsManager(t, noPublic).Do(http.MethodPut, paymentSettingsPath, paymentSettingsBody(1, everythingOn()))
 	if res.Status != http.StatusConflict || problemOf(t, res).Code != "public_url_missing" {
 		t.Errorf("pay links on without PUBLIC_BASE_URL = %d %s, want 409 public_url_missing", res.Status, res.Body)
 	}

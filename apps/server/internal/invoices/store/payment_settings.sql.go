@@ -14,12 +14,15 @@ import (
 
 const clearPaymentCredentialsRejected = `-- name: ClearPaymentCredentialsRejected :exec
 UPDATE invoices.payment_provider_credentials SET rejected_at = NULL
-WHERE id = 1 AND rejected_at IS NOT NULL
+WHERE id = 1 AND rejected_at IS NOT NULL AND updated_at = $1::timestamptz
 `
 
-// ClearPaymentCredentialsRejected forgets a refusal once a verify succeeded.
-func (q *Queries) ClearPaymentCredentialsRejected(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, clearPaymentCredentialsRejected)
+// ClearPaymentCredentialsRejected forgets a refusal once a verify succeeded —
+// only while the row is still the version (@version, its updated_at) the
+// verify read the keys from: old keys accepted never clear a refusal of newer
+// ones.
+func (q *Queries) ClearPaymentCredentialsRejected(ctx context.Context, version time.Time) error {
+	_, err := q.db.Exec(ctx, clearPaymentCredentialsRejected, version)
 	return err
 }
 
@@ -91,6 +94,46 @@ func (q *Queries) GetPaymentSettings(ctx context.Context) (InvoicesPaymentSettin
 	return i, err
 }
 
+const insertPaymentCredentials = `-- name: InsertPaymentCredentials :one
+INSERT INTO invoices.payment_provider_credentials (id, provider, settings_json, secret_ciphertext, rejected_at, updated_at)
+VALUES (1, $1, $2, $3, NULL, $4::timestamptz)
+ON CONFLICT (id) DO NOTHING
+RETURNING id, provider, settings_json, secret_ciphertext, webhook_id, webhook_secret_ciphertext, rejected_at, updated_at
+`
+
+type InsertPaymentCredentialsParams struct {
+	Provider         string
+	SettingsJson     string
+	SecretCiphertext string
+	Now              time.Time
+}
+
+// InsertPaymentCredentials writes the first credentials row. A concurrent
+// first PUT that inserted it already makes this answer no row — the insert
+// waits for that transaction and does nothing once it committed — and the
+// caller runs again on the locked path, where the sales unit's change is
+// judged against the live attempts (never written over unjudged).
+func (q *Queries) InsertPaymentCredentials(ctx context.Context, arg InsertPaymentCredentialsParams) (InvoicesPaymentProviderCredential, error) {
+	row := q.db.QueryRow(ctx, insertPaymentCredentials,
+		arg.Provider,
+		arg.SettingsJson,
+		arg.SecretCiphertext,
+		arg.Now,
+	)
+	var i InvoicesPaymentProviderCredential
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.SettingsJson,
+		&i.SecretCiphertext,
+		&i.WebhookID,
+		&i.WebhookSecretCiphertext,
+		&i.RejectedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const livePaymentAttemptsCount = `-- name: LivePaymentAttemptsCount :one
 SELECT count(*) FROM invoices.payment_attempts
 WHERE state IN ('creating', 'created', 'authorized', 'capturing', 'capture_unknown', 'cancelling')
@@ -111,14 +154,65 @@ func (q *Queries) LivePaymentAttemptsCount(ctx context.Context) (int64, error) {
 
 const markPaymentCredentialsRejected = `-- name: MarkPaymentCredentialsRejected :exec
 UPDATE invoices.payment_provider_credentials SET rejected_at = $1::timestamptz
-WHERE id = 1 AND rejected_at IS NULL
+WHERE id = 1 AND rejected_at IS NULL AND updated_at = $2::timestamptz
 `
 
+type MarkPaymentCredentialsRejectedParams struct {
+	Now     time.Time
+	Version time.Time
+}
+
 // MarkPaymentCredentialsRejected records that the provider refused the keys
-// (a 401 or 403) or that they could not be opened, keeping the first moment.
-func (q *Queries) MarkPaymentCredentialsRejected(ctx context.Context, now time.Time) error {
-	_, err := q.db.Exec(ctx, markPaymentCredentialsRejected, now)
+// (a 401 or 403) or that they could not be opened, keeping the first moment
+// — only while the row is still the version (@version, its updated_at) the
+// caller read the keys from: a refusal of old keys never flags newer ones.
+func (q *Queries) MarkPaymentCredentialsRejected(ctx context.Context, arg MarkPaymentCredentialsRejectedParams) error {
+	_, err := q.db.Exec(ctx, markPaymentCredentialsRejected, arg.Now, arg.Version)
 	return err
+}
+
+const updatePaymentCredentials = `-- name: UpdatePaymentCredentials :one
+UPDATE invoices.payment_provider_credentials SET
+    provider = $1,
+    settings_json = $2,
+    secret_ciphertext = $3,
+    rejected_at = NULL,
+    updated_at = $4::timestamptz
+WHERE id = 1
+RETURNING id, provider, settings_json, secret_ciphertext, webhook_id, webhook_secret_ciphertext, rejected_at, updated_at
+`
+
+type UpdatePaymentCredentialsParams struct {
+	Provider         string
+	SettingsJson     string
+	SecretCiphertext string
+	Now              time.Time
+}
+
+// UpdatePaymentCredentials writes the sales unit and the sealed keys over the
+// row the caller holds FOR UPDATE, and clears rejected_at: a new PUT is new
+// keys, or the same keys the operator says are good again. updated_at is the
+// credentials' version (providerCreds.version). A webhook registration is
+// left as it is.
+func (q *Queries) UpdatePaymentCredentials(ctx context.Context, arg UpdatePaymentCredentialsParams) (InvoicesPaymentProviderCredential, error) {
+	row := q.db.QueryRow(ctx, updatePaymentCredentials,
+		arg.Provider,
+		arg.SettingsJson,
+		arg.SecretCiphertext,
+		arg.Now,
+	)
+	var i InvoicesPaymentProviderCredential
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.SettingsJson,
+		&i.SecretCiphertext,
+		&i.WebhookID,
+		&i.WebhookSecretCiphertext,
+		&i.RejectedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const updatePaymentSettings = `-- name: UpdatePaymentSettings :one
@@ -176,49 +270,6 @@ func (q *Queries) UpdatePaymentSettings(ctx context.Context, arg UpdatePaymentSe
 		&i.Revision,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
-	)
-	return i, err
-}
-
-const upsertPaymentCredentials = `-- name: UpsertPaymentCredentials :one
-INSERT INTO invoices.payment_provider_credentials (id, provider, settings_json, secret_ciphertext, rejected_at, updated_at)
-VALUES (1, $1, $2, $3, NULL, $4::timestamptz)
-ON CONFLICT (id) DO UPDATE SET
-    provider = EXCLUDED.provider,
-    settings_json = EXCLUDED.settings_json,
-    secret_ciphertext = EXCLUDED.secret_ciphertext,
-    rejected_at = NULL,
-    updated_at = EXCLUDED.updated_at
-RETURNING id, provider, settings_json, secret_ciphertext, webhook_id, webhook_secret_ciphertext, rejected_at, updated_at
-`
-
-type UpsertPaymentCredentialsParams struct {
-	Provider         string
-	SettingsJson     string
-	SecretCiphertext string
-	Now              time.Time
-}
-
-// UpsertPaymentCredentials writes the sales unit and the sealed keys and
-// clears rejected_at: a new PUT is new keys, or the same keys the operator
-// says are good again. A webhook registration is left as it is.
-func (q *Queries) UpsertPaymentCredentials(ctx context.Context, arg UpsertPaymentCredentialsParams) (InvoicesPaymentProviderCredential, error) {
-	row := q.db.QueryRow(ctx, upsertPaymentCredentials,
-		arg.Provider,
-		arg.SettingsJson,
-		arg.SecretCiphertext,
-		arg.Now,
-	)
-	var i InvoicesPaymentProviderCredential
-	err := row.Scan(
-		&i.ID,
-		&i.Provider,
-		&i.SettingsJson,
-		&i.SecretCiphertext,
-		&i.WebhookID,
-		&i.WebhookSecretCiphertext,
-		&i.RejectedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }

@@ -1295,7 +1295,8 @@ tom, beholder den lagrede. Nøklene vises aldri igjen, heller ikke for deg.
 (Vipps godtar ikke nøklene: fyll dem inn på nytt) eller *utilgjengelig* (Vipps kunne
 ikke nås; prøv igjen senere). Når Vipps avviser nøklene, når som helst, husker Fakturaer
 det og tilbyr ingen Vipps-betaling før nye nøkler er lagret eller en bekreftelse
-lykkes.
+lykkes. Betalingslenker og betaling på stedet som sto slått på, virker da igjen av seg
+selv, uten å slås på eller bekreftes på nytt.
 
 Mens en Vipps-betaling pågår, kan du ikke bytte til en annen salgsenhet, en annen
 klient-ID eller en annen abonnementsnøkkel, og heller ikke fjerne nøklene: Fakturaer

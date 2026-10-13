@@ -628,3 +628,20 @@ var PaymentCodes = []string{
 	codeOnSitePaymentsUnavailable, codeBuyerIdentityMissing, codePaymentRequestActive, codeAmountOutOfRange,
 	codeDayAlreadyReconciled, codeDayNotOver, codePaymentInProgress,
 }
+
+// SetVippsPutAfterWrite installs a hook a Vipps credentials PUT calls inside
+// its transaction right after the row is written, with that transaction, and
+// answers the function that removes it. A test using it does not run in
+// parallel: the hook is the package's.
+func SetVippsPutAfterWrite(hook func(ctx context.Context, tx pgx.Tx)) func() {
+	vippsPutAfterWrite = hook
+	return func() { vippsPutAfterWrite = nil }
+}
+
+// SetVippsVerifyBeforeClear installs a hook the Vipps verify calls after Vipps
+// accepted the keys and before the refusal on record is cleared, and answers
+// the function that removes it. A test using it does not run in parallel.
+func SetVippsVerifyBeforeClear(hook func()) func() {
+	vippsVerifyBeforeClear = hook
+	return func() { vippsVerifyBeforeClear = nil }
+}

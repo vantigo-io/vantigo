@@ -10,18 +10,30 @@
 -- none is stored, which the caller reads from pgx.ErrNoRows.
 SELECT * FROM invoices.payment_provider_credentials WHERE id = 1;
 
--- name: UpsertPaymentCredentials :one
--- UpsertPaymentCredentials writes the sales unit and the sealed keys and
--- clears rejected_at: a new PUT is new keys, or the same keys the operator
--- says are good again. A webhook registration is left as it is.
+-- name: InsertPaymentCredentials :one
+-- InsertPaymentCredentials writes the first credentials row. A concurrent
+-- first PUT that inserted it already makes this answer no row — the insert
+-- waits for that transaction and does nothing once it committed — and the
+-- caller runs again on the locked path, where the sales unit's change is
+-- judged against the live attempts (never written over unjudged).
 INSERT INTO invoices.payment_provider_credentials (id, provider, settings_json, secret_ciphertext, rejected_at, updated_at)
 VALUES (1, @provider, @settings_json, @secret_ciphertext, NULL, @now::timestamptz)
-ON CONFLICT (id) DO UPDATE SET
-    provider = EXCLUDED.provider,
-    settings_json = EXCLUDED.settings_json,
-    secret_ciphertext = EXCLUDED.secret_ciphertext,
+ON CONFLICT (id) DO NOTHING
+RETURNING *;
+
+-- name: UpdatePaymentCredentials :one
+-- UpdatePaymentCredentials writes the sales unit and the sealed keys over the
+-- row the caller holds FOR UPDATE, and clears rejected_at: a new PUT is new
+-- keys, or the same keys the operator says are good again. updated_at is the
+-- credentials' version (providerCreds.version). A webhook registration is
+-- left as it is.
+UPDATE invoices.payment_provider_credentials SET
+    provider = @provider,
+    settings_json = @settings_json,
+    secret_ciphertext = @secret_ciphertext,
     rejected_at = NULL,
-    updated_at = EXCLUDED.updated_at
+    updated_at = @now::timestamptz
+WHERE id = 1
 RETURNING *;
 
 -- name: DeletePaymentCredentials :execrows
@@ -31,14 +43,19 @@ DELETE FROM invoices.payment_provider_credentials WHERE id = 1;
 
 -- name: MarkPaymentCredentialsRejected :exec
 -- MarkPaymentCredentialsRejected records that the provider refused the keys
--- (a 401 or 403) or that they could not be opened, keeping the first moment.
+-- (a 401 or 403) or that they could not be opened, keeping the first moment
+-- — only while the row is still the version (@version, its updated_at) the
+-- caller read the keys from: a refusal of old keys never flags newer ones.
 UPDATE invoices.payment_provider_credentials SET rejected_at = @now::timestamptz
-WHERE id = 1 AND rejected_at IS NULL;
+WHERE id = 1 AND rejected_at IS NULL AND updated_at = @version::timestamptz;
 
 -- name: ClearPaymentCredentialsRejected :exec
--- ClearPaymentCredentialsRejected forgets a refusal once a verify succeeded.
+-- ClearPaymentCredentialsRejected forgets a refusal once a verify succeeded —
+-- only while the row is still the version (@version, its updated_at) the
+-- verify read the keys from: old keys accepted never clear a refusal of newer
+-- ones.
 UPDATE invoices.payment_provider_credentials SET rejected_at = NULL
-WHERE id = 1 AND rejected_at IS NOT NULL;
+WHERE id = 1 AND rejected_at IS NOT NULL AND updated_at = @version::timestamptz;
 
 -- name: LivePaymentAttemptsCount :one
 -- LivePaymentAttemptsCount counts the attempts the credentials still serve

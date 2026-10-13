@@ -129,36 +129,6 @@ func (s *server) ehfAvailable(ctx context.Context, q *store.Queries, settings st
 	return available, rejected, nil
 }
 
-// paymentAvailability is meta's three payment fields.
-type paymentAvailability struct {
-	payLinks, onSite, rejected bool
-}
-
-// paymentsAvailable is what Vipps offers this installation now (D1, D14):
-// pay links with INVOICES_VIPPS_ENABLED on, PUBLIC_BASE_URL set, credentials
-// stored and not rejected and the settings' switch on; on-site payment the
-// same without PUBLIC_BASE_URL. rejected is reported beside, never folded
-// into the rest of the answer, so a page can say why. Nothing here touches
-// the network.
-func (s *server) paymentsAvailable(ctx context.Context, q *store.Queries) (paymentAvailability, error) {
-	creds, err := q.GetPaymentCredentials(ctx)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		return paymentAvailability{}, nil
-	case err != nil:
-		return paymentAvailability{}, fmt.Errorf("invoices: read the Vipps credentials: %w", err)
-	}
-	settings, err := q.GetPaymentSettings(ctx)
-	if err != nil {
-		return paymentAvailability{}, fmt.Errorf("invoices: read the payment settings: %w", err)
-	}
-	out := paymentAvailability{rejected: creds.RejectedAt != nil}
-	usable := s.deps.Config != nil && s.deps.Config.InvoicesVippsEnabled && !out.rejected
-	out.payLinks = usable && s.deps.Config.PublicBaseURL != "" && settings.PayLinksEnabled
-	out.onSite = usable && settings.OnSitePaymentsEnabled
-	return out, nil
-}
-
 // anythingIssued is "the counter row exists" (D2), never a count of documents.
 func anythingIssued(ctx context.Context, q *store.Queries) (bool, error) {
 	_, err := q.CounterNextValue(ctx)
