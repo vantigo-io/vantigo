@@ -114,6 +114,9 @@ func receivablesObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) m
 func TestInvoicesReceivables_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, receivablesVersion) // 00041_invoices_receivables.sql
+	// 00046 replaces the payments' two CHECKs (D2's third branch); its own
+	// test pins them, so this one reads 00041's at 41.
+	migrateTo(t, url, receivablesVersion)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

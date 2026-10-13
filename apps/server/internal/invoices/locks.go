@@ -186,3 +186,59 @@ func lockPolicies(ctx context.Context, txq *store.Queries, customerIDs []int32) 
 	}
 	return nil
 }
+
+// lockPaymentAttempt takes one payment attempt FOR NO KEY UPDATE, reported
+// "payment_attempt" (D18's 4C rows, plan reading 7).
+func lockPaymentAttempt(ctx context.Context, txq *store.Queries, id int64) (store.InvoicesPaymentAttempt, error) {
+	attempt, err := txq.LockPaymentAttempt(ctx, id)
+	if err != nil {
+		return attempt, err
+	}
+	noteLock(ctx, "payment_attempt", strconv.FormatInt(id, 10))
+	return attempt, nil
+}
+
+// lockPayLink takes one pay link FOR NO KEY UPDATE, reported "pay_link".
+func lockPayLink(ctx context.Context, txq *store.Queries, id int64) (store.InvoicesPayLink, error) {
+	link, err := txq.LockPayLink(ctx, id)
+	if err != nil {
+		return link, err
+	}
+	noteLock(ctx, "pay_link", strconv.FormatInt(id, 10))
+	return link, nil
+}
+
+// lockPaymentCredentials takes the payment provider's credentials FOR
+// UPDATE, reported "payment_credentials" (a credentials PUT, DELETE or
+// webhook registration: its only lock).
+func lockPaymentCredentials(ctx context.Context, txq *store.Queries) (store.InvoicesPaymentProviderCredential, error) {
+	row, err := txq.LockPaymentCredentials(ctx)
+	if err != nil {
+		return row, err
+	}
+	noteLock(ctx, "payment_credentials", "1")
+	return row, nil
+}
+
+// sharePaymentCredentials reads the payment provider's credentials FOR
+// SHARE, reported "payment_credentials" (an attempt's create, after the
+// invoice; plan reading 8).
+func sharePaymentCredentials(ctx context.Context, txq *store.Queries) (store.InvoicesPaymentProviderCredential, error) {
+	row, err := txq.SharePaymentCredentials(ctx)
+	if err != nil {
+		return row, err
+	}
+	noteLock(ctx, "payment_credentials", "1")
+	return row, nil
+}
+
+// lockPaymentSettings takes the payment settings row FOR UPDATE, reported
+// "payment_settings" (a payment settings PUT: its only lock).
+func lockPaymentSettings(ctx context.Context, txq *store.Queries) (store.InvoicesPaymentSetting, error) {
+	row, err := txq.LockPaymentSettings(ctx)
+	if err != nil {
+		return row, err
+	}
+	noteLock(ctx, "payment_settings", "1")
+	return row, nil
+}

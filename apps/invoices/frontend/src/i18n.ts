@@ -523,6 +523,29 @@ export const invoicesCatalog = {
     "refusal.reminder_posted_late":
       "This batch was printed for an earlier day; posted now, its letters would give less time than they say. Reprint it for the day it is posted.",
     "refusal.print_batch_closed": "This batch is posted or reprinted already, and stays so.",
+    "refusal.payments_unavailable":
+      "Vipps payment is not available: it is switched off, not set up, or its stored keys cannot be read. Ask whoever manages Invoices.",
+    "refusal.payment_attempts_active":
+      "A Vipps payment is in flight. The sales unit and the keys cannot be changed or removed until it is finished or abandoned.",
+    "refusal.attempt_not_abandonable":
+      "This Vipps payment cannot be abandoned: only one whose outcome is unknown, or one stranded by Vipps being switched off or another sales unit, can.",
+    "refusal.public_url_missing":
+      "This installation has no public address (PUBLIC_BASE_URL), so pay links and Vipps notifications cannot be used.",
+    "refusal.provider_failed": "Vipps refused or could not complete the request. Try again in a moment.",
+    "refusal.pay_links_unavailable": "Pay links are switched off or not set up in the payment settings.",
+    "refusal.pay_link_exists": "This invoice has a pay link already. Revoke it before making another.",
+    "refusal.too_many_attempts":
+      "Five Vipps payments of this invoice are in flight already. Wait for them to finish before starting another.",
+    "refusal.on_site_payments_unavailable": "On-site payment is not turned on in the payment settings.",
+    "refusal.buyer_identity_missing":
+      "The buyer is not identified as a cash invoice requires: a name, and an organisation number or a complete address.",
+    "refusal.payment_request_active":
+      "A payment request for this invoice is open already. Finish or cancel it before starting another.",
+    "refusal.amount_out_of_range": "The amount to pay is below kr 1.00 or above what Vipps accepts.",
+    "refusal.day_already_reconciled": "This day was reconciled already, and stays so.",
+    "refusal.day_not_over": "This day is not over yet. Reconcile it from tomorrow.",
+    "refusal.payment_in_progress":
+      "A Vipps payment of this invoice is being completed, and it leaves less than kr 1.00 open. Wait for it to finish.",
     "workRefusal.source_not_invoiceable":
       "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
     "workRefusal.source_changed":
@@ -2098,6 +2121,29 @@ export const invoicesCatalog = {
     "refusal.reminder_posted_late":
       "Denne bunken ble skrevet ut for en tidligere dag; postlagt nå ville brevene gi kortere frist enn de sier. Skriv den ut på nytt for dagen den postlegges.",
     "refusal.print_batch_closed": "Denne bunken er allerede postlagt eller skrevet ut på nytt, og forblir det.",
+    "refusal.payments_unavailable":
+      "Betaling med Vipps er ikke tilgjengelig: den er slått av, ikke satt opp, eller de lagrede nøklene kan ikke leses. Spør den som administrerer Fakturaer.",
+    "refusal.payment_attempts_active":
+      "En Vipps-betaling pågår. Salgsenheten og nøklene kan ikke endres eller fjernes før den er fullført eller oppgitt.",
+    "refusal.attempt_not_abandonable":
+      "Denne Vipps-betalingen kan ikke oppgis: bare en med ukjent utfall, eller en som står fast fordi Vipps er slått av eller salgsenheten er en annen, kan det.",
+    "refusal.public_url_missing":
+      "Denne installasjonen har ingen offentlig adresse (PUBLIC_BASE_URL), så betalingslenker og varsler fra Vipps kan ikke brukes.",
+    "refusal.provider_failed": "Vipps avviste eller kunne ikke fullføre forespørselen. Prøv igjen om litt.",
+    "refusal.pay_links_unavailable": "Betalingslenker er slått av eller ikke satt opp i betalingsinnstillingene.",
+    "refusal.pay_link_exists": "Denne fakturaen har allerede en betalingslenke. Trekk den tilbake før du lager en ny.",
+    "refusal.too_many_attempts":
+      "Fem Vipps-betalinger av denne fakturaen pågår allerede. Vent til de er ferdige før du starter en ny.",
+    "refusal.on_site_payments_unavailable": "Betaling på stedet er ikke slått på i betalingsinnstillingene.",
+    "refusal.buyer_identity_missing":
+      "Kjøperen er ikke identifisert slik en kontantfaktura krever: et navn, og et organisasjonsnummer eller en fullstendig adresse.",
+    "refusal.payment_request_active":
+      "Det finnes allerede en åpen betalingsforespørsel for denne fakturaen. Fullfør eller avbryt den før du starter en ny.",
+    "refusal.amount_out_of_range": "Beløpet som skal betales, er under kr 1,00 eller over det Vipps tar imot.",
+    "refusal.day_already_reconciled": "Denne dagen er allerede avstemt, og forblir det.",
+    "refusal.day_not_over": "Denne dagen er ikke over ennå. Avstem den fra i morgen.",
+    "refusal.payment_in_progress":
+      "En Vipps-betaling av denne fakturaen fullføres nå, og den gjør at mindre enn kr 1,00 står åpent. Vent til den er ferdig.",
     "workRefusal.source_not_invoiceable":
       "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
     "workRefusal.source_changed":

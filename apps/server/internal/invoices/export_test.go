@@ -264,11 +264,13 @@ func SetLockTaken(hook func(ctx context.Context, what, key string)) func() {
 
 // LockForTest takes the lock of the helper named what (lockInvoice,
 // lockInvoicesDescending, lockBankTransaction, lockImportAccounts,
-// lockImportAccount, lockReminder, lockPrintBatch, shareCustomerDocuments or
-// lockPolicies) on tx — the caller's transaction, on a connection of the
-// caller's own, never one of the harness's pool — with keys as the helper
-// takes them: ids in decimal, accounts as their eleven digits, customer ids.
-// lockImportAccounts sets an account it inserts to ocr.
+// lockImportAccount, lockReminder, lockPrintBatch, shareCustomerDocuments,
+// lockPolicies, or the payments port's lockPaymentAttempt, lockPayLink,
+// lockPaymentCredentials, sharePaymentCredentials or lockPaymentSettings) on
+// tx — the caller's transaction, on a connection of the caller's own, never
+// one of the harness's pool — with keys as the helper takes them: ids in
+// decimal, accounts as their eleven digits, customer ids; none for the
+// one-row tables. lockImportAccounts sets an account it inserts to ocr.
 func LockForTest(ctx context.Context, tx pgx.Tx, what string, keys ...string) error {
 	txq := store.New(tx)
 	ints := func(bits int) ([]int64, error) {
@@ -308,6 +310,28 @@ func LockForTest(ctx context.Context, tx pgx.Tx, what string, keys ...string) er
 			_, err = lockReminder(ctx, txq, id)
 		default:
 			_, err = lockPrintBatch(ctx, txq, id)
+		}
+	case "lockPaymentAttempt", "lockPayLink":
+		var id int64
+		if id, err = one(64); err != nil {
+			return err
+		}
+		if what == "lockPaymentAttempt" {
+			_, err = lockPaymentAttempt(ctx, txq, id)
+		} else {
+			_, err = lockPayLink(ctx, txq, id)
+		}
+	case "lockPaymentCredentials", "sharePaymentCredentials", "lockPaymentSettings":
+		if len(keys) != 0 {
+			return fmt.Errorf("invoices: %s takes no key, got %d", what, len(keys))
+		}
+		switch what {
+		case "lockPaymentCredentials":
+			_, err = lockPaymentCredentials(ctx, txq)
+		case "sharePaymentCredentials":
+			_, err = sharePaymentCredentials(ctx, txq)
+		default:
+			_, err = lockPaymentSettings(ctx, txq)
 		}
 	case "lockInvoicesDescending":
 		var ids []int64
@@ -594,4 +618,13 @@ func SetPostedAfterBatchLock(hook func(ctx context.Context, batchID int64) error
 func SetRatesRead(hook func(ctx context.Context)) func() {
 	ratesRead = hook
 	return func() { ratesRead = nil }
+}
+
+// PaymentCodes are the payments port's refusal codes (paymentcodes.go),
+// declared ahead of the tasks that answer them.
+var PaymentCodes = []string{
+	codePaymentsUnavailable, codePaymentAttemptsActive, codeAttemptNotAbandonable, codePublicURLMissing,
+	codeProviderFailed, codePayLinksUnavailable, codePayLinkExists, codeTooManyAttempts,
+	codeOnSitePaymentsUnavailable, codeBuyerIdentityMissing, codePaymentRequestActive, codeAmountOutOfRange,
+	codeDayAlreadyReconciled, codeDayNotOver, codePaymentInProgress,
 }
