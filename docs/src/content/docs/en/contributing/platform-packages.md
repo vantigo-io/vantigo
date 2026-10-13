@@ -156,7 +156,10 @@ too — so the adapter never fetches a URL an answer names. The SVG holds only `
 `rect` and `path`, never the encoded text; a page shows it as an image,
 `<img src="data:image/svg+xml;base64,…">`, never inlined into its markup.
 `RegisterWebhook` and `DeleteWebhook` manage a webhook registration for
-`vipps.Events`, the eight ePayment events.
+`vipps.Events`, the eight ePayment events. **Invoices uses none of the webhook calls
+yet**: it registers no webhook and receives none, and its worker polls
+([Vipps payments](/en/reference/invoices/#vipps-payments)); they and the verification
+below are kept for the webhook receiver that follows.
 
 **Webhooks are verified against the registered URL**, never the request line: the
 content hash of the raw body against `x-ms-content-sha256`, then HMAC-SHA256 under the
@@ -167,8 +170,9 @@ The `x-ms-date` must be an RFC 1123 date at most eight days old — Vipps retrie
 callback for seven — and at most five minutes ahead, so a captured callback cannot be
 replayed for ever.
 Vipps' published test vector's signature does not reproduce, so the hash step is
-pinned to that vector, the signature step to a self-generated one (flagged as such)
-and, once captured, to a real callback in `testdata/webhook-captured.json`.
+pinned to that vector (`testdata/webhook-vector.json`), the signature step to a
+self-generated one (flagged as such) and, once captured, to a real callback in
+`testdata/webhook-captured.json`, which does not exist yet — its test skips without it.
 
 ### Testing against it
 

@@ -537,7 +537,8 @@ The quick invoice is for a job finished on site, on a tablet or a phone. Open **
 invoice** in the sidebar; it is offered to someone who holds both `invoices:create` and
 `invoices:issue` (with `invoices:access`). Anyone without them who opens its address
 meets the **Access denied** page; the screen's own *Not allowed* is shown only if your
-permissions change while you are signed in. Then:
+permissions change while you are signed in. Choosing the customer needs
+`customers:view`; without it the screen shows no form and says so. Then:
 
 1. Choose the **Customer** by searching for it (this needs `customers:view`). The
    customer's address on file is shown beneath — the primary invoice address, else the
@@ -1400,13 +1401,14 @@ app goes by; a switch that is on but not available is explained on the card, wit
 ### The pay link on an invoice
 
 While pay links are available, every invoice you issue gets a pay link, and its PDF
-prints **Betal med Vipps** (*Pay with Vipps*), the link and a QR code of it under the
-payment details, so a customer reading the invoice at home can pay it from their phone.
+prints **Pay with Vipps** (**Betal med Vipps** on a Norwegian invoice), the link and a
+QR code of it under the payment details, so a customer reading the invoice at home can pay it from their phone.
 The PDF is made once, when the invoice is issued, and never changes: an invoice issued
 before pay links were turned on has no link in its PDF.
 
 The link also travels with the invoice when you **send it by e-mail** — the e-mail says
-*Du kan også betale med Vipps* with the link — and with every **reminder letter**,
+*You can also pay with Vipps* (*Du kan også betale med Vipps* on a Norwegian invoice)
+with the link — and with every **reminder letter**,
 which adds that the link pays the invoice itself, while fees and interest are paid to
 the account with the KID, or the invoice number when there is none. When you e-mail an
 invoice that has no link, sending it makes one first. A quick invoice handed over on
