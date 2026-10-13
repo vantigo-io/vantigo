@@ -18,12 +18,18 @@ SELECT coalesce(sum(reserved_amount), 0)::numeric(14,2) AS reserved FROM invoice
 WHERE invoice_id = @invoice_id AND state IN ('capturing', 'capture_unknown');
 
 -- name: LiveAttemptsOfInvoice :one
--- LiveAttemptsOfInvoice counts an invoice's attempts that may still pay it —
--- creating, created, authorized, capturing or capture_unknown — for the cap
--- of five (D15), under the invoice's lock.
+-- LiveAttemptsOfInvoice counts the attempts that hold a place under the cap
+-- of five (D15), under the invoice's lock: of the pay link @pay_link_id on
+-- the pay-link flow — so a revoke and a new link restore service — or of
+-- the invoice when it is NULL (on site). An attempt counts while it may
+-- still pay: authorized, capturing or capture_unknown, and creating or
+-- created until its request expires — the payments worker still resolves
+-- an expired one, but it no longer holds the payer back.
 SELECT count(*) FROM invoices.payment_attempts
 WHERE invoice_id = @invoice_id
-  AND state IN ('creating', 'created', 'authorized', 'capturing', 'capture_unknown');
+  AND (sqlc.narg(pay_link_id)::bigint IS NULL OR pay_link_id = sqlc.narg(pay_link_id)::bigint)
+  AND (state IN ('authorized', 'capturing', 'capture_unknown')
+       OR (state IN ('creating', 'created') AND expires_at > @now::timestamptz));
 
 -- name: InsertPaymentAttempt :one
 -- InsertPaymentAttempt inserts an attempt as creating, under its invoice's

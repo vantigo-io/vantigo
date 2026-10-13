@@ -85,9 +85,9 @@ func TestAttempts_LockOrder(t *testing.T) {
 // TestAttempts_NoCallUnderALock: the create's provider call is made after
 // its transaction committed, and the credentials are read on the pool before
 // it — never under a lock (the harness fails the test on one, and the call
-// is recorded as made outside).
+// is recorded as made outside). Not parallel: an anonymous call carries no
+// user, so another test's would be counted as this one's.
 func TestAttempts_NoCallUnderALock(t *testing.T) {
-	t.Parallel()
 	h, _ := payReady(t)
 	startedPay(t, h.Client(t), payToken(t, h, issuedAcme(t, h).ID))
 	found := false

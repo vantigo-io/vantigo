@@ -275,3 +275,31 @@ func TestAttempts_CredentialsVersionMismatch(t *testing.T) {
 	}
 	startedPay(t, h.Client(t), token)
 }
+
+// TestAttempts_RejectedUnderTheShare (L1): a refusal of the keys recorded
+// while the create waits for the credentials row — after it judged
+// availability under the invoice's lock — is seen in the row it shares: a
+// 503 payments_unavailable, nothing inserted, nothing sent.
+func TestAttempts_RejectedUnderTheShare(t *testing.T) {
+	h, _ := payReady(t, modtest.WithPoolMaxConns(2))
+	inv := issuedAcme(t, h)
+	token := payToken(t, h, inv.ID)
+	probeConn := ownConn(t, h)
+	refusal := holdRow(t, h, `UPDATE invoices.payment_provider_credentials SET rejected_at = $1`, h.Now())
+	create := startPayCreate(h.Client(t), token)
+	waiter := newWaiter(t, probeConn)
+	if got := blockersOf(t, probeConn, waiter); !slices.Equal(got, []uint32{refusal.pid}) {
+		t.Fatalf("the create waits on %v, want the refusal's %d", got, refusal.pid)
+	}
+	refusal.release(t)
+	res := finished(t, "the create", create, http.StatusServiceUnavailable)
+	if code := problemOf(t, res).Code; code != "payments_unavailable" {
+		t.Errorf("the create's code = %q, want payments_unavailable", code)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.payment_attempts WHERE invoice_id = $1`, inv.ID); n != 0 {
+		t.Errorf("%d attempts inserted, want none", n)
+	}
+	if n := len(vippsCreates(t, h)); n != 0 {
+		t.Errorf("%d creates sent to Vipps, want none", n)
+	}
+}

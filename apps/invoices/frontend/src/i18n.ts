@@ -534,8 +534,7 @@ export const invoicesCatalog = {
     "refusal.provider_failed": "Vipps refused or could not complete the request. Try again in a moment.",
     "refusal.pay_links_unavailable": "Pay links are switched off or not set up in the payment settings.",
     "refusal.pay_link_exists": "This invoice has a pay link already. Revoke it before making another.",
-    "refusal.too_many_attempts":
-      "Five Vipps payments of this invoice are in flight already. Wait for them to finish before starting another.",
+    "refusal.too_many_attempts": "Five Vipps payments of this invoice are in progress already. Try again later.",
     "refusal.on_site_payments_unavailable": "On-site payment is not turned on in the payment settings.",
     "refusal.buyer_identity_missing":
       "The buyer is not identified as a cash invoice requires: a name, and an organisation number or a complete address.",
@@ -2134,8 +2133,7 @@ export const invoicesCatalog = {
     "refusal.provider_failed": "Vipps avviste eller kunne ikke fullføre forespørselen. Prøv igjen om litt.",
     "refusal.pay_links_unavailable": "Betalingslenker er slått av eller ikke satt opp i betalingsinnstillingene.",
     "refusal.pay_link_exists": "Denne fakturaen har allerede en betalingslenke. Trekk den tilbake før du lager en ny.",
-    "refusal.too_many_attempts":
-      "Fem Vipps-betalinger av denne fakturaen pågår allerede. Vent til de er ferdige før du starter en ny.",
+    "refusal.too_many_attempts": "Fem Vipps-betalinger av denne fakturaen pågår allerede. Prøv igjen senere.",
     "refusal.on_site_payments_unavailable": "Betaling på stedet er ikke slått på i betalingsinnstillingene.",
     "refusal.buyer_identity_missing":
       "Kjøperen er ikke identifisert slik en kontantfaktura krever: et navn, og et organisasjonsnummer eller en fullstendig adresse.",
