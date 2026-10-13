@@ -99,16 +99,28 @@ func (c *Client) classify(op string, a answer) error {
 	}
 }
 
+// maxRetryAfter is the longest Retry-After the adapter answers: a header
+// asking for longer — or for more seconds than a duration holds — is read as
+// a day, never as an overflow or a wait the caller would take for parking.
+const maxRetryAfter = 24 * time.Hour
+
 // retryAfter reads a Retry-After header, seconds or an HTTP date judged
-// against now; zero when it is absent, unreadable or already past.
+// against now, at most maxRetryAfter; zero when it is absent, unreadable or
+// already past.
 func retryAfter(v string, now time.Time) time.Duration {
 	if v == "" {
 		return 0
 	}
-	if seconds, err := strconv.Atoi(v); err == nil && seconds > 0 {
+	if seconds, err := strconv.ParseInt(v, 10, 64); err == nil && seconds > 0 {
+		if seconds >= int64(maxRetryAfter/time.Second) {
+			return maxRetryAfter
+		}
 		return time.Duration(seconds) * time.Second
 	}
 	if at, err := http.ParseTime(v); err == nil {
+		if at.After(now.Add(maxRetryAfter)) {
+			return maxRetryAfter
+		}
 		if d := at.Sub(now); d > 0 {
 			return d
 		}
