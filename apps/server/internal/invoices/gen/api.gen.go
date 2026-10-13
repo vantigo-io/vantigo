@@ -681,11 +681,87 @@ func (e InvoicesOverdueResponseWarnings) Valid() bool {
 	}
 }
 
+// Defines values for InvoicesPayAttemptStatusState.
+const (
+	InvoicesPayAttemptStatusStateCancelled InvoicesPayAttemptStatusState = "cancelled"
+	InvoicesPayAttemptStatusStateFailed    InvoicesPayAttemptStatusState = "failed"
+	InvoicesPayAttemptStatusStatePaid      InvoicesPayAttemptStatusState = "paid"
+	InvoicesPayAttemptStatusStatePending   InvoicesPayAttemptStatusState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesPayAttemptStatusState enum.
+func (e InvoicesPayAttemptStatusState) Valid() bool {
+	switch e {
+	case InvoicesPayAttemptStatusStateCancelled:
+		return true
+	case InvoicesPayAttemptStatusStateFailed:
+		return true
+	case InvoicesPayAttemptStatusStatePaid:
+		return true
+	case InvoicesPayAttemptStatusStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesPayPageLanguage.
+const (
+	En InvoicesPayPageLanguage = "en"
+	Nb InvoicesPayPageLanguage = "nb"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesPayPageLanguage enum.
+func (e InvoicesPayPageLanguage) Valid() bool {
+	switch e {
+	case En:
+		return true
+	case Nb:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesPayReason.
+const (
+	InvoicesPayReasonAmountOutOfRange  InvoicesPayReason = "amount_out_of_range"
+	InvoicesPayReasonCredited          InvoicesPayReason = "credited"
+	InvoicesPayReasonHandedOff         InvoicesPayReason = "handed_off"
+	InvoicesPayReasonPaymentInProgress InvoicesPayReason = "payment_in_progress"
+	InvoicesPayReasonRevoked           InvoicesPayReason = "revoked"
+	InvoicesPayReasonSettled           InvoicesPayReason = "settled"
+	InvoicesPayReasonUnavailable       InvoicesPayReason = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesPayReason enum.
+func (e InvoicesPayReason) Valid() bool {
+	switch e {
+	case InvoicesPayReasonAmountOutOfRange:
+		return true
+	case InvoicesPayReasonCredited:
+		return true
+	case InvoicesPayReasonHandedOff:
+		return true
+	case InvoicesPayReasonPaymentInProgress:
+		return true
+	case InvoicesPayReasonRevoked:
+		return true
+	case InvoicesPayReasonSettled:
+		return true
+	case InvoicesPayReasonUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvoicesPaymentSource.
 const (
 	InvoicesPaymentSourceCamt054 InvoicesPaymentSource = "camt054"
 	InvoicesPaymentSourceManual  InvoicesPaymentSource = "manual"
 	InvoicesPaymentSourceOcr     InvoicesPaymentSource = "ocr"
+	InvoicesPaymentSourceVipps   InvoicesPaymentSource = "vipps"
 )
 
 // Valid indicates whether the value is a known member of the InvoicesPaymentSource enum.
@@ -696,6 +772,80 @@ func (e InvoicesPaymentSource) Valid() bool {
 	case InvoicesPaymentSourceManual:
 		return true
 	case InvoicesPaymentSourceOcr:
+		return true
+	case InvoicesPaymentSourceVipps:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesPaymentAttemptFlow.
+const (
+	OnSite  InvoicesPaymentAttemptFlow = "on_site"
+	PayLink InvoicesPaymentAttemptFlow = "pay_link"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesPaymentAttemptFlow enum.
+func (e InvoicesPaymentAttemptFlow) Valid() bool {
+	switch e {
+	case OnSite:
+		return true
+	case PayLink:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesPaymentAttemptState.
+const (
+	InvoicesPaymentAttemptStateAbandoned      InvoicesPaymentAttemptState = "abandoned"
+	InvoicesPaymentAttemptStateAborted        InvoicesPaymentAttemptState = "aborted"
+	InvoicesPaymentAttemptStateAuthorized     InvoicesPaymentAttemptState = "authorized"
+	InvoicesPaymentAttemptStateCancelled      InvoicesPaymentAttemptState = "cancelled"
+	InvoicesPaymentAttemptStateCancelling     InvoicesPaymentAttemptState = "cancelling"
+	InvoicesPaymentAttemptStateCaptureFailed  InvoicesPaymentAttemptState = "capture_failed"
+	InvoicesPaymentAttemptStateCaptureUnknown InvoicesPaymentAttemptState = "capture_unknown"
+	InvoicesPaymentAttemptStateCaptured       InvoicesPaymentAttemptState = "captured"
+	InvoicesPaymentAttemptStateCapturing      InvoicesPaymentAttemptState = "capturing"
+	InvoicesPaymentAttemptStateCreated        InvoicesPaymentAttemptState = "created"
+	InvoicesPaymentAttemptStateCreating       InvoicesPaymentAttemptState = "creating"
+	InvoicesPaymentAttemptStateExpired        InvoicesPaymentAttemptState = "expired"
+	InvoicesPaymentAttemptStateFailed         InvoicesPaymentAttemptState = "failed"
+	InvoicesPaymentAttemptStateTerminated     InvoicesPaymentAttemptState = "terminated"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesPaymentAttemptState enum.
+func (e InvoicesPaymentAttemptState) Valid() bool {
+	switch e {
+	case InvoicesPaymentAttemptStateAbandoned:
+		return true
+	case InvoicesPaymentAttemptStateAborted:
+		return true
+	case InvoicesPaymentAttemptStateAuthorized:
+		return true
+	case InvoicesPaymentAttemptStateCancelled:
+		return true
+	case InvoicesPaymentAttemptStateCancelling:
+		return true
+	case InvoicesPaymentAttemptStateCaptureFailed:
+		return true
+	case InvoicesPaymentAttemptStateCaptureUnknown:
+		return true
+	case InvoicesPaymentAttemptStateCaptured:
+		return true
+	case InvoicesPaymentAttemptStateCapturing:
+		return true
+	case InvoicesPaymentAttemptStateCreated:
+		return true
+	case InvoicesPaymentAttemptStateCreating:
+		return true
+	case InvoicesPaymentAttemptStateExpired:
+		return true
+	case InvoicesPaymentAttemptStateFailed:
+		return true
+	case InvoicesPaymentAttemptStateTerminated:
 		return true
 	default:
 		return false
@@ -1831,6 +1981,9 @@ type InvoicesConflictProblem struct {
 	// PeppolRegistered On peppol_not_receivable, whether the receiver is registered on the Peppol network at all at the send's re-check. Absent otherwise.
 	PeppolRegistered *bool `json:"peppolRegistered,omitempty"`
 
+	// Reason Why the pay page cannot start a Vipps payment now (D15): revoked (the link was revoked, or the customer anonymised), credited (credit notes took the whole invoice), settled (nothing is open), handed_off (the invoice is with a collection agency — contact the agency), unavailable (Vipps is switched off, its keys are missing or refused, PUBLIC_BASE_URL is unset or pay links are turned off), payment_in_progress (Vipps payments being completed leave less than 1.00 open) or amount_out_of_range (the open amount is below 1.00 or above 650 000.00, Vipps' limits). On a pay page's 409, the same reason beside the code. Absent otherwise.
+	Reason *InvoicesPayReason `json:"reason,omitempty"`
+
 	// Rules On ehf_invalid, every pre-check rule the document's EHF failed. Absent otherwise.
 	Rules *[]InvoicesEhfRule `json:"rules,omitempty"`
 
@@ -2009,7 +2162,7 @@ type InvoicesHoldLiftRequest struct {
 
 // InvoicesHoldOrHandoffResult What a hold, its lift, a hand-off and its withdrawal answer (D11): the invoice, and lettersLeft — the letters of the invoice no withdrawal reaches, by sequence: each printed letter, left for the posting's re-judge because it may be in the post already, and any letter being sent (queued, its facts written, under a live lease), which becomes sent. A person pulls such a letter from the post, or withdraws it by hand once it can be withdrawn (plan reading 9).
 type InvoicesHoldOrHandoffResult struct {
-	// Invoice One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15).
+	// Invoice One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
 	Invoice     InvoicesInvoiceResponse `json:"invoice"`
 	LettersLeft []InvoicesLetterLeft    `json:"lettersLeft"`
 }
@@ -2085,7 +2238,7 @@ type InvoicesInvoiceRequest struct {
 	YourReference *string `json:"yourReference,omitempty"`
 }
 
-// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15).
+// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
 type InvoicesInvoiceResponse struct {
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
 
@@ -2165,8 +2318,11 @@ type InvoicesInvoiceResponse struct {
 	PaidAmount *float64 `json:"paidAmount,omitempty"`
 
 	// PayLink An issued invoice's live pay link (invoices payments and reminders design D15): the stable address of the installation's pay page, where the customer pays the invoice with Vipps. Only the token's SHA-256 is stored; the URL is sealed. url and qrSvg (the URL as a QR code, an SVG of squares only, to be shown as an image — never inlined) are answered only to a caller holding invoices:issue while on-site payment is available (meta's onSitePaymentsAvailable): without it the app shows no pay link on screen, since a link shown to a customer on site is kontantsalg (D17, I21). Absent when the invoice has no live link.
-	PayLink          *InvoicesPayLink `json:"payLink,omitempty"`
-	PaymentTermsDays *int32           `json:"paymentTermsDays,omitempty"`
+	PayLink *InvoicesPayLink `json:"payLink,omitempty"`
+
+	// PaymentAttempts On an issued invoice, every Vipps payment attempt made for it, oldest first (invoices payments and reminders design D16) — never the address the payer is sent to.
+	PaymentAttempts  *[]InvoicesPaymentAttempt `json:"paymentAttempts,omitempty"`
+	PaymentTermsDays *int32                    `json:"paymentTermsDays,omitempty"`
 
 	// Payments On an issued invoice, every payment registered against it, removed ones included with their removal, in the order the money arrived.
 	Payments *[]InvoicesPayment `json:"payments,omitempty"`
@@ -2606,6 +2762,26 @@ type InvoicesOverdueResponse struct {
 // InvoicesOverdueResponseWarnings defines model for InvoicesOverdueResponse.Warnings.
 type InvoicesOverdueResponseWarnings string
 
+// InvoicesPayAttemptCreated A Vipps payment created for the pay page (invoices payments and reminders design D15, D16): reference is the attempt's — <prefix>-<invoice number>-<attempt id> — and redirectUrl the address at Vipps the page opens at once, unchanged. Vipps sends the payer back to PUBLIC_BASE_URL/pay?attempt=<reference>&nonce=<nonce>, the nonce granting only the reading of this attempt's state — never the pay link's token.
+type InvoicesPayAttemptCreated struct {
+	RedirectUrl string `json:"redirectUrl"`
+	Reference   string `json:"reference"`
+}
+
+// InvoicesPayAttemptRequest POST /invoices/pay/attempts' body (D15): token is the pay link's, from the page's address; acceptTerms must be true — the payer accepted the seller's sales terms and privacy notice (400 otherwise).
+type InvoicesPayAttemptRequest struct {
+	AcceptTerms bool   `json:"acceptTerms"`
+	Token       string `json:"token"`
+}
+
+// InvoicesPayAttemptStatus A Vipps payment's state as the pay page shows it on return (D15): pending while Vipps has not answered or the capture is not yet registered, paid once it is, failed when Vipps refused it or it could not be captured, cancelled when the payer stopped, it expired or nothing was left to capture.
+type InvoicesPayAttemptStatus struct {
+	State InvoicesPayAttemptStatusState `json:"state"`
+}
+
+// InvoicesPayAttemptStatusState defines model for InvoicesPayAttemptStatus.State.
+type InvoicesPayAttemptStatusState string
+
 // InvoicesPayLink An issued invoice's live pay link (invoices payments and reminders design D15): the stable address of the installation's pay page, where the customer pays the invoice with Vipps. Only the token's SHA-256 is stored; the URL is sealed. url and qrSvg (the URL as a QR code, an SVG of squares only, to be shown as an image — never inlined) are answered only to a caller holding invoices:issue while on-site payment is available (meta's onSitePaymentsAvailable): without it the app shows no pay link on screen, since a link shown to a customer on site is kontantsalg (D17, I21). Absent when the invoice has no live link.
 type InvoicesPayLink struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -2614,16 +2790,56 @@ type InvoicesPayLink struct {
 	Url       *string   `json:"url,omitempty"`
 }
 
+// InvoicesPayPage What the pay page shows of an invoice (invoices payments and reminders design D15) — never the buyer's name or address. seller is the seller snapshot's name and organisation number; openAmount the principal still open, less the Vipps payments being completed (never below 0); kid what to pay by bank with instead; termsUrl and privacyUrl the seller's sales terms and privacy notice, absent while unset; language the buyer snapshot's, nb or en. payable says whether a Vipps payment can be started now, and reason, only when it is false, why.
+type InvoicesPayPage struct {
+	Currency      string                  `json:"currency"`
+	DueDate       *openapi_types.Date     `json:"dueDate,omitempty"`
+	InvoiceNumber int64                   `json:"invoiceNumber"`
+	IssueDate     openapi_types.Date      `json:"issueDate"`
+	Kid           *string                 `json:"kid,omitempty"`
+	Language      InvoicesPayPageLanguage `json:"language"`
+	OpenAmount    float64                 `json:"openAmount"`
+	Payable       bool                    `json:"payable"`
+	PrivacyUrl    *string                 `json:"privacyUrl,omitempty"`
+
+	// Reason Why the pay page cannot start a Vipps payment now (D15): revoked (the link was revoked, or the customer anonymised), credited (credit notes took the whole invoice), settled (nothing is open), handed_off (the invoice is with a collection agency — contact the agency), unavailable (Vipps is switched off, its keys are missing or refused, PUBLIC_BASE_URL is unset or pay links are turned off), payment_in_progress (Vipps payments being completed leave less than 1.00 open) or amount_out_of_range (the open amount is below 1.00 or above 650 000.00, Vipps' limits). On a pay page's 409, the same reason beside the code. Absent otherwise.
+	Reason *InvoicesPayReason `json:"reason,omitempty"`
+
+	// Seller The seller as the pay page shows it — the seller snapshot's legal name and organisation number.
+	Seller   InvoicesPaySeller `json:"seller"`
+	TermsUrl *string           `json:"termsUrl,omitempty"`
+}
+
+// InvoicesPayPageLanguage defines model for InvoicesPayPage.Language.
+type InvoicesPayPageLanguage string
+
+// InvoicesPayReadRequest POST /invoices/pay/read's body (D15, plan reading 23): the pay link's token, from the page's own address — in the body, so it never travels in an API URL.
+type InvoicesPayReadRequest struct {
+	Token string `json:"token"`
+}
+
+// InvoicesPayReason Why the pay page cannot start a Vipps payment now (D15): revoked (the link was revoked, or the customer anonymised), credited (credit notes took the whole invoice), settled (nothing is open), handed_off (the invoice is with a collection agency — contact the agency), unavailable (Vipps is switched off, its keys are missing or refused, PUBLIC_BASE_URL is unset or pay links are turned off), payment_in_progress (Vipps payments being completed leave less than 1.00 open) or amount_out_of_range (the open amount is below 1.00 or above 650 000.00, Vipps' limits). On a pay page's 409, the same reason beside the code. Absent otherwise.
+type InvoicesPayReason string
+
+// InvoicesPaySeller The seller as the pay page shows it — the seller snapshot's legal name and organisation number.
+type InvoicesPaySeller struct {
+	Name               string `json:"name"`
+	OrganisationNumber string `json:"organisationNumber"`
+}
+
 // InvoicesPayment One payment registered against an issued invoice (D2; invoices payments and reminders design D2, D4). source is manual for one registered by hand, ocr or camt054 for one a bank line was matched to, which bankTransactionId then names — registered by the person who uploaded the file or asked for the rest to be matched, paid on the line's booking day, its reference the KID. registeredByUserId is the person who registered it; it is optional on the wire, for a later source with no person. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing.
 type InvoicesPayment struct {
 	Amount float64 `json:"amount"`
 
 	// BankTransactionId The bank line the payment was matched or applied from; absent for one registered by hand.
-	BankTransactionId  *int64              `json:"bankTransactionId,omitempty"`
-	Currency           string              `json:"currency"`
-	Id                 int64               `json:"id"`
-	Note               string              `json:"note"`
-	PaidOn             openapi_types.Date  `json:"paidOn"`
+	BankTransactionId *int64             `json:"bankTransactionId,omitempty"`
+	Currency          string             `json:"currency"`
+	Id                int64              `json:"id"`
+	Note              string             `json:"note"`
+	PaidOn            openapi_types.Date `json:"paidOn"`
+
+	// PaymentAttemptId The Vipps payment attempt whose capture this payment is (invoices payments and reminders design D2, D16) — one capture, one payment; absent for every other source.
+	PaymentAttemptId   *int64              `json:"paymentAttemptId,omitempty"`
 	Reference          string              `json:"reference"`
 	RegisteredAt       time.Time           `json:"registeredAt"`
 	RegisteredByUserId *openapi_types.UUID `json:"registeredByUserId,omitempty"`
@@ -2631,12 +2847,39 @@ type InvoicesPayment struct {
 	RemovedAt          *time.Time          `json:"removedAt,omitempty"`
 	RemovedByUserId    *openapi_types.UUID `json:"removedByUserId,omitempty"`
 
-	// Source manual, ocr or camt054.
+	// Source manual, ocr, camt054 or vipps (a Vipps capture, which paymentAttemptId names).
 	Source InvoicesPaymentSource `json:"source"`
 }
 
-// InvoicesPaymentSource manual, ocr or camt054.
+// InvoicesPaymentSource manual, ocr, camt054 or vipps (a Vipps capture, which paymentAttemptId names).
 type InvoicesPaymentSource string
+
+// InvoicesPaymentAttempt One Vipps payment attempt of an invoice (invoices payments and reminders design D16): its reference at Vipps, flow (pay_link, made from the pay page, or on_site), state as the payments worker knows it, amount (the open amount when it was made), the amounts Vipps reported — authorized, captured, cancelled and refunded — the reservation while a capture is decided and not yet registered (reservedAmount), whether the uncaptured rest is still to be released (releasePending), and when it was made, by whom (absent for the pay page's), when it expires, was authorized, captured and finished. The address the payer is sent to is never answered.
+type InvoicesPaymentAttempt struct {
+	Amount           float64                     `json:"amount"`
+	AuthorizedAmount *float64                    `json:"authorizedAmount,omitempty"`
+	AuthorizedAt     *time.Time                  `json:"authorizedAt,omitempty"`
+	CancelledAmount  *float64                    `json:"cancelledAmount,omitempty"`
+	CapturedAmount   *float64                    `json:"capturedAmount,omitempty"`
+	CapturedAt       *time.Time                  `json:"capturedAt,omitempty"`
+	CreatedAt        time.Time                   `json:"createdAt"`
+	CreatedByUserId  *openapi_types.UUID         `json:"createdByUserId,omitempty"`
+	ExpiresAt        time.Time                   `json:"expiresAt"`
+	FinishedAt       *time.Time                  `json:"finishedAt,omitempty"`
+	Flow             InvoicesPaymentAttemptFlow  `json:"flow"`
+	Id               int64                       `json:"id"`
+	Reference        string                      `json:"reference"`
+	RefundedAmount   *float64                    `json:"refundedAmount,omitempty"`
+	ReleasePending   bool                        `json:"releasePending"`
+	ReservedAmount   *float64                    `json:"reservedAmount,omitempty"`
+	State            InvoicesPaymentAttemptState `json:"state"`
+}
+
+// InvoicesPaymentAttemptFlow defines model for InvoicesPaymentAttempt.Flow.
+type InvoicesPaymentAttemptFlow string
+
+// InvoicesPaymentAttemptState defines model for InvoicesPaymentAttempt.State.
+type InvoicesPaymentAttemptState string
 
 // InvoicesPaymentRemovalRequest POST /invoices/{id}/payments/{paymentId}/remove's body (D2). reason is why the registration is removed: 1-200 characters once trimmed. A removal is never undone; a mistake is registered again. The same body removes a charge payment and a manual delivery (invoices payments and reminders design D8, D9).
 type InvoicesPaymentRemovalRequest struct {
@@ -2768,7 +3011,7 @@ type InvoicesQuickInvoiceRequest struct {
 
 // InvoicesQuickInvoiceResponse The quick invoice's answer (D17): the issued invoice, and — when the request asked payOnSite and no payment request could be made — paymentRequestError, the refusal the request met; the invoice is issued either way.
 type InvoicesQuickInvoiceResponse struct {
-	// Invoice One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15).
+	// Invoice One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
 	Invoice InvoicesInvoiceResponse `json:"invoice"`
 
 	// PaymentRequestError ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit or the keys, or their removal, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the quick invoice's (D17) request_id_reused (its requestId came before with another body); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
@@ -3610,6 +3853,11 @@ type GetInvoicesOverdueParamsAction string
 // GetInvoicesOverdueParamsCharges defines parameters for GetInvoicesOverdue.
 type GetInvoicesOverdueParamsCharges string
 
+// GetInvoicesPayAttemptsByReferenceParams defines parameters for GetInvoicesPayAttemptsByReference.
+type GetInvoicesPayAttemptsByReferenceParams struct {
+	Nonce string `form:"nonce" json:"nonce"`
+}
+
 // GetInvoicesReminderPrintBatchesParams defines parameters for GetInvoicesReminderPrintBatches.
 type GetInvoicesReminderPrintBatchesParams struct {
 	Posted   *bool  `form:"posted,omitempty" json:"posted,omitempty"`
@@ -3683,6 +3931,12 @@ type PutInvoicesCustomersByCustomerIdReminderPolicyJSONRequestBody = InvoicesRem
 
 // PostInvoicesFromWorkJSONRequestBody defines body for PostInvoicesFromWork for application/json ContentType.
 type PostInvoicesFromWorkJSONRequestBody = InvoicesFromWorkRequest
+
+// PostInvoicesPayAttemptsJSONRequestBody defines body for PostInvoicesPayAttempts for application/json ContentType.
+type PostInvoicesPayAttemptsJSONRequestBody = InvoicesPayAttemptRequest
+
+// PostInvoicesPayReadJSONRequestBody defines body for PostInvoicesPayRead for application/json ContentType.
+type PostInvoicesPayReadJSONRequestBody = InvoicesPayReadRequest
 
 // PostInvoicesQuickJSONRequestBody defines body for PostInvoicesQuick for application/json ContentType.
 type PostInvoicesQuickJSONRequestBody = InvoicesQuickInvoiceRequest
@@ -3848,6 +4102,15 @@ type ServerInterface interface {
 	// GetInvoicesOverdue List the overdue invoices
 	// (GET /api/v1/invoices/overdue)
 	GetInvoicesOverdue(w http.ResponseWriter, r *http.Request, params GetInvoicesOverdueParams)
+	// PostInvoicesPayAttempts Start a Vipps payment from the pay page
+	// (POST /api/v1/invoices/pay/attempts)
+	PostInvoicesPayAttempts(w http.ResponseWriter, r *http.Request)
+	// GetInvoicesPayAttemptsByReference Read a pay-page Vipps payment's state
+	// (GET /api/v1/invoices/pay/attempts/{reference})
+	GetInvoicesPayAttemptsByReference(w http.ResponseWriter, r *http.Request, reference string, params GetInvoicesPayAttemptsByReferenceParams)
+	// PostInvoicesPayRead Read an invoice for the pay page
+	// (POST /api/v1/invoices/pay/read)
+	PostInvoicesPayRead(w http.ResponseWriter, r *http.Request)
 	// PostInvoicesQuick Create and issue a quick invoice
 	// (POST /api/v1/invoices/quick)
 	PostInvoicesQuick(w http.ResponseWriter, r *http.Request)
@@ -5077,6 +5340,76 @@ func (siw *ServerInterfaceWrapper) GetInvoicesOverdue(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetInvoicesOverdue(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesPayAttempts operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesPayAttempts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesPayAttempts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesPayAttemptsByReference operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesPayAttemptsByReference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reference" -------------
+	var reference string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reference", r.PathValue("reference"), &reference, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reference", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetInvoicesPayAttemptsByReferenceParams
+
+	// ------------- Required query parameter "nonce" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "nonce", r.URL.Query(), &params.Nonce, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "nonce"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "nonce", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesPayAttemptsByReference(w, r, reference, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesPayRead operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesPayRead(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesPayRead(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6853,6 +7186,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/manual-deliveries/{deliveryId}/remove", wrapper.PostInvoicesByIdManualDeliveriesByDeliveryIdRemove)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/pay-link", wrapper.PostInvoicesByIdPayLink)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/pay-link/revoke", wrapper.PostInvoicesByIdPayLinkRevoke)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/pay/read", wrapper.PostInvoicesPayRead)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/pay/attempts", wrapper.PostInvoicesPayAttempts)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/pay/attempts/{reference}", wrapper.GetInvoicesPayAttemptsByReference)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/hold", wrapper.PostInvoicesByIdHold)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/hold/lift", wrapper.PostInvoicesByIdHoldLift)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/collection", wrapper.PostInvoicesByIdCollection)
@@ -8719,6 +9055,253 @@ func (response GetInvoicesOverdue409ApplicationProblemPlusJSONResponse) VisitGet
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPayAttemptsRequestObject struct {
+	Body *PostInvoicesPayAttemptsJSONRequestBody
+}
+
+type PostInvoicesPayAttemptsResponseObject interface {
+	VisitPostInvoicesPayAttemptsResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesPayAttempts201JSONResponse InvoicesPayAttemptCreated
+
+func (response PostInvoicesPayAttempts201JSONResponse) VisitPostInvoicesPayAttemptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPayAttempts400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesPayAttempts400ApplicationProblemPlusJSONResponse) VisitPostInvoicesPayAttemptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPayAttempts404Response struct {
+}
+
+func (response PostInvoicesPayAttempts404Response) VisitPostInvoicesPayAttemptsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesPayAttempts409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesPayAttempts409ApplicationProblemPlusJSONResponse) VisitPostInvoicesPayAttemptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPayAttempts429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostInvoicesPayAttempts429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostInvoicesPayAttempts429ResponseHeaders
+}
+
+func (response PostInvoicesPayAttempts429JSONResponse) VisitPostInvoicesPayAttemptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPayAttempts502ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesPayAttempts502ApplicationProblemPlusJSONResponse) VisitPostInvoicesPayAttemptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPayAttempts503ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesPayAttempts503ApplicationProblemPlusJSONResponse) VisitPostInvoicesPayAttemptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesPayAttemptsByReferenceRequestObject struct {
+	Reference string `json:"reference"`
+	Params    GetInvoicesPayAttemptsByReferenceParams
+}
+
+type GetInvoicesPayAttemptsByReferenceResponseObject interface {
+	VisitGetInvoicesPayAttemptsByReferenceResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesPayAttemptsByReference200JSONResponse InvoicesPayAttemptStatus
+
+func (response GetInvoicesPayAttemptsByReference200JSONResponse) VisitGetInvoicesPayAttemptsByReferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesPayAttemptsByReference400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response GetInvoicesPayAttemptsByReference400ApplicationProblemPlusJSONResponse) VisitGetInvoicesPayAttemptsByReferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesPayAttemptsByReference404Response struct {
+}
+
+func (response GetInvoicesPayAttemptsByReference404Response) VisitGetInvoicesPayAttemptsByReferenceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInvoicesPayAttemptsByReference429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetInvoicesPayAttemptsByReference429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetInvoicesPayAttemptsByReference429ResponseHeaders
+}
+
+func (response GetInvoicesPayAttemptsByReference429JSONResponse) VisitGetInvoicesPayAttemptsByReferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPayReadRequestObject struct {
+	Body *PostInvoicesPayReadJSONRequestBody
+}
+
+type PostInvoicesPayReadResponseObject interface {
+	VisitPostInvoicesPayReadResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesPayRead200JSONResponse InvoicesPayPage
+
+func (response PostInvoicesPayRead200JSONResponse) VisitPostInvoicesPayReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPayRead400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesPayRead400ApplicationProblemPlusJSONResponse) VisitPostInvoicesPayReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesPayRead404Response struct {
+}
+
+func (response PostInvoicesPayRead404Response) VisitPostInvoicesPayReadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesPayRead429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostInvoicesPayRead429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostInvoicesPayRead429ResponseHeaders
+}
+
+func (response PostInvoicesPayRead429JSONResponse) VisitPostInvoicesPayReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -13590,6 +14173,15 @@ type StrictServerInterface interface {
 	// GetInvoicesOverdue List the overdue invoices
 	// (GET /api/v1/invoices/overdue)
 	GetInvoicesOverdue(ctx context.Context, request GetInvoicesOverdueRequestObject) (GetInvoicesOverdueResponseObject, error)
+	// PostInvoicesPayAttempts Start a Vipps payment from the pay page
+	// (POST /api/v1/invoices/pay/attempts)
+	PostInvoicesPayAttempts(ctx context.Context, request PostInvoicesPayAttemptsRequestObject) (PostInvoicesPayAttemptsResponseObject, error)
+	// GetInvoicesPayAttemptsByReference Read a pay-page Vipps payment's state
+	// (GET /api/v1/invoices/pay/attempts/{reference})
+	GetInvoicesPayAttemptsByReference(ctx context.Context, request GetInvoicesPayAttemptsByReferenceRequestObject) (GetInvoicesPayAttemptsByReferenceResponseObject, error)
+	// PostInvoicesPayRead Read an invoice for the pay page
+	// (POST /api/v1/invoices/pay/read)
+	PostInvoicesPayRead(ctx context.Context, request PostInvoicesPayReadRequestObject) (PostInvoicesPayReadResponseObject, error)
 	// PostInvoicesQuick Create and issue a quick invoice
 	// (POST /api/v1/invoices/quick)
 	PostInvoicesQuick(ctx context.Context, request PostInvoicesQuickRequestObject) (PostInvoicesQuickResponseObject, error)
@@ -14539,6 +15131,95 @@ func (sh *strictHandler) GetInvoicesOverdue(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetInvoicesOverdueResponseObject); ok {
 		if err := validResponse.VisitGetInvoicesOverdueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesPayAttempts operation middleware
+func (sh *strictHandler) PostInvoicesPayAttempts(w http.ResponseWriter, r *http.Request) {
+	var request PostInvoicesPayAttemptsRequestObject
+
+	var body PostInvoicesPayAttemptsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesPayAttempts(ctx, request.(PostInvoicesPayAttemptsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesPayAttempts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesPayAttemptsResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesPayAttemptsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesPayAttemptsByReference operation middleware
+func (sh *strictHandler) GetInvoicesPayAttemptsByReference(w http.ResponseWriter, r *http.Request, reference string, params GetInvoicesPayAttemptsByReferenceParams) {
+	var request GetInvoicesPayAttemptsByReferenceRequestObject
+
+	request.Reference = reference
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesPayAttemptsByReference(ctx, request.(GetInvoicesPayAttemptsByReferenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesPayAttemptsByReference")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesPayAttemptsByReferenceResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesPayAttemptsByReferenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesPayRead operation middleware
+func (sh *strictHandler) PostInvoicesPayRead(w http.ResponseWriter, r *http.Request) {
+	var request PostInvoicesPayReadRequestObject
+
+	var body PostInvoicesPayReadJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesPayRead(ctx, request.(PostInvoicesPayReadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesPayRead")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesPayReadResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesPayReadResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

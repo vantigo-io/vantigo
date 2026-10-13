@@ -1351,6 +1351,25 @@ it. The link itself and its QR code are shown on screen only while payment on si
 turned on: showing a customer the link where you stand is a cash sale (*kontantsalg*)
 too.
 
+### What the customer sees on the pay page
+
+The link opens the installation's **pay page** in the customer's browser, without
+signing in. It shows the seller's name and organisation number, the invoice number,
+its dates, the amount still open and the KID — so the customer can pay by bank instead
+— and links to your sales terms and privacy notice, which the customer must accept
+before paying. It never shows the customer's own name or address. **Betal med Vipps**
+opens Vipps, where the customer approves the payment; Vipps then sends them back to
+the pay page, which shows whether the payment went through.
+
+The page cannot start a payment when the invoice is already paid or credited, when it
+is with a collection agency (the customer is told to contact the agency), when the link
+was revoked, when Vipps payments are not available, when a Vipps payment of the invoice
+is already being completed, or when the amount open is below 1.00 or above
+650 000.00 — the page says which.
+
+Every Vipps payment started for an invoice is listed on it, with its state and amount,
+whether it came from the pay page or was taken on site.
+
 ## Checking the journal
 
 **Invoice journal** in the sidebar is the proof the bookkeeping regulation asks for:

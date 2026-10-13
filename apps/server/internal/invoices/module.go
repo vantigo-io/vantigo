@@ -90,10 +90,19 @@ var permissions = []contracts.Permission{
 // installation's SMTP server: 60 sends per client per 10 minutes (payments
 // and delivery design D4). A send as EHF renders, looks up the receiver on
 // the Peppol network and stores a UBL each time: the same 60 per 10 minutes
-// under a policy of its own (EHF and KID design D8).
+// under a policy of its own (EHF and KID design D8). The pay page's
+// operations follow.
 var limits = map[string]ratelimit.Policy{
 	"postInvoicesByIdSend":    {Name: "invoices-send", Limit: 60, Window: 10 * time.Minute},
 	"postInvoicesByIdSendEhf": {Name: "invoices-send-ehf", Limit: 60, Window: 10 * time.Minute},
+	// The pay page's three anonymous operations (invoices payments and
+	// reminders design D15, I2), each a bucket of its own: the read 60, the
+	// attempt's create 10 — each makes a Vipps payment — and the status read
+	// 400, room for the return page's polling (every 2 s for a minute, then
+	// every 5 s, at most ten minutes: about 150 reads).
+	"postInvoicesPayRead":               {Name: "invoices-pay-read", Limit: 60, Window: 10 * time.Minute},
+	"postInvoicesPayAttempts":           {Name: "invoices-pay-attempt", Limit: 10, Window: 10 * time.Minute},
+	"getInvoicesPayAttemptsByReference": {Name: "invoices-pay-status", Limit: 400, Window: 10 * time.Minute},
 }
 
 // Module is invoices as a platform module: its contract mounted under

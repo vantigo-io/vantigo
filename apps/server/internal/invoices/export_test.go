@@ -707,3 +707,27 @@ func SetPayLinkAtIssueBeforeInsert(hook func(ctx context.Context, invoiceID int6
 
 // NewPayLinkToken draws a pay link token as the module does.
 var NewPayLinkToken = newPayLinkToken
+
+// SetAttemptAfterInvoiceLock installs a hook an attempt's create calls inside
+// its transaction right after it shared the credentials row under the
+// invoice's lock, before the attempt is inserted, with that transaction, and
+// answers the function that removes it. A test using it does not run in
+// parallel: the hook is the package's.
+func SetAttemptAfterInvoiceLock(hook func(ctx context.Context, tx pgx.Tx)) func() {
+	attemptAfterInvoiceLock = hook
+	return func() { attemptAfterInvoiceLock = nil }
+}
+
+// SetPayNonce installs fn as the source of every new return nonce in place
+// of 16 random bytes, and answers the function that removes it. A test using
+// it does not run in parallel: the seam is the package's.
+func SetPayNonce(fn func() string) func() {
+	payNonce = fn
+	return func() { payNonce = nil }
+}
+
+// MinorOf and RatOfMinor are the module's two roads across the port.
+var (
+	MinorOf    = minorOf
+	RatOfMinor = ratOfMinor
+)

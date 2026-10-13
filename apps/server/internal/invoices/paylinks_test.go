@@ -570,10 +570,10 @@ func TestPayLink_NoCallUnderALock(t *testing.T) {
 }
 
 // TestPayLink_NeverInTheRequestLog: a pay link's URL, requested through
-// server.New, is logged by its path alone — never the token in its query. A
-// guard of the platform's request log (srv/httpx), kept here beside the token
-// it protects; Task 7 retargets its API request to POST
-// /api/v1/invoices/pay/read, where the token travels in the body.
+// server.New, is logged by its path alone — never the token in its query —
+// and the pay page's read, POST /api/v1/invoices/pay/read, carries the token
+// in its body, which the log never writes. A guard of the platform's request
+// log (srv/httpx), kept here beside the token it protects.
 func TestPayLink_NeverInTheRequestLog(t *testing.T) {
 	t.Parallel()
 	const token = "secret-token_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456"
@@ -588,14 +588,15 @@ func TestPayLink_NeverInTheRequestLog(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	handler := server.New(server.Options{Config: cfg, Logger: logger, Index: index, Assets: assets,
 		Health: health.Handler(logger, "test"), API: http.NotFoundHandler()})
-	for _, path := range []string{"/pay?token=" + token, "/api/v1/invoices/pay?token=" + token} {
-		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://vantigo.example.com"+path, nil))
-	}
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://vantigo.example.com/pay?token="+token, nil))
+	read := httptest.NewRequest(http.MethodPost, "https://vantigo.example.com/api/v1/invoices/pay/read", strings.NewReader(`{"token":"`+token+`"}`))
+	read.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(httptest.NewRecorder(), read)
 	text := logs.String()
-	if strings.Contains(text, token) || strings.Contains(text, "token=") {
+	if strings.Contains(text, token) || strings.Contains(text, "token") {
 		t.Errorf("the request log holds the token:\n%s", text)
 	}
-	for _, want := range []string{`"path":"/pay"`, `"path":"/api/v1/invoices/pay"`} {
+	for _, want := range []string{`"path":"/pay"`, `"path":"/api/v1/invoices/pay/read"`} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the request log lacks %s:\n%s", want, text)
 		}

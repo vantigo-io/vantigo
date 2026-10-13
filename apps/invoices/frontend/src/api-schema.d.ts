@@ -962,6 +962,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/pay/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read an invoice for the pay page
+         * @description The pay page's read (invoices payments and reminders design D15; a POST, so the token travels in the body and never in an API URL — plan reading 23). Anonymous: no session is needed, and a signed-in caller is answered alike. The token is hashed and looked up; 404 when no pay link, live or revoked, has it. 200 with what the page shows — the seller, the invoice's number, issue date, due date, open amount and KID, the seller's sales terms and privacy notice, the buyer's language — and never the buyer's name or address; payable false with its reason when a Vipps payment cannot be started now. Rate limited to 60 per client address per 10 minutes (invoices-pay-read).
+         */
+        post: operations["postInvoicesPayRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/pay/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a Vipps payment from the pay page
+         * @description Starts a Vipps payment of the invoice a pay link names (invoices payments and reminders design D15, D16). Anonymous, as the read. In order: 400 unless acceptTerms is true; 404 when no pay link has the token; 409 with the pay page's reason — the code invoice_settled (settled), invoice_fully_credited (credited), invoice_handed_off (handed_off), payment_in_progress, amount_out_of_range, or pay_links_unavailable (revoked, unavailable) — judged on the pool and again under the invoice's lock; 409 payments_unavailable without Vipps credentials, 503 payments_unavailable when the stored keys cannot be opened or were replaced while the request ran (retry); 409 too_many_attempts at five live attempts of the invoice. One transaction locks the invoice — the link, the payment settings and Vipps' availability re-read under it — then reads the credentials FOR SHARE and inserts the attempt as creating, amount the open amount, under the stored sales unit, its idempotency key stored before the call; after the commit, and outside any lock, Vipps is asked for a WEB_REDIRECT payment returning to PUBLIC_BASE_URL/pay?attempt=<reference>&nonce=<nonce> — never the token. 201 {reference, redirectUrl}; 502 provider_failed when Vipps refused it (the attempt failed) or its answer is unknown (the attempt kept for the payments worker to learn). Rate limited to 10 per client address per 10 minutes (invoices-pay-attempt).
+         */
+        post: operations["postInvoicesPayAttempts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/pay/attempts/{reference}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a pay-page Vipps payment's state
+         * @description A pay-page Vipps payment's state on return (D15): anonymous; 404 unless nonce is the one its return address carried (only its SHA-256 is stored). {state}: pending, paid, failed or cancelled. Rate limited to 400 per client address per 10 minutes (invoices-pay-status), room for the page's polling — every 2 s for a minute, then every 5 s, at most ten minutes.
+         */
+        get: operations["getInvoicesPayAttemptsByReference"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/{id}/hold": {
         parameters: {
             query?: never;
@@ -1635,6 +1695,7 @@ export interface components {
             peppolCanReceive?: boolean;
             /** @description On peppol_not_receivable, whether the receiver is registered on the Peppol network at all at the send's re-check. Absent otherwise. */
             peppolRegistered?: boolean;
+            reason?: components["schemas"]["InvoicesPayReason"];
             /** @description On ehf_invalid, every pre-check rule the document's EHF failed. Absent otherwise. */
             rules?: components["schemas"]["InvoicesEhfRule"][];
             /**
@@ -2909,7 +2970,7 @@ export interface components {
             timesheet?: boolean;
             yourReference?: string;
         };
-        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15). */
+        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16). */
         InvoicesInvoiceResponse: {
             allowedIssueDates?: string[];
             buyer?: components["schemas"]["InvoicesBuyer"];
@@ -2985,6 +3046,8 @@ export interface components {
              */
             paidAmount?: number;
             payLink?: components["schemas"]["InvoicesPayLink"];
+            /** @description On an issued invoice, every Vipps payment attempt made for it, oldest first (invoices payments and reminders design D16) — never the address the payer is sent to. */
+            paymentAttempts?: components["schemas"]["InvoicesPaymentAttempt"][];
             /** Format: int32 */
             paymentTermsDays?: number;
             /** @description On an issued invoice, every payment registered against it, removed ones included with their removal, in the order the money arrived. */
@@ -3159,6 +3222,11 @@ export interface components {
             note: string;
             /** Format: date */
             paidOn: string;
+            /**
+             * Format: int64
+             * @description The Vipps payment attempt whose capture this payment is (invoices payments and reminders design D2, D16) — one capture, one payment; absent for every other source.
+             */
+            paymentAttemptId?: number;
             reference: string;
             /** Format: date-time */
             registeredAt: string;
@@ -3170,10 +3238,10 @@ export interface components {
             /** Format: uuid */
             removedByUserId?: string;
             /**
-             * @description manual, ocr or camt054.
+             * @description manual, ocr, camt054 or vipps (a Vipps capture, which paymentAttemptId names).
              * @enum {string}
              */
-            source: "manual" | "ocr" | "camt054";
+            source: "manual" | "ocr" | "camt054" | "vipps";
         };
         /** @description POST /invoices/{id}/payments/{paymentId}/remove's body (D2). reason is why the registration is removed: 1-200 characters once trimmed. A removal is never undone; a mistake is registered again. The same body removes a charge payment and a manual delivery (invoices payments and reminders design D8, D9). */
         InvoicesPaymentRemovalRequest: {
@@ -3313,6 +3381,90 @@ export interface components {
             id: number;
             qrSvg?: string;
             url?: string;
+        };
+        /** @description A Vipps payment created for the pay page (invoices payments and reminders design D15, D16): reference is the attempt's — <prefix>-<invoice number>-<attempt id> — and redirectUrl the address at Vipps the page opens at once, unchanged. Vipps sends the payer back to PUBLIC_BASE_URL/pay?attempt=<reference>&nonce=<nonce>, the nonce granting only the reading of this attempt's state — never the pay link's token. */
+        InvoicesPayAttemptCreated: {
+            redirectUrl: string;
+            reference: string;
+        };
+        /** @description POST /invoices/pay/attempts' body (D15): token is the pay link's, from the page's address; acceptTerms must be true — the payer accepted the seller's sales terms and privacy notice (400 otherwise). */
+        InvoicesPayAttemptRequest: {
+            acceptTerms: boolean;
+            token: string;
+        };
+        /** @description A Vipps payment's state as the pay page shows it on return (D15): pending while Vipps has not answered or the capture is not yet registered, paid once it is, failed when Vipps refused it or it could not be captured, cancelled when the payer stopped, it expired or nothing was left to capture. */
+        InvoicesPayAttemptStatus: {
+            /** @enum {string} */
+            state: "pending" | "paid" | "failed" | "cancelled";
+        };
+        /** @description What the pay page shows of an invoice (invoices payments and reminders design D15) — never the buyer's name or address. seller is the seller snapshot's name and organisation number; openAmount the principal still open, less the Vipps payments being completed (never below 0); kid what to pay by bank with instead; termsUrl and privacyUrl the seller's sales terms and privacy notice, absent while unset; language the buyer snapshot's, nb or en. payable says whether a Vipps payment can be started now, and reason, only when it is false, why. */
+        InvoicesPayPage: {
+            currency: string;
+            /** Format: date */
+            dueDate?: string;
+            /** Format: int64 */
+            invoiceNumber: number;
+            /** Format: date */
+            issueDate: string;
+            kid?: string;
+            /** @enum {string} */
+            language: "nb" | "en";
+            /** Format: double */
+            openAmount: number;
+            payable: boolean;
+            privacyUrl?: string;
+            reason?: components["schemas"]["InvoicesPayReason"];
+            seller: components["schemas"]["InvoicesPaySeller"];
+            termsUrl?: string;
+        };
+        /** @description POST /invoices/pay/read's body (D15, plan reading 23): the pay link's token, from the page's own address — in the body, so it never travels in an API URL. */
+        InvoicesPayReadRequest: {
+            token: string;
+        };
+        /**
+         * @description Why the pay page cannot start a Vipps payment now (D15): revoked (the link was revoked, or the customer anonymised), credited (credit notes took the whole invoice), settled (nothing is open), handed_off (the invoice is with a collection agency — contact the agency), unavailable (Vipps is switched off, its keys are missing or refused, PUBLIC_BASE_URL is unset or pay links are turned off), payment_in_progress (Vipps payments being completed leave less than 1.00 open) or amount_out_of_range (the open amount is below 1.00 or above 650 000.00, Vipps' limits). On a pay page's 409, the same reason beside the code. Absent otherwise.
+         * @enum {string}
+         */
+        InvoicesPayReason: "revoked" | "credited" | "settled" | "handed_off" | "unavailable" | "payment_in_progress" | "amount_out_of_range";
+        /** @description The seller as the pay page shows it — the seller snapshot's legal name and organisation number. */
+        InvoicesPaySeller: {
+            name: string;
+            organisationNumber: string;
+        };
+        /** @description One Vipps payment attempt of an invoice (invoices payments and reminders design D16): its reference at Vipps, flow (pay_link, made from the pay page, or on_site), state as the payments worker knows it, amount (the open amount when it was made), the amounts Vipps reported — authorized, captured, cancelled and refunded — the reservation while a capture is decided and not yet registered (reservedAmount), whether the uncaptured rest is still to be released (releasePending), and when it was made, by whom (absent for the pay page's), when it expires, was authorized, captured and finished. The address the payer is sent to is never answered. */
+        InvoicesPaymentAttempt: {
+            /** Format: double */
+            amount: number;
+            /** Format: double */
+            authorizedAmount?: number;
+            /** Format: date-time */
+            authorizedAt?: string;
+            /** Format: double */
+            cancelledAmount?: number;
+            /** Format: double */
+            capturedAmount?: number;
+            /** Format: date-time */
+            capturedAt?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdByUserId?: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            /** @enum {string} */
+            flow: "pay_link" | "on_site";
+            /** Format: int64 */
+            id: number;
+            reference: string;
+            /** Format: double */
+            refundedAmount?: number;
+            releasePending: boolean;
+            /** Format: double */
+            reservedAmount?: number;
+            /** @enum {string} */
+            state: "creating" | "created" | "authorized" | "capturing" | "capture_unknown" | "captured" | "cancelling" | "cancelled" | "aborted" | "expired" | "terminated" | "capture_failed" | "failed" | "abandoned";
         };
         /** @description What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the Oslo business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read. */
         InvoicesSendDefaults: {
@@ -7250,6 +7402,183 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    postInvoicesPayRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesPayReadRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice as the pay page shows it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesPayPage"];
+                };
+            };
+            /** @description Bad Request — a body that does not decode, or no token. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found — no pay link has that token. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests — invoices-pay-read's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoicesPayAttempts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesPayAttemptRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — the Vipps payment, and where to send the payer. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesPayAttemptCreated"];
+                };
+            };
+            /** @description Bad Request — acceptTerms is not true, no token, or a body that does not decode. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found — no pay link has that token. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — the pay page's reason (reason beside the code) as invoice_settled, invoice_fully_credited, invoice_handed_off, payment_in_progress, amount_out_of_range or pay_links_unavailable; payments_unavailable (no Vipps credentials); or too_many_attempts. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Too Many Requests — invoices-pay-attempt's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway — provider_failed, Vipps refused the payment or did not answer. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — payments_unavailable, the stored Vipps keys cannot be opened or were replaced while the request ran; try again. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesPayAttemptsByReference: {
+        parameters: {
+            query: {
+                nonce: string;
+            };
+            header?: never;
+            path: {
+                reference: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the payment's state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesPayAttemptStatus"];
+                };
+            };
+            /** @description Bad Request — no nonce. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found — no pay-page payment has that reference and nonce. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests — invoices-pay-status's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
             };
         };
     };
