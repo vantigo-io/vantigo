@@ -29,14 +29,15 @@ var publicHostAllowed = []gateRequest{
 	{http.MethodPost, "/api/v1/invoices/pay/read"},
 	{http.MethodPost, "/api/v1/invoices/pay/attempts"},
 	{http.MethodGet, "/api/v1/invoices/pay/attempts/abc"},
-	{http.MethodPost, "/api/v1/invoices/vipps/webhooks"},
 	{http.MethodGet, "/api/v1/identity/system/status"},
 	{http.MethodGet, "/health/ready"},
 	{http.MethodHead, "/health/live"},
 }
 
 // A sample of every other kind: the SPA's other paths, sign-in and setup,
-// another module's API and Invoices' own, the documentation, the allowlisted
+// another module's API and Invoices' own — the Vipps webhook's path among
+// them, which nothing serves while webhooks are deferred (the plan's Task
+// 11) — the documentation, the allowlisted
 // paths under another method or with one segment too many, and a path that
 // climbs out of an allowlisted prefix.
 var publicHostRefused = []gateRequest{
@@ -67,6 +68,7 @@ var publicHostRefused = []gateRequest{
 	{http.MethodGet, "/api/v1/invoices/pay/attempts/abc%2Fdef"},
 	{http.MethodPost, "/api/v1/invoices/pay/attempts/abc"},
 	{http.MethodGet, "/api/v1/invoices/vipps/webhooks"},
+	{http.MethodPost, "/api/v1/invoices/vipps/webhooks"},
 	{http.MethodPost, "/api/v1/identity/system/status"},
 	{http.MethodGet, "/api"},
 }

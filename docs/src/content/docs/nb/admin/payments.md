@@ -272,8 +272,8 @@ sekund og behandler alle betalinger som er klare, i hver syklus. Reglene står i
 
 **Webhooks støttes ikke ennå.** Vantigo følger hver Vipps-betaling ved å lese den
 (polling); den registrerer ingen webhook hos Vipps, og ingenting fra Vipps trenger å nå
-den. Den offentlige vertens tillatelsesliste navngir allerede stien en webhook skal
-bruke, men ingenting svarer på den ennå.
+den. Den offentlige vertens tillatelsesliste har ingen sti for webhooks: en slik sti
+legges til sammen med selve webhooken, aldri før.
 
 **Mens et trekk fullføres, er beløpet reservert** på fakturaen: en manuell betaling, en
 bankfil eller en purring kan ikke ta det, og en avvisning sier at en Vipps-betaling
@@ -500,7 +500,6 @@ kodet `/`, `%2F`), står ikke på noen liste.
 | `POST` | `/api/v1/invoices/pay/read` (sidens lesing; tokenet i innholdet) |
 | `POST` | `/api/v1/invoices/pay/attempts` (en betaling startet) |
 | `GET` | `/api/v1/invoices/pay/attempts/{reference}` (statusen dens) |
-| `POST` | `/api/v1/invoices/vipps/webhooks` (reservert for varslene fra Vipps; betjenes ikke ennå — webhooks støttes ikke) |
 | `GET` | `/api/v1/identity/system/status` (sidens vedlikeholdssjekk) |
 | `GET`, `HEAD` | `/health/…` (prober) |
 

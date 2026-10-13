@@ -272,8 +272,8 @@ reference](/en/reference/invoices/#capture-and-the-reservation).
 
 **Webhooks are not supported yet.** Vantigo follows every Vipps payment by reading it
 (polling); it registers no webhook with Vipps, and nothing needs to reach it from Vipps.
-The public host's allowlist already names the path a webhook will use, but nothing
-answers it yet.
+The public host's allowlist names no webhook path: a webhook path is added to it with
+the webhook itself, never before.
 
 **While a capture is being completed, its amount is reserved** on the invoice: a manual
 payment, a bank file or a reminder cannot take it, and a refusal says a Vipps payment is
@@ -498,7 +498,6 @@ on no list.
 | `POST` | `/api/v1/invoices/pay/read` (the page's read; the token in the body) |
 | `POST` | `/api/v1/invoices/pay/attempts` (a payment started) |
 | `GET` | `/api/v1/invoices/pay/attempts/{reference}` (its status) |
-| `POST` | `/api/v1/invoices/vipps/webhooks` (reserved for Vipps' notifications; not served yet — webhooks are not supported) |
 | `GET` | `/api/v1/identity/system/status` (the page's maintenance check) |
 | `GET`, `HEAD` | `/health/…` (probes) |
 

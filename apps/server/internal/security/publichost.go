@@ -43,9 +43,11 @@ func (rt Route) matches(method, p string) bool {
 // PayRoutes is everything the public host serves (payments port design D14,
 // its plan's reading 23): the pay page's SPA index, its bundle and icon, the
 // pay page's three anonymous Invoices operations — the read is a POST, so the
-// token never travels in an API URL — the Vipps webhook, the root layout's
-// maintenance poll and the health probes. The paths are base-relative: the
-// gate runs after StripBasePath, so the list takes no base path.
+// token never travels in an API URL — the root layout's maintenance poll and
+// the health probes. No Vipps webhook path: webhooks are deferred (the plan's
+// Task 11), nothing serves one, and the list names only what is served. The
+// paths are base-relative: the gate runs after StripBasePath, so the list
+// takes no base path.
 func PayRoutes() []Route {
 	getHead := []string{http.MethodGet, http.MethodHead}
 	get := []string{http.MethodGet}
@@ -57,7 +59,6 @@ func PayRoutes() []Route {
 		{Methods: post, Path: "/api/v1/invoices/pay/read"},
 		{Methods: post, Path: "/api/v1/invoices/pay/attempts"},
 		{Methods: get, Path: "/api/v1/invoices/pay/attempts/", OneSegment: true},
-		{Methods: post, Path: "/api/v1/invoices/vipps/webhooks"},
 		{Methods: get, Path: "/api/v1/identity/system/status"},
 		{Methods: getHead, Path: "/health/", Prefix: true},
 	}
