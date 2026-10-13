@@ -105,7 +105,10 @@ installasjonen; se øktlevetid og tilbakekalling i
 
 Velg **Lagre profil**. Språkvalget endrer hele grensesnittet med en gang, og datoer,
 tall og valuta følger det. **Automatisk** følger nettleserens språk. Valget lagres
-med kontoen din, så det gjelder på alle enheter du logger inn fra.
+med kontoen din, så det gjelder på alle enheter du logger inn fra. Den offentlige
+[betalingssiden](/nb/user/invoices/#hva-kunden-ser-på-betalingssiden) kundene dine åpner
+fra en betalingslenke, er ikke innlogget og bruker det ikke: den bruker språket
+fakturaen oppgir, og kunden kan bytte.
 
 ## Bytt passord
 

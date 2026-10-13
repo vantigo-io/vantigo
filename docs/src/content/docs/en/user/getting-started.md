@@ -106,7 +106,9 @@ Open the avatar menu at the top right and choose **Settings**. The **Profile** p
 Choose **Save profile**. The language setting changes the whole interface at once,
 and dates, numbers and currency follow it. **Automatic** follows your browser's
 language. The choice is stored with your account, so it applies on every device you
-sign in from.
+sign in from. The public [pay page](/en/user/invoices/#what-the-customer-sees-on-the-pay-page)
+your customers open from a pay link is not signed in and does not use it: it speaks the
+language the invoice names, and the customer can switch.
 
 ## Change your password
 
