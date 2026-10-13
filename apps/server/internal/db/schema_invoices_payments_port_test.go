@@ -85,7 +85,7 @@ func paymentsPortObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) 
 			    'refuse_payment_attempt_change')`),
 		"indexes": collect("indexes", `
 			SELECT indexname || ':' || indexdef FROM pg_indexes
-			WHERE schemaname = 'invoices' AND (tablename = ANY($1) OR indexname = 'payments_payment_attempt_id_key')`,
+			WHERE schemaname = 'invoices' AND (tablename = ANY($1) OR indexname IN ('payments_payment_attempt_id_key', 'ix_payments_vipps_paid_on'))`,
 			paymentsPortTables),
 		"sequences": collect("sequences", `
 			SELECT sequencename || ':' || start_value FROM pg_sequences
@@ -163,11 +163,13 @@ func TestInvoicesPaymentsPort_AppliesAndIsIdempotent(t *testing.T) {
 	expect("after up", want)
 
 	// The partial indexes' predicates, read on their own: one live link per
-	// invoice, one live on-site attempt per invoice, and what the worker
-	// claims (D15, D16).
+	// invoice, one live on-site attempt per invoice, what the worker claims
+	// (D15, D16), and the day's Vipps payments by the day they are paid on
+	// (D17).
 	for name, def := range map[string]string{
 		"ux_pay_links_live":                "CREATE UNIQUE INDEX ux_pay_links_live ON invoices.pay_links USING btree (invoice_id) WHERE (revoked_at IS NULL)",
 		"ux_payment_attempts_on_site_live": "CREATE UNIQUE INDEX ux_payment_attempts_on_site_live ON invoices.payment_attempts USING btree (invoice_id) WHERE (((flow)::text = 'on_site'::text) AND ((state)::text = ANY ((ARRAY['creating'::character varying, 'created'::character varying, 'authorized'::character varying, 'capturing'::character varying, 'capture_unknown'::character varying])::text[])))",
+		"ix_payments_vipps_paid_on":        "CREATE INDEX ix_payments_vipps_paid_on ON invoices.payments USING btree (paid_on) WHERE ((source)::text = 'vipps'::text)",
 		"ix_payment_attempts_due":          "CREATE INDEX ix_payment_attempts_due ON invoices.payment_attempts USING btree (next_poll_at) WHERE (((state)::text = ANY ((ARRAY['creating'::character varying, 'created'::character varying, 'authorized'::character varying, 'capturing'::character varying, 'capture_unknown'::character varying, 'cancelling'::character varying])::text[])) OR release_pending OR (((state)::text = 'captured'::text) AND (refund_watch_until IS NOT NULL)))",
 	} {
 		if got := indexDefinition(t, ctx, pool, "invoices", name); got != def {
@@ -347,11 +349,11 @@ var paymentsPortConstraints = []string{
 }
 
 // paymentsPortIndexes is every index of the new tables, and the payments'
-// attempt's.
+// attempt's and the day's Vipps payments'.
 var paymentsPortIndexes = []string{
-	"ix_payment_attempts_captured_on:CREATE INDEX ix_payment_attempts_captured_on ON invoices.payment_attempts USING btree (captured_at)",
 	"ix_payment_attempts_due:CREATE INDEX ix_payment_attempts_due ON invoices.payment_attempts USING btree (next_poll_at) WHERE (((state)::text = ANY ((ARRAY['creating'::character varying, 'created'::character varying, 'authorized'::character varying, 'capturing'::character varying, 'capture_unknown'::character varying, 'cancelling'::character varying])::text[])) OR release_pending OR (((state)::text = 'captured'::text) AND (refund_watch_until IS NOT NULL)))",
 	"ix_payment_attempts_invoice:CREATE INDEX ix_payment_attempts_invoice ON invoices.payment_attempts USING btree (invoice_id)",
+	"ix_payments_vipps_paid_on:CREATE INDEX ix_payments_vipps_paid_on ON invoices.payments USING btree (paid_on) WHERE ((source)::text = 'vipps'::text)",
 	"pay_links_pkey:CREATE UNIQUE INDEX pay_links_pkey ON invoices.pay_links USING btree (id)",
 	"payment_attempts_pkey:CREATE UNIQUE INDEX payment_attempts_pkey ON invoices.payment_attempts USING btree (id)",
 	"payment_provider_credentials_pkey:CREATE UNIQUE INDEX payment_provider_credentials_pkey ON invoices.payment_provider_credentials USING btree (id)",

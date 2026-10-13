@@ -2595,6 +2595,7 @@ func invoicesPhase1BObjects(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 		SELECT indexname || ':' || indexdef FROM pg_indexes
 		WHERE schemaname = 'invoices' AND tablename IN ('payments', 'deliveries') AND indexname LIKE 'ix\_%'
 		  AND indexname <> 'ix_payments_bank_transaction' -- 00041's, pinned by its own test
+		  AND indexname <> 'ix_payments_vipps_paid_on' -- 00046's, pinned by its own test
 		ORDER BY 1`)
 	return tables, triggers, checks, functions, indexes
 }
