@@ -546,7 +546,7 @@ export const invoicesCatalog = {
     "refusal.payment_in_progress":
       "A Vipps payment of this invoice is being completed, and it leaves less than kr 1.00 open. Wait for it to finish.",
     "refusal.request_id_reused":
-      "This quick invoice was sent before with other contents. Start a new quick invoice to issue another.",
+      "An invoice was already issued from this quick invoice, with other contents. Find it in the invoice list rather than issuing it again.",
     "workRefusal.source_not_invoiceable":
       "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
     "workRefusal.source_changed":
@@ -1767,8 +1767,9 @@ export const invoicesCatalog = {
     "quick.couldNotIssue": "The invoice was not issued",
     "quick.lostTitle": "No answer came back",
     "quick.lost":
-      "The connection may have dropped after the invoice was sent. Try again: the same quick invoice is sent again, never a second one.",
+      "The connection may have dropped after the invoice was sent. Try again: the same quick invoice is sent again, never a second one. Changing the form makes a new invoice.",
     "quick.tryAgain": "Try again",
+    "quick.alreadyIssued": "An invoice was already issued from this form.",
     "quick.issued": "Invoice {{number}} is issued and recorded as handed over.",
     "quick.showPdf": "Show the PDF",
     "quick.openInvoice": "Open the invoice",
@@ -2377,7 +2378,7 @@ export const invoicesCatalog = {
     "refusal.payment_in_progress":
       "En Vipps-betaling av denne fakturaen fullføres nå, og den gjør at mindre enn kr 1,00 står åpent. Vent til den er ferdig.",
     "refusal.request_id_reused":
-      "Denne hurtigfakturaen er sendt før med annet innhold. Start en ny hurtigfaktura for å utstede en til.",
+      "En faktura er allerede utstedt fra denne hurtigfakturaen, med annet innhold. Finn den i fakturalisten i stedet for å utstede den på nytt.",
     "workRefusal.source_not_invoiceable":
       "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
     "workRefusal.source_changed":
@@ -3602,8 +3603,9 @@ export const invoicesCatalog = {
     "quick.couldNotIssue": "Fakturaen ble ikke utstedt",
     "quick.lostTitle": "Svaret kom ikke tilbake",
     "quick.lost":
-      "Forbindelsen kan ha falt etter at fakturaen ble sendt. Prøv igjen: den samme hurtigfakturaen sendes på nytt, aldri en til.",
+      "Forbindelsen kan ha falt etter at fakturaen ble sendt. Prøv igjen: den samme hurtigfakturaen sendes på nytt, aldri en til. Endrer du skjemaet, lages en ny faktura.",
     "quick.tryAgain": "Prøv igjen",
+    "quick.alreadyIssued": "En faktura er allerede utstedt fra dette skjemaet.",
     "quick.issued": "Faktura {{number}} er utstedt og registrert som overlevert.",
     "quick.showPdf": "Vis PDF-en",
     "quick.openInvoice": "Åpne fakturaen",

@@ -219,18 +219,73 @@ describe("QuickInvoicePage_RequestId", () => {
     expect(second.requestId).not.toBe(first.requestId);
   });
 
-  it("says request_id_reused in words", async () => {
+  it("after a lost answer offers only Try again: both issue buttons disabled, and says a change makes a new invoice", async () => {
+    let posts = 0;
+    const fetchMock = quickServer({
+      ...onSiteOn,
+      quick: () =>
+        posts++ === 0
+          ? Promise.reject(new TypeError("Failed to fetch"))
+          : Promise.resolve(jsonResponse(200, { invoice: issued() })),
+    });
+    renderRoute("/invoices/quick");
+
+    await fillForm();
+    await userEvent.click(payButton());
+    const lost = await screen.findByText("No answer came back");
+    expect(screen.getByText(/Changing the form makes a new invoice\./)).toBeInTheDocument();
+    expect(issueButton()).toBeDisabled();
+    expect(payButton()).toBeDisabled();
+    // Plain Issue cannot send the same id with payOnSite changed.
+    await userEvent.click(issueButton());
+    expect(quickPosts(fetchMock)).toHaveLength(1);
+    expect(lost).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByText(ISSUED);
+    const [first, second] = quickPosts(fetchMock);
+    expect(second).toEqual(first);
+    expect(second.payOnSite).toBe(true);
+  });
+
+  it("leads to the invoice already issued on request_id_reused, never to a new one", async () => {
+    quickServer({ quick: () => refusal(409, "request_id_reused", { invoiceId: 1001 }) });
+    const { router } = renderRoute("/invoices/quick");
+
+    await fillForm();
+    await userEvent.click(issueButton());
+    expect(await screen.findByText("An invoice was already issued from this form.")).toBeInTheDocument();
+    expect(screen.queryByText(/Start a new quick invoice/)).not.toBeInTheDocument();
+    expect(screen.queryByText("The invoice was not issued")).not.toBeInTheDocument();
+    expect(screen.queryByText("The server's English.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download PDF" })).toBeInTheDocument();
+    expect(issueButton()).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Open the invoice" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/invoices/1001"));
+  });
+
+  it("says request_id_reused without an invoice in words that never invite a second", async () => {
     quickServer({ quick: () => refusal(409, "request_id_reused") });
     renderRoute("/invoices/quick");
 
     await fillForm();
     await userEvent.click(issueButton());
-    expect(
-      await screen.findByText(
-        "This quick invoice was sent before with other contents. Start a new quick invoice to issue another.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(invoicesCatalog.en["refusal.request_id_reused"])).toBeInTheDocument();
+    expect(invoicesCatalog.en["refusal.request_id_reused"]).not.toMatch(/new quick invoice/);
     expect(screen.queryByText("The server's English.")).not.toBeInTheDocument();
+  });
+
+  it("disables the whole form while the answer is on its way", async () => {
+    const pending = pendingResponse();
+    quickServer({ quick: () => pending.response });
+    renderRoute("/invoices/quick");
+
+    await fillForm();
+    await userEvent.click(issueButton());
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Line 1 description" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "Add a line" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Your reference" })).toBeDisabled();
+    pending.answer(jsonResponse(201, { invoice: issued() }));
+    await screen.findByText(ISSUED);
   });
 });
 

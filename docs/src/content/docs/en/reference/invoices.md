@@ -1083,7 +1083,8 @@ again after a lost answer. A request whose `requestId` is kept already is answer
 anything else is read: **200** with the invoice the first request issued — read as it
 stands now, nothing run again, no payment request made again — when the body is the same
 (compared by the SHA-256 of the body as decoded), and 409 **`request_id_reused`** when it
-is not. The id is kept in `invoices.quick_requests` (the id, the invoice, the body's hash,
+is not, naming in `invoiceId` the invoice the id already issued — so a client that lost
+the first answer leads to that invoice rather than issuing a second. The id is kept in `invoices.quick_requests` (the id, the invoice, the body's hash,
 when; never changed), inserted in the transaction right after the draft: a second request
 with the same id waits on that key, holding only its own uncommitted draft, and finds it
 taken once the first commits — rolled back, it answers the first's invoice. A request
@@ -4521,7 +4522,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `DELETE /vat-codes/{id}/rates/{rateId}` | `invoices:manage` | 404; 409 `rate_period_not_latest`, `rate_period_last`, `rate_period_in_use` |
 | `GET /work` | `invoices:create` | 400 neither or both of `customerId` and `projectId`; 409 `work_unavailable`, `projects_unavailable`; 404 an unknown project |
 | `POST /from-work` | `invoices:create` | 400 on the field (`customerId`, `sources`, `sources[i]`, `grouping`, `revision`, `deliveryTo`, `invoiceId`, `vatCodes.<kind>`, `note`, `lines` — the document total too large); 404 the target; 409 `invoice_issued`, `too_many_sources`, the customer gates, `projects_unavailable`, `source_not_for_customer`, `source_not_selectable`, `source_not_invoiceable`, `source_changed`, `mixed_currency`, `currency_not_nok`, `too_many_lines` (with `suggestedGrouping`), a stale revision, `source_held_elsewhere` (with `heldBy`) |
-| `POST /quick` | `invoices:create` and `invoices:issue` | 400 on the field (`customerId`, `lines` — none, more than ten, or the document total too large — `lines[i].<field>`, `deliveryDate`, `paymentTermsDays`, `yourReference`, `note`); 409 the customer gates and every code under [Issuing](#issuing), nothing left behind; 409 `request_id_reused`, a `requestId` used before with another body (the same body is 200 with the first's invoice); 503 `storage_unavailable` |
+| `POST /quick` | `invoices:create` and `invoices:issue` | 400 on the field (`customerId`, `lines` — none, more than ten, or the document total too large — `lines[i].<field>`, `deliveryDate`, `paymentTermsDays`, `yourReference`, `note`); 409 the customer gates and every code under [Issuing](#issuing), nothing left behind; 409 `request_id_reused`, a `requestId` used before with another body, with `invoiceId`, the invoice it issued (the same body is 200 with the first's invoice); 503 `storage_unavailable` |
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included; a deduction line's `quantity`, `unitPrice`, `discountPercent`, `deductsInvoiceId`, `vatCodeId`, `sources`); 409 the customer gates, `deduction_duplicated` (with `linePosition`) |
 | `GET /{id}` | | 404 (an invoice draft's work is judged fresh — `source_changed`, `source_not_invoiceable` — only for a caller holding `invoices:create`) |

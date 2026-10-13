@@ -533,7 +533,9 @@ line, and issue again ([the write-back](/en/reference/invoices/#the-write-back))
 
 The quick invoice is for a job finished on site, on a tablet or a phone. Open **Quick
 invoice** in the sidebar; it is offered to someone who holds both `invoices:create` and
-`invoices:issue`, and anyone else who opens it is told it is not allowed. Then:
+`invoices:issue` (with `invoices:access`). Anyone without them who opens its address
+meets the **Access denied** page; the screen's own *Not allowed* is shown only if your
+permissions change while you are signed in. Then:
 
 1. Choose the **Customer** by searching for it (this needs `customers:view`). The
    customer's address on file is shown beneath — the primary invoice address, else the
@@ -561,11 +563,14 @@ code that cannot be used, or anything else that refuses an ordinary issue — no
 kept: no draft is left behind and no number is used. The screen says why in words, on
 the line it concerns where there is one, and offers **Open the customer** when the
 buyer's address or organisation number is missing. Correct it and issue again. If the
-connection drops after you chose **Issue**, the screen says *No answer came back*; click
-**Try again**, which sends the same quick invoice again and never makes a second one —
-you get the one already issued. Once you change anything on the form, the next **Issue**
-is a new quick invoice. If the same quick invoice was sent before with other contents,
-the screen says so: start a new quick invoice to issue another.
+connection drops after you chose **Issue**, the screen says *No answer came back* and
+offers only **Try again**, which sends the same quick invoice again and never makes a
+second one — you get the one already issued. The form cannot be changed while it is
+being sent; changing it after a lost answer makes a new invoice, as the screen warns. If
+the invoice was already issued from this form — the first answer was lost and something
+else was sent — the screen says *An invoice was already issued from this form* and
+offers **Download PDF**, **Open the invoice** and **New quick invoice**; nothing more is
+issued from it.
 
 A quick invoice the customer pays later — by bank with the KID, or through a pay link
 they open after you have left — is an ordinary credit sale. Paid on site with Vipps, or

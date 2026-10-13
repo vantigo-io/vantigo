@@ -342,7 +342,7 @@ func quickBodySHA(body gen.InvoicesQuickInvoiceRequest) (string, error) {
 // when it was not; the first request's invoice when bodySHA is its body's —
 // read as it stands, a merge the first missed followed, nothing else run
 // again, and no payment request made again — a live one reported; 409 request_id_reused for
-// another body.
+// another body, naming the invoice the id issued in invoiceId.
 func (s *server) quickReplay(ctx context.Context, q *store.Queries, id uuid.UUID, bodySHA string,
 ) (*gen.InvoicesQuickInvoiceResponse, *gen.InvoicesConflictProblem, error) {
 	kept, err := q.QuickRequest(ctx, id)
@@ -353,8 +353,12 @@ func (s *server) quickReplay(ctx context.Context, q *store.Queries, id uuid.UUID
 		return nil, nil, fmt.Errorf("invoices: read quick request %s: %w", id, err)
 	}
 	if kept.BodySha256 != bodySHA {
-		return nil, ptr(conflict(codeRequestIDReused, "The quick invoice cannot be created",
-			"This requestId was sent before with another body. Send a new requestId for a new invoice.")), nil
+		// The id issued an invoice already: named, so a client that lost the
+		// first answer leads to it rather than issuing a second.
+		refusal := conflict(codeRequestIDReused, "The quick invoice cannot be created",
+			fmt.Sprintf("This requestId was sent before with another body and issued invoice %d. Send a new requestId for a new invoice.", kept.InvoiceID))
+		refusal.InvoiceId = ptr(kept.InvoiceID)
+		return nil, &refusal, nil
 	}
 	inv, err := q.GetInvoice(ctx, kept.InvoiceID)
 	if err != nil {
