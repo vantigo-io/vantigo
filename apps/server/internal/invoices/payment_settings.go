@@ -191,3 +191,37 @@ func (s *server) PutInvoicesSettingsPayments(ctx context.Context, req gen.PutInv
 	}
 	return gen.PutInvoicesSettingsPayments200JSONResponse(paymentSettingsWire(saved)), nil
 }
+
+// paymentAvailability is meta's three payment fields.
+type paymentAvailability struct {
+	payLinks, onSite, rejected bool
+}
+
+// paymentsAvailable is what Vipps offers this installation now (D1, D14):
+// pay links with INVOICES_VIPPS_ENABLED on, PUBLIC_BASE_URL set, credentials
+// stored and not rejected and the settings' switch on; on-site payment the
+// same without PUBLIC_BASE_URL. rejected is reported beside, never folded
+// into the rest of the answer, so a page can say why. Nothing here touches
+// the network and it takes no lock, so meta reads it on the pool and a path
+// that re-judges availability under its own locks — a pay link made at
+// issue or on a send, an attempt's create under the invoice's lock, an
+// on-site request — reads it through its transaction's queries. Every such
+// path gates on it, never on a settings switch alone.
+func (s *server) paymentsAvailable(ctx context.Context, q *store.Queries) (paymentAvailability, error) {
+	creds, err := q.GetPaymentCredentials(ctx)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return paymentAvailability{}, nil
+	case err != nil:
+		return paymentAvailability{}, fmt.Errorf("invoices: read the Vipps credentials: %w", err)
+	}
+	settings, err := q.GetPaymentSettings(ctx)
+	if err != nil {
+		return paymentAvailability{}, fmt.Errorf("invoices: read the payment settings: %w", err)
+	}
+	out := paymentAvailability{rejected: creds.RejectedAt != nil}
+	usable := s.deps.Config != nil && s.deps.Config.InvoicesVippsEnabled && !out.rejected
+	out.payLinks = usable && s.deps.Config.PublicBaseURL != "" && settings.PayLinksEnabled
+	out.onSite = usable && settings.OnSitePaymentsEnabled
+	return out, nil
+}

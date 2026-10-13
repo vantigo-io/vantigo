@@ -3318,7 +3318,12 @@ pending. The attempts are counted under the credentials row's lock, and an attem
 create shares that row after its invoice, so no attempt can be made under the old sales
 unit after the count. Stored keys that cannot be opened while all three are given count
 as a change: nothing proves they are the same. A new `clientSecret` alone is a rotation
-within the same sales unit and is allowed. A PUT clears `rejectedAt`. `DELETE` removes
+within the same sales unit and is allowed. With no row stored there is nothing to
+lock: the first PUT inserts it, and when a concurrent first PUT's row is there — the
+insert waits for that transaction — it writes nothing and runs once more on the locked
+path, so the second of two first PUTs is judged like any other change of the sales unit
+and never writes over the first unjudged; a row removed again meanwhile is a 409 with
+no code. A PUT clears `rejectedAt`. `DELETE` removes
 the row (204, also when there is none), refused with the same 409 while an attempt is
 live. `GET /settings/vipps` (`invoices:manage`) answers `{msn?, hasCredentials,
 rejectedAt?}`; with nothing stored a 200 with `hasCredentials: false`.
@@ -3338,7 +3343,12 @@ transport; it is never made or called inside a transaction that holds a lock. Wi
 provider call — an attempt's create, an on-site request, the payment worker — stops
 with `payments_unavailable`. Every call is reported as `payments.<operation>` to the
 module's contract-call check, and a 401 or 403 Vipps answers to any of them sets
-`rejected_at`, as keys the secrets box cannot open do (logged at error).
+`rejected_at`, as keys the secrets box cannot open do (logged at error). The row's
+`updated_at` is the credentials' **version**: every PUT moves it, the provider carries
+the version it was built from, and a refusal is recorded — and a verify's `ok` clears
+one — only while the row is still that version, so nothing learned from keys a PUT
+replaced meanwhile is applied to the new ones. A later path that locks the row compares
+the same version.
 
 **The payment settings** are one row, `invoices.payment_settings`, inserted by the
 migration with the installation's **reference prefix** — six random base36 characters
@@ -3373,6 +3383,11 @@ stored and not rejected, and `payLinksEnabled`; `onSitePaymentsAvailable` — th
 without `PUBLIC_BASE_URL`, and `onSitePaymentsEnabled`; `vippsCredentialsRejected` —
 reported beside, never folded in, so a page can say why; and
 `capabilities.canTakeOnSitePayment` — `invoices:issue` and `onSitePaymentsAvailable`.
+The same judgement, `paymentsAvailable`, is what every path that offers Vipps gates on —
+never a settings switch alone — read on the pool by meta and through its own
+transaction by a path that re-judges under its locks. A setting left on therefore comes
+back into service by itself when good keys are stored again, and on-site payment keeps
+the acknowledgement given when it was turned on.
 
 ## The journal
 

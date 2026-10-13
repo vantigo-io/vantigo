@@ -289,9 +289,13 @@ func (n notedAccessPoint) Verify(ctx context.Context) error {
 
 // providerCreds is what a caller of the payment provider needs of the
 // credentials beside the provider itself: the sales unit an attempt is
-// recorded under.
+// recorded under, and the credentials' version — the row's updated_at, which
+// every PUT moves — the provider was built from. A caller that later locks
+// or clears against the row compares it, so nothing learned from old keys is
+// applied to newer ones.
 type providerCreds struct {
-	msn string
+	msn     string
+	version time.Time
 }
 
 // paymentProvider is Vipps for the stored sales unit, its keys opened
@@ -324,7 +328,7 @@ func (s *server) paymentProvider(ctx context.Context) (payments.Provider, provid
 	}
 	keys, err := s.openVippsKeys(row.SecretCiphertext)
 	if err != nil {
-		s.flagPaymentCredentialsRejected(ctx, true)
+		s.flagPaymentCredentialsRejected(ctx, true, row.UpdatedAt)
 		return nil, providerCreds{}, err
 	}
 	if row.Provider != providerVipps {
@@ -338,14 +342,16 @@ func (s *server) paymentProvider(ctx context.Context) (payments.Provider, provid
 	if err != nil {
 		return nil, providerCreds{}, fmt.Errorf("invoices: build the Vipps client: %w", err)
 	}
-	return notedProvider{p: client, s: s}, providerCreds{msn: settings.MSN}, nil
+	return notedProvider{p: client, s: s, version: row.UpdatedAt}, providerCreds{msn: settings.MSN, version: row.UpdatedAt}, nil
 }
 
 // notedProvider reports every call on the payment provider before making it,
-// and records a 401 or 403 as the credentials' refusal, on the pool.
+// and records a 401 or 403 as the refusal of the credentials' version it was
+// built from, on the pool.
 type notedProvider struct {
-	p payments.Provider
-	s *server
+	p       payments.Provider
+	s       *server
+	version time.Time
 }
 
 var _ payments.Provider = notedProvider{}
@@ -354,7 +360,7 @@ var _ payments.Provider = notedProvider{}
 // answers err as it was.
 func (n notedProvider) flagged(ctx context.Context, err error) error {
 	if errors.Is(err, payments.ErrUnauthorized) {
-		n.s.flagPaymentCredentialsRejected(ctx, false)
+		n.s.flagPaymentCredentialsRejected(ctx, false, n.version)
 	}
 	return err
 }

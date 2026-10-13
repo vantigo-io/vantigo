@@ -231,6 +231,14 @@ klient-ID eller abonnementsnøkkel — en annen salgsenhet — avvises mens en
 Vipps-betaling pågår, fordi den må fullføres med nøklene den ble laget med: vent til
 betalingene som pågår er ferdige. Å fjerne nøklene avvises av samme grunn.
 
+**Å lagre nøklene på nytt setter det som var på, i drift igjen.** Så lenge Vipps avviser
+nøklene, eller de ikke kan åpnes, er ingenting Vipps tilbyr tilgjengelig, men
+betalingsinnstillingene blir stående som de var. Å lagre gyldige nøkler på nytt — eller
+en bekreftelse som lykkes — setter betalingslenker og betaling på stedet som fortsatt er
+slått på, i drift igjen med en gang, uten at noen blir bedt om å slå dem på igjen;
+betaling på stedet beholder bekreftelsen av kontantsalg som ble gitt da den først ble
+slått på. Slå en innstilling av først hvis den ikke skal komme tilbake.
+
 **Betaling på stedet er kontantsalg.** En betaling fra en kunde som står ved disken, er
 kontantsalg, og fakturaen er da en kontantfaktura med reglene som følger med — kjøperen
 identifisert på den, og salget i dagens kontantoppgjør. Når den slås på, må lederen

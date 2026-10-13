@@ -1274,7 +1274,8 @@ you leave empty keeps the stored one. The keys are never shown again, not even t
 *ok*, *refused* (Vipps does not accept the keys: enter them again) or *unreachable*
 (Vipps could not be reached; try again later). When Vipps refuses the keys at any time,
 Invoices remembers it and offers no Vipps payment until new keys are stored or a verify
-succeeds.
+succeeds. Pay links and payment on site that were left switched on then work again by
+themselves, without being turned on or acknowledged again.
 
 While a Vipps payment is in progress you cannot switch to another sales unit, another
 client id or another subscription key, nor remove the keys: Invoices still needs them to

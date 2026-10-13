@@ -231,6 +231,14 @@ client id or the subscription key — another sales unit — is refused while a 
 payment is in progress, because finishing it needs the keys it was made with: wait until
 the payments in progress are finished. Removing the keys is refused for the same reason.
 
+**Storing keys again returns what was on to service.** While Vipps refuses the keys,
+or they cannot be opened, nothing Vipps offers is available, but the payment settings
+are left as they were. Storing good keys again — or a verify that succeeds — brings pay
+links and on-site payment that are still switched on back into service at once, without
+asking anyone to turn them on again; on-site payment keeps the kontantsalg
+acknowledgement given when it was first turned on. Turn a setting off first if it should
+not come back.
+
 **On-site payment is kontantsalg.** A payment taken from a customer standing at the
 counter is a cash sale, and the invoice is then a cash invoice (*kontantfaktura*) with the
 rules that come with one — the buyer identified on it, and the sale in the cash records
