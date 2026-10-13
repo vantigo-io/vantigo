@@ -22,6 +22,7 @@ const server = (options: { canCreate?: boolean; totalPages?: number } = {}) =>
             canImportBankFiles: true,
             canIssue: true,
             canManage: false,
+            canQuickInvoice: false,
             canRegisterPayments: true,
             canRunReminders: true,
             canSend: true,

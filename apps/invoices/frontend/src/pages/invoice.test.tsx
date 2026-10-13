@@ -499,6 +499,7 @@ describe("what the editor offers", () => {
             canImportBankFiles: false,
             canIssue: false,
             canManage: false,
+            canQuickInvoice: false,
             canRegisterPayments: false,
             canRunReminders: false,
             canSend: false,

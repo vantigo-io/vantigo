@@ -92,6 +92,7 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 			CanImportBankFiles:   s.has(ctx, "invoices:payments"),
 			CanIssue:             canIssue,
 			CanManage:            s.has(ctx, "invoices:manage"),
+			CanQuickInvoice:      canIssue && s.has(ctx, "invoices:create"),
 			CanRegisterPayments:  s.has(ctx, "invoices:payments"),
 			CanRunReminders:      s.has(ctx, "invoices:payments"),
 			CanSend:              canIssue && mail,

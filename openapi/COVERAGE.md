@@ -244,7 +244,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-## invoices (84 uncovered)
+## invoices (85 uncovered)
 
 - `DELETE /api/v1/invoices/collection-rates/{id}` (deleteInvoicesCollectionRatesById)
 - `DELETE /api/v1/invoices/settings/access-point` (deleteInvoicesSettingsAccessPoint)
@@ -293,6 +293,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/invoices/bank-transactions/{id}/treat-as-distinct` (postInvoicesBankTransactionsByIdTreatAsDistinct)
 - `POST /api/v1/invoices/collection-rates` (postInvoicesCollectionRates)
 - `POST /api/v1/invoices/from-work` (postInvoicesFromWork)
+- `POST /api/v1/invoices/quick` (postInvoicesQuick)
 - `POST /api/v1/invoices/reminder-print-batches/{id}/posted` (postInvoicesReminderPrintBatchesByIdPosted)
 - `POST /api/v1/invoices/reminder-print-batches/{id}/reprint` (postInvoicesReminderPrintBatchesByIdReprint)
 - `POST /api/v1/invoices/reminder-print-batches` (postInvoicesReminderPrintBatches)
@@ -385,4 +386,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/staff/settings` (putStaffSettings)
 - `PUT /api/v1/staff/terms/{id}` (putStaffTermsById)
 
-Total: 347 of 482 operations have no recorded exchange.
+Total: 348 of 483 operations have no recorded exchange.

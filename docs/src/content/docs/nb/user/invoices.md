@@ -537,6 +537,28 @@ utkastet ble lagret av noen andre mens du utstedte. Ingenting utstedes og ingen 
 brukes: oppdater arbeidet eller endre linjen, og utsted på nytt
 ([tilbakeskrivingen](/en/reference/invoices/#the-write-back)).
 
+## Hurtigfaktura
+
+Hurtigfakturaen er for en jobb som er gjort ferdig på stedet: du velger kunden, fører opp
+inntil ti linjer og velger **Utsted** — fakturaen lages og utstedes i ett steg, nummerert i
+den samme serien som alle andre, med kundens betalingsbetingelser og en forfallsdato.
+Fordi du overleverer den der og da, registrerer Invoices den også som **overlevert** på
+utstedelsesdagen, i ditt navn; den registreringen er leveringen en senere purring bygger
+på ([registrere en levering](#registrere-en-levering)). Den krever både `invoices:create`
+og `invoices:issue`.
+
+Stopper noe fakturaen — et felt som ikke er riktig fylt ut, en kunde som ikke kan
+faktureres, en kjøper uten fullstendig adresse eller organisasjonsnummer, en mva-kode som
+ikke kan brukes, eller noe annet som avviser en vanlig utstedelse — beholdes ingenting:
+ingen utkast blir liggende igjen og ingen nummer brukes. Rett opp og utsted på nytt.
+
+En hurtigfaktura kunden betaler senere — i banken med KID, eller via en betalingslenke —
+er et vanlig kredittsalg. Å betale med Vipps på stedet er kontantsalg og kommer med
+betaling på stedet ([betalingslenker og betaling på stedet](#betalingslenker-og-betaling-på-stedet));
+inntil det tilbys, utstedes fakturaen og du får beskjed om at betaling på stedet ikke er
+tilgjengelig. Hurtigfakturaens eget skjermbilde kommer med Vipps i appen; forespørselen
+bak den er på plass nå ([hurtigfakturaen](/en/reference/invoices/#the-quick-invoice)).
+
 ## Laste ned PDF-en
 
 Et utstedt dokuments side tilbyr **Last ned PDF**. Filen er navngitt etter dokumentet og
@@ -1425,6 +1447,7 @@ Ingen innebygd rolle har disse; en eier har alt
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en | `invoices:issue` |
 | Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; se dashbordets varsler om banklinjer, brev og utskriftsbunker | `invoices:payments` |
+| Lage en hurtigfaktura — laget og utstedt i ett steg, registrert som overlevert | `invoices:create` og `invoices:issue` |
 | Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger**, som også krever `invoices:payments` for å åpnes | `invoices:manage` |
 
 Innbetalinger og purring har ingen egen rettighet. Purringer, avvikskøen, vent og
