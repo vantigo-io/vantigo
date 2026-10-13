@@ -34,6 +34,9 @@ const (
 	managerGraphLock        = "staff-manager-graph"
 	legalEntityDefaultLock  = "staff-legal-entities-default"
 	businessUnitDefaultLock = "staff-business-units-default"
+	// holidaySchemeDefaultLock serialises the moves of the default holiday
+	// scheme (delivery B, holiday_schemes.go), as the structure tables' own.
+	holidaySchemeDefaultLock = "staff-holiday-schemes-default"
 )
 
 // withPersonLock runs fn in one locked transaction (withLockedTx) that has

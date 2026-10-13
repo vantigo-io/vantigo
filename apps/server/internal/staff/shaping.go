@@ -58,16 +58,23 @@ const (
 	// else's, the person included. They are about the record's retention,
 	// not about the person.
 	groupHold
+	// groupCareDays is the care-day fields (design §5's "Care-day fields,
+	// self-cert withdrawal" row, delivery B): the person reads them, HR
+	// writes them, staff:personal-data reads them; a manager and a colleague
+	// never.
+	groupCareDays
 )
 
 func (g fieldGroup) String() string {
-	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold"}[g]
+	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days"}[g]
 }
 
 // fieldGroups is the one table: every field of the person — as the contract
 // names it, which is also how an event payload names it — and its group. The
-// care-day fields join with delivery B (plan reading 19), the terms' fields
-// with Task 4.
+// care-day fields joined with delivery B (plan reading 19), as did an
+// employment's holidaySchemeId. Delivery B's absence and case events name
+// their fields per event, with their own classes, and never enter this table
+// (plan pre-flight B1).
 var fieldGroups = map[string]fieldGroup{
 	"employeeNumber":    groupWork,
 	"givenName":         groupWork,
@@ -91,6 +98,10 @@ var fieldGroups = map[string]fieldGroup{
 	"nextOfKin":    groupPrivate,
 
 	"notes": groupHRNotes,
+
+	"childrenUnder12":        groupCareDays,
+	"soleCarer":              groupCareDays,
+	"chronicallyIllChildren": groupCareDays,
 
 	"nationalId":  groupNationalID,
 	"bankAccount": groupBankAccount,
@@ -122,6 +133,7 @@ var fieldGroups = map[string]fieldGroup{
 	"businessUnitId":            groupEmployment,
 	"endReason":                 groupEmployment,
 	"contractSignedAt":          groupEmployment,
+	"holidaySchemeId":           groupEmployment,
 	"temporaryGround":           groupEmployment,
 	"expectedEndDate":           groupEmployment,
 	"appointmentForm":           groupEmployment,
@@ -207,8 +219,8 @@ func shownOnPerson[T any](a audience, field string, v *T) *T {
 // group and an employment's dates are everyone's who may see the person; the
 // rest of the employment and its terms is the person's, their manager's and
 // HR's; the private group, the pay, the national identity number's kind, the
-// bank account's last four digits, the link and the documents are the
-// person's own and HR's; HR's notes are HR's alone; the health documents and
+// bank account's last four digits, the link, the documents and the care-day
+// fields are the person's own and HR's; HR's notes are HR's alone; the health documents and
 // health events are the person's and staff:personal-data's; the hold group is
 // HR's, as the notes are.
 func (a audience) reads(g fieldGroup) bool {
@@ -218,7 +230,7 @@ func (a audience) reads(g fieldGroup) bool {
 		return a.Self || a.Manager || a.Colleague || hr
 	case groupEmployment:
 		return a.Self || a.Manager || hr
-	case groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments:
+	case groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCareDays:
 		return a.Self || hr
 	case groupHRNotes, groupHold:
 		return hr
@@ -308,6 +320,10 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 		ErasedAt:     shown(a, "erasedAt", row.ErasedAt),
 		ReassessedAt: shown(a, "reassessedAt", row.ReassessedAt),
 		LegalHold:    shown(a, "legalHold", legalHoldOf(row)),
+
+		ChildrenUnder12:        shown(a, "childrenUnder12", int32Of(row.ChildrenUnder12)),
+		SoleCarer:              shown(a, "soleCarer", row.SoleCarer),
+		ChronicallyIllChildren: shown(a, "chronicallyIllChildren", int32Of(row.ChronicallyIllChildren)),
 	}
 	if a.show("nationalId") {
 		out.NationalId = &gen.StaffPersonNationalId{
@@ -510,6 +526,7 @@ func employmentResponse(e store.StaffEmployment, chain []store.StaffEmploymentTe
 		BusinessUnitId:   shown(a, "businessUnitId", &e.BusinessUnitID),
 		EndReason:        shown(a, "endReason", enumOf[gen.StaffEndReason](e.EndReason)),
 		ContractSignedAt: shown(a, "contractSignedAt", dateOf(e.ContractSignedAt)),
+		HolidaySchemeId:  shown(a, "holidaySchemeId", e.HolidaySchemeID),
 		SalaryChangedAt:  shown(a, "salaryChangedAt", timeDate(salaryChangedAt(chain, on))),
 	}
 }

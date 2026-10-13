@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
+description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, the care-day fields, the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
 sidebar:
   order: 44
 sources:
@@ -20,6 +20,9 @@ sources:
   - apps/server/internal/staff/retention_worker.go
   - apps/server/internal/staff/object_deletions.go
   - apps/server/internal/staff/thresholds.go
+  - apps/server/internal/staff/absence_types.go
+  - apps/server/internal/staff/holiday_schemes.go
+  - apps/server/internal/staff/absence_settings.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -131,6 +134,101 @@ To rename one, or stop offering it, send its `names` and `archived` to
 `PUT /api/v1/staff/document-categories/{id}` with its revision in `If-Match`. An
 archived category is offered for no new document, and only a category no document is
 filed under can be archived. The six seeds never change.
+
+## Absence types
+
+Absence is entered in a vocabulary of types: holiday (ferie), egenmelding, sykmelding,
+the statutory leaves, avspasering, a doctor's or dentist's appointment and the rest —
+22 seeds that every installation starts with, each mapped to the a-melding leave
+description it is reported as ([the reference](/en/reference/staff/#absence-types)).
+The absences themselves arrive with a later step of the absence delivery; the types,
+the schemes and the policy below can be set up now. Through the API, as a user with
+`staff:manage`:
+
+1. Read the list: `GET /api/v1/staff/absence-types` answers every type, the hidden ones
+   too for you.
+2. To add one of your own, `POST /api/v1/staff/absence-types` with a `key` (1–40 of
+   `a–z`, `0–9` and underscores), `names` in English and Norwegian, a `kind` —
+   `holiday`, `leave`, `time_off` or `other` — a `unit` (`days` or `hours`), the flags
+   `paid`, `drawsHoliday`, `allowsPercent` and `needsDecision`, a `visibility`
+   (`absent`, or `hr_only` for a type that reveals special-category data) and, for a
+   leave, the `ameldingLeave` it is reported as. The kind and the unit never change.
+3. To rename a type, re-order it or stop offering it, send it back to
+   `PUT /api/v1/staff/absence-types/{id}` with `hidden` and `sort` as you want them and
+   its revision in `If-Match`. A seed changes only its names, its place and whether it
+   is hidden; anything else is refused `seed_immutable`.
+4. Verify: `GET /api/v1/staff/meta` lists the types people may pick — the hidden ones
+   left out.
+
+**Choose the a-melding mapping by the leave's legal basis.** The a-melding accepts six
+leave descriptions and permittering. Welfare leave is agreed, not statutory, so the
+`velferdspermisjon` seed reports "other non-statutory leave"
+(`andreIkkeLovfestedePermisjoner`); if your welfare leave rests on a statute, use the
+`annen_lovfestet` type for it instead. The codes `velferdspermisjon` and
+`utdanningspermisjon` expired at the end of 2022 and are refused. Only leave of more
+than fourteen days is reported, and care days for a sick child never are.
+
+## Holiday schemes
+
+A holiday scheme is the company's holiday rule, in virkedager (Monday to Saturday, as
+the Holiday Act counts). The statutory scheme — 25 days, 6 more from 60, 18 in the main
+period, 6 for a start after 30 September, 12 days' agreed carry-over — is there from the
+start and is the default. Each scheme is answered with its figures converted to working
+days of a five-day week: 25 virkedager are 21 days, 30 are 25.
+
+To give some or all employees more, as a user with `staff:manage`:
+
+1. `POST /api/v1/staff/holiday-schemes` with a `name` and the figures, for example
+   `{"name": "Five weeks", "entitlementVirkedager": 30, "extraFrom60Virkedager": 6}`
+   (the main period, the after-September days and the carry-over default to 18, 6 and
+   12). Add `"isDefault": true` to make it the scheme of every employment that names
+   none.
+2. Put an employment on it: `holidaySchemeId` on `POST /api/v1/staff/people/{id}/employments`
+   or `PUT /api/v1/staff/employments/{id}`. Left out, the employment follows the default.
+3. Verify: `GET /api/v1/staff/holiday-schemes` lists it, with `converted`.
+
+To stop offering a scheme, send it to `PUT /api/v1/staff/holiday-schemes/{id}` with
+`"archived": true`. The default cannot be archived, nor a scheme an employment follows
+(`holiday_scheme_in_use`): move the employments first. There is always exactly one
+default; make another scheme the default to move it.
+
+## The self-certification policy
+
+How much egenmelding an employee may use is the installation's policy, on
+`PUT /api/v1/staff/settings` (`staff:manage`):
+
+- `selfCertPolicy: "minimum"` — the statutory rule: 3 calendar days at a time, 4 times
+  in twelve months. The default.
+- `selfCertPolicy: "extended"` — 8 calendar days at a time, 24 days in twelve months,
+  as an inclusive-workplace agreement gives.
+- `selfCertPolicy: "custom"` with `selfCertDaysPerOccurrence` (1–16),
+  `selfCertOccurrencesPerYear` (1–52) and `selfCertDaysPerYear` (1–365).
+
+Under a preset the numbers are the preset's, whatever you send. `selfCertAfterMonths`
+(0–2, default 2) is the months of employment before egenmelding may be used, under any
+policy. The policy is applied when absence is registered, in a later step of the
+delivery.
+
+**Automatic carry-over.** `autoCarryOver: true` carries the holiday left at a year's
+end into the next year without HR's action, as a forced carry-over. The day you turn
+it on is recorded (`autoCarryOverSince`), and no year before it is carried over
+automatically. It is off by default.
+
+## The care-day fields
+
+A person's care days (omsorgsdager) are derived from three fields on their record,
+which HR types from what the employee declares — no child is named:
+
+- **Children under 12** (`childrenUnder12`) — the children through the year they turn
+  twelve who do **not** have NAV's decision of extra care days.
+- **Chronically ill or disabled children** (`chronicallyIllChildren`) — the children
+  **with** NAV's decision of extra care days, through the year they turn eighteen.
+- **Sole carer** (`soleCarer`) — whether the employee cares for the children alone.
+
+Count each child once: a child with NAV's decision goes in the second field only. The
+fields are written with the rest of the person (`PUT /api/v1/staff/people/{id}`); the
+employee reads them on their own record but cannot change them. The counter itself
+arrives with a later step of the absence delivery.
 
 ## Answer an innsyn request
 
@@ -478,6 +576,11 @@ changing the settings at once cannot overwrite each other unseen.
   `healthRetentionDays`, 365, from 30 to 3650): how many days after a person's last
   employment ended their personnel administration and their health documents are
   erased ([Retention](#retention)). Left out of a replace, each keeps its value.
+- **Self-certification policy** (`selfCertPolicy`, `minimum`, with
+  `selfCertDaysPerOccurrence`, `selfCertOccurrencesPerYear`, `selfCertDaysPerYear` and
+  `selfCertAfterMonths`) and **automatic carry-over** (`autoCarryOver`, off, with the
+  read-only `autoCarryOverSince`): [The self-certification policy](#the-self-certification-policy).
+  Left out of a replace, each keeps its value.
 - **Retention state** (`retention`, read-only): the deletion ledger's pending and
   failing files, the oldest pending, and the last erase ([The deletion
   ledger](#the-deletion-ledger)). Files the store has refused at least once and that

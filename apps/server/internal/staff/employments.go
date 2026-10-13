@@ -156,6 +156,30 @@ func resolveUnit(ctx context.Context, txq *store.Queries, id *int64, current int
 	return unit.ID, nil
 }
 
+// resolveHolidayScheme is the holiday scheme an employment names: nil — the
+// default — when it names none, else the one it names, which must exist and
+// — unless the employment already follows it (current) — not be archived.
+// The row is taken FOR SHARE under the person's lock, after the
+// employment's, and held until the transaction ends, so an archive of the
+// scheme waits for this write and then finds the scheme named, or this write
+// waits for the archive and finds it archived (plan pre-flight I9; the lock
+// order is design §4 Locking's, extended).
+func resolveHolidayScheme(ctx context.Context, txq *store.Queries, id, current *int64) (*int64, error) {
+	if id == nil {
+		return nil, nil
+	}
+	scheme, err := txq.ShareHolidayScheme(ctx, *id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, refuseInvalid(invalidEmploymentTitle, fieldErrors{errs: fieldError("holidaySchemeId", fmt.Sprintf("No holiday scheme has id %d", *id))})
+	} else if err != nil {
+		return nil, fmt.Errorf("staff: read holiday scheme %d: %w", *id, err)
+	}
+	if scheme.ArchivedAt != nil && (current == nil || *current != scheme.ID) {
+		return nil, refuseConflict(structureArchived(fmt.Sprintf("The holiday scheme %s is archived; an employment cannot follow it.", scheme.Name)))
+	}
+	return &scheme.ID, nil
+}
+
 // generateEmploymentNumber is the person's employee number, a hyphen and the
 // first n from 1 that no employment has however it is cased — so a number
 // typed by hand is skipped past. It runs under the person's lock, so two
@@ -438,9 +462,13 @@ func (s *server) PutStaffEmploymentsById(ctx context.Context, req gen.PutStaffEm
 		if err != nil {
 			return err
 		}
+		scheme, err := resolveHolidayScheme(ctx, txq, body.HolidaySchemeId, e.HolidaySchemeID)
+		if err != nil {
+			return err
+		}
 		saved, err = txq.UpdateEmployment(ctx, store.UpdateEmploymentParams{
 			ID: e.ID, RelationshipType: *relationship, BusinessUnitID: unit, StartDate: dayParam(start),
-			ContractSignedAt: pgDate(civilDate(body.ContractSignedAt)), Now: s.deps.Clock(),
+			ContractSignedAt: pgDate(civilDate(body.ContractSignedAt)), HolidaySchemeID: scheme, Now: s.deps.Clock(),
 		})
 		if err != nil {
 			return fmt.Errorf("staff: change employment %d: %w", e.ID, err)

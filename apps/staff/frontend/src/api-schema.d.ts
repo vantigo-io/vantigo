@@ -2,6 +2,50 @@
 // CI regenerates this file and fails when it is stale.
 
 export interface paths {
+    "/api/v1/staff/absence-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List absence types
+         * @description The absence types in their order — every caller reads every type that is not hidden, hr_only ones included (the type is public, who takes it is not); staff:manage reads the hidden ones too, the reserved absent among them.
+         */
+        get: operations["getStaffAbsenceTypes"];
+        put?: never;
+        /**
+         * Add an absence type
+         * @description Adds a company absence type, recorded as the installation event absence_type_created. Its kind and unit are fixed from now on.
+         */
+        post: operations["postStaffAbsenceTypes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/absence-types/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change an absence type
+         * @description Replaces an absence type but for its key, kind and unit, recorded as the installation event absence_type_updated. A seed changes its names, sort and hidden alone; anything else, and showing the reserved absent, is refused seed_immutable.
+         */
+        put: operations["putStaffAbsenceTypesById"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/assignable-users": {
         parameters: {
             query?: never;
@@ -324,6 +368,50 @@ export interface paths {
          * @description Adds a terms row in force from validFrom (design S5, §4 Terms). A field left out takes its value from the row in force before validFrom; a field sent as null is cleared; the hours for a full position follow the scheme when the scheme changes and the hours are left out. The row is a terms_added event.
          */
         post: operations["postStaffEmploymentsByIdTerms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/holiday-schemes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List holiday schemes
+         * @description Every holiday scheme, archived ones included so an employment can still name its own, each with its figures converted to working days.
+         */
+        get: operations["getStaffHolidaySchemes"];
+        put?: never;
+        /**
+         * Add a holiday scheme
+         * @description Adds a holiday scheme, recorded as the installation event holiday_scheme_created. isDefault true moves the default to it.
+         */
+        post: operations["postStaffHolidaySchemes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/holiday-schemes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a holiday scheme
+         * @description Replaces a holiday scheme and archives or restores it, recorded as the installation event holiday_scheme_updated. isDefault true moves the default to it; archiving the default or a scheme an employment names is refused holiday_scheme_in_use.
+         */
+        put: operations["putStaffHolidaySchemesById"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1171,6 +1259,100 @@ export interface components {
             pagination: components["schemas"]["PaginationMetadata"];
         };
         /**
+         * @description What the rules key an absence type on (design §3.5). holiday draws on the holiday account; sick_self is egenmelding, sick_certified sykmelding, child_sick a sick child (omsorgsdager); leave, time_off and other are the rest. A company type is holiday, leave, time_off or other; the sick kinds are the seeds'.
+         * @enum {string}
+         */
+        StaffAbsenceKind: "holiday" | "sick_self" | "sick_certified" | "child_sick" | "leave" | "time_off" | "other";
+        /** @description An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order and whether it is hidden (seed_immutable otherwise); the reserved absent is never shown and never offered. */
+        StaffAbsenceType: {
+            /** @description Whether an absence of the type may be a percentage of each day. Never on a sick kind, whose share is the sykmelding's degree. */
+            allowsPercent: boolean;
+            ameldingLeave?: components["schemas"]["StaffAmeldingLeave"];
+            /** @description Whether its approved days are taken from the holiday account. */
+            drawsHoliday: boolean;
+            /** @description Not offered for a new absence, and listed to staff:manage alone. */
+            hidden: boolean;
+            /** Format: int64 */
+            id: number;
+            key: string;
+            kind: components["schemas"]["StaffAbsenceKind"];
+            names: components["schemas"]["StaffAbsenceTypeNames"];
+            /** @description true — requested and decided (approved or rejected); false — a notification, registered when entered. */
+            needsDecision: boolean;
+            paid: boolean;
+            /** @description The reserved type absent, which the health erase writes in place of a sick or child-sick type. Always hidden. */
+            reserved: boolean;
+            /**
+             * Format: int32
+             * @description Send it back as If-Match on PUT /absence-types/{id}.
+             */
+            revision: number;
+            /** @description One of the types every installation starts with. */
+            seeded: boolean;
+            /** Format: int32 */
+            sort: number;
+            unit: components["schemas"]["StaffAbsenceUnit"];
+            visibility: components["schemas"]["StaffAbsenceVisibility"];
+        };
+        /** @description A type replaced as a whole but for its key, kind and unit, which never change, and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort and hidden alone — every other value as it is, else seed_immutable — and the reserved absent stays hidden. */
+        StaffAbsenceTypeChangeRequest: {
+            /** @description Only on a type counted in days. */
+            allowsPercent: boolean;
+            ameldingLeave?: components["schemas"]["StaffAmeldingLeave"];
+            /** @description Only on a type counted in days. */
+            drawsHoliday: boolean;
+            hidden: boolean;
+            names: components["schemas"]["StaffAbsenceTypeNames"];
+            needsDecision: boolean;
+            paid: boolean;
+            /**
+             * Format: int32
+             * @description 1 to 1000.
+             */
+            sort: number;
+            visibility: components["schemas"]["StaffAbsenceVisibility"];
+        };
+        /** @description A type's name in English and in Norwegian bokmål, each 1 to 100 characters. */
+        StaffAbsenceTypeNames: {
+            en: string;
+            nb: string;
+        };
+        /** @description A company type. The key is 1 to 40 characters of a–z, 0–9 and underscores, unique; the kind is holiday, leave, time_off or other (the sick kinds are the seeds'); kind and unit are fixed from now on. A percentage and drawing on the holiday account are for a type counted in days. */
+        StaffAbsenceTypeRequest: {
+            allowsPercent: boolean;
+            ameldingLeave?: components["schemas"]["StaffAmeldingLeave"];
+            drawsHoliday: boolean;
+            /** @description Left out, false. */
+            hidden?: boolean;
+            key: string;
+            kind: components["schemas"]["StaffAbsenceKind"];
+            names: components["schemas"]["StaffAbsenceTypeNames"];
+            needsDecision: boolean;
+            paid: boolean;
+            /**
+             * Format: int32
+             * @description 1 to 1000. Left out, after every type there is.
+             */
+            sort?: number;
+            unit: components["schemas"]["StaffAbsenceUnit"];
+            visibility: components["schemas"]["StaffAbsenceVisibility"];
+        };
+        /**
+         * @description days, or hours for a registration of part of one day.
+         * @enum {string}
+         */
+        StaffAbsenceUnit: "days" | "hours";
+        /**
+         * @description absent — colleagues see "absent", the manager and HR the type; hr_only — the manager sees "leave", the type is staff:personal-data's (and the person's own).
+         * @enum {string}
+         */
+        StaffAbsenceVisibility: "absent" | "hr_only";
+        /**
+         * @description The a-melding's permisjonsOgPermitteringsBeskrivelse a leave of the type is reported as — the six leave descriptions and permittering, in NAV's spellings. Absent when the type is not reported as leave. The codes velferdspermisjon and utdanningspermisjon expired on 31 December 2022 and are not among them.
+         * @enum {string}
+         */
+        StaffAmeldingLeave: "permisjonMedForeldrepenger" | "permisjonVedMilitaertjeneste" | "utdanningspermisjonLovfestet" | "utdanningspermisjonIkkeLovfestet" | "andreLovfestedePermisjoner" | "andreIkkeLovfestedePermisjoner" | "permittering";
+        /**
          * @description The a-melding's ansettelsesform. fast and fast_utleid go with a permanent employment, the other three with a temporary one.
          * @enum {string}
          */
@@ -1235,6 +1417,8 @@ export interface components {
         };
         /** @description What the caller may do in Staff, so the app never re-derives a rule this module owns. The access layer still decides every request. */
         StaffCapabilities: {
+            /** @description staff:approve or staff:manage, or managing anyone today — decides absence requests (delivery B). */
+            canDecide: boolean;
             /** @description staff:manage — HR: people, employments and terms, the structure and the settings. */
             canEdit: boolean;
             /** @description staff:personal-data — reveal and write the national identity number and the bank account. */
@@ -1245,6 +1429,8 @@ export interface components {
             canSeePay: boolean;
             /** @description staff:view — the directory: everyone's work fields and the structure. */
             canViewDirectory: boolean;
+            /** @description The caller's linked person manages anyone today by the one manager rule — a manager who has left manages nobody. Drives My team. */
+            managesAnyone: boolean;
         };
         /** @description The § 14-6 check of one employment (design S5). */
         StaffContractCheck: {
@@ -1460,6 +1646,11 @@ export interface components {
              * @description The date the stillingsprosent in force today (or at the start, before it; at the end, after it) took effect: the earliest row of the unbroken run of rows with that percentage. Derived, never typed.
              */
             fteChangedAt?: string;
+            /**
+             * Format: int64
+             * @description The holiday scheme the employment follows — the employment group's. Absent when it follows the default.
+             */
+            holidaySchemeId?: number;
             /** Format: int64 */
             id: number;
             /** Format: int64 */
@@ -1492,6 +1683,11 @@ export interface components {
             contractSignedAt?: string;
             /** @description Never changes: left out, or the employment's own. */
             employmentNumber?: string;
+            /**
+             * Format: int64
+             * @description A holiday scheme, not archived unless the employment already follows it. Left out, the default.
+             */
+            holidaySchemeId?: number;
             relationshipType: components["schemas"]["StaffRelationshipType"];
             /**
              * Format: date
@@ -1521,6 +1717,11 @@ export interface components {
             contractSignedAt?: string;
             /** @description 1 to 40 letters, digits or hyphens, unique however cased. Left out, it is generated as <employee number>-<n>. */
             employmentNumber?: string;
+            /**
+             * Format: int64
+             * @description A holiday scheme, not archived. Left out, the default.
+             */
+            holidaySchemeId?: number;
             /** @description Left out, ordinary. */
             relationshipType?: components["schemas"]["StaffRelationshipType"];
             /**
@@ -1606,6 +1807,112 @@ export interface components {
             rows: number;
             /** Format: int32 */
             updated: number;
+        };
+        /** @description A holiday scheme (design S9, §3.5), its figures in virkedager (Monday to Saturday, as the Holiday Act counts) and, in converted, the working days of a five-day week each comes to — ⌊v / 6⌋ × 5 + min(v mod 6, 5), so 25 virkedager are 21 days and 30 are 25. Exactly one is the default, the scheme of an employment that names none. */
+        StaffHolidayScheme: {
+            /** Format: int32 */
+            afterSeptemberVirkedager: number;
+            /**
+             * Format: date-time
+             * @description When the scheme was archived. Absent while it is offered.
+             */
+            archivedAt?: string;
+            converted: components["schemas"]["StaffHolidaySchemeConverted"];
+            /** Format: int32 */
+            entitlementVirkedager: number;
+            /** Format: int32 */
+            extraFrom60Virkedager: number;
+            /** Format: int64 */
+            id: number;
+            isDefault: boolean;
+            /** Format: int32 */
+            mainPeriodVirkedager: number;
+            /** Format: int32 */
+            maxCarryOverVirkedager: number;
+            name: string;
+            /**
+             * Format: int32
+             * @description Send it back as If-Match on PUT /holiday-schemes/{id}.
+             */
+            revision: number;
+            /** @description The statutory scheme every installation starts with. */
+            seeded: boolean;
+        };
+        /** @description A scheme replaced as a whole, and archived or restored. isDefault true makes it the default (an archived scheme never is, structure_archived); false on the default is refused structure_default, since there is always one; left out, the flag stays. Archiving the default or a scheme an employment names is refused holiday_scheme_in_use. */
+        StaffHolidaySchemeChangeRequest: {
+            /**
+             * Format: int32
+             * @description 0 to the entitlement. Left out, 6.
+             */
+            afterSeptemberVirkedager?: number;
+            archived: boolean;
+            /**
+             * Format: int32
+             * @description 25 to 60.
+             */
+            entitlementVirkedager: number;
+            /**
+             * Format: int32
+             * @description 6 to 30.
+             */
+            extraFrom60Virkedager: number;
+            isDefault?: boolean;
+            /**
+             * Format: int32
+             * @description 0 to the entitlement. Left out, 18.
+             */
+            mainPeriodVirkedager?: number;
+            /**
+             * Format: int32
+             * @description 0 to the entitlement. Left out, 12.
+             */
+            maxCarryOverVirkedager?: number;
+            /** @description 1 to 100 characters, unique however it is cased. */
+            name: string;
+        };
+        /** @description A scheme's figures in working days of a five-day week. */
+        StaffHolidaySchemeConverted: {
+            /** Format: int32 */
+            afterSeptember: number;
+            /** Format: int32 */
+            entitlement: number;
+            /** Format: int32 */
+            extraFrom60: number;
+            /** Format: int32 */
+            mainPeriod: number;
+            /** Format: int32 */
+            maxCarryOver: number;
+        };
+        /** @description A new scheme. isDefault true makes it the default in place of the one there is. */
+        StaffHolidaySchemeRequest: {
+            /**
+             * Format: int32
+             * @description 0 to the entitlement. Left out, 6.
+             */
+            afterSeptemberVirkedager?: number;
+            /**
+             * Format: int32
+             * @description 25 to 60.
+             */
+            entitlementVirkedager: number;
+            /**
+             * Format: int32
+             * @description 6 to 30.
+             */
+            extraFrom60Virkedager: number;
+            isDefault?: boolean;
+            /**
+             * Format: int32
+             * @description 0 to the entitlement. Left out, 18.
+             */
+            mainPeriodVirkedager?: number;
+            /**
+             * Format: int32
+             * @description 0 to the entitlement. Left out, 12.
+             */
+            maxCarryOverVirkedager?: number;
+            /** @description 1 to 100 characters, unique however it is cased. */
+            name: string;
         };
         /**
          * @description The language the person reads Vantigo and its mail in.
@@ -1714,7 +2021,11 @@ export interface components {
         };
         /** @description What the Staff app needs before it draws anything. */
         StaffMeta: {
+            /** @description The absence types that are not hidden, in their order, names in both languages — every caller's. */
+            absenceTypes: components["schemas"]["StaffAbsenceType"][];
             capabilities: components["schemas"]["StaffCapabilities"];
+            /** @description Every holiday scheme, archived ones included, with its figures converted to working days. */
+            holidaySchemes: components["schemas"]["StaffHolidayScheme"][];
             structure?: components["schemas"]["StaffStructure"];
             /** @description The installation's business time zone, an IANA name. Every date of this module — a start, an end, "today" — is a calendar day in it. */
             timeZone: string;
@@ -1800,6 +2111,16 @@ export interface components {
             birthDate?: string;
             businessUnit?: components["schemas"]["StaffBusinessUnitSummary"];
             capabilities: components["schemas"]["StaffPersonCapabilities"];
+            /**
+             * Format: int32
+             * @description The care-day fields (design S11): the children through the year they turn twelve without NAV's extra-days decision, 0 to 20. The person's own, staff:manage's and staff:personal-data's. Absent when not recorded.
+             */
+            childrenUnder12?: number;
+            /**
+             * Format: int32
+             * @description The children with NAV's decision of extra care days for a chronic illness or disability, through the year they turn eighteen, 0 to 20. A care-day field. Absent when not recorded.
+             */
+            chronicallyIllChildren?: number;
             /** @description Private. Absent when not set. */
             city?: string;
             /** @description Private. Absent when not set. */
@@ -1844,6 +2165,8 @@ export interface components {
              * @description The revision a change sends back in If-Match.
              */
             revision: number;
+            /** @description Whether the person cares for the children alone (aleneomsorg). A care-day field. Absent when not recorded. */
+            soleCarer?: boolean;
             status: components["schemas"]["StaffPersonStatus"];
             /** @description Private. Absent when not set. */
             street?: string;
@@ -1927,6 +2250,16 @@ export interface components {
              * @description A calendar date. Private.
              */
             birthDate?: string;
+            /**
+             * Format: int32
+             * @description 0 to 20 — the children through the year they turn twelve without NAV's extra-days decision. A care-day field; left out, it is cleared.
+             */
+            childrenUnder12?: number;
+            /**
+             * Format: int32
+             * @description 0 to 20 — the children with NAV's extra-days decision, through the year they turn eighteen. A care-day field; left out, it is cleared.
+             */
+            chronicallyIllChildren?: number;
             /** @description Up to 100 characters. Private (the home address). */
             city?: string;
             /** @description An ISO 3166-1 alpha-2 code. Private (the home address). */
@@ -1953,6 +2286,8 @@ export interface components {
             preferredLanguage?: components["schemas"]["StaffLanguage"];
             /** @description An email address of up to 254 characters, stored lower-cased. Private. */
             privateEmail?: string;
+            /** @description Whether the person cares for the children alone. A care-day field; left out, it is cleared. */
+            soleCarer?: boolean;
             /** @description Up to 200 characters. Private (the home address). */
             street?: string;
             /** @description Where the person works from (the usage location), an ISO 3166-1 alpha-2 code. Left out, Norway (NO). */
@@ -2080,7 +2415,7 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -2155,10 +2490,27 @@ export interface components {
              */
             pendingDeletions: number;
         };
+        /**
+         * @description The self-certification (egenmelding) policy (design S10): minimum — the statutory one, 3 calendar days an occurrence and 4 occurrences in a rolling year; extended — 8 days an occurrence and 24 days in a rolling year; custom — the numbers as set.
+         * @enum {string}
+         */
+        StaffSelfCertPolicy: "minimum" | "extended" | "custom";
         /** @description The Staff settings (design §3.6) as far as the deliveries so far expose them, the retention run's state, derived, and when each threshold was acknowledged, read-only. The other columns of the settings row reach the contract with the deliveries that use them. */
         StaffSettings: {
+            /** @description Whether holiday left at a year's end is carried into the next as forced, without HR's action (design S9). false by default. */
+            autoCarryOver: boolean;
+            /**
+             * Format: date
+             * @description The day autoCarryOver was last turned on; the derived carry-over reaches no year before it. Absent when it never was.
+             */
+            autoCarryOverSince?: string;
             /** @description What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none. */
             employeeNumberPrefix: string;
+            /**
+             * Format: int32
+             * @description How many days after a person's last employment ended their health documents (those in a restricted category) are deleted by the retention run (design S15); 30 to 3650, 365 by default.
+             */
+            healthRetentionDays: number;
             /** @description The occupational injury (yrkesskade) insurer. Absent when not set. */
             injuryInsurer?: string;
             /**
@@ -2166,11 +2518,6 @@ export interface components {
              * @description The number the next generated employee number carries after the prefix, unpadded.
              */
             nextEmployeeNumber: number;
-            /**
-             * Format: int32
-             * @description How many days after a person's last employment ended their health documents (those in a restricted category) are deleted by the retention run (design S15); 30 to 3650, 365 by default.
-             */
-            healthRetentionDays: number;
             /** @description The occupational pension (OTP) provider, which the § 14-6 check reads when a term names no social-security reference. Absent when not set. */
             pensionProvider?: string;
             retention: components["schemas"]["StaffRetentionState"];
@@ -2184,12 +2531,35 @@ export interface components {
              * @description The revision a change sends back in If-Match.
              */
             revision: number;
+            /**
+             * Format: int32
+             * @description The months of employment before egenmelding may be used, 0 to 2.
+             */
+            selfCertAfterMonths: number;
+            /**
+             * Format: int32
+             * @description The calendar days one egenmelding occurrence may last, 1 to 16.
+             */
+            selfCertDaysPerOccurrence: number;
+            /**
+             * Format: int32
+             * @description The self-certified days in a rolling year (extended and custom), 1 to 365.
+             */
+            selfCertDaysPerYear: number;
+            /**
+             * Format: int32
+             * @description The occurrences in a rolling year (minimum and custom), 1 to 52.
+             */
+            selfCertOccurrencesPerYear: number;
+            selfCertPolicy: components["schemas"]["StaffSelfCertPolicy"];
             thresholdsAcknowledged: components["schemas"]["StaffThresholdsAcknowledged"];
             /** @description The business time zone, an IANA name. */
             timeZone: string;
         };
         /** @description A replace of the settings. The two retention periods left out keep the values they have; everything else is replaced. */
         StaffSettingsRequest: {
+            /** @description Left out, it keeps its value. Turning it on records today as autoCarryOverSince. */
+            autoCarryOver?: boolean;
             /** @description Up to eight letters, digits or hyphens. Left out, there is none. */
             employeeNumberPrefix?: string;
             /**
@@ -2211,6 +2581,27 @@ export interface components {
              * @description 0 to 3650 days. Left out, it keeps its value.
              */
             retentionGraceDays?: number;
+            /**
+             * Format: int32
+             * @description 0 to 2. Left out, it keeps its value.
+             */
+            selfCertAfterMonths?: number;
+            /**
+             * Format: int32
+             * @description 1 to 16. Read under custom only — a preset writes its own; left out, it keeps its value.
+             */
+            selfCertDaysPerOccurrence?: number;
+            /**
+             * Format: int32
+             * @description 1 to 365. Read under custom only — a preset writes its own; left out, it keeps its value.
+             */
+            selfCertDaysPerYear?: number;
+            /**
+             * Format: int32
+             * @description 1 to 52. Read under custom only — a preset writes its own; left out, it keeps its value.
+             */
+            selfCertOccurrencesPerYear?: number;
+            selfCertPolicy?: components["schemas"]["StaffSelfCertPolicy"];
             /** @description An IANA name such as Europe/Oslo, which this server and its database must read the same way. */
             timeZone: string;
         };
@@ -2551,6 +2942,167 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getStaffAbsenceTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAbsenceType"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postStaffAbsenceTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffAbsenceTypeRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAbsenceType"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, a key another type has or a sick kind among them. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putStaffAbsenceTypesById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the type was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffAbsenceTypeChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAbsenceType"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, or If-Match is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such type. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict or seed_immutable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
     getStaffAssignableUsers: {
         parameters: {
             query?: {
@@ -3777,6 +4329,167 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — terms_valid_from_taken when the employment has a row on that date; terms_before_start before the employment's start; terms_after_end after its end; terms_first_row_start when the first row would not be dated the start; self_manager when the manager is the person; manager_cycle when the manager — named on the row, or the department's — would close a loop in the manager graph on the row's date or any later date the graph changes; structure_archived when a department or location newly named is archived; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffHolidaySchemes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffHolidayScheme"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postStaffHolidaySchemes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffHolidaySchemeRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffHolidayScheme"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, a name another scheme has among them. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putStaffHolidaySchemesById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the scheme was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffHolidaySchemeChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffHolidayScheme"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, or If-Match is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such scheme. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, holiday_scheme_in_use (archiving the default or a scheme an employment names), structure_default (un-flagging the default) or structure_archived (an archived scheme made the default). */
             409: {
                 headers: {
                     [name: string]: unknown;

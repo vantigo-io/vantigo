@@ -40,20 +40,23 @@ LIMIT 1;
 
 -- name: InsertEmployment :one
 INSERT INTO staff.employments (
-    person_id, employment_number, relationship_type, business_unit_id, start_date, contract_signed_at, created_at, updated_at
+    person_id, employment_number, relationship_type, business_unit_id, start_date, contract_signed_at, holiday_scheme_id,
+    created_at, updated_at
 ) VALUES (
-    @person_id, @employment_number, @relationship_type, @business_unit_id, @start_date, @contract_signed_at, @now::timestamptz, @now::timestamptz
+    @person_id, @employment_number, @relationship_type, @business_unit_id, @start_date, @contract_signed_at, @holiday_scheme_id,
+    @now::timestamptz, @now::timestamptz
 )
 RETURNING *;
 
 -- name: UpdateEmployment :one
--- UpdateEmployment replaces an employment's own fields. The number, the end
--- and its reason are not among them.
+-- UpdateEmployment replaces an employment's own fields, its holiday scheme
+-- among them. The number, the end and its reason are not.
 UPDATE staff.employments SET
     relationship_type = @relationship_type,
     business_unit_id = @business_unit_id,
     start_date = @start_date,
     contract_signed_at = @contract_signed_at,
+    holiday_scheme_id = @holiday_scheme_id,
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = @id

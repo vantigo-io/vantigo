@@ -634,6 +634,9 @@ func personRequestOf(row store.GetPersonRow) gen.StaffPersonRequest {
 		PhonePrivate: row.PhonePrivate, PrivateEmail: row.PrivateEmail, Street: row.Street,
 		PostalCode: row.PostalCode, City: row.City, Country: row.Country, WorkCountry: &workCountry,
 		PreferredLanguage: &language, Notes: row.Notes,
+		// The file carries no care-day column: an update keeps what HR typed.
+		ChildrenUnder12: int32Of(row.ChildrenUnder12), SoleCarer: row.SoleCarer,
+		ChronicallyIllChildren: int32Of(row.ChronicallyIllChildren),
 	}
 }
 

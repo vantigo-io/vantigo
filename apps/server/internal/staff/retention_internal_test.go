@@ -94,6 +94,8 @@ func TestFieldClasses_AgreeWithTheirColumns(t *testing.T) {
 		"user":        "identity_links.external_id",
 		"nationalId":  "people.national_id_sealed",
 		"bankAccount": "people.bank_account_sealed",
+		// snake() reads "Under12" as one word; the column has the digits apart.
+		"childrenUnder12": "people.children_under_12",
 	}
 	// A field is its column in the first of these tables that has it.
 	searched := []string{"people", "employments", "employment_terms"}

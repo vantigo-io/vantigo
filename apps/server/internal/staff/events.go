@@ -184,12 +184,15 @@ var fieldClasses = map[string]string{
 	"workEmail": "D", "phoneWork": "D", "phoneMobile": "D", "phonePrivate": "D", "privateEmail": "D",
 	"street": "D", "postalCode": "D", "city": "D", "country": "D", "notes": "D", "nextOfKin": "D",
 	"nationalId": "D", "bankAccount": "D", "user": "C",
+	// The care-day fields (design §3.1, S11) are class D, the person's
+	// administration; delivery B's.
+	"childrenUnder12": "D", "soleCarer": "D", "chronicallyIllChildren": "D",
 
 	// An employment and its non-pay terms are class C, kept for good; the
 	// pay terms, the seniority date and the pay grade class A, kept five
 	// years past the end year; a terms row's note class D (design §3.2, §3.3).
 	"employmentNumber": "C", "relationshipType": "C", "businessUnitId": "C", "startDate": "C", "endDate": "C",
-	"endReason": "C", "contractSignedAt": "C", "validFrom": "C", "employmentType": "C", "temporaryGround": "C",
+	"endReason": "C", "contractSignedAt": "C", "holidaySchemeId": "C", "validFrom": "C", "employmentType": "C", "temporaryGround": "C",
 	"expectedEndDate": "C", "appointmentForm": "C", "hiredOutTo": "C", "ftePercent": "C", "workingHoursScheme": "C",
 	"fullTimeHoursPerWeek": "C", "occupationCode": "C", "title": "C", "employeeType": "C", "departmentId": "C",
 	"locationId": "C", "managerPersonId": "C", "costCentre": "C", "division": "C", "workingTimeText": "C",

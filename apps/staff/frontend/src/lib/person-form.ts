@@ -25,6 +25,12 @@ export interface PersonFormValues {
   country: string;
   /** HR's notes — read and written by `staff:manage` and `staff:personal-data` alone. */
   notes: string;
+  /**
+   * The care-day fields (design S11), which the form does not show yet but
+   * must send back: `PUT /people/{id}` is a full replace and clears what it
+   * leaves out (plan pre-flight M9). Kept as the person read them.
+   */
+  careDays: Pick<StaffPersonInput, "childrenUnder12" | "soleCarer" | "chronicallyIllChildren">;
 }
 
 export const emptyPerson = (): PersonFormValues => ({
@@ -48,6 +54,7 @@ export const emptyPerson = (): PersonFormValues => ({
   city: "",
   country: "",
   notes: "",
+  careDays: {},
 });
 
 /**
@@ -75,6 +82,11 @@ export const personFormValuesOf = (person: StaffPerson): PersonFormValues => ({
   city: person.city ?? "",
   country: person.country ?? "",
   notes: person.notes ?? "",
+  careDays: {
+    ...(person.childrenUnder12 !== undefined ? { childrenUnder12: person.childrenUnder12 } : {}),
+    ...(person.soleCarer !== undefined ? { soleCarer: person.soleCarer } : {}),
+    ...(person.chronicallyIllChildren !== undefined ? { chronicallyIllChildren: person.chronicallyIllChildren } : {}),
+  },
 });
 
 /** The private group (design §5): optional at the create, the person's own and HR's to read. */
@@ -127,6 +139,7 @@ export const personInputOf = (values: PersonFormValues): StaffPersonInput => ({
   ...text("city", values.city),
   ...(values.country.trim() ? { country: values.country.trim().toUpperCase() } : {}),
   ...text("notes", values.notes),
+  ...values.careDays,
 });
 
 /** One of the next of kin as a form holds them: the texts as strings, the relationship unchosen as null. */

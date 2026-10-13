@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -29,7 +29,9 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 [managers and the org view](#managers-and-the-org-view), the
 [sealed identifiers](#the-sealed-identifiers), the
 [self-service link](#the-self-service-link), [My page](#my-page), the
-[documents](#documents) and their [categories](#categories-and-classes), the
+[documents](#documents) and their [categories](#categories-and-classes),
+[absence](#absence) — the [types](#absence-types), the [holiday schemes](#holiday-schemes) and the
+[care-day fields](#the-care-day-fields) — the
 [personal-data exports](#the-personal-data-exports), the register's
 [import and export](#the-registers-import-and-export), the
 [payroll export](#the-payroll-export), [retention](#retention) and its
@@ -64,14 +66,27 @@ Delivery A2's migration, `00043_staff_records.sql`, adds three tables and no col
 `object_key`; indexed by `next_attempt_at`). Every column of the tables a person's
 erase reaches has a retention class, listed [under Retention](#the-classes-column-by-column).
 
+Delivery B's migration is `00047_staff_absence.sql` (00046 is another delivery's;
+goose applies versions as numbers, gaps and all). It adds `absence_types` (unique
+`key`; the seeds), `holiday_schemes` (unique name however it is cased; at most one
+default, `ux_holiday_schemes_default`; the statutory seed), `holiday_adjustments`
+(indexed by person and year; at most one carry-over per person and year it comes
+from), `sick_cases` (indexed by person and first day), `sick_case_milestones` (one
+per kind per case) and `absences` (indexed by person and first day, by type, by case,
+and the requested ones by a partial index); and three columns to tables 00042 and
+00043 created: `employments.holiday_scheme_id` (with its index), `documents.case_id`
+(with its index) and `settings.auto_carry_over_since` — the one settings column B
+adds after all, so the derived carry-over reaches no year before it was turned on.
+Still no CHECK constraint.
+
 ## Permissions
 
 | Key | Name | Grants | Sensitive |
 | --- | --- | --- | --- |
 | `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** Your absence arrives with delivery B. | no |
 | `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the calendar with types hidden. The calendar arrives with B. | no |
-| `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. Registered now; grants nothing until absence arrives with B. | no |
-| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, the settings, documents other than health and their categories, the account flag, imports and exports, the retention run by hand, the thresholds' acknowledgement. The account flag arrives with C. | yes |
+| `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. From delivery B it makes `GET /meta`'s `canDecide` true; the decisions, the inbox and the cases it opens arrive with B's later steps. | no |
+| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, absence types and holiday schemes, the settings, documents other than health and their categories, the account flag, imports and exports, the retention run by hand, the thresholds' acknowledgement. The account flag arrives with C. | yes |
 | `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. Erasure is the [retention run](#retention)'s, on its schedule (run by hand by `staff:manage`); the milestones' notes and the HR-only types arrive with B. | yes |
 
 All five are in the category "Staff" and delegable. The Owner holds them through the
@@ -82,15 +97,18 @@ contract's `x-vantigo-access`; a caller without it gets the access layer's unifo
 `GET /meta` answers what the caller may do as capabilities — `canViewDirectory`
 (`staff:view`), `canEdit` (`staff:manage`), `canRevealIdentifiers`
 (`staff:personal-data`), `canSeePay` (either of the last two) and `canSeeHealth`
-(`staff:personal-data`: everyone's health documents) — so the app never re-derives a
-rule. The capability absence adds (`canDecide`) arrives with it.
+(`staff:personal-data`: everyone's health documents), `managesAnyone` (the caller's
+linked person manages anyone today by the [one manager rule](#managers-and-the-org-view),
+so a manager who has left manages nobody) and `canDecide` (`staff:approve`,
+`staff:manage`, or `managesAnyone`: who may decide absence) — so the app never
+re-derives a rule.
 
 ## Settings
 
 One row, written by the migration. `GET /settings` and `PUT /settings` are
-`staff:manage`'s. The contract exposes seven fields, a derived block and the
-acknowledged thresholds; the others on the row — the self-certification policy, the
-account days — reach the contract with the deliveries that use them.
+`staff:manage`'s. The contract exposes thirteen fields, a derived block and the
+acknowledged thresholds; the account days on the row reach the contract with delivery
+C.
 
 | Field | Default | Rule |
 | --- | --- | --- |
@@ -101,6 +119,23 @@ account days — reach the contract with the deliveries that use them.
 | `injuryInsurer` | — | Up to 200 characters; left out, cleared. |
 | `retentionGraceDays` | 90 | 0 to 3650 days from the last employment's end to the [D erase](#what-is-due); left out, kept. |
 | `healthRetentionDays` | 365 | 30 to 3650 days from the last employment's end to the [health erase](#what-is-due); left out, kept. |
+| `selfCertPolicy` | `minimum` | `minimum`, `extended` or `custom` (below); left out, kept. |
+| `selfCertDaysPerOccurrence` | 3 | 1 to 16 calendar days one egenmelding may last; read under `custom` only; left out, kept. |
+| `selfCertOccurrencesPerYear` | 4 | 1 to 52 occurrences in a rolling year; read under `custom` only; left out, kept. |
+| `selfCertDaysPerYear` | 24 | 1 to 365 self-certified days in a rolling year; read under `custom` only; left out, kept. |
+| `selfCertAfterMonths` | 2 | 0 to 2 months of employment before egenmelding may be used; left out, kept. |
+| `autoCarryOver` | false | Carry holiday left at a year's end into the next as forced, without HR's action; left out, kept. |
+
+**The self-certification policy.** A preset writes its own numbers, whatever the
+request carries: `minimum` — the statutory one — 3 days an occurrence and 4
+occurrences in a rolling year; `extended` 8 days an occurrence and 24 days in a
+rolling year. The number a preset does not use keeps what it holds. `custom` takes the
+three as sent. Egenmelding is judged on them when absence arrives.
+
+**Automatic carry-over.** Turning `autoCarryOver` on — off before, on now — records
+today, in the business zone, as the read-only `autoCarryOverSince`; turning it off
+keeps that day, and turning it on again moves it. The carry-over it derives reaches no
+year before that day. `autoCarryOverSince` is absent until it was first turned on.
 
 `GET /settings` and the answer of `PUT /settings` also carry the read-only
 [`retention` block](#the-settings-and-the-retention-block), derived from the deletion
@@ -121,7 +156,8 @@ company's size is nothing and is accepted as such; an employment's `-n` is found
 same way among the employments.
 
 `PUT /settings` is a full replace guarded by `If-Match` (below) — but for the two
-retention periods, which a body that leaves them out keeps. Every bad field is a 400
+retention periods, the self-certification policy and the carry-over, which a body
+that leaves them out keeps. Every bad field is a 400
 naming it (a period out of its bounds is a plain field error); the whole request is
 judged before anything is written.
 
@@ -329,6 +365,7 @@ from the response — never null.
 | Employment | every other field of an employment and its terms but the pay | ✓ | — | ✓ | ✎ | ✓ |
 | Pay | `remunerationType`, `payComponents`, `payMethod`, `paydayText`, `seniorityDate`, `payGrade`, `salaryChangedAt` | ✓ | — | — | ✎ | ✓ |
 | Private | birth date, gender, mobile, private phone and email, home address, next of kin | ✓ | — | — | ✎ | ✓ |
+| Care days | `childrenUnder12`, `soleCarer`, `chronicallyIllChildren` ([the care-day fields](#the-care-day-fields)) | ✓ | — | — | ✎ | ✓ |
 | HR notes | `notes`; a terms row's `note` | — | — | — | ✎ | ✓ |
 | National identity number | `nationalId { kind, onFile }` | ✓ | — | — | ✓ | ✎ reveal and set |
 | Bank account | `bankAccount { kind, last4 }` | ✓ | — | — | ✓ | ✎ reveal and set |
@@ -485,8 +522,9 @@ positions); the register does not refuse an overlap.
   terms row** nested as `terms`, which takes effect on the start: `terms.validFrom`
   is left out or equals `startDate` — otherwise `terms_first_row_start` (409). The
   business unit is the [default one](#the-structure) when `businessUnitId` is left
-  out; a named one must exist and not be archived (`structure_archived`, 409).
-  `relationshipType` is `ordinary` (the default), `maritime`, `freelancer` or
+  out; a named one must exist and not be archived (`structure_archived`, 409). So
+  must its [holiday scheme](#holiday-schemes), `holidaySchemeId`; left out, the
+  default's. `relationshipType` is `ordinary` (the default), `maritime`, `freelancer` or
   `pension_or_other`. The creation is an `employment_created` and a `terms_added`
   event.
 - **The employment number** — the a-melding's `arbeidsforholdID` — is 1–40 letters,
@@ -496,7 +534,8 @@ positions); the register does not refuse an overlap.
   typed by hand — under the person's lock. A number another employment has is
   `employment_number_taken` (400), including when the unique index settles a race.
 - **`PUT /employments/{id}`** (`staff:manage`, `If-Match`) replaces `startDate`,
-  `relationshipType`, `businessUnitId` and `contractSignedAt` (left out, cleared). A new
+  `relationshipType`, `businessUnitId`, `contractSignedAt` and `holidaySchemeId` (the
+  last two left out, cleared — a scheme cleared is the default's). A new
   start moves the first terms row with it, and is `terms_before_start` (409) when a
   later row would then lie before it. Every row's probation is judged again against the
   new start: one ending more than six months (or half a temporary term) after it is
@@ -962,6 +1001,175 @@ documents — and only class E is. Six are seeded:
   move them first — so the archive never takes from the picker a category a document
   still names.
 
+## Absence
+
+Absence is delivery B. What stands so far: the [absence types](#absence-types) with
+their [a-melding mapping](#the-a-meldings-leave-descriptions), the
+[holiday schemes](#holiday-schemes) and an employment's scheme, the
+self-certification policy and automatic carry-over in the [settings](#settings), and
+the [care-day fields](#the-care-day-fields) on a person. The absences themselves, the
+holiday account, decisions, sick-leave cases and care-day counting arrive with B's
+later steps; until then `staff:approve` grants only `GET /meta`'s `canDecide`.
+
+### Absence types
+
+`staff.absence_types` is the vocabulary an absence is entered in. Each type has a
+`key` (1–40 of `a–z`, `0–9`, `_`, unique), names in English and Norwegian (1–100
+characters each), a `kind` the rules key on, a `unit` (`days`, or `hours` for part of
+one day), whether it is `paid`, whether it `drawsHoliday` from the holiday account,
+whether it `allowsPercent`, whether it `needsDecision` (requested and decided) or is a
+notification (registered when entered), its `visibility` and its `ameldingLeave`. A
+type's `key`, `kind` and `unit` never change.
+
+The seeds, every installation's, in their order:
+
+| Key | Kind | Unit | Paid | Draws | % | Decision | Visibility | a-melding |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ferie` | holiday | days | yes | yes | — | yes | absent | — |
+| `egenmelding` | sick_self | days | yes | — | — | no | absent | — |
+| `sykmelding` | sick_certified | days | yes | — | — | no | absent | — |
+| `svangerskapskontroll` | other | hours | yes | — | — | no | hr_only | — |
+| `svangerskapspermisjon` | leave | days | no | — | — | yes | hr_only | `permisjonMedForeldrepenger` |
+| `omsorgspermisjon` | leave | days | no | — | yes | yes | absent | `andreLovfestedePermisjoner` |
+| `foreldrepermisjon` | leave | days | no | — | yes | yes | absent | `permisjonMedForeldrepenger` |
+| `fodselspermisjon` | leave | days | no | — | — | yes | hr_only | `permisjonMedForeldrepenger` |
+| `ammefri` | leave | hours | no | — | — | yes | absent | `andreLovfestedePermisjoner` |
+| `sykt_barn` | child_sick | days | yes | — | — | no | absent | — |
+| `pleie_naerstaende` | leave | days | no | — | yes | yes | absent | `andreLovfestedePermisjoner` |
+| `utdanning_lovfestet` | leave | days | no | — | yes | yes | absent | `utdanningspermisjonLovfestet` |
+| `utdanning_ikke_lovfestet` | leave | days | no | — | yes | yes | absent | `utdanningspermisjonIkkeLovfestet` |
+| `militaertjeneste` | leave | days | no | — | — | yes | absent | `permisjonVedMilitaertjeneste` |
+| `offentlig_verv` | leave | days | no | — | yes | yes | absent | `andreLovfestedePermisjoner` |
+| `religios_hoytid` | leave | days | no | — | — | yes | hr_only | `andreLovfestedePermisjoner` |
+| `velferdspermisjon` | leave | days | yes | — | — | yes | absent | `andreIkkeLovfestedePermisjoner` |
+| `permittering` | leave | days | no | — | yes | yes | absent | `permittering` |
+| `avspasering` | time_off | hours | yes | — | — | yes | absent | — |
+| `helse` | other | hours | yes | — | — | no | absent | — |
+| `annen_lovfestet` | leave | days | no | — | yes | yes | absent | `andreLovfestedePermisjoner` |
+| `annen_ikke_lovfestet` | leave | days | no | — | yes | yes | absent | `andreIkkeLovfestedePermisjoner` |
+| `absent` | other | days | no | — | — | no | absent | — (reserved, always hidden) |
+
+- **No percentage on the sick kinds.** A sykmelding's share of each day is its degree
+  (`degree_percent`), not a percentage; ferie is whole days.
+- **Visibility.** `absent`: a colleague sees "absent", the manager and HR the type.
+  `hr_only` — religiøs høytid, svangerskapskontroll, svangerskapspermisjon and
+  fødselspermisjon, which reveal special-category data: the manager sees "leave", the
+  type is `staff:personal-data`'s and the person's own.
+- **The reserved `absent`** is what the health erase writes in place of a sick or
+  child-sick type; it is hidden and is never shown again (`seed_immutable`).
+- **Reading.** `GET /absence-types` answers every type that is not hidden to every
+  caller — `hr_only` ones included: the type is public, who takes it is not — and the
+  hidden ones too to `staff:manage`. `GET /meta` answers the same visible list as
+  `absenceTypes`.
+- **A company type** (`POST /absence-types`, `staff:manage`) has the kind `holiday`,
+  `leave`, `time_off` or `other` — the sick kinds and `child_sick` are the seeds',
+  since the case, egenmelding and the care days key on them. A percentage and drawing
+  on the holiday account are for a type counted in days. Left out, `sort` places it
+  after every type there is (1–1000 when given).
+- **A change** (`PUT /absence-types/{id}`, `staff:manage`, `If-Match`) replaces the
+  names, the flags, the visibility, the mapping, `hidden` and `sort`; a body naming
+  `key`, `kind` or `unit` is a 400 naming it. A **seed** changes its names, its order
+  and whether it is hidden, nothing else: anything more, and showing `absent`, is
+  `seed_immutable` (409).
+- **History.** Each write is an installation event, `absence_type_created` or
+  `absence_type_updated`, naming the type (`absenceTypeId`) and the fields that
+  changed. It is about no person and touches no retention class.
+
+### The a-melding's leave descriptions
+
+`ameldingLeave` is the a-melding's `permisjonsOgPermitteringsBeskrivelse` a leave of
+the type is reported as — the kodeverk `PermisjonsOgPermitteringsBeskrivelse`'s six
+leave descriptions and permittering, in NAV's spellings, exactly:
+`permisjonMedForeldrepenger`, `permisjonVedMilitaertjeneste`,
+`utdanningspermisjonLovfestet`, `utdanningspermisjonIkkeLovfestet`,
+`andreLovfestedePermisjoner`, `andreIkkeLovfestedePermisjoner` and `permittering`.
+Any other value is a 400 on `ameldingLeave`. The codes `velferdspermisjon` and the
+unsplit `utdanningspermisjon` expired on 31 December 2022 and are refused (the
+a-melding answers them with MAGNET_EDAG-114B); a type is reported by its legal basis,
+so the welfare-leave seed reports `andreIkkeLovfestedePermisjoner` — welfare leave is
+agreed or tariff-based, not in the Working Environment Act — and a company whose
+welfare leave is statutory uses `annen_lovfestet`. Omsorgspermisjon at a birth is one
+of the other statutory leaves. The spellings rest on NAV's own code list; they are
+checked against Skatteetaten's a-melding schema before the payroll export reports
+leave.
+
+What the a-melding asks to be reported as leave, which the payroll export's leave rows
+follow when they arrive (Skatteetaten's a-melding guide, "Permisjon", as updated on
+11 January 2024):
+
+- leave that lasts **more than fourteen days**, whole or partial — and several shorter
+  leaves within twelve months that together pass fourteen days count together;
+- **omsorgsdager** (a sick child, `sykt_barn`) are **never** reported as leave;
+- **svangerskapspenger** are not reported as leave — no seed models them;
+- every leave carries its `permisjonsprosent`, more than 0 and at most 100.
+
+### Holiday schemes
+
+`staff.holiday_schemes` holds the company's holiday rules in **virkedager** — Monday
+to Saturday, as the Holiday Act counts — each answered with `converted`, the working
+days of a five-day week it comes to, which is what the holiday account will deduct:
+
+```
+convert(v) = ⌊v / 6⌋ × 5 + min(v mod 6, 5)
+```
+
+25 → 21, 30 → 25, 31 → 26, 6 → 5, 18 → 15, 12 → 10: a Monday-to-Friday week costs five
+days and an entitlement is never undercounted.
+
+| Field | Rule |
+| --- | --- |
+| `name` | 1–100 characters, unique however it is cased. |
+| `entitlementVirkedager` | 25–60 (the Holiday Act's 25 at least). |
+| `extraFrom60Virkedager` | 6–30: the extra days from the year the person turns 60. |
+| `mainPeriodVirkedager` | 0 to the entitlement; left out, 18. |
+| `afterSeptemberVirkedager` | 0 to the entitlement, for a start after 30 September; left out, 6. |
+| `maxCarryOverVirkedager` | 0 to the entitlement, the agreed carry-over's cap; left out, 12. |
+
+The statutory scheme is seeded — "Statutory (ferieloven)", 25 / 6 / 18 / 6 / 12, the
+default. `GET /holiday-schemes` (every caller) answers every scheme, archived ones
+included, the default first; `GET /meta` answers them as `holidaySchemes`.
+`POST /holiday-schemes` and `PUT /holiday-schemes/{id}` (`staff:manage`, `If-Match`
+on the change) write them; each is an installation event, `holiday_scheme_created` or
+`holiday_scheme_updated`, naming the scheme (`holidaySchemeId`) and the fields that
+changed.
+
+- **Exactly one default**, the scheme of an employment that names none.
+  `isDefault: true` on a new or changed scheme moves it there; `false` on the default
+  is `structure_default`, and an archived scheme is never made the default
+  (`structure_archived`). The partial unique index `ux_holiday_schemes_default` holds
+  "at most one", as `ux_business_units_default` does for the business units.
+- **Archiving** (`archived: true`) is refused `holiday_scheme_in_use` for the default
+  and for a scheme an employment names; `archived: false` restores it. An archived
+  scheme stays on the employments that already follow it and leaves the picker.
+- **An employment's scheme.** `POST /people/{id}/employments` and
+  `PUT /employments/{id}` take `holidaySchemeId`; left out, the employment follows the
+  default. A scheme that does not exist is a 400 on `holidaySchemeId`; an archived one
+  is `structure_archived`, unless the employment already follows it. The employment's
+  response carries it in the employment group — the person, their manager and HR; a
+  colleague does not read it — and a change is an `employment_updated` event of
+  class C.
+
+### The care-day fields
+
+Three fields on a person feed the care-day counter (omsorgsdager, ftrl. § 9-6) that
+arrives later in delivery B. HR types them from what the employee declares; no child
+is named.
+
+| Field | Rule |
+| --- | --- |
+| `childrenUnder12` | 0–20: the children through the year they turn twelve **without** NAV's decision of extra care days. |
+| `chronicallyIllChildren` | 0–20: the children **with** NAV's decision of extra care days for a chronic illness or disability, through the year they turn eighteen. |
+| `soleCarer` | Whether the person cares for the children alone (aleneomsorg). |
+
+The two counts together are the number of children § 9-6 counts, so no child is
+counted twice. They are written on `POST /people` and `PUT /people/{id}`
+(`staff:manage`) — left out, cleared, as every optional field of the replace — and
+`PUT /me` refuses them as properties it does not take: the person declares, HR types.
+They are their own field group, read by the person, `staff:manage` and
+`staff:personal-data`, never by a manager or a colleague; they are class D, so the D
+erase clears them, and a change is a `person_updated` event a manager reads as
+"changed".
+
 ## The personal-data exports
 
 A person's data in one JSON file (design S16): `exportedAt`, the `person` — every field
@@ -1241,12 +1449,12 @@ holds every payload field to its column's class, and a third holds this table to
 | `people` | F | `legal_hold`, `legal_hold_reason`, `legal_hold_by_user_id`, `legal_hold_at` |
 | `next_of_kin` | D | every column: `id`, `person_id`, `position`, `name`, `relationship`, `phone`, `note`, `created_at`, `updated_at` |
 | `person_roles` | C | every column: `id`, `person_id`, `role`, `from_date`, `to_date`, `created_at`, `updated_at` |
-| `employments` | C | every column: `id`, `person_id`, `employment_number`, `relationship_type`, `business_unit_id`, `start_date`, `end_date`, `end_reason`, `contract_signed_at`, `revision`, `created_at`, `updated_at` |
+| `employments` | C | every column: `id`, `person_id`, `employment_number`, `relationship_type`, `business_unit_id`, `start_date`, `end_date`, `end_reason`, `contract_signed_at`, `holiday_scheme_id`, `revision`, `created_at`, `updated_at` |
 | `employment_terms` | C | `id`, `employment_id`, `valid_from`, `employment_type`, `temporary_ground`, `expected_end_date`, `appointment_form`, `hired_out_to`, `fte_percent`, `working_hours_scheme`, `full_time_hours_per_week`, `occupation_code`, `title`, `employee_type`, `department_id`, `location_id`, `manager_person_id`, `cost_centre`, `division`, `working_time_text`, `break_minutes`, `special_hours_text`, `overtime_rule_text`, `probation_end_date`, `probation_extension_agreed`, `probation_extended_to`, `probation_extension_reason`, `notice_employee`, `notice_employer`, `notice_unit`, `tariff_reference`, `holiday_terms_text`, `competence_development_text`, `social_security_text`, `revision`, `created_at`, `updated_at` |
 | `employment_terms` | A | `remuneration_type`, `pay_components`, `pay_method`, `payday_text`, `seniority_date`, `pay_grade` |
 | `employment_terms` | D | `note` |
 | `identity_links` | C | every column: `id`, `person_id`, `provider`, `external_id`, `state`, `managed`, `blocked_reason`, `last_error`, `attempts`, `next_attempt_at`, `lease_id`, `lease_until`, `last_synced_at`, `last_spec_hash`, `created_at`, `updated_at` |
-| `documents` | the category's | every column: `id`, `person_id`, `category_id`, `employment_id`, `object_key`, `file_name`, `content_type`, `size_bytes`, `valid_to`, `signed_at`, `uploaded_by_user_id`, `revision`, `created_at`, `updated_at` — a document is erased whole, by its [category's](#categories-and-classes) class |
+| `documents` | the category's | every column: `id`, `person_id`, `category_id`, `employment_id`, `object_key`, `file_name`, `content_type`, `size_bytes`, `valid_to`, `signed_at`, `uploaded_by_user_id`, `case_id`, `revision`, `created_at`, `updated_at` — a document is erased whole, by its [category's](#categories-and-classes) class |
 
 Ids, foreign keys, revisions and timestamps are C: they say that a row existed and
 when. An event's `payload_classes` are its fields' classes (`fieldClasses` in
@@ -1564,8 +1772,8 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `person_in_use` | 409 | Deleting a person with an employment, a user link or documents, or named as a manager. |
 | `legal_hold` | 409 | Deleting a person under a legal hold. |
 | `reassessment_not_due` | 409 | Recording a reassessment of a person who is not erased, already reassessed, or whose last employment ended less than twelve months ago or has not ended. |
-| `structure_archived` | 409 | A write newly names an archived row, or makes one the default. |
-| `structure_default` | 409 | Archiving the default, or the legal entity the default business unit sits under, or taking the flag off the default in place. |
+| `structure_archived` | 409 | A write newly names an archived row — a holiday scheme among them — or makes one the default. |
+| `structure_default` | 409 | Archiving the default, or the legal entity the default business unit sits under, or taking the flag off the default in place — a holiday scheme's too. |
 | `department_cycle` | 409 | A parent that is the department itself or below it. |
 | `revision_conflict` | 409 | The `If-Match` revision has moved on. |
 | `national_id_invalid` | 400 | Not a valid national identity number of its kind; a foreign id without its country. |
@@ -1594,7 +1802,8 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `document_count_exceeded` | 409 | Filing a document for a person who has 200. |
 | `category_restricted` | 403 | Filing, moving into or out of, or removing a health document without `staff:personal-data`. |
 | `category_in_use` | 409 | Archiving a category documents are filed under. |
-| `seed_immutable` | 409 | Changing a seeded document category. |
+| `seed_immutable` | 409 | Changing a seeded document category; changing a seeded absence type beyond its names, order and `hidden`, or showing the reserved `absent`. |
+| `holiday_scheme_in_use` | 409 | Archiving the default holiday scheme, or one an employment names. |
 | `person_erased` | 409 | Any write of a person the retention run has erased but the hold, the reassessment, an unlink and a rehire. |
 | `storage_unavailable` | 503 | The object store could not be written to or read from. |
 | `import_too_large` | 400 | An import file over 5 MiB. |
@@ -1650,7 +1859,16 @@ person's, which it moves on when the list changes.
   commits, so the checks across people are judged one at a time. An end takes no
   graph lock — it only takes edges away — unless it moves an earlier end later.
 - **The defaults.** A write of a legal entity or a business unit takes its table's
-  default lock first.
+  default lock first. A move of the default holiday scheme takes
+  `staff-holiday-schemes-default`, then the scheme it moves to and the default it
+  moves from, each `FOR UPDATE`.
+- **A holiday scheme's row.** An employment write naming a scheme takes the person's
+  row, the employment's, then the scheme's `FOR SHARE`; a scheme's change or archive
+  takes the scheme's row `FOR UPDATE` alone and never a person. So an archive and an
+  employment write naming the scheme are judged one after the other: whichever comes
+  second waits on the scheme's row and finds the scheme named
+  (`holiday_scheme_in_use`) or archived (`structure_archived`). The two take the
+  rows in one order, so they cannot deadlock.
 - **The sequence.** A create that generates an employee number holds the settings row
   until it commits, so two creators take numbers one after the other.
 - **The delete.** `DELETE /people/{id}` takes the person's row, then the manager graph,
@@ -1682,6 +1900,8 @@ All under `/api/v1/staff`.
 | `POST /people/{id}/documents`, `PUT /documents/{id}`, `DELETE /documents/{id}` | `staff:access`, then `staff:manage` or `staff:personal-data`, a health document `staff:personal-data` (judged in the module; otherwise 403) |
 | `GET /document-categories` | `staff:view`, `staff:manage` or `staff:personal-data` (judged in the module; otherwise 403) |
 | `POST /document-categories`, `PUT /document-categories/{id}` | `staff:manage` |
+| `GET /absence-types`, `GET /holiday-schemes` | `staff:access` (hidden types to `staff:manage` alone) |
+| `POST /absence-types`, `PUT /absence-types/{id}`, `POST /holiday-schemes`, `PUT /holiday-schemes/{id}` | `staff:manage` |
 | `GET /people/{id}/personal-data`, `PUT /people/{id}/legal-hold`, `POST /people/{id}/reassessed` | `staff:personal-data` |
 | `POST /people/similar-erased` | `staff:manage` |
 | `POST /people/import`, `GET /people/export.csv`, `GET /people/import-template.csv` | `staff:manage`; an import file's sealed columns `staff:personal-data` too (`import_sealed_columns`) |

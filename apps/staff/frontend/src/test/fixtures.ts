@@ -1,7 +1,7 @@
 import type { StaffImportResult } from "../api/data";
 import type { StaffDocument, StaffDocumentCategory } from "../api/documents";
 import type { StaffEmployment, StaffTerms } from "../api/employments";
-import type { StaffCapabilities, StaffMeta, StaffStructure } from "../api/meta";
+import type { StaffAbsenceType, StaffCapabilities, StaffHolidayScheme, StaffMeta, StaffStructure } from "../api/meta";
 import type {
   StaffAssignableUser,
   StaffBankAccountKind,
@@ -44,6 +44,9 @@ export const capabilitiesOf = (role: Role): StaffCapabilities => ({
   canRevealIdentifiers: holdsPersonalData(role),
   canSeeHealth: holdsPersonalData(role),
   canViewDirectory: role === "manage" || role === "view" || role === "personalData",
+  // staff:manage decides absence; no fixture role manages anyone by the terms.
+  canDecide: manages(role),
+  managesAnyone: false,
 });
 
 /** Whether the role lists people and reads the structure: `staff:view`'s and `staff:manage`'s. */
@@ -92,10 +95,67 @@ export const structure = (): StaffStructure => ({
   locations: locations(),
 });
 
+/** Two of the seeded absence types, as `/meta` answers the ones a caller may pick. */
+export const absenceTypes = (): StaffAbsenceType[] => [
+  {
+    id: 1001,
+    key: "ferie",
+    names: { en: "Holiday", nb: "Ferie" },
+    kind: "holiday",
+    unit: "days",
+    paid: true,
+    drawsHoliday: true,
+    allowsPercent: false,
+    needsDecision: true,
+    visibility: "absent",
+    seeded: true,
+    hidden: false,
+    reserved: false,
+    sort: 1,
+    revision: 1,
+  },
+  {
+    id: 1002,
+    key: "egenmelding",
+    names: { en: "Self-certified sick leave", nb: "Egenmelding" },
+    kind: "sick_self",
+    unit: "days",
+    paid: true,
+    drawsHoliday: false,
+    allowsPercent: false,
+    needsDecision: false,
+    visibility: "absent",
+    seeded: true,
+    hidden: false,
+    reserved: false,
+    sort: 2,
+    revision: 1,
+  },
+];
+
+/** The statutory holiday scheme, the default. */
+export const holidaySchemes = (): StaffHolidayScheme[] => [
+  {
+    id: 1001,
+    name: "Statutory (ferieloven)",
+    entitlementVirkedager: 25,
+    extraFrom60Virkedager: 6,
+    mainPeriodVirkedager: 18,
+    afterSeptemberVirkedager: 6,
+    maxCarryOverVirkedager: 12,
+    converted: { entitlement: 21, extraFrom60: 5, mainPeriod: 15, afterSeptember: 5, maxCarryOver: 10 },
+    isDefault: true,
+    seeded: true,
+    revision: 1,
+  },
+];
+
 export const meta = (role: Role = "manage", overrides: Partial<StaffMeta> = {}): StaffMeta => ({
   capabilities: capabilitiesOf(role),
   timeZone: "Europe/Oslo",
   today: TODAY,
+  absenceTypes: absenceTypes(),
+  holidaySchemes: holidaySchemes(),
   // The structure is staff:view's and staff:manage's (plan reading 15).
   ...(readsDirectory(role) ? { structure: structure() } : {}),
   ...overrides,
@@ -110,6 +170,12 @@ export const settings = (overrides: Partial<StaffSettings> = {}): StaffSettings 
   healthRetentionDays: 365,
   retention: { pendingDeletions: 0, failingDeletions: 0 },
   thresholdsAcknowledged: {},
+  selfCertPolicy: "minimum",
+  selfCertDaysPerOccurrence: 3,
+  selfCertOccurrencesPerYear: 4,
+  selfCertDaysPerYear: 24,
+  selfCertAfterMonths: 2,
+  autoCarryOver: false,
   revision: 3,
   ...overrides,
 });
@@ -144,6 +210,9 @@ export type PersonRecord = Pick<
   | "city"
   | "country"
   | "notes"
+  | "childrenUnder12"
+  | "soleCarer"
+  | "chronicallyIllChildren"
   | "legalHold"
   | "reassessedAt"
 > & {

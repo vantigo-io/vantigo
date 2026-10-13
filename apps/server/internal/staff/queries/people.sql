@@ -11,7 +11,8 @@ SELECT
     work_email, phone_work, phone_mobile, phone_private, private_email,
     street, postal_code, city, country, work_country, preferred_language,
     bank_account_kind, bank_account_last4, notes, revision,
-    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at
+    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
+    children_under_12, sole_carer, chronically_ill_children
 FROM staff.people
 WHERE id = @id;
 
@@ -68,17 +69,20 @@ INSERT INTO staff.people (
     employee_number, given_name, family_name, display_name, birth_date, gender,
     work_email, phone_work, phone_mobile, phone_private, private_email,
     street, postal_code, city, country, work_country, preferred_language, notes,
+    children_under_12, sole_carer, chronically_ill_children,
     created_at, updated_at
 ) VALUES (
     @employee_number, @given_name, @family_name, @display_name, @birth_date, @gender,
     @work_email, @phone_work, @phone_mobile, @phone_private, @private_email,
     @street, @postal_code, @city, @country, @work_country, @preferred_language, @notes,
+    @children_under_12, @sole_carer, @chronically_ill_children,
     @now::timestamptz, @now::timestamptz
 )
 RETURNING id;
 
 -- name: UpdatePerson :exec
--- UpdatePerson replaces a person's editable fields and moves the revision on.
+-- UpdatePerson replaces a person's editable fields — the care-day fields
+-- among them (delivery B) — and moves the revision on.
 -- The employee number, the sealed fields, the flags and the link are not
 -- among them.
 UPDATE staff.people SET
@@ -99,6 +103,9 @@ UPDATE staff.people SET
     work_country = @work_country,
     preferred_language = @preferred_language,
     notes = @notes,
+    children_under_12 = @children_under_12,
+    sole_carer = @sole_carer,
+    chronically_ill_children = @chronically_ill_children,
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = @id;
@@ -341,7 +348,8 @@ SELECT
     work_email, phone_work, phone_mobile, phone_private, private_email,
     street, postal_code, city, country, work_country, preferred_language,
     bank_account_kind, bank_account_last4, notes, revision,
-    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at
+    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
+    children_under_12, sole_carer, chronically_ill_children
 FROM staff.people
 ORDER BY id
 LIMIT @max_rows;

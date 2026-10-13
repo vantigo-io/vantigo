@@ -163,7 +163,7 @@ interface Audience {
   colleague: boolean;
 }
 
-type Group = "work" | "dates" | "employment" | "pay" | "private" | "notes" | "sealed" | "hold";
+type Group = "work" | "dates" | "employment" | "pay" | "private" | "notes" | "sealed" | "hold" | "careDays";
 
 /** Design §5's field groups, as `shaping.go` keys them; a field not named is the employment group's. */
 const groupOf: Record<string, Group> = {
@@ -224,6 +224,10 @@ const groupOf: Record<string, Group> = {
   legalHold: "hold",
   legalHoldReason: "hold",
   reassessedAt: "hold",
+  // The care-day fields (design §5): the person's, HR's and staff:personal-data's.
+  childrenUnder12: "careDays",
+  soleCarer: "careDays",
+  chronicallyIllChildren: "careDays",
 };
 
 /**
@@ -245,6 +249,7 @@ const reads = (audience: Audience, group: Group): boolean => {
     case "pay":
     case "private":
     case "sealed":
+    case "careDays":
       return audience.self || hr;
     case "notes":
     case "hold":
@@ -273,6 +278,8 @@ const shape = <T extends object>(
 /** The request properties `PUT /people/{id}` and `POST /people` take (`StaffPersonRequest`). */
 const personRequestProperties = [
   "birthDate",
+  "childrenUnder12",
+  "chronicallyIllChildren",
   "city",
   "country",
   "displayName",
@@ -287,6 +294,7 @@ const personRequestProperties = [
   "postalCode",
   "preferredLanguage",
   "privateEmail",
+  "soleCarer",
   "street",
   "workCountry",
   "workEmail",
@@ -965,7 +973,15 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
             workCountry: workCountry ?? "NO",
             preferredLanguage: preferredLanguage ?? "nb",
           });
-          for (const field of [...privateFields, "birthDate", "gender", "notes"])
+          for (const field of [
+            ...privateFields,
+            "birthDate",
+            "gender",
+            "notes",
+            "childrenUnder12",
+            "soleCarer",
+            "chronicallyIllChildren",
+          ])
             delete (record as Record<string, unknown>)[field];
           Object.assign(record, rest);
           bumpRevision(stored);
@@ -1571,10 +1587,27 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         if (refused) return Promise.resolve(refused);
         // A replace — but the retention periods left out keep their values,
         // and the derived block and the acknowledgements are not the body's.
-        const { retention, thresholdsAcknowledged, retentionGraceDays, healthRetentionDays } = state.settings;
+        const { retention, thresholdsAcknowledged, retentionGraceDays, healthRetentionDays, ...kept } = state.settings;
+        // The self-certification policy and the carry-over left out keep theirs too.
+        const {
+          selfCertPolicy,
+          selfCertDaysPerOccurrence,
+          selfCertOccurrencesPerYear,
+          selfCertDaysPerYear,
+          selfCertAfterMonths,
+          autoCarryOver,
+          autoCarryOverSince,
+        } = kept;
         state.settings = {
           retentionGraceDays,
           healthRetentionDays,
+          selfCertPolicy,
+          selfCertDaysPerOccurrence,
+          selfCertOccurrencesPerYear,
+          selfCertDaysPerYear,
+          selfCertAfterMonths,
+          autoCarryOver,
+          ...(autoCarryOverSince ? { autoCarryOverSince } : {}),
           employeeNumberPrefix: "",
           ...(body as StaffSettingsInput),
           retention,

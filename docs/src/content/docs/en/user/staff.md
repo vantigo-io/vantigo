@@ -106,6 +106,13 @@ nobody: their people go to the department's manager, or the next one up.
 2. Change what you need and press **Save**. A refusal lands on its field — a work email
    another person has, for one.
 
+A person also has three **care-day fields** — the children under twelve, the
+chronically ill or disabled children and whether the person cares for them alone —
+which the care-day count for a sick child will read. The form does not show them yet,
+and saving it keeps them as they are; HR sets them through the API until the person's
+Absence tab arrives ([the care-day fields](/en/admin/staff/#the-care-day-fields)). The
+person, HR and `staff:personal-data` read them; a manager and a colleague never do.
+
 If somebody else saved the person since you opened the form, the form closes, the page
 reloads and says *Somebody else saved this; it has been reloaded*. Make your change
 again on what is there now.

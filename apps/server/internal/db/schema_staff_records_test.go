@@ -33,6 +33,10 @@ var staffRecordsTables = []string{"document_categories", "documents", "object_de
 func TestStaffRecords_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, staffRecordsVersion)
+	// What is pinned below is 00043's own schema: the later migrations — 00047's
+	// columns on employments, documents and settings among them — are rolled
+	// back first, and pinned by their own tests.
+	migrateTo(t, url, staffRecordsVersion)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)
