@@ -1276,6 +1276,52 @@ dokumentet allerede underveis som EHF, eller levert, sier e-postdialogen *Dette
 dokumentet er allerede underveis som EHF, eller levert*; en e-post sender da kunden en
 kopi til.
 
+## Vipps og betalingslenker
+
+Fakturaer får Vipps MobilePay: en betalingslenke på en utstedt faktura som kunden
+betaler fra telefonen, og betaling på stedet, der kunden skanner en QR-kode ved disken.
+Denne delen vokser etter hvert som skjermbildene kommer; det som er på plass nå, er
+oppsettet en leder (`invoices:manage`) gjør først.
+
+### Sett opp Vipps
+
+Vipps krever firmaets avtale med Vipps MobilePay om integrert betaling og nøklene til
+**salgsenheten** fra Vipps' bedriftsportal: salgsenhetens nummer (MSN, opptil ti
+sifre), **klient-ID**, **klienthemmelighet** og **abonnementsnøkkel**. Fyll inn alle
+fire første gang. Senere kan du fylle inn bare det som endres — en nøkkel du lar stå
+tom, beholder den lagrede. Nøklene vises aldri igjen, heller ikke for deg.
+
+**Bekreft** spør Vipps om nøklene og salgsenheten godtas, og svarer *ok*, *avvist*
+(Vipps godtar ikke nøklene: fyll dem inn på nytt) eller *utilgjengelig* (Vipps kunne
+ikke nås; prøv igjen senere). Når Vipps avviser nøklene, når som helst, husker Fakturaer
+det og tilbyr ingen Vipps-betaling før nye nøkler er lagret eller en bekreftelse
+lykkes.
+
+Mens en Vipps-betaling pågår, kan du ikke bytte til en annen salgsenhet, en annen
+klient-ID eller en annen abonnementsnøkkel, og heller ikke fjerne nøklene: Fakturaer
+trenger dem fortsatt for å fullføre betalingen. En ny klienthemmelighet alene — en
+rotasjon for samme salgsenhet — er alltid tillatt.
+
+### Betalingslenker og betaling på stedet
+
+To brytere i betalingsinnstillingene bestemmer hva Vipps brukes til. Alle med
+`invoices:access` kan lese dem; å endre dem krever `invoices:manage`.
+
+- **Betalingslenker** setter en lenke til en betalingsside på utstedte fakturaer. De
+  krever adressen til salgsvilkårene og til personvernerklæringen deres — begge
+  `https`-adresser, som Vipps og betalingssiden viser kunden — lagrede Vipps-nøkler,
+  og en betalingsside som kan nås fra internett, som driftsansvarlig setter opp
+  (`PUBLIC_BASE_URL`); uten den nekter Fakturaer å slå på betalingslenker.
+- **Betaling på stedet** lar deg ta imot en Vipps-betaling fra en kunde som står foran
+  deg. Det er kontantsalg: fakturaen er da en kontantfaktura og må oppfylle reglene for
+  en slik. Når du slår det på, vises merknaden om kontantsalg, som du må bekrefte;
+  Fakturaer registrerer hvem som bekreftet den og når, og glemmer det når betaling på
+  stedet slås av igjen.
+
+Begge krever lagrede Vipps-nøkler for å kunne slås på. Om hver av dem faktisk er
+tilgjengelig — slått på av driftsansvarlig, nøklene ikke avvist, innstillingen på — er
+det Fakturaer-appen går etter.
+
 ## Kontrollere journalen
 
 **Fakturajournal** i sidemenyen er beviset bokføringsforskriften krever: hvert utstedte

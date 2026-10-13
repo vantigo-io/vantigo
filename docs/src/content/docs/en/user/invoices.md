@@ -1255,6 +1255,52 @@ otherwise with the customer. When the document is already on its way as EHF, or
 delivered, the e-mail dialog notes *This document is already on its way as EHF, or
 delivered*; an e-mail then sends the customer a second copy.
 
+## Vipps and pay links
+
+Invoices is getting Vipps MobilePay: a pay link on an issued invoice that the customer
+pays from their phone, and payment on site, where the customer scans a QR code at the
+counter. This section grows as the screens arrive; what is in place now is the setup a
+manager (`invoices:manage`) makes first.
+
+### Set up Vipps
+
+Vipps needs the company's agreement with Vipps MobilePay for integrated payments and the
+keys of its **sales unit** from the Vipps business portal: the sales unit's number (the
+MSN, up to ten digits), the **client id**, the **client secret** and the **subscription
+key**. Enter all four the first time. Later you may enter only what changes — a key
+you leave empty keeps the stored one. The keys are never shown again, not even to you.
+
+**Verify** asks Vipps whether it accepts the keys and the sales unit, and answers
+*ok*, *refused* (Vipps does not accept the keys: enter them again) or *unreachable*
+(Vipps could not be reached; try again later). When Vipps refuses the keys at any time,
+Invoices remembers it and offers no Vipps payment until new keys are stored or a verify
+succeeds.
+
+While a Vipps payment is in progress you cannot switch to another sales unit, another
+client id or another subscription key, nor remove the keys: Invoices still needs them to
+finish that payment. A new client secret alone — a rotation of the same sales unit — is
+always allowed.
+
+### Pay links and payment on site
+
+Two switches in the payment settings decide what Vipps is used for. Anyone with
+`invoices:access` may read them; changing them needs `invoices:manage`.
+
+- **Pay links** put a link to a pay page on issued invoices. They need the address of
+  your sales terms and of your privacy notice — both `https` addresses, which Vipps
+  and the pay page show the customer — stored Vipps keys, and a pay page reachable from
+  the internet, which your operator sets up (`PUBLIC_BASE_URL`); without it Invoices
+  refuses to turn pay links on.
+- **Payment on site** lets you take a Vipps payment from a customer standing in front of
+  you. That is a cash sale (*kontantsalg*): the invoice is then a cash invoice
+  (*kontantfaktura*) and must meet the rules for one. Turning it on shows the
+  kontantsalg notice, which you must acknowledge; Invoices records who acknowledged it
+  and when, and forgets it when payment on site is turned off again.
+
+Both need stored Vipps keys to be turned on. Whether each is actually available —
+switched on by your operator, keys not refused, the setting on — is what the Invoices
+app goes by.
+
 ## Checking the journal
 
 **Invoice journal** in the sidebar is the proof the bookkeeping regulation asks for:

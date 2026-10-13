@@ -59,6 +59,10 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 	if err != nil {
 		return nil, err
 	}
+	pay, err := s.paymentsAvailable(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	return gen.GetInvoicesMeta200JSONResponse(gen.InvoicesMetaResponse{
 		Currency:                       row.DefaultCurrency,
 		DefaultPaymentTermsDays:        row.DefaultPaymentTermsDays,
@@ -76,18 +80,23 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 		// the billable reads composed, each optional.
 		WorkAvailable:    s.workAvailable(),
 		RemindersEnabled: reminders.Enabled,
+		// Vipps (invoices payments and reminders design D1, D14).
+		PayLinksAvailable:        pay.payLinks,
+		OnSitePaymentsAvailable:  pay.onSite,
+		VippsCredentialsRejected: pay.rejected,
 		Work: gen.InvoicesMetaWork{
 			Hours: s.deps.BillableHours != nil, Expenses: s.deps.BillableExpenses != nil, Milestones: s.deps.BillableMilestones != nil,
 		},
 		Capabilities: gen.InvoicesMetaCapabilities{
-			CanCreate:           s.has(ctx, "invoices:create"),
-			CanImportBankFiles:  s.has(ctx, "invoices:payments"),
-			CanIssue:            canIssue,
-			CanManage:           s.has(ctx, "invoices:manage"),
-			CanRegisterPayments: s.has(ctx, "invoices:payments"),
-			CanRunReminders:     s.has(ctx, "invoices:payments"),
-			CanSend:             canIssue && mail,
-			CanSendEhf:          canIssue && ehf,
+			CanCreate:            s.has(ctx, "invoices:create"),
+			CanImportBankFiles:   s.has(ctx, "invoices:payments"),
+			CanIssue:             canIssue,
+			CanManage:            s.has(ctx, "invoices:manage"),
+			CanRegisterPayments:  s.has(ctx, "invoices:payments"),
+			CanRunReminders:      s.has(ctx, "invoices:payments"),
+			CanSend:              canIssue && mail,
+			CanSendEhf:           canIssue && ehf,
+			CanTakeOnSitePayment: canIssue && pay.onSite,
 		},
 	}), nil
 }
@@ -118,6 +127,36 @@ func (s *server) ehfAvailable(ctx context.Context, q *store.Queries, settings st
 	available = s.deps.Config != nil && s.deps.Config.InvoicesEhfEnabled &&
 		s.peppolLookup != nil && settings.PeppolID != nil && *settings.PeppolID != ""
 	return available, rejected, nil
+}
+
+// paymentAvailability is meta's three payment fields.
+type paymentAvailability struct {
+	payLinks, onSite, rejected bool
+}
+
+// paymentsAvailable is what Vipps offers this installation now (D1, D14):
+// pay links with INVOICES_VIPPS_ENABLED on, PUBLIC_BASE_URL set, credentials
+// stored and not rejected and the settings' switch on; on-site payment the
+// same without PUBLIC_BASE_URL. rejected is reported beside, never folded
+// into the rest of the answer, so a page can say why. Nothing here touches
+// the network.
+func (s *server) paymentsAvailable(ctx context.Context, q *store.Queries) (paymentAvailability, error) {
+	creds, err := q.GetPaymentCredentials(ctx)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return paymentAvailability{}, nil
+	case err != nil:
+		return paymentAvailability{}, fmt.Errorf("invoices: read the Vipps credentials: %w", err)
+	}
+	settings, err := q.GetPaymentSettings(ctx)
+	if err != nil {
+		return paymentAvailability{}, fmt.Errorf("invoices: read the payment settings: %w", err)
+	}
+	out := paymentAvailability{rejected: creds.RejectedAt != nil}
+	usable := s.deps.Config != nil && s.deps.Config.InvoicesVippsEnabled && !out.rejected
+	out.payLinks = usable && s.deps.Config.PublicBaseURL != "" && settings.PayLinksEnabled
+	out.onSite = usable && settings.OnSitePaymentsEnabled
+	return out, nil
 }
 
 // anythingIssued is "the counter row exists" (D2), never a count of documents.

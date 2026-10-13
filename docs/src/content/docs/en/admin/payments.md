@@ -8,6 +8,8 @@ sources:
   - apps/server/internal/invoices/bankimport.go
   - apps/server/internal/invoices/bankaccounts.go
   - apps/server/internal/invoices/reminder_worker.go
+  - apps/server/internal/invoices/vipps_settings.go
+  - apps/server/internal/invoices/payment_settings.go
   - apps/server/internal/payments
   - apps/server/internal/security/publichost.go
 ---
@@ -184,6 +186,69 @@ letters under a 60-second lease and never send one twice on purpose.
   the customer's mail program can tell it is the same letter. If the process instead stalls past the
   letter's 60-second lease in that window, someone may withdraw the letter meanwhile:
   it was mailed but is recorded `withdrawn`, and the worker logs a warning naming it.
+
+## Vipps
+
+Invoices takes Vipps MobilePay payments through the
+[payments port](/en/contributing/platform-packages/#the-payments-port): pay links on
+issued invoices, and payment on site. This is the operator's side of it; the rules are in
+[the reference](/en/reference/invoices/#credentials-and-payment-settings).
+
+**Preconditions:**
+
+- The company has an agreement with Vipps MobilePay for integrated payments
+  (*Integrert betaling*, the ePayment API) and a **sales unit** for it in the Vipps
+  business portal. One sales unit serves the whole
+  installation.
+- The sales unit's API keys, from the portal's *For developers → API keys*: the client id, the
+  client secret and the subscription key, beside the sales unit's number (MSN).
+- For pay links, a public host for the pay page ([The public host](#the-public-host)).
+  On-site payment needs none.
+
+**Steps:**
+
+1. Leave `INVOICES_VIPPS_ENABLED` at its default, on. `0` switches Vipps off on this
+   installation: no request is ever sent to Vipps, the keys cannot be verified, and
+   nothing Vipps offers is available — while the stored keys and settings are kept.
+2. Leave `INVOICES_VIPPS_BASE_URL` at its default, `https://api.vipps.no`, for real
+   payments. To try the whole flow first, point it at Vipps' test environment,
+   `https://apitest.vipps.no`, with a **test** sales unit's keys — never production
+   keys against the test environment, or test keys against production; a sales unit's
+   keys work in its own environment only. Restart after changing either.
+3. A manager (`invoices:manage`) enters the MSN and the three keys in the Invoices
+   settings and verifies them. The keys are sealed by the secrets box under
+   `invoices/payment-provider-credential`; they depend on `APP_SECRET`, as every sealed
+   secret does.
+4. A manager sets the payment settings: pay links (with the seller's sales terms and
+   privacy notice URLs) and payment on site.
+
+**Verify:** the verify answers *ok*. It fetches an access token with the keys and reads
+the sales unit's webhook registrations, which needs the keys and the MSN together.
+
+**Rotating a key.** A new client secret for the same sales unit may be stored at any
+time; enter only the secret, and the other two keys are kept. A change of the MSN, the
+client id or the subscription key — another sales unit — is refused while a Vipps
+payment is in progress, because finishing it needs the keys it was made with: wait until
+the payments in progress are finished. Removing the keys is refused for the same reason.
+
+**On-site payment is kontantsalg.** A payment taken from a customer standing at the
+counter is a cash sale, and the invoice is then a cash invoice (*kontantfaktura*) with the
+rules that come with one — the buyer identified on it, and the sale in the cash records
+of the day. Turning it on asks the manager to acknowledge that notice, and records who
+did and when. Have your accountant or auditor read the notice before turning on-site
+payment on in production.
+
+**What can go wrong:**
+
+- *Refused* on verify: Vipps does not accept the keys or the MSN — a key mistyped, a key
+  from the other environment, or a sales unit without the ePayment product. Enter the
+  keys again. While Vipps refuses them, meta reports it and nothing Vipps offers is
+  available.
+- *Unreachable* on verify: the network, a timeout, a Vipps outage or a throttle. Check
+  that the server can reach `INVOICES_VIPPS_BASE_URL` over https, and try again.
+- The keys cannot be opened: `APP_SECRET` changed since they were stored. Invoices logs
+  it at error, flags the keys as refused and answers *payments unavailable*; enter all
+  three keys again.
 
 ## The public host
 

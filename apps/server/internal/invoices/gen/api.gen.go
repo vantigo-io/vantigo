@@ -1224,6 +1224,27 @@ func (e InvoicesTransmissionResolutionOutcome) Valid() bool {
 	}
 }
 
+// Defines values for InvoicesVippsVerifyResponseResult.
+const (
+	Ok           InvoicesVippsVerifyResponseResult = "ok"
+	Unauthorized InvoicesVippsVerifyResponseResult = "unauthorized"
+	Unreachable  InvoicesVippsVerifyResponseResult = "unreachable"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesVippsVerifyResponseResult enum.
+func (e InvoicesVippsVerifyResponseResult) Valid() bool {
+	switch e {
+	case Ok:
+		return true
+	case Unauthorized:
+		return true
+	case Unreachable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetInvoicesBankTransactionsParamsStatus.
 const (
 	GetInvoicesBankTransactionsParamsStatusDuplicate GetInvoicesBankTransactionsParamsStatus = "duplicate"
@@ -2427,6 +2448,9 @@ type InvoicesMetaCapabilities struct {
 
 	// CanSendEhf invoices:issue and ehfAvailable — send an issued document to the customer as EHF over Peppol.
 	CanSendEhf bool `json:"canSendEhf"`
+
+	// CanTakeOnSitePayment invoices:issue and onSitePaymentsAvailable — take a Vipps payment on site, and see an invoice's pay link and its QR code on screen (invoices payments and reminders design D1, D17).
+	CanTakeOnSitePayment bool `json:"canTakeOnSitePayment"`
 }
 
 // InvoicesMetaResponse What every Invoices page needs before it draws anything (invoices foundation design D2).
@@ -2455,6 +2479,12 @@ type InvoicesMetaResponse struct {
 	// MissingSellerFields The seller fields issuing still needs, by their camelCase names (legalName, organisationNumber, addressLine1, postalCode, city, bankAccount). Empty when the seller is complete.
 	MissingSellerFields []string `json:"missingSellerFields"`
 
+	// OnSitePaymentsAvailable Whether a Vipps payment can be taken on site (invoices payments and reminders design D1, D17) — INVOICES_VIPPS_ENABLED is on, Vipps credentials are stored and not rejected, and the payment settings' onSitePaymentsEnabled is on. Without it canTakeOnSitePayment is false.
+	OnSitePaymentsAvailable bool `json:"onSitePaymentsAvailable"`
+
+	// PayLinksAvailable Whether issued invoices can carry a Vipps pay link (invoices payments and reminders design D1, D15) — INVOICES_VIPPS_ENABLED is on, PUBLIC_BASE_URL is set, Vipps credentials are stored and not rejected, and the payment settings' payLinksEnabled is on.
+	PayLinksAvailable bool `json:"payLinksAvailable"`
+
 	// RemindersEnabled Whether reminders are offered at all — the reminder settings' enabled (invoices payments and reminders design D7). Off, every invoice's next action is blocked reminders_disabled and a run is refused.
 	RemindersEnabled bool `json:"remindersEnabled"`
 
@@ -2472,6 +2502,9 @@ type InvoicesMetaResponse struct {
 
 	// VatCodes The VAT codes a new line may take — active, with a rate period covering today — each with today's rate.
 	VatCodes []InvoicesVatCodeInForce `json:"vatCodes"`
+
+	// VippsCredentialsRejected Whether Vipps refused the stored credentials (a 401 or 403) or the server could not open them. Cleared by a new PUT /invoices/settings/vipps and by a verify that succeeds. False without credentials. While true, payLinksAvailable and onSitePaymentsAvailable are false.
+	VippsCredentialsRejected bool `json:"vippsCredentialsRejected"`
 
 	// Work Which kinds of work this installation can invoice (invoices work design D3) — each true when the module that owns it is switched on and provides its billable read.
 	Work InvoicesMetaWork `json:"work"`
@@ -2602,6 +2635,30 @@ type InvoicesPaymentRequest struct {
 	Note      *string            `json:"note,omitempty"`
 	PaidOn    openapi_types.Date `json:"paidOn"`
 	Reference *string            `json:"reference,omitempty"`
+}
+
+// InvoicesPaymentSettings The payment settings (invoices payments and reminders design D14). referencePrefix is the six base36 characters every Vipps payment reference starts with, made once by the installation and never changed. payLinksEnabled puts a Vipps pay link on issued invoices; termsUrl and privacyUrl are the seller's sales terms and privacy notice, shown by Vipps and on the pay page, absent while unset. onSitePaymentsEnabled offers an on-site Vipps payment, as kontantsalg on a kontantfaktura; kontantsalgAcknowledgedBy and kontantsalgAcknowledgedAt are who acknowledged the kontantsalg notice when turning it on, and when — absent while it is off. revision is the one a PUT must name.
+type InvoicesPaymentSettings struct {
+	KontantsalgAcknowledgedAt *time.Time          `json:"kontantsalgAcknowledgedAt,omitempty"`
+	KontantsalgAcknowledgedBy *openapi_types.UUID `json:"kontantsalgAcknowledgedBy,omitempty"`
+	OnSitePaymentsEnabled     bool                `json:"onSitePaymentsEnabled"`
+	PayLinksEnabled           bool                `json:"payLinksEnabled"`
+	PrivacyUrl                *string             `json:"privacyUrl,omitempty"`
+	ReferencePrefix           string              `json:"referencePrefix"`
+	Revision                  int32               `json:"revision"`
+	TermsUrl                  *string             `json:"termsUrl,omitempty"`
+	UpdatedAt                 time.Time           `json:"updatedAt"`
+	UpdatedBy                 *openapi_types.UUID `json:"updatedBy,omitempty"`
+}
+
+// InvoicesPaymentSettingsRequest PUT /settings/payments' body, a full replace (D14). payLinksEnabled, termsUrl, privacyUrl, onSitePaymentsEnabled and revision are required — a body without one is a 400 on it — and null is a value only for termsUrl and privacyUrl, each otherwise an absolute https URL of at most 500 characters. Pay links need both URLs. Turning onSitePaymentsEnabled on needs acknowledgeKontantsalg true in the same body (a 400 on acknowledgeKontantsalg otherwise), which records the caller and the time; turning it off clears them. revision is the one the caller read: a stale one is a 409 naming both.
+type InvoicesPaymentSettingsRequest struct {
+	AcknowledgeKontantsalg *bool           `json:"acknowledgeKontantsalg,omitempty"`
+	OnSitePaymentsEnabled  json.RawMessage `json:"onSitePaymentsEnabled"`
+	PayLinksEnabled        json.RawMessage `json:"payLinksEnabled"`
+	PrivacyUrl             json.RawMessage `json:"privacyUrl"`
+	Revision               json.RawMessage `json:"revision"`
+	TermsUrl               json.RawMessage `json:"termsUrl"`
 }
 
 // InvoicesPrintBatch A batch of paper letters printed for one posting day (D10, reading 39): postOn is the day every letter's facts were judged for — sentOn, the deadline from it, the fee — and the only day it may be confirmed posted. postedOn, postedBy and postedAt are set together once it is posted, which sends its printed letters; reprintedAt once it is reprinted, which returns them to awaiting print. A batch is posted or reprinted, never both. letters are the letters naming it: printed until it is posted or reprinted, sent once it is posted, and any withdrawn by hand since printing.
@@ -3223,6 +3280,29 @@ type InvoicesVatSummary struct {
 	VatCategory     string  `json:"vatCategory"`
 }
 
+// InvoicesVippsSettings The stored Vipps MobilePay credentials as a client may see them (invoices payments and reminders design D14) — never a key. msn is the sales unit (Merchant Serial Number), absent when nothing is stored, which also answers hasCredentials false. rejectedAt is when Vipps first refused the keys (a 401 or 403) or the server could not open them, absent while it has not; a PUT and a verify that succeeds clear it.
+type InvoicesVippsSettings struct {
+	HasCredentials bool       `json:"hasCredentials"`
+	Msn            *string    `json:"msn,omitempty"`
+	RejectedAt     *time.Time `json:"rejectedAt,omitempty"`
+}
+
+// InvoicesVippsSettingsRequest PUT /settings/vipps' body (D14). msn is the sales unit, 1-10 digits. clientId, clientSecret and subscriptionKey are the sales unit's keys, each at most 1 000 characters: omitted or null keeps the stored one — all three are required the first time — and an empty or blank one is a 400. The keys are sealed together by the secrets box and never answered. A change of msn, clientId or subscriptionKey is refused 409 payment_attempts_active while a Vipps payment is in flight; a new clientSecret alone is not.
+type InvoicesVippsSettingsRequest struct {
+	ClientId        *string `json:"clientId,omitempty"`
+	ClientSecret    *string `json:"clientSecret,omitempty"`
+	Msn             string  `json:"msn"`
+	SubscriptionKey *string `json:"subscriptionKey,omitempty"`
+}
+
+// InvoicesVippsVerifyResponse What Vipps answered a token fetch and an authenticated read naming the sales unit. result is ok (the keys and the sales unit are accepted; rejectedAt is cleared), unauthorized (Vipps refused them — a 401 or 403 — which also flags them as rejected) or unreachable (anything else: the network, a timeout, a 5xx, a throttle).
+type InvoicesVippsVerifyResponse struct {
+	Result InvoicesVippsVerifyResponseResult `json:"result"`
+}
+
+// InvoicesVippsVerifyResponseResult defines model for InvoicesVippsVerifyResponse.Result.
+type InvoicesVippsVerifyResponseResult string
+
 // InvoicesWorkExpense One expense line ready to invoice and not yet invoiced (invoices work design D3): its kind (outlay, mileage or supplier_invoice), date, description, the supplier and its invoice number on a supplier invoice, the net amount, the markup, the distance and the rate per km on mileage, and billAmount, what the customer is billed with the markup in it. selectable and reason as on an hour (never fixed_price: only hours are a fixed-price project's information). warnings: currency_not_nok, and supplier_invoice_rebilled — a supplier invoice whose supplier and number another entry already invoiced, or that another row of this answer repeats.
 type InvoicesWorkExpense struct {
 	BillAmount    float64            `json:"billAmount"`
@@ -3575,8 +3655,14 @@ type PutInvoicesSettingsJSONRequestBody = InvoicesSettingsRequest
 // PutInvoicesSettingsAccessPointJSONRequestBody defines body for PutInvoicesSettingsAccessPoint for application/json ContentType.
 type PutInvoicesSettingsAccessPointJSONRequestBody = InvoicesAccessPointRequest
 
+// PutInvoicesSettingsPaymentsJSONRequestBody defines body for PutInvoicesSettingsPayments for application/json ContentType.
+type PutInvoicesSettingsPaymentsJSONRequestBody = InvoicesPaymentSettingsRequest
+
 // PutInvoicesSettingsRemindersJSONRequestBody defines body for PutInvoicesSettingsReminders for application/json ContentType.
 type PutInvoicesSettingsRemindersJSONRequestBody = InvoicesReminderSettingsRequest
+
+// PutInvoicesSettingsVippsJSONRequestBody defines body for PutInvoicesSettingsVipps for application/json ContentType.
+type PutInvoicesSettingsVippsJSONRequestBody = InvoicesVippsSettingsRequest
 
 // PostInvoicesVatCodesJSONRequestBody defines body for PostInvoicesVatCodes for application/json ContentType.
 type PostInvoicesVatCodesJSONRequestBody = InvoicesVatCodeCreateRequest
@@ -3766,12 +3852,30 @@ type ServerInterface interface {
 	// PostInvoicesSettingsAccessPointVerify Verify the access-point credentials
 	// (POST /api/v1/invoices/settings/access-point/verify)
 	PostInvoicesSettingsAccessPointVerify(w http.ResponseWriter, r *http.Request)
+	// GetInvoicesSettingsPayments Get the payment settings
+	// (GET /api/v1/invoices/settings/payments)
+	GetInvoicesSettingsPayments(w http.ResponseWriter, r *http.Request)
+	// PutInvoicesSettingsPayments Change the payment settings
+	// (PUT /api/v1/invoices/settings/payments)
+	PutInvoicesSettingsPayments(w http.ResponseWriter, r *http.Request)
 	// GetInvoicesSettingsReminders Get the reminder settings
 	// (GET /api/v1/invoices/settings/reminders)
 	GetInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request)
 	// PutInvoicesSettingsReminders Change the reminder settings
 	// (PUT /api/v1/invoices/settings/reminders)
 	PutInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request)
+	// DeleteInvoicesSettingsVipps Remove the Vipps credentials
+	// (DELETE /api/v1/invoices/settings/vipps)
+	DeleteInvoicesSettingsVipps(w http.ResponseWriter, r *http.Request)
+	// GetInvoicesSettingsVipps Get the Vipps credentials
+	// (GET /api/v1/invoices/settings/vipps)
+	GetInvoicesSettingsVipps(w http.ResponseWriter, r *http.Request)
+	// PutInvoicesSettingsVipps Store the Vipps credentials
+	// (PUT /api/v1/invoices/settings/vipps)
+	PutInvoicesSettingsVipps(w http.ResponseWriter, r *http.Request)
+	// PostInvoicesSettingsVippsVerify Verify the Vipps credentials
+	// (POST /api/v1/invoices/settings/vipps/verify)
+	PostInvoicesSettingsVippsVerify(w http.ResponseWriter, r *http.Request)
 	// GetInvoicesStatsAttention Get the invoices dashboard attention items
 	// (GET /api/v1/invoices/stats/attention)
 	GetInvoicesStatsAttention(w http.ResponseWriter, r *http.Request)
@@ -5420,6 +5524,34 @@ func (siw *ServerInterfaceWrapper) PostInvoicesSettingsAccessPointVerify(w http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetInvoicesSettingsPayments operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesSettingsPayments(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesSettingsPayments(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInvoicesSettingsPayments operation middleware
+func (siw *ServerInterfaceWrapper) PutInvoicesSettingsPayments(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInvoicesSettingsPayments(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetInvoicesSettingsReminders operation middleware
 func (siw *ServerInterfaceWrapper) GetInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request) {
 
@@ -5439,6 +5571,62 @@ func (siw *ServerInterfaceWrapper) PutInvoicesSettingsReminders(w http.ResponseW
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutInvoicesSettingsReminders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInvoicesSettingsVipps operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInvoicesSettingsVipps(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInvoicesSettingsVipps(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesSettingsVipps operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesSettingsVipps(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesSettingsVipps(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInvoicesSettingsVipps operation middleware
+func (siw *ServerInterfaceWrapper) PutInvoicesSettingsVipps(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInvoicesSettingsVipps(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesSettingsVippsVerify operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesSettingsVippsVerify(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesSettingsVippsVerify(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6487,6 +6675,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.GetInvoicesSettingsAccessPoint)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.PutInvoicesSettingsAccessPoint)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/settings/access-point/verify", wrapper.PostInvoicesSettingsAccessPointVerify)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/settings/vipps", wrapper.DeleteInvoicesSettingsVipps)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/vipps", wrapper.GetInvoicesSettingsVipps)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/vipps", wrapper.PutInvoicesSettingsVipps)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/settings/vipps/verify", wrapper.PostInvoicesSettingsVippsVerify)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/payments", wrapper.GetInvoicesSettingsPayments)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/payments", wrapper.PutInvoicesSettingsPayments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/reminders", wrapper.GetInvoicesSettingsReminders)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/reminders", wrapper.PutInvoicesSettingsReminders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/collection-rates", wrapper.GetInvoicesCollectionRates)
@@ -9725,6 +9919,133 @@ func (response PostInvoicesSettingsAccessPointVerify503ApplicationProblemPlusJSO
 	return err
 }
 
+type GetInvoicesSettingsPaymentsRequestObject struct {
+}
+
+type GetInvoicesSettingsPaymentsResponseObject interface {
+	VisitGetInvoicesSettingsPaymentsResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesSettingsPayments200JSONResponse InvoicesPaymentSettings
+
+func (response GetInvoicesSettingsPayments200JSONResponse) VisitGetInvoicesSettingsPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsPayments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesSettingsPayments401JSONResponse) VisitGetInvoicesSettingsPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsPayments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesSettingsPayments403JSONResponse) VisitGetInvoicesSettingsPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsPaymentsRequestObject struct {
+	Body *PutInvoicesSettingsPaymentsJSONRequestBody
+}
+
+type PutInvoicesSettingsPaymentsResponseObject interface {
+	VisitPutInvoicesSettingsPaymentsResponse(w http.ResponseWriter) error
+}
+
+type PutInvoicesSettingsPayments200JSONResponse InvoicesPaymentSettings
+
+func (response PutInvoicesSettingsPayments200JSONResponse) VisitPutInvoicesSettingsPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsPayments400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutInvoicesSettingsPayments400ApplicationProblemPlusJSONResponse) VisitPutInvoicesSettingsPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsPayments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesSettingsPayments401JSONResponse) VisitPutInvoicesSettingsPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsPayments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesSettingsPayments403JSONResponse) VisitPutInvoicesSettingsPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsPayments409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PutInvoicesSettingsPayments409ApplicationProblemPlusJSONResponse) VisitPutInvoicesSettingsPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetInvoicesSettingsRemindersRequestObject struct {
 }
 
@@ -9848,6 +10169,281 @@ func (response PutInvoicesSettingsReminders409ApplicationProblemPlusJSONResponse
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesSettingsVippsRequestObject struct {
+}
+
+type DeleteInvoicesSettingsVippsResponseObject interface {
+	VisitDeleteInvoicesSettingsVippsResponse(w http.ResponseWriter) error
+}
+
+type DeleteInvoicesSettingsVipps204Response struct {
+}
+
+func (response DeleteInvoicesSettingsVipps204Response) VisitDeleteInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInvoicesSettingsVipps401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInvoicesSettingsVipps401JSONResponse) VisitDeleteInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesSettingsVipps403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInvoicesSettingsVipps403JSONResponse) VisitDeleteInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesSettingsVipps409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response DeleteInvoicesSettingsVipps409ApplicationProblemPlusJSONResponse) VisitDeleteInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsVippsRequestObject struct {
+}
+
+type GetInvoicesSettingsVippsResponseObject interface {
+	VisitGetInvoicesSettingsVippsResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesSettingsVipps200JSONResponse InvoicesVippsSettings
+
+func (response GetInvoicesSettingsVipps200JSONResponse) VisitGetInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsVipps401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesSettingsVipps401JSONResponse) VisitGetInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesSettingsVipps403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesSettingsVipps403JSONResponse) VisitGetInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsVippsRequestObject struct {
+	Body *PutInvoicesSettingsVippsJSONRequestBody
+}
+
+type PutInvoicesSettingsVippsResponseObject interface {
+	VisitPutInvoicesSettingsVippsResponse(w http.ResponseWriter) error
+}
+
+type PutInvoicesSettingsVipps200JSONResponse InvoicesVippsSettings
+
+func (response PutInvoicesSettingsVipps200JSONResponse) VisitPutInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsVipps400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutInvoicesSettingsVipps400ApplicationProblemPlusJSONResponse) VisitPutInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsVipps401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesSettingsVipps401JSONResponse) VisitPutInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsVipps403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesSettingsVipps403JSONResponse) VisitPutInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsVipps409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PutInvoicesSettingsVipps409ApplicationProblemPlusJSONResponse) VisitPutInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesSettingsVipps503ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PutInvoicesSettingsVipps503ApplicationProblemPlusJSONResponse) VisitPutInvoicesSettingsVippsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesSettingsVippsVerifyRequestObject struct {
+}
+
+type PostInvoicesSettingsVippsVerifyResponseObject interface {
+	VisitPostInvoicesSettingsVippsVerifyResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesSettingsVippsVerify200JSONResponse InvoicesVippsVerifyResponse
+
+func (response PostInvoicesSettingsVippsVerify200JSONResponse) VisitPostInvoicesSettingsVippsVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesSettingsVippsVerify401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesSettingsVippsVerify401JSONResponse) VisitPostInvoicesSettingsVippsVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesSettingsVippsVerify403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesSettingsVippsVerify403JSONResponse) VisitPostInvoicesSettingsVippsVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesSettingsVippsVerify409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesSettingsVippsVerify409ApplicationProblemPlusJSONResponse) VisitPostInvoicesSettingsVippsVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesSettingsVippsVerify503ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesSettingsVippsVerify503ApplicationProblemPlusJSONResponse) VisitPostInvoicesSettingsVippsVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -12690,12 +13286,30 @@ type StrictServerInterface interface {
 	// PostInvoicesSettingsAccessPointVerify Verify the access-point credentials
 	// (POST /api/v1/invoices/settings/access-point/verify)
 	PostInvoicesSettingsAccessPointVerify(ctx context.Context, request PostInvoicesSettingsAccessPointVerifyRequestObject) (PostInvoicesSettingsAccessPointVerifyResponseObject, error)
+	// GetInvoicesSettingsPayments Get the payment settings
+	// (GET /api/v1/invoices/settings/payments)
+	GetInvoicesSettingsPayments(ctx context.Context, request GetInvoicesSettingsPaymentsRequestObject) (GetInvoicesSettingsPaymentsResponseObject, error)
+	// PutInvoicesSettingsPayments Change the payment settings
+	// (PUT /api/v1/invoices/settings/payments)
+	PutInvoicesSettingsPayments(ctx context.Context, request PutInvoicesSettingsPaymentsRequestObject) (PutInvoicesSettingsPaymentsResponseObject, error)
 	// GetInvoicesSettingsReminders Get the reminder settings
 	// (GET /api/v1/invoices/settings/reminders)
 	GetInvoicesSettingsReminders(ctx context.Context, request GetInvoicesSettingsRemindersRequestObject) (GetInvoicesSettingsRemindersResponseObject, error)
 	// PutInvoicesSettingsReminders Change the reminder settings
 	// (PUT /api/v1/invoices/settings/reminders)
 	PutInvoicesSettingsReminders(ctx context.Context, request PutInvoicesSettingsRemindersRequestObject) (PutInvoicesSettingsRemindersResponseObject, error)
+	// DeleteInvoicesSettingsVipps Remove the Vipps credentials
+	// (DELETE /api/v1/invoices/settings/vipps)
+	DeleteInvoicesSettingsVipps(ctx context.Context, request DeleteInvoicesSettingsVippsRequestObject) (DeleteInvoicesSettingsVippsResponseObject, error)
+	// GetInvoicesSettingsVipps Get the Vipps credentials
+	// (GET /api/v1/invoices/settings/vipps)
+	GetInvoicesSettingsVipps(ctx context.Context, request GetInvoicesSettingsVippsRequestObject) (GetInvoicesSettingsVippsResponseObject, error)
+	// PutInvoicesSettingsVipps Store the Vipps credentials
+	// (PUT /api/v1/invoices/settings/vipps)
+	PutInvoicesSettingsVipps(ctx context.Context, request PutInvoicesSettingsVippsRequestObject) (PutInvoicesSettingsVippsResponseObject, error)
+	// PostInvoicesSettingsVippsVerify Verify the Vipps credentials
+	// (POST /api/v1/invoices/settings/vipps/verify)
+	PostInvoicesSettingsVippsVerify(ctx context.Context, request PostInvoicesSettingsVippsVerifyRequestObject) (PostInvoicesSettingsVippsVerifyResponseObject, error)
 	// GetInvoicesStatsAttention Get the invoices dashboard attention items
 	// (GET /api/v1/invoices/stats/attention)
 	GetInvoicesStatsAttention(ctx context.Context, request GetInvoicesStatsAttentionRequestObject) (GetInvoicesStatsAttentionResponseObject, error)
@@ -14059,6 +14673,61 @@ func (sh *strictHandler) PostInvoicesSettingsAccessPointVerify(w http.ResponseWr
 	}
 }
 
+// GetInvoicesSettingsPayments operation middleware
+func (sh *strictHandler) GetInvoicesSettingsPayments(w http.ResponseWriter, r *http.Request) {
+	var request GetInvoicesSettingsPaymentsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesSettingsPayments(ctx, request.(GetInvoicesSettingsPaymentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesSettingsPayments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesSettingsPaymentsResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesSettingsPaymentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInvoicesSettingsPayments operation middleware
+func (sh *strictHandler) PutInvoicesSettingsPayments(w http.ResponseWriter, r *http.Request) {
+	var request PutInvoicesSettingsPaymentsRequestObject
+
+	var body PutInvoicesSettingsPaymentsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInvoicesSettingsPayments(ctx, request.(PutInvoicesSettingsPaymentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInvoicesSettingsPayments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInvoicesSettingsPaymentsResponseObject); ok {
+		if err := validResponse.VisitPutInvoicesSettingsPaymentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetInvoicesSettingsReminders operation middleware
 func (sh *strictHandler) GetInvoicesSettingsReminders(w http.ResponseWriter, r *http.Request) {
 	var request GetInvoicesSettingsRemindersRequestObject
@@ -14107,6 +14776,109 @@ func (sh *strictHandler) PutInvoicesSettingsReminders(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutInvoicesSettingsRemindersResponseObject); ok {
 		if err := validResponse.VisitPutInvoicesSettingsRemindersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInvoicesSettingsVipps operation middleware
+func (sh *strictHandler) DeleteInvoicesSettingsVipps(w http.ResponseWriter, r *http.Request) {
+	var request DeleteInvoicesSettingsVippsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInvoicesSettingsVipps(ctx, request.(DeleteInvoicesSettingsVippsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInvoicesSettingsVipps")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInvoicesSettingsVippsResponseObject); ok {
+		if err := validResponse.VisitDeleteInvoicesSettingsVippsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesSettingsVipps operation middleware
+func (sh *strictHandler) GetInvoicesSettingsVipps(w http.ResponseWriter, r *http.Request) {
+	var request GetInvoicesSettingsVippsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesSettingsVipps(ctx, request.(GetInvoicesSettingsVippsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesSettingsVipps")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesSettingsVippsResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesSettingsVippsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInvoicesSettingsVipps operation middleware
+func (sh *strictHandler) PutInvoicesSettingsVipps(w http.ResponseWriter, r *http.Request) {
+	var request PutInvoicesSettingsVippsRequestObject
+
+	var body PutInvoicesSettingsVippsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInvoicesSettingsVipps(ctx, request.(PutInvoicesSettingsVippsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInvoicesSettingsVipps")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInvoicesSettingsVippsResponseObject); ok {
+		if err := validResponse.VisitPutInvoicesSettingsVippsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesSettingsVippsVerify operation middleware
+func (sh *strictHandler) PostInvoicesSettingsVippsVerify(w http.ResponseWriter, r *http.Request) {
+	var request PostInvoicesSettingsVippsVerifyRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesSettingsVippsVerify(ctx, request.(PostInvoicesSettingsVippsVerifyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesSettingsVippsVerify")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesSettingsVippsVerifyResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesSettingsVippsVerifyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

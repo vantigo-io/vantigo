@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -14,6 +16,8 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
+	"github.com/vantigo-io/vantigo/server/internal/payments"
+	"github.com/vantigo-io/vantigo/server/internal/payments/vipps"
 	"github.com/vantigo-io/vantigo/server/internal/peppol"
 )
 
@@ -22,8 +26,8 @@ import (
 // deps.Users), the source modules' billable reads (deps.BillableHours,
 // BillableExpenses, BillableMilestones) and their invoiced-work holders
 // (deps.InvoicedWork), the object store (server.objects), the SMTP seam
-// (deps.SMTPSend), the Peppol network (server.peppolLookup) and the access
-// point (accessPoint). Every call is made through one of the thin accessors
+// (deps.SMTPSend), the Peppol network (server.peppolLookup), the access
+// point (accessPoint) and the payment provider (paymentProvider). Every call is made through one of the thin accessors
 // below and through nowhere else, so "what does Invoices ask of its
 // neighbours, and when" has one place to read the answer and one place to
 // check it from.
@@ -281,4 +285,123 @@ func (n notedAccessPoint) Evidence(ctx context.Context, ref accesspoint.Submissi
 func (n notedAccessPoint) Verify(ctx context.Context) error {
 	noteContractCall(ctx, "AccessPoint.Verify")
 	return n.ap.Verify(ctx)
+}
+
+// providerCreds is what a caller of the payment provider needs of the
+// credentials beside the provider itself: the sales unit an attempt is
+// recorded under.
+type providerCreds struct {
+	msn string
+}
+
+// paymentProvider is Vipps for the stored sales unit, its keys opened
+// (invoices payments and reminders design D13, D14), dialling
+// Config.InvoicesVippsBaseURL through Deps.HTTPTransport on the module's
+// clock. Every call on it is reported as payments.<Method>, and a 401 or 403
+// it answers flags the credentials as rejected. With INVOICES_VIPPS_ENABLED
+// off it makes no client and answers errPaymentsSwitchedOff (m12), so a
+// verify, a webhook registration, an attempt's create, an on-site request
+// and the worker all stop here; without a credentials row it answers
+// errNoPaymentCredentials, and for keys the secrets box cannot open
+// errPaymentKeysUnreadable — logged at error and flagged as rejected. It
+// reads the row on the pool: it is never called inside withLockedTx, and no
+// call on what it answers may be.
+func (s *server) paymentProvider(ctx context.Context) (payments.Provider, providerCreds, error) {
+	cfg := s.deps.Config
+	if cfg == nil || !cfg.InvoicesVippsEnabled {
+		return nil, providerCreds{}, errPaymentsSwitchedOff
+	}
+	row, err := store.New(s.deps.Pool).GetPaymentCredentials(ctx)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil, providerCreds{}, errNoPaymentCredentials
+	case err != nil:
+		return nil, providerCreds{}, fmt.Errorf("invoices: read the Vipps credentials: %w", err)
+	}
+	settings, err := vippsSettingsOf(row)
+	if err != nil {
+		return nil, providerCreds{}, err
+	}
+	keys, err := s.openVippsKeys(row.SecretCiphertext)
+	if err != nil {
+		s.flagPaymentCredentialsRejected(ctx, true)
+		return nil, providerCreds{}, err
+	}
+	if row.Provider != providerVipps {
+		return nil, providerCreds{}, fmt.Errorf("invoices: unknown payment provider %q", row.Provider)
+	}
+	client, err := vipps.New(vipps.Options{
+		BaseURL: cfg.InvoicesVippsBaseURL, ClientID: keys.ClientID, ClientSecret: keys.ClientSecret,
+		SubscriptionKey: keys.SubscriptionKey, MSN: settings.MSN,
+		Transport: s.deps.HTTPTransport, Now: s.deps.Clock,
+	})
+	if err != nil {
+		return nil, providerCreds{}, fmt.Errorf("invoices: build the Vipps client: %w", err)
+	}
+	return notedProvider{p: client, s: s}, providerCreds{msn: settings.MSN}, nil
+}
+
+// notedProvider reports every call on the payment provider before making it,
+// and records a 401 or 403 as the credentials' refusal, on the pool.
+type notedProvider struct {
+	p payments.Provider
+	s *server
+}
+
+var _ payments.Provider = notedProvider{}
+
+// flagged records an ErrUnauthorized as the credentials' refusal and
+// answers err as it was.
+func (n notedProvider) flagged(ctx context.Context, err error) error {
+	if errors.Is(err, payments.ErrUnauthorized) {
+		n.s.flagPaymentCredentialsRejected(ctx, false)
+	}
+	return err
+}
+
+func (n notedProvider) Create(ctx context.Context, r payments.CreateRequest) (payments.Created, error) {
+	noteContractCall(ctx, "payments.Create")
+	created, err := n.p.Create(ctx, r)
+	return created, n.flagged(ctx, err)
+}
+
+func (n notedProvider) Get(ctx context.Context, reference string) (payments.Payment, error) {
+	noteContractCall(ctx, "payments.Get")
+	p, err := n.p.Get(ctx, reference)
+	return p, n.flagged(ctx, err)
+}
+
+func (n notedProvider) Capture(ctx context.Context, reference string, amount payments.Money, idempotencyKey string) (payments.Payment, error) {
+	noteContractCall(ctx, "payments.Capture")
+	p, err := n.p.Capture(ctx, reference, amount, idempotencyKey)
+	return p, n.flagged(ctx, err)
+}
+
+func (n notedProvider) Cancel(ctx context.Context, reference string, idempotencyKey string) (payments.Payment, error) {
+	noteContractCall(ctx, "payments.Cancel")
+	p, err := n.p.Cancel(ctx, reference, idempotencyKey)
+	return p, n.flagged(ctx, err)
+}
+
+func (n notedProvider) Refund(ctx context.Context, reference string, amount payments.Money, idempotencyKey string) (payments.Payment, error) {
+	noteContractCall(ctx, "payments.Refund")
+	p, err := n.p.Refund(ctx, reference, amount, idempotencyKey)
+	return p, n.flagged(ctx, err)
+}
+
+func (n notedProvider) CaptureTime(ctx context.Context, reference string) (time.Time, bool, error) {
+	noteContractCall(ctx, "payments.CaptureTime")
+	t, ok, err := n.p.CaptureTime(ctx, reference)
+	return t, ok, n.flagged(ctx, err)
+}
+
+// VerifyWebhook is computed here, from the request and the secret: it leaves
+// the process for nothing, so it is not a contract call.
+func (n notedProvider) VerifyWebhook(r payments.WebhookRequest, secret string, registeredURL *url.URL) (payments.WebhookEvent, error) {
+	return n.p.VerifyWebhook(r, secret, registeredURL)
+}
+
+func (n notedProvider) Verify(ctx context.Context) error {
+	noteContractCall(ctx, "payments.Verify")
+	return n.flagged(ctx, n.p.Verify(ctx))
 }

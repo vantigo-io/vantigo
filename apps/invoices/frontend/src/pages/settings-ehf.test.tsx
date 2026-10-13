@@ -20,6 +20,7 @@ const manager = {
   canRunReminders: false,
   canSend: false,
   canSendEhf: false,
+  canTakeOnSitePayment: false,
 };
 
 interface World {

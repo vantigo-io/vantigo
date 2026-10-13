@@ -26,6 +26,7 @@ const server = (options: { canCreate?: boolean; totalPages?: number } = {}) =>
             canRunReminders: true,
             canSend: true,
             canSendEhf: false,
+            canTakeOnSitePayment: false,
           },
         }),
       );

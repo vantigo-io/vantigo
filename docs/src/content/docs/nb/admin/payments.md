@@ -8,6 +8,8 @@ sources:
   - apps/server/internal/invoices/bankimport.go
   - apps/server/internal/invoices/bankaccounts.go
   - apps/server/internal/invoices/reminder_worker.go
+  - apps/server/internal/invoices/vipps_settings.go
+  - apps/server/internal/invoices/payment_settings.go
   - apps/server/internal/payments
   - apps/server/internal/security/publichost.go
 ---
@@ -184,6 +186,69 @@ under en lås på 60 sekunder og sender aldri et brev to ganger med vilje.
   e-postprogram kan se at det er det samme brevet. Henger prosessen i stedet lenger enn
   brevets lås på 60 sekunder i det tidsrommet, kan noen trekke brevet tilbake imens: det
   ble sendt, men står som `withdrawn`, og jobben logger en advarsel som navngir det.
+
+## Vipps
+
+Fakturaer tar imot Vipps MobilePay-betalinger gjennom
+[betalingsporten](/en/contributing/platform-packages/#the-payments-port):
+betalingslenker på utstedte fakturaer, og betaling på stedet. Dette er driftssiden av
+det; reglene står i [referansen](/en/reference/invoices/#credentials-and-payment-settings).
+
+**Forutsetninger:**
+
+- Firmaet har en avtale med Vipps MobilePay om integrert betaling (*Integrert betaling*,
+  ePayment-API-et) og en **salgsenhet** for den i Vipps' bedriftsportal.
+  Én salgsenhet betjener hele installasjonen.
+- Salgsenhetens API-nøkler, fra portalens side for API-nøkler under *For developers*: klient-ID,
+  klienthemmelighet og abonnementsnøkkel, sammen med salgsenhetens nummer (MSN).
+- For betalingslenker en offentlig vert for betalingssiden
+  ([Den offentlige verten](#den-offentlige-verten)). Betaling på stedet trenger ingen.
+
+**Fremgangsmåte:**
+
+1. La `INVOICES_VIPPS_ENABLED` stå på standardverdien, på. `0` slår av Vipps på denne
+   installasjonen: ingen forespørsel sendes noen gang til Vipps, nøklene kan ikke
+   bekreftes, og ingenting Vipps tilbyr er tilgjengelig — mens de lagrede nøklene og
+   innstillingene beholdes.
+2. La `INVOICES_VIPPS_BASE_URL` stå på standardverdien, `https://api.vipps.no`, for
+   ekte betalinger. For å prøve hele flyten først, pek den på Vipps' testmiljø,
+   `https://apitest.vipps.no`, med nøklene til en **test**-salgsenhet — aldri
+   produksjonsnøkler mot testmiljøet eller testnøkler mot produksjon; en salgsenhets
+   nøkler virker bare i sitt eget miljø. Start på nytt etter å ha endret en av dem.
+3. En leder (`invoices:manage`) fyller inn MSN og de tre nøklene i innstillingene for
+   Fakturaer og bekrefter dem. Nøklene forsegles av hemmelighetsboksen under
+   `invoices/payment-provider-credential`; de avhenger av `APP_SECRET`, som alle
+   forseglede hemmeligheter.
+4. En leder setter betalingsinnstillingene: betalingslenker (med URL-ene til selgerens
+   salgsvilkår og personvernerklæring) og betaling på stedet.
+
+**Kontroll:** bekreftelsen svarer *ok*. Den henter et tilgangstoken med nøklene og leser
+salgsenhetens webhook-registreringer, noe som krever nøklene og MSN sammen.
+
+**Rotere en nøkkel.** En ny klienthemmelighet for samme salgsenhet kan lagres når som
+helst; fyll bare inn hemmeligheten, så beholdes de to andre nøklene. En endring av MSN,
+klient-ID eller abonnementsnøkkel — en annen salgsenhet — avvises mens en
+Vipps-betaling pågår, fordi den må fullføres med nøklene den ble laget med: vent til
+betalingene som pågår er ferdige. Å fjerne nøklene avvises av samme grunn.
+
+**Betaling på stedet er kontantsalg.** En betaling fra en kunde som står ved disken, er
+kontantsalg, og fakturaen er da en kontantfaktura med reglene som følger med — kjøperen
+identifisert på den, og salget i dagens kontantoppgjør. Når den slås på, må lederen
+bekrefte merknaden om dette, og hvem som gjorde det og når, registreres. La regnskapsfører
+eller revisor lese merknaden før betaling på stedet slås på i produksjon.
+
+**Hva som kan gå galt:**
+
+- *Avvist* ved bekreftelse: Vipps godtar ikke nøklene eller MSN — en feilskrevet nøkkel,
+  en nøkkel fra det andre miljøet, eller en salgsenhet uten ePayment-produktet. Fyll inn
+  nøklene på nytt. Så lenge Vipps avviser dem, rapporterer meta det, og ingenting Vipps
+  tilbyr er tilgjengelig.
+- *Utilgjengelig* ved bekreftelse: nettverket, et tidsavbrudd, et Vipps-avbrudd eller en
+  struping. Kontroller at serveren når `INVOICES_VIPPS_BASE_URL` over https, og prøv
+  igjen.
+- Nøklene kan ikke åpnes: `APP_SECRET` er endret siden de ble lagret. Fakturaer logger
+  det som feil, markerer nøklene som avvist og svarer *betalinger utilgjengelig*; fyll
+  inn alle tre nøklene på nytt.
 
 ## Den offentlige verten
 

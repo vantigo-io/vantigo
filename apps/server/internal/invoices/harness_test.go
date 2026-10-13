@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
+	"net/url"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -20,6 +22,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint/storecovetest"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/payments/vipps/vippstest"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
 
@@ -42,6 +45,32 @@ type harness struct {
 	// INVOICES_STORECOVE_BASE_URL at, reached over its own TLS listener
 	// through Deps.HTTPTransport, so no test ever calls the real provider.
 	storecove *storecovetest.Server
+	// vipps is the Vipps MobilePay every harness points
+	// INVOICES_VIPPS_BASE_URL at, on a TLS listener of its own reached
+	// through the same Deps.HTTPTransport, so no test ever calls Vipps.
+	vipps *vippstest.Server
+}
+
+// hostTransport routes each request to the test server listening on its
+// host: Deps.HTTPTransport is one RoundTripper, and the harness has two
+// providers, each trusting its own certificate.
+type hostTransport map[string]http.RoundTripper
+
+func (m hostTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if rt, ok := m[r.URL.Host]; ok {
+		return rt.RoundTrip(r)
+	}
+	return nil, fmt.Errorf("harness: no test server listens on %s", r.URL.Host)
+}
+
+// hostOf is a test server URL's host:port.
+func hostOf(t *testing.T, raw string) string {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse %s: %v", raw, err)
+	}
+	return u.Host
 }
 
 // newHarness is an invoices installation with an object store.
@@ -62,18 +91,23 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 	t.Helper()
 	customers := newFakeCustomers()
 	storecove := storecovetest.New(t)
+	vippsServer := vippstest.New(t)
 	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(invoices.Module()),
 		modtest.WithDirectory(customers),
 		modtest.WithEnv("INVOICES_STORECOVE_BASE_URL", storecove.URL()),
-		modtest.WithTransport(storecove.Transport()),
+		modtest.WithEnv("INVOICES_VIPPS_BASE_URL", vippsServer.URL()),
+		modtest.WithTransport(hostTransport{
+			hostOf(t, storecove.URL()):   storecove.Transport(),
+			hostOf(t, vippsServer.URL()): vippsServer.Transport(),
+		}),
 	}
 	if objects != nil {
 		base = append(base, modtest.WithObjectStore(objects))
 	}
 	before, beforeTx := lockedContractCalls.count(), lockedContractCalls.txCount()
-	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove}
+	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove, vipps: vippsServer}
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
 			t.Errorf("a call outside this module's own database was made from inside one of its transactions:\n%s",
