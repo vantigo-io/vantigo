@@ -384,6 +384,7 @@ type InvoicesPaymentAttempt struct {
 	LeaseID                *string
 	LeaseUntil             *time.Time
 	LastError              *string
+	RegistrationFailedAt   *time.Time
 	AbandonedByUserID      *uuid.UUID
 	AbandonedAt            *time.Time
 	AbandonReason          *string
