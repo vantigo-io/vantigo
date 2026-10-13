@@ -1666,3 +1666,17 @@ export const printBatch = (overrides: Partial<PrintBatch> = {}): PrintBatch => (
   ],
   ...overrides,
 });
+
+type PayLink = components["schemas"]["InvoicesPayLink"];
+
+// An issued invoice's live pay link as an invoices:issue holder sees it while
+// on-site payment is available: its URL and the URL's QR as an SVG. Without
+// either condition the server answers only the id and createdAt.
+export const payLink = (overrides: Partial<PayLink> = {}): PayLink => ({
+  id: 1001,
+  createdAt: "2026-09-12T10:30:00Z",
+  url: "https://pay.example.com/pay?token=test-token-01_AAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  qrSvg:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#fff"/><path fill="#000" d="M4 4h1v1h-1z"/></svg>',
+  ...overrides,
+});

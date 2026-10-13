@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/johnfercher/maroto/v2"
+	"github.com/johnfercher/maroto/v2/pkg/components/code"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/line"
 	"github.com/johnfercher/maroto/v2/pkg/components/page"
@@ -71,7 +72,9 @@ type pdfLabels struct {
 	vatBasis, vatAmount, vatCategory, net, vatTotal, gross, toPay                       string
 	payment, account, iban, bic, payWithNumber, orgNumber, foreignID, watermark         string
 	kid, payWithKid                                                                     string
-	deducted, deductedRef                                                               string
+	// payWithVipps heads an invoice's pay link (D15).
+	payWithVipps          string
+	deducted, deductedRef string
 	// The timesheet block (invoices work design D5): its title, its columns
 	// but the description, a person's total and the whole's.
 	timesheet, sheetDate, sheetPerson, sheetWorkType, sheetHours, sheetTotalFor, sheetTotal string
@@ -90,7 +93,8 @@ var labels = map[string]pdfLabels{
 		payWithNumber: "Vennligst oppgi fakturanummer ved betaling", orgNumber: "Org.nr.", foreignID: "VAT/Reg. no.",
 		watermark: "UTKAST — ikke et salgsdokument",
 		kid:       "KID", payWithKid: "Vennligst bruk KID ved betaling",
-		deducted: "Fratrukket a konto", deductedRef: "Faktura %d av %s",
+		payWithVipps: "Betal med Vipps",
+		deducted:     "Fratrukket a konto", deductedRef: "Faktura %d av %s",
 		timesheet: "Timeliste", sheetDate: "Dato", sheetPerson: "Person", sheetWorkType: "Arbeidstype", sheetHours: "Timer",
 		sheetTotalFor: "Sum %s", sheetTotal: "Sum timer",
 	},
@@ -106,7 +110,8 @@ var labels = map[string]pdfLabels{
 		payWithNumber: "Please state the invoice number with your payment", orgNumber: "Org. no.", foreignID: "VAT/Reg. no.",
 		watermark: "UTKAST — ikke et salgsdokument",
 		kid:       "KID", payWithKid: "Please use the KID with your payment",
-		deducted: "Deducted on account", deductedRef: "Invoice %d of %s",
+		payWithVipps: "Pay with Vipps",
+		deducted:     "Deducted on account", deductedRef: "Invoice %d of %s",
 		timesheet: "Timesheet", sheetDate: "Date", sheetPerson: "Person", sheetWorkType: "Work type", sheetHours: "Hours",
 		sheetTotalFor: "Total %s", sheetTotal: "Total hours",
 	},
@@ -147,7 +152,10 @@ type pdfDocument struct {
 	bankAccount, iban, bic string
 	// kid is an issued invoice's KID, verified against its algorithm
 	// (pdfDocumentOf); empty without one (EHF and KID design D3).
-	kid       string
+	kid string
+	// payLink is an issued invoice's live pay link when its PDF is first
+	// stored (D15, plan reading 13), empty for none.
+	payLink   string
 	lines     []pdfLine
 	summaries []vatSummary
 	totals    documentTotals
@@ -175,20 +183,23 @@ type pdfTimesheetRow struct {
 // pdfModel is every word a document prints, in the order it prints them: what
 // the tests read, and all the renderer lays out.
 type pdfModel struct {
-	watermark    string
-	title        string
-	seller       []string
-	buyer        []string
-	meta         [][2]string
-	creditsLine  string
-	lineHeader   []string
-	lines        [][]string
-	vatHeader    []string
-	vatRows      [][]string
-	reasons      []string
-	totals       [][2]string
-	payment      [][2]string
-	paymentNote  string
+	watermark   string
+	title       string
+	seller      []string
+	buyer       []string
+	meta        [][2]string
+	creditsLine string
+	lineHeader  []string
+	lines       [][]string
+	vatHeader   []string
+	vatRows     [][]string
+	reasons     []string
+	totals      [][2]string
+	payment     [][2]string
+	paymentNote string
+	// payLink is the pay link's heading and URL, printed beside a QR code of
+	// the URL under the payment block (D15); empty for none.
+	payLink      [2]string
 	note, footer string
 	// timesheet is the timesheet block (invoices work design D5), on its own
 	// pages after everything else; nil without one.
@@ -444,6 +455,9 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		if d.kid != "" {
 			m.paymentNote = l.payWithKid
 		}
+		if d.payLink != "" {
+			m.payLink = [2]string{l.payWithVipps, d.payLink}
+		}
 	}
 	m.note, m.footer = d.note, d.footer
 	m.timesheet = timesheetBlock(d.timesheet, l, lang)
@@ -589,6 +603,12 @@ func layoutPDF(m pdfModel) (core.Maroto, error) {
 			doc.AddRow(4.5, text.NewCol(3, kv[0], bold), text.NewCol(9, kv[1]))
 		}
 		doc.AddRows(text.NewRow(6, m.paymentNote, props.Text{Top: 1}))
+	}
+	if m.payLink[1] != "" {
+		// The URL beside a QR of it, for the customer paying remotely.
+		doc.AddRow(32,
+			col.New(9).Add(text.New(m.payLink[0], props.Text{Style: fontstyle.Bold, Top: 3}), text.New(m.payLink[1], props.Text{Top: 9, Size: 8})),
+			code.NewQrCol(3, m.payLink[1], props.Rect{Percent: 100, Center: true}))
 	}
 	if m.note != "" {
 		doc.AddAutoRow(text.NewCol(12, m.note, props.Text{Top: 3}))

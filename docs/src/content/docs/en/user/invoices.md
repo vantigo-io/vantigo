@@ -1329,6 +1329,28 @@ Both need stored Vipps keys to be turned on. Whether each is actually available 
 switched on by your operator, keys not refused, the setting on — is what the Invoices
 app goes by.
 
+### The pay link on an invoice
+
+While pay links are available, every invoice you issue gets a pay link, and its PDF
+prints **Betal med Vipps** (*Pay with Vipps*), the link and a QR code of it under the
+payment details, so a customer reading the invoice at home can pay it from their phone.
+The PDF is made once, when the invoice is issued, and never changes: an invoice issued
+before pay links were turned on has no link in its PDF.
+
+The link also travels with the invoice when you **send it by e-mail** — the e-mail says
+*Du kan også betale med Vipps* with the link — and with every **reminder letter**,
+which adds that the link pays the invoice itself, while fees and interest are paid to
+the account with the KID. When you e-mail an invoice that has no link, sending it
+makes one first. A quick invoice handed over on site gets a link at issue only when
+payment on site is turned on; otherwise it gets one when you e-mail it.
+
+Someone with `invoices:issue` can revoke an invoice's link and make a new one: a
+revoked link no longer pays the
+invoice, and e-mails and letters stop carrying it — a PDF made earlier keeps printing
+it. The link itself and its QR code are shown on screen only while payment on site is
+turned on: showing a customer the link where you stand is a cash sale (*kontantsalg*)
+too.
+
 ## Checking the journal
 
 **Invoice journal** in the sidebar is the proof the bookkeeping regulation asks for:

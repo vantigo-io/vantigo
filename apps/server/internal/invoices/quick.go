@@ -25,8 +25,11 @@ import (
 // is held across a directory call. In the transaction: the draft and its
 // lines inserted — the row the transaction now holds, so the order stays the
 // document, the settings row, the counter — then issueLocked, the issue's own
-// body, then a manual delivery handed_over on the issue date. Any refusal
-// rolls the whole transaction back: no draft is left and no number is taken.
+// body — which makes a pay link only when on-site payment is available too
+// (I5): a link a customer is shown on site is kontantsalg; the e-mail send
+// makes one later on demand — then a manual delivery handed_over on the
+// issue date. Any refusal rolls the whole transaction back: no draft is left
+// and no number is taken.
 // Paid later it is a credit sale like any invoice; paid on site with Vipps it
 // is kontantsalg, offered only as a kontantfaktura (D17's hard rules), which
 // payOnSite asks for.
@@ -195,7 +198,7 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 		}
 		// 2. The issue's own body on the document held: the settings row,
 		// the number, the checks, the writes.
-		issued, refusal, err = s.issueLocked(ctx, tx, txq, draft, draft, profile, issueWork{}, nil)
+		issued, refusal, err = s.issueLocked(ctx, tx, txq, draft, draft, profile, issueWork{}, nil, true)
 		if err != nil {
 			return err
 		}

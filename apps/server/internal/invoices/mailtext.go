@@ -23,7 +23,10 @@ type mailText struct{ subject, body string }
 // while open equals the gross, the open part while something is paid, and
 // nothing once nothing is open — so a re-send never asks for money that is
 // not owed. A credit note reads neither its open amount nor a payment.
-func coverMail(inv store.InvoicesInvoice, original *store.InvoicesInvoice, open *big.Rat) (mailText, error) {
+// payURL is the invoice's live pay link (D15), "" for none: printed after the
+// payment paragraph while something is open, as another way to pay — the
+// e-mail reaches the customer remotely, a credit sale (D17).
+func coverMail(inv store.InvoicesInvoice, original *store.InvoicesInvoice, open *big.Rat, payURL string) (mailText, error) {
 	str := func(s *string) string {
 		if s == nil {
 			return ""
@@ -45,7 +48,7 @@ func coverMail(inv store.InvoicesInvoice, original *store.InvoicesInvoice, open 
 	}
 	number, seller := *inv.Number, str(inv.SellerLegalName)
 
-	var subject, greeting, intro, payment, closing string
+	var subject, greeting, intro, payment, payLine, closing string
 	if lang == "en" {
 		greeting, closing = "Hello,", "Kind regards"
 	} else {
@@ -90,6 +93,9 @@ func coverMail(inv store.InvoicesInvoice, original *store.InvoicesInvoice, open 
 					to += " (BIC " + bic + ")"
 				}
 			}
+			if !settled && payURL != "" {
+				payLine = "You can also pay with Vipps: " + payURL
+			}
 			switch {
 			case settled:
 				payment = "The invoice has been settled. Nothing is due."
@@ -101,6 +107,9 @@ func coverMail(inv store.InvoicesInvoice, original *store.InvoicesInvoice, open 
 		} else {
 			subject = fmt.Sprintf("Faktura %d fra %s", number, seller)
 			intro = fmt.Sprintf("Vedlagt følger faktura %d fra %s på %s, med forfall %s.", number, seller, amount(gross), due)
+			if !settled && payURL != "" {
+				payLine = "Du kan også betale med Vipps: " + payURL
+			}
 			switch {
 			case settled:
 				payment = "Fakturaen er gjort opp. Det er ingenting å betale."
@@ -116,6 +125,9 @@ func coverMail(inv store.InvoicesInvoice, original *store.InvoicesInvoice, open 
 	b.WriteString(greeting + "\n\n" + intro + "\n")
 	if payment != "" {
 		b.WriteString(payment + "\n")
+	}
+	if payLine != "" {
+		b.WriteString(payLine + "\n")
 	}
 	b.WriteString("\n" + closing + "\n" + seller + "\n")
 	return mailText{subject: subject, body: b.String()}, nil

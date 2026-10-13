@@ -132,7 +132,7 @@ func TestCoverMail_TheTexts(t *testing.T) {
 				"Kind regards\nKraft-Verket AS\n",
 		},
 	} {
-		got, err := coverMail(c.inv, c.original, c.open)
+		got, err := coverMail(c.inv, c.original, c.open, "")
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -155,7 +155,7 @@ func TestCoverMail_ACreditNoteWithoutItsOriginalIsAnError(t *testing.T) {
 	for name, original := range map[string]*store.InvoicesInvoice{
 		"no original": nil, "an original without a number": {},
 	} {
-		if got, err := coverMail(credit, original, nil); err == nil {
+		if got, err := coverMail(credit, original, nil, ""); err == nil {
 			t.Errorf("%s: cover mail = %q, want an error", name, got.body)
 		}
 	}
@@ -180,12 +180,67 @@ func TestCoverMail_TheKIDSentence(t *testing.T) {
 		{"en, in full", "en", "15045", "Please pay to IBAN NO9386011117947 (BIC DNBANOKKXXX), quoting KID 0010017.\n"},
 		{"en, partly", "en", "5045.5", "The outstanding amount is NOK 5,045.50; please pay it to IBAN NO9386011117947 (BIC DNBANOKKXXX), quoting KID 0010017.\n"},
 	} {
-		got, err := coverMail(withKid(c.language), nil, mustRat(c.open))
+		got, err := coverMail(withKid(c.language), nil, mustRat(c.open), "")
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
 		if !strings.Contains(got.body, c.payment) || strings.Contains(got.body, "invoice number") || strings.Contains(got.body, "fakturanummer") {
 			t.Errorf("%s: body\n%s\nwant the payment line %q and no invoice number", c.name, got.body, c.payment)
 		}
+	}
+}
+
+// The invoice's live pay link (D15) is offered after the payment paragraph,
+// in the document's language, while something is open — in full and in
+// part — and never once it is settled, nor without a link, nor on a credit
+// note.
+func TestCoverMail_PayLine(t *testing.T) {
+	t.Parallel()
+	const url = "https://pay.example.com/pay?token=abc_DEF-123"
+	for _, c := range []struct {
+		name, language, open, want string
+	}{
+		{"nb in full", "nb", "15045", "\nDu kan også betale med Vipps: " + url + "\n"},
+		{"nb in part", "nb", "5000", "\nDu kan også betale med Vipps: " + url + "\n"},
+		{"en in full", "en", "15045", "\nYou can also pay with Vipps: " + url + "\n"},
+		{"en in part", "en", "5000", "\nYou can also pay with Vipps: " + url + "\n"},
+	} {
+		inv := mailDocument(t, kindInvoice, c.language, 1001, "15045", "", "")
+		got, err := coverMail(inv, nil, mustRat(c.open), url)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		payment := strings.Index(got.body, "betales til kontonummer")
+		if c.language == "en" {
+			payment = strings.Index(got.body, "to account")
+		}
+		at := strings.Index(got.body, c.want)
+		if at < 0 || payment < 0 || at < payment {
+			t.Errorf("%s: body =\n%s\nwant %q after the payment paragraph", c.name, got.body, c.want)
+		}
+		without, err := coverMail(inv, nil, mustRat(c.open), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(without.body, "Vipps") {
+			t.Errorf("%s without a link: body =\n%s\nwant no pay line", c.name, without.body)
+		}
+	}
+	for _, language := range []string{"nb", "en"} {
+		settled, err := coverMail(mailDocument(t, kindInvoice, language, 1001, "15045", "", ""), nil, mustRat("0"), url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(settled.body, url) {
+			t.Errorf("%s settled: body =\n%s\nwant no pay line", language, settled.body)
+		}
+	}
+	original := mailDocument(t, kindInvoice, "nb", 1001, "3000", "", "")
+	credit, err := coverMail(mailDocument(t, kindCreditNote, "nb", 1002, "3000", "", ""), &original, nil, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(credit.body, url) {
+		t.Errorf("a credit note's body =\n%s\nwant no pay line", credit.body)
 	}
 }

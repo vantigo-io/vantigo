@@ -276,6 +276,13 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 		}
 	}
 
+	// 4a. A pay link, made now in a transaction of its own when pay links
+	// are available and the invoice has none (D15, I5), so the cover text
+	// carries it — a quick invoice's, or one issued before pay links.
+	if err := s.payLinkOnDemand(ctx, q, inv); err != nil {
+		return nil, err
+	}
+
 	// 5. The stored PDF, stored first when it never was.
 	pdf, problem := s.loadStoredPDF(ctx, q, inv)
 	switch {
@@ -379,7 +386,11 @@ func (s *server) envelope(ctx context.Context, q *store.Queries, inv store.Invoi
 			return mail.Outbound{}, err
 		}
 	}
-	text, err := coverMail(inv, original, open)
+	payURL, err := s.printablePayLink(ctx, q, inv)
+	if err != nil {
+		return mail.Outbound{}, err
+	}
+	text, err := coverMail(inv, original, open, payURL)
 	if err != nil {
 		return mail.Outbound{}, err
 	}
