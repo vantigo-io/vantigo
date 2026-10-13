@@ -264,6 +264,7 @@ var paymentsPortColumns = []string{
 	"payment_attempts.reference:character varying:64:NO:",
 	"payment_attempts.refund_watch_until:timestamp with time zone::YES:",
 	"payment_attempts.refunded_amount:numeric:14,2:YES:",
+	"payment_attempts.registration_failed_at:timestamp with time zone::YES:",
 	"payment_attempts.release_pending:boolean::NO:false",
 	"payment_attempts.reserved_amount:numeric:14,2:YES:",
 	"payment_attempts.return_nonce_sha256:character:64:YES:",
@@ -552,6 +553,7 @@ func TestPaymentAttempts_Triggers(t *testing.T) {
 		"state = 'capturing', reserved_amount = 100, capture_key = gen_random_uuid(), lease_id = 'l', lease_until = now()",
 		"state = 'capture_unknown', capture_attempts = 3",
 		"failures = 2, insufficient_funds = 1",
+		"registration_failed_at = now()",
 	} {
 		if err := f.exec(`UPDATE invoices.payment_attempts SET `+set+` WHERE id = $1`, live); err != nil {
 			t.Errorf("a live attempt, SET %s: %v, want it allowed", set, err)
@@ -581,6 +583,10 @@ func TestPaymentAttempts_Triggers(t *testing.T) {
 			"failures = failures + 1",
 			"last_error = NULL",
 			"finished_at = now()",
+			// A registration that failed is flagged, and the flag
+			// cleared, on a failed capture's row as on a live one.
+			"registration_failed_at = now()",
+			"registration_failed_at = NULL",
 		}
 		refused := []string{
 			"state = 'creating'", "captured_amount = 1",

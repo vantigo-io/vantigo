@@ -210,6 +210,10 @@ CREATE TABLE invoices.payment_attempts (
     lease_id                 varchar(100),
     lease_until              timestamptz,
     last_error               varchar(500),
+    -- registration_failed_at: when the worker last failed to register money
+    -- Vipps shows captured, cleared by the registration — attention's
+    -- paymentCaptureUnknown, whatever last_error says later.
+    registration_failed_at   timestamptz,
     abandoned_by_user_id     uuid,
     abandoned_at             timestamptz,
     abandon_reason           varchar(500),
@@ -275,8 +279,8 @@ $function$;
 -- re-decision, m3). A live attempt's state columns change as the worker
 -- learns; a terminal one (captured, cancelled, aborted, expired, terminated,
 -- capture_failed, failed, abandoned) changes only the worker's bookkeeping —
--- its lease, next poll, polls and last error, and its finish, set once from
--- NULL — its release — pending true to false, with the cancelled amount —
+-- its lease, next poll, polls, last error and failed registration, and its
+-- finish, set once from NULL — its release — pending true to false, with the cancelled amount —
 -- and, captured, its refunded amount and refund watch: the release of the
 -- uncaptured rest and the refund watch keep polling a finished attempt. One
 -- terminal state moves on: money Vipps shows captured is always registered,
@@ -289,7 +293,7 @@ CREATE FUNCTION invoices.refuse_payment_attempt_change()
 RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
     terminal_free text[] := ARRAY['lease_id', 'lease_until', 'next_poll_at', 'polls', 'failures', 'last_error', 'finished_at',
-        'release_pending', 'cancelled_amount', 'refunded_amount', 'refund_watch_until'];
+        'release_pending', 'cancelled_amount', 'refunded_amount', 'refund_watch_until', 'registration_failed_at'];
 BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'invoices: a payment attempt is never deleted' USING ERRCODE = 'P0001';
