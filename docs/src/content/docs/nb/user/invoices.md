@@ -552,11 +552,14 @@ faktureres, en kjøper uten fullstendig adresse eller organisasjonsnummer, en mv
 ikke kan brukes, eller noe annet som avviser en vanlig utstedelse — beholdes ingenting:
 ingen utkast blir liggende igjen og ingen nummer brukes. Rett opp og utsted på nytt.
 
-En hurtigfaktura kunden betaler senere — i banken med KID, eller via en betalingslenke —
-er et vanlig kredittsalg. Å betale med Vipps på stedet er kontantsalg og kommer med
-betaling på stedet ([betalingslenker og betaling på stedet](#betalingslenker-og-betaling-på-stedet));
-inntil det tilbys, utstedes fakturaen og du får beskjed om at betaling på stedet ikke er
-tilgjengelig. Hurtigfakturaens eget skjermbilde kommer med Vipps i appen; forespørselen
+En hurtigfaktura kunden betaler senere — i banken med KID, eller via en betalingslenke
+de åpner etter at du har dratt — er et vanlig kredittsalg. Betalt med Vipps på stedet,
+eller med betalingslenken eller QR-koden vist kunden der, er det kontantsalg, som
+Invoices bare tillater uten kassasystem som kontantfaktura med kjøperen navngitt, gjennom
+betaling på stedet
+([betalingslenker og betaling på stedet](#betalingslenker-og-betaling-på-stedet)). Inntil
+betaling på stedet tilbys, utstedes fakturaen og du får beskjed om at betaling på stedet
+ikke er tilgjengelig. Hurtigfakturaens eget skjermbilde kommer med Vipps i appen; forespørselen
 bak den er på plass nå ([hurtigfakturaen](/en/reference/invoices/#the-quick-invoice)).
 
 ## Laste ned PDF-en

@@ -242,3 +242,14 @@ WHERE e.note <> '' AND e.event <> 'reversed'
     SELECT c.bank_transaction_id FROM invoices.charge_payments c JOIN invoices.invoices i ON i.id = c.invoice_id
     WHERE i.customer_id = @customer_id AND c.bank_transaction_id IS NOT NULL)
 RETURNING e.bank_transaction_id;
+
+-- name: RepointQuickInvoice :one
+-- RepointQuickInvoice moves one issued quick invoice from a customer merged
+-- away to the survivor (D17, after review): a merge whose RepointCustomer ran
+-- while the quick invoice's transaction was still open did not see it. The
+-- caller holds the document FOR UPDATE. Exactly RepointCustomer's write for
+-- an issued document: the customer id alone, the buyer snapshot, revision
+-- and updated_at untouched — the one change the immutability trigger allows.
+UPDATE invoices.invoices SET customer_id = @into_customer_id
+WHERE id = @id AND customer_id = @from_customer_id AND status = 'issued'
+RETURNING *;

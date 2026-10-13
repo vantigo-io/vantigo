@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -349,5 +350,106 @@ func TestIssue_RefactorChangesNothing(t *testing.T) {
 		if !sameJSON(t, q, o) {
 			t.Errorf("line %d: quick %+v, issue %+v", i+1, q, o)
 		}
+	}
+}
+
+// A merge that commits while the quick invoice's transaction is open — its
+// RepointCustomer cannot see the uncommitted document — would leave the
+// issued invoice on the customer merged away. After its commit the quick
+// invoice reads the billing profile again and moves the document to the
+// survivor under the document's lock, as the merge's re-point does: the
+// customer id alone, the buyer snapshot unchanged. Not parallel: the seam
+// is the package's.
+func TestQuickInvoice_MergeInTheWindowEndsOnTheSurvivor(t *testing.T) {
+	h := readyToIssue(t)
+	holder := invoices.Module().CustomerReferences(h.Deps())
+	conn := ownConn(t, h)
+	restore := invoices.SetQuickAfterInsert(func(ctx context.Context, _ int64) error {
+		// The merge, committed in the window, on a connection of its own.
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(context.Background()) }()
+		h.customers.edit(customerNoTerms, func(p *contracts.CustomerBillingProfile) {
+			survivor := int32(customerAcme)
+			p.MergedInto, p.Status, p.Archived = &survivor, "archived", true
+		})
+		if _, err := holder.RepointCustomer(ctx, tx, customerNoTerms, customerAcme); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	})
+	defer restore()
+
+	got := quickInvoiced(t, h, quickBody(customerNoTerms, line("Utrykning", 1, 950, vat25))).Invoice
+	if got.CustomerID != customerAcme {
+		t.Errorf("the answer's customer = %d, want the survivor %d", got.CustomerID, customerAcme)
+	}
+	read := getInvoice(t, h, got.ID)
+	if read.CustomerID != customerAcme || read.Buyer == nil || read.Buyer.Name != "Uten Vilkår AS" || read.Status != "issued" {
+		t.Errorf("the document = customer %d, buyer %+v, %s; want the survivor's, its snapshot as issued", read.CustomerID, read.Buyer, read.Status)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.invoices WHERE customer_id = $1`, customerNoTerms); n != 0 {
+		t.Errorf("documents left on the customer merged away = %d, want none", n)
+	}
+}
+
+// An erase that commits while the quick invoice's transaction is open
+// refuses nothing: the erase keeps issued documents, it cannot see the
+// uncommitted draft to delete it, and the manual delivery's parent trigger
+// blanks a note rather than refusing the row. The invoice is issued — never
+// a 500 — and kept as every issued document of an anonymised customer is.
+// Not parallel: the seam is the package's.
+func TestQuickInvoice_EraseInTheWindowIsNoFailure(t *testing.T) {
+	h := readyToIssue(t)
+	data := invoices.Module().CustomerPersonalData(disabledDeps(h))
+	conn := ownConn(t, h)
+	restore := invoices.SetQuickAfterInsert(func(ctx context.Context, _ int64) error {
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(context.Background()) }()
+		if _, err := data.EraseCustomerData(ctx, tx, customerPerson); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	})
+	defer restore()
+
+	got := quickInvoiced(t, h, quickBody(customerPerson, line("Utrykning", 1, 950, vat25))).Invoice
+	if got.Status != "issued" {
+		t.Fatalf("the quick invoice = %+v, want issued", got)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.erased_customers WHERE customer_id = $1`, customerPerson); n != 1 {
+		t.Errorf("the erase's marker = %d, want it committed", n)
+	}
+	if d := receivablesOf(t, h, got.ID).ManualDeliveries; d == nil || len(*d) != 1 || (*d)[0].Note != "" {
+		t.Errorf("manual deliveries = %v, want the one handed_over, its note empty", d)
+	}
+}
+
+// The quick invoice reads the clock once for the draft's defaults and once
+// in issueLocked after the counter, as the issue does: a quick invoice that
+// crosses Oslo midnight between its insert and its issue is delivered the
+// day it began, issued and handed over the day it is issued — a valid
+// invoice, its delivery before its issue. Not parallel: the seam is the
+// package's.
+func TestQuickInvoice_AcrossOsloMidnight(t *testing.T) {
+	h := readyToIssue(t) // 2026-09-12, 14:00 in Oslo
+	restore := invoices.SetQuickAfterInsert(func(context.Context, int64) error {
+		h.Advance(11 * time.Hour) // 01:00 on the 13th in Oslo
+		return nil
+	})
+	defer restore()
+
+	got := quickInvoiced(t, h, quickBody(customerAcme, line("Nattvakt", 1, 950, vat25))).Invoice
+	if *got.DeliveryDate != "2026-09-12" || *got.IssueDate != "2026-09-13" || *got.DueDate != "2026-10-13" {
+		t.Errorf("delivered %s, issued %s, due %s; want 2026-09-12, 2026-09-13, 2026-10-13",
+			*got.DeliveryDate, *got.IssueDate, *got.DueDate)
+	}
+	if d := receivablesOf(t, h, got.ID).ManualDeliveries; d == nil || len(*d) != 1 || (*d)[0].DeliveredOn != "2026-09-13" {
+		t.Errorf("manual deliveries = %v, want handed_over on the issue date, 2026-09-13", d)
 	}
 }

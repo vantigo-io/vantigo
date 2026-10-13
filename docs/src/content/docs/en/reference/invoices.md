@@ -1073,6 +1073,26 @@ document's bound (a 400). Then one transaction:
    ([The delivery fact](#the-delivery-fact)), since the invoice was handed over on site.
 
 **Any refusal rolls everything back**: no draft is left behind and no number is taken.
+
+**A merge in the window.** The billing profile is read before the transaction, and a
+merge's `RepointCustomer` cannot see a document that has not committed, so a merge that
+commits while the quick invoice's transaction is open would leave the issued invoice on
+the customer merged away. After its commit the quick invoice reads the profile again,
+outside any lock, follows `mergedInto` to the survivor and, when it moved, gives the
+document the survivor's id under the document's own `FOR UPDATE`, in a transaction of
+its own — exactly the re-point's write for an issued document: the customer id alone, the
+buyer snapshot as issued. The answer names the survivor. A merge that has still not
+committed when the profile is read again is not seen, as with an ordinary issue racing
+the same merge. **An erase in the window** refuses nothing: the erase keeps issued
+documents and cannot see the uncommitted draft, and the manual delivery's parent trigger
+blanks its note rather than refusing it; the invoice stays as every issued document of an
+anonymised customer does.
+
+**The clock** is read once before the transaction, for the draft's defaults — its
+delivery day and `created_at` — and once in the issue's body after the counter, as the
+issue does: a quick invoice that waits there across Oslo midnight is delivered the day it
+began and issued, and handed over, the day it is issued.
+
 The PDF is stored after the commit, as an issue's is. The answer is 201
 `{invoice, paymentRequestError?}`: the issued invoice, an ordinary invoice in the
 ordinary series with terms and a due date like any other. `payOnSite: true` asks for a
