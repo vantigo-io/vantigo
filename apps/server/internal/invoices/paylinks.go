@@ -89,12 +89,21 @@ func (s *server) insertPayLink(ctx context.Context, txq *store.Queries, invoiceI
 	return link, nil
 }
 
+// payLinkAtIssueBeforeInsert, when a test sets it (export_test.go), is called by
+// the issue right before it inserts its pay link, inside its transaction,
+// with the document's id: a test commits an erase's marker there. nil in
+// production.
+var payLinkAtIssueBeforeInsert func(ctx context.Context, invoiceID int64)
+
 // payLinkAtIssue is the issue's link (D15): inserted on the issue's own
-// transaction, after the document is written, when pay links are available
-// now — for a quick invoice, handed over on site, only when on-site payment
-// is available too (I5) — and never for a customer this module has
-// anonymised, whose link the insert's trigger would refuse.
-func (s *server) payLinkAtIssue(ctx context.Context, txq *store.Queries, issued store.InvoicesInvoice, handedOver bool) error {
+// transaction tx, after the document is written, when pay links are
+// available now — for a quick invoice, handed over on site, only when
+// on-site payment is available too (I5). The insert runs under a savepoint:
+// when its trigger refuses an anonymised customer — an erase whose marker
+// committed while the issue ran (the quick invoice's draft is invisible to
+// the erase) — the savepoint is rolled back and the invoice is issued
+// without a link; any other failure fails the issue.
+func (s *server) payLinkAtIssue(ctx context.Context, tx pgx.Tx, txq *store.Queries, issued store.InvoicesInvoice, handedOver bool) error {
 	if issued.Kind != kindInvoice {
 		return nil
 	}
@@ -105,15 +114,23 @@ func (s *server) payLinkAtIssue(ctx context.Context, txq *store.Queries, issued 
 	if !avail.payLinks || (handedOver && !avail.onSite) {
 		return nil
 	}
-	erased, err := txq.CustomerErased(ctx, issued.CustomerID)
+	if payLinkAtIssueBeforeInsert != nil {
+		payLinkAtIssueBeforeInsert(ctx, issued.ID)
+	}
+	sp, err := tx.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("invoices: read whether customer %d was erased: %w", issued.CustomerID, err)
+		return fmt.Errorf("invoices: open a savepoint for invoice %d's pay link: %w", issued.ID, err)
 	}
-	if erased {
-		return nil
+	if _, err := s.insertPayLink(ctx, store.New(sp), issued.ID, nil, *issued.IssuedAt); err != nil {
+		if rbErr := sp.Rollback(ctx); rbErr != nil {
+			return errors.Join(err, rbErr)
+		}
+		if isAnonymisedRefusal(err) {
+			return nil
+		}
+		return err
 	}
-	_, err = s.insertPayLink(ctx, txq, issued.ID, nil, *issued.IssuedAt)
-	return err
+	return sp.Commit(ctx)
 }
 
 // openPayLink is a link's URL, opened from its ciphertext.
@@ -130,23 +147,73 @@ func (s *server) openPayLink(link store.InvoicesPayLink) (string, error) {
 // otherwise — a link that cannot be opened (APP_SECRET changed) is logged and
 // left out, never a failure of what prints it. q reads; nothing is locked.
 func (s *server) printablePayLink(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice) (string, error) {
-	if inv.Kind != kindInvoice || inv.Status != statusIssued {
+	link, err := s.liveLinkToPrint(ctx, q, inv)
+	if err != nil || link == nil {
+		return "", err
+	}
+	url, err := s.openPayLink(*link)
+	if err != nil {
+		s.deps.Logger.WarnContext(ctx, "invoices: a pay link cannot be opened and is not printed", "invoice_id", inv.ID, "pay_link_id", link.ID)
 		return "", nil
+	}
+	return url, nil
+}
+
+// liveLinkToPrint is inv's live link when it may be printed: an issued
+// invoice's, while pay links are available and its customer is not
+// anonymised (an erase revokes the link; Task 12), nil otherwise. q reads;
+// under a caller's lock it judges availability there.
+func (s *server) liveLinkToPrint(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice) (*store.InvoicesPayLink, error) {
+	if inv.Kind != kindInvoice || inv.Status != statusIssued {
+		return nil, nil
 	}
 	avail, err := s.paymentsAvailable(ctx, q)
 	if err != nil || !avail.payLinks {
-		return "", err
+		return nil, err
+	}
+	erased, err := q.CustomerErased(ctx, inv.CustomerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read whether customer %d was erased: %w", inv.CustomerID, err)
+	}
+	if erased {
+		return nil, nil
 	}
 	link, err := q.LivePayLink(ctx, inv.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
+		return nil, nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("invoices: read invoice %d's pay link: %w", inv.ID, err)
+		return nil, fmt.Errorf("invoices: read invoice %d's pay link: %w", inv.ID, err)
+	}
+	return &link, nil
+}
+
+// letterPayLinkID is the pay link a letter's facts name (D10, D15): the
+// invoice's live link when it may be printed, judged once, under the
+// invoice's lock, when the facts are written; nil for none.
+func (s *server) letterPayLinkID(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice) (*int64, error) {
+	link, err := s.liveLinkToPrint(ctx, txq, inv)
+	if err != nil || link == nil {
+		return nil, err
+	}
+	return &link.ID, nil
+}
+
+// letterPayLink is the URL letter r prints: the link its facts named,
+// opened from its ciphertext whether or not it was revoked since — never
+// the live link — so a letter renders the same bytes every time. "" for
+// none; a link that cannot be opened is logged and left out.
+func (s *server) letterPayLink(ctx context.Context, q *store.Queries, r store.InvoicesReminder) (string, error) {
+	if r.PayLinkID == nil {
+		return "", nil
+	}
+	link, err := q.GetPayLink(ctx, *r.PayLinkID)
+	if err != nil {
+		return "", fmt.Errorf("invoices: read letter %d's pay link: %w", r.ID, err)
 	}
 	url, err := s.openPayLink(link)
 	if err != nil {
-		s.deps.Logger.WarnContext(ctx, "invoices: a pay link cannot be opened and is not printed", "invoice_id", inv.ID, "pay_link_id", link.ID)
+		s.deps.Logger.WarnContext(ctx, "invoices: a letter's pay link cannot be opened and is not printed", "reminder_id", r.ID, "pay_link_id", link.ID)
 		return "", nil
 	}
 	return url, nil
@@ -257,17 +324,15 @@ func (s *server) payLinkRefusal(ctx context.Context, txq *store.Queries, locked 
 // (POST /api/v1/invoices/{id}/pay-link)
 func (s *server) PostInvoicesByIdPayLink(ctx context.Context, req gen.PostInvoicesByIdPayLinkRequestObject) (gen.PostInvoicesByIdPayLinkResponseObject, error) {
 	q := store.New(s.deps.Pool)
-	if _, err := q.GetInvoice(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
-		return gen.PostInvoicesByIdPayLink404Response{}, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("invoices: read document %d: %w", req.Id, err)
-	}
 	now, by := s.deps.Clock(), callerID(ctx)
 	var refusal *gen.InvoicesConflictProblem
 	var inv store.InvoicesInvoice
 	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		var err error
 		if inv, err = lockInvoice(ctx, txq, req.Id); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errDocumentGone
+			}
 			return fmt.Errorf("invoices: lock document %d: %w", req.Id, err)
 		}
 		if refusal, err = s.payLinkRefusal(ctx, txq, inv); err != nil {
@@ -281,6 +346,9 @@ func (s *server) PostInvoicesByIdPayLink(ctx context.Context, req gen.PostInvoic
 	})
 	if refusal != nil {
 		return gen.PostInvoicesByIdPayLink409ApplicationProblemPlusJSONResponse(*refusal), nil
+	}
+	if errors.Is(err, errDocumentGone) {
+		return gen.PostInvoicesByIdPayLink404Response{}, nil
 	}
 	if err != nil {
 		return nil, err

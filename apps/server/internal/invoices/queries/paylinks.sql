@@ -24,3 +24,8 @@ SELECT * FROM invoices.pay_links WHERE invoice_id = @invoice_id AND revoked_at I
 UPDATE invoices.pay_links
 SET revoked_at = @now::timestamptz, revoked_by_user_id = sqlc.narg(by)
 WHERE id = @id AND revoked_at IS NULL;
+
+-- name: GetPayLink :one
+-- GetPayLink is one link, live or revoked: a letter prints the link its
+-- facts named, whatever became of it since.
+SELECT * FROM invoices.pay_links WHERE id = @id;

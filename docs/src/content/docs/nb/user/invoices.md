@@ -1361,7 +1361,7 @@ utstedt før betalingslenker ble slått på, har ingen lenke i PDF-en.
 Lenken følger også fakturaen når du **sender den på e-post** — e-posten sier *Du kan
 også betale med Vipps* med lenken — og med hvert **purrebrev**, som legger til at
 lenken betaler selve fakturaen, mens gebyrer og renter betales til kontonummeret med
-KID. Når du sender en faktura som ikke har noen lenke på e-post, lages det en først. En
+KID, eller fakturanummeret når det ikke er noen KID. Når du sender en faktura som ikke har noen lenke på e-post, lages det en først. En
 hurtigfaktura som overleveres på stedet, får lenke ved utstedelse bare når betaling på
 stedet er slått på; ellers får den en når du sender den på e-post.
 

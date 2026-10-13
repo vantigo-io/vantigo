@@ -369,7 +369,7 @@ func (s *server) storePrintedLetter(ctx context.Context, batchID, letterID int64
 		warn("read", err)
 		return nil
 	}
-	payLink, err := s.printablePayLink(ctx, q, inv)
+	payLink, err := s.letterPayLink(ctx, q, letter)
 	if err != nil {
 		warn("read", err)
 		return nil
@@ -464,7 +464,7 @@ func (s *server) GetInvoicesReminderPrintBatchesByIdPdf(ctx context.Context, req
 				}
 				invs[l.InvoiceID] = inv
 			}
-			payLink, err := s.printablePayLink(ctx, q, inv)
+			payLink, err := s.letterPayLink(ctx, q, l)
 			if err != nil {
 				return err
 			}

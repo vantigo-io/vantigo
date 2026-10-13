@@ -255,7 +255,7 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 		return c.fail(ctx, reasonNoStorage)
 	}
 	q := store.New(c.w.deps.Pool)
-	payLink, err := c.s.printablePayLink(ctx, q, inv)
+	payLink, err := c.s.letterPayLink(ctx, q, letter)
 	if err != nil {
 		return err
 	}
@@ -459,7 +459,11 @@ func (s *server) judgeAndWriteFacts(ctx context.Context, txq *store.Queries, inv
 	for _, c := range in.Credits {
 		credited.Add(credited, c.Gross)
 	}
-	params, err := letterFactsParams(letter.ID, out.Letter, out.ChargeNotes, credited, L, now)
+	payLinkID, err := s.letterPayLinkID(ctx, txq, inv)
+	if err != nil {
+		return judgement{}, err
+	}
+	params, err := letterFactsParams(letter.ID, out.Letter, out.ChargeNotes, credited, payLinkID, L, now)
 	if err != nil {
 		return judgement{}, err
 	}
@@ -475,11 +479,12 @@ func (s *server) judgeAndWriteFacts(ctx context.Context, txq *store.Queries, inv
 // the segments as interestSegment JSON, the charge notes — none is an empty
 // array — and credited, what the issued credit notes the engine judged on
 // took off the invoice, so the letter prints the credit notes its
-// principal_open left out, however often it is rendered.
-func letterFactsParams(id int64, f *reminderrules.LetterFacts, notes []string, credited *big.Rat, L, now time.Time) (store.WriteLetterFactsParams, error) {
+// principal_open left out, however often it is rendered — and payLinkID, the
+// pay link the letter prints (D15), judged under the invoice's lock.
+func letterFactsParams(id int64, f *reminderrules.LetterFacts, notes []string, credited *big.Rat, payLinkID *int64, L, now time.Time) (store.WriteLetterFactsParams, error) {
 	p := store.WriteLetterFactsParams{
 		ID: id, SentOn: pgDate(L), Deadline: pgDate(f.Deadline), Regime: string(f.Regime), FeeKind: string(f.FeeKind),
-		ChargeNotes: append([]string{}, notes...), Now: now,
+		ChargeNotes: append([]string{}, notes...), PayLinkID: payLinkID, Now: now,
 	}
 	for _, a := range []struct {
 		dst *pgtype.Numeric
@@ -527,11 +532,11 @@ func letterFactsParams(id int64, f *reminderrules.LetterFacts, notes []string, c
 }
 
 // renderLetter is a letter's model and PDF, from its row — its facts,
-// credited among them — and its invoice's snapshots: no amount read live, so
-// a row renders the same bytes every time, whatever was credited or paid
-// since its facts were written. payLink, the invoice's live pay link read by
-// the caller (D15), is the one thing that may differ: a link revoked is no
-// longer printed. Never under a lock.
+// credited and the pay link among them — and its invoice's snapshots alone:
+// nothing read live, so a row renders the same bytes every time, whatever
+// was credited, paid or revoked since its facts were written. payLink is the
+// URL of the link the facts name (letterPayLink), "" for none. Never under a
+// lock.
 func renderLetter(letter store.InvoicesReminder, inv store.InvoicesInvoice, payLink string) (reminderModel, []byte, error) {
 	m, err := reminderModelOf(letter, inv, payLink)
 	if err != nil {

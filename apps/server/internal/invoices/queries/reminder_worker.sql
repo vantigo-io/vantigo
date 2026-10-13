@@ -34,7 +34,8 @@ RETURNING *;
 -- WriteLetterFacts writes a letter's facts as the engine judged them on its
 -- sending day — the dispatch's today, a print batch's postOn — and clears
 -- held_reason and any PDF of an earlier attempt: the PDF is rendered from
--- these facts. A queued letter's first attempt is stamped once. The caller
+-- these facts — the invoice's pay link among them, judged under the
+-- invoice's lock. A queued letter's first attempt is stamped once. The caller
 -- holds the invoice and then the letter (D18) and has judged the letter's
 -- status and lease under those locks.
 UPDATE invoices.reminders
@@ -44,7 +45,7 @@ SET sent_on = @sent_on::date, deadline = @deadline::date, regime = @regime::text
     charges_earlier = @charges_earlier, interest = @interest, interest_waived = @interest_waived,
     interest_paid = @interest_paid, interest_from = sqlc.narg(interest_from)::date,
     interest_segments = @interest_segments::jsonb, inkassosats = sqlc.narg(inkassosats)::numeric,
-    total = @total, charge_notes = @charge_notes::text[],
+    total = @total, charge_notes = @charge_notes::text[], pay_link_id = sqlc.narg(pay_link_id)::bigint,
     pdf_object_key = NULL, pdf_sha256 = NULL, held_reason = NULL,
     first_attempt_at = CASE WHEN status = 'queued' THEN coalesce(first_attempt_at, @now::timestamptz) ELSE first_attempt_at END
 WHERE id = @id AND status IN ('queued', 'awaiting_print')
@@ -63,7 +64,7 @@ SET next_attempt_at = @next_attempt_at::timestamptz, held_reason = sqlc.narg(hel
     lease_id = NULL, lease_until = NULL,
     sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
-    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
+    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL, pay_link_id = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
 WHERE id = @id AND lease_id = @lease_id::text AND status = 'queued';
 
@@ -77,7 +78,7 @@ SET status = 'withdrawn', withdrawn_at = @withdrawn_at::timestamptz, withdrawal_
     lease_id = NULL, lease_until = NULL, held_reason = NULL,
     sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
-    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
+    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL, pay_link_id = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
 WHERE id = @id AND lease_id = @lease_id::text AND status = 'queued';
 
@@ -109,7 +110,7 @@ SET attempts = attempts + 1, next_attempt_at = @next_attempt_at::timestamptz, la
     lease_id = NULL, lease_until = NULL,
     sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
-    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
+    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL, pay_link_id = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
 WHERE id = @id AND lease_id = @lease_id::text AND status = 'queued';
 
@@ -122,7 +123,7 @@ SET status = 'failed', failed_at = @failed_at::timestamptz, attempts = attempts 
     last_error = sqlc.narg(last_error)::text, lease_id = NULL, lease_until = NULL,
     sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
-    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
+    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL, pay_link_id = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
 WHERE id = @id AND lease_id = @lease_id::text AND status = 'queued';
 

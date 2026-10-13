@@ -12,6 +12,28 @@ import (
 	"github.com/google/uuid"
 )
 
+const getPayLink = `-- name: GetPayLink :one
+SELECT id, invoice_id, token_sha256, url_ciphertext, created_at, created_by_user_id, revoked_at, revoked_by_user_id FROM invoices.pay_links WHERE id = $1
+`
+
+// GetPayLink is one link, live or revoked: a letter prints the link its
+// facts named, whatever became of it since.
+func (q *Queries) GetPayLink(ctx context.Context, id int64) (InvoicesPayLink, error) {
+	row := q.db.QueryRow(ctx, getPayLink, id)
+	var i InvoicesPayLink
+	err := row.Scan(
+		&i.ID,
+		&i.InvoiceID,
+		&i.TokenSha256,
+		&i.UrlCiphertext,
+		&i.CreatedAt,
+		&i.CreatedByUserID,
+		&i.RevokedAt,
+		&i.RevokedByUserID,
+	)
+	return i, err
+}
+
 const insertPayLink = `-- name: InsertPayLink :one
 
 INSERT INTO invoices.pay_links (

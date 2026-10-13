@@ -582,7 +582,7 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 		return failed(fmt.Errorf("invoices: issue document %d: %w", locked.ID, err))
 	}
 	// 7. The pay link, on the document just issued (D15).
-	if err := s.payLinkAtIssue(ctx, txq, issued, handedOver); err != nil {
+	if err := s.payLinkAtIssue(ctx, tx, txq, issued, handedOver); err != nil {
 		return failed(err)
 	}
 

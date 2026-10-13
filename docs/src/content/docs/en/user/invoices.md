@@ -1340,7 +1340,7 @@ before pay links were turned on has no link in its PDF.
 The link also travels with the invoice when you **send it by e-mail** — the e-mail says
 *Du kan også betale med Vipps* with the link — and with every **reminder letter**,
 which adds that the link pays the invoice itself, while fees and interest are paid to
-the account with the KID. When you e-mail an invoice that has no link, sending it
+the account with the KID, or the invoice number when there is none. When you e-mail an invoice that has no link, sending it
 makes one first. A quick invoice handed over on site gets a link at issue only when
 payment on site is turned on; otherwise it gets one when you e-mail it.
 
