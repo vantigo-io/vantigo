@@ -1,5 +1,5 @@
--- The holiday schemes (design S9, §3.5, delivery B). The holiday account and
--- its adjustments arrive with their task.
+-- The holiday schemes (design S9, §3.5, delivery B) and the adjustments of
+-- the holiday account they drive.
 
 -- name: ListHolidaySchemes :many
 -- ListHolidaySchemes is every scheme, archived ones included so an
@@ -65,3 +65,32 @@ UPDATE staff.holiday_schemes SET
     updated_at = @now::timestamptz
 WHERE id = @id
 RETURNING *;
+
+-- name: ListHolidayAdjustments :many
+-- ListHolidayAdjustments is a person's adjustments, newest year first.
+SELECT * FROM staff.holiday_adjustments WHERE person_id = @person_id ORDER BY year DESC, id DESC;
+
+-- name: GetHolidayAdjustment :one
+SELECT * FROM staff.holiday_adjustments WHERE id = @id;
+
+-- name: LockHolidayAdjustment :one
+-- LockHolidayAdjustment takes one adjustment after its person's lock.
+SELECT * FROM staff.holiday_adjustments WHERE id = @id FOR UPDATE;
+
+-- name: CarryOverRecorded :one
+-- CarryOverRecorded is whether a carry-over from @from_year is recorded for
+-- the person: at most one is (plan pre-flight I8), asked under the person's
+-- lock and held by ux_holiday_adjustments_carry_over.
+SELECT EXISTS (
+    SELECT 1 FROM staff.holiday_adjustments
+    WHERE person_id = @person_id AND from_year = @from_year::smallint
+      AND reason IN ('agreed_carry_over', 'forced_carry_over')
+) AS recorded;
+
+-- name: InsertHolidayAdjustment :one
+INSERT INTO staff.holiday_adjustments (person_id, year, days, reason, from_year, note, by_user_id, created_at, updated_at)
+VALUES (@person_id, @year, @days, @reason, @from_year, @note, @by_user_id, @now::timestamptz, @now::timestamptz)
+RETURNING *;
+
+-- name: DeleteHolidayAdjustment :exec
+DELETE FROM staff.holiday_adjustments WHERE id = @id;

@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -422,6 +422,10 @@ Every change to a person is an **event** (`staff.events`), written in the same
 transaction as the change, attributed to the actor as the user directory named them
 just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 "Unknown user"). The kinds today:
+
+Delivery B's absence and adjustment events carry their classes per field and are
+shaped by the absence groups; they are described under
+[The absence events](#the-absence-events).
 
 | Kind | Payload |
 | --- | --- |
@@ -1010,10 +1014,14 @@ documents — and only class E is. Six are seeded:
 Absence is delivery B. What stands so far: the [absence types](#absence-types) with
 their [a-melding mapping](#the-a-meldings-leave-descriptions), the
 [holiday schemes](#holiday-schemes) and an employment's scheme, the
-self-certification policy and automatic carry-over in the [settings](#settings), and
-the [care-day fields](#the-care-day-fields) on a person. The absences themselves, the
-holiday account, decisions, sick-leave cases and care-day counting arrive with B's
-later steps; until then `staff:approve` grants only `GET /meta`'s `canDecide`.
+self-certification policy and automatic carry-over in the [settings](#settings), the
+[care-day fields](#the-care-day-fields) on a person, [absences](#absences) requested
+and registered with their [overlap](#overlap) rule, the
+[holiday account](#the-holiday-account) with its
+[adjustments and carry-over](#adjustments-and-carry-over), and
+[their events](#the-absence-events). Decisions, sick-leave cases and care-day counting
+arrive with B's later steps; until then `staff:approve` grants only `GET /meta`'s
+`canDecide`.
 
 ### Absence types
 
@@ -1188,6 +1196,156 @@ and claiming the refund — need the number, and only the number; no child is na
 no diagnosis is recorded. For now it stays where the design places it, class D in the
 care-day group; whether it should move to the health group and class E is an open
 question for the owner.
+
+### Absences
+
+`staff.absences` holds what a person is away for: a person, a type, a first and a last
+day — or one day and its hours, for a type counted in hours — a percentage of each day,
+a status and, for a sykmelding, its degree. A type that needs a decision starts
+`requested`; a type that is a notification (egenmelding, sykmelding, sykt barn, helse)
+starts `registered`. The decisions — `approved`, `rejected`, a decider's cancel and
+HR's correction — arrive with B's next step; `cancelled` is reached today by the
+person's own cancel of a request.
+
+**Who writes one.** `POST /me/absences` is the caller's own; `POST /absences` names
+`personId` and is the caller's own person's, or — `staff:manage` — anyone's. Nobody
+else may, a manager registering for a report included (the uniform 403): a
+registration is the person's or HR's. A caller linked to nobody gets `no_person` on
+`/me`.
+
+| Field | Rule |
+| --- | --- |
+| `typeId` | A type that is not hidden — never the reserved `absent`. |
+| `firstDay`, `lastDay` | Civil dates; `lastDay` left out is `firstDay`; at most 366 days; inside one of the person's employments. |
+| `percent` | 1–100, two decimals, only on a type that allows a percentage (`percent_not_allowed`); 100 when left out. Never on a sick kind, whose percentage is 100. |
+| `hours` | 0.25–24 in quarter hours, only on a type counted in hours — which needs it, and one day (`hours_on_day_type` either way). |
+| `degreePercent` | A sykmelding's degree, 1–100, two decimals, 100 when left out — its **share** of each day everywhere (the holiday account, the payroll totals); never on another type. |
+| `note` | At most 500 characters; refused on egenmelding, sykmelding and sykt barn (`absence_note_on_sick`): what a sickness is about is health data. |
+
+The write is judged under the person's lock: the type is read `FOR KEY SHARE` (so HR
+widening an HR-only type waits for it, and then finds it in use), the employments, then
+[overlap](#overlap). Its answer carries `workingDays` — Monday to Friday without the
+public holidays of the platform calendar (`internal/calendar`), whatever the share; an
+hour row counts none — and, for a type that draws on the holiday account, `accounts`:
+the [holiday account](#the-holiday-account) of each year the row touches after the
+write, and `overdrawn` when taking every requested day would overdraw one. That is a
+warning, never a refusal.
+
+**Changing, removing, cancelling** (reading 16, pre-flight M8). `PUT /absences/{id}`
+(`If-Match`) replaces the type, days, percent, hours, degree and note, judged as a new
+row is with the row itself left out of the overlap; the status follows the new type. The
+person changes their own row while it is `requested`; a `registered` row — a sick one
+included — is `staff:manage`'s to change: ending a sykmelding early or fixing its days
+is HR's job, the person asks. `DELETE /absences/{id}` removes a row nobody decided: a
+request (the person or HR) or a registration (HR alone). Anything else is
+`absence_not_requested`. `POST /absences/{id}/cancel` withdraws a request — the
+person's or HR's — and keeps it as history (`cancelled`); a row that is not a request is
+`absence_not_cancellable`. Anyone else who sees the row gets the uniform 403; anyone who
+does not, the 404 of an unknown id.
+
+**Reading them.** `GET /absences?personId&from&to&status&page&pageSize` lists, newest
+first, the rows the caller may see: everyone's to `staff:manage` and
+`staff:personal-data`; otherwise their own, their reports' today (the
+[one manager rule](#managers-and-the-org-view)), and — with `staff:view` — the
+`approved` and `registered` rows of every person active today, never a request or a
+refusal. `GET /absences/{id}` answers one, the 404 of an unknown id to anyone who may
+not see it. `GET /me/absences` lists the caller's own. Each row is shaped by three
+groups (design §5; the Approver audience is B's next step):
+
+| Group | Fields | Self | Colleague | Manager | `staff:manage` | `staff:personal-data` |
+| --- | --- | --- | --- | --- | --- | --- |
+| Absence | `firstDay`, `lastDay`, `status`, `workingDays` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Absence type | `typeId` (`shownAs: type`) | ✓ | — (`shownAs: absent`) | ✓; an `hr_only` type `shownAs: leave` | ✓; an `hr_only` type `shownAs: leave` | ✓ |
+| Absence detail | `percent`, `hours`, `degreePercent`, `note` | ✓ | — | ✓ | ✓ | ✓ |
+
+### Overlap
+
+On every day of a new or changed day row, each of the person's `requested`, `approved`
+and `registered` day rows that covers that day must be of a type that allows a
+percentage, as the new one must, and the shares of all of them that day sum to at most
+100 % — otherwise `absence_overlap` (409). A request blocks as an approved row does
+(reading 17). Hour rows overlap only hour rows, on their one day, by hours summed to
+at most 24; an hour row counts no day, so it neither blocks nor is blocked by a day row
+(reading 27). The two exceptions for sickness over approved ferie — a 100 % sykmelding
+splitting the ferie, a graded one beside it — arrive with the sick-leave cases; until
+then they are refused like any overlap. A sick row is a plain registration until then
+too, with no case.
+
+### The holiday account
+
+`GET /people/{id}/holiday-account?year` — the person, a manager of theirs today,
+`staff:manage` and `staff:personal-data`; anyone else the 404 of an unknown person —
+and `GET /me/holiday-account?year` answer one person's account for a year (this year
+in the business time zone when left out; 2000–2100), in working days:
+
+- **`entitlement`**: the scheme of the person's earliest employment active in the year
+  (two concurrent employments, one account), [converted](#holiday-schemes) — its
+  after-September days when that employment starts after 30 September of the year —
+  plus the extra days converted when the person turns 60 or more in the year,
+  un-prorated. No employment in the year, nothing.
+- **`carriedIn`**: the year's agreed carry-overs, capped at the scheme's maximum
+  converted, and its forced carry-overs and corrections, uncapped.
+- **`carriedInDerived`**: with automatic carry-over on, for a year from the one it was
+  turned on in (`autoCarryOverSince`), when no carry-over from the year before is
+  recorded, that year's remaining when above zero — a forced carry-in nobody typed.
+  A carry-over recorded by hand takes its place.
+- **`taken`**: the approved and registered days of the types that draw on the account,
+  on working days **of that year** — a row across New Year counts in both — each times
+  its share. **`pending`**: the requested ones, shown apart.
+- **`remaining`**: `entitlement + carriedIn + carriedInDerived − taken`; **`overdrawn`**:
+  `remaining − pending` is below zero.
+
+### Adjustments and carry-over
+
+`staff.holiday_adjustments` holds HR's changes to an account, in working days, signed,
+one decimal. `GET /people/{id}/holiday-adjustments` lists a person's, newest year
+first; `POST /people/{id}/holiday-adjustments` records one — `year` (2000–2100),
+`days` (−366 to 366, not zero), `reason` (`agreed_carry_over`, `forced_carry_over` or
+`correction`), `fromYear` (a carry-over's, before `year`; never a correction's) and
+`note` (at most 500, required with `forced_carry_over` and `correction`) — as
+`holiday_adjusted`; `DELETE /holiday-adjustments/{id}` removes one as
+`holiday_adjustment_deleted`. All three are `staff:manage`'s.
+
+`POST /people/{id}/carry-over {fromYear, kind, days?, note?}` carries a year's untaken
+days into the next: `agreed`, capped at the scheme's maximum (the scheme the next year's
+account follows); or `forced`, uncapped, with its note. `days` defaults to `fromYear`'s
+remaining rounded down to a tenth — capped, when agreed; an agreed `days` above the cap
+is a 400, as is a year with nothing left. It is recorded as `carry_over_recorded`.
+
+**At most one carry-over per person and year it comes from** (pre-flight I8), however
+it is recorded: judged under the person's lock and held by the unique index
+`ux_holiday_adjustments_carry_over`, whose violation answers the same
+`carry_over_recorded` (409). Deleting it lets it be recorded again.
+
+### The absence events
+
+An absence's write is one event — `absence_requested`, `absence_registered`,
+`absence_updated` (each field's `from` and `to`), `absence_deleted` (the row's fields as
+they were) or `absence_cancelled` — naming the absence (`absenceId`); an adjustment's
+names it (`adjustmentId`). Beside its `fields` each carries **`classes`**, each field's
+retention class as the module wrote it (pre-flight B1), because one name means
+different data on different rows:
+
+| Field | Class |
+| --- | --- |
+| `firstDay`, `lastDay`, `percent`, `hours`, `status`; an adjustment's `year`, `days`, `reason`, `fromYear` | C |
+| `note`, `decisionNote`; an adjustment's `note` | D |
+| `type`, `degree` | E on a sick or child-sick row (either side of a change), else C |
+
+`payload_classes` is their union. The names never enter the module's per-name class
+table: the erase blanks such an event **by its own map** — a leaver's D erase blanks
+the note and keeps the dates and the type, a sykmelding's type and degree included;
+the health erase blanks a sick row's type and degree and leaves a ferie row's alone.
+
+They are shaped by the three groups above, field by field — an adjustment's figures
+by the detail group, its note HR's alone (left out for anyone else) — and **every type
+value, before and after, by its own type's visibility** (pre-flight B2): a correction
+away from an HR-only type shows a manager `"leave"` before and the new type after; a
+deleted HR-only row's event shows `"leave"`; a type the module cannot find shows
+`"leave"` too. A sick row's event touches class E, yet the absence family is listed to
+everyone who reads the person's history (pre-flight I6) — the manager and HR without
+`staff:personal-data` read its dates and degree, as they read the row itself — while
+any other event touching E stays the health group's.
 
 ## The personal-data exports
 
@@ -1824,6 +1982,13 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `seed_immutable` | 409 | Changing a seeded document category; changing a seeded absence type beyond its names, order and `hidden`, or showing the reserved `absent`. |
 | `holiday_scheme_in_use` | 409 | Archiving the default holiday scheme, or one an employment names. |
 | `absence_type_in_use` | 409 | Widening a company absence type's visibility from `hr_only` to `absent` once an absence names it. |
+| `percent_not_allowed` | 400 | A percentage on an absence of a type that allows none — a sick kind among them. |
+| `hours_on_day_type` | 400 | Hours on an absence of a type counted in days; an hour type without hours or over more than one day. |
+| `absence_note_on_sick` | 400 | A note on an egenmelding, a sykmelding or a sick child's absence. |
+| `absence_overlap` | 409 | An absence that cannot stand beside the person's requested, approved or registered rows on one of its days. |
+| `absence_not_requested` | 409 | Changing or deleting an absence that is not a request — a registered one by anyone but HR, a decided or cancelled one by anyone. |
+| `absence_not_cancellable` | 409 | Cancelling an absence that is not a request. |
+| `carry_over_recorded` | 409 | A second carry-over for one person from one year. |
 | `person_erased` | 409 | Any write of a person the retention run has erased but the hold, the reassessment, an unlink and a rehire. |
 | `storage_unavailable` | 503 | The object store could not be written to or read from. |
 | `import_too_large` | 400 | An import file over 5 MiB. |
@@ -1889,6 +2054,12 @@ person's, which it moves on when the list changes.
   second waits on the scheme's row and finds the scheme named
   (`holiday_scheme_in_use`) or archived (`structure_archived`). The two take the
   rows in one order, so they cannot deadlock.
+- **An absence's rows.** A write of an absence or an adjustment takes the person's row,
+  then the absence type it names `FOR KEY SHARE` — a type's own change holds it
+  `FOR UPDATE` and never a person, so the two queue — then the absence's or the
+  adjustment's row. Overlap, the carry-over's "at most one" and the account an answer
+  carries are judged over rows read inside that lock, so two writes for one person are
+  judged one after the other.
 - **The sequence.** A create that generates an employee number holds the settings row
   until it commits, so two creators take numbers one after the other.
 - **The delete.** `DELETE /people/{id}` takes the person's row, then the manager graph,
@@ -1922,6 +2093,12 @@ All under `/api/v1/staff`.
 | `POST /document-categories`, `PUT /document-categories/{id}` | `staff:manage` |
 | `GET /absence-types`, `GET /holiday-schemes` | `staff:access` (hidden types to `staff:manage` alone) |
 | `POST /absence-types`, `PUT /absence-types/{id}`, `POST /holiday-schemes`, `PUT /holiday-schemes/{id}` | `staff:manage` |
+| `GET /absences`, `GET /absences/{id}` | `staff:access`, then the rows the caller may see (otherwise left out, or 404) |
+| `POST /absences` | `staff:access`, then the caller's own person or `staff:manage` (otherwise 403) |
+| `PUT /absences/{id}`, `DELETE /absences/{id}`, `POST /absences/{id}/cancel` | `staff:access`, then the person or `staff:manage` (otherwise 403; 404 to one who does not see the row) |
+| `GET /people/{id}/holiday-account` | `staff:access`, then the person, a manager of theirs or HR (otherwise 404) |
+| `GET /people/{id}/holiday-adjustments`, `POST /people/{id}/holiday-adjustments`, `DELETE /holiday-adjustments/{id}`, `POST /people/{id}/carry-over` | `staff:manage` |
+| `GET /me/absences`, `POST /me/absences`, `GET /me/holiday-account` | `staff:access`, then a self-service link (otherwise `no_person`) |
 | `GET /people/{id}/personal-data`, `PUT /people/{id}/legal-hold`, `POST /people/{id}/reassessed` | `staff:personal-data` |
 | `POST /people/similar-erased` | `staff:manage` |
 | `POST /people/import`, `GET /people/export.csv`, `GET /people/import-template.csv` | `staff:manage`; an import file's sealed columns `staff:personal-data` too (`import_sealed_columns`) |

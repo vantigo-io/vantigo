@@ -14,24 +14,27 @@ import (
 
 const countPersonEvents = `-- name: CountPersonEvents :one
 SELECT count(*) FROM staff.events
-WHERE person_id = $1 AND ($2::boolean OR NOT ('E' = ANY(payload_classes)))
-  AND ($3::boolean OR NOT (kind = ANY($4::text[])))
+WHERE person_id = $1
+  AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[]))
+  AND ($4::boolean OR NOT (kind = ANY($5::text[])))
 `
 
 type CountPersonEventsParams struct {
-	PersonID   *int64
-	WithHealth bool
-	WithHold   bool
-	HoldKinds  []string
+	PersonID     *int64
+	WithHealth   bool
+	AbsenceKinds []string
+	WithHold     bool
+	HoldKinds    []string
 }
 
 // CountPersonEvents counts what ListPersonEvents pages through, health events
-// (those whose payload touches class E) and the hold's kinds only when asked
-// for.
+// (those whose payload touches class E) — but the absence family's — and the
+// hold's kinds only when asked for.
 func (q *Queries) CountPersonEvents(ctx context.Context, arg CountPersonEventsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countPersonEvents,
 		arg.PersonID,
 		arg.WithHealth,
+		arg.AbsenceKinds,
 		arg.WithHold,
 		arg.HoldKinds,
 	)
@@ -127,19 +130,21 @@ func (q *Queries) ListAllPersonEvents(ctx context.Context, personID *int64) ([]L
 const listPersonEvents = `-- name: ListPersonEvents :many
 SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload, payload_classes
 FROM staff.events
-WHERE person_id = $1 AND ($2::boolean OR NOT ('E' = ANY(payload_classes)))
-  AND ($3::boolean OR NOT (kind = ANY($4::text[])))
+WHERE person_id = $1
+  AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[]))
+  AND ($4::boolean OR NOT (kind = ANY($5::text[])))
 ORDER BY at DESC, id DESC
-LIMIT $6 OFFSET $5
+LIMIT $7 OFFSET $6
 `
 
 type ListPersonEventsParams struct {
-	PersonID   *int64
-	WithHealth bool
-	WithHold   bool
-	HoldKinds  []string
-	PageOffset int32
-	PageSize   int32
+	PersonID     *int64
+	WithHealth   bool
+	AbsenceKinds []string
+	WithHold     bool
+	HoldKinds    []string
+	PageOffset   int32
+	PageSize     int32
 }
 
 type ListPersonEventsRow struct {
@@ -159,11 +164,14 @@ type ListPersonEventsRow struct {
 // document's — is left out unless asked for: an audience without the health
 // group does not learn that one happened. The hold's kinds (@hold_kinds) —
 // the legal hold, the reassessment, the rehire, the export — are left out
-// the same way unless asked for (@with_hold).
+// the same way unless asked for (@with_hold). The absence family
+// (@absence_kinds) is listed whatever its classes (plan pre-flight I6): a
+// sick row's event is shaped field by field, each by its own group.
 func (q *Queries) ListPersonEvents(ctx context.Context, arg ListPersonEventsParams) ([]ListPersonEventsRow, error) {
 	rows, err := q.db.Query(ctx, listPersonEvents,
 		arg.PersonID,
 		arg.WithHealth,
+		arg.AbsenceKinds,
 		arg.WithHold,
 		arg.HoldKinds,
 		arg.PageOffset,

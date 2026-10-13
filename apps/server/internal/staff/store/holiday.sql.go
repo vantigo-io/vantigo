@@ -8,7 +8,33 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const carryOverRecorded = `-- name: CarryOverRecorded :one
+SELECT EXISTS (
+    SELECT 1 FROM staff.holiday_adjustments
+    WHERE person_id = $1 AND from_year = $2::smallint
+      AND reason IN ('agreed_carry_over', 'forced_carry_over')
+) AS recorded
+`
+
+type CarryOverRecordedParams struct {
+	PersonID int64
+	FromYear int16
+}
+
+// CarryOverRecorded is whether a carry-over from @from_year is recorded for
+// the person: at most one is (plan pre-flight I8), asked under the person's
+// lock and held by ux_holiday_adjustments_carry_over.
+func (q *Queries) CarryOverRecorded(ctx context.Context, arg CarryOverRecordedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, carryOverRecorded, arg.PersonID, arg.FromYear)
+	var recorded bool
+	err := row.Scan(&recorded)
+	return recorded, err
+}
 
 const clearHolidaySchemeDefault = `-- name: ClearHolidaySchemeDefault :exec
 UPDATE staff.holiday_schemes
@@ -29,6 +55,37 @@ func (q *Queries) ClearHolidaySchemeDefault(ctx context.Context, arg ClearHolida
 	return err
 }
 
+const deleteHolidayAdjustment = `-- name: DeleteHolidayAdjustment :exec
+DELETE FROM staff.holiday_adjustments WHERE id = $1
+`
+
+func (q *Queries) DeleteHolidayAdjustment(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteHolidayAdjustment, id)
+	return err
+}
+
+const getHolidayAdjustment = `-- name: GetHolidayAdjustment :one
+SELECT id, person_id, year, days, reason, from_year, note, by_user_id, created_at, updated_at FROM staff.holiday_adjustments WHERE id = $1
+`
+
+func (q *Queries) GetHolidayAdjustment(ctx context.Context, id int64) (StaffHolidayAdjustment, error) {
+	row := q.db.QueryRow(ctx, getHolidayAdjustment, id)
+	var i StaffHolidayAdjustment
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Year,
+		&i.Days,
+		&i.Reason,
+		&i.FromYear,
+		&i.Note,
+		&i.ByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const holidaySchemeNamed = `-- name: HolidaySchemeNamed :one
 SELECT EXISTS (SELECT 1 FROM staff.employments WHERE holiday_scheme_id = $1::bigint) AS named
 `
@@ -40,6 +97,50 @@ func (q *Queries) HolidaySchemeNamed(ctx context.Context, id int64) (bool, error
 	var named bool
 	err := row.Scan(&named)
 	return named, err
+}
+
+const insertHolidayAdjustment = `-- name: InsertHolidayAdjustment :one
+INSERT INTO staff.holiday_adjustments (person_id, year, days, reason, from_year, note, by_user_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz, $8::timestamptz)
+RETURNING id, person_id, year, days, reason, from_year, note, by_user_id, created_at, updated_at
+`
+
+type InsertHolidayAdjustmentParams struct {
+	PersonID int64
+	Year     int16
+	Days     pgtype.Numeric
+	Reason   string
+	FromYear *int16
+	Note     *string
+	ByUserID uuid.UUID
+	Now      time.Time
+}
+
+func (q *Queries) InsertHolidayAdjustment(ctx context.Context, arg InsertHolidayAdjustmentParams) (StaffHolidayAdjustment, error) {
+	row := q.db.QueryRow(ctx, insertHolidayAdjustment,
+		arg.PersonID,
+		arg.Year,
+		arg.Days,
+		arg.Reason,
+		arg.FromYear,
+		arg.Note,
+		arg.ByUserID,
+		arg.Now,
+	)
+	var i StaffHolidayAdjustment
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Year,
+		&i.Days,
+		&i.Reason,
+		&i.FromYear,
+		&i.Note,
+		&i.ByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const insertHolidayScheme = `-- name: InsertHolidayScheme :one
@@ -94,13 +195,49 @@ func (q *Queries) InsertHolidayScheme(ctx context.Context, arg InsertHolidaySche
 	return i, err
 }
 
+const listHolidayAdjustments = `-- name: ListHolidayAdjustments :many
+SELECT id, person_id, year, days, reason, from_year, note, by_user_id, created_at, updated_at FROM staff.holiday_adjustments WHERE person_id = $1 ORDER BY year DESC, id DESC
+`
+
+// ListHolidayAdjustments is a person's adjustments, newest year first.
+func (q *Queries) ListHolidayAdjustments(ctx context.Context, personID int64) ([]StaffHolidayAdjustment, error) {
+	rows, err := q.db.Query(ctx, listHolidayAdjustments, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StaffHolidayAdjustment
+	for rows.Next() {
+		var i StaffHolidayAdjustment
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.Year,
+			&i.Days,
+			&i.Reason,
+			&i.FromYear,
+			&i.Note,
+			&i.ByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listHolidaySchemes = `-- name: ListHolidaySchemes :many
 
 SELECT id, name, entitlement_virkedager, extra_from_60_virkedager, main_period_virkedager, after_september_virkedager, max_carry_over_virkedager, is_default, seeded, archived_at, revision, created_at, updated_at FROM staff.holiday_schemes ORDER BY is_default DESC, name, id
 `
 
-// The holiday schemes (design S9, §3.5, delivery B). The holiday account and
-// its adjustments arrive with their task.
+// The holiday schemes (design S9, §3.5, delivery B) and the adjustments of
+// the holiday account they drive.
 // ListHolidaySchemes is every scheme, archived ones included so an
 // employment can still name its own: the default first, then by name.
 func (q *Queries) ListHolidaySchemes(ctx context.Context) ([]StaffHolidayScheme, error) {
@@ -159,6 +296,29 @@ func (q *Queries) LockDefaultHolidayScheme(ctx context.Context) (StaffHolidaySch
 		&i.Seeded,
 		&i.ArchivedAt,
 		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lockHolidayAdjustment = `-- name: LockHolidayAdjustment :one
+SELECT id, person_id, year, days, reason, from_year, note, by_user_id, created_at, updated_at FROM staff.holiday_adjustments WHERE id = $1 FOR UPDATE
+`
+
+// LockHolidayAdjustment takes one adjustment after its person's lock.
+func (q *Queries) LockHolidayAdjustment(ctx context.Context, id int64) (StaffHolidayAdjustment, error) {
+	row := q.db.QueryRow(ctx, lockHolidayAdjustment, id)
+	var i StaffHolidayAdjustment
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Year,
+		&i.Days,
+		&i.Reason,
+		&i.FromYear,
+		&i.Note,
+		&i.ByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

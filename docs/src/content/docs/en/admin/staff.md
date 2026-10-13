@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, the care-day fields, the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
+description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, the care-day fields, the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
 sidebar:
   order: 44
 sources:
@@ -23,6 +23,7 @@ sources:
   - apps/server/internal/staff/absence_types.go
   - apps/server/internal/staff/holiday_schemes.go
   - apps/server/internal/staff/absence_settings.go
+  - apps/server/internal/staff/adjustments.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -219,6 +220,44 @@ delivery.
 end into the next year without HR's action, as a forced carry-over. The day you turn
 it on is recorded (`autoCarryOverSince`), and no year before it is carried over
 automatically. It is off by default.
+
+## Carry holiday over
+
+Holiday left at a year's end does not vanish. HR carries it into the next year on
+`POST /api/v1/staff/people/{id}/carry-over` (`staff:manage`):
+
+1. Read the person's account for the year it comes from:
+   `GET /api/v1/staff/people/{id}/holiday-account?year=2025` — `remaining` is what is
+   left.
+2. Record the carry-over with `fromYear` and `kind`:
+   - `agreed` — what you and the employee agreed, capped by the holiday scheme's
+     maximum (12 virkedager, 10 working days, under the statutory scheme). Leave `days`
+     out to carry the remaining days, up to the cap.
+   - `forced` — days the employee could not take (sickness in the holiday, say),
+     uncapped, with a `note` saying why.
+3. Check the account of the next year: the days are in `carriedIn`.
+
+A person has **at most one carry-over from a year**: a second answers
+`carry_over_recorded`. To change it, delete it
+(`DELETE /api/v1/staff/holiday-adjustments/{id}`; the list is
+`GET /api/v1/staff/people/{id}/holiday-adjustments`) and record it again. A correction
+of an account — a day registered wrongly, say — is an adjustment with
+`reason: "correction"` and a note.
+
+**Automatic carry-over.** With `autoCarryOver` on in the settings, an account carries
+the year before's remaining days in by itself (`carriedInDerived`), as a forced
+carry-over — but only for years from the one it was turned on in, so turning it on
+never reaches back into years HR already settled. A carry-over recorded by hand for a
+year replaces the automatic one.
+
+## Correct a registered sick absence
+
+An egenmelding or a sykmelding is registered, not decided, and the employee cannot
+change it once it is in: when a sykmelding ends early, or a day was wrong, HR changes
+it (`PUT /api/v1/staff/absences/{id}`, `staff:manage`, with the revision in `If-Match`)
+or removes it (`DELETE /api/v1/staff/absences/{id}`). Each is recorded in the person's
+history. An absence somebody has decided is never removed; it is cancelled or corrected
+with the decisions, in a later step of the delivery.
 
 ## The care-day fields
 

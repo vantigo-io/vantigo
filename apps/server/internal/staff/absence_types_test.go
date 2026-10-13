@@ -71,7 +71,7 @@ func TestAbsenceTypes_List(t *testing.T) {
 
 	ferie := absenceTypeByKey(t, hr, "ferie")
 	if ferie.Kind != gen.StaffAbsenceKindHoliday || ferie.Unit != gen.StaffAbsenceUnitDays || !ferie.Paid || !ferie.DrawsHoliday ||
-		ferie.AllowsPercent || !ferie.NeedsDecision || ferie.Visibility != gen.Absent ||
+		ferie.AllowsPercent || !ferie.NeedsDecision || ferie.Visibility != gen.StaffAbsenceVisibilityAbsent ||
 		ferie.AmeldingLeave != nil || ferie.Reserved || ferie.Names.En != "Holiday" || ferie.Names.Nb != "Ferie" {
 		t.Errorf("ferie = %+v, want holiday in days, paid, drawing on the account, no percentage, decided, absent", ferie)
 	}
@@ -89,7 +89,7 @@ func TestAbsenceTypes_List(t *testing.T) {
 			t.Errorf("%s reports %v, want %s", key, got, want)
 		}
 	}
-	if v := absenceTypeByKey(t, hr, "religios_hoytid").Visibility; v != gen.HrOnly {
+	if v := absenceTypeByKey(t, hr, "religios_hoytid").Visibility; v != gen.StaffAbsenceVisibilityHrOnly {
 		t.Errorf("religios_hoytid's visibility = %s, want hr_only", v)
 	}
 }
@@ -285,7 +285,7 @@ func TestAbsenceTypes_Change(t *testing.T) {
 	change["ameldingLeave"] = "andreIkkeLovfestedePermisjoner"
 	var changed gen.StaffAbsenceType
 	do(t, hr, http.MethodPut, absenceTypePath(own.Id), change, http.StatusOK, &changed, ifMatch(own.Revision))
-	if changed.Paid || changed.Visibility != gen.HrOnly || changed.AmeldingLeave == nil ||
+	if changed.Paid || changed.Visibility != gen.StaffAbsenceVisibilityHrOnly || changed.AmeldingLeave == nil ||
 		changed.Kind != gen.StaffAbsenceKindLeave || changed.Unit != gen.StaffAbsenceUnitDays {
 		t.Errorf("changed = %+v, want unpaid, hr_only, mapped, kind and unit as they were", changed)
 	}
@@ -317,7 +317,7 @@ func TestAbsenceTypes_VisibilityIsNotWidenedUnderRows(t *testing.T) {
 	open := changeOf(private)
 	open["visibility"] = "absent"
 	do(t, hr, http.MethodPut, absenceTypePath(private.Id), open, http.StatusOK, &widened, ifMatch(private.Revision+1))
-	if widened.Visibility != gen.Absent {
+	if widened.Visibility != gen.StaffAbsenceVisibilityAbsent {
 		t.Fatalf("widened while unused = %+v, want absent", widened)
 	}
 	closed := changeOf(widened)
@@ -336,7 +336,7 @@ func TestAbsenceTypes_VisibilityIsNotWidenedUnderRows(t *testing.T) {
 	rename["names"] = map[string]any{"en": "Private", "nb": "Privat"}
 	var renamed gen.StaffAbsenceType
 	do(t, hr, http.MethodPut, absenceTypePath(private.Id), rename, http.StatusOK, &renamed, ifMatch(narrowed.Revision))
-	if renamed.Visibility != gen.HrOnly {
+	if renamed.Visibility != gen.StaffAbsenceVisibilityHrOnly {
 		t.Errorf("renamed = %+v, want hr_only still", renamed)
 	}
 }

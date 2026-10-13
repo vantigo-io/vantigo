@@ -72,10 +72,24 @@ var ameldingLeaveDescriptions = []string{
 	"utdanningspermisjonIkkeLovfestet", "andreLovfestedePermisjoner", "andreIkkeLovfestedePermisjoner", "permittering",
 }
 
+// A type's visibility (design S8): absent — colleagues see "absent", the
+// manager and HR the type — or hr_only, shown as "leave" to all but the
+// person and staff:personal-data.
+const (
+	visibilityAbsent = "absent"
+	visibilityHROnly = "hr_only"
+)
+
 // absenceUnits and absenceVisibilities are a type's unit and visibility.
 var (
-	absenceUnits        = []string{"days", "hours"}
-	absenceVisibilities = []string{"absent", "hr_only"}
+	absenceUnits        = []string{unitDays, unitHours}
+	absenceVisibilities = []string{visibilityAbsent, visibilityHROnly}
+)
+
+// A type's unit: whole days, or the hours of one day.
+const (
+	unitDays  = "days"
+	unitHours = "hours"
 )
 
 // companyAbsenceKinds are the kinds a company type may have; the sick kinds
@@ -269,7 +283,7 @@ func (s *server) PutStaffAbsenceTypesById(ctx context.Context, req gen.PutStaffA
 			return refuseConflict(conflict(codeSeedImmutable, "Seeded absence type",
 				fmt.Sprintf("%s is one of the types every installation starts with: its names, its place and whether it is hidden change, nothing else.", row.NameEn)))
 		}
-		if row.Visibility == "hr_only" && flags.Visibility == "absent" {
+		if row.Visibility == visibilityHROnly && flags.Visibility == visibilityAbsent {
 			inUse, err := txq.AbsenceTypeInUse(ctx, row.ID)
 			if err != nil {
 				return fmt.Errorf("staff: read whether absence type %d is in use: %w", row.ID, err)

@@ -210,7 +210,9 @@ deletes the registration.
 [`apps/server/internal/calendar`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/calendar)
 is the one place the server knows which days are public holidays; a module that
 counts business days counts them with it. Invoices moves a due date and a reminder
-letter's deadline off them ([The rules](/en/reference/invoices/#the-rules)). It
+letter's deadline off them ([The rules](/en/reference/invoices/#the-rules)); Staff
+counts the working days an absence deducts from the holiday account with
+`BusinessDay` ([Absences](/en/reference/staff/#absences)). It
 is a set of pure functions over the standard library's `time` package: it holds no
 data, has no table and no migration, and reads no clock — its own purity test fails
 on any other import or on a call such as `time.Now`.

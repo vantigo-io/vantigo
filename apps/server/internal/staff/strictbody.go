@@ -131,9 +131,14 @@ const meRequestSchema = "StaffMeRequest"
 // refused, so HR learns it was not written (delivery B).
 const absenceTypeChangeSchema = "StaffAbsenceTypeChangeRequest"
 
+// absenceChangeSchema is the contract's name for an absence's fields on a
+// change and on one's own new absence (delivery B): a personId sent to POST
+// /me/absences is refused, so the person learns it was not written.
+const absenceChangeSchema = "StaffAbsenceChangeRequest"
+
 // closedSchemas are the request schemas whose handlers refuse a property the
 // contract does not name.
-var closedSchemas = []string{personRequestSchema, meRequestSchema, absenceTypeChangeSchema}
+var closedSchemas = []string{personRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema}
 
 // bodyHas reports whether the request's JSON body names property at its top
 // level — for a required property the generated decoder cannot tell from

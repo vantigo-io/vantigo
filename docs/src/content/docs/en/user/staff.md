@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: The people register — People, a person's page with its documents, the legal hold, an erased record and its rehire, New person, My page and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention and the thresholds.
+description: The people register — People, a person's page with its documents, the legal hold, an erased record and its rehire, New person, My page, absence and the holiday account, and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention and the thresholds.
 sidebar:
   order: 45
 sources:
@@ -467,6 +467,36 @@ Staff yet* and explains how it comes to be; ask HR if you think yours is missing
 
 My page is made for a phone first: on a narrow screen everything is one column and the
 form takes the whole screen.
+
+## Absence and your holiday
+
+Absence is being built into Staff in steps; the screens for it arrive with a later
+step. What stands today, through the Staff API, is this:
+
+- **Asking for time off.** A type that needs a decision — ferie, a leave, time off in
+  lieu — is *requested*; a type that is a notification — egenmelding, sykmelding, a sick
+  child, a doctor's or dentist's visit — is *registered* as soon as it is entered. You
+  enter your own; HR enters one on your behalf. Your manager does not enter one for you.
+  A visit to the doctor is hours of one day; everything else is whole days, some types
+  as a percentage of each day. A sick absence carries no note.
+- **Two absences on one day** stand together only when both types allow a percentage
+  and the percentages add up to at most 100 %. A request you have made counts as if it
+  were approved, so you cannot ask twice for the same day.
+- **Changing your mind.** While a request waits, you change it, remove it or cancel it
+  (a cancelled request stays in your history). A registered absence — a sick one
+  included — is HR's to change or remove: if your sykmelding ends early, tell HR.
+- **Your holiday account** counts in working days, Monday to Friday without public
+  holidays: your entitlement under the company's holiday scheme (25 virkedager are
+  21 working days; more from the year you turn 60; fewer when you start after
+  30 September), what HR carried in from last year, what you have taken, what you have
+  asked for and what remains. A request that would take you past what remains is still
+  sent — the account shows it as overdrawn.
+
+Who sees your absence: you, your manager and HR see the dates, the type and the details;
+colleagues with access to the directory see only that you are away on an approved or
+registered day — never the type, a percentage or a note. A type that reveals health or
+family matters (such as pregnancy leave or a religious holiday) shows your manager only
+*leave*.
 
 ## The dashboard
 

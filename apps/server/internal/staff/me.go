@@ -294,12 +294,12 @@ func (s *server) GetStaffMeEvents(ctx context.Context, req gen.GetStaffMeEventsR
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
 		if total, err = q.CountPersonEvents(ctx, store.CountPersonEventsParams{
-			PersonID: &id, WithHealth: selfAudience.reads(groupHealth), WithHold: selfAudience.seesHoldEvents(), HoldKinds: holdEventKinds,
+			PersonID: &id, WithHealth: selfAudience.reads(groupHealth), WithHold: selfAudience.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds,
 		}); err != nil {
 			return fmt.Errorf("staff: count person %d's events: %w", id, err)
 		}
 		rows, err = q.ListPersonEvents(ctx, store.ListPersonEventsParams{
-			PersonID: &id, WithHealth: selfAudience.reads(groupHealth), WithHold: selfAudience.seesHoldEvents(), HoldKinds: holdEventKinds,
+			PersonID: &id, WithHealth: selfAudience.reads(groupHealth), WithHold: selfAudience.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds,
 			PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 		})
 		if err != nil {
@@ -311,7 +311,7 @@ func (s *server) GetStaffMeEvents(ctx context.Context, req gen.GetStaffMeEventsR
 		return nil, err
 	}
 	return gen.GetStaffMeEvents200JSONResponse(gen.PaginatedResponseOfStaffEvent{
-		Data:       mapRows(rows, func(r store.ListPersonEventsRow) gen.StaffEvent { return eventResponse(r, selfAudience) }),
+		Data:       mapRows(rows, func(r store.ListPersonEventsRow) gen.StaffEvent { return eventResponse(r, selfAudience, nil) }),
 		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
 	}), nil
 }
