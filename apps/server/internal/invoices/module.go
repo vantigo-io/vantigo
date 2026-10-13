@@ -110,7 +110,7 @@ var limits = map[string]ratelimit.Policy{
 // customer receivables it provides to the customers module (receivables.go),
 // the two slots every module holding customer ids fills (customer_slots.go):
 // the merge holder and the personal-data provider, and its workers — the two
-// EHF workers and the reminder worker.
+// EHF workers, the reminder worker and the payments worker.
 func Module() module.Module {
 	return module.Module{
 		Name:                 "invoices",
@@ -133,13 +133,21 @@ func Module() module.Module {
 // submit worker leaves a queued row alone (ehf_worker.go). The
 // invoices-reminders worker, which sends the reminder letters queued for
 // e-mail (D10), is always there: a letter is queued only while reminders are
-// on and mail is available, and each claim judges its letter again.
+// on and mail is available, and each claim judges its letter again. The
+// invoices-payments worker, which polls, captures and releases Vipps
+// payments (D16), is handed over only when INVOICES_VIPPS_ENABLED is on: off,
+// no provider call is made on a schedule, and the reservations of attempts
+// left capturing stay counted until a manager abandons them.
 func workers(d module.Deps) []worker.Worker {
 	var ws []worker.Worker
 	if d.Config != nil && d.Config.InvoicesEhfEnabled {
 		ws = append(ws, NewEhfWorker(d), NewEhfEventsWorker(d))
 	}
-	return append(ws, NewReminderWorker(d))
+	ws = append(ws, NewReminderWorker(d))
+	if d.Config != nil && d.Config.InvoicesVippsEnabled {
+		ws = append(ws, NewPaymentWorker(d))
+	}
+	return ws
 }
 
 // mount registers every contract operation on the platform router, which wraps

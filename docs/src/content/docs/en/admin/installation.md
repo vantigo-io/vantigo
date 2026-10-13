@@ -266,8 +266,9 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 The single-container default hosts every enabled module's background workers (outbox
 delivery, retention, attachment cleanup, the customers registry workers, the
 customers import worker `customers-import`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
-`INVOICES_EHF_ENABLED` is on, and the invoices reminder worker `invoices-reminders`,
-always) inside the
+`INVOICES_EHF_ENABLED` is on, the invoices reminder worker `invoices-reminders`,
+always, and the invoices payments worker `invoices-payments` when
+`INVOICES_VIPPS_ENABLED` is on) inside the
 API process: `WORKERS_IN_PROCESS=1`, the default. Deployments that scale the API
 horizontally should move them to one dedicated worker container, so that every extra
 HTTP replica does not multiply the pollers:
@@ -281,11 +282,14 @@ Replicas that should neither migrate nor run workers can run the `server` comman
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology
 you use, retention cleanup, the registry workers and the EHF events worker take a
 PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
-the `invoices-ehf` worker and the `invoices-reminders` worker instead take one row at a
-time under a time-limited lease, so any number of instances share the work without
-sending anything twice. The reminder worker sends one letter at a time, at most one a
+the `invoices-ehf` worker, the `invoices-reminders` worker and the `invoices-payments`
+worker instead take one row at a time under a time-limited lease, so any number of
+instances share the work without sending anything twice. The reminder worker sends one letter at a time, at most one a
 second per instance, and each send must finish well inside its 60-second lease
 ([The reminder worker and mail](/en/admin/payments/#the-reminder-worker-and-mail)).
+The payments worker polls every second and handles every Vipps payment that is due in
+each cycle
+([The payments worker](/en/admin/payments/#the-payments-worker)).
 
 The customers import worker checks and runs the customer files people upload. It
 polls every `CUSTOMERS_IMPORT_POLL` (5 seconds by default), and in the single-container

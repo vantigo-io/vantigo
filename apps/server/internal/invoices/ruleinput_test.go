@@ -614,10 +614,11 @@ func TestRuleInput_AHandfulOfStatements(t *testing.T) {
 		return statements()
 	}
 	one, all := count(ids[:1]), count(ids)
-	// Exactly 12: a read that escaped the counted snapshot to the pool would
-	// count fewer, and a per-invoice loop more.
-	if one != 12 || all != 12 {
-		t.Errorf("ruleInputs read %d statements for one invoice and %d for 200, want 12 for both", one, all)
+	// Exactly 13 — the live reservations' one among them: a read that
+	// escaped the counted snapshot to the pool would count fewer, and a
+	// per-invoice loop more.
+	if one != 13 || all != 13 {
+		t.Errorf("ruleInputs read %d statements for one invoice and %d for 200, want 13 for both", one, all)
 	}
 }
 

@@ -1000,9 +1000,13 @@ seam its tests pin.
 | a letter's withdraw or retry | the letter alone |
 | a policy `PUT` | the customer's documents `FOR SHARE`, newest first, then the policy row; the merge: the documents, then the policy rows by customer id |
 | a payment attempt's create | the invoice, then the payment credentials `FOR SHARE`, then the attempt inserted; Vipps' answer is recorded in a second transaction under the attempt alone (`FOR NO KEY UPDATE`) |
+| the payments worker's claim | one statement, the attempt `FOR NO KEY UPDATE SKIP LOCKED` for that statement alone — outside the helpers and the seam |
+| the capture decision, the capture's count before its first call, the registration | the attempt `FOR NO KEY UPDATE`, then its invoice |
+| the worker's other writes: authorized, ended, a later capture's count, unknown, failed, cancelled, released, rescheduled | the attempt alone |
 | the erase | the person's documents `FOR UPDATE`, newest first, then their letters, then their children's notes, then the resolved bank lines (below) |
 
-**No path locks an invoice and then a bank line, an account row or a print batch**, so
+**No path locks an invoice and then a bank line, an account row, a print batch or a
+payment attempt**, so
 the own-row-first orders cannot cycle with each other or with the invoice-only and
 descending paths of payments and credit notes. **The one named exception is the
 erase** ([Retention and personal data](#retention-and-personal-data)): holding the
@@ -1203,10 +1207,21 @@ directory is read and no customer gate runs: the customer may be disabled, archi
 merged or anonymised since, and the money arrived regardless.
 
 **Never more than is open.** The registration locks the invoice `FOR UPDATE` — the only
-row it locks — and only then reads what its issued credit notes credit and what its live
-payments paid. **The open amount** is gross − credited − paid. Nothing open (open ≤ 0) is
-409 `invoice_settled`; an amount above the open amount is 409 `payment_exceeds_open`,
-whose problem carries `openAmount`. An overpayment would be a customer credit balance,
+row it locks — and only then reads what its issued credit notes credit, what its live
+payments paid and what its live Vipps reservations hold. **The open amount** is gross −
+credited − paid − reserved: a reservation is a Vipps capture decided and not yet
+registered or disproved ([Capture and the reservation](#capture-and-the-reservation)),
+money that may already have moved, so nothing else may take it. Nothing open (open ≤ 0)
+is 409 `invoice_settled`; an amount above the open amount is 409 `payment_exceeds_open`,
+whose problem carries `openAmount`. When a reservation is why, the detail says so — "A
+Vipps payment of X is being completed; try again once it is registered or released." —
+rather than that the invoice is paid; a hand-off of an invoice whose open amount is only
+reserved is refused `invoice_settled` with the same sentence, since a claim being paid
+is not handed off. **The document's own figures do not see a reservation**: its open
+amount, `refundDue` and state are gross − credited − paid, for a reservation is not a
+payment; the reservation is shown on its attempt. The reminder engine and so the
+overdue list do subtract it, so an invoice whose open amount is wholly reserved is not
+reminded of and leaves the overdue list. An overpayment would be a customer credit balance,
 which is phase 4; refusing it keeps payments alone from taking the open amount below
 zero. A payment of exactly the open amount is accepted, and the invoice is then `paid`.
 The response is the document, with its new state, open amount and payments.
@@ -1237,8 +1252,10 @@ payment registered again.
 registered here, `ocr` or `camt054` for one a bank line was matched or applied to
 ([Matching](#matching)), with `bankTransactionId` naming the line — and
 `registeredByUserId`, the person who registered it: the caller here, the uploader or the
-caller of `…/match` for a match. The wire makes `registeredByUserId` optional, for a
-later source with no person; every payment of this release has one. An imported payment
+caller of `…/match` for a match. A payment the payments worker registered from a Vipps
+capture is `source = vipps` with `paymentAttemptId`, the attempt it came from, and has
+no registering person — the only source without one, so `registeredByUserId` is
+optional on the wire. An imported payment
 is removed like any other, with a reason — how a refund made outside Vantigo is
 recorded — and the removal locks only the invoice and never touches the line: what a
 line has applied is derived from its live payments, so a line whose payments are all
@@ -1929,7 +1946,9 @@ document) says so; neither channel is refused for the other.
 Two background workers carry a queued transmission to its outcome
 ([design D9](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-03-invoices-ehf-peppol-kid-design.md)).
 A third, `invoices-reminders`, sends the reminder letters and runs on every
-installation ([The worker](#the-worker)).
+installation ([The worker](#the-worker)); a fourth, `invoices-payments`, carries Vipps
+payments to their end while `INVOICES_VIPPS_ENABLED` is on
+([Capture and the reservation](#capture-and-the-reservation)).
 Both run only when `INVOICES_EHF_ENABLED` is on — off, neither is handed to the
 runner — and both run with `PEPPOL_LOOKUP_ENABLED` off too: what is already submitted
 still completes, the 48-hour age cap still reaches a `queued` row (it makes no call),
@@ -3641,6 +3660,106 @@ An issued invoice answers its attempts as `paymentAttempts`, oldest first — re
 flow, state, amounts and times, and who made one on site — but never the address the
 payer is sent to. A payment registered from a Vipps capture carries
 `source = vipps` and `paymentAttemptId`, the attempt it came from.
+
+### Capture and the reservation
+
+**The worker.** `invoices-payments` runs every second while `INVOICES_VIPPS_ENABLED` is
+on — off, it is not handed to the runner and no provider call is made on a schedule, but
+the reservations of attempts left capturing stay counted. Each cycle drains every due
+attempt, one claim after another with no pause between them: an attempt paces itself by
+`next_poll_at`, and Vipps' limits are per reference. A **claim** is one statement that
+leases the next due attempt (`ix_payment_attempts_due`: a live state, a release pending,
+a refund watch; a two-minute lease) and counts it as a poll. It reads the clock once,
+and builds the provider from the stored credentials on the pool; when it cannot — Vipps
+switched off, no credentials, keys that cannot be opened — the attempt waits an hour,
+`last_error` saying why. **An attempt made under another sales unit than the stored one
+is never sent to it**: it is left as it is and looked at again in an hour, its
+reservation kept for a manager to abandon. Every write of a claim is made under the
+attempt's lock, names the claim's lease and ends the claim; one that finds the lease
+gone — the attempt abandoned, or claimed again after the lease ran out — changes
+nothing. Every call to Vipps is made outside any transaction.
+
+**Reading a request** (`creating`, `created`): `Get`. `CREATED` is read again every 2
+seconds while the request's ten minutes run, then every minute: **an attempt is never
+expired locally**, only by Vipps' own `ABORTED`, `EXPIRED` or `TERMINATED`, which it
+takes as its state. `AUTHORIZED` makes it `authorized` with the amount Vipps reserved,
+when, and `captureGuaranteedUntil`, and due at once. A 404 is no proof that nothing was
+made: within the ten minutes the read is repeated, and after them a `creating` attempt —
+whose create's answer was never learned — is **created again under its stored create key
+and reference**. A payment the first create made conflicts with it, and the attempt is
+read on; one it never made is made now — its payer was long since told the create failed
+— and Vipps expires it. Only a refusal that names the request (a 400 with a code, or a
+request refused before it was sent) fails the attempt; refused keys say nothing about
+the first create and leave it polled.
+
+**The decision**, from `authorized`, is one transaction that makes no call: the attempt
+`FOR NO KEY UPDATE`, then its invoice `FOR UPDATE`, then the open amount — gross −
+credited − paid − every live reservation, of which this attempt holds none yet — and
+**capture = min(authorized, open)**. Above zero the attempt becomes `capturing` with
+`reserved_amount` = capture and a new capture key; at zero or below it becomes
+`cancelling`. From that commit the reservation counts in the invoice's open amount, so a
+manual payment, a bank match, a second attempt or a credit note that comes after it sees
+it. Two attempts both authorized serialise on the invoice and the second captures only
+what the first left, or cancels.
+
+**The capture** (`capturing`, `capture_unknown`) reads first: anything Vipps holds
+captured — the answer to an earlier capture lost on the way — is registered. Nothing
+captured on a payment Vipps can no longer capture (not `AUTHORIZED`, something already
+released, or past `captureGuaranteedUntil`) is a capture failure. Otherwise one
+transaction counts the capture about to be sent (`capture_attempts`), with the key it
+will carry already stored. **While no capture has been sent** that transaction takes the
+decision's locks again — the attempt, then the invoice — and decides again on the open
+amount less the other reservations: when a credit note or a payment landed since the
+decision and less is open, the reservation is lowered under a new capture key, or the
+attempt cancels when nothing is left. **Once a capture has been sent the amount is
+fixed**: the key cannot be replaced (the table's trigger refuses it), and a credit note
+issued afterwards leaves the invoice owing a refund (`refundDue`) — never a smaller
+capture. That is the window that remains: between the call being sent and its answer, a
+credit note cannot change what is captured. Then, after the commit, `Capture` of the
+reserved amount under the key:
+
+- **captured** — the answer's captured amount above zero, never the status alone — is
+  registered;
+- **a capture failure** — only Vipps' 6260 (insufficient funds) or 6280 (capture failed),
+  each only on a 400 (`payments.IsCaptureFailure`) — took nothing and is not final: it
+  is tried again on the backoff, a 6260 three times, a 6280 until `captureGuaranteedUntil`
+  or 30 days after the authorization, whichever is first; then the attempt is
+  **`capture_failed`**, its reservation released and its release pending;
+- **anything else** — a 401, 403, 404, 409, 423 or 429, a 5xx, a timeout, an answer that
+  does not decode — is an **unknown outcome**: the money may have moved. The attempt
+  stays `capturing` with its reservation and the same key, and is tried again after
+  `min(600, 2^n)` seconds (a throttle's `Retry-After` when longer). After seven days of
+  unknown outcomes from its authorization it becomes **`capture_unknown`**: **its
+  reservation is kept** — no manual payment of that amount and no fee-bearing reminder
+  while the money may have been taken — and it is read every hour up to 180 days after
+  the authorization (Vipps' capture limit), then daily; the first definitive answer
+  resolves it as above. A person who has checked in the Vipps portal that nothing was
+  captured may abandon it.
+
+**The registration** reads the time of the capture from Vipps' event log first, outside
+any lock — the earliest successful `CAPTURED` — then, in one transaction, the attempt
+and then its invoice: a payment `source = vipps`, `payment_attempt_id` the attempt —
+unique, so a capture is registered once however many claims race — `amount` what Vipps
+captured, `paid_on` **the Oslo day of the capture event** (the claim's day when the log
+cannot be read), so a capture resolved weeks later does not overstate interest on a
+partly open invoice, `reference` the attempt's reference, and no registering person. In
+the same commit the attempt becomes `captured` with its reservation released, so the
+payment and the reservation never both count against the open amount; `release_pending`
+is set when Vipps authorized more than it captured, and `refund_watch_until` 30 days on.
+A capture of less than was reserved is registered as captured, and the rest released.
+
+**Releasing what was not captured** (`cancelling`, or a release pending after
+`captured` or `capture_failed`): `Cancel` under the attempt's cancel key, on the
+backoff until it succeeds — "already cancelled" is success — then `cancelled_amount` and,
+from `cancelling`, the state `cancelled`. A released amount of zero is taken only from
+Vipps' read of the payment. **A release Vipps refuses for good** — a 400 naming a code —
+while its read still shows an amount neither captured nor released is **parked**:
+`next_poll_at` is cleared, so it is never claimed again, and `last_error` says to release
+it in the Vipps portal. A parked release still counts as live against a change of the
+sales unit or its keys (`payment_attempts_active`).
+
+**The refund watch.** A captured attempt is due once a day until `refund_watch_until`,
+then never again.
 
 ## The journal
 

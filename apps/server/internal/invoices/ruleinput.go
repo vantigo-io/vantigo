@@ -152,8 +152,8 @@ func (ins ruleInputSet) of(id int64, what string) (*reminderrules.Input, error) 
 }
 
 // readRuleFacts reads every invoice's credits, payments, deliveries, letters,
-// waivers, charge payments, holds, hand-offs and policy into ins, one
-// statement each.
+// waivers, charge payments, holds, hand-offs, live Vipps reservations and
+// policy into ins, one statement each.
 func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins ruleInputSet) error {
 	credits, err := q.RuleCredits(ctx, ids)
 	if err != nil {
@@ -273,6 +273,22 @@ func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins ruleI
 			return err
 		}
 		in.HandedOff = true
+	}
+
+	reservations, err := q.RuleReservations(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("invoices: read the reservations: %w", err)
+	}
+	for _, r := range reservations {
+		in, err := ins.of(r.InvoiceID, "a reservation")
+		if err != nil {
+			return err
+		}
+		amount, err := ratFromNumeric(r.ReservedAmount)
+		if err != nil {
+			return fmt.Errorf("invoices: read a reservation of document %d: %w", r.InvoiceID, err)
+		}
+		in.Reservations = append(in.Reservations, reminderrules.Reservation{Amount: amount})
 	}
 
 	policies, err := q.RulePolicies(ctx, ids)

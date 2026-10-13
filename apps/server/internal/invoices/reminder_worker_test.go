@@ -697,28 +697,31 @@ func TestReminderWorker_BackoffAndFailedAfter48Hours(t *testing.T) {
 	}
 }
 
-// Both workers per switch (D1): INVOICES_EHF_ENABLED off, only the
-// reminder worker; on, the two EHF workers and it.
+// The workers per switch (D1): INVOICES_EHF_ENABLED adds the two EHF
+// workers, INVOICES_VIPPS_ENABLED the payments worker; the reminder worker
+// is always there.
 func TestWorkers_PerSwitch(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	for _, c := range []struct {
-		ehf  bool
-		want []string
+		ehf, vipps bool
+		want       []string
 	}{
-		{false, []string{"invoices-reminders"}},
-		{true, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders"}},
+		{false, false, []string{"invoices-reminders"}},
+		{true, false, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders"}},
+		{false, true, []string{"invoices-reminders", "invoices-payments"}},
+		{true, true, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-payments"}},
 	} {
 		d := h.Deps()
 		cfg := *d.Config
-		cfg.InvoicesEhfEnabled = c.ehf
+		cfg.InvoicesEhfEnabled, cfg.InvoicesVippsEnabled = c.ehf, c.vipps
 		d.Config = &cfg
 		var names []string
 		for _, w := range invoices.Module().Workers(d) {
 			names = append(names, w.Name())
 		}
 		if !slices.Equal(names, c.want) {
-			t.Errorf("INVOICES_EHF_ENABLED %v: workers %v, want %v", c.ehf, names, c.want)
+			t.Errorf("INVOICES_EHF_ENABLED %v, INVOICES_VIPPS_ENABLED %v: workers %v, want %v", c.ehf, c.vipps, names, c.want)
 		}
 	}
 }

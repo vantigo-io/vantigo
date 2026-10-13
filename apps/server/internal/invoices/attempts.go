@@ -89,22 +89,33 @@ func minorOf(v *big.Rat) (int64, error) {
 // ratOfMinor is øre from the port as the module's exact decimal.
 func ratOfMinor(minor int64) *big.Rat { return big.NewRat(minor, 100) }
 
-// openAndReserved is what is open on an issued invoice and what of it live
-// reservations hold: open = openOf less the reservations, reserved their
-// sum. openOf itself does not see the reservations yet; the payments worker
-// (plan Task 8) folds them into it, and this then answers openOf's open.
+// openAndReserved is what is open on an issued invoice and what of it the
+// live reservations hold (D2, D16): open = gross − credited − live payments
+// − every live reservation — the captures decided and not yet registered or
+// disproved, which may already have moved money — and reserved their sum.
+// It is the one place the reservations are subtracted: openOf answers its
+// open. Read with q, which holds the invoice's lock, or a plain read.
 func openAndReserved(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice) (open, reserved *big.Rat, err error) {
-	open, err = openOf(ctx, q, inv)
+	_, left, err := uncredited(ctx, q, inv)
 	if err != nil {
 		return nil, nil, err
 	}
-	sum, err := q.LiveReservationsSum(ctx, inv.ID)
+	sum, err := q.LivePaymentsSum(ctx, inv.ID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invoices: read what document %d is paid: %w", inv.ID, err)
+	}
+	paid, err := ratFromNumeric(sum)
+	if err != nil {
+		return nil, nil, err
+	}
+	held, err := q.LiveReservationsSum(ctx, inv.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invoices: read what document %d's reservations hold: %w", inv.ID, err)
 	}
-	if reserved, err = ratFromNumeric(sum); err != nil {
+	if reserved, err = ratFromNumeric(held); err != nil {
 		return nil, nil, err
 	}
+	open = left.Sub(left, paid)
 	return open.Sub(open, reserved), reserved, nil
 }
 
