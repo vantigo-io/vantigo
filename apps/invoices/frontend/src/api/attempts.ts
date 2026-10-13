@@ -33,6 +33,37 @@ export const FINISHED_ATTEMPT_STATES: readonly PaymentAttemptState[] = [
 ];
 
 /**
+ * The states of an on-site request the customer has approved: the money is
+ * being taken, or was. Such a request is followed, never cancelled.
+ */
+export const APPROVED_ATTEMPT_STATES: readonly PaymentAttemptState[] = [
+  "authorized",
+  "capturing",
+  "capture_unknown",
+  "cancelling",
+  "captured",
+];
+
+/**
+ * What a client does with an on-site request already open — the one a 409
+ * `payment_request_active` names, or a quick invoice's replay — once it has
+ * read it (D17, plan Task 10's note): `reshow` its QR code while it is
+ * `created` and the read answered one; `follow` it, with no cancel, once the
+ * customer approved it; `cancel` it and make a new one while it is `created`
+ * without a code, still `creating`, or could not be read (`undefined`); and
+ * start afresh when it is `over`.
+ */
+export type OpenRequestRecovery = "reshow" | "follow" | "cancel" | "over";
+
+export const recoveryOf = (status: OnSitePaymentStatus | undefined): OpenRequestRecovery => {
+  if (!status) return "cancel";
+  if (status.state === "created" && status.qrSvg) return "reshow";
+  if (APPROVED_ATTEMPT_STATES.includes(status.state)) return "follow";
+  if (status.state === "created" || status.state === "creating") return "cancel";
+  return "over";
+};
+
+/**
  * Abandons a stuck attempt (`invoices:manage`) once the person has checked
  * the Vipps portal: the reason, 1–500 characters, and the acknowledgement that
  * nothing was captured. Refused 409 `attempt_not_abandonable` while Vipps

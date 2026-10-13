@@ -1371,7 +1371,9 @@ Fakturaer trenger dem fortsatt for å fullføre betalingen. En ny klienthemmelig
 
 To brytere på kortet **Betalingslenker og betaling på stedet** bestemmer hva Vipps
 brukes til. Alle med `invoices:access` kan lese dem; å endre dem krever
-`invoices:manage`. Klikk **Lagre betalingsinnstillingene** etter en endring.
+`invoices:manage`. Klikk **Lagre betalingsinnstillingene** etter en endring. Har noen
+andre lagret dem i mellomtiden, blir ikke endringene dine lagret: kortet sier det og viser
+innstillingene slik de er nå, så du kan gjøre endringen på nytt.
 
 - **Betalingslenker** setter en lenke til en betalingsside på utstedte fakturaer. De
   krever **Adressen til salgsvilkårene** og **Adressen til personvernerklæringen** —
@@ -1492,8 +1494,10 @@ på. En kunde som betaler senere, hjemme, gjør et vanlig kredittsalg.
 **Avbryt forespørselen** stopper en forespørsel kunden ikke har godkjent; en som er
 godkjent, fullføres og registreres. Mister skjermen QR-koden — forbindelsen falt — klikker
 du **Ta betalt med Vipps nå** igjen: mens kunden ikke har svart, vises den samme
-QR-koden igjen (*Forespørselen som allerede er åpen, vises igjen*). Ellers tilbyr
-skjermbildet **Avbryt den og lag en ny**. En forespørsel som ikke kan avbrytes — Vipps
+QR-koden igjen (*Forespørselen som allerede er åpen, vises igjen*). En som kunden har
+godkjent, følges til den er betalt, uten mulighet til å avbryte den — pengene kan være
+på vei. En som fortsatt lages, eller der koden er borte, tilbys **Avbryt den og lag en
+ny**; en som allerede er over, tilbys **Ta betalt med Vipps nå** på nytt. En forespørsel som ikke kan avbrytes — Vipps
 har ikke bekreftet den, eller kunden har godkjent den — sies det fra om; blir den
 stående, forlater den som har `invoices:manage`, den på fakturaens kort
 **Vipps-betalinger**.

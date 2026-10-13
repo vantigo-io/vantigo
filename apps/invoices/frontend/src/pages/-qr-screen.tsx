@@ -52,7 +52,14 @@ export const QrScreen = ({ invoiceId, attemptId, qrSvg, notice, onClose }: QrScr
   const finished = FINISHED_ATTEMPT_STATES.includes(shown.state);
   const code = shown.state === "created" ? (shown.qrSvg ?? (status.data ? undefined : qrSvg)) : undefined;
   useEffect(() => {
-    if (shown.state === "captured") void queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
+    // Everything else is read again — the invoice shows its payment — but not
+    // this request, which is over: the poll ends with the capture.
+    if (shown.state === "captured") {
+      void queryClient.invalidateQueries({
+        queryKey: [INVOICES_QUERY_KEY],
+        predicate: (query) => query.queryKey[1] !== "payment-request",
+      });
+    }
   }, [shown.state, queryClient]);
   const cancel = useMutation({
     mutationFn: () => cancelPaymentRequest(invoiceId, attemptId),
@@ -84,7 +91,9 @@ export const QrScreen = ({ invoiceId, attemptId, qrSvg, notice, onClose }: QrScr
           <Loader size="sm" />
         </Center>
       )}
-      {(shown.state === "authorized" || shown.state === "capturing") && <Text>{t("qr.taking")}</Text>}
+      {(shown.state === "authorized" || shown.state === "capturing" || shown.state === "capture_unknown") && (
+        <Text>{t("qr.taking")}</Text>
+      )}
       {shown.state === "captured" && (
         <Alert color="green" icon={<IconCircleCheck size={16} />}>
           {t("qr.paid")}

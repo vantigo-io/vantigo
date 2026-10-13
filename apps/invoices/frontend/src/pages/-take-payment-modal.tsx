@@ -1,9 +1,16 @@
 import { Alert, Anchor, Button, Center, Loader, Modal, Stack, Text } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { appUrl } from "@vantigo/frontend-shell";
-import { useEffect, useRef, useState } from "react";
-import { cancelPaymentRequest, createPaymentRequest, readPaymentRequest } from "../api/attempts";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  cancelPaymentRequest,
+  createPaymentRequest,
+  paymentRequestQueryOptions,
+  readPaymentRequest,
+  recoveryOf,
+} from "../api/attempts";
 import type { InvoiceDocument } from "../api/invoices";
 import "../i18n";
 import { refusalCode, refusalMessage, refusalProblem } from "../lib/errors";
@@ -15,11 +22,18 @@ export interface TakePaymentModalProps {
   onClose: () => void;
 }
 
-/** Where the modal stands: asking, showing a request's QR, or saying why there is none. */
+/** Where the modal stands: asking, showing a request's QR or state, or saying why there is none. */
 type Step =
   | { kind: "asking" }
   | { kind: "qr"; attemptId: number; qrSvg?: string; notice?: string }
-  | { kind: "refused"; words: string; customerLink?: boolean; staleAttemptId?: number };
+  | {
+      kind: "refused";
+      words: string;
+      title?: string;
+      customerLink?: boolean;
+      staleAttemptId?: number;
+      offerNew?: boolean;
+    };
 
 /**
  * "Take a Vipps payment now" (invoices payments and reminders design D17,
@@ -27,23 +41,54 @@ type Step =
  * once and shows its QR code full screen, polled until it is over. Every
  * refusal is said in words; `buyer_identity_missing` links to the customer,
  * whose details the invoice needs. On `payment_request_active` the request
- * named by `attemptId` is read: while it is `created` its QR code is shown
- * again and nothing new is made; otherwise the person may cancel it and make
- * a new one — and a request that cannot be cancelled, parked or approved, is
- * left to a manager to abandon.
+ * named by `attemptId` is read and recovered by `recoveryOf`, the rule the
+ * quick invoice uses too: its QR code shown again while it is `created`; an
+ * approved one followed with no cancel, the money perhaps on its way; one
+ * without a code, still being created or unreadable offered to be cancelled
+ * and made again — and one that cannot be cancelled left to a manager to
+ * abandon; one that is over offered afresh. Nothing is set once the modal
+ * is closed.
  */
 export const TakePaymentModal = ({ invoice, onClose }: TakePaymentModalProps) => {
   const { t, date } = useInvoiceFormat();
   const navigate = useNavigate() as (options: unknown) => void;
-  const [step, setStep] = useState<Step>({ kind: "asking" });
+  const queryClient = useQueryClient();
+  const [step, setStepState] = useState<Step>({ kind: "asking" });
   const started = useRef(false);
+  // Whether the modal is still open, for the request's async steps.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const setStep = (next: Step) => {
+    if (alive.current) setStepState(next);
+  };
 
-  const refused = (error: unknown, staleAttemptId?: number): Step => ({
+  const refused = (error: unknown): Step => ({
     kind: "refused",
     words: refusalMessage(error, t, date),
     customerLink: refusalCode(error) === "buyer_identity_missing",
-    staleAttemptId,
   });
+
+  /** The request a 409 named, read and recovered — never guessed. */
+  const recover = async (attemptId: number) => {
+    const open = await readPaymentRequest(invoice.id, attemptId).catch(() => undefined);
+    const recovery = recoveryOf(open);
+    if (recovery === "reshow") {
+      setStep({ kind: "qr", attemptId, qrSvg: open?.qrSvg, notice: t("takePayment.activeShownAgain") });
+    } else if (recovery === "follow") {
+      // Seeded, so the QR screen starts on the state read and never offers a cancel meanwhile.
+      queryClient.setQueryData(paymentRequestQueryOptions(invoice.id, attemptId).queryKey, open);
+      setStep({ kind: "qr", attemptId });
+    } else if (recovery === "cancel") {
+      setStep({ kind: "refused", words: t("takePayment.activeNotShowable"), staleAttemptId: attemptId });
+    } else {
+      setStep({ kind: "refused", title: t("quick.paymentNotOpen"), words: "", offerNew: true });
+    }
+  };
 
   const ask = async () => {
     setStep({ kind: "asking" });
@@ -52,22 +97,11 @@ export const TakePaymentModal = ({ invoice, onClose }: TakePaymentModalProps) =>
       setStep({ kind: "qr", attemptId: made.attemptId, qrSvg: made.qrSvg });
     } catch (error) {
       const attemptId = refusalProblem(error).attemptId;
-      if (refusalCode(error) !== "payment_request_active" || typeof attemptId !== "number") {
-        setStep(refused(error));
+      if (refusalCode(error) === "payment_request_active" && typeof attemptId === "number") {
+        if (alive.current) await recover(attemptId);
         return;
       }
-      // A request is open already — perhaps this tablet's own, whose answer
-      // was lost. Its code is shown again while the customer has not answered.
-      try {
-        const open = await readPaymentRequest(invoice.id, attemptId);
-        if (open.state === "created" && open.qrSvg) {
-          setStep({ kind: "qr", attemptId, qrSvg: open.qrSvg, notice: t("takePayment.activeShownAgain") });
-          return;
-        }
-      } catch {
-        // Unreadable: offered the cancel all the same.
-      }
-      setStep({ kind: "refused", words: t("takePayment.activeNotShowable"), staleAttemptId: attemptId });
+      setStep(refused(error));
     }
   };
 
@@ -83,13 +117,15 @@ export const TakePaymentModal = ({ invoice, onClose }: TakePaymentModalProps) =>
       );
       return;
     }
-    await ask();
+    if (alive.current) await ask();
   };
 
+  // The request is asked for once, when the modal opens.
+  const start = useEffectEvent(() => void ask());
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    void ask();
+    start();
   }, []);
 
   const customerHref = `/customers/${invoice.customerId}`;
@@ -113,9 +149,9 @@ export const TakePaymentModal = ({ invoice, onClose }: TakePaymentModalProps) =>
       {step.kind === "refused" && (
         <Center py="xl">
           <Stack maw={560}>
-            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("takePayment.couldNot")}>
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={step.title ?? t("takePayment.couldNot")}>
               <Stack gap="xs">
-                <Text size="sm">{step.words}</Text>
+                {step.words && <Text size="sm">{step.words}</Text>}
                 {step.customerLink && (
                   <Anchor
                     size="sm"
@@ -136,6 +172,7 @@ export const TakePaymentModal = ({ invoice, onClose }: TakePaymentModalProps) =>
                 {t("takePayment.cancelAndRetry")}
               </Button>
             )}
+            {step.offerNew && <Button onClick={() => void ask()}>{t("takePayment.button")}</Button>}
             <Button variant="default" onClick={onClose}>
               {t("qr.close")}
             </Button>

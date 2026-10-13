@@ -80,7 +80,8 @@ const server = (overrides: Partial<World> = {}) => {
     if (url === "/api/v1/invoices/settings/vipps/verify") return jsonResponse(200, { result: "ok" });
     if (url === "/api/v1/invoices/settings/payments") {
       if (method === "PUT") {
-        const { acknowledgeKontantsalg: _, ...rest } = body;
+        const rest = { ...body };
+        delete rest.acknowledgeKontantsalg;
         state.payments = paymentSettings({ ...rest, revision: body.revision + 1 });
         return jsonResponse(200, state.payments);
       }
@@ -315,6 +316,53 @@ describe("PaymentSettings_NoticeAndAcknowledgement", () => {
         "acknowledgeKontantsalg",
       ),
     );
+  });
+
+  it("says a save lost to someone else's in words, and shows the settings as they are now", async () => {
+    let lost = true;
+    const { fetchMock, state } = server({
+      answers: {
+        "PUT /api/v1/invoices/settings/payments": () => {
+          if (!lost) {
+            state.payments = paymentSettings({ revision: 3 });
+            return jsonResponse(200, state.payments);
+          }
+          lost = false;
+          // Someone else saved meanwhile: pay links on, with their addresses.
+          state.payments = paymentSettings({
+            revision: 2,
+            payLinksEnabled: true,
+            termsUrl: "https://other.example/terms",
+            privacyUrl: "https://other.example/privacy",
+          });
+          return jsonResponse(409, { title: "Conflict", status: 409, detail: "Revision 1 is stale; 2 is current." });
+        },
+      },
+    });
+    renderWithProviders(<SettingsPage />);
+    let card = await paymentCard();
+
+    await userEvent.type(within(card).getByLabelText("Sales terms address"), "https://mine.example/terms");
+    await userEvent.click(within(card).getByRole("button", { name: "Save payment settings" }));
+
+    expect(
+      await screen.findByText(
+        "Your changes were not saved: someone else changed the payment settings meanwhile. The settings are shown as they are now; make your change again.",
+      ),
+    ).toBeInTheDocument();
+    card = await paymentCard();
+    await waitFor(() =>
+      expect(within(card).getByLabelText("Sales terms address")).toHaveValue("https://other.example/terms"),
+    );
+    expect(within(card).getByRole("switch", { name: /^Pay links/ })).toBeChecked();
+
+    await userEvent.click(within(card).getByRole("button", { name: "Save payment settings" }));
+    expect(await screen.findByText("The payment settings are saved")).toBeInTheDocument();
+    const puts = fetchMock.actualCalls.filter(
+      ([u, init]) => path(u) === "/api/v1/invoices/settings/payments" && init?.method === "PUT",
+    );
+    expect(JSON.parse(String(puts[1][1]?.body)).revision).toBe(2);
+    await waitFor(() => expect(screen.queryByText(/^Your changes were not saved/)).not.toBeInTheDocument());
   });
 
   it.each([
