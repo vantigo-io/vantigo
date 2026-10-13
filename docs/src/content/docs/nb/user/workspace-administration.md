@@ -174,11 +174,14 @@ tillatelse låser opp i en app, er listet på appens referanseside, for eksempel
 [Time](/en/reference/time/), [Expenses](/en/reference/expenses/),
 [Invoices](/en/reference/invoices/) og [Staff](/en/reference/staff/). Beskrivelsene i katalogen sier det navnet ikke
 sier: I Fakturaer sender **Utstede fakturaer** også et dokument på e-post eller som
-EHF, avbryter eller avklarer EHF-sendingene og registrerer at en faktura er levert;
-**Administrere fakturering** omfatter også Peppol-ID-en, KID-avtalen, aksesspunktet for
-e-faktura, purreinnstillingene og inkassosatsene; og **Registrere betalinger** dekker
-hele kredittstyringen — bankimport og avvikskøen, purrekjøringer og brev, vent,
-overlevering til inkasso og en kundes purreregel. I Ansatte er **Vise og slette
+EHF, avbryter eller avklarer EHF-sendingene, registrerer at en faktura er levert, lager
+eller trekker tilbake en Vipps-betalingslenke og tar imot en Vipps-betaling på stedet —
+og lager, sammen med **Lage fakturaer**, en hurtigfaktura; **Administrere fakturering**
+omfatter også Peppol-ID-en, KID-avtalen, aksesspunktet for e-faktura,
+purreinnstillingene, inkassosatsene, Vipps-nøklene og betalingsinnstillingene, og
+forlater en Vipps-betaling som står fast; og **Registrere betalinger** dekker hele
+kredittstyringen — bankimport og avvikskøen, purrekjøringer og brev, vent, overlevering
+til inkasso, en kundes purreregel og å registrere en dags Vipps-betalinger som avstemt. I Ansatte er **Vise og slette
 personopplysninger** den eneste tillatelsen som viser et fødselsnummer eller en bankkonto
 — **Administrere ansatte** gjør det ikke — og **Avgjøre fravær** kan gis allerede, men
 tillater ingenting før fravær kommer til Ansatte. **Administrer
