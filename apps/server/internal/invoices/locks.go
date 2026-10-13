@@ -208,6 +208,20 @@ func lockPayLink(ctx context.Context, txq *store.Queries, id int64) (store.Invoi
 	return link, nil
 }
 
+// lockCustomerLivePayLinks takes every live pay link of a customer's
+// documents FOR NO KEY UPDATE in id order, each reported "pay_link": the
+// erase's (D19), whose caller holds the documents already.
+func lockCustomerLivePayLinks(ctx context.Context, txq *store.Queries, customerID int32) ([]store.InvoicesPayLink, error) {
+	links, err := txq.LockCustomerLivePayLinks(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: lock customer %d's live pay links: %w", customerID, err)
+	}
+	for _, l := range links {
+		noteLock(ctx, "pay_link", strconv.FormatInt(l.ID, 10))
+	}
+	return links, nil
+}
+
 // lockPaymentCredentials takes the payment provider's credentials FOR
 // UPDATE, reported "payment_credentials" (a credentials PUT, DELETE or
 // webhook registration: its only lock).

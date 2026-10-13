@@ -86,7 +86,7 @@ describe("the admin permission catalog", () => {
     const en = adminCatalog.en as Record<string, string>;
     expect(en["admin.permission.invoicesAccess"]).toBe("Use Invoices");
     expect(en["admin.permission.invoicesAccessDescription"]).toBe(
-      "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats; the overdue list and an invoice's reminder letters and their PDFs, hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings and a customer's reminder policy; and the attention items about overdue invoices and refunds due.",
+      "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats; the overdue list and an invoice's reminder letters and their PDFs, hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings, the payment settings and a customer's reminder policy; an invoice's pay link and Vipps payment attempts, and the day's Vipps payments and their reconciliations; and the attention items about overdue invoices and refunds due.",
     );
     expect(en["admin.permission.invoicesCreate"]).toBe("Create invoices");
     expect(en["admin.permission.invoicesCreateDescription"]).toBe(
@@ -94,15 +94,15 @@ describe("the admin permission catalog", () => {
     );
     expect(en["admin.permission.invoicesIssue"]).toBe("Issue invoices");
     expect(en["admin.permission.invoicesIssueDescription"]).toBe(
-      "Issue a draft into a numbered document that can never be changed, create credit notes, send an issued document by e-mail or as EHF, cancel or resolve its EHF transmissions, and record that an invoice was handed over or posted, or remove such a record.",
+      "Issue a draft into a numbered document that can never be changed, create credit notes, send an issued document by e-mail or as EHF, cancel or resolve its EHF transmissions, and record that an invoice was handed over or posted, or remove such a record; make or revoke an invoice's pay link, and see its address and QR code while payment on site is offered; ask for a Vipps payment on site and cancel the request; and, with Create invoices, make a quick invoice — created and issued in one step.",
     );
     expect(en["admin.permission.invoicesManage"]).toBe("Manage invoicing");
     expect(en["admin.permission.invoicesManageDescription"]).toBe(
-      "Change the seller record and its Peppol id, the number series start, the KID agreement, the e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the regime review, the collection rates — add one ahead of a release, or delete one nothing has relied on — and the format a bank account's files are imported in.",
+      "Change the seller record and its Peppol id, the number series start, the KID agreement, the e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the regime review, the collection rates — add one ahead of a release, or delete one nothing has relied on — and the format a bank account's files are imported in; the Vipps credentials and the payment settings — pay links, payment on site and its kontantsalg acknowledgement — and abandon a stuck Vipps payment once it has been checked in the Vipps portal.",
     );
     expect(en["admin.permission.invoicesPayments"]).toBe("Register payments");
     expect(en["admin.permission.invoicesPaymentsDescription"]).toBe(
-      "Register payments against issued invoices and remove a registration with a reason; import bank files, read the imported files, the bank accounts and their lines, and work the exception queue; make and read reminder runs, print paper letters and confirm them posted or reprint them, and withdraw and retry letters; hold a disputed invoice, hand one to collection and export the collection file; register and remove charge payments and waive charges; set a customer's reminder policy; and see the attention items about the bank lines, the letters and the print batches.",
+      "Register payments against issued invoices and remove a registration with a reason; import bank files, read the imported files, the bank accounts and their lines, and work the exception queue; make and read reminder runs, print paper letters and confirm them posted or reprint them, and withdraw and retry letters; hold a disputed invoice, hand one to collection and export the collection file; register and remove charge payments and waive charges; set a customer's reminder policy; mark a day's Vipps payments reconciled; and see the attention items about the bank lines, the letters, the print batches and the Vipps payments.",
     );
   });
 

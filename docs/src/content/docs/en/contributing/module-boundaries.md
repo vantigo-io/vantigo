@@ -471,7 +471,8 @@ notes of the receivables (`invoices.chargePayments`, `invoices.chargeWaivers`,
 `invoices.manualDeliveries`, `invoices.invoiceHolds`, `invoices.collectionHandoffs`)
 and of the resolved bank lines their money came from (`invoices.bankTransactions` —
 the lock order's one named exception, the [reference](/en/reference/invoices/#issuing)
-says why it cannot cycle), deletes the reminder policy
+says why it cannot cycle), revokes every live pay link of the person's documents
+(`invoices.payLinks`) and leaves every Vipps payment attempt as it is, deletes the reminder policy
 (`invoices.customerReminderPolicies`), and keeps the issued documents, their payments,
 letters and every other transmission under bokføringsloven § 13
 (`invoices.documents`, at 0). Every write runs on the customers module's transaction

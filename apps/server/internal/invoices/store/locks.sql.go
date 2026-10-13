@@ -121,6 +121,47 @@ func (q *Queries) LockCollectionRate(ctx context.Context, id int64) (InvoicesCol
 	return i, err
 }
 
+const lockCustomerLivePayLinks = `-- name: LockCustomerLivePayLinks :many
+SELECT l.id, l.invoice_id, l.token_sha256, l.url_ciphertext, l.created_at, l.created_by_user_id, l.revoked_at, l.revoked_by_user_id FROM invoices.pay_links l
+JOIN invoices.invoices i ON i.id = l.invoice_id
+WHERE i.customer_id = $1 AND l.revoked_at IS NULL
+ORDER BY l.id
+FOR NO KEY UPDATE OF l
+`
+
+// LockCustomerLivePayLinks takes every live pay link of one customer's
+// documents FOR NO KEY UPDATE, in id order: the erase's (D19), after it has
+// locked those documents (LockCustomerDocuments), so the order is the
+// revoke's — the invoice, then the link. OF l: the documents are held already.
+func (q *Queries) LockCustomerLivePayLinks(ctx context.Context, customerID int32) ([]InvoicesPayLink, error) {
+	rows, err := q.db.Query(ctx, lockCustomerLivePayLinks, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesPayLink
+	for rows.Next() {
+		var i InvoicesPayLink
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.TokenSha256,
+			&i.UrlCiphertext,
+			&i.CreatedAt,
+			&i.CreatedByUserID,
+			&i.RevokedAt,
+			&i.RevokedByUserID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockImportAccount = `-- name: LockImportAccount :one
 SELECT account, format, previous_format, cutover_through, set_by_user_id, set_at FROM invoices.bank_import_accounts WHERE account = $1 FOR UPDATE
 `

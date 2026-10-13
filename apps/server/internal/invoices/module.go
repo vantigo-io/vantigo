@@ -42,14 +42,24 @@ import (
 // invoices:payments — credit control, "what the company says it is owed";
 // the reminder settings, the rates and an account's import format are
 // invoices:manage; a manual delivery is invoices:issue, handing the sale
-// over.
+// over. 4C adds none either (D1's 4C rows): the payment settings, an
+// invoice's pay link and attempts and the day's Vipps payments are read with
+// invoices:access; a pay link made or revoked and a payment asked for on
+// site are invoices:issue, handing the sale over and taking no money by
+// hand; the Vipps credentials, the payment settings and abandoning a stuck
+// attempt are invoices:manage; a day's reconciliation and the Vipps
+// attention items are invoices:payments; the quick invoice needs
+// invoices:create and invoices:issue both, the two steps it takes at once;
+// and the pay page's three operations are anonymous, each rate-limited.
 var permissions = []contracts.Permission{
 	{
 		Key: "invoices:access", Display: "Use Invoices",
 		Description: "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, " +
 			"the CSV export and the stats; the overdue list and an invoice's reminder letters and their PDFs, " +
-			"hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings and a " +
-			"customer's reminder policy; and the attention items about overdue invoices and refunds due.",
+			"hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings, the " +
+			"payment settings and a customer's reminder policy; an invoice's pay link and Vipps payment attempts, " +
+			"and the day's Vipps payments and their reconciliations; and the attention items about overdue " +
+			"invoices and refunds due.",
 		Category: "Invoices", Sensitive: false, Delegable: true,
 	},
 	{
@@ -61,7 +71,10 @@ var permissions = []contracts.Permission{
 		Key: "invoices:issue", Display: "Issue invoices",
 		Description: "Issue a draft into a numbered document that can never be changed, create credit notes, send an " +
 			"issued document by e-mail or as EHF, cancel or resolve its EHF transmissions, and record that an " +
-			"invoice was handed over or posted, or remove such a record.",
+			"invoice was handed over or posted, or remove such a record; make or revoke an invoice's pay link, " +
+			"and see its address and QR code while payment on site is offered; ask for a Vipps payment on site " +
+			"and cancel the request; and, with Create invoices, make a quick invoice — created and issued in " +
+			"one step.",
 		Category: "Invoices", Sensitive: true, Delegable: true,
 	},
 	{
@@ -69,7 +82,9 @@ var permissions = []contracts.Permission{
 		Description: "Change the seller record and its Peppol id, the number series start, the KID agreement, the " +
 			"e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the " +
 			"regime review, the collection rates — add one ahead of a release, or delete one nothing has relied " +
-			"on — and the format a bank account's files are imported in.",
+			"on — and the format a bank account's files are imported in; the Vipps credentials and the payment " +
+			"settings — pay links, payment on site and its kontantsalg acknowledgement — and abandon a stuck " +
+			"Vipps payment once it has been checked in the Vipps portal.",
 		Category: "Invoices", Sensitive: true, Delegable: true,
 	},
 	{
@@ -79,7 +94,8 @@ var permissions = []contracts.Permission{
 			"make and read reminder runs, print paper letters and confirm them posted or reprint them, and " +
 			"withdraw and retry letters; hold a disputed invoice, hand one to collection and export the " +
 			"collection file; register and remove charge payments and waive charges; set a customer's reminder " +
-			"policy; and see the attention items about the bank lines, the letters and the print batches.",
+			"policy; mark a day's Vipps payments reconciled; and see the attention items about the bank lines, " +
+			"the letters, the print batches and the Vipps payments.",
 		Category: "Invoices", Sensitive: true, Delegable: true,
 	},
 }
