@@ -98,9 +98,15 @@ func (s *server) PostInvoicesByIdCollection(ctx context.Context, req gen.PostInv
 		if locked, err = lockIssuedInvoice(ctx, txq, inv.ID); err != nil {
 			return err
 		}
-		open, err := openOf(ctx, txq, locked)
+		open, reserved, err := openAndReserved(ctx, txq, locked)
 		if err != nil {
 			return err
+		}
+		// A claim being paid is not handed off (I4).
+		if open.Sign() <= 0 && reserved.Sign() > 0 {
+			refusal = ptr(conflict(codeInvoiceSettled, cannotHandOffTitle,
+				"Nothing else of this invoice is open to hand off. "+vippsInProgress(reserved)))
+			return errRefused
 		}
 		if open.Sign() <= 0 {
 			refusal = ptr(conflict(codeInvoiceSettled, cannotHandOffTitle,

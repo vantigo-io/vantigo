@@ -3,6 +3,7 @@ package invoices_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -49,6 +50,53 @@ type harness struct {
 	// INVOICES_VIPPS_BASE_URL at, on a TLS listener of its own reached
 	// through the same Deps.HTTPTransport, so no test ever calls Vipps.
 	vipps *vippstest.Server
+	// vippsWire is the road to vipps, which a test may cut on the way back.
+	vippsWire *vippsWire
+}
+
+// vippsWire carries the module's requests to vippstest. A test may observe
+// each request before it is sent (observe) and drop the answers to the next
+// dropCaptures captures after vippstest has made them — "Vipps captured,
+// and the answer was lost".
+type vippsWire struct {
+	rt           http.RoundTripper
+	mu           sync.Mutex
+	observe      func(r *http.Request)
+	dropCaptures int
+}
+
+func (w *vippsWire) RoundTrip(r *http.Request) (*http.Response, error) {
+	w.mu.Lock()
+	observe := w.observe
+	drop := r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/capture") && w.dropCaptures > 0
+	if drop {
+		w.dropCaptures--
+	}
+	w.mu.Unlock()
+	if observe != nil {
+		observe(r)
+	}
+	res, err := w.rt.RoundTrip(r)
+	if err != nil || !drop {
+		return res, err
+	}
+	_, _ = io.Copy(io.Discard, res.Body)
+	_ = res.Body.Close()
+	return nil, errors.New("vippswire: the capture's answer was lost")
+}
+
+// dropNextCaptures loses the answers of the next n captures.
+func (w *vippsWire) dropNextCaptures(n int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.dropCaptures = n
+}
+
+// observeRequests calls fn with every request before it is sent.
+func (w *vippsWire) observeRequests(fn func(r *http.Request)) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.observe = fn
 }
 
 // hostTransport routes each request to the test server listening on its
@@ -92,6 +140,7 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 	customers := newFakeCustomers()
 	storecove := storecovetest.New(t)
 	vippsServer := vippstest.New(t)
+	wire := &vippsWire{rt: vippsServer.Transport()}
 	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(invoices.Module()),
@@ -100,14 +149,14 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 		modtest.WithEnv("INVOICES_VIPPS_BASE_URL", vippsServer.URL()),
 		modtest.WithTransport(hostTransport{
 			hostOf(t, storecove.URL()):   storecove.Transport(),
-			hostOf(t, vippsServer.URL()): vippsServer.Transport(),
+			hostOf(t, vippsServer.URL()): wire,
 		}),
 	}
 	if objects != nil {
 		base = append(base, modtest.WithObjectStore(objects))
 	}
 	before, beforeTx := lockedContractCalls.count(), lockedContractCalls.txCount()
-	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove, vipps: vippsServer}
+	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove, vipps: vippsServer, vippsWire: wire}
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
 			t.Errorf("a call outside this module's own database was made from inside one of its transactions:\n%s",

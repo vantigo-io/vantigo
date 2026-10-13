@@ -95,6 +95,16 @@ SELECT invoice_id FROM invoices.collection_handoffs
 WHERE invoice_id = ANY(@ids::bigint[]) AND withdrawn_on IS NULL
 ORDER BY invoice_id;
 
+-- name: RuleReservations :many
+-- RuleReservations is the live reservations of the invoices: the Vipps
+-- captures decided and not yet registered or disproved (capturing or
+-- capture_unknown, D2, D16) — money that may already have moved, which the
+-- engine leaves out of the open amount.
+SELECT invoice_id, reserved_amount::numeric(14,2) AS reserved_amount
+FROM invoices.payment_attempts
+WHERE invoice_id = ANY(@ids::bigint[]) AND state IN ('capturing', 'capture_unknown')
+ORDER BY invoice_id, id;
+
 -- name: RulePolicies :many
 -- RulePolicies is the reminder policy of each invoice's customer, for the
 -- invoices whose customer has one; no row is normal (D7).

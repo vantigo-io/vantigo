@@ -425,6 +425,42 @@ func (q *Queries) RulePolicies(ctx context.Context, ids []int64) ([]RulePolicies
 	return items, nil
 }
 
+const ruleReservations = `-- name: RuleReservations :many
+SELECT invoice_id, reserved_amount::numeric(14,2) AS reserved_amount
+FROM invoices.payment_attempts
+WHERE invoice_id = ANY($1::bigint[]) AND state IN ('capturing', 'capture_unknown')
+ORDER BY invoice_id, id
+`
+
+type RuleReservationsRow struct {
+	InvoiceID      int64
+	ReservedAmount pgtype.Numeric
+}
+
+// RuleReservations is the live reservations of the invoices: the Vipps
+// captures decided and not yet registered or disproved (capturing or
+// capture_unknown, D2, D16) — money that may already have moved, which the
+// engine leaves out of the open amount.
+func (q *Queries) RuleReservations(ctx context.Context, ids []int64) ([]RuleReservationsRow, error) {
+	rows, err := q.db.Query(ctx, ruleReservations, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RuleReservationsRow
+	for rows.Next() {
+		var i RuleReservationsRow
+		if err := rows.Scan(&i.InvoiceID, &i.ReservedAmount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ruleWaivers = `-- name: RuleWaivers :many
 SELECT id, invoice_id, reminder_id, kind, amount, interest_through, reason, note, waived_by_user_id, waived_at FROM invoices.charge_waivers
 WHERE invoice_id = ANY($1::bigint[])

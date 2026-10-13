@@ -270,7 +270,8 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 Standardoppsettet med én container kjører bakgrunnsjobbene til hver aktivert modul
 (utboks-levering, oppbevaring, opprydding av vedlegg, kundemodulens registerjobber,
 kundemodulens importjobb `customers-import`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
-`INVOICES_EHF_ENABLED` er på, og fakturamodulens purrejobb `invoices-reminders`, alltid)
+`INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid, og
+fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på)
 inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
 hver ekstra HTTP-replika ikke mangedobler pollerne:
@@ -284,12 +285,15 @@ Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre komman
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
 Uansett topologi tar oppbevaringsoppryddingen, registerjobbene og EHF-hendelsesjobben en
 rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
-instans per syklus; utboksen, `invoices-ehf`-jobben og `invoices-reminders`-jobben tar i
-stedet én rad om gangen under en tidsbegrenset lås, så et hvilket som helst antall
-instanser deler arbeidet uten å sende noe to ganger. Purrejobben sender ett brev om
+instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben og
+`invoices-payments`-jobben tar i stedet én rad om gangen under en tidsbegrenset lås, så
+et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger. Purrejobben sender ett brev om
 gangen, høyst ett i sekundet per instans, og hver sending må bli ferdig godt innenfor
 låsen på 60 sekunder
 ([Purrejobben og e-post](/nb/admin/payments/#purrejobben-og-e-post)).
+Betalingsjobben ser etter arbeid hvert sekund og behandler alle Vipps-betalinger som er
+klare, i hver syklus
+([Betalingsjobben](/nb/admin/payments/#betalingsjobben)).
 
 Kundemodulens importjobb kontrollerer og kjører kundefilene folk laster opp. Den ser
 etter arbeid hvert `CUSTOMERS_IMPORT_POLL` (5 sekunder som standard), og i

@@ -734,3 +734,31 @@ var (
 
 // PayStateOf is an attempt's state as the return page reads it.
 func PayStateOf(state string) string { return string(payStateOf(state)) }
+
+// SetCaptureAfterAttemptLock installs a hook the payments worker's capture
+// decision and its re-decision call inside their transaction right after the
+// attempt's lock, before the invoice's, with that transaction, and answers
+// the function that removes it. A test using it does not run in parallel:
+// the hook is the package's.
+func SetCaptureAfterAttemptLock(hook func(ctx context.Context, tx pgx.Tx)) func() {
+	captureAfterAttemptLock = hook
+	return func() { captureAfterAttemptLock = nil }
+}
+
+// SetRegisterAfterInvoiceLock installs a hook the payments worker's
+// registration calls inside its transaction right after the invoice's lock,
+// before the payment is inserted, with that transaction, and answers the
+// function that removes it. A test using it does not run in parallel: the
+// hook is the package's.
+func SetRegisterAfterInvoiceLock(hook func(ctx context.Context, tx pgx.Tx)) func() {
+	registerAfterInvoiceLock = hook
+	return func() { registerAfterInvoiceLock = nil }
+}
+
+// SetPaymentWorkerLease sets the lease a payments worker's claim takes, and
+// answers the function that restores it. A test using it does not run in
+// parallel: the lease is the package's.
+func SetPaymentWorkerLease(d time.Duration) func() {
+	paymentWorkerLease = d
+	return func() { paymentWorkerLease = paymentWorkerDefaultLease }
+}

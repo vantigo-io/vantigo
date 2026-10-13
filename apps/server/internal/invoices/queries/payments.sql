@@ -22,6 +22,20 @@ INSERT INTO invoices.payments (
 )
 RETURNING *;
 
+-- name: InsertVippsPayment :one
+-- InsertVippsPayment registers a Vipps capture (D2's third branch, D16):
+-- source vipps, its attempt — payment_attempt_id's uniqueness is the
+-- exactly-once guard — no bank line and no user. The caller holds the
+-- attempt and then the invoice, and moves the attempt out of its reserving
+-- state in the same transaction, so the payment and the reservation never
+-- both count against the open amount.
+INSERT INTO invoices.payments (
+    invoice_id, paid_on, amount, currency, reference, source, payment_attempt_id, registered_at
+) VALUES (
+    @invoice_id, @paid_on, @amount, @currency, @reference, 'vipps', @payment_attempt_id, @registered_at::timestamptz
+)
+RETURNING *;
+
 -- name: GetPayment :one
 -- GetPayment is one registration of one invoice, read after LockInvoice so
 -- two racing removals see each other (D2).

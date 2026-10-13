@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/invoices/reminder_worker.go
   - apps/server/internal/invoices/vipps_settings.go
   - apps/server/internal/invoices/payment_settings.go
+  - apps/server/internal/invoices/payment_worker.go
   - apps/server/internal/payments
   - apps/server/internal/security/publichost.go
 ---
@@ -257,6 +258,47 @@ eller revisor lese merknaden før betaling på stedet slås på i produksjon.
 - Nøklene kan ikke åpnes: `APP_SECRET` er endret siden de ble lagret. Fakturaer logger
   det som feil, markerer nøklene som avvist og svarer *betalinger utilgjengelig*; fyll
   inn alle tre nøklene på nytt.
+
+## Betalingsjobben
+
+Jobben `invoices-payments` følger hver Vipps-betaling fra betaleren sendes til Vipps til
+den er ferdig: den leser betalingen til betaleren godkjenner eller Vipps avslutter den,
+trekker det som er åpent på fakturaen, registrerer betalingen, og frigir det som ble
+reservert og ikke trukket. Den kjører når `INVOICES_VIPPS_ENABLED` er på, i API-prosessen
+eller i worker-containeren ([Bakgrunnsjobber og
+skalering](/nb/admin/installation/#bakgrunnsjobber-og-skalering)), ser etter arbeid hvert
+sekund og behandler alle betalinger som er klare, i hver syklus. Reglene står i
+[referansen](/en/reference/invoices/#capture-and-the-reservation).
+
+**Mens et trekk fullføres, er beløpet reservert** på fakturaen: en manuell betaling, en
+bankfil eller en purring kan ikke ta det, og en avvisning sier at en Vipps-betaling
+fullføres. Med `INVOICES_VIPPS_ENABLED=0` kjører ikke jobben og ingen betaling kommer
+videre, men reservasjonene står — slå Vipps på igjen, eller la en leder forlate hver
+betaling som pågår etter å ha sjekket den i portalen.
+
+**Kontroller:** en testbetaling av en liten faktura, godkjent i Vipps-appen (eller
+testmiljøets), registreres på fakturaen i løpet av sekunder som en Vipps-betaling.
+
+**Hva som kan gå galt:**
+
+- *Et trekk med ukjent utfall* (`capture_unknown`). Vipps har i sju dager ikke svart på
+  trekket slik at det går an å si om pengene ble tatt — et avbrudd, avviste nøkler, en
+  struping. Beløpet forblir reservert, og jobben leser betalingen hver time i opptil 180
+  dager. Slå opp betalingen i Vipps-portalen på referansen
+  (`<prefiks>-<fakturanummer>-<forsøks-id>`, vist på fakturaen): er den trukket der,
+  registreres den ved neste lesing når Vipps svarer igjen; er den ikke trukket, forlater
+  en leder forsøket, og reservasjonen frigis. Sjekk nøklene først — en avvist nøkkel
+  (*Avvist* ved bekreftelse) gir ukjent utfall på hvert trekk.
+- *Et mislykket trekk* (`capture_failed`). Vipps avviste trekket for manglende dekning
+  eller som mislykket, og fortsatte å avvise det til reservasjonen gikk ut. Ingenting ble
+  tatt; fakturaen er åpen igjen, og kunden betaler på annen måte.
+- *En frigivelse som aldri blir ferdig.* Når Vipps for godt nekter å frigi et beløp som
+  ble reservert og ikke trukket, slutter jobben å spørre: betalingens siste feil sier at
+  det må frigis i Vipps-portalen. En slik betaling teller fortsatt som pågående, så
+  salgsenheten og nøklene kan ikke endres før den er forlatt eller ferdig.
+- *Salgsenheten ble endret.* En betaling laget under en annen salgsenhet enn den som er
+  lagret, sendes aldri til den nye; den venter, med beløpet reservert, til en leder
+  forlater den.
 
 ## Den offentlige verten
 

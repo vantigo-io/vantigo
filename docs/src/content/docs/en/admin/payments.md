@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/invoices/reminder_worker.go
   - apps/server/internal/invoices/vipps_settings.go
   - apps/server/internal/invoices/payment_settings.go
+  - apps/server/internal/invoices/payment_worker.go
   - apps/server/internal/payments
   - apps/server/internal/security/publichost.go
 ---
@@ -257,6 +258,47 @@ payment on in production.
 - The keys cannot be opened: `APP_SECRET` changed since they were stored. Invoices logs
   it at error, flags the keys as refused and answers *payments unavailable*; enter all
   three keys again.
+
+## The payments worker
+
+The `invoices-payments` worker carries every Vipps payment from the moment the payer is
+sent to Vipps to its end: it reads the payment until the payer approves or Vipps ends
+it, captures what is open on the invoice, registers the payment, and releases what was
+authorized and not captured. It runs while `INVOICES_VIPPS_ENABLED` is on, in the API
+process or in the worker container ([Background workers and
+scaling](/en/admin/installation/#background-workers-and-scaling)), polls every second and
+handles every payment that is due in each cycle. The rules are in [the
+reference](/en/reference/invoices/#capture-and-the-reservation).
+
+**While a capture is being completed, its amount is reserved** on the invoice: a manual
+payment, a bank file or a reminder cannot take it, and a refusal says a Vipps payment is
+being completed. With `INVOICES_VIPPS_ENABLED=0` the worker does not run and no payment
+moves on, but the reservations stay — switch Vipps back on, or have a manager abandon
+each payment in progress after checking it in the portal.
+
+**Verify:** a test payment of a small invoice, approved in the Vipps app (or the test
+environment's), is registered on the invoice within seconds as a Vipps payment.
+
+**What can go wrong:**
+
+- *A capture whose outcome is unknown* (`capture_unknown`). Vipps did not answer the
+  capture in a way that says whether the money was taken, for seven days — an outage,
+  keys refused, a throttle. The amount stays reserved, and the worker keeps reading the
+  payment, hourly, for up to 180 days. Look the payment up in the Vipps business portal
+  by its reference (`<prefix>-<invoice number>-<attempt id>`, shown on the invoice):
+  captured there, it is registered at the next read once Vipps answers again; not
+  captured, a manager abandons the attempt, which releases the reservation. Check the
+  keys first — a refused key (*Refused* on verify) leaves every capture unknown.
+- *A failed capture* (`capture_failed`). Vipps refused the capture for lack of funds or
+  as failed, and kept refusing it until the authorization ran out. Nothing was taken;
+  the invoice is open again and the customer pays another way.
+- *A release that never ends.* When Vipps refuses for good to release an amount it
+  authorized and did not capture, the worker stops asking: the payment's last error says
+  to release it in the Vipps portal. Such a payment still counts as in progress, so the
+  sales unit and its keys cannot be changed until it is abandoned or finished.
+- *The sales unit was changed.* A payment made under another sales unit than the one
+  stored is never sent to the new one; it waits, its amount reserved, until a manager
+  abandons it.
 
 ## The public host
 

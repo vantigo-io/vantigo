@@ -88,22 +88,19 @@ func parsePayment(req gen.InvoicesPaymentRequest, issueDate, today time.Time) (s
 }
 
 // openOf is what is open on an issued invoice — gross less what its issued
-// credit notes credit and what its live payments paid — read with q, which
-// holds the invoice's lock, or a plain read.
+// credit notes credit, what its live payments paid and what its live Vipps
+// reservations hold (openAndReserved) — read with q, which holds the
+// invoice's lock, or a plain read. The document's own figures (settle,
+// document_state) do not see a reservation: it is not a payment (D2).
 func openOf(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice) (*big.Rat, error) {
-	_, left, err := uncredited(ctx, q, inv)
-	if err != nil {
-		return nil, err
-	}
-	sum, err := q.LivePaymentsSum(ctx, inv.ID)
-	if err != nil {
-		return nil, fmt.Errorf("invoices: read what document %d is paid: %w", inv.ID, err)
-	}
-	paid, err := ratFromNumeric(sum)
-	if err != nil {
-		return nil, err
-	}
-	return left.Sub(left, paid), nil
+	open, _, err := openAndReserved(ctx, q, inv)
+	return open, err
+}
+
+// vippsInProgress is the sentence a refusal adds when a live reservation is
+// why less is open than the invoice's figures show (I4).
+func vippsInProgress(reserved *big.Rat) string {
+	return fmt.Sprintf("A Vipps payment of %s is being completed; try again once it is registered or released.", reserved.FloatString(2))
 }
 
 // PostInvoicesByIdPayments Register a payment
@@ -154,18 +151,25 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 		if paymentAfterLock != nil {
 			paymentAfterLock(ctx, locked.ID)
 		}
-		open, err := openOf(ctx, txq, locked)
+		open, reserved, err := openAndReserved(ctx, txq, locked)
 		if err != nil {
 			return err
 		}
 		switch {
+		case open.Sign() <= 0 && reserved.Sign() > 0:
+			refusal = ptr(conflict(codeInvoiceSettled, cannotRegisterTitle,
+				"Nothing else is open on this invoice. "+vippsInProgress(reserved)))
+			return errRefused
 		case open.Sign() <= 0:
 			refusal = ptr(conflict(codeInvoiceSettled, cannotRegisterTitle,
 				"Nothing is open on this invoice: its credit notes and payments cover its total."))
 			return errRefused
 		case amt.Cmp(open) > 0:
-			refusal = ptr(conflict(codePaymentExceedsOpen, cannotRegisterTitle, fmt.Sprintf(
-				"This payment is %s, and the invoice has %s open. An overpayment is not registered.", amt.FloatString(2), open.FloatString(2))))
+			detail := fmt.Sprintf("This payment is %s, and the invoice has %s open. An overpayment is not registered.", amt.FloatString(2), open.FloatString(2))
+			if reserved.Sign() > 0 {
+				detail += " " + vippsInProgress(reserved)
+			}
+			refusal = ptr(conflict(codePaymentExceedsOpen, cannotRegisterTitle, detail))
 			refusal.OpenAmount = ptr(floatFromRat(open, 2))
 			return errRefused
 		}

@@ -102,6 +102,62 @@ func (q *Queries) InsertPayment(ctx context.Context, arg InsertPaymentParams) (I
 	return i, err
 }
 
+const insertVippsPayment = `-- name: InsertVippsPayment :one
+INSERT INTO invoices.payments (
+    invoice_id, paid_on, amount, currency, reference, source, payment_attempt_id, registered_at
+) VALUES (
+    $1, $2, $3, $4, $5, 'vipps', $6, $7::timestamptz
+)
+RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id
+`
+
+type InsertVippsPaymentParams struct {
+	InvoiceID        int64
+	PaidOn           pgtype.Date
+	Amount           pgtype.Numeric
+	Currency         string
+	Reference        string
+	PaymentAttemptID *int64
+	RegisteredAt     time.Time
+}
+
+// InsertVippsPayment registers a Vipps capture (D2's third branch, D16):
+// source vipps, its attempt — payment_attempt_id's uniqueness is the
+// exactly-once guard — no bank line and no user. The caller holds the
+// attempt and then the invoice, and moves the attempt out of its reserving
+// state in the same transaction, so the payment and the reservation never
+// both count against the open amount.
+func (q *Queries) InsertVippsPayment(ctx context.Context, arg InsertVippsPaymentParams) (InvoicesPayment, error) {
+	row := q.db.QueryRow(ctx, insertVippsPayment,
+		arg.InvoiceID,
+		arg.PaidOn,
+		arg.Amount,
+		arg.Currency,
+		arg.Reference,
+		arg.PaymentAttemptID,
+		arg.RegisteredAt,
+	)
+	var i InvoicesPayment
+	err := row.Scan(
+		&i.ID,
+		&i.InvoiceID,
+		&i.PaidOn,
+		&i.Amount,
+		&i.Currency,
+		&i.Reference,
+		&i.Note,
+		&i.RegisteredByUserID,
+		&i.RegisteredAt,
+		&i.RemovedAt,
+		&i.RemovedByUserID,
+		&i.RemovalReason,
+		&i.Source,
+		&i.BankTransactionID,
+		&i.PaymentAttemptID,
+	)
+	return i, err
+}
+
 const livePaymentsSum = `-- name: LivePaymentsSum :one
 SELECT coalesce(sum(amount), 0)::numeric(14,2) AS paid FROM invoices.payments
 WHERE invoice_id = $1 AND removed_at IS NULL
