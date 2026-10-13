@@ -1,14 +1,16 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
+import { createBrowserHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
 import { I18nProvider, setLanguagePreference } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import indexHtml from "../../index.html?raw";
 import { AccountLanguagePreference } from "../components/account-language-preference";
 import { publicPaths } from "../lib/public-paths";
 import { routeTree } from "../routeTree.gen";
 
-const TOKEN = "tok-Secret_123";
+// A token with characters a URL encodes, so the encoded check below means something.
+const TOKEN = "tok-a+b/c=_Z";
 
 interface AllowedRoute {
   methods: string[];
@@ -100,7 +102,8 @@ const renderSpaAt = (address: string) => {
   const router = createRouter({
     routeTree,
     context: { queryClient },
-    history: createMemoryHistory({ initialEntries: [address] }),
+    // The browser's own history, so the router and the address bar are one.
+    history: createBrowserHistory(),
   });
   render(
     <MantineProvider env="test">
@@ -116,6 +119,7 @@ const renderSpaAt = (address: string) => {
 };
 
 afterEach(() => {
+  delete window.__VANTIGO_APP__;
   window.history.replaceState(null, "", "/");
   window.sessionStorage.clear();
   setLanguagePreference("auto");
@@ -124,13 +128,11 @@ afterEach(() => {
 describe("the /pay route", () => {
   it("renders without a session and asks for nothing outside the public host's allowlist", async () => {
     const requests = recordFetch();
-    renderSpaAt(`/pay?token=${TOKEN}`);
+    const router = renderSpaAt(`/pay?token=${encodeURIComponent(TOKEN)}`);
 
     expect(await screen.findByText("Vantigo Demo AS")).toBeInTheDocument();
-    // Let the root's queries — the maintenance poll above all — go out.
-    await vi.waitFor(() =>
-      expect(requests.some((request) => request.url === "/api/v1/identity/system/status")).toBe(true),
-    );
+    // Let anything else the root or the page would ask for go out.
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     const routes = payRoutes();
     const refused = requests.filter((request) => !admitted(routes, request.method, request.url));
@@ -140,13 +142,17 @@ describe("the /pay route", () => {
     expect(urls.some((url) => url.startsWith("/api/v1/authorization"))).toBe(false);
     expect(urls.some((url) => url.includes("/profile"))).toBe(false);
     // The token is in no API URL: the read carries it in its body.
-    expect(urls.some((url) => url.includes(TOKEN))).toBe(false);
+    expect(urls.some((url) => url.includes(TOKEN) || url.includes(encodeURIComponent(TOKEN)))).toBe(false);
+    // On the public host the root does not even poll for maintenance.
+    expect(urls).not.toContain("/api/v1/identity/system/status");
     const read = requests.find((request) => request.url === "/api/v1/invoices/pay/read");
     expect(JSON.parse(String(read?.init?.body))).toEqual({ token: TOKEN });
     // Same-origin requests only, so no credential travels anywhere else.
     expect(urls.every((url) => url.startsWith("/"))).toBe(true);
-    // And the token is gone from the address bar.
-    expect(window.location.search).toBe("");
+    // And the token is gone from the address bar, and from the router's own location.
+    await vi.waitFor(() => expect(window.location.search).toBe(""));
+    expect(window.location.pathname).toBe("/pay");
+    expect(router.state.location.searchStr).toBe("");
   });
 });
 
@@ -156,5 +162,35 @@ describe("publicPaths", () => {
     expect(publicPaths.has("/pay/")).toBe(false);
     expect(publicPaths.has("/invoices/payments")).toBe(false);
     expect(publicPaths.has("/invoices/payments/vipps")).toBe(false);
+  });
+});
+
+describe("the account's language on the public host", () => {
+  const sessionAsked = async (address: string) => {
+    const requests = recordFetch();
+    window.history.replaceState(null, "", address);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <AccountLanguagePreference />
+      </QueryClientProvider>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return requests.some((request) => request.url.endsWith("/api/v1/identity/session"));
+  };
+
+  it("asks for no session on /pay under a base path", async () => {
+    window.__VANTIGO_APP__ = { basePath: "/vantigo/" };
+    expect(await sessionAsked("/vantigo/pay?token=x")).toBe(false);
+  });
+
+  it("still asks for the session on a signed-in page under that base path", async () => {
+    window.__VANTIGO_APP__ = { basePath: "/vantigo/" };
+    expect(await sessionAsked("/vantigo/invoices")).toBe(true);
+  });
+});
+
+describe("index.html", () => {
+  it("sends no referrer, so no address the SPA is on leaks to another site", () => {
+    expect(indexHtml).toContain('<meta name="referrer" content="no-referrer" />');
   });
 });

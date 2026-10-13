@@ -3,7 +3,7 @@ import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { useLayoutEffect, useRef } from "react";
 import { getProfile, profileQueryKey } from "../api/account";
 import { fetchSession, sessionQueryKey } from "../api/auth";
-import { sessionlessPaths } from "../lib/public-paths";
+import { appPathname, sessionlessPaths } from "../lib/public-paths";
 
 export const AccountLanguagePreference = () => {
   // The pay page, on the public host, asks for no session: the request would
@@ -12,7 +12,7 @@ export const AccountLanguagePreference = () => {
   const session = useQuery({
     queryKey: sessionQueryKey,
     queryFn: fetchSession,
-    enabled: !sessionlessPaths.has(window.location.pathname),
+    enabled: !sessionlessPaths.has(appPathname(window.location.pathname)),
   });
   const userId = session.data?.user.id;
   const profile = useQuery({

@@ -1440,7 +1440,9 @@ without signing in, and on a phone as well as on a computer. Step by step:
    payment.
 4. **Back on the pay page.** Vipps sends the customer back, and the page waits for
    Vipps to confirm: it checks every two seconds for the first minute, then every five
-   seconds, for up to ten minutes. It then says **the payment went through and the
+   seconds, for up to ten minutes, and only while the page is in view; when a check
+   fails it waits longer each time, up to a minute, and when it has asked too often it
+   stops and offers **Check again**. It then says **the payment went through and the
    invoice is paid**, that it **did not go through**, or that it was **cancelled or timed
    out** — with **Try again** in the same browser. If Vipps has not confirmed after ten
    minutes, the page says so and that the customer must not pay again; **Check again**
@@ -1448,8 +1450,8 @@ without signing in, and on a phone as well as on a computer. Step by step:
    the page shows only the payment's outcome.
 
 The link's code is taken out of the address bar as soon as the page has read it, so it
-does not linger in the browser's history or in a screenshot; the browser tab keeps it
-for as long as it is open.
+is not shown there or in a screenshot of the page; the browser tab keeps it for as long
+as it is open.
 
 The page cannot start a payment when the invoice is already paid or credited, when it
 is with a collection agency (the customer is told to contact the agency), when the link

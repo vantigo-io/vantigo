@@ -108,7 +108,9 @@ tall og valuta følger det. **Automatisk** følger nettleserens språk. Valget l
 med kontoen din, så det gjelder på alle enheter du logger inn fra. Den offentlige
 [betalingssiden](/nb/user/invoices/#hva-kunden-ser-på-betalingssiden) kundene dine åpner
 fra en betalingslenke, er ikke innlogget og bruker det ikke: den bruker språket
-fakturaen oppgir, og kunden kan bytte.
+fakturaen oppgir, og kunden kan bytte. Den ber ikke Vantigo om noe fra en konto — ingen
+økt, ingen vedlikeholdsmelding — og sender ingen henvisning (referrer) til nettstedene
+den lenker til.
 
 ## Bytt passord
 

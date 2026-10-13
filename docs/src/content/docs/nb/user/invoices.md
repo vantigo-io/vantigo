@@ -1457,16 +1457,18 @@ innlogging, og på mobil like godt som på datamaskin. Steg for steg:
    betalingen.
 4. **Tilbake på betalingssiden.** Vipps sender kunden tilbake, og siden venter på at
    Vipps bekrefter: den sjekker hvert annet sekund det første minuttet, deretter hvert
-   femte sekund, i opptil ti minutter. Så sier den at **betalingen gikk gjennom og
+   femte sekund, i opptil ti minutter, og bare mens siden er synlig; feiler en sjekk,
+   venter den lenger for hver gang, opptil ett minutt, og har den spurt for ofte,
+   stopper den og tilbyr **Sjekk igjen**. Så sier den at **betalingen gikk gjennom og
    fakturaen er betalt**, at den **ikke gikk gjennom**, eller at den ble **avbrutt eller
    gikk ut på tid** — med **Prøv igjen** i samme nettleser. Har Vipps ikke bekreftet
    etter ti minutter, sier siden det, og at kunden ikke skal betale igjen; **Sjekk
    igjen** spør én gang til. Åpnet i en annen nettleser enn den som startet betalingen,
    viser siden bare utfallet av betalingen.
 
-Lenkens kode tas ut av adresselinjen så snart siden har lest den, så den ikke blir
-liggende i nettleserens historikk eller i et skjermbilde; nettleserfanen tar vare på
-den så lenge den er åpen.
+Lenkens kode tas ut av adresselinjen så snart siden har lest den, så den ikke vises
+der eller i et skjermbilde av siden; nettleserfanen tar vare på den så lenge den er
+åpen.
 
 Siden kan ikke starte en betaling når fakturaen allerede er betalt eller kreditert, når
 den er overlevert til et inkassobyrå (kunden får beskjed om å kontakte byrået), når
