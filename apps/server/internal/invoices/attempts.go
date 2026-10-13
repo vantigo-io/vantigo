@@ -65,6 +65,12 @@ var attemptAfterInvoiceLock func(ctx context.Context, tx pgx.Tx)
 // production.
 var abandonAfterAttemptLock func(ctx context.Context, tx pgx.Tx)
 
+// abandonAfterRow and abandonAfterRead, when a test sets them
+// (export_test.go), run in an abandon right after it read the attempt on the
+// pool and right after its read of Vipps, outside any lock; nil in
+// production.
+var abandonAfterRow, abandonAfterRead func()
+
 // payNonce, when a test sets it (export_test.go), answers every new return
 // nonce in place of 16 random bytes; nil in production.
 var payNonce func() string
@@ -536,6 +542,9 @@ func (s *server) PostInvoicesPaymentAttemptsByIdAbandon(ctx context.Context, req
 	case err != nil:
 		return nil, fmt.Errorf("invoices: read payment attempt %d: %w", req.Id, err)
 	}
+	if hook := abandonAfterRow; hook != nil {
+		hook()
+	}
 	refuse := func(detail string) (gen.PostInvoicesPaymentAttemptsByIdAbandonResponseObject, error) {
 		return gen.PostInvoicesPaymentAttemptsByIdAbandon409ApplicationProblemPlusJSONResponse(
 			conflict(codeAttemptNotAbandonable, cannotAbandonTitle, detail)), nil
@@ -594,6 +603,9 @@ func (s *server) PostInvoicesPaymentAttemptsByIdAbandon(ctx context.Context, req
 	}
 
 	p, err := provider.Get(ctx, a.Reference)
+	if hook := abandonAfterRead; hook != nil {
+		hook()
+	}
 	creating := a.State == "creating" || a.State == "created"
 	switch {
 	case creating && errors.Is(err, payments.ErrNotFound):
@@ -604,19 +616,26 @@ func (s *server) PostInvoicesPaymentAttemptsByIdAbandon(ctx context.Context, req
 		c.Status = ptr(int32(http.StatusBadGateway))
 		return gen.PostInvoicesPaymentAttemptsByIdAbandon502ApplicationProblemPlusJSONResponse(c), nil
 	case creating && (p.Captured.Minor > 0 || p.State == payments.StateCreated || p.State == payments.StateAuthorized):
-		if _, err := store.New(s.deps.Pool).UnparkAttempt(ctx, store.UnparkAttemptParams{Now: now, ID: a.ID, LeaseID: lease}); err != nil {
+		n, err := store.New(s.deps.Pool).UnparkAttempt(ctx, store.UnparkAttemptParams{Now: now, ID: a.ID, LeaseID: lease})
+		if err != nil || n != 1 {
 			release()
+		}
+		if err != nil {
 			return nil, fmt.Errorf("invoices: hand payment attempt %d back: %w", a.ID, err)
 		}
 		return refuse(fmt.Sprintf("Vipps knows this payment (%s) and it is not over. It is handed back to the payments worker, which completes it and registers anything captured.", p.State))
 	case p.Captured.Minor > 0:
 		w := &PaymentWorker{srv: s, deps: s.deps}
 		c := &paymentClaim{s: s, w: w, row: a, lease: lease, now: now, provider: provider}
-		if err := c.register(ctx, p.Captured.Minor); err != nil && !errors.Is(err, errClaimLost) {
+		err := c.register(ctx, p.Captured.Minor)
+		captured := ratOfMinor(p.Captured.Minor).FloatString(2)
+		switch {
+		case errors.Is(err, errClaimLost):
+			return refuse(fmt.Sprintf("Vipps shows %s captured: it is being registered as a payment of the invoice, not abandoned.", captured))
+		case err != nil:
 			return nil, err
 		}
-		return refuse(fmt.Sprintf("Vipps shows %s captured: it is registered as a payment of the invoice, not abandoned.",
-			ratOfMinor(p.Captured.Minor).FloatString(2)))
+		return refuse(fmt.Sprintf("Vipps shows %s captured: it is registered as a payment of the invoice, not abandoned.", captured))
 	case !creating && !endedAtVipps(p):
 		release()
 		return refuse("Vipps still holds this payment's authorization, and it may yet be captured. Release it in the Vipps portal first.")
@@ -640,6 +659,12 @@ func (s *server) abandonAttempt(ctx context.Context, read store.InvoicesPaymentA
 			hook(ctx, tx)
 		}
 		leased := a.LeaseID != nil && a.LeaseUntil != nil && a.LeaseUntil.After(now)
+		if !abandonable(a) {
+			// A create handed back to the worker since it was read parked.
+			refusal = ptr(conflict(codeAttemptNotAbandonable, cannotAbandonTitle,
+				"The payment moved while it was being abandoned. Read it again."))
+			return errRefused
+		}
 		ours := lease != "" && a.LeaseID != nil && *a.LeaseID == lease
 		if a.State != read.State || a.CaptureAttempts != read.CaptureAttempts || (lease != "" && !ours) || (lease == "" && leased) {
 			refusal = ptr(conflict(codeAttemptNotAbandonable, cannotAbandonTitle,

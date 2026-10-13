@@ -449,3 +449,29 @@ func TestAbandon_LockOrder(t *testing.T) {
 		t.Errorf("calls made inside a transaction:\n%s", strings.Join(calls, "\n"))
 	}
 }
+
+// TestAbandon_ParkedCreateHandedBackIsNotAbandoned (review): an abandon
+// that read a create while it was parked, then lost the race to another
+// abandon that handed it back to the worker, never abandons it — not even
+// on a stale 404 from Vipps. Not parallel: the seams are the package's.
+func TestAbandon_ParkedCreateHandedBackIsNotAbandoned(t *testing.T) {
+	h := workerReady(t)
+	_, ref := newAttempt(t, h)
+	h.vipps.Approve(ref)
+	setAttempt(t, h, ref, "next_poll_at = NULL")
+	id := attemptOf(t, h, ref).ID
+	first := true
+	defer invoices.SetAbandonAfterRow(func() {
+		if !first {
+			return
+		}
+		first = false
+		// A1, in full, while A2 holds its read of the parked row.
+		refusedAs(t, "A1", vippsManager(t, h).Do(http.MethodPost, abandonPath(id), abandonBody("Sjekket", true)), "attempt_not_abandonable")
+		h.vipps.Fail(vippstest.OpGet, vippstest.Failure{Status: http.StatusNotFound, Times: 1})
+	})()
+	refusedAs(t, "A2", vippsManager(t, h).Do(http.MethodPost, abandonPath(id), abandonBody("Sjekket", true)), "attempt_not_abandonable")
+	if a := attemptOf(t, h, ref); a.State != "created" || a.NextPollAt == nil {
+		t.Errorf("the create = %s next %v, want created and handed back", a.State, a.NextPollAt)
+	}
+}

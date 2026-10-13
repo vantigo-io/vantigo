@@ -528,7 +528,7 @@ export const invoicesCatalog = {
     "refusal.payment_attempts_active":
       "A Vipps payment is in flight. The sales unit and the keys cannot be changed or removed until it is finished or abandoned.",
     "refusal.attempt_not_abandonable":
-      "This Vipps payment cannot be abandoned: only one whose outcome is unknown, or one stranded by Vipps being switched off or another sales unit, can.",
+      "This Vipps payment cannot be abandoned now. Vipps may still hold it, the money may have been captured, or it is being completed; read the payment again.",
     "refusal.public_url_missing":
       "This installation has no public address (PUBLIC_BASE_URL), so pay links and Vipps notifications cannot be used.",
     "refusal.provider_failed": "Vipps refused or could not complete the request. Try again in a moment.",
@@ -2125,9 +2125,9 @@ export const invoicesCatalog = {
     "refusal.payments_unavailable":
       "Betaling med Vipps er ikke tilgjengelig: den er slått av, ikke satt opp, eller de lagrede nøklene kan ikke leses. Spør den som administrerer Fakturaer.",
     "refusal.payment_attempts_active":
-      "En Vipps-betaling pågår. Salgsenheten og nøklene kan ikke endres eller fjernes før den er fullført eller oppgitt.",
+      "En Vipps-betaling pågår. Salgsenheten og nøklene kan ikke endres eller fjernes før den er fullført eller forlatt.",
     "refusal.attempt_not_abandonable":
-      "Denne Vipps-betalingen kan ikke oppgis: bare en med ukjent utfall, eller en som står fast fordi Vipps er slått av eller salgsenheten er en annen, kan det.",
+      "Denne Vipps-betalingen kan ikke forlates nå. Vipps kan fortsatt holde den, pengene kan være trukket, eller den fullføres; les betalingen på nytt.",
     "refusal.public_url_missing":
       "Denne installasjonen har ingen offentlig adresse (PUBLIC_BASE_URL), så betalingslenker og varsler fra Vipps kan ikke brukes.",
     "refusal.provider_failed": "Vipps avviste eller kunne ikke fullføre forespørselen. Prøv igjen om litt.",

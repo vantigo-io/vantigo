@@ -281,11 +281,13 @@ når Vipps kan leses igjen.
 **Å forlate en betaling** (*Forlat* på fakturaens Vipps-betaling, `invoices:manage`)
 krever en begrunnelse og en bekreftelse på at portalen ikke viser noe trukket. Vantigo
 tar ikke bekreftelsen for god fisk: der den kan lese Vipps, leser den betalingen først.
-Penger Vipps viser som trukket, registreres som en betaling av fakturaen, og forlatingen
-avvises; en betaling Vipps fortsatt kan trekke, avvises til den er frigitt i portalen; en
-betalingsforespørsel Vipps kjenner og ikke har avsluttet, gis tilbake til jobben. Først
-da forlates forsøket: det reserverte beløpet frigis, og hvem, når og hvorfor lagres. Et
-trekk som oppdages senere, registreres for hånd. Reglene står i
+Penger Vipps viser som trukket, registreres som en betaling av fakturaen, og betalingen
+forlates ikke; en betaling Vipps fortsatt kan trekke, avvises til den er frigitt i
+portalen; en betalingsforespørsel Vipps kjenner og ikke har avsluttet, gis tilbake til
+jobben. Først da forlates forsøket: det reserverte beløpet frigis, og hvem, når og
+hvorfor lagres. Svarer Vipps for sent, eller ga en annen leder betalingen tilbake til
+jobben i mellomtiden, kan jobben ha tatt den over: da forlates den ikke — les betalingen
+på nytt. Et trekk som oppdages senere, registreres for hånd. Reglene står i
 [referansen](/en/reference/invoices/#abandon).
 
 **Kontroller:** en testbetaling av en liten faktura, godkjent i Vipps-appen (eller

@@ -17,7 +17,7 @@ const abandonPaymentAttempt = `-- name: AbandonPaymentAttempt :one
 UPDATE invoices.payment_attempts
 SET state = 'abandoned', reserved_amount = NULL, abandoned_by_user_id = $1,
     abandoned_at = $2::timestamptz, abandon_reason = $3::text, finished_at = $2::timestamptz,
-    next_poll_at = NULL, lease_id = NULL, lease_until = NULL
+    next_poll_at = NULL, registration_failed_at = NULL, lease_id = NULL, lease_until = NULL
 WHERE id = $4 AND state IN ('creating', 'created', 'capturing', 'capture_unknown')
 RETURNING id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason
 `
@@ -241,6 +241,7 @@ const leaseAttemptForAbandon = `-- name: LeaseAttemptForAbandon :execrows
 UPDATE invoices.payment_attempts
 SET lease_id = $1::text, lease_until = $2::timestamptz
 WHERE id = $3 AND state = $4::text AND capture_attempts = $5
+  AND (state NOT IN ('creating', 'created') OR next_poll_at IS NULL)
   AND (lease_until IS NULL OR lease_until <= $6::timestamptz)
 `
 
@@ -257,7 +258,9 @@ type LeaseAttemptForAbandonParams struct {
 // abandon, while no claim's lease is live: one statement, its row lock held
 // for it alone, as the worker's claim (m11). While the lease lives no worker
 // claims the attempt, so nothing is sent to Vipps between the abandon's read
-// and its write. Nothing leased when a claim holds it or it moved.
+// and its write. Nothing leased when a claim holds it or it moved — a
+// create handed back to the worker since the abandon read it parked among
+// them.
 func (q *Queries) LeaseAttemptForAbandon(ctx context.Context, arg LeaseAttemptForAbandonParams) (int64, error) {
 	result, err := q.db.Exec(ctx, leaseAttemptForAbandon,
 		arg.LeaseID,

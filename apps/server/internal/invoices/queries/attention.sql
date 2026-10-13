@@ -107,15 +107,13 @@ ORDER BY b.post_on, b.id;
 -- name: AttentionCaptureUnknown :many
 -- AttentionCaptureUnknown is paymentCaptureUnknown's attempts (D12, D16):
 -- every capture whose outcome is unknown, and every attempt whose money
--- Vipps shows captured but whose registration failed — its last_error
--- starting with @registration_failed, the worker's own words — with the
--- invoice's buyer name.
+-- Vipps shows captured but whose registration failed (registration_failed_at,
+-- cleared only by the registration) — with the invoice's buyer name.
 SELECT a.id, a.invoice_id, coalesce(a.authorized_at, a.created_at)::timestamptz AS occurred_at, i.buyer_name
 FROM invoices.payment_attempts a
 JOIN invoices.invoices i ON i.id = a.invoice_id
 WHERE a.state = 'capture_unknown'
-   OR (a.state IN ('capturing', 'capture_failed', 'cancelling')
-       AND starts_with(coalesce(a.last_error, ''), @registration_failed::text))
+   OR (a.state IN ('capturing', 'capture_failed', 'cancelling') AND a.registration_failed_at IS NOT NULL)
 ORDER BY a.id;
 
 -- name: AttentionCaptureFailed :many
@@ -136,7 +134,7 @@ LEFT JOIN LATERAL (
     FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
 ) pd ON true
 WHERE a.state = 'capture_failed' AND a.finished_at >= @since::timestamptz
-  AND NOT starts_with(coalesce(a.last_error, ''), @registration_failed::text)
+  AND a.registration_failed_at IS NULL
   AND i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0) > 0
   AND NOT EXISTS (
       SELECT 1 FROM invoices.payment_attempts b

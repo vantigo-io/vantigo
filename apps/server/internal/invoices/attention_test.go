@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/payments/vipps/vippstest"
 )
 
 // The dashboard's attention items (invoices payments and reminders design
@@ -469,6 +471,19 @@ func TestAttention_PaymentTypes(t *testing.T) {
 		items := ofType(attentionOf(t, payer(t, h)), "paymentCaptureUnknown")
 		if len(items) != 1 || items[0].ID != fmt.Sprintf("paymentCaptureUnknown/%d", attemptIDOf(t, h, ref)) || items[0].EntityID != entity(inv.ID) {
 			t.Errorf("a capture not registered = %+v, want one paymentCaptureUnknown", items)
+		}
+		// A later call failing overwrites last_error; the item stays.
+		h.vipps.Fail(vippstest.OpGet, vippstest.Failure{Status: http.StatusInternalServerError, Times: 1})
+		h.Advance(10 * time.Minute)
+		cycle(t, h)
+		if a := attemptOf(t, h, ref); strings.Contains(text(a.LastError), "registered") {
+			t.Fatalf("last_error = %s, want the failing read's", text(a.LastError))
+		}
+		if got := ofType(attentionOf(t, payer(t, h)), "paymentCaptureUnknown"); len(got) != 1 {
+			t.Errorf("after a failing read = %+v, want the item kept", got)
+		}
+		if got := ofType(attentionOf(t, payer(t, h)), "paymentCaptureFailed"); len(got) != 0 {
+			t.Errorf("paymentCaptureFailed = %+v, want none", got)
 		}
 		h.Exec(t, `DROP TRIGGER tr_test_refuse_vipps ON invoices.payments`)
 		h.Advance(10 * time.Minute)

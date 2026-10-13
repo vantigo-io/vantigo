@@ -82,10 +82,13 @@ SELECT * FROM invoices.payment_attempts WHERE id = @id;
 -- abandon, while no claim's lease is live: one statement, its row lock held
 -- for it alone, as the worker's claim (m11). While the lease lives no worker
 -- claims the attempt, so nothing is sent to Vipps between the abandon's read
--- and its write. Nothing leased when a claim holds it or it moved.
+-- and its write. Nothing leased when a claim holds it or it moved — a
+-- create handed back to the worker since the abandon read it parked among
+-- them.
 UPDATE invoices.payment_attempts
 SET lease_id = @lease_id::text, lease_until = @lease_until::timestamptz
 WHERE id = @id AND state = @state::text AND capture_attempts = @capture_attempts
+  AND (state NOT IN ('creating', 'created') OR next_poll_at IS NULL)
   AND (lease_until IS NULL OR lease_until <= @now::timestamptz);
 
 -- name: ReleaseAttemptLease :execrows
@@ -112,6 +115,6 @@ WHERE id = @id AND next_poll_at IS NULL
 UPDATE invoices.payment_attempts
 SET state = 'abandoned', reserved_amount = NULL, abandoned_by_user_id = @abandoned_by_user_id,
     abandoned_at = @now::timestamptz, abandon_reason = @abandon_reason::text, finished_at = @now::timestamptz,
-    next_poll_at = NULL, lease_id = NULL, lease_until = NULL
+    next_poll_at = NULL, registration_failed_at = NULL, lease_id = NULL, lease_until = NULL
 WHERE id = @id AND state IN ('creating', 'created', 'capturing', 'capture_unknown')
 RETURNING *;

@@ -771,3 +771,19 @@ func SetAbandonAfterAttemptLock(hook func(ctx context.Context, tx pgx.Tx)) func(
 	abandonAfterAttemptLock = hook
 	return func() { abandonAfterAttemptLock = nil }
 }
+
+// SetAbandonAfterRow installs a hook an abandon calls right after it read
+// the attempt on the pool, before anything else, and answers the function
+// that removes it. A test using it does not run in parallel.
+func SetAbandonAfterRow(hook func()) func() {
+	abandonAfterRow = hook
+	return func() { abandonAfterRow = nil }
+}
+
+// SetAbandonAfterRead installs a hook an abandon calls right after its read
+// of Vipps, outside any lock, and answers the function that removes it. A
+// test using it does not run in parallel.
+func SetAbandonAfterRead(hook func()) func() {
+	abandonAfterRead = hook
+	return func() { abandonAfterRead = nil }
+}

@@ -203,16 +203,14 @@ func (s *server) attentionPayments(ctx context.Context, q *store.Queries, now ti
 		item.Id = string(typ) + "/" + idString(attempt)
 		items = append(items, item)
 	}
-	unknown, err := q.AttentionCaptureUnknown(ctx, registrationFailed)
+	unknown, err := q.AttentionCaptureUnknown(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the Vipps captures of unknown outcome: %w", err)
 	}
 	for _, r := range unknown {
 		add(gen.PaymentCaptureUnknown, r.ID, r.InvoiceID, r.BuyerName, r.OccurredAt)
 	}
-	failed, err := q.AttentionCaptureFailed(ctx, store.AttentionCaptureFailedParams{
-		Since: now.Add(-captureFailedWindow), RegistrationFailed: registrationFailed,
-	})
+	failed, err := q.AttentionCaptureFailed(ctx, now.Add(-captureFailedWindow))
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the failed Vipps captures: %w", err)
 	}

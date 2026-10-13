@@ -116,7 +116,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.payment_provider_credentials` | One row (`id = 1`): the payment provider (`vipps`), its settings that are not secret (`settings_json`, the sales unit's `msn`), the sales unit's three keys sealed together by the secrets box, a webhook registration's id and sealed secret (both or neither), `rejected_at` once Vipps refused the keys or they could not be opened, and `updated_at` ([Credentials and payment settings](#credentials-and-payment-settings)). Kept off every other row: an attempt's create shares it, a credentials change locks it. |
 | `invoices.payment_settings` | One row (`id = 1`), inserted by the migration: the installation's `reference_prefix` (six base36 characters, never changed), `pay_links_enabled` with the seller's `terms_url` and `privacy_url` (both required while pay links are on), `on_site_payments_enabled` with the kontantsalg acknowledgement — who and when, both or neither, required while on-site payment is on — and the row's revision, who changed it and when. Never deleted ([Credentials and payment settings](#credentials-and-payment-settings)). |
 | `invoices.pay_links` | An issued invoice's pay link ([Pay links](#pay-links)): the invoice, `token_sha256` (the token's SHA-256, unique — never the token), `url_ciphertext` (the whole URL sealed under `invoices/pay-link`), who made it (NULL when the issue did) and when, and — once revoked — when and by whom. One live link per invoice (`ux_pay_links_live`). A trigger refuses one under a draft, a credit note or an anonymised customer's invoice; another refuses a DELETE and every update but the revocation, once. |
-| `invoices.payment_attempts` | One Vipps payment of an invoice ([Payment attempts](#payment-attempts)): the invoice, the provider (`vipps`), the sales unit (`msn`) it was made under, `flow` (`pay_link` with its pay link and `return_nonce_sha256`, the return address's nonce hashed; or `on_site`), `reference` (`<prefix>-<invoice number>-<id>`, set by a trigger from the row's own id), `amount` (the open amount when it was made), the idempotency keys (`create_key`, `capture_key`, `cancel_key`), `state`, `release_pending`, Vipps' references, `redirect_url` (the address the payer is sent to — never logged, never answered), the amounts Vipps reported and `reserved_amount` (live while `capturing` or `capture_unknown`), who made it (NULL for the pay page) and when, `expires_at`, the times it was authorized, captured and finished, the payments worker's columns and an abandonment's. Never deleted; what makes it the attempt it is never changes, and a finished one changes only the worker's bookkeeping, its release and its refund watch. |
+| `invoices.payment_attempts` | One Vipps payment of an invoice ([Payment attempts](#payment-attempts)): the invoice, the provider (`vipps`), the sales unit (`msn`) it was made under, `flow` (`pay_link` with its pay link and `return_nonce_sha256`, the return address's nonce hashed; or `on_site`), `reference` (`<prefix>-<invoice number>-<id>`, set by a trigger from the row's own id), `amount` (the open amount when it was made), the idempotency keys (`create_key`, `capture_key`, `cancel_key`), `state`, `release_pending`, Vipps' references, `redirect_url` (the address the payer is sent to — never logged, never answered), the amounts Vipps reported and `reserved_amount` (live while `capturing` or `capture_unknown`), who made it (NULL for the pay page) and when, `expires_at`, the times it was authorized, captured and finished, the payments worker's columns — `registration_failed_at` among them, when it last failed to register money Vipps captured — and an abandonment's. Never deleted; what makes it the attempt it is never changes, and a finished one changes only the worker's bookkeeping, its release and its refund watch. |
 
 A document's state is not a column: `invoices.document_state(...)` derives it, see
 [Payments and the state of an invoice](#payments-and-the-state-of-an-invoice).
@@ -3758,7 +3758,7 @@ payment and the reservation never both count against the open amount; `release_p
 is set when Vipps authorized more than it captured, and `refund_watch_until` 30 days on.
 A capture of less than was reserved is registered as captured, and the rest released.
 A registration that fails keeps the attempt's state and reservation, records why in
-`last_error`, and is tried again on the backoff.
+`last_error` and when in `registration_failed_at`, and is tried again on the backoff.
 
 **Captured money is always registered.** On an attempt not yet `captured` — a
 `capture_failed` one whose capture landed after all, a `cancelling` one captured in the
@@ -3796,7 +3796,8 @@ request can be made until it is abandoned. Every other state is 409
 a `capturing` attempt is the worker's and is refused. Otherwise the abandon first takes
 a lease on the attempt of its own, in one statement as the worker's claim does, only
 while no claim's lease is live and the attempt is still in the state and at the count
-of captures sent it read (else 409, *the payments worker is reading it*); while the
+of captures sent it read — a create still parked, not handed back to the worker by
+another abandon since (else 409, *the payments worker is reading it*); while the
 lease lives no worker claims the attempt, so nothing is sent to Vipps between the read
 and the write. Then `Get`, outside any lock:
 
@@ -3804,7 +3805,8 @@ and the write. Then `Get`, outside any lock:
 - **money captured** on a capture — registered exactly as [the
   worker](#capture-and-the-reservation) registers it, under the abandon's lease (the
   attempt, then its invoice; the event log's day as `paid_on`), and the abandon refused
-  with the amount named;
+  with the amount named — "being registered" when the worker took the attempt over
+  meanwhile and registers it itself;
 - a create Vipps does not know (404), or has ended with nothing captured — abandoned;
 - a create Vipps knows and has not ended (`CREATED`, `AUTHORIZED`, or anything
   captured) — handed back to the worker, `next_poll_at` the request's time, and refused:
@@ -3820,10 +3822,13 @@ reservation stranded) — only a capture **never sent** (`capture_attempts = 0`)
 abandoned: no money can have moved by Vantigo's hand. A capture sent, or a create, is
 refused until Vipps can be read again.
 
-**The write** takes the attempt alone `FOR NO KEY UPDATE` (D18) and judges it again: the
-same state and captures sent, and the abandon's lease (or, unread, no live claim) — else
-409. The attempt becomes `abandoned`, `reserved_amount` released, `abandoned_by_user_id`,
-`abandoned_at` and `abandon_reason` set (00046's check requires all three), finished,
+**The write** takes the attempt alone `FOR NO KEY UPDATE` (D18) and judges it again:
+still abandonable (a create still parked), the same state and captures sent, and the
+abandon's lease (or, unread, no live claim) — else 409. A read of Vipps answered after
+the abandon's two-minute lease ran out, the worker having claimed the attempt and sent a
+capture meanwhile, is refused here. The attempt becomes `abandoned`, `reserved_amount` released, `abandoned_by_user_id`,
+`abandoned_at` and `abandon_reason` set (00046's check requires all three),
+`registration_failed_at` cleared, finished,
 never polled again; 200 answers the attempt with them. A capture discovered later is
 registered by hand. A claim that held the attempt before the abandon finds its lease gone
 and changes nothing.
@@ -3842,7 +3847,8 @@ recorded one — a refund made in the Vipps portal — is stored in `refunded_am
 a warning in the log, and raises `vippsRefundSeen` ([Attention](#attention)). **No
 payment is removed**: the person removes the Vipps payment (and registers the part kept,
 if any), which clears the item. A read that fails is tried again on the backoff and
-changes no money; past the 30 days it ends the watch. There is no column for "seen" and
+changes no money; past the 30 days it ends the watch, with a warning in the log that a
+refund made since is not seen. There is no column for "seen" and
 nothing to acknowledge: the item is the stored refund on a payment still live.
 
 ## The journal
@@ -3980,7 +3986,7 @@ request's Oslo day.
 | `reminderFailed` | letter whose e-mail failed for good | the letter's invoice (the item's `id` names the letter, `reminderFailed/<letterId>`); the buyer's name; its failure; — | it is retried or withdrawn |
 | `remindersHeld` | cause queued letters wait on (`held_reason`, plan reading 46): `collectionRatesOutdated` — a collection rate missing for a half-year a letter needs — or `collectionRegimeUnreviewed` — the 1988 regime past its review | the cause, as `entityId` and `title`; the oldest waiting letter's creation; the letters waiting | the rate is added or the review made, and the worker sends them |
 | `reminderBatchUnposted` | print batch neither confirmed posted nor reprinted from **two days** after its posting day | the batch; its posting day; that day plus two at UTC midnight; its printed letters | it is confirmed posted or reprinted ([Paper and posting](#paper-and-posting)) |
-| `paymentCaptureUnknown` | Vipps payment attempt `capture_unknown`, and one whose money Vipps shows captured but whose registration failed (`last_error` the worker's "The capture could not be registered: …") | the attempt's invoice; the buyer's name; the authorization; — | Vipps' answer resolves it, the capture is registered, or a manager [abandons](#abandon) it |
+| `paymentCaptureUnknown` | Vipps payment attempt `capture_unknown`, and one whose money Vipps shows captured but whose registration failed (`registration_failed_at`, set by the failed registration and cleared only by the registration, whatever `last_error` says later) | the attempt's invoice; the buyer's name; the authorization; — | Vipps' answer resolves it, the capture is registered, or a manager [abandons](#abandon) it |
 | `paymentCaptureFailed` | attempt `capture_failed` finished in the last **14 days** whose invoice is still open (gross less credited and paid above zero) and of which no later attempt captured | the attempt's invoice; the buyer's name; its end; — | 14 days pass, the invoice is settled, or a later attempt captures |
 | `paymentReservationStranded` | attempt the worker cannot carry: a reservation (`capturing`, `capture_unknown`) while `INVOICES_VIPPS_ENABLED=0` or made under a sales unit that is not the stored one (D1, I20), and an attempt **parked** for a person — a create given up after ten tries, a release Vipps refuses for good | the attempt's invoice; the buyer's name; the authorization, or the creation; — | Vipps or the sales unit is back, the attempt is abandoned, or — a parked release — it is released in the portal and handed back by an abandon |
 | `vippsRefundSeen` | captured attempt with a refund stored by [the refund watch](#the-refund-watch) (`refunded_amount` above zero) whose payment is still live (I6) | the attempt's invoice; the buyer's name; the capture; — | the payment is removed |
