@@ -29,8 +29,12 @@ import (
 // The a-melding descriptions a type maps to are the contract's enum,
 // StaffAmeldingLeave: the kodeverk PermisjonsOgPermitteringsBeskrivelse's six
 // leave descriptions and permittering in NAV's spellings (plan Revision 2,
-// Q4a), so the expired velferdspermisjon and the unsplit utdanningspermisjon
-// are refused before a handler runs. Each write is an installation event —
+// Q4a). The router does not judge a request's enums, so this file does
+// (ameldingLeaveDescriptions), refusing the expired velferdspermisjon and the
+// unsplit utdanningspermisjon. A company type's visibility is widened —
+// hr_only to absent — only while no absence names it
+// (absence_type_in_use): widening it under rows would show colleagues and
+// managers, after the fact, a type people took on the promise it stayed HR's. Each write is an installation event —
 // absence_type_created, absence_type_updated — naming the type and the
 // fields it changed; it is about no person and touches no retention class.
 
@@ -118,7 +122,8 @@ type absenceTypeFlags struct {
 // parseAbsenceTypeFlags runs the shared rules over a type in unit: names of
 // 1 to 100 characters, a sort of 1 to 1000, and a percentage and the holiday
 // account only on a type counted in days — an hour registration counts no
-// day (design §4 Days). The enums are the contract's to have judged.
+// day (design §4 Days). The visibility and the a-melding mapping are judged
+// against this file's lists, since the router does not judge enums.
 func parseAbsenceTypeFlags(names gen.StaffAbsenceTypeNames, unit string, in absenceTypeFlags, f *fieldErrors) absenceTypeFlags {
 	out := in
 	var msg string
@@ -263,6 +268,16 @@ func (s *server) PutStaffAbsenceTypesById(ctx context.Context, req gen.PutStaffA
 		if row.Seeded && !seedChangeAllowed(row, flags) {
 			return refuseConflict(conflict(codeSeedImmutable, "Seeded absence type",
 				fmt.Sprintf("%s is one of the types every installation starts with: its names, its place and whether it is hidden change, nothing else.", row.NameEn)))
+		}
+		if row.Visibility == "hr_only" && flags.Visibility == "absent" {
+			inUse, err := txq.AbsenceTypeInUse(ctx, row.ID)
+			if err != nil {
+				return fmt.Errorf("staff: read whether absence type %d is in use: %w", row.ID, err)
+			}
+			if inUse {
+				return refuseConflict(conflict(codeAbsenceTypeInUse, "Absence type in use",
+					fmt.Sprintf("Absences of %s were taken as HR-only. Its visibility cannot be widened now; add another type instead.", row.NameEn)))
+			}
 		}
 		saved, err = txq.UpdateAbsenceType(ctx, store.UpdateAbsenceTypeParams{
 			ID: row.ID, NameEn: flags.NameEn, NameNb: flags.NameNb, Paid: flags.Paid, DrawsHoliday: flags.DrawsHoliday,

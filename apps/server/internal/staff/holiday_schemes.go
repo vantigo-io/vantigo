@@ -49,8 +49,10 @@ const (
 const holidaySchemeNameIndex = "ux_holiday_schemes_name_lower"
 
 // The bounds of a scheme's figures, in virkedager (plan "Exact values"): the
-// statutory 25 and 6 are the floors (ferieloven § 5); the parts are at most
-// the entitlement.
+// statutory 25 and 6 are the floors (ferieloven § 5), and so are the main
+// period's 18 and the after-September 6, each at most the entitlement; the
+// agreed carry-over's default, 12, is also its cap above the statutory 25
+// (parseScheme).
 const (
 	schemeNameMaxLength   = 100
 	entitlementMin        = 25
@@ -109,19 +111,23 @@ func parseScheme(name string, entitlement, extra int32, main, after, carry *int3
 		f.add("extraFrom60Virkedager", fmt.Sprintf("The extra days from 60 are %d to %d virkedager — the Holiday Act's %d at least", extraFrom60Min, extraFrom60Max, extraFrom60Min))
 	}
 	out.Entitlement, out.ExtraFrom60 = int16(entitlement), int16(extra)
-	part := func(field, label string, v *int32, def int16) int16 {
+	part := func(field, label string, v *int32, def int16, low, high int32) int16 {
 		if v == nil {
 			return def
 		}
-		if *v < 0 || *v > entitlement {
-			f.add(field, fmt.Sprintf("%s is 0 to the entitlement, %d virkedager", label, entitlement))
+		if *v < low || *v > high {
+			f.add(field, fmt.Sprintf("%s is %d to %d virkedager", label, low, high))
 			return def
 		}
 		return int16(*v)
 	}
-	out.MainPeriod = part("mainPeriodVirkedager", "The main period", main, mainPeriodDefault)
-	out.AfterSeptember = part("afterSeptemberVirkedager", "The days for a start after 30 September", after, afterSeptemberDefault)
-	out.MaxCarryOver = part("maxCarryOverVirkedager", "The agreed carry-over", carry, maxCarryOverDefault)
+	// The Holiday Act's floors and the carry-over's cap: 18 days in the main
+	// period (ferieloven § 7 (1)), 6 for a start after 30 September (§ 5 (2)),
+	// and an agreed carry-over of at most 12 days plus the days above the
+	// statutory 25 (§ 7 (3)).
+	out.MainPeriod = part("mainPeriodVirkedager", "The main period", main, mainPeriodDefault, mainPeriodDefault, entitlement)
+	out.AfterSeptember = part("afterSeptemberVirkedager", "The days for a start after 30 September", after, afterSeptemberDefault, afterSeptemberDefault, entitlement)
+	out.MaxCarryOver = part("maxCarryOverVirkedager", "The agreed carry-over", carry, maxCarryOverDefault, 0, maxCarryOverDefault+max(entitlement-entitlementMin, 0))
 	return out, f
 }
 

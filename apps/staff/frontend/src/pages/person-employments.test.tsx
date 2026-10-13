@@ -313,6 +313,22 @@ describe("Employments — HR ends and reopens", () => {
       contractSignedAt: "2024-12-15",
     });
   });
+
+  it("keeps the holiday scheme it does not show on the replace it sends", async () => {
+    const fetchMock = stubStaffApi({ role: "manage" });
+    const row = fetchMock.state.employments.find((one) => one.id === 201);
+    if (row) row.holidaySchemeId = 1002;
+    renderRoute("/staff/people/101?tab=employments");
+
+    await userEvent.click(within(await adaEmployment()).getByRole("button", { name: "Edit employment" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit employment E-1-1" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /employments\/201$/)).toHaveLength(1));
+    const [put] = sent(fetchMock, "PUT", /employments\/201$/);
+    // PUT /employments/{id} is a full replace: a scheme left out is the default's.
+    expect(put.body).toMatchObject({ holidaySchemeId: 1002 });
+  });
 });
 
 describe("Employments — the contract check", () => {

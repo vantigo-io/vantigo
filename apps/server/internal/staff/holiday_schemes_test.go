@@ -96,12 +96,17 @@ func TestHolidaySchemes_Add(t *testing.T) {
 		five.MaxCarryOverVirkedager != 12 || five.Converted.Entitlement != 25 || five.Revision != 1 {
 		t.Errorf("five weeks = %+v, want not default, the defaults 18/6/12, 25 working days", five)
 	}
-	odd := addScheme(t, hr, "Five weeks and a day", 31, "mainPeriodVirkedager", 24, "afterSeptemberVirkedager", 0, "maxCarryOverVirkedager", 31)
-	if odd.Converted.Entitlement != 26 || odd.Converted.MainPeriod != 20 || odd.Converted.AfterSeptember != 0 || odd.Converted.MaxCarryOver != 26 {
-		t.Errorf("31 virkedager converted = %+v, want 26/20/0/26", odd.Converted)
+	odd := addScheme(t, hr, "Five weeks and a day", 31, "mainPeriodVirkedager", 24, "afterSeptemberVirkedager", 7, "maxCarryOverVirkedager", 18)
+	if odd.Converted.Entitlement != 26 || odd.Converted.MainPeriod != 20 || odd.Converted.AfterSeptember != 6 || odd.Converted.MaxCarryOver != 15 {
+		t.Errorf("31 virkedager converted = %+v, want 26/20/6/15", odd.Converted)
 	}
-	if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id IS NULL AND kind = 'holiday_scheme_created' AND actor_user_id = $1`, hrID); n != 2 {
-		t.Errorf("holiday_scheme_created events = %d, want 2", n)
+	// The agreed carry-over is at most 12 virkedager plus the days above the
+	// statutory 25 (ferieloven § 7 (3)): 30 days carry up to 17.
+	if s := addScheme(t, hr, "Five weeks, carried", 30, "maxCarryOverVirkedager", 17); s.MaxCarryOverVirkedager != 17 {
+		t.Errorf("a carry-over of 17 at 30 = %+v", s)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id IS NULL AND kind = 'holiday_scheme_created' AND actor_user_id = $1`, hrID); n != 3 {
+		t.Errorf("holiday_scheme_created events = %d, want 3", n)
 	}
 
 	for _, tc := range []struct {
@@ -116,8 +121,12 @@ func TestHolidaySchemes_Add(t *testing.T) {
 		{"below the statutory 6 from 60", map[string]any{"name": "x", "entitlementVirkedager": 30, "extraFrom60Virkedager": 5}, "extraFrom60Virkedager"},
 		{"above 30 from 60", map[string]any{"name": "x", "entitlementVirkedager": 30, "extraFrom60Virkedager": 31}, "extraFrom60Virkedager"},
 		{"a main period above the entitlement", map[string]any{"name": "x", "entitlementVirkedager": 25, "extraFrom60Virkedager": 6, "mainPeriodVirkedager": 26}, "mainPeriodVirkedager"},
-		{"after September below 0", map[string]any{"name": "x", "entitlementVirkedager": 25, "extraFrom60Virkedager": 6, "afterSeptemberVirkedager": -1}, "afterSeptemberVirkedager"},
-		{"a carry-over above the entitlement", map[string]any{"name": "x", "entitlementVirkedager": 25, "extraFrom60Virkedager": 6, "maxCarryOverVirkedager": 26}, "maxCarryOverVirkedager"},
+		{"a main period below the statutory 18", map[string]any{"name": "x", "entitlementVirkedager": 25, "extraFrom60Virkedager": 6, "mainPeriodVirkedager": 17}, "mainPeriodVirkedager"},
+		{"after September below the statutory 6", map[string]any{"name": "x", "entitlementVirkedager": 25, "extraFrom60Virkedager": 6, "afterSeptemberVirkedager": 5}, "afterSeptemberVirkedager"},
+		{"after September above the entitlement", map[string]any{"name": "x", "entitlementVirkedager": 25, "extraFrom60Virkedager": 6, "afterSeptemberVirkedager": 26}, "afterSeptemberVirkedager"},
+		{"a carry-over above the statutory 12 at 25", map[string]any{"name": "x", "entitlementVirkedager": 25, "extraFrom60Virkedager": 6, "maxCarryOverVirkedager": 13}, "maxCarryOverVirkedager"},
+		{"a carry-over above 12 and the extra 5 at 30", map[string]any{"name": "x", "entitlementVirkedager": 30, "extraFrom60Virkedager": 6, "maxCarryOverVirkedager": 18}, "maxCarryOverVirkedager"},
+		{"a carry-over below 0", map[string]any{"name": "x", "entitlementVirkedager": 25, "extraFrom60Virkedager": 6, "maxCarryOverVirkedager": -1}, "maxCarryOverVirkedager"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := refused(t, hr.Do(http.MethodPost, holidaySchemesPath, tc.body), http.StatusBadRequest, "")

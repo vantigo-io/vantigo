@@ -382,7 +382,8 @@ const changed = "changed"
 // altogether: the day the pay changed is itself a pay date (the employment's
 // salaryChangedAt, which a manager does not read), and HR's notes are HR's
 // alone, so an audience that may not read them does not learn when they
-// moved either. Every kind this module writes names its fields this way — the
+// moved either; the care-day fields (delivery B) are left out the same way,
+// since that a person's children changed is itself about their family. Every kind this module writes names its fields this way — the
 // sealed fields' and the link's changes too, as nationalId, bankAccount and
 // user, each shaped by its own group — and a reveal names none, so its
 // payload is empty to everyone. A payload that is not the shape this module
@@ -457,7 +458,7 @@ func shapePayload(stored []byte, classes []string, a audience) map[string]any {
 		switch g := groupOf(name); {
 		case a.reads(g):
 			fields[name] = value
-		case g == groupPay || g == groupHRNotes:
+		case g == groupPay || g == groupHRNotes || g == groupCareDays:
 		default:
 			fields[name] = changed
 		}

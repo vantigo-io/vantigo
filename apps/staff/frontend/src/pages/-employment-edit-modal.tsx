@@ -24,12 +24,19 @@ interface EmploymentFormValues {
   businessUnitId: string | null;
   relationshipType: StaffRelationshipType;
   contractSignedAt: string | null;
+  /**
+   * The holiday scheme (delivery B), which the form does not show yet but must
+   * send back: the PUT is a full replace, and a scheme left out is the
+   * default's. Kept as the employment read it.
+   */
+  holidaySchemeId: number | null;
 }
 
 /**
  * *Edit employment* (`PUT /employments/{id}`, `If-Match`): the start — the
  * first terms move with it — the business unit, the kind of relationship and
- * the day the contract was signed, replaced whole. The employment number is
+ * the day the contract was signed, replaced whole — the holiday scheme
+ * carried back as it was read. The employment number is
  * shown and never changes; the end has its own action.
  */
 export const EmploymentEditModal = ({ employment, structure, opened, onClose }: EmploymentEditModalProps) => {
@@ -64,6 +71,7 @@ const EmploymentForm = ({
       businessUnitId: employment.businessUnitId ? String(employment.businessUnitId) : null,
       relationshipType: employment.relationshipType ?? "ordinary",
       contractSignedAt: employment.contractSignedAt ?? null,
+      holidaySchemeId: employment.holidaySchemeId ?? null,
     },
     validate: { startDate: (value) => (value ? null : t("startDateRequired")) },
   });
@@ -81,6 +89,7 @@ const EmploymentForm = ({
           businessUnitId: Number(values.businessUnitId ?? employment.businessUnitId),
           relationshipType: values.relationshipType,
           ...(values.contractSignedAt ? { contractSignedAt: values.contractSignedAt } : {}),
+          ...(values.holidaySchemeId !== null ? { holidaySchemeId: values.holidaySchemeId } : {}),
         },
         employment.revision,
       ),

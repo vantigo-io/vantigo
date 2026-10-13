@@ -736,7 +736,7 @@ type StaffAbsenceType struct {
 	Visibility StaffAbsenceVisibility `json:"visibility"`
 }
 
-// StaffAbsenceTypeChangeRequest A type replaced as a whole but for its key, kind and unit, which never change, and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort and hidden alone — every other value as it is, else seed_immutable — and the reserved absent stays hidden.
+// StaffAbsenceTypeChangeRequest A type replaced as a whole but for its key, kind and unit, which never change; its visibility widened from hr_only to absent only while no absence names it (absence_type_in_use), and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort and hidden alone — every other value as it is, else seed_immutable — and the reserved absent stays hidden.
 type StaffAbsenceTypeChangeRequest struct {
 	// AllowsPercent Only on a type counted in days.
 	AllowsPercent bool `json:"allowsPercent"`
@@ -1245,7 +1245,7 @@ type StaffHolidayScheme struct {
 
 // StaffHolidaySchemeChangeRequest A scheme replaced as a whole, and archived or restored. isDefault true makes it the default (an archived scheme never is, structure_archived); false on the default is refused structure_default, since there is always one; left out, the flag stays. Archiving the default or a scheme an employment names is refused holiday_scheme_in_use.
 type StaffHolidaySchemeChangeRequest struct {
-	// AfterSeptemberVirkedager 0 to the entitlement. Left out, 6.
+	// AfterSeptemberVirkedager 6 (ferieloven § 5 (2)) to the entitlement. Left out, 6.
 	AfterSeptemberVirkedager *int32 `json:"afterSeptemberVirkedager,omitempty"`
 	Archived                 bool   `json:"archived"`
 
@@ -1256,10 +1256,10 @@ type StaffHolidaySchemeChangeRequest struct {
 	ExtraFrom60Virkedager int32 `json:"extraFrom60Virkedager"`
 	IsDefault             *bool `json:"isDefault,omitempty"`
 
-	// MainPeriodVirkedager 0 to the entitlement. Left out, 18.
+	// MainPeriodVirkedager 18 (ferieloven § 7 (1)) to the entitlement. Left out, 18.
 	MainPeriodVirkedager *int32 `json:"mainPeriodVirkedager,omitempty"`
 
-	// MaxCarryOverVirkedager 0 to the entitlement. Left out, 12.
+	// MaxCarryOverVirkedager 0 to 12 plus the entitlement's days above 25 (ferieloven § 7 (3)). Left out, 12.
 	MaxCarryOverVirkedager *int32 `json:"maxCarryOverVirkedager,omitempty"`
 
 	// Name 1 to 100 characters, unique however it is cased.
@@ -1277,7 +1277,7 @@ type StaffHolidaySchemeConverted struct {
 
 // StaffHolidaySchemeRequest A new scheme. isDefault true makes it the default in place of the one there is.
 type StaffHolidaySchemeRequest struct {
-	// AfterSeptemberVirkedager 0 to the entitlement. Left out, 6.
+	// AfterSeptemberVirkedager 6 (ferieloven § 5 (2)) to the entitlement. Left out, 6.
 	AfterSeptemberVirkedager *int32 `json:"afterSeptemberVirkedager,omitempty"`
 
 	// EntitlementVirkedager 25 to 60.
@@ -1287,10 +1287,10 @@ type StaffHolidaySchemeRequest struct {
 	ExtraFrom60Virkedager int32 `json:"extraFrom60Virkedager"`
 	IsDefault             *bool `json:"isDefault,omitempty"`
 
-	// MainPeriodVirkedager 0 to the entitlement. Left out, 18.
+	// MainPeriodVirkedager 18 (ferieloven § 7 (1)) to the entitlement. Left out, 18.
 	MainPeriodVirkedager *int32 `json:"mainPeriodVirkedager,omitempty"`
 
-	// MaxCarryOverVirkedager 0 to the entitlement. Left out, 12.
+	// MaxCarryOverVirkedager 0 to 12 plus the entitlement's days above 25 (ferieloven § 7 (3)). Left out, 12.
 	MaxCarryOverVirkedager *int32 `json:"maxCarryOverVirkedager,omitempty"`
 
 	// Name 1 to 100 characters, unique however it is cased.
@@ -1928,7 +1928,7 @@ type StaffPersonalDataPerson struct {
 	WorkEmail   *string           `json:"workEmail,omitempty"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -2021,13 +2021,13 @@ type StaffSettings struct {
 	// SelfCertAfterMonths The months of employment before egenmelding may be used, 0 to 2.
 	SelfCertAfterMonths int32 `json:"selfCertAfterMonths"`
 
-	// SelfCertDaysPerOccurrence The calendar days one egenmelding occurrence may last, 1 to 16.
+	// SelfCertDaysPerOccurrence The calendar days one egenmelding occurrence may last, 3 (the statutory minimum, ftrl. § 8-23) to 16.
 	SelfCertDaysPerOccurrence int32 `json:"selfCertDaysPerOccurrence"`
 
-	// SelfCertDaysPerYear The self-certified days in a rolling year (extended and custom), 1 to 365.
+	// SelfCertDaysPerYear The self-certified days in a rolling year (extended and custom), 12 to 365.
 	SelfCertDaysPerYear int32 `json:"selfCertDaysPerYear"`
 
-	// SelfCertOccurrencesPerYear The occurrences in a rolling year (minimum and custom), 1 to 52.
+	// SelfCertOccurrencesPerYear The occurrences in a rolling year (minimum and custom), 4 to 52.
 	SelfCertOccurrencesPerYear int32 `json:"selfCertOccurrencesPerYear"`
 
 	// SelfCertPolicy The self-certification (egenmelding) policy (design S10): minimum — the statutory one, 3 calendar days an occurrence and 4 occurrences in a rolling year; extended — 8 days an occurrence and 24 days in a rolling year; custom — the numbers as set.
@@ -2066,13 +2066,13 @@ type StaffSettingsRequest struct {
 	// SelfCertAfterMonths 0 to 2. Left out, it keeps its value.
 	SelfCertAfterMonths *int32 `json:"selfCertAfterMonths,omitempty"`
 
-	// SelfCertDaysPerOccurrence 1 to 16. Read under custom only — a preset writes its own; left out, it keeps its value.
+	// SelfCertDaysPerOccurrence 3 (the statutory minimum, ftrl. § 8-23) to 16. Read under custom only — a preset writes its own; left out, it keeps its value.
 	SelfCertDaysPerOccurrence *int32 `json:"selfCertDaysPerOccurrence,omitempty"`
 
-	// SelfCertDaysPerYear 1 to 365. Read under custom only — a preset writes its own; left out, it keeps its value.
+	// SelfCertDaysPerYear 12 (the statutory minimum) to 365. Read under custom only — a preset writes its own; left out, it keeps its value.
 	SelfCertDaysPerYear *int32 `json:"selfCertDaysPerYear,omitempty"`
 
-	// SelfCertOccurrencesPerYear 1 to 52. Read under custom only — a preset writes its own; left out, it keeps its value.
+	// SelfCertOccurrencesPerYear 4 (the statutory minimum) to 52. Read under custom only — a preset writes its own; left out, it keeps its value.
 	SelfCertOccurrencesPerYear *int32 `json:"selfCertOccurrencesPerYear,omitempty"`
 
 	// SelfCertPolicy The self-certification (egenmelding) policy (design S10): minimum — the statutory one, 3 calendar days an occurrence and 4 occurrences in a rolling year; extended — 8 days an occurrence and 24 days in a rolling year; custom — the numbers as set.

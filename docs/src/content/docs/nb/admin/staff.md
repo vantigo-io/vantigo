@@ -160,7 +160,9 @@ reglene under kan settes opp allerede nå. Gjennom API-et, som en bruker med
 3. For å gi en type nytt navn, flytte den eller slutte å tilby den, sender du den tilbake
    til `PUT /api/v1/staff/absence-types/{id}` med `hidden` og `sort` slik du vil ha dem og
    revisjonen i `If-Match`. En standardtype endrer bare navnene, plassen og om den er
-   skjult; alt annet avvises med `seed_immutable`.
+   skjult; alt annet avvises med `seed_immutable`. En egen type kan når som helst gjøres
+   til bare for HR, men når noen har tatt den som bare for HR, kan den ikke åpnes for
+   kolleger og ledere (`absence_type_in_use`): legg heller til en ny type.
 4. Kontroller: `GET /api/v1/staff/meta` lister typene folk kan velge — uten de skjulte.
 
 **Velg a-meldingskoden etter permisjonens rettsgrunnlag.** A-meldingen tar imot seks
@@ -169,7 +171,9 @@ standardtypen `velferdspermisjon` rapporteres som «andre ikke lovfestede permis
 (`andreIkkeLovfestedePermisjoner`); hviler velferdspermisjonen deres på en lov, bruker
 dere typen `annen_lovfestet` for den i stedet. Kodene `velferdspermisjon` og
 `utdanningspermisjon` gikk ut ved utgangen av 2022 og avvises. Bare permisjon på mer enn
-fjorten dager rapporteres, og omsorgsdager for sykt barn rapporteres aldri.
+fjorten dager rapporteres — og flere kortere permisjoner innenfor tolv måneder som til
+sammen passerer fjorten dager, telles sammen — og omsorgsdager for sykt barn rapporteres
+aldri.
 
 ## Ferieordninger
 
@@ -184,7 +188,9 @@ For å gi noen eller alle ansatte mer, som en bruker med `staff:manage`:
 1. `POST /api/v1/staff/holiday-schemes` med et `name` og tallene, for eksempel
    `{"name": "Fem uker", "entitlementVirkedager": 30, "extraFrom60Virkedager": 6}`
    (hovedferieperioden, dagene etter september og overføringen er 18, 6 og 12 når de
-   utelates). Legg til `"isDefault": true` for å gjøre den til ordningen for hvert
+   utelates). Ferielovens grenser gjelder: minst 18 dager i hovedferieperioden, minst 6
+   ved start etter 30. september, og avtalt overføring på høyst 12 dager pluss dagene
+   over 25 — 17 for en ordning på 30 dager. Legg til `"isDefault": true` for å gjøre den til ordningen for hvert
    arbeidsforhold som ikke nevner noen.
 2. Sett et arbeidsforhold på den: `holidaySchemeId` på
    `POST /api/v1/staff/people/{id}/employments` eller `PUT /api/v1/staff/employments/{id}`.
@@ -205,8 +211,9 @@ Hvor mye egenmelding en ansatt kan bruke, er installasjonens regel, på
   tolv måneder. Standard.
 - `selfCertPolicy: "extended"` — 8 kalenderdager om gangen, 24 dager på tolv måneder,
   slik en IA-avtale gir.
-- `selfCertPolicy: "custom"` med `selfCertDaysPerOccurrence` (1–16),
-  `selfCertOccurrencesPerYear` (1–52) og `selfCertDaysPerYear` (1–365).
+- `selfCertPolicy: "custom"` med `selfCertDaysPerOccurrence` (3–16),
+  `selfCertOccurrencesPerYear` (4–52) og `selfCertDaysPerYear` (12–365). Bunnen er
+  lovens minimum (ftrl. § 8-23), som ingen regel går under.
 
 Med en forhåndsinnstilling gjelder dens tall, uansett hva du sender.
 `selfCertAfterMonths` (0–2, standard 2) er månedene i arbeid før egenmelding kan brukes,

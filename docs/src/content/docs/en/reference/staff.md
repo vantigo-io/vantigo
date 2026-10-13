@@ -120,9 +120,9 @@ C.
 | `retentionGraceDays` | 90 | 0 to 3650 days from the last employment's end to the [D erase](#what-is-due); left out, kept. |
 | `healthRetentionDays` | 365 | 30 to 3650 days from the last employment's end to the [health erase](#what-is-due); left out, kept. |
 | `selfCertPolicy` | `minimum` | `minimum`, `extended` or `custom` (below); left out, kept. |
-| `selfCertDaysPerOccurrence` | 3 | 1 to 16 calendar days one egenmelding may last; read under `custom` only; left out, kept. |
-| `selfCertOccurrencesPerYear` | 4 | 1 to 52 occurrences in a rolling year; read under `custom` only; left out, kept. |
-| `selfCertDaysPerYear` | 24 | 1 to 365 self-certified days in a rolling year; read under `custom` only; left out, kept. |
+| `selfCertDaysPerOccurrence` | 3 | 3 to 16 calendar days one egenmelding may last; read under `custom` only; left out, kept. |
+| `selfCertOccurrencesPerYear` | 4 | 4 to 52 occurrences in a rolling year; read under `custom` only; left out, kept. |
+| `selfCertDaysPerYear` | 24 | 12 to 365 self-certified days in a rolling year; read under `custom` only; left out, kept. |
 | `selfCertAfterMonths` | 2 | 0 to 2 months of employment before egenmelding may be used; left out, kept. |
 | `autoCarryOver` | false | Carry holiday left at a year's end into the next as forced, without HR's action; left out, kept. |
 
@@ -130,7 +130,11 @@ C.
 request carries: `minimum` — the statutory one — 3 days an occurrence and 4
 occurrences in a rolling year; `extended` 8 days an occurrence and 24 days in a
 rolling year. The number a preset does not use keeps what it holds. `custom` takes the
-three as sent. Egenmelding is judged on them when absence arrives.
+three as sent, but never below the statutory minimum (ftrl. § 8-23: 3 days an
+occurrence, 4 occurrences and 12 days in twelve months), which no agreement goes
+below; the floors are judged whatever the policy. Egenmelding keys on the policy's
+name: under `minimum` and `extended` it reads the preset's numbers, and the stored
+counters are read under `custom` only — it is judged when absence arrives.
 
 **Automatic carry-over.** Turning `autoCarryOver` on — off before, on now — records
 today, in the business zone, as the read-only `autoCarryOverSince`; turning it off
@@ -1070,7 +1074,12 @@ The seeds, every installation's, in their order:
   names, the flags, the visibility, the mapping, `hidden` and `sort`; a body naming
   `key`, `kind` or `unit` is a 400 naming it. A **seed** changes its names, its order
   and whether it is hidden, nothing else: anything more, and showing `absent`, is
-  `seed_immutable` (409).
+  `seed_immutable` (409). A company type's visibility is **widened** — `hr_only` to
+  `absent` — only while no absence names it: once one does, widening is
+  `absence_type_in_use` (409), since it would show colleagues and managers, after the
+  fact, a type people took as HR-only. Narrowing is always allowed. The type's row is
+  held `FOR UPDATE`, which an absence's foreign key waits for, so no absence slips in
+  between the question and the change.
 - **History.** Each write is an installation event, `absence_type_created` or
   `absence_type_updated`, naming the type (`absenceTypeId`) and the fields that
   changed. It is about no person and touches no retention class.
@@ -1095,7 +1104,8 @@ leave.
 
 What the a-melding asks to be reported as leave, which the payroll export's leave rows
 follow when they arrive (Skatteetaten's a-melding guide, "Permisjon", as updated on
-11 January 2024):
+11 January 2024; in English,
+[the a-melding guide, "Leave"](https://www.skatteetaten.no/en/business-and-organisation/employer/the-a-melding/the-a-melding-guide/employment/information-on-employment/leave/)):
 
 - leave that lasts **more than fourteen days**, whole or partial — and several shorter
   leaves within twelve months that together pass fourteen days count together;
@@ -1121,9 +1131,9 @@ days and an entitlement is never undercounted.
 | `name` | 1–100 characters, unique however it is cased. |
 | `entitlementVirkedager` | 25–60 (the Holiday Act's 25 at least). |
 | `extraFrom60Virkedager` | 6–30: the extra days from the year the person turns 60. |
-| `mainPeriodVirkedager` | 0 to the entitlement; left out, 18. |
-| `afterSeptemberVirkedager` | 0 to the entitlement, for a start after 30 September; left out, 6. |
-| `maxCarryOverVirkedager` | 0 to the entitlement, the agreed carry-over's cap; left out, 12. |
+| `mainPeriodVirkedager` | 18 (ferieloven § 7 (1)) to the entitlement; left out, 18. |
+| `afterSeptemberVirkedager` | 6 (ferieloven § 5 (2)) to the entitlement, for a start after 30 September; left out, 6. |
+| `maxCarryOverVirkedager` | 0 to 12 plus the entitlement's days above 25 (ferieloven § 7 (3)), the agreed carry-over's cap; left out, 12. |
 
 The statutory scheme is seeded — "Statutory (ferieloven)", 25 / 6 / 18 / 6 / 12, the
 default. `GET /holiday-schemes` (every caller) answers every scheme, archived ones
@@ -1167,8 +1177,17 @@ counted twice. They are written on `POST /people` and `PUT /people/{id}`
 `PUT /me` refuses them as properties it does not take: the person declares, HR types.
 They are their own field group, read by the person, `staff:manage` and
 `staff:personal-data`, never by a manager or a colleague; they are class D, so the D
-erase clears them, and a change is a `person_updated` event a manager reads as
-"changed".
+erase clears them, and a change is a `person_updated` event from which an audience
+that does not read them has the three keys left out altogether, as the pay's and HR's
+notes' are — a manager does not learn that they moved.
+
+`chronicallyIllChildren` says that a child has a chronic illness or disability, which
+is health data about the child (GDPR Art. 9). It is processed under Art. 9 (2) (b): the
+employer's own obligations under ftrl. § 9-6 and § 9-8 — granting the extra care days
+and claiming the refund — need the number, and only the number; no child is named and
+no diagnosis is recorded. For now it stays where the design places it, class D in the
+care-day group; whether it should move to the health group and class E is an open
+question for the owner.
 
 ## The personal-data exports
 
@@ -1804,6 +1823,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `category_in_use` | 409 | Archiving a category documents are filed under. |
 | `seed_immutable` | 409 | Changing a seeded document category; changing a seeded absence type beyond its names, order and `hidden`, or showing the reserved `absent`. |
 | `holiday_scheme_in_use` | 409 | Archiving the default holiday scheme, or one an employment names. |
+| `absence_type_in_use` | 409 | Widening a company absence type's visibility from `hr_only` to `absent` once an absence names it. |
 | `person_erased` | 409 | Any write of a person the retention run has erased but the hold, the reassessment, an unlink and a rehire. |
 | `storage_unavailable` | 503 | The object store could not be written to or read from. |
 | `import_too_large` | 400 | An import file over 5 MiB. |

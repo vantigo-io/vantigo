@@ -27,8 +27,13 @@ const (
 	selfCertCustom   = "custom"
 )
 
-// The bounds of the policy's numbers (plan "Exact values").
+// The bounds of the policy's numbers (plan "Exact values"). The floors are
+// the statutory minimum (ftrl. § 8-23: 3 calendar days at a time, 4 times
+// and 12 days in twelve months), which no agreement or policy goes below.
 const (
+	selfCertDaysPerOccurrenceMin  = 3
+	selfCertOccurrencesPerYearMin = 4
+	selfCertDaysPerYearMin        = 12
 	selfCertDaysPerOccurrenceMax  = 16
 	selfCertOccurrencesPerYearMax = 52
 	selfCertDaysPerYearMax        = 365
@@ -76,17 +81,19 @@ type parsedPolicy struct {
 }
 
 // parsePolicy judges the policy fields of a settings body, every failure
-// collected on f. The policy's name is the contract's enum.
+// collected on f. A counter is judged within its bounds whatever the policy —
+// under a preset it is then not written, but a number below the statutory
+// floor is never one to accept. The policy's name is the contract's enum.
 func parsePolicy(body gen.StaffSettingsRequest, f *fieldErrors) parsedPolicy {
 	out := parsedPolicy{Policy: stringOf(body.SelfCertPolicy), AutoCarryOver: body.AutoCarryOver}
 	var msg string
 	_, msg = parseEnum("A self-certification policy", out.Policy, []string{selfCertMinimum, selfCertExtended, selfCertCustom})
 	f.add("selfCertPolicy", msg)
-	out.DaysPerOccurrence, msg = boundedSmall("The days of one occurrence", body.SelfCertDaysPerOccurrence, 1, selfCertDaysPerOccurrenceMax)
+	out.DaysPerOccurrence, msg = boundedSmall("The days of one occurrence", body.SelfCertDaysPerOccurrence, selfCertDaysPerOccurrenceMin, selfCertDaysPerOccurrenceMax)
 	f.add("selfCertDaysPerOccurrence", msg)
-	out.OccurrencesPerYear, msg = boundedSmall("The occurrences in a rolling year", body.SelfCertOccurrencesPerYear, 1, selfCertOccurrencesPerYearMax)
+	out.OccurrencesPerYear, msg = boundedSmall("The occurrences in a rolling year", body.SelfCertOccurrencesPerYear, selfCertOccurrencesPerYearMin, selfCertOccurrencesPerYearMax)
 	f.add("selfCertOccurrencesPerYear", msg)
-	out.DaysPerYear, msg = boundedSmall("The self-certified days in a rolling year", body.SelfCertDaysPerYear, 1, selfCertDaysPerYearMax)
+	out.DaysPerYear, msg = boundedSmall("The self-certified days in a rolling year", body.SelfCertDaysPerYear, selfCertDaysPerYearMin, selfCertDaysPerYearMax)
 	f.add("selfCertDaysPerYear", msg)
 	out.AfterMonths, msg = boundedSmall("The months of employment before egenmelding", body.SelfCertAfterMonths, 0, selfCertAfterMonthsMax)
 	f.add("selfCertAfterMonths", msg)

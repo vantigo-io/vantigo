@@ -156,7 +156,9 @@ the schemes and the policy below can be set up now. Through the API, as a user w
 3. To rename a type, re-order it or stop offering it, send it back to
    `PUT /api/v1/staff/absence-types/{id}` with `hidden` and `sort` as you want them and
    its revision in `If-Match`. A seed changes only its names, its place and whether it
-   is hidden; anything else is refused `seed_immutable`.
+   is hidden; anything else is refused `seed_immutable`. A type of your own may be made
+   HR-only at any time, but once someone has taken it as HR-only it cannot be opened to
+   colleagues and managers (`absence_type_in_use`): add another type instead.
 4. Verify: `GET /api/v1/staff/meta` lists the types people may pick — the hidden ones
    left out.
 
@@ -166,7 +168,8 @@ leave descriptions and permittering. Welfare leave is agreed, not statutory, so 
 (`andreIkkeLovfestedePermisjoner`); if your welfare leave rests on a statute, use the
 `annen_lovfestet` type for it instead. The codes `velferdspermisjon` and
 `utdanningspermisjon` expired at the end of 2022 and are refused. Only leave of more
-than fourteen days is reported, and care days for a sick child never are.
+than fourteen days is reported — and several shorter leaves within twelve months that
+together pass fourteen days count together — and care days for a sick child never are.
 
 ## Holiday schemes
 
@@ -181,7 +184,9 @@ To give some or all employees more, as a user with `staff:manage`:
 1. `POST /api/v1/staff/holiday-schemes` with a `name` and the figures, for example
    `{"name": "Five weeks", "entitlementVirkedager": 30, "extraFrom60Virkedager": 6}`
    (the main period, the after-September days and the carry-over default to 18, 6 and
-   12). Add `"isDefault": true` to make it the scheme of every employment that names
+   12). The Holiday Act's floors hold: at least 18 days in the main period, at least 6
+   for a start after 30 September, and an agreed carry-over of at most 12 days plus the
+   days above 25 — 17 for a 30-day scheme. Add `"isDefault": true` to make it the scheme of every employment that names
    none.
 2. Put an employment on it: `holidaySchemeId` on `POST /api/v1/staff/people/{id}/employments`
    or `PUT /api/v1/staff/employments/{id}`. Left out, the employment follows the default.
@@ -201,8 +206,9 @@ How much egenmelding an employee may use is the installation's policy, on
   in twelve months. The default.
 - `selfCertPolicy: "extended"` — 8 calendar days at a time, 24 days in twelve months,
   as an inclusive-workplace agreement gives.
-- `selfCertPolicy: "custom"` with `selfCertDaysPerOccurrence` (1–16),
-  `selfCertOccurrencesPerYear` (1–52) and `selfCertDaysPerYear` (1–365).
+- `selfCertPolicy: "custom"` with `selfCertDaysPerOccurrence` (3–16),
+  `selfCertOccurrencesPerYear` (4–52) and `selfCertDaysPerYear` (12–365). The floors
+  are the statutory minimum (ftrl. § 8-23), which no policy goes below.
 
 Under a preset the numbers are the preset's, whatever you send. `selfCertAfterMonths`
 (0–2, default 2) is the months of employment before egenmelding may be used, under any
