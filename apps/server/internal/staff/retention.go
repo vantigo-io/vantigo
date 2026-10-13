@@ -688,14 +688,15 @@ func blankPayload(stored []byte, class string, absentID int64) ([]byte, bool, er
 		return nil, false, err
 	}
 	_, document := payload["documentId"]
-	// An absence, adjustment or case event (delivery B) carries each
+	// An absence, adjustment, case or withdrawal event (delivery B) carries each
 	// field's class in its own map, written when it was recorded: it is
 	// blanked by that map, a field it does not class counting as D.
 	var own map[string]string
 	_, absence := payload["absenceId"]
 	_, adjustment := payload["adjustmentId"]
 	_, sickCase := payload["caseId"]
-	classed := absence || adjustment || sickCase
+	_, withdrawal := payload["selfCertWithdrawal"]
+	classed := absence || adjustment || sickCase || withdrawal
 	if raw, ok := payload["classes"]; ok && classed {
 		if err := json.Unmarshal(raw, &own); err != nil {
 			return nil, false, err

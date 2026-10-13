@@ -7,18 +7,24 @@ import "time"
 // requested rows read in it (plan reading 17), so two writes for one person
 // are judged one after the other. The two exceptions for sickness over
 // approved ferie — a 100 % sykmelding splitting the ferie, a graded one
-// standing beside it (S9, readings 24 and 25) — are delivery B's Task 5's:
-// they belong where this rule refuses two day rows that do not both allow a
-// share, and until then they are refused like any other overlap.
+// standing beside it (S9, readings 24 and 25) — and a sykmelding over an
+// egenmelding, which it trims (reading 24), stand outside the share rule;
+// absences.go then splits or trims the row beneath (Task 5). A graded
+// sykmelding takes its degree's share of a day beside a leave that allows a
+// share (Task 3 review L5): 50 % sick on top of 50 % leave is one whole day,
+// as a doctor grades the sick leave against the work left, while two
+// sykmeldinger never share a day.
 
 // overlapRow is a row as overlap reads it: its days, its hours (in
-// hundredths, above zero for an hour row), whether its type allows a share
-// and its share of each day (shareOf).
+// hundredths, above zero for an hour row), whether its type allows a share,
+// its share of each day (shareOf), and its type's kind and its status, which
+// the sickness exceptions read.
 type overlapRow struct {
 	First, Last   time.Time
 	Hours         int64
 	AllowsPercent bool
 	Share         int64
+	Kind, Status  string
 }
 
 // hoursInADay is 24 hours in hundredths.
@@ -47,7 +53,10 @@ func overlapRefused(candidate overlapRow, existing []overlapRow) bool {
 			if e.Hours > 0 || d.Before(e.First) || d.After(e.Last) {
 				continue
 			}
-			if !candidate.AllowsPercent || !e.AllowsPercent {
+			if sickOver(candidate, e) {
+				continue
+			}
+			if !sharesDay(candidate, e) {
 				return true
 			}
 			sum += e.Share
@@ -55,6 +64,31 @@ func overlapRefused(candidate overlapRow, existing []overlapRow) bool {
 		if sum > wholeDay {
 			return true
 		}
+	}
+	return false
+}
+
+// sickOver is whether candidate, a sykmelding, stands over e outside the
+// share rule: e is approved ferie (split by a 100 % sykmelding, beside a
+// graded one) or an egenmelding (trimmed).
+func sickOver(candidate, e overlapRow) bool {
+	if candidate.Kind != kindSickCertified {
+		return false
+	}
+	return (e.Kind == kindHoliday && e.Status == absenceApproved) || e.Kind == kindSickSelf
+}
+
+// sharesDay is whether a and b may share a day by their shares: both allow a
+// share, or one is a sykmelding — its degree its share — and the other a
+// type that is not sick and allows one (L5).
+func sharesDay(a, b overlapRow) bool {
+	switch {
+	case a.AllowsPercent && b.AllowsPercent:
+		return true
+	case a.Kind == kindSickCertified:
+		return !sickKind(b.Kind) && b.AllowsPercent
+	case b.Kind == kindSickCertified:
+		return !sickKind(a.Kind) && a.AllowsPercent
 	}
 	return false
 }

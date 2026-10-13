@@ -408,6 +408,9 @@ func (s *server) PostStaffAbsencesByIdCorrect(ctx context.Context, req gen.PostS
 		if err != nil {
 			return err
 		}
+		if err := judgeSickness(ctx, txq, caller.Settings, personID, before.ID, p, t); err != nil {
+			return err
+		}
 		if (statusFor(t) == absenceRegistered) != (before.Status == absenceRegistered) {
 			return refuseConflict(conflict(codeAbsenceStatusChange, "Another kind of absence",
 				"A correction keeps a decided absence decided and a registration a registration: a type that needs a decision and one that is a notification are not swapped."))
@@ -421,6 +424,11 @@ func (s *server) PostStaffAbsencesByIdCorrect(ctx context.Context, req gen.PostS
 		}
 		if err := s.recordAbsence(ctx, txq, personID, eventAbsenceCorrected, who, row.ID, &before, &row, beforeType, t); err != nil {
 			return err
+		}
+		if sickKind(t.Kind) || sickKind(beforeType.Kind) {
+			if err := s.afterSickWrite(ctx, txq, who, personID, &row, t); err != nil {
+				return err
+			}
 		}
 		w = absenceWrite{row: row, typ: t}
 		if w.accounts, err = s.accountsAfter(ctx, txq, caller.Settings, t, row); err != nil {

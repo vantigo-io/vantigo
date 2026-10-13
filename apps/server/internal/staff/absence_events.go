@@ -47,6 +47,13 @@ const (
 	// stored.
 	eventAbsenceChanged = "absence_changed"
 
+	// eventAbsenceSplit is a row a sykmelding was registered over (Task 5):
+	// approved ferie split around a 100 % sykmelding — cancelled when wholly
+	// covered — or an egenmelding trimmed, removed when wholly covered
+	// (readings 24, 29). The part after the sykmelding is a new row,
+	// splitAbsenceId.
+	eventAbsenceSplit = "absence_split"
+
 	eventHolidayAdjusted          = "holiday_adjusted"
 	eventHolidayAdjustmentDeleted = "holiday_adjustment_deleted"
 	eventCarryOverRecorded        = "carry_over_recorded"
@@ -61,7 +68,36 @@ const (
 var absenceEventKinds = []string{
 	eventAbsenceRequested, eventAbsenceRegistered, eventAbsenceUpdated, eventAbsenceDeleted, eventAbsenceCancelled,
 	eventAbsenceApproved, eventAbsenceSelfApproved, eventAbsenceRejected, eventAbsenceCorrected,
+	eventAbsenceSplit,
+	eventCaseOpened, eventCaseUpdated, eventCaseClosed, eventMilestoneDone, eventMilestoneWaived, eventMilestoneNoteUpdated,
 }
+
+// The sick-leave case's events (Task 5): every field class E, each carrying
+// the case's types (typeIds) as an absence event does, listed to everyone who
+// reads the person's history and shaped per §5's case rows — the
+// accommodation note to the person, the manager and HR, a milestone's note
+// to the person and staff:personal-data alone.
+const (
+	eventCaseOpened           = "case_opened"
+	eventCaseUpdated          = "case_updated"
+	eventCaseClosed           = "case_closed"
+	eventMilestoneDone        = "milestone_done"
+	eventMilestoneWaived      = "milestone_waived"
+	eventMilestoneNoteUpdated = "milestone_note_updated"
+)
+
+// The withdrawal of egenmelding and its lifting (ftrl. § 8-27, Task 5): class
+// E, listed only to the readers of the care-day fields — the person,
+// staff:manage, staff:personal-data — never to a manager (plan pre-flight
+// I6). They name no row: their payload carries selfCertWithdrawal.
+const (
+	eventSelfCertWithdrawn = "self_cert_withdrawn"
+	eventSelfCertRestored  = "self_cert_restored"
+)
+
+// careEventKinds are the events listed to the readers of the care-day
+// fields alone.
+var careEventKinds = []string{eventSelfCertWithdrawn, eventSelfCertRestored}
 
 // The absence groups' field names, as an absence event and the contract name
 // them.
@@ -170,6 +206,31 @@ func readTypeVisibilities(ctx context.Context, q *store.Queries) (typeVisibiliti
 		out[r.ID] = r.Visibility
 	}
 	return out, nil
+}
+
+// caseFieldGroup is a case event field's group (design §5's case rows): the
+// days, the close, the estimate and the milestones' facts the case's
+// readers'; the accommodation note its own group's; a milestone's note the
+// health group's; a name it does not know nobody's.
+func caseFieldGroup(name string) fieldGroup {
+	switch name {
+	case "firstDay", "lastDay", "closedAt", "maxBenefitEstimate", "doneAt", "waived", "waivedReason":
+		return groupAbsenceDetail
+	case "accommodationNote":
+		return groupAccommodation
+	case "note":
+		return groupHealth
+	}
+	return groupNobody
+}
+
+// withdrawalFieldGroup is a withdrawal event field's group: the care-day
+// fields'.
+func withdrawalFieldGroup(name string) fieldGroup {
+	if name == "until" || name == "reason" {
+		return groupCareDays
+	}
+	return groupNobody
 }
 
 // absenceFieldGroup is an absence event field's group: the dates and the

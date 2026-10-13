@@ -480,8 +480,29 @@ step. What stands today, through the Staff API, is this:
   A visit to the doctor is hours of one day; everything else is whole days, some types
   as a percentage of each day. A sick absence carries no note.
 - **Two absences on one day** stand together only when both types allow a percentage
-  and the percentages add up to at most 100 %. A request you have made counts as if it
-  were approved, so you cannot ask twice for the same day.
+  and the percentages add up to at most 100 % — a graded sykmelding counts its degree,
+  so 50 % sick beside 50 % leave stands. A request you have made counts as if it were
+  approved, so you cannot ask twice for the same day.
+- **Sick during your holiday.** A 100 % sykmelding over approved ferie splits the ferie
+  around it and gives the days back to your account; a graded one leaves the ferie as it
+  is. A sykmelding over an egenmelding replaces the days it covers.
+- **Egenmelding** follows the company's policy: under the statutory minimum, three
+  calendar days at a time and four times in twelve months. Days in a row are one
+  egenmelding, and a weekend between two counts with it — egenmelding on Friday and
+  again on Monday is four days. It is refused, with the reason, when you have used what
+  the policy allows, before you have been employed the months it asks, past the
+  sixteenth day of a sickness, or while HR has withdrawn your right to it; then you
+  need a sykmelding. Your egenmelding standing shows what you have used in the last
+  twelve months.
+- **Your sick-leave case.** Your sick absences are gathered into a case — a new one
+  when more than sixteen days have passed since the last. Its follow-up — the end of
+  the employer's sixteen days, the follow-up plan at four weeks, the dialogue meetings
+  at seven and twenty-six, NAV's activity requirement at eight — is your manager's and
+  HR's to mark; you see it, and the accommodation notes, but never a diagnosis: there
+  is nowhere to write one.
+- **Care days** for a sick child count against your days for the year — 10 for one or
+  two children, 15 for three or more, more as a sole carer or with a chronically ill
+  child — from the details HR has recorded. Going over is shown, never refused.
 - **Changing your mind.** While a request waits, you change it, remove it or cancel it
   (a cancelled request stays in your history); to turn it into a registration — or
   the other way round — remove it and enter the other. A registered absence — a sick one

@@ -61,7 +61,7 @@ export interface paths {
         put?: never;
         /**
          * Request or register an absence
-         * @description Requests an absence of a type that needs a decision (status requested) or registers one that is a notification (status registered), for the caller's own person or — staff:manage — anyone's; nobody else, a manager included, gets the uniform 403. Judged under the person's lock: the type visible and not the reserved absent, the days within one of the person's employments, percent only on a type that allows it (percent_not_allowed), hours on an hour type and only there (hours_on_day_type), no note on a sick or child-sick type (absence_note_on_sick), the degree on a sykmelding only, and no overlap with the person's requested, approved or registered rows (absence_overlap). A type drawing on the holiday account answers the account of each year the row touches after it, and overdrawn when taking every requested day would overdraw one — a warning, never a refusal. Recorded as absence_requested or absence_registered.
+         * @description Requests an absence of a type that needs a decision (status requested) or registers one that is a notification (status registered), for the caller's own person or — staff:manage — anyone's; nobody else, a manager included, gets the uniform 403. Judged under the person's lock: the type visible and not the reserved absent, the days within one of the person's employments, percent only on a type that allows it (percent_not_allowed), hours on an hour type and only there (hours_on_day_type), no note on a sick or child-sick type (absence_note_on_sick), the degree on a sykmelding only, and no overlap with the person's requested, approved or registered rows (absence_overlap) — but a sykmelding over approved ferie, which a 100 % one splits around itself (absence_split) and a graded one stands beside, over an egenmelding, which it trims, and a graded sykmelding beside a leave allowing a percentage when the degree and the percent sum to at most 100. An egenmelding is judged against the self-certification policy: an occurrence — contiguous days, weekends and public holidays between included — at most the policy's calendar days, the rolling year's occurrences or days, never past its sick-leave case's sixteenth day, after the policy's months of employment, and not while HR has withdrawn the right. A sick row joins the person's sick-leave case or opens one (GET /cases). A type drawing on the holiday account answers the account of each year the row touches after it, and overdrawn when taking every requested day would overdraw one — a warning, never a refusal. Recorded as absence_requested or absence_registered.
          */
         post: operations["postStaffAbsences"];
         delete?: never;
@@ -296,6 +296,130 @@ export interface paths {
         get: operations["getStaffCalendar"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List sick-leave cases
+         * @description The sick-leave cases (design S10) the caller may read, newest first: the person's own, a manager's reports' today by the one manager rule, and everyone's for staff:approve, staff:manage and staff:personal-data. status open (the default) is a case HR has not closed and whose last day is at most sixteen days ago; closed the rest; all both. Each is shaped per §5's case rows: the accommodation note to the person, their manager and HR, a milestone's note to the person and staff:personal-data only.
+         */
+        get: operations["getStaffCases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/cases/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a sick-leave case
+         * @description One sick-leave case with its milestones, shaped as GET /cases shapes it. One the caller may not read is a 404 identical to an unknown id.
+         */
+        get: operations["getStaffCasesById"];
+        /**
+         * Change a sick-leave case
+         * @description Replaces the case's accommodation note — the person's manager today, staff:manage and staff:personal-data — and its 52-week estimate, staff:manage alone: null or left out returns it to first day + 364. A field the caller does not write is kept as it is; the estimate sent by anyone else is a 400. Anyone else — the Approver, the person, a colleague — gets the 404 of a case they cannot write. Recorded as case_updated, every field class E.
+         */
+        put: operations["putStaffCasesById"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/cases/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close a sick-leave case
+         * @description HR closes a case (staff:manage) before sixteen days have passed since its last day. A sick row that joins it later opens it again. Recorded as case_closed. Closing a closed case changes nothing.
+         */
+        post: operations["postStaffCasesByIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/cases/{id}/milestones/{kind}/done": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a milestone done
+         * @description Marks a case's milestone done on doneAt — today when left out, never after today — clearing a waiver. The person's manager today, staff:approve, staff:manage and staff:personal-data; anyone else gets the 404 of a case they cannot write. Recorded as milestone_done.
+         */
+        post: operations["postStaffCasesByIdMilestonesByKindDone"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/cases/{id}/milestones/{kind}/note": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Write a milestone's note
+         * @description Replaces a milestone's note (staff:personal-data; class E): left out or empty clears it. Only the person and staff:personal-data read it.
+         */
+        put: operations["putStaffCasesByIdMilestonesByKindNote"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/cases/{id}/milestones/{kind}/waive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Waive a milestone
+         * @description Waives a case's milestone as plainly unnecessary, with the reason (1 to 500 characters), clearing its done day. Who may: as /done. Recorded as milestone_waived.
+         */
+        post: operations["postStaffCasesByIdMilestonesByKindWaive"];
         delete?: never;
         options?: never;
         head?: never;
@@ -786,6 +910,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/me/care-days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get my own care days
+         * @description The caller's own care days for a year. A caller linked to nobody gets the 404 no_person.
+         */
+        get: operations["getStaffMeCareDays"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/me/documents": {
         parameters: {
             query?: never;
@@ -858,6 +1002,26 @@ export interface paths {
          * @description The caller's own holiday account for a year. A caller linked to nobody gets the 404 no_person.
          */
         get: operations["getStaffMeHolidayAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/me/self-certification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get my own egenmelding standing
+         * @description The caller's own standing under the self-certification policy today, the withdrawal included. A caller linked to nobody gets the 404 no_person.
+         */
+        get: operations["getStaffMeSelfCertification"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1086,6 +1250,26 @@ export interface paths {
          * @description Opens the person's sealed bank account and answers it once, with Cache-Control no-store. Each reveal is a bank_account_revealed event naming the viewer.
          */
         post: operations["postStaffPeopleByIdBankAccountReveal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/care-days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a person's care days
+         * @description A person's care days for a year (ftrl. § 9-6): the entitlement derived from the care-day fields, the year's child-sick working days, the ten the employer bears and those beyond, and whether four weeks' employment has given the right. The readers of the care-day fields — the person, staff:manage and staff:personal-data — read it; the entitlement says what the fields do, so to anyone else it is the 404 an unknown person is.
+         */
+        get: operations["getStaffPeopleByIdCareDays"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1392,6 +1576,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/people/{id}/self-certification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a person's egenmelding standing
+         * @description A person's standing under the self-certification policy today: the policy's limits, the occurrences and days used in the rolling year, and the day the months of employment allow it from. The withdrawal is shown to the readers of the care-day fields alone — the person, staff:manage, staff:personal-data. The person, a manager of theirs today, staff:approve and HR read it; anyone else gets a 404 identical to an unknown id.
+         */
+        get: operations["getStaffPeopleByIdSelfCertification"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/self-certification/withdrawal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Withdraw or restore egenmelding
+         * @description Withdraws the person's right to egenmelding until a day (ftrl. § 8-27) — after today, at most a year ahead — with the reason, 1 to 500 characters; until null lifts it. While withdrawn, an egenmelding whose first day is on or before until is refused self_certification_withdrawn. Recorded as self_cert_withdrawn or self_cert_restored, class E, listed only to the readers of the care-day fields.
+         */
+        put: operations["putStaffPeopleByIdSelfCertificationWithdrawal"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/people/{id}/user": {
         parameters: {
             query?: never;
@@ -1556,6 +1780,10 @@ export interface components {
         };
         PaginatedResponseOfStaffApproval: {
             data: components["schemas"]["StaffApproval"][];
+            pagination: components["schemas"]["PaginationMetadata"];
+        };
+        PaginatedResponseOfStaffCase: {
+            data: components["schemas"]["StaffCase"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
         PaginatedResponseOfStaffEvent: {
@@ -1891,6 +2119,53 @@ export interface components {
             /** @description The caller's linked person manages anyone today by the one manager rule — a manager who has left manages nobody. Drives My team. */
             managesAnyone: boolean;
         };
+        /** @description A person's care days (omsorgsdager) for a year (design S11, ftrl. § 9-6 and § 9-8). Using more than the entitlement is shown (exceeded), never refused. */
+        StaffCareDays: {
+            /** Format: int64 */
+            personId: number;
+            /** Format: int32 */
+            year: number;
+            /** @description Whether the care-day fields are recorded on the person; the entitlement is 0 while they are not. */
+            recorded: boolean;
+            /**
+             * Format: int32
+             * @description childrenUnder12 + chronicallyIllChildren.
+             */
+            childrenCounted: number;
+            /**
+             * Format: int32
+             * @description 10 for one or two children, 15 for three or more, doubled for a sole carer; plus 10 per chronically ill or disabled child, 20 for a sole carer.
+             */
+            entitlement: number;
+            /**
+             * Format: int32
+             * @description The year's registered child-sick working days.
+             */
+            used: number;
+            /**
+             * Format: int32
+             * @description entitlement − used; below zero when exceeded.
+             */
+            remaining: number;
+            exceeded: boolean;
+            /**
+             * Format: int32
+             * @description The used days the employer bears itself: the first ten.
+             */
+            employerPaid: number;
+            /**
+             * Format: int32
+             * @description The used days beyond the first ten, which NAV refunds.
+             */
+            beyondEmployer: number;
+            /** @description Whether four weeks' employment has given the right today (ftrl. § 9-8). */
+            eligible: boolean;
+            /**
+             * Format: date
+             * @description The day the right starts: four weeks after the start of the employment in force today, else of the latest one. Absent when the person has no employment.
+             */
+            eligibleFrom?: string;
+        };
         /** @description A carry-over of fromYear's untaken holiday into the year after. */
         StaffCarryOverRequest: {
             /**
@@ -1911,6 +2186,83 @@ export interface components {
             /** @description At most 500 characters; required for forced. */
             note?: string;
         };
+        /** @description A sick-leave case (design S10, §3.5): the sickness its egenmelding and sykmelding rows gather under, its follow-up milestones and its notes; there is no field for a diagnosis. Class E whole. Optional fields are absent when not recorded or not the caller's to read. */
+        StaffCase: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            personId: number;
+            /**
+             * Format: date
+             * @description The first day of its first row.
+             */
+            firstDay: string;
+            /**
+             * Format: date
+             * @description The last day of its last row.
+             */
+            lastDay: string;
+            /** @description HR has not closed it and its last day is at most sixteen days ago: a sick row from today would join it. */
+            open: boolean;
+            /**
+             * Format: date-time
+             * @description When HR closed it. Absent when HR has not.
+             */
+            closedAt?: string;
+            /**
+             * Format: date
+             * @description The 52-week end, an estimate NAV may correct: first day + 364 unless HR edited it.
+             */
+            maxBenefitEstimate: string;
+            /** @description Whether HR set the estimate. */
+            maxBenefitEstimateEdited: boolean;
+            /** @description Functional notes about tilrettelegging — to the person, their manager and HR; never the Approver. */
+            accommodationNote?: string;
+            milestones: components["schemas"]["StaffCaseMilestone"][];
+            /**
+             * Format: int32
+             * @description Send it back as If-Match on PUT /cases/{id}.
+             */
+            revision: number;
+        };
+        /** @description A case's notes, replaced whole by whoever writes each: the accommodation note by the manager and HR, the estimate by staff:manage — null or left out returns it to the derived first day + 364. */
+        StaffCaseChangeRequest: {
+            /** @description At most 2000 characters; left out or empty clears it. */
+            accommodationNote?: string;
+            /** Format: date */
+            maxBenefitEstimate?: string | null;
+        };
+        /** @description One of a case's follow-up milestones, dated from its first day — the end of the arbeidsgiverperiode on its sixteenth sick day. */
+        StaffCaseMilestone: {
+            kind: components["schemas"]["StaffMilestoneKind"];
+            /**
+             * Format: date
+             * @description Its date. Absent for employer_period_end until the case reaches its sixteenth sick day.
+             */
+            dueDate?: string;
+            /** @description Whether it applies: the case is open and has lasted to within a week of its date (a three-day case has none due). */
+            due: boolean;
+            /**
+             * Format: date
+             * @description The day it was marked done. Absent when not.
+             */
+            doneAt?: string;
+            waived: boolean;
+            /** @description Why it was waived as plainly unnecessary. Absent when not waived. */
+            waivedReason?: string;
+            /** @description Its note, class E: to the person and staff:personal-data only. */
+            note?: string;
+            /**
+             * Format: int32
+             * @description Send it back as If-Match on PUT /cases/{id}/milestones/{kind}/note.
+             */
+            revision: number;
+        };
+        /**
+         * @description Which cases a list answers: open, closed, or all.
+         * @enum {string}
+         */
+        StaffCaseStatus: "open" | "closed" | "all";
         /** @description The § 14-6 check of one employment (design S5). */
         StaffContractCheck: {
             /** @description Whether the employment records a signed contract (contractSignedAt). */
@@ -1998,6 +2350,11 @@ export interface components {
         /** @description One document in a person's archive (design S14, §3.6). The bytes are never in a JSON body: they are read from GET /documents/{id}, with the document's own visibility. Optional fields are absent when not recorded. */
         StaffDocument: {
             category: components["schemas"]["StaffDocumentCategorySummary"];
+            /**
+             * Format: int64
+             * @description The sick-leave case a health document belongs to, whose erase reaches it (S15). Only a document in a restricted category names one.
+             */
+            caseId?: number;
             /** @description The type the file's own bytes were sniffed as on upload — application/pdf, image/jpeg, image/png or image/heic. */
             contentType: string;
             /**
@@ -2079,8 +2436,13 @@ export interface components {
             names: components["schemas"]["StaffDocumentCategoryNames"];
             restricted: boolean;
         };
-        /** @description A document's category and dates, replaced whole — a date left out is cleared. employmentId is replaced only when the body names it — null clears it, and left out it stays as it is — since the upload derived it. Moving a document into or out of a restricted category needs staff:personal-data (category_restricted). employmentId must name one of the person's employments. */
+        /** @description A document's category and dates, replaced whole — a date left out is cleared. employmentId is replaced only when the body names it — null clears it, and left out it stays as it is — since the upload derived it. Moving a document into or out of a restricted category needs staff:personal-data (category_restricted). employmentId must name one of the person's employments. caseId, likewise replaced only when named, files a document of a restricted category under one of the person's sick-leave cases (staff:personal-data); a document moved out of a restricted category leaves its case. */
         StaffDocumentChangeRequest: {
+            /**
+             * Format: int64
+             * @description One of the person's sick-leave cases, for a document of a restricted category; null clears it; left out, the document keeps its own.
+             */
+            caseId?: number | null;
             /** Format: int64 */
             categoryId: number;
             /**
@@ -2618,6 +2980,26 @@ export interface components {
              */
             today: string;
         };
+        StaffMilestoneDoneRequest: {
+            /**
+             * Format: date
+             * @description The day it was done; today when left out. Never after today.
+             */
+            doneAt?: string;
+        };
+        /**
+         * @description A case's milestone: the end of the arbeidsgiverperiode, the follow-up plan (four weeks), the first dialogue meeting (seven), NAV's activity requirement (eight) and the second dialogue meeting (twenty-six).
+         * @enum {string}
+         */
+        StaffMilestoneKind: "employer_period_end" | "follow_up_plan" | "dialogue_1" | "nav_activity" | "dialogue_2";
+        StaffMilestoneNoteRequest: {
+            /** @description At most 2000 characters; left out or empty clears it. */
+            note?: string;
+        };
+        StaffMilestoneWaiveRequest: {
+            /** @description Why it is plainly unnecessary, 1 to 500 characters. */
+            reason: string;
+        };
         /** @enum {string} */
         StaffNationalIdKind: "fodselsnummer" | "d_nummer" | "foreign";
         /** @description A national identity number to seal on the person (design S4). A fødselsnummer or d-nummer is eleven digits once spaces, hyphens and full stops are dropped, both control digits checked, its date a real one (the synthetic test ranges, month + 40 and month + 80, accepted); country, when given, is NO. A foreign id is 1 to 40 letters, digits or hyphens with its country, an ISO 3166-1 alpha-2 code other than NO. The value is sealed and indexed by a keyed MAC; only its kind is kept in clear, and no refusal echoes it. */
@@ -3020,7 +3402,7 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -3100,6 +3482,47 @@ export interface components {
          * @enum {string}
          */
         StaffSelfCertPolicy: "minimum" | "extended" | "custom";
+        /** @description A withdrawal of the right to egenmelding: until — after today, at most a year ahead — and the reason; until null lifts it. */
+        StaffSelfCertWithdrawalRequest: {
+            /** Format: date */
+            until?: string | null;
+            /** @description 1 to 500 characters; required with until. */
+            reason?: string;
+        };
+        /** @description A person's standing under the self-certification policy today (design S10, §4 Egenmelding): the limits by the policy's name, the occurrences and calendar days used in the rolling year ending today — a run of contiguous egenmelding days, days off between included, being one occurrence — and the withdrawal. */
+        StaffSelfCertification: {
+            /** Format: int64 */
+            personId: number;
+            policy: components["schemas"]["StaffSelfCertPolicy"];
+            /** Format: int32 */
+            daysPerOccurrence: number;
+            /**
+             * Format: int32
+             * @description Absent under extended, which counts days.
+             */
+            occurrencesPerYear?: number;
+            /**
+             * Format: int32
+             * @description Absent under minimum, which counts occurrences.
+             */
+            daysPerYear?: number;
+            /** Format: int32 */
+            occurrencesUsed: number;
+            /** Format: int32 */
+            daysUsed: number;
+            /**
+             * Format: date
+             * @description The first day the months of employment allow egenmelding. Absent when the person has no employment.
+             */
+            eligibleFrom?: string;
+            /**
+             * Format: date
+             * @description The last day of a withdrawal of the right (ftrl. § 8-27), to the readers of the care-day fields alone. Absent when none.
+             */
+            withdrawnUntil?: string;
+            /** @description Its reason, to the same readers. */
+            withdrawnReason?: string;
+        };
         /** @description The Staff settings (design §3.6) as far as the deliveries so far expose them, the retention run's state, derived, and when each threshold was acknowledged, read-only. The other columns of the settings row reach the contract with the deliveries that use them. */
         StaffSettings: {
             /** @description Whether holiday left at a year's end is carried into the next as forced, without HR's action (design S9). false by default. */
@@ -3822,7 +4245,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — absence_overlap, or person_erased. */
+            /** @description Conflict — absence_overlap; for an egenmelding self_certification_exhausted, self_certification_too_early or self_certification_withdrawn, each telling the person to register a sykmelding; or person_erased. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3941,7 +4364,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict, absence_not_requested, absence_status_change (a change between a type that needs a decision and one that is a notification), absence_overlap, or person_erased. */
+            /** @description Conflict — revision_conflict, absence_not_requested, absence_status_change (a change between a type that needs a decision and one that is a notification), absence_overlap, an egenmelding's self_certification_exhausted, self_certification_too_early or self_certification_withdrawn, or person_erased. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4195,7 +4618,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict, absence_not_cancellable, absence_status_change, absence_overlap, or person_erased. */
+            /** @description Conflict — revision_conflict, absence_not_cancellable, absence_status_change, absence_overlap, an egenmelding's self_certification_exhausted, self_certification_too_early or self_certification_withdrawn, or person_erased. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4640,6 +5063,449 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getStaffCases: {
+        parameters: {
+            query?: {
+                /** @description One person's cases. */
+                personId?: number;
+                /** @description open (the default), closed or all. */
+                status?: components["schemas"]["StaffCaseStatus"];
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfStaffCase"];
+                };
+            };
+            /** @description Bad Request — the paging or the status did not pass. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getStaffCasesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCase"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such case, or one the caller may not see or write. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffCasesById: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffCaseChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCase"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, or If-Match is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such case, or one the caller may not see or write. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, or person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    postStaffCasesByIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCase"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such case, or one the caller may not see or write. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    postStaffCasesByIdMilestonesByKindDone: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                /** @description The milestone. */
+                kind: components["schemas"]["StaffMilestoneKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StaffMilestoneDoneRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCase"];
+                };
+            };
+            /** @description Bad Request — doneAt is after today. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such case, or one the caller may not see or write. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    putStaffCasesByIdMilestonesByKindNote: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+                /** @description The milestone. */
+                kind: components["schemas"]["StaffMilestoneKind"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffMilestoneNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCase"];
+                };
+            };
+            /** @description Bad Request — the note is longer than 2000 characters, or If-Match is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such case, or one the caller may not see or write. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict (the milestone's revision), or person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    postStaffCasesByIdMilestonesByKindWaive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                /** @description The milestone. */
+                kind: components["schemas"]["StaffMilestoneKind"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffMilestoneWaiveRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCase"];
+                };
+            };
+            /** @description Bad Request — the reason is missing or too long. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such case, or one the caller may not see or write. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
                 };
             };
         };
@@ -6495,8 +7361,67 @@ export interface operations {
                     "application/problem+json": components["schemas"]["StaffProblem"];
                 };
             };
-            /** @description Conflict — absence_overlap, or person_erased. */
+            /** @description Conflict — absence_overlap; for an egenmelding self_certification_exhausted, self_certification_too_early or self_certification_withdrawn, each telling the person to register a sykmelding; or person_erased. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffMeCareDays: {
+        parameters: {
+            query?: {
+                /** @description The year, 2000 to 2100; this year in the business time zone when left out. */
+                year?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCareDays"];
+                };
+            };
+            /** @description Bad Request — the year is out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person, the caller is linked to no person. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6687,6 +7612,53 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person, the caller is linked to no person. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffMeSelfCertification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffSelfCertification"];
                 };
             };
             /** @description Unauthorized */
@@ -7395,6 +8367,65 @@ export interface operations {
                 };
             };
             /** @description Not Found — no such person, or no bank account on file. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getStaffPeopleByIdCareDays: {
+        parameters: {
+            query?: {
+                /** @description The year, 2000 to 2100; this year in the business time zone when left out. */
+                year?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCareDays"];
+                };
+            };
+            /** @description Bad Request — the year is out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or one whose care days the caller may not read. The body is empty. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -8523,6 +9554,122 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — revision_conflict; person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffPeopleByIdSelfCertification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffSelfCertification"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or one whose standing the caller may not read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffPeopleByIdSelfCertificationWithdrawal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffSelfCertWithdrawalRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffSelfCertification"];
+                };
+            };
+            /** @description Bad Request — a field did not pass. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased. */
             409: {
                 headers: {
                     [name: string]: unknown;

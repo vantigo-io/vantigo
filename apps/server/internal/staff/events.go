@@ -370,13 +370,13 @@ func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffP
 		}
 		hide, plain := a.hidesLeaveRows(), types.plain()
 		if total, err = q.CountPersonEvents(ctx, store.CountPersonEventsParams{
-			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds,
+			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds, WithCare: a.reads(groupCareDays), CareKinds: careEventKinds,
 			HideLeaveRows: hide, PlainTypeIds: plain,
 		}); err != nil {
 			return fmt.Errorf("staff: count person %d's events: %w", req.Id, err)
 		}
 		rows, err = q.ListPersonEvents(ctx, store.ListPersonEventsParams{
-			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds,
+			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds, WithCare: a.reads(groupCareDays), CareKinds: careEventKinds,
 			HideLeaveRows: hide, PlainTypeIds: plain, PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 		})
 		if err != nil {

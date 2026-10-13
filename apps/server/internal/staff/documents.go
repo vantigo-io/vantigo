@@ -66,23 +66,33 @@ func documentResponse(d store.StaffDocument, c store.StaffDocumentCategory) gen.
 		ValidTo:      dateOf(d.ValidTo),
 		SignedAt:     dateOf(d.SignedAt),
 		EmploymentId: d.EmploymentID,
+		CaseId:       d.CaseID,
 	}
 }
 
 // documentEventFields is what a document's events name: the category's key,
-// the file name and the dates — the document as a person would describe it.
+// the file name, the dates and the case — the document as a person would
+// describe it.
 type documentEventFields struct {
 	Category string              `json:"category"`
 	FileName string              `json:"fileName"`
 	ValidTo  *openapi_types.Date `json:"validTo,omitempty"`
 	SignedAt *openapi_types.Date `json:"signedAt,omitempty"`
+	// CaseID is the sick-leave case a health document is filed under
+	// (Task 5).
+	CaseID *int64 `json:"caseId,omitempty"`
 }
 
 // documentValues is a document's fields as its events name them.
 func documentValues(d store.StaffDocument, c store.StaffDocumentCategory) (map[string]json.RawMessage, error) {
 	return payloadValues(documentEventFields{
-		Category: c.Key, FileName: d.FileName, ValidTo: dateOf(d.ValidTo), SignedAt: dateOf(d.SignedAt),
+		Category: c.Key, FileName: d.FileName, ValidTo: dateOf(d.ValidTo), SignedAt: dateOf(d.SignedAt), CaseID: d.CaseID,
 	})
+}
+
+// equalID is whether two optional ids are the same.
+func equalID(a, b *int64) bool {
+	return (a == nil) == (b == nil) && (a == nil || *a == *b)
 }
 
 // recordDocumentEvent records kind for the document's person with c as its
@@ -521,6 +531,31 @@ func (s *server) PutStaffDocumentsById(ctx context.Context, req gen.PutStaffDocu
 					fmt.Sprintf("Employment %d is not one of this person's", *body.EmploymentId))})
 			}
 		}
+		// The case a health document is filed under (S15, Task 5): named
+		// only on a document of a restricted category — which only
+		// staff:personal-data reaches — and one of the person's own cases;
+		// a document moved out of such a category leaves its case.
+		caseID := d.CaseID
+		if bodyHas(ctx, "caseId") {
+			caseID = body.CaseId
+		}
+		if !to.Restricted {
+			if body.CaseId != nil {
+				return refuseInvalid(invalidDocumentTitle, fieldErrors{errs: fieldError("caseId",
+					"Only a document of a restricted category is filed under a sick-leave case")})
+			}
+			caseID = nil
+		}
+		if caseID != nil && body.CaseId != nil {
+			found, err := txq.PersonCaseExists(ctx, store.PersonCaseExistsParams{CaseID: *caseID, PersonID: d.PersonID})
+			if err != nil {
+				return fmt.Errorf("staff: read case %d: %w", *caseID, err)
+			}
+			if !found {
+				return refuseInvalid(invalidDocumentTitle, fieldErrors{errs: fieldError("caseId",
+					fmt.Sprintf("Case %d is not one of this person's", *caseID))})
+			}
+		}
 		saved, err = txq.UpdateDocument(ctx, store.UpdateDocumentParams{
 			ID: d.ID, CategoryID: to.ID, EmploymentID: employmentID,
 			ValidTo: pgDate(civilDate(body.ValidTo)), SignedAt: pgDate(civilDate(body.SignedAt)), Now: s.deps.Clock(),
@@ -528,6 +563,12 @@ func (s *server) PutStaffDocumentsById(ctx context.Context, req gen.PutStaffDocu
 		if err != nil {
 			return fmt.Errorf("staff: change document %d: %w", d.ID, err)
 		}
+		if !equalID(caseID, d.CaseID) {
+			if err := txq.SetDocumentCase(ctx, store.SetDocumentCaseParams{CaseID: caseID, ID: d.ID}); err != nil {
+				return fmt.Errorf("staff: file document %d under its case: %w", d.ID, err)
+			}
+		}
+		saved.CaseID = caseID
 		before, err := documentValues(d, from)
 		if err != nil {
 			return err

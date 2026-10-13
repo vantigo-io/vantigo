@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, omsorgsdagfeltene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, å trekke tilbake retten til egenmelding, å følge en sykefraværssak, omsorgsdagfeltene og omsorgsdagene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
 sidebar:
   order: 44
 sources:
@@ -26,6 +26,9 @@ sources:
   - apps/server/internal/staff/adjustments.go
   - apps/server/internal/staff/deciders.go
   - apps/server/internal/staff/notifications.go
+  - apps/server/internal/staff/cases.go
+  - apps/server/internal/staff/sickness.go
+  - apps/server/internal/staff/care_days.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -220,8 +223,11 @@ Hvor mye egenmelding en ansatt kan bruke, er installasjonens regel, på
 
 Med en forhåndsinnstilling gjelder dens tall, uansett hva du sender.
 `selfCertAfterMonths` (0–2, standard 2) er månedene i arbeid før egenmelding kan brukes,
-under alle reglene. Reglene brukes når fravær registreres, i et senere steg av
-leveransen.
+under alle reglene. Reglene brukes på hver egenmelding når den registreres: en som går
+forbi det de tillater, avvises, og den ansatte får beskjed om å skaffe sykmelding. En
+egenmeldingsperiode er dagene på rad, og en helg eller helligdag mellom to egenmeldinger
+teller som dager i den — med minimumsregelen er egenmelding fredag og igjen mandag fire
+dager.
 
 **Automatisk overføring.** `autoCarryOver: true` overfører ferie som står igjen ved
 årsskiftet til neste år uten at HR gjør noe, som tvungen overføring. Dagen du slår den på
@@ -268,7 +274,58 @@ personens historikk. En endring holder raden en registrering: å gjøre en sykme
 til ferie, for eksempel, avvises (`absence_status_change`) — fjern den og legg inn
 ferien. Fraværsendringer er `staff:manage` sine; `staff:personal-data` alene skriver dem
 ikke. Et fravær noen har avgjort, fjernes aldri; det trekkes tilbake
-eller rettes med avgjørelsene, i et senere steg av leveransen.
+eller rettes (`POST /api/v1/staff/absences/{id}/correct`). En endring i et sykefravær
+utleder personens sykefraværssak på nytt — dagene, arbeidsgiverperioden og datoene for
+milepælene — og beholder det som er markert på milepælene.
+
+## Trekk tilbake retten til egenmelding
+
+Når en ansatt har brukt egenmelding slik at det gir grunn til det (ftrl. § 8-27), kan HR
+trekke tilbake retten for en periode:
+
+1. `PUT /api/v1/staff/people/{id}/self-certification/withdrawal` (`staff:manage`) med
+   `until` — en dag etter i dag, høyst ett år fram — og `reason`.
+2. Sjekk `GET /api/v1/staff/people/{id}/self-certification`: `withdrawnUntil` og
+   `withdrawnReason` står der.
+3. Fram til den dagen avvises egenmelding for personen
+   (`self_certification_withdrawn`); vedkommende registrerer sykmelding i stedet.
+
+For å oppheve den før tiden, send `{"until": null}`. Tilbaketrekkingen og opphevingen
+står i personens historikk for personen selv, HR og `staff:personal-data` — aldri for
+lederen, som ser personens egenmeldingsstatus uten den.
+
+## Følg en sykefraværssak
+
+Hver egenmelding og sykmelding hører til en sykefraværssak, som Ansatte holder selv: et
+sykefravær som begynner høyst seksten dager etter det forrige, hører til samme sak, og
+ett som begynner senere, åpner en ny. `GET /api/v1/staff/cases` viser de åpne sakene du
+følger — personens leder ser sine medarbeideres, HR og den som har `staff:approve`, alle.
+
+1. **Arbeidsgiverperioden.** Milepælen `employer_period_end` er sakens sekstende
+   sykedag, der helger og helligdager mellom to sykefravær telles med; før det har den
+   ingen dato. Arbeidsgiveren betaler de dagene når den ansatte har arbeidet der i fire
+   uker.
+2. **Oppfølgingen.** Oppfølgingsplanen forfaller fire uker etter første dag, første
+   dialogmøte etter sju, NAVs aktivitetskrav etter åtte og andre dialogmøte etter
+   tjueseks. En milepæl vises som aktuell bare mens saken er åpen og har vart til en uke
+   før den, så et kort sykefravær gir ingenting å følge opp. Merk en som gjort
+   (`POST /api/v1/staff/cases/{id}/milestones/{kind}/done`, i dag hvis du ikke sender
+   `doneAt`) eller frafall den som åpenbart unødvendig med en begrunnelse (`.../waive`).
+   Lederen, HR og `staff:approve` kan det.
+3. **Notater.** Tilretteleggingsnotatet (`PUT /api/v1/staff/cases/{id}`) gjelder
+   tilrettelegging — hva den ansatte kan og ikke kan — og aldri en diagnose; lederen og
+   HR skriver det. En milepæls eget notat er `staff:personal-data` sitt, og bare den
+   ansatte og `staff:personal-data` leser det. Et helsedokument arkiveres under saken
+   med `caseId` på `PUT /api/v1/staff/documents/{id}`.
+4. **52-ukersgrensen** anslås som første dag pluss 364 dager; HR setter NAVs dato med
+   `maxBenefitEstimate` og sender den som null for å gå tilbake til anslaget.
+5. **Avslutningen.** En sak avsluttes av seg selv seksten dager etter siste dag. HR
+   avslutter den tidligere med `POST /api/v1/staff/cases/{id}/close`; et sykefravær som
+   hører til den senere, åpner den igjen.
+
+Når en 100 % sykmelding registreres over innvilget ferie, deles ferien rundt den, og
+dagene går tilbake til feriekontoen; en gradert sykmelding lar ferien stå. En sykmelding
+over en egenmelding korter egenmeldingen inn, eller fjerner den når den dekker den helt.
 
 ## Omsorgsdagfeltene
 
@@ -283,8 +340,16 @@ den ansatte opplyser — ingen barn navngis:
 
 Tell hvert barn én gang: et barn med vedtak fra NAV føres bare i det andre feltet.
 Feltene skrives sammen med resten av personen (`PUT /api/v1/staff/people/{id}`); den
-ansatte ser dem på sin egen side, men kan ikke endre dem. Selve telleren kommer med et
-senere steg i fraværsleveransen.
+ansatte ser dem på sin egen side, men kan ikke endre dem.
+
+Telleren er `GET /api/v1/staff/people/{id}/care-days?year` (den ansatte, HR og
+`staff:personal-data`): 10 dager for ett eller to barn, 15 for tre eller flere, 20 og
+30 for den som er alene om omsorgen, og 10 til per kronisk sykt eller funksjonshemmet
+barn (20 for den som er alene). Årets arbeidsdager med sykt barn telles mot den; de
+første ti betaler arbeidsgiveren selv, resten refunderer NAV — fra første dag når de
+eneste barna som gir rett, er over tolv med utvidet rett, noe lønn bruker for hånd. Mer
+enn retten vises, men avvises aldri. Retten krever fire ukers ansettelse: før det sier
+svaret `eligible: false` og fra hvilken dag.
 
 ## Svar på en innsynsbegjæring
 

@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, the care-day fields, who decides absence and the absence mails, the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
+description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, withdrawing egenmelding, following a sick-leave case, the care-day fields and care days, who decides absence and the absence mails, the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
 sidebar:
   order: 44
 sources:
@@ -26,6 +26,9 @@ sources:
   - apps/server/internal/staff/adjustments.go
   - apps/server/internal/staff/deciders.go
   - apps/server/internal/staff/notifications.go
+  - apps/server/internal/staff/cases.go
+  - apps/server/internal/staff/sickness.go
+  - apps/server/internal/staff/care_days.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -215,8 +218,10 @@ How much egenmelding an employee may use is the installation's policy, on
 
 Under a preset the numbers are the preset's, whatever you send. `selfCertAfterMonths`
 (0–2, default 2) is the months of employment before egenmelding may be used, under any
-policy. The policy is applied when absence is registered, in a later step of the
-delivery.
+policy. The policy is applied to every egenmelding as it is registered: one past what
+it allows is refused and the employee is told to bring a sykmelding. An occurrence is
+the days in a row, a weekend or public holiday between two egenmeldinger counting as
+days of it — under the minimum, egenmelding Friday and again Monday is four days.
 
 **Automatic carry-over.** `autoCarryOver: true` carries the holiday left at a year's
 end into the next year without HR's action, as a forced carry-over. The day you turn
@@ -263,7 +268,60 @@ or removes it (`DELETE /api/v1/staff/absences/{id}`). Each is recorded in the pe
 history. A change keeps the row a registration: changing a sykmelding into ferie, say,
 is refused (`absence_status_change`) — remove it and enter the ferie. Absence writes
 are `staff:manage`'s; `staff:personal-data` alone does not write them. An absence somebody has decided is never removed; it is cancelled or corrected
-with the decisions, in a later step of the delivery.
+(`POST /api/v1/staff/absences/{id}/correct`). A change to a sick absence derives the
+person's sick-leave case again — its days, its arbeidsgiverperiode and its milestones'
+dates — and keeps what was marked on the milestones.
+
+## Withdraw egenmelding
+
+When an employee has used egenmelding in a way that gives reason to (ftrl. § 8-27), HR
+may withdraw the right for a period:
+
+1. `PUT /api/v1/staff/people/{id}/self-certification/withdrawal` (`staff:manage`) with
+   `until` — a day after today, at most a year ahead — and the `reason`.
+2. Check `GET /api/v1/staff/people/{id}/self-certification`: `withdrawnUntil` and
+   `withdrawnReason` are there.
+3. Until that day, an egenmelding for the person is refused
+   (`self_certification_withdrawn`); they register a sykmelding instead.
+
+To lift it early, send `{"until": null}`. The withdrawal and its lifting are in the
+person's history for the person, HR and `staff:personal-data` — never for the manager,
+who reads the person's egenmelding standing without it.
+
+## Follow a sick-leave case
+
+Every egenmelding and sykmelding belongs to a sick-leave case, which Staff keeps by
+itself: a sick absence that starts no more than sixteen days after the last one joins
+its case, and one that starts later opens a new one. `GET /api/v1/staff/cases` lists
+the open ones you follow — the person's manager sees their reports', HR and whoever
+holds `staff:approve` everyone's.
+
+1. **The arbeidsgiverperiode.** The milestone `employer_period_end` is the case's
+   sixteenth sick day, weekends and public holidays between two sick absences counted;
+   until then it has no date. The employer pays those days when the employee has
+   worked for it four weeks.
+2. **The follow-up.** The follow-up plan is due four weeks after the first day, the
+   first dialogue meeting at seven, NAV's activity requirement at eight and the second
+   dialogue meeting at twenty-six. A milestone is shown as due only while the case is
+   open and has lasted to within a week of it, so a short sickness raises nothing.
+   Mark one done (`POST /api/v1/staff/cases/{id}/milestones/{kind}/done`, today unless
+   you send `doneAt`) or waive it as plainly unnecessary with a reason (`.../waive`).
+   The manager, HR and `staff:approve` may.
+3. **Notes.** The accommodation note (`PUT /api/v1/staff/cases/{id}`) is for
+   tilrettelegging — what the employee can and cannot do — and never a diagnosis; the
+   manager and HR write it. A milestone's own note is `staff:personal-data`'s, and only
+   the employee and `staff:personal-data` read it. A health document is filed under the
+   case with `caseId` on `PUT /api/v1/staff/documents/{id}`.
+4. **The 52-week end** is estimated as the first day plus 364 days; HR sets NAV's date
+   with `maxBenefitEstimate` and sends it as null to return to the estimate.
+5. **The close.** A case closes by itself sixteen days after its last day. HR closes it
+   earlier with `POST /api/v1/staff/cases/{id}/close`; a sick absence that joins it
+   later opens it again.
+
+When a 100 % sykmelding is registered over approved ferie, the ferie is split around
+it and the days return to the holiday account; a graded sykmelding leaves the ferie as
+it is. A sykmelding over an egenmelding shortens the egenmelding, or removes it when it
+covers it whole.
 
 ## The care-day fields
 
@@ -278,8 +336,16 @@ which HR types from what the employee declares — no child is named:
 
 Count each child once: a child with NAV's decision goes in the second field only. The
 fields are written with the rest of the person (`PUT /api/v1/staff/people/{id}`); the
-employee reads them on their own record but cannot change them. The counter itself
-arrives with a later step of the absence delivery.
+employee reads them on their own record but cannot change them.
+
+The counter is `GET /api/v1/staff/people/{id}/care-days?year` (the employee, HR and
+`staff:personal-data`): 10 days for one or two children, 15 for three or more, 20 and
+30 for a sole carer, and 10 more per chronically ill or disabled child (20 for a sole
+carer). The year's sick-child working days are counted against it; the first ten are
+the employer's own, the rest are refunded by NAV — from the first day when the only
+children who qualify are over twelve with extra days, which payroll applies by hand.
+More than the entitlement is shown, never refused. The right needs four weeks'
+employment: before that the answer says `eligible: false` and from which day.
 
 ## Answer an innsyn request
 

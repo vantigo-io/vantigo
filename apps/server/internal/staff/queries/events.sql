@@ -9,11 +9,13 @@ VALUES (@person_id, @kind, @actor_kind, @actor_user_id, @actor_display, @at::tim
 -- name: CountPersonEvents :one
 -- CountPersonEvents counts what ListPersonEvents pages through, health events
 -- (those whose payload touches class E) — but the absence family's — and the
--- hold's kinds only when asked for, and an absence event of a row shown as
--- leave never to its leave-reader.
+-- hold's kinds only when asked for, the withdrawal of egenmelding
+-- (@care_kinds) to the readers of the care-day fields (@with_care), and an
+-- absence event of a row shown as leave never to its leave-reader.
 SELECT count(*) FROM staff.events
 WHERE person_id = @person_id
-  AND (@with_health::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY(@absence_kinds::text[]))
+  AND (@with_health::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY(@absence_kinds::text[])
+       OR (@with_care::boolean AND kind = ANY(@care_kinds::text[])))
   AND (@with_hold::boolean OR NOT (kind = ANY(@hold_kinds::text[])))
   AND NOT (@hide_leave_rows::boolean AND kind = ANY(@absence_kinds::text[]) AND NOT coalesce(
       CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
@@ -33,10 +35,15 @@ WHERE person_id = @person_id
 -- whose types are not all @plain_type_ids (the types shown as themselves) is
 -- not listed at all, an event naming no types included (fail closed): its
 -- count and its kinds would tell the HR-only notification from a request.
+-- The withdrawal of egenmelding and its restoring (@care_kinds), class E,
+-- are listed to the readers of the care-day fields (@with_care) — the
+-- person, staff:manage, staff:personal-data — and never to a manager (plan
+-- pre-flight I6).
 SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload, payload_classes
 FROM staff.events
 WHERE person_id = @person_id
-  AND (@with_health::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY(@absence_kinds::text[]))
+  AND (@with_health::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY(@absence_kinds::text[])
+       OR (@with_care::boolean AND kind = ANY(@care_kinds::text[])))
   AND (@with_hold::boolean OR NOT (kind = ANY(@hold_kinds::text[])))
   AND NOT (@hide_leave_rows::boolean AND kind = ANY(@absence_kinds::text[]) AND NOT coalesce(
       CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
