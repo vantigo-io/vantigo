@@ -144,8 +144,13 @@ tillatelsesliste: alt annet svarer 404 før rutingen, et problemdokument under `
 et tomt innhold ellers, mens den samme forespørselen på verten til `APP_URL` betjenes som
 før. Innloggingen, resten av API-et og dokumentasjonen kan derfor aldri nås gjennom den
 offentlige verten. Når `PUBLIC_BASE_URL` er opprinnelsen til `APP_URL` selv, finnes det
-ingen egen vert og ingen slik filtrering. Listen, hvorfor den er som den er, og hvordan
-du kontrollerer den, står under [Innbetalinger](/nb/admin/payments/#den-offentlige-verten).
+ingen egen vert og ingen slik filtrering. Sperren styres av `Host`-hodet alene — serveren
+kan ikke se hvilken lytter eller hvilket navn en forespørsel kom inn på — og verten til
+`APP_URL` og loopback slippes inn overalt, så proxyen som publiserer den offentlige
+verten, må sende `Host` som det offentlige vertsnavnet, en konstant, og aldri sende
+videre klientens: den proxyregelen er bærende. Listen, hvorfor den er som den er,
+proxyoppsettet og hvordan du kontrollerer den, står under
+[Innbetalinger](/nb/admin/payments/#den-offentlige-verten).
 Den offentlige opprinnelsen legges ikke til blant de klarerte opprinnelsene i
 beskyttelsen mot forespørsler på tvers av opprinnelser: proxyen bevarer `Host`, så
 betalingssidens forespørsler er allerede fra samme opprinnelse.

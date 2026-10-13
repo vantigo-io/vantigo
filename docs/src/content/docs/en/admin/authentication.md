@@ -302,7 +302,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `APP_ENV` | `production` or `development`; only development relaxes anything | `production` |
 | `APP_URL` | Public origin (scheme + host [+ port]); no path | **required** |
 | `APP_BASE_PATH` | Path prefix on a shared domain, e.g. `/vantigo` | empty (domain root) |
-| `PUBLIC_BASE_URL` | The `https` URL the Invoices pay page is reachable at from the internet: an origin and `APP_BASE_PATH`, nothing else, and never `APP_URL`'s host name on another port; on a host of its own only the pay page's allowlist is served there. Unset, there are no pay links ([The public host](/en/admin/payments/#the-public-host)) | unset |
+| `PUBLIC_BASE_URL` | The `https` URL the Invoices pay page is reachable at from the internet: an origin and `APP_BASE_PATH`, nothing else, its host name ASCII (punycode for an internationalised one) with no trailing dot, and never `APP_URL`'s host name on another port; on a host of its own only the pay page's allowlist is served there. Unset, there are no pay links ([The public host](/en/admin/payments/#the-public-host)) | unset |
 | `PORT` | Listen port | `8080` |
 | `DATABASE_URL` | Runtime connection, the least-privilege role | **required** |
 | `MIGRATIONS_DATABASE_URL` | Connection `migrate` uses (the owner role) | `DATABASE_URL` |

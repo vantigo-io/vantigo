@@ -144,7 +144,11 @@ answers 404 before routing, a problem document under `/api/` and an empty body
 elsewhere, while the same request on `APP_URL`'s host is served as before. Sign-in, the
 rest of the API and the documentation are therefore never reachable through the public
 host. When `PUBLIC_BASE_URL` is `APP_URL`'s own origin there is no second host and no
-such filter. The list, why it is what it is and how to verify it are on
+such filter. The gate keys on the `Host` header alone — the server cannot tell which
+listener or name a request came in on — and `APP_URL`'s host and loopback stay admitted
+everywhere, so the proxy that publishes the public host must send `Host` as the public
+host name, a constant, and never pass on the client's: that proxy rule is load-bearing.
+The list, why it is what it is, the proxy configuration and how to verify it are on
 [Payments](/en/admin/payments/#the-public-host). The public origin is not added to the
 cross-origin protection's trusted origins: the proxy preserves `Host`, so the pay page's
 requests are same-origin already.
