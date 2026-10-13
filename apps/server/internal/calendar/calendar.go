@@ -5,8 +5,13 @@ import "time"
 // PublicHoliday is a Norwegian public holiday (lov om helligdager og
 // helligdagsfred § 2, lov om 1. og 17. mai som høgtidsdager): New Year's Day,
 // Maundy Thursday, Good Friday, Easter Sunday and Monday, 1 May, 17 May,
-// Ascension Day, Whit Sunday and Monday, Christmas Day and Boxing Day.
+// Ascension Day, Whit Sunday and Monday, Christmas Day and Boxing Day. An
+// ordinary Sunday, a helligdag in law too, is not listed: BusinessDay's
+// weekend test covers it. d is read as its civil date in its own location, so
+// 10:00Z or midnight in Oslo on a holiday is that holiday.
 func PublicHoliday(d time.Time) bool {
+	y, mm, dd := d.Date()
+	d = time.Date(y, mm, dd, 0, 0, 0, 0, time.UTC)
 	switch m, day := d.Month(), d.Day(); {
 	case m == time.January && day == 1,
 		m == time.May && (day == 1 || day == 17),
