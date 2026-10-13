@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -515,5 +516,76 @@ func TestPaymentProvider_SwitchOff(t *testing.T) {
 	meta := paymentMeta(t, h, "invoices:access", "invoices:issue")
 	if meta.PayLinksAvailable || meta.OnSitePaymentsAvailable || meta.Capabilities.CanTakeOnSitePayment {
 		t.Errorf("meta with the switch off = %+v, want nothing available", meta)
+	}
+}
+
+// onFirstToken is a transport that runs fn once, before the first token
+// fetch it carries, and then hands every request to inner.
+type onFirstToken struct {
+	once  sync.Once
+	fn    func()
+	inner http.RoundTripper
+}
+
+func (o *onFirstToken) RoundTrip(r *http.Request) (*http.Response, error) {
+	if strings.HasSuffix(r.URL.Path, "/accesstoken/get") {
+		o.once.Do(o.fn)
+	}
+	return o.inner.RoundTrip(r)
+}
+
+// A refusal is recorded only against the credentials' version the refused
+// keys were read from: a verify whose client was built on the old keys, and
+// is answered 401 after a PUT stored new ones, flags nothing.
+func TestVippsSettings_OldKeysRefusedNeverFlagNewerOnes(t *testing.T) {
+	t.Parallel()
+	rt := &onFirstToken{}
+	h := newHarness(t, modtest.WithTransport(rt))
+	rt.inner = hostTransport{hostOf(t, h.vipps.URL()): h.vipps.Transport()}
+	putVipps(t, h, vippstestKeys())
+	rt.fn = func() {
+		// The verify's client holds the first version's keys; the row moves
+		// on while its token fetch is out.
+		h.Advance(time.Second)
+		putVipps(t, h, vippstestKeys())
+		h.vipps.Fail(vippstest.OpToken, vippstest.Failure{Status: http.StatusUnauthorized, Times: 1})
+	}
+	if got := verifyVipps(t, h); got != "unauthorized" {
+		t.Fatalf("verify = %q, want unauthorized", got)
+	}
+	if at := storedVipps(t, h).RejectedAt; at != nil {
+		t.Errorf("the old keys' 401 flagged the new keys rejected at %v", at)
+	}
+	if verifyVipps(t, h) != "ok" {
+		t.Error("the new keys do not verify")
+	}
+}
+
+// The unreadable-keys paths (paymentProvider, a PUT keeping a key) flag
+// through the same statement with the version they read; an end-to-end
+// interleave would need a seam between their read and their flag, so the
+// statement is held to its version here: a stale version flags nothing, the
+// current one flags.
+func TestPaymentCredentials_RejectedOnlyForTheirVersion(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	putVipps(t, h, vippstestKeys())
+	old := storedVipps(t, h).UpdatedAt
+	h.Advance(time.Second)
+	putVipps(t, h, vippstestKeys())
+	q := store.New(h.Pool())
+	ctx := context.Background()
+	if err := q.MarkPaymentCredentialsRejected(ctx, store.MarkPaymentCredentialsRejectedParams{Now: h.Now(), Version: old}); err != nil {
+		t.Fatal(err)
+	}
+	if storedVipps(t, h).RejectedAt != nil {
+		t.Error("a refusal against the old version flagged the new keys")
+	}
+	current := storedVipps(t, h).UpdatedAt
+	if err := q.MarkPaymentCredentialsRejected(ctx, store.MarkPaymentCredentialsRejectedParams{Now: h.Now(), Version: current}); err != nil {
+		t.Fatal(err)
+	}
+	if storedVipps(t, h).RejectedAt == nil {
+		t.Error("a refusal against the current version flagged nothing")
 	}
 }
