@@ -130,13 +130,13 @@ const (
 	codeCarryOverRecorded = "carry_over_recorded"
 )
 
-// The refusal codes of the decisions (delivery B, Task 4): 403s with a
-// problem, since they say who the caller is to the person, not the state of
-// the row — the caller decides nothing of the person's, or the request is
-// their own.
+// The refusal code of the decisions (delivery B, Task 4): a 403 with a
+// problem, to the person on their own row. A caller who decides nothing of
+// the person's gets the 404 of a row they cannot write instead (review C1),
+// so decision_not_yours is not answered: naming it would tell a reader that
+// the row is there in a status they may not act on.
 const (
-	codeDecisionNotYours = "decision_not_yours"
-	codeOwnRequest       = "own_request"
+	codeOwnRequest = "own_request"
 )
 
 // The titles this module's validation problems carry, one per thing a request

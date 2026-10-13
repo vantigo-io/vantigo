@@ -1249,8 +1249,10 @@ request (the person or HR) or a registration (HR alone). Anything else is
 `absence_not_requested`. `POST /absences/{id}/cancel` withdraws a request — the
 person's or HR's — and keeps it as history (`cancelled`); an approved row is cancelled by
 its decider ([decisions](#decisions)); anything else is `absence_not_cancellable`.
-Anyone else who sees a request gets the uniform 403; anyone who does not see the row,
-the 404 of an unknown id.
+**Authority comes first, and one answer** (review C1): anyone who is not the person, a
+decider of theirs or HR — for an HR-only row, HR with `staff:personal-data` (review H2) —
+gets the 404 of a row they cannot write, whatever its status, before any status is
+judged; so a write never tells a reader what the row does not.
 
 **Reading them.** `GET /absences?personId&from&to&status&page&pageSize` lists, newest
 first, the rows the caller may see: everyone's to `staff:manage`, `staff:approve` and
@@ -1267,7 +1269,7 @@ groups (design §5):
 | Absence | `firstDay`, `lastDay` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Absence | `status`, `workingDays` | ✓ | — | ✓ | ✓ | ✓ | ✓ |
 | Absence type | `typeId` (`shownAs: type`) | ✓ | — (`shownAs: absent`) | ✓; an `hr_only` type `shownAs: leave` | ✓; an `hr_only` type `shownAs: leave` | ✓; an `hr_only` type `shownAs: leave` | ✓ |
-| Absence detail | `percent`, `hours`, `degreePercent`, `note`, `decisionNote` (never on a row shown as leave) | ✓ | — | ✓ | ✓ | ✓ | ✓ |
+| Absence detail | `percent`, `hours`, `degreePercent`; `note` and `decisionNote` never on a row shown as leave | ✓ | — | ✓ | ✓ | ✓ | ✓ |
 
 **A colleague cannot tell one absence from another.** Only the notification types —
 the sick kinds among them — start `registered`, and only an hour type counts no
@@ -1279,7 +1281,10 @@ sykmelding, a sick child, a doctor's visit and a holiday are the same dates, sho
 `staff:personal-data`, a row of an HR-only type carries no `hours`, the working days of
 its days whatever its unit, and `approved` in place of `registered` — so
 svangerskapskontroll, an HR-only hour registration, is not told apart from the other
-HR-only leave. A status filter matches it by the status it is shown as — asking for
+HR-only leave. It carries no `note` (review M1), and it is shown only while `approved`
+or `registered`: a request of an HR-only type, a refusal and a cancel are
+`staff:personal-data`'s ([decisions](#decisions)), so a list, a calendar and a read by
+id leave them out to these readers. A status filter matches it by the status it is shown as — asking for
 `registered` rows does not list it, asking for `approved` does — and none of its events
 is listed to them (below): they read its dates already, and one registration event
 against a request and its decision would tell a notification from a request.
@@ -1373,9 +1378,22 @@ manager by the same rule, and anyone else's waits for another holder (`own_reque
 in a department they manage with no manager above it — and for whom (a) is empty
 approves their own; the row is `self_approved`, the event `absence_self_approved`, and
 `staff:manage` sees the [`selfApproved`](#attention-items) item until it ends. A caller
-who sees the row and decides nothing — `staff:personal-data` alone, a colleague on an
-approved row — gets `decision_not_yours` (403); one who does not see it the 404 of an
-unknown id. The person's capabilities carry `canDecide` for the caller.
+who decides nothing of the person's — `staff:personal-data` alone on a plain type, a
+colleague, a stranger — gets the 404 of a row they cannot write, whatever the row's
+status (review C1): the code `decision_not_yours` is not answered, since it would say the
+row is there in a status they may not act on. The person's capabilities carry
+`canDecide` for the caller.
+
+**HR-only types are decided by `staff:personal-data` alone** (review H4, interim option
+(b), reading 33, open question 9): §5 gives those types to that permission. A request of
+an HR-only type is in no manager's, Approver's or HR-without-`staff:personal-data`'s
+inbox, mail, list or calendar; any holder of `staff:personal-data` but the person decides
+it, and there is no self-approval for it — with no other holder it waits. Its writes —
+change, delete, cancel, correct — are the person's (as for any row) and HR's with
+`staff:personal-data`; anyone else gets the uniform 404. So to every reader of the type as
+leave, every HR-only row, requested-then-approved or registered, is one approved leave
+they never saw asked for, refused or withdrawn: no note, no decision field, no history —
+svangerskapskontroll reads as any other.
 
 The decider is judged before the person's lock — it reads the user directory, which no
 transaction may — and the row under it, so the second of two deciders, or a decider
@@ -1407,7 +1425,7 @@ Sent after the write has committed, outside every transaction, through the modul
 SMTP accessor; skipped with a log line when the mail driver is not `smtp`, and never
 failing the write (reading 26). Staff mails only addresses it holds: a person's work
 email, else their private one, in that person's language — **on a request and a
-registration to each manager-decider** (holders of `staff:approve` and `staff:manage`
+registration to each manager-decider**, never for an HR-only type (review H3) (holders of `staff:approve` and `staff:manage`
 by right get the inbox and the attention list, since the user directory names no
 address: reading 4, open question 1), **on an approval, a rejection, a decider's cancel
 and a correction to the person**. A recipient without an address is skipped with a log
@@ -1419,8 +1437,9 @@ dates and a link to My page.
 ### The approvals inbox
 
 `GET /approvals?page&pageSize` lists the requests the caller decides, oldest first by
-when they were made: every person's to `staff:approve` and `staff:manage`, a manager's
-reports' today; never the caller's own but the self-approver's. Each item is
+when they were made: every person's of a plain type to `staff:approve` and
+`staff:manage`, a manager's reports' today, an HR-only type's to `staff:personal-data`
+alone; never the caller's own but the self-approver's. Each item is
 `{absence, person}` — the person as the work group names them, the row shaped as
 `GET /absences` shapes it for the caller.
 
@@ -2124,7 +2143,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `absence_overlap` | 409 | An absence that cannot stand beside the person's requested, approved or registered rows on one of its days. |
 | `absence_not_requested` | 409 | Changing or deleting an absence that is not a request — a registered one by anyone but HR, a decided or cancelled one by anyone. |
 | `absence_not_cancellable` | 409 | Cancelling an absence that is neither a request nor an approved row its decider may still cancel (begun: HR alone); correcting one that is neither approved nor registered. |
-| `decision_not_yours` | 403 | Deciding, cancelling or correcting the absence of a person the caller does not decide for. |
+| `decision_not_yours` | — | Not answered (review C1): a caller who decides nothing of the person's gets the 404 of a row they cannot write. |
 | `own_request` | 403 | Deciding, cancelling or correcting one's own absence, but for the self-approver. |
 | `absence_status_change` | 409 | Changing an absence's type between one that needs a decision and one that is a notification. |
 | `carry_over_recorded` | 409 | A second carry-over for one person from one year. |
@@ -2234,9 +2253,9 @@ All under `/api/v1/staff`.
 | `POST /absence-types`, `PUT /absence-types/{id}`, `POST /holiday-schemes`, `PUT /holiday-schemes/{id}` | `staff:manage` |
 | `GET /absences`, `GET /absences/{id}` | `staff:access`, then the rows the caller may see (otherwise left out, or 404) |
 | `POST /absences` | `staff:access`, then the caller's own person or `staff:manage` (otherwise 403) |
-| `PUT /absences/{id}`, `DELETE /absences/{id}` | `staff:access`, then the person or `staff:manage` (otherwise 403; 404 to one who does not see the row) |
-| `POST /absences/{id}/cancel` | `staff:access`, then the person or `staff:manage` for a request, a [decider](#decisions) for an approved row (otherwise 403, `decision_not_yours` or `own_request`; 404 to one who does not see the row) |
-| `POST /absences/{id}/approve`, `/reject`, `GET /approvals` | `staff:access`, then a [decider](#decisions) of the person (otherwise `decision_not_yours` or `own_request`; 404 to one who does not see the row) |
+| `PUT /absences/{id}`, `DELETE /absences/{id}` | `staff:access`, then the person or `staff:manage` — for an HR-only row with `staff:personal-data` (otherwise 404, whatever the status) |
+| `POST /absences/{id}/cancel` | `staff:access`, then the person or `staff:manage` for a request, a [decider](#decisions) for an approved row (otherwise 404, whatever the status; `own_request` to the person on a decided row they may not cancel as decider) |
+| `POST /absences/{id}/approve`, `/reject`, `GET /approvals` | `staff:access`, then a [decider](#decisions) of the person — of an HR-only type `staff:personal-data` (otherwise 404; `own_request` to the person) |
 | `POST /absences/{id}/correct` | `staff:manage` (never one's own: `own_request`) |
 | `GET /calendar` | `staff:access`, then the people and rows the caller may see |
 | `GET /people/{id}/holiday-account` | `staff:access`, then the person, a manager of theirs, the Approver or HR (otherwise 404) |

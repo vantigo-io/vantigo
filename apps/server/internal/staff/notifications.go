@@ -19,7 +19,8 @@ import (
 // Staff mails only addresses it holds itself — a person's work email, else
 // their private one — in the recipient person's language (en or nb): on a
 // request and on a registration to the person's manager-deciders (deciders.go,
-// managers whose link names an active user), on a decision, a decider's
+// managers whose link names an active user) — never for an HR-only type,
+// which no manager decides (review H3) — on a decision, a decider's
 // cancel and HR's correction to the person. Holders of staff:approve and
 // staff:manage get the inbox and the attention list instead: the user
 // directory names no address (reading 4).
@@ -67,6 +68,12 @@ func (s *server) notifyAbsence(ctx context.Context, today time.Time, n absenceNo
 	ctx = context.WithoutCancel(ctx)
 	recipients := []int64{n.personID}
 	if n.kind == noticeRequested || n.kind == noticeRegistered {
+		// An HR-only type is decided by staff:personal-data, whose
+		// addresses Staff does not hold, and is no manager's to hear of
+		// (review H3): no mail but the person's own.
+		if hrOnlyType(n.typ.Visibility) {
+			return
+		}
 		managers, err := s.managerDeciders(ctx, n.personID, today)
 		if err != nil {
 			logger.WarnContext(ctx, "staff: absence mail skipped: the managers could not be read", "person_id", n.personID, "error", err.Error())

@@ -118,6 +118,8 @@ WHERE ($1::bigint IS NULL OR a.person_id = $1::bigint)
   AND ($7::boolean OR a.person_id = ANY($8::bigint[])
        OR (a.person_id = ANY($9::bigint[]) AND a.status IN ('approved', 'registered')
            AND $4::text IS NULL))
+  AND NOT ($5::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM $6::bigint
+           AND a.status NOT IN ('approved', 'registered'))
 `
 
 type CountAbsencesParams struct {
@@ -151,21 +153,30 @@ func (q *Queries) CountAbsences(ctx context.Context, arg CountAbsencesParams) (i
 }
 
 const countRequestedAbsences = `-- name: CountRequestedAbsences :one
-SELECT count(*) FROM staff.absences a
+SELECT count(*) FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE a.status = 'requested'
-  AND ($1::boolean OR a.person_id = ANY($2::bigint[]))
-  AND a.person_id IS DISTINCT FROM $3::bigint
+  AND ((t.visibility = 'absent' AND ($1::boolean OR a.person_id = ANY($2::bigint[])))
+       OR (t.visibility <> 'absent' AND $3::boolean))
+  AND (a.person_id IS DISTINCT FROM $4::bigint OR (t.visibility = 'absent' AND $5::boolean))
 `
 
 type CountRequestedAbsencesParams struct {
-	Everyone      bool
-	PersonIds     []int64
-	ExcludePerson *int64
+	Everyone     bool
+	PersonIds    []int64
+	PersonalData bool
+	SelfID       *int64
+	SelfApproves bool
 }
 
 // CountRequestedAbsences counts what RequestedAbsences pages through.
 func (q *Queries) CountRequestedAbsences(ctx context.Context, arg CountRequestedAbsencesParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countRequestedAbsences, arg.Everyone, arg.PersonIds, arg.ExcludePerson)
+	row := q.db.QueryRow(ctx, countRequestedAbsences,
+		arg.Everyone,
+		arg.PersonIds,
+		arg.PersonalData,
+		arg.SelfID,
+		arg.SelfApproves,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -555,6 +566,8 @@ WHERE ($1::bigint IS NULL OR a.person_id = $1::bigint)
   AND ($7::boolean OR a.person_id = ANY($8::bigint[])
        OR (a.person_id = ANY($9::bigint[]) AND a.status IN ('approved', 'registered')
            AND $4::text IS NULL))
+  AND NOT ($5::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM $6::bigint
+           AND a.status NOT IN ('approved', 'registered'))
 ORDER BY a.first_day DESC, a.id DESC
 LIMIT $11 OFFSET $10
 `
@@ -588,7 +601,10 @@ type ListAbsencesRow struct {
 // rows must not pick out who was sick (review C1). With @neutral — a caller
 // who reads an HR-only type as leave, on every row but their own
 // (@self_id) — a status filter matches such a row by the status it is shown
-// as, a registration as an approval (leak 2).
+// as, a registration as an approval (leak 2), and an HR-only row that is not
+// approved or registered — a request, a refusal, a cancel — is not listed
+// at all: to its leave-reader every HR-only row is an approved leave they
+// never saw asked for (review H4, interim option b).
 func (q *Queries) ListAbsences(ctx context.Context, arg ListAbsencesParams) ([]ListAbsencesRow, error) {
 	rows, err := q.db.Query(ctx, listAbsences,
 		arg.PersonID,
@@ -857,18 +873,21 @@ const requestedAbsences = `-- name: RequestedAbsences :many
 SELECT a.id, a.person_id, a.type_id, a.first_day, a.last_day, a.hours, a.percent, a.status, a.note, a.case_id, a.degree_percent, a.requested_by_user_id, a.decided_by_user_id, a.decided_at, a.decision_note, a.self_approved, a.revision, a.created_at, a.updated_at, t.kind, t.visibility, t.unit
 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE a.status = 'requested'
-  AND ($1::boolean OR a.person_id = ANY($2::bigint[]))
-  AND a.person_id IS DISTINCT FROM $3::bigint
+  AND ((t.visibility = 'absent' AND ($1::boolean OR a.person_id = ANY($2::bigint[])))
+       OR (t.visibility <> 'absent' AND $3::boolean))
+  AND (a.person_id IS DISTINCT FROM $4::bigint OR (t.visibility = 'absent' AND $5::boolean))
 ORDER BY a.created_at, a.id
-LIMIT $5 OFFSET $4
+LIMIT $7 OFFSET $6
 `
 
 type RequestedAbsencesParams struct {
-	Everyone      bool
-	PersonIds     []int64
-	ExcludePerson *int64
-	PageOffset    int32
-	PageSize      int32
+	Everyone     bool
+	PersonIds    []int64
+	PersonalData bool
+	SelfID       *int64
+	SelfApproves bool
+	PageOffset   int32
+	PageSize     int32
 }
 
 type RequestedAbsencesRow struct {
@@ -878,14 +897,19 @@ type RequestedAbsencesRow struct {
 	Unit         string
 }
 
-// RequestedAbsences is the requests of @person_ids' people — everyone's with
-// @everyone — but @exclude_person's, oldest first: the approvals inbox
-// (plan Task 4). The partial index on requested rows serves it.
+// RequestedAbsences is the requests the caller decides, oldest first: the
+// approvals inbox (plan Task 4). A request of a plain type is
+// @person_ids' people's — everyone's with @everyone; one of an HR-only type
+// is decided by staff:personal-data alone (@personal_data, review H4). Never
+// the caller's own (@self_id), but a plain one when they approve their own
+// (@self_approves). The partial index on requested rows serves it.
 func (q *Queries) RequestedAbsences(ctx context.Context, arg RequestedAbsencesParams) ([]RequestedAbsencesRow, error) {
 	rows, err := q.db.Query(ctx, requestedAbsences,
 		arg.Everyone,
 		arg.PersonIds,
-		arg.ExcludePerson,
+		arg.PersonalData,
+		arg.SelfID,
+		arg.SelfApproves,
 		arg.PageOffset,
 		arg.PageSize,
 	)

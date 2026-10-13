@@ -116,7 +116,7 @@ func TestAbsences_LeaveReadersCannotTellTheHROnlyNotification(t *testing.T) {
 	h := w.h
 	check := requestOwn(t, w.kariC, absence(t, h, "svangerskapskontroll", "2026-10-07", "2026-10-07", "hours", 2))
 	perm := requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-10-12", "2026-10-16"))
-	if r := decide(w.hr, approvePath(perm.Id), "Gratulerer"); r.Status != http.StatusOK {
+	if r := decide(w.pd, approvePath(perm.Id), "Gratulerer"); r.Status != http.StatusOK {
 		t.Fatalf("approve: %d %s", r.Status, r.Body)
 	}
 

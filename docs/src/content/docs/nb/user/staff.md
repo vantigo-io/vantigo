@@ -488,6 +488,10 @@ Dette gjelder i dag, gjennom Ansatte-API-et:
   får e-post når søknaden din er avgjort, kansellert eller rettet, og lederen din når du
   søker om eller registrerer fravær — e-posten nevner aldri sykdom, en HR-type, en
   prosent eller en merknad.
+- **Permisjon som røper helse eller familieforhold** (en HR-type, som
+  svangerskapspermisjon) avgjøres av den som har rettigheten for personopplysninger, ikke
+  av lederen din, og lederen din får ikke e-post om den; lederen ser den først når den er
+  godkjent, som *permisjon*.
 - **Å avgjøre, for ledere.** Søknadene du avgjør, venter i godkjenningsinnboksen din,
   eldste først; fraværskalenderen viser en måned for teamet ditt — eller, med tilgang
   til personoversikten, for alle, der kolleger bare ser dagene noen er borte.

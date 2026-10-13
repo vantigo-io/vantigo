@@ -9,7 +9,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
@@ -42,18 +41,60 @@ func refuseForbidden(code, title, detail string) error {
 	return &refusal{status: http.StatusForbidden, problem: p}
 }
 
-// refusal is d's answer to a decision: nil when the caller decides,
-// own_request on their own, decision_not_yours otherwise.
+// refusal is d's answer to a decision, once the caller's authority is
+// judged (authorityOn): nil when the caller decides, own_request on their
+// own row — the one refusal that names a reason, to the person themselves,
+// who reads every status of their own.
 func (d decider) refusal() error {
-	switch {
-	case d.decides:
+	if d.decides {
 		return nil
-	case d.own:
-		return refuseForbidden(codeOwnRequest, "Your own absence",
-			"Nobody decides their own absence: your manager, or someone who decides absence for everyone, does.")
 	}
-	return refuseForbidden(codeDecisionNotYours, "Not yours to decide",
-		"Only the person's manager today, staff:approve or staff:manage decides this absence.")
+	return refuseForbidden(codeOwnRequest, "Your own absence",
+		"Nobody decides their own absence: your manager, or someone who decides absence for everyone, does.")
+}
+
+// The writes an absence takes, each with its own authority (authorityOn).
+const (
+	writeChange  = iota // PUT, DELETE: the person, or HR
+	writeCancel         // the person or HR on a request, a decider on an approved row
+	writeDecide         // approve, reject: a decider — the person is told own_request
+	writeCorrect        // HR's correction: a decider by right — the person is told own_request
+)
+
+// authorityOn reads absence id and judges whether the caller may attempt
+// write on it at all, before anything about the row's status (review C1):
+// the person, a decider of theirs for the row's type, or HR. HR here is
+// staff:manage — and for an HR-only row staff:manage with
+// staff:personal-data, since only a reader of the type may change it
+// (review H1, H2). Everyone else gets the 404 of a row they cannot write,
+// one answer whatever the status, so a write cannot probe what a reader is
+// not shown.
+func (s *server) authorityOn(ctx context.Context, caller *callerContext, id int64, write int) (store.GetAbsenceRow, decider, error) {
+	row, _, err := readAbsenceFor(ctx, store.New(s.deps.Pool), caller, id)
+	if err != nil {
+		return row, decider{}, err
+	}
+	personID := row.StaffAbsence.PersonID
+	hrOnly := hrOnlyType(row.Visibility)
+	self := caller.Person != nil && *caller.Person == personID
+	d, err := s.judgeDecider(ctx, caller, personID, hrOnly)
+	if err != nil {
+		return row, d, err
+	}
+	hr := caller.Manage && (!hrOnly || caller.PersonalData)
+	var may bool
+	switch write {
+	case writeChange:
+		may = self || hr
+	case writeCancel:
+		may = self || hr || d.decides
+	default:
+		may = self || d.decides
+	}
+	if !may {
+		return row, d, notFound()
+	}
+	return row, d, nil
 }
 
 // notCancellable is the 409 of a cancel or a correction of a row that is not
@@ -81,25 +122,14 @@ func parseDecisionNote(body *gen.StaffAbsenceDecisionRequest, required bool) (*s
 	return note, f
 }
 
-// deciderOn reads absence id as the caller may see it — notFound otherwise —
-// and what the caller is to its person's requests.
-func (s *server) deciderOn(ctx context.Context, caller *callerContext, id int64) (store.GetAbsenceRow, decider, error) {
-	row, _, err := readAbsenceFor(ctx, store.New(s.deps.Pool), caller, id)
-	if err != nil {
-		return row, decider{}, err
-	}
-	d, err := s.judgeDecider(ctx, caller, row.StaffAbsence.PersonID)
-	return row, d, err
-}
-
 // decide records status — approved or rejected — on request id of
 // personID's under the person's lock, with the caller as decider and note.
 // An approval judges the row's overlap again (reading 17) and answers the
 // accounts after it.
-func (s *server) decide(ctx context.Context, caller *callerContext, who actor, personID, id int64, d decider, status string, note *string) (absenceWrite, error) {
+func (s *server) decide(ctx context.Context, caller *callerContext, who actor, personID, id int64, hrOnly bool, d decider, status string, note *string) (absenceWrite, error) {
 	var w absenceWrite
 	err := s.withPersonLock(ctx, personID, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		before, t, err := lockAbsence(ctx, txq, id, personID)
+		before, t, err := lockAbsence(ctx, txq, id, personID, hrOnly)
 		if err != nil {
 			return err
 		}
@@ -159,7 +189,7 @@ func (s *server) decision(ctx context.Context, id int64, body *gen.StaffAbsenceD
 	if err != nil {
 		return gen.StaffAbsence{}, nil, err
 	}
-	current, d, err := s.deciderOn(ctx, caller, id)
+	current, d, err := s.authorityOn(ctx, caller, id, writeDecide)
 	if err == nil {
 		err = d.refusal()
 	}
@@ -174,7 +204,7 @@ func (s *server) decision(ctx context.Context, id int64, body *gen.StaffAbsenceD
 		return gen.StaffAbsence{}, nil, err
 	}
 	personID := current.StaffAbsence.PersonID
-	w, err := s.decide(ctx, caller, who, personID, id, d, status, note)
+	w, err := s.decide(ctx, caller, who, personID, id, hrOnlyType(current.Visibility), d, status, note)
 	if errors.Is(err, errPersonNotFound) {
 		return gen.StaffAbsence{}, &refusal{status: http.StatusNotFound}, nil
 	}
@@ -244,7 +274,7 @@ func (s *server) PostStaffAbsencesByIdCancel(ctx context.Context, req gen.PostSt
 	if err != nil {
 		return nil, err
 	}
-	current, d, err := s.deciderOn(ctx, caller, req.Id)
+	current, d, err := s.authorityOn(ctx, caller, req.Id, writeCancel)
 	if _, ok := asRefusal(err); ok {
 		return gen.PostStaffAbsencesByIdCancel404Response{}, nil
 	}
@@ -253,9 +283,7 @@ func (s *server) PostStaffAbsencesByIdCancel(ctx context.Context, req gen.PostSt
 	}
 	personID := current.StaffAbsence.PersonID
 	self := caller.Person != nil && *caller.Person == personID
-	if current.StaffAbsence.Status == absenceRequested && !self && !caller.Manage {
-		return gen.PostStaffAbsencesByIdCancel403JSONResponse(apicommon.ForbiddenBody()), nil
-	}
+	hr := caller.Manage && (!hrOnlyType(current.Visibility) || caller.PersonalData)
 	who, err := s.actorFor(ctx)
 	if err != nil {
 		return nil, err
@@ -263,14 +291,14 @@ func (s *server) PostStaffAbsencesByIdCancel(ctx context.Context, req gen.PostSt
 	var w absenceWrite
 	decided := false
 	err = s.withPersonLock(ctx, personID, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		before, t, err := lockAbsence(ctx, txq, req.Id, personID)
+		before, t, err := lockAbsence(ctx, txq, req.Id, personID, hrOnlyType(current.Visibility))
 		if err != nil {
 			return err
 		}
 		switch before.Status {
 		case absenceRequested:
-			if !self && !caller.Manage {
-				return notCancellable("Only its person or HR cancels a request.")
+			if !self && !hr {
+				return notCancellable("A request is rejected by its decider, not cancelled: only its person or HR cancels it.")
 			}
 		case absenceApproved:
 			if self && !caller.Approve && !caller.Manage {
@@ -346,7 +374,7 @@ func (s *server) PostStaffAbsencesByIdCorrect(ctx context.Context, req gen.PostS
 	if err != nil {
 		return nil, err
 	}
-	current, d, err := s.deciderOn(ctx, caller, req.Id)
+	current, d, err := s.authorityOn(ctx, caller, req.Id, writeCorrect)
 	if err == nil {
 		err = d.refusal()
 	}
@@ -366,7 +394,7 @@ func (s *server) PostStaffAbsencesByIdCorrect(ctx context.Context, req gen.PostS
 	personID := current.StaffAbsence.PersonID
 	var w absenceWrite
 	err = s.withPersonLock(ctx, personID, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		before, beforeType, err := lockAbsence(ctx, txq, req.Id, personID)
+		before, beforeType, err := lockAbsence(ctx, txq, req.Id, personID, hrOnlyType(current.Visibility))
 		if err != nil {
 			return err
 		}

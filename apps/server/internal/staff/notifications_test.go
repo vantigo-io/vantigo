@@ -76,11 +76,11 @@ func TestNotifications_TheAbsenceMails(t *testing.T) {
 	leaksIn(t, "the sick child's mail to the manager", lastMail(t, h, "bjorn@example.test"), "child", "barn", "sick")
 	register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-09-21", "2026-09-25", "degreePercent", 40))
 	leaksIn(t, "the sykmelding's mail to the manager", lastMail(t, h, "bjorn@example.test"), "sykmelding", "certified", "sick", "40")
+	// An HR-only request is no manager's to hear of (review H3).
+	before := len(mailsTo(h, "bjorn@example.test"))
 	requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
-	m = lastMail(t, h, "bjorn@example.test")
-	leaksIn(t, "the HR-only request's mail to the manager", m, "pregnan", "svangerskap")
-	if !strings.Contains(m, "leave") {
-		t.Errorf("the HR-only request's mail does not say leave:\n%s", m)
+	if len(mailsTo(h, "bjorn@example.test")) != before {
+		t.Error("the manager was mailed about an HR-only request")
 	}
 	sent := len(h.mail.messages())
 

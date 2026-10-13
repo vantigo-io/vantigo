@@ -55,13 +55,25 @@ func (a audience) onlyColleague() bool {
 	return a.Colleague && !a.Self && !a.Manager && !a.Approver && !a.Manage && !a.PersonalData
 }
 
-// seesAbsence is whether a sees an absence in status.
-func (a audience) seesAbsence(status string) bool {
+// seesAbsence is whether a sees an absence in status of a type of
+// visibility. A colleague sees only that a person is away — approved and
+// registered rows. So does a reader of an HR-only row as leave (review H4,
+// interim option b): staff:personal-data alone decides such a row, so to
+// anyone else it is an approved leave they never saw asked for, refused or
+// withdrawn.
+func (a audience) seesAbsence(status, visibility string) bool {
 	if !a.reads(groupAbsence) {
 		return false
 	}
-	return !a.onlyColleague() || status == absenceApproved || status == absenceRegistered
+	if a.onlyColleague() || leaveShaped(visibility, a) {
+		return status == absenceApproved || status == absenceRegistered
+	}
+	return true
 }
+
+// hrOnlyType is whether a type of visibility is HR-only: one staff:personal-
+// data decides and writes (review H4).
+func hrOnlyType(visibility string) bool { return visibility != visibilityAbsent }
 
 // absenceResponse is one absence as a reads it (design §5, review C1 and
 // H1). A colleague reads the dates alone — no status, no working days, no
@@ -122,10 +134,11 @@ func absenceResponse(row store.StaffAbsence, kind, visibility, unit string, a au
 			d := numberOf(row.DegreePercent)
 			out.DegreePercent = &d
 		}
-		out.Note = row.Note
-		// No decision field on a row shown as leave (leak 2): whether and
-		// how it was decided would tell a notification from a request.
+		// No note and no decision field on a row shown as leave (leak 2,
+		// review M1): what it is for, and whether and how it was decided,
+		// would tell one HR-only type from another.
 		if !asLeave {
+			out.Note = row.Note
 			out.DecisionNote = row.DecisionNote
 		}
 	}
@@ -651,7 +664,7 @@ func readAbsenceFor(ctx context.Context, q *store.Queries, caller *callerContext
 	if err != nil {
 		return row, a, err
 	}
-	if !a.seesAbsence(row.StaffAbsence.Status) {
+	if !a.seesAbsence(row.StaffAbsence.Status, row.Visibility) {
 		return row, a, notFound()
 	}
 	return row, a, nil
@@ -682,29 +695,10 @@ func (s *server) GetStaffAbsencesById(ctx context.Context, req gen.GetStaffAbsen
 	return gen.GetStaffAbsencesById200JSONResponse(out), nil
 }
 
-// errForbidden is a write by someone who sees the row but may not change it:
-// the uniform 403.
-var errForbidden = errors.New("staff: not the caller's to change")
-
-// mayChangeAbsence reads the row and answers whether the caller may write it
-// at all — the person or staff:manage — before any lock: notFound for a row
-// the caller does not see, errForbidden for one they see and may not touch.
-func (s *server) mayChangeAbsence(ctx context.Context, caller *callerContext, id int64) (store.GetAbsenceRow, error) {
-	q := store.New(s.deps.Pool)
-	row, _, err := readAbsenceFor(ctx, q, caller, id)
-	if err != nil {
-		return row, err
-	}
-	self := caller.Person != nil && *caller.Person == row.StaffAbsence.PersonID
-	if !self && !caller.Manage {
-		return row, errForbidden
-	}
-	return row, nil
-}
-
 // lockAbsence takes the absence under its person's lock, notFound when it is
-// gone or no longer the person's.
-func lockAbsence(ctx context.Context, txq *store.Queries, id, personID int64) (store.StaffAbsence, store.StaffAbsenceType, error) {
+// gone, no longer the person's, or no longer of the kind — HR-only or not —
+// the caller's authority was judged on (hrOnly).
+func lockAbsence(ctx context.Context, txq *store.Queries, id, personID int64, hrOnly bool) (store.StaffAbsence, store.StaffAbsenceType, error) {
 	row, err := txq.LockAbsence(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && row.PersonID != personID) {
 		return row, store.StaffAbsenceType{}, notFound()
@@ -714,6 +708,9 @@ func lockAbsence(ctx context.Context, txq *store.Queries, id, personID int64) (s
 	t, err := txq.GetAbsenceType(ctx, row.TypeID)
 	if err != nil {
 		return row, t, fmt.Errorf("staff: read absence type %d: %w", row.TypeID, err)
+	}
+	if hrOnlyType(t.Visibility) != hrOnly {
+		return row, t, notFound()
 	}
 	return row, t, nil
 }
@@ -749,10 +746,7 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 	if err != nil {
 		return nil, err
 	}
-	current, err := s.mayChangeAbsence(ctx, caller, req.Id)
-	if errors.Is(err, errForbidden) {
-		return gen.PutStaffAbsencesById403JSONResponse(apicommon.ForbiddenBody()), nil
-	}
+	current, _, err := s.authorityOn(ctx, caller, req.Id, writeChange)
 	if _, ok := asRefusal(err); ok {
 		return gen.PutStaffAbsencesById404Response{}, nil
 	}
@@ -770,7 +764,7 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 	personID := current.StaffAbsence.PersonID
 	var w absenceWrite
 	err = s.withPersonLock(ctx, personID, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		before, beforeType, err := lockAbsence(ctx, txq, req.Id, personID)
+		before, beforeType, err := lockAbsence(ctx, txq, req.Id, personID, hrOnlyType(current.Visibility))
 		if err != nil {
 			return err
 		}
@@ -831,10 +825,7 @@ func (s *server) DeleteStaffAbsencesById(ctx context.Context, req gen.DeleteStaf
 	if err != nil {
 		return nil, err
 	}
-	current, err := s.mayChangeAbsence(ctx, caller, req.Id)
-	if errors.Is(err, errForbidden) {
-		return gen.DeleteStaffAbsencesById403JSONResponse(apicommon.ForbiddenBody()), nil
-	}
+	current, _, err := s.authorityOn(ctx, caller, req.Id, writeChange)
 	if _, ok := asRefusal(err); ok {
 		return gen.DeleteStaffAbsencesById404Response{}, nil
 	}
@@ -847,7 +838,7 @@ func (s *server) DeleteStaffAbsencesById(ctx context.Context, req gen.DeleteStaf
 	}
 	personID := current.StaffAbsence.PersonID
 	err = s.withPersonLock(ctx, personID, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		row, t, err := lockAbsence(ctx, txq, req.Id, personID)
+		row, t, err := lockAbsence(ctx, txq, req.Id, personID, hrOnlyType(current.Visibility))
 		if err != nil {
 			return err
 		}

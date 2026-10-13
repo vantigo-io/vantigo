@@ -134,7 +134,9 @@ WHERE (sqlc.narg('person_id')::bigint IS NULL OR a.person_id = sqlc.narg('person
                  AND a.status = 'registered' THEN 'approved' ELSE a.status END)
   AND (@everyone::boolean OR a.person_id = ANY(@full_ids::bigint[])
        OR (a.person_id = ANY(@colleague_ids::bigint[]) AND a.status IN ('approved', 'registered')
-           AND sqlc.narg('status')::text IS NULL));
+           AND sqlc.narg('status')::text IS NULL))
+  AND NOT (@neutral::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint
+           AND a.status NOT IN ('approved', 'registered'));
 
 -- name: ListAbsences :many
 -- ListAbsences is one page of the absences the caller may see, newest first:
@@ -145,7 +147,10 @@ WHERE (sqlc.narg('person_id')::bigint IS NULL OR a.person_id = sqlc.narg('person
 -- rows must not pick out who was sick (review C1). With @neutral — a caller
 -- who reads an HR-only type as leave, on every row but their own
 -- (@self_id) — a status filter matches such a row by the status it is shown
--- as, a registration as an approval (leak 2).
+-- as, a registration as an approval (leak 2), and an HR-only row that is not
+-- approved or registered — a request, a refusal, a cancel — is not listed
+-- at all: to its leave-reader every HR-only row is an approved leave they
+-- never saw asked for (review H4, interim option b).
 SELECT sqlc.embed(a), t.kind, t.visibility, t.unit
 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE (sqlc.narg('person_id')::bigint IS NULL OR a.person_id = sqlc.narg('person_id')::bigint)
@@ -157,6 +162,8 @@ WHERE (sqlc.narg('person_id')::bigint IS NULL OR a.person_id = sqlc.narg('person
   AND (@everyone::boolean OR a.person_id = ANY(@full_ids::bigint[])
        OR (a.person_id = ANY(@colleague_ids::bigint[]) AND a.status IN ('approved', 'registered')
            AND sqlc.narg('status')::text IS NULL))
+  AND NOT (@neutral::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint
+           AND a.status NOT IN ('approved', 'registered'))
 ORDER BY a.first_day DESC, a.id DESC
 LIMIT @page_size OFFSET @page_offset;
 
@@ -194,23 +201,28 @@ WHERE id = @id
 RETURNING *;
 
 -- name: RequestedAbsences :many
--- RequestedAbsences is the requests of @person_ids' people — everyone's with
--- @everyone — but @exclude_person's, oldest first: the approvals inbox
--- (plan Task 4). The partial index on requested rows serves it.
+-- RequestedAbsences is the requests the caller decides, oldest first: the
+-- approvals inbox (plan Task 4). A request of a plain type is
+-- @person_ids' people's — everyone's with @everyone; one of an HR-only type
+-- is decided by staff:personal-data alone (@personal_data, review H4). Never
+-- the caller's own (@self_id), but a plain one when they approve their own
+-- (@self_approves). The partial index on requested rows serves it.
 SELECT sqlc.embed(a), t.kind, t.visibility, t.unit
 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE a.status = 'requested'
-  AND (@everyone::boolean OR a.person_id = ANY(@person_ids::bigint[]))
-  AND a.person_id IS DISTINCT FROM sqlc.narg('exclude_person')::bigint
+  AND ((t.visibility = 'absent' AND (@everyone::boolean OR a.person_id = ANY(@person_ids::bigint[])))
+       OR (t.visibility <> 'absent' AND @personal_data::boolean))
+  AND (a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint OR (t.visibility = 'absent' AND @self_approves::boolean))
 ORDER BY a.created_at, a.id
 LIMIT @page_size OFFSET @page_offset;
 
 -- name: CountRequestedAbsences :one
 -- CountRequestedAbsences counts what RequestedAbsences pages through.
-SELECT count(*) FROM staff.absences a
+SELECT count(*) FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE a.status = 'requested'
-  AND (@everyone::boolean OR a.person_id = ANY(@person_ids::bigint[]))
-  AND a.person_id IS DISTINCT FROM sqlc.narg('exclude_person')::bigint;
+  AND ((t.visibility = 'absent' AND (@everyone::boolean OR a.person_id = ANY(@person_ids::bigint[])))
+       OR (t.visibility <> 'absent' AND @personal_data::boolean))
+  AND (a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint OR (t.visibility = 'absent' AND @self_approves::boolean));
 
 -- name: CalendarAbsences :many
 -- CalendarAbsences is the requested, approved and registered rows of

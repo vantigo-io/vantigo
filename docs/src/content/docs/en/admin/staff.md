@@ -598,6 +598,15 @@ manager, and HR's to another holder of `staff:approve` or `staff:manage`. A mana
 decides only once their person is linked to an active user
 ([Link people to their users](#link-people-to-their-users)).
 
+**HR-only leave is decided by `staff:personal-data`** (for now, awaiting the owner's
+word): a request of an HR-only type — pregnancy leave, a religious holiday, any company
+type marked HR-only — goes to no manager, no holder of `staff:approve` and no HR without
+`staff:personal-data`, and none of them is mailed about it. Anyone holding
+`staff:personal-data` but the person decides it in their approvals inbox, and only HR
+with `staff:personal-data` changes, cancels or corrects such a row. Give that
+permission to whoever should decide such leave; with no other holder, the person's
+request waits. To everyone else the leave appears only once approved, as *leave*.
+
 **The one exception, for now** (provisional, awaiting the owner's word): someone holding
 `staff:approve` or `staff:manage` who heads the structure — they manage a department
 with no manager above it — and has no manager with an active user may approve their
