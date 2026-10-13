@@ -115,7 +115,7 @@ CREATE UNIQUE INDEX ux_pay_links_live ON invoices.pay_links (invoice_id) WHERE r
 -- waited. Where that guard blanks a note, this one refuses: a link to, or a
 -- payment by, an anonymised buyer must never exist (plan reading 19).
 -- +goose StatementBegin
-CREATE FUNCTION invoices.guard_pay_link_insert()
+CREATE FUNCTION invoices.guard_payment_child_insert()
 RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
     parent_kind     text;
@@ -156,7 +156,7 @@ CREATE TRIGGER tr_pay_links_immutable
     FOR EACH ROW EXECUTE FUNCTION invoices.refuse_pay_link_change();
 CREATE TRIGGER tr_pay_links_parent
     BEFORE INSERT ON invoices.pay_links
-    FOR EACH ROW EXECUTE FUNCTION invoices.guard_pay_link_insert();
+    FOR EACH ROW EXECUTE FUNCTION invoices.guard_payment_child_insert();
 
 -- One Vipps ePayment of an invoice (D16): made by the pay page (pay_link) or
 -- on site (on_site), polled by the invoices-payments worker under a lease.
@@ -267,15 +267,17 @@ $function$;
 -- from NULL and replaced only before its first capture was attempted (the
 -- re-decision, m3). A live attempt's state columns change as the worker
 -- learns; a terminal one (captured, cancelled, aborted, expired, terminated,
--- capture_failed, failed, abandoned) changes only its lease and next poll,
--- its release — pending true to false, with the cancelled amount — and,
--- captured, its refunded amount and refund watch.
+-- capture_failed, failed, abandoned) changes only the worker's bookkeeping —
+-- its lease, next poll, polls and last error, and its finish, set once from
+-- NULL — its release — pending true to false, with the cancelled amount —
+-- and, captured, its refunded amount and refund watch: the release of the
+-- uncaptured rest and the refund watch keep polling a finished attempt.
 -- +goose StatementBegin
 CREATE FUNCTION invoices.refuse_payment_attempt_change()
 RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
-    terminal_free text[] := ARRAY['lease_id', 'lease_until', 'next_poll_at', 'release_pending', 'cancelled_amount',
-        'refunded_amount', 'refund_watch_until'];
+    terminal_free text[] := ARRAY['lease_id', 'lease_until', 'next_poll_at', 'polls', 'last_error', 'finished_at',
+        'release_pending', 'cancelled_amount', 'refunded_amount', 'refund_watch_until'];
 BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'invoices: a payment attempt is never deleted' USING ERRCODE = 'P0001';
@@ -289,6 +291,7 @@ BEGIN
     END IF;
     IF OLD.state IN ('captured', 'cancelled', 'aborted', 'expired', 'terminated', 'capture_failed', 'failed', 'abandoned') THEN
         IF (to_jsonb(OLD) - terminal_free) <> (to_jsonb(NEW) - terminal_free)
+           OR (OLD.finished_at IS NOT NULL AND NEW.finished_at IS DISTINCT FROM OLD.finished_at)
            OR (NEW.release_pending AND NOT OLD.release_pending)
            OR (OLD.release_pending AND NOT NEW.release_pending AND NEW.cancelled_amount IS NULL)
            OR (NEW.cancelled_amount IS DISTINCT FROM OLD.cancelled_amount
@@ -316,7 +319,7 @@ CREATE TRIGGER tr_payment_attempts_immutable
     FOR EACH ROW EXECUTE FUNCTION invoices.refuse_payment_attempt_change();
 CREATE TRIGGER tr_payment_attempts_parent
     BEFORE INSERT ON invoices.payment_attempts
-    FOR EACH ROW EXECUTE FUNCTION invoices.guard_pay_link_insert();
+    FOR EACH ROW EXECUTE FUNCTION invoices.guard_payment_child_insert();
 CREATE TRIGGER tr_payment_attempts_reference
     BEFORE INSERT ON invoices.payment_attempts
     FOR EACH ROW EXECUTE FUNCTION invoices.set_payment_attempt_reference();
@@ -379,6 +382,6 @@ DROP TABLE invoices.payment_provider_credentials;
 DROP FUNCTION invoices.refuse_payment_attempt_change();
 DROP FUNCTION invoices.set_payment_attempt_reference();
 DROP FUNCTION invoices.refuse_pay_link_change();
-DROP FUNCTION invoices.guard_pay_link_insert();
+DROP FUNCTION invoices.guard_payment_child_insert();
 DROP FUNCTION invoices.refuse_payment_settings_change();
 DROP FUNCTION invoices.refuse_row_change();
