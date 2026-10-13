@@ -1,37 +1,12 @@
 import { appUrl } from "@vantigo/frontend-shell";
 import { type CustomersQueryParams, customersSearchParams } from "./customers";
-import { ApiValidationError, handleUnauthorized, readJson, request } from "./request";
+import { ApiValidationError, handleUnauthorized, readJson } from "./request";
 
 /** A file the server handed over, and the name it attached it under. */
 export interface CsvDownload {
   blob: Blob;
   fileName: string;
 }
-
-/**
- * One problem with one row of an import (customers import/export design D3):
- * `row` is the 1-based data row, `column` the header of a field's error — null
- * for the row as a whole, which the wire says by omitting it.
- */
-export interface CustomerImportError {
-  row: number;
-  column: string | null;
-  message: string;
-}
-
-/** What an import did, or in a dry run would do. */
-export interface CustomerImportResult {
-  dryRun: boolean;
-  rows: number;
-  created: number;
-  updated: number;
-  failed: number;
-  errors: CustomerImportError[];
-}
-
-type RawCustomerImportResult = Omit<CustomerImportResult, "errors"> & {
-  errors: Array<Omit<CustomerImportError, "column"> & { column?: string }>;
-};
 
 /**
  * The error a download throws once it has signed the person out: the shared
@@ -118,30 +93,4 @@ export const saveCsv = ({ blob, fileName }: CsvDownload): void => {
     link.remove();
     URL.revokeObjectURL(url);
   }, 0);
-};
-
-/**
- * Sends the file to the import: one part named `file`, the `Content-Type` left
- * to the browser so the multipart boundary is its own. `dryRun: true` keeps
- * nothing. A file the server refuses as a whole is an `ApiValidationError`
- * whose `fields.file` says why; a second import while one runs is a 409.
- * `signal` calls off a check nobody waits for any more — the server runs one
- * import at a time, so an abandoned one would refuse the person's next check.
- */
-export const importCustomers = async (
-  file: File,
-  options: { dryRun: boolean; allowDuplicateIdentity: boolean; signal?: AbortSignal },
-): Promise<CustomerImportResult> => {
-  const form = new FormData();
-  form.append("file", file, file.name);
-  const query = new URLSearchParams({
-    dryRun: String(options.dryRun),
-    allowDuplicateIdentity: String(options.allowDuplicateIdentity),
-  });
-  const raw = await request<RawCustomerImportResult>(`/api/v1/customers/import?${query}`, {
-    method: "POST",
-    body: form,
-    signal: options.signal,
-  });
-  return { ...raw, errors: raw.errors.map((error) => ({ ...error, column: error.column ?? null })) };
 };

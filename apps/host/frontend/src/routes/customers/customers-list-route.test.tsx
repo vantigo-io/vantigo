@@ -75,21 +75,21 @@ describe("the customers list route's capability props", () => {
     expect(screen.getByTestId("can-edit")).toHaveTextContent("false");
   });
 
-  it("passes canImport only for customers:create, customers:update and customers:view together, and canExport from customers:view", () => {
-    // The import operation's own rule: it both creates and updates, and every
-    // write it stands in for needs view by hand.
-    withPermissions(["customers:view", "customers:update"]);
+  it("passes canImport only for customers:import and customers:view together, and canExport from customers:view", () => {
+    // The import's own rule (customers import wizard design D4): the key is
+    // the door, and view because every answer names customers.
+    withPermissions(["customers:view", "customers:create", "customers:update"]);
     renderPage();
     expect(screen.getByTestId("can-import")).toHaveTextContent("false");
     expect(screen.getByTestId("can-export")).toHaveTextContent("true");
     cleanup();
 
-    withPermissions(["customers:create", "customers:update"]);
+    withPermissions(["customers:import"]);
     renderPage();
     expect(screen.getByTestId("can-import")).toHaveTextContent("false");
     cleanup();
 
-    withPermissions(["customers:view", "customers:create", "customers:update"]);
+    withPermissions(["customers:view", "customers:import"]);
     renderPage();
     expect(screen.getByTestId("can-import")).toHaveTextContent("true");
   });
