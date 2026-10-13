@@ -496,15 +496,19 @@ Dette gjelder i dag, gjennom Ansatte-API-et:
   eldste først; fraværskalenderen viser en måned for teamet ditt — eller, med tilgang
   til personoversikten, for alle, der kolleger bare ser dagene noen er borte.
 - **To fravær samme dag** kan stå sammen bare når begge typene tillater en prosent og
-  prosentene til sammen er høyst 100 % — en gradert sykmelding teller med graden sin, så
-  50 % syk ved siden av 50 % permisjon går. En søknad du har sendt teller som om den var
+  prosentene til sammen er høyst 100 % — men en sykmelding av hvilken som helst grad kan
+  stå ved siden av en permisjon som lar en del av dagen stå igjen, siden legen graderer
+  den mot arbeidet som er igjen. En søknad du har sendt teller som om den var
   innvilget, så du kan ikke søke to ganger om samme dag.
-- **Syk i ferien.** En 100 % sykmelding over innvilget ferie deler ferien rundt seg og
-  gir dagene tilbake til kontoen din; en gradert sykmelding lar ferien stå. En
-  sykmelding over en egenmelding erstatter dagene den dekker.
+- **Syk i ferien.** En sykmelding endrer ikke den innvilgede ferien din av seg selv. Er
+  du helt arbeidsufør (100 % sykmelding), kan du kreve at ferien utsettes — med
+  legeerklæring, og senest siste arbeidsdag før ferien når du blir syk før den; si fra
+  til HR, som registrerer det. Ferien deles da rundt sykmeldingen, og dagene går tilbake
+  til kontoen din. En sykmelding over en egenmelding erstatter dagene den dekker.
 - **Egenmelding** følger selskapets regler: med lovens minimum tre kalenderdager om
   gangen og fire ganger på tolv måneder. Dager på rad er én egenmelding, og en helg
-  mellom to teller med — egenmelding fredag og igjen mandag er fire dager. Den avvises,
+  mellom to teller med — egenmelding fredag og igjen mandag er fire dager; én sykdom
+  rundt en sykmelding er én egenmelding. Den avvises,
   med begrunnelse, når du har brukt det reglene tillater, før du har vært ansatt de
   månedene de krever, etter sekstende dag av et sykefravær, eller mens HR har trukket
   tilbake retten din; da trenger du sykmelding. Egenmeldingsstatusen din viser hva du

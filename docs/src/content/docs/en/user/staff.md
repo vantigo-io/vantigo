@@ -480,16 +480,20 @@ step. What stands today, through the Staff API, is this:
   A visit to the doctor is hours of one day; everything else is whole days, some types
   as a percentage of each day. A sick absence carries no note.
 - **Two absences on one day** stand together only when both types allow a percentage
-  and the percentages add up to at most 100 % — a graded sykmelding counts its degree,
-  so 50 % sick beside 50 % leave stands. A request you have made counts as if it were
+  and the percentages add up to at most 100 % — but a sykmelding of any degree stands
+  beside a leave that leaves part of your day, as the doctor grades it against the
+  work that is left. A request you have made counts as if it were
   approved, so you cannot ask twice for the same day.
-- **Sick during your holiday.** A 100 % sykmelding over approved ferie splits the ferie
-  around it and gives the days back to your account; a graded one leaves the ferie as it
-  is. A sykmelding over an egenmelding replaces the days it covers.
+- **Sick during your holiday.** A sykmelding does not change your approved ferie by
+  itself. If you are wholly unable to work (a 100 % sykmelding), you may demand that the
+  holiday be postponed — with a legeerklæring, and by your last working day before the
+  holiday when you fall ill before it; tell HR, who records it. The ferie is then split
+  around the sykmelding and the days return to your account. A sykmelding over an
+  egenmelding replaces the days it covers.
 - **Egenmelding** follows the company's policy: under the statutory minimum, three
   calendar days at a time and four times in twelve months. Days in a row are one
   egenmelding, and a weekend between two counts with it — egenmelding on Friday and
-  again on Monday is four days. It is refused, with the reason, when you have used what
+  again on Monday is four days; one illness around a sykmelding is one egenmelding. It is refused, with the reason, when you have used what
   the policy allows, before you have been employed the months it asks, past the
   sixteenth day of a sickness, or while HR has withdrawn your right to it; then you
   need a sykmelding. Your egenmelding standing shows what you have used in the last

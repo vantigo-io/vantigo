@@ -164,7 +164,10 @@ the schemes and the policy below can be set up now. Through the API, as a user w
    its revision in `If-Match`. A seed changes only its names, its place and whether it
    is hidden; anything else is refused `seed_immutable`. A type of your own may be made
    HR-only at any time, but once someone has taken it as HR-only it cannot be opened to
-   colleagues and managers (`absence_type_in_use`): add another type instead.
+   colleagues and managers (`absence_type_in_use`): add another type instead. Making a
+   type in use HR-only reaches back: from then on its rows already entered show
+   managers only *leave*, and their requests, refusals and history are hidden from them
+   too.
 4. Verify: `GET /api/v1/staff/meta` lists the types people may pick — the hidden ones
    left out.
 
@@ -221,7 +224,9 @@ Under a preset the numbers are the preset's, whatever you send. `selfCertAfterMo
 policy. The policy is applied to every egenmelding as it is registered: one past what
 it allows is refused and the employee is told to bring a sykmelding. An occurrence is
 the days in a row, a weekend or public holiday between two egenmeldinger counting as
-days of it — under the minimum, egenmelding Friday and again Monday is four days.
+days of it — under the minimum, egenmelding Friday and again Monday is four days. Days
+a sykmelding covers between two egenmeldinger join them too, as one illness, without
+counting as self-certified days.
 
 **Automatic carry-over.** `autoCarryOver: true` carries the holiday left at a year's
 end into the next year without HR's action, as a forced carry-over. The day you turn
@@ -281,8 +286,9 @@ may withdraw the right for a period:
    `until` — a day after today, at most a year ahead — and the `reason`.
 2. Check `GET /api/v1/staff/people/{id}/self-certification`: `withdrawnUntil` and
    `withdrawnReason` are there.
-3. Until that day, an egenmelding for the person is refused
-   (`self_certification_withdrawn`); they register a sykmelding instead.
+3. From today until that day, an egenmelding for the person is refused
+   (`self_certification_withdrawn`); they register a sykmelding instead. Egenmelding for
+   days before you recorded the withdrawal still stands.
 
 To lift it early, send `{"until": null}`. The withdrawal and its lifting are in the
 person's history for the person, HR and `staff:personal-data` — never for the manager,
@@ -305,23 +311,49 @@ holds `staff:approve` everyone's.
    dialogue meeting at twenty-six. A milestone is shown as due only while the case is
    open and has lasted to within a week of it, so a short sickness raises nothing.
    Mark one done (`POST /api/v1/staff/cases/{id}/milestones/{kind}/done`, today unless
-   you send `doneAt`) or waive it as plainly unnecessary with a reason (`.../waive`).
-   The manager, HR and `staff:approve` may.
+   you send `doneAt`, never before the case's first day) or waive it as plainly
+   unnecessary with a reason (`.../waive`) — never a diagnosis; only the employee and
+   `staff:personal-data` read the reason. The manager, HR and `staff:approve` may. The
+   end of the arbeidsgiverperiode follows from the sick days and is not marked.
 3. **Notes.** The accommodation note (`PUT /api/v1/staff/cases/{id}`) is for
    tilrettelegging — what the employee can and cannot do — and never a diagnosis; the
    manager and HR write it. A milestone's own note is `staff:personal-data`'s, and only
    the employee and `staff:personal-data` read it. A health document is filed under the
    case with `caseId` on `PUT /api/v1/staff/documents/{id}`.
 4. **The 52-week end** is estimated as the first day plus 364 days; HR sets NAV's date
-   with `maxBenefitEstimate` and sends it as null to return to the estimate.
+   with `maxBenefitEstimate` and sends it as null to return to the estimate. A field you
+   leave out of `PUT /api/v1/staff/cases/{id}` is kept. NAV counts the 248 sykepenger
+   days across sicknesses unless the employee has been fit for work for 26 weeks
+   between (ftrl. § 8-12), so an earlier case can bring the end forward.
 5. **The close.** A case closes by itself sixteen days after its last day. HR closes it
    earlier with `POST /api/v1/staff/cases/{id}/close`; a sick absence that joins it
    later opens it again.
 
-When a 100 % sykmelding is registered over approved ferie, the ferie is split around
-it and the days return to the holiday account; a graded sykmelding leaves the ferie as
-it is. A sykmelding over an egenmelding shortens the egenmelding, or removes it when it
-covers it whole.
+When a sick absence fills the gap between two cases, the two become one: the older
+keeps its id and takes over the other's marked milestones and notes, appended after its
+own.
+
+A sykmelding over an egenmelding shortens the egenmelding, or removes it when it covers
+it whole.
+
+## Postpone holiday for sickness
+
+A sykmelding over approved ferie does not change the ferie by itself: whether the
+holiday is postponed is the employee's demand, with a legeerklæring (ferieloven § 9).
+Meanwhile your dashboard lists the ferie under *ferie affected by sickness*.
+
+1. Check the sykmelding is 100 %: a graded one gives no right to postpone.
+2. When the employee demands it, record the demand on the sykmelding:
+   `POST /api/v1/staff/absences/{id}/postpone-holiday` (`staff:manage`) with
+   `demandedOn`, the day they demanded it (today when left out).
+3. Staff splits the ferie around the sykmelding and the days return to the holiday
+   account; the answer shows the ferie as it now stands, and the item leaves the
+   dashboard.
+
+Sickness that began **before** the holiday must have been demanded by the last working
+day before it; a later demand is refused (`holiday_postponement_too_late`). Sickness
+**during** the holiday gives replacement days whenever it is demanded. A sykmelding over
+a ferie that is only requested leaves the request; its approval is then refused.
 
 ## The care-day fields
 
@@ -345,7 +377,10 @@ carer). The year's sick-child working days are counted against it; the first ten
 the employer's own, the rest are refunded by NAV — from the first day when the only
 children who qualify are over twelve with extra days, which payroll applies by hand.
 More than the entitlement is shown, never refused. The right needs four weeks'
-employment: before that the answer says `eligible: false` and from which day.
+employment — counted from the start of an unbroken run of employments, one starting
+the day after another ended continuing it: before that the answer says
+`eligible: false` and from which day, and a sick-child day before it is counted apart
+(`ineligibleDays`), not as a care day.
 
 ## Answer an innsyn request
 

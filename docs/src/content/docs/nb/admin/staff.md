@@ -168,7 +168,10 @@ reglene under kan settes opp allerede nå. Gjennom API-et, som en bruker med
    revisjonen i `If-Match`. En standardtype endrer bare navnene, plassen og om den er
    skjult; alt annet avvises med `seed_immutable`. En egen type kan når som helst gjøres
    til bare for HR, men når noen har tatt den som bare for HR, kan den ikke åpnes for
-   kolleger og ledere (`absence_type_in_use`): legg heller til en ny type.
+   kolleger og ledere (`absence_type_in_use`): legg heller til en ny type. Å gjøre en
+   type som er i bruk til bare for HR virker bakover: fra da av viser radene som alt er
+   lagt inn, bare *permisjon* for ledere, og søknadene, avslagene og historikken deres
+   skjules også for dem.
 4. Kontroller: `GET /api/v1/staff/meta` lister typene folk kan velge — uten de skjulte.
 
 **Velg a-meldingskoden etter permisjonens rettsgrunnlag.** A-meldingen tar imot seks
@@ -227,7 +230,8 @@ under alle reglene. Reglene brukes på hver egenmelding når den registreres: en
 forbi det de tillater, avvises, og den ansatte får beskjed om å skaffe sykmelding. En
 egenmeldingsperiode er dagene på rad, og en helg eller helligdag mellom to egenmeldinger
 teller som dager i den — med minimumsregelen er egenmelding fredag og igjen mandag fire
-dager.
+dager. Dager en sykmelding dekker mellom to egenmeldinger, binder dem også sammen, som
+én sykdom, uten å telle som egenmeldte dager.
 
 **Automatisk overføring.** `autoCarryOver: true` overfører ferie som står igjen ved
 årsskiftet til neste år uten at HR gjør noe, som tvungen overføring. Dagen du slår den på
@@ -287,8 +291,9 @@ trekke tilbake retten for en periode:
    `until` — en dag etter i dag, høyst ett år fram — og `reason`.
 2. Sjekk `GET /api/v1/staff/people/{id}/self-certification`: `withdrawnUntil` og
    `withdrawnReason` står der.
-3. Fram til den dagen avvises egenmelding for personen
+3. Fra i dag og fram til den dagen avvises egenmelding for personen
    (`self_certification_withdrawn`); vedkommende registrerer sykmelding i stedet.
+   Egenmelding for dager før du registrerte tilbaketrekkingen, står seg.
 
 For å oppheve den før tiden, send `{"until": null}`. Tilbaketrekkingen og opphevingen
 står i personens historikk for personen selv, HR og `staff:personal-data` — aldri for
@@ -310,22 +315,47 @@ følger — personens leder ser sine medarbeideres, HR og den som har `staff:app
    tjueseks. En milepæl vises som aktuell bare mens saken er åpen og har vart til en uke
    før den, så et kort sykefravær gir ingenting å følge opp. Merk en som gjort
    (`POST /api/v1/staff/cases/{id}/milestones/{kind}/done`, i dag hvis du ikke sender
-   `doneAt`) eller frafall den som åpenbart unødvendig med en begrunnelse (`.../waive`).
-   Lederen, HR og `staff:approve` kan det.
+   `doneAt`, aldri før sakens første dag) eller frafall den som åpenbart unødvendig med
+   en begrunnelse (`.../waive`) — aldri en diagnose; bare den ansatte og
+   `staff:personal-data` leser begrunnelsen. Lederen, HR og `staff:approve` kan det.
+   Slutten på arbeidsgiverperioden følger av sykedagene og markeres ikke.
 3. **Notater.** Tilretteleggingsnotatet (`PUT /api/v1/staff/cases/{id}`) gjelder
    tilrettelegging — hva den ansatte kan og ikke kan — og aldri en diagnose; lederen og
    HR skriver det. En milepæls eget notat er `staff:personal-data` sitt, og bare den
    ansatte og `staff:personal-data` leser det. Et helsedokument arkiveres under saken
    med `caseId` på `PUT /api/v1/staff/documents/{id}`.
 4. **52-ukersgrensen** anslås som første dag pluss 364 dager; HR setter NAVs dato med
-   `maxBenefitEstimate` og sender den som null for å gå tilbake til anslaget.
+   `maxBenefitEstimate` og sender den som null for å gå tilbake til anslaget. Et felt du
+   utelater i `PUT /api/v1/staff/cases/{id}`, beholdes. NAV teller de 248
+   sykepengedagene på tvers av sykefravær med mindre den ansatte har vært arbeidsfør i
+   26 uker imellom (ftrl. § 8-12), så en tidligere sak kan flytte grensen fram.
 5. **Avslutningen.** En sak avsluttes av seg selv seksten dager etter siste dag. HR
    avslutter den tidligere med `POST /api/v1/staff/cases/{id}/close`; et sykefravær som
    hører til den senere, åpner den igjen.
 
-Når en 100 % sykmelding registreres over innvilget ferie, deles ferien rundt den, og
-dagene går tilbake til feriekontoen; en gradert sykmelding lar ferien stå. En sykmelding
-over en egenmelding korter egenmeldingen inn, eller fjerner den når den dekker den helt.
+Når et sykefravær fyller gapet mellom to saker, blir de to én: den eldste beholder id-en
+sin og tar over den andres markerte milepæler og notater, lagt etter sine egne.
+
+En sykmelding over en egenmelding korter egenmeldingen inn, eller fjerner den når den
+dekker den helt.
+
+## Utsett ferie ved sykdom
+
+En sykmelding over innvilget ferie endrer ikke ferien av seg selv: om ferien utsettes,
+er den ansattes krav, med legeerklæring (ferieloven § 9). Imens viser dashbordet ditt
+ferien under *ferie berørt av sykdom*.
+
+1. Sjekk at sykmeldingen er 100 %: en gradert sykmelding gir ikke rett til utsettelse.
+2. Når den ansatte krever det, registrer kravet på sykmeldingen:
+   `POST /api/v1/staff/absences/{id}/postpone-holiday` (`staff:manage`) med
+   `demandedOn`, dagen kravet ble satt fram (i dag hvis den utelates).
+3. Ansatte deler ferien rundt sykmeldingen, og dagene går tilbake til feriekontoen;
+   svaret viser ferien slik den nå står, og punktet forsvinner fra dashbordet.
+
+Sykdom som begynte **før** ferien, må være krevd senest siste arbeidsdag før den; et
+senere krav avvises (`holiday_postponement_too_late`). Sykdom **i** ferien gir
+erstatningsdager når enn kravet kommer. En sykmelding over ferie som bare er søkt om,
+lar søknaden stå; godkjenningen avvises da.
 
 ## Omsorgsdagfeltene
 
@@ -348,8 +378,11 @@ Telleren er `GET /api/v1/staff/people/{id}/care-days?year` (den ansatte, HR og
 barn (20 for den som er alene). Årets arbeidsdager med sykt barn telles mot den; de
 første ti betaler arbeidsgiveren selv, resten refunderer NAV — fra første dag når de
 eneste barna som gir rett, er over tolv med utvidet rett, noe lønn bruker for hånd. Mer
-enn retten vises, men avvises aldri. Retten krever fire ukers ansettelse: før det sier
-svaret `eligible: false` og fra hvilken dag.
+enn retten vises, men avvises aldri. Retten krever fire ukers ansettelse — regnet fra
+starten av en sammenhengende rekke ansettelser, der en som begynner dagen etter at en
+annen sluttet, fortsetter den: før det sier svaret `eligible: false` og fra hvilken
+dag, og en dag med sykt barn før det telles for seg (`ineligibleDays`), ikke som
+omsorgsdag.
 
 ## Svar på en innsynsbegjæring
 

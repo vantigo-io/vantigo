@@ -50,7 +50,8 @@ var milestoneKinds = []string{milestoneEmployerPeriodEnd, milestoneFollowUpPlan,
 // milestoneOffsets are the dated milestones' days from the case's first day
 // (plan "Exact values"): the follow-up plan at four weeks (aml. § 4-6 (3)),
 // the first dialogue meeting at seven, NAV's activity requirement at eight
-// (ftrl. § 8-7a) and the second dialogue meeting at twenty-six.
+// (ftrl. § 8-8 (2); NAV's own follow-up is § 8-7 a) and the second
+// dialogue meeting at twenty-six.
 var milestoneOffsets = map[string]int{
 	milestoneFollowUpPlan: 28,
 	milestoneDialogue1:    49,
@@ -155,10 +156,11 @@ func milestoneDates(first time.Time) map[string]time.Time {
 }
 
 // milestoneDue is whether a milestone dated due is due (plan pre-flight I5):
-// it has a date, the case is open, and the case has lasted to within a week
-// of it — so a three-day case raises none.
-func milestoneDue(open bool, last time.Time, due *time.Time) bool {
-	return open && due != nil && !last.Before(due.AddDate(0, 0, -milestoneDueWithin))
+// it is not settled — done or waived (Task 5 review L7) — it has a date, the
+// case is open, and the case has lasted to within a week of it — so a
+// three-day case raises none.
+func milestoneDue(open, settled bool, last time.Time, due *time.Time) bool {
+	return open && !settled && due != nil && !last.Before(due.AddDate(0, 0, -milestoneDueWithin))
 }
 
 // caseClosed is whether a case whose last day is last is closed on today: HR

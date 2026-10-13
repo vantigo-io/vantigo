@@ -162,6 +162,9 @@ func (s *server) reconcileCases(ctx context.Context, txq *store.Queries, who act
 		var to *int64
 		if h, ok := heir[c.ID]; ok {
 			to = &h
+			if err := s.mergeCase(ctx, txq, who, personID, h, c, now); err != nil {
+				return err
+			}
 		}
 		from := c.ID
 		if err := txq.MoveCaseDocuments(ctx, store.MoveCaseDocumentsParams{ToCase: to, FromCase: &from}); err != nil {
@@ -175,6 +178,75 @@ func (s *server) reconcileCases(ctx context.Context, txq *store.Queries, who act
 		}
 	}
 	return nil
+}
+
+// appendNote is b after a, a blank line between, bounded to limit
+// characters; either alone when the other is empty.
+func appendNote(a, b *string, limit int) *string {
+	switch {
+	case a == nil:
+		return b
+	case b == nil:
+		return a
+	}
+	joined := []rune(*a + "\n\n" + *b)
+	if len(joined) > limit {
+		joined = joined[:limit]
+	}
+	v := string(joined)
+	return &v
+}
+
+// mergeCase carries what case from held onto the case into that took its
+// rows (review M3): each milestone's done day or waiver where into's has
+// neither, the milestones' notes and the accommodation note appended, the
+// estimate where into has none; recorded as case_merged on into, class E,
+// naming from.
+func (s *server) mergeCase(ctx context.Context, txq *store.Queries, who actor, personID, into int64, from store.StaffSickCase, now time.Time) error {
+	milestones, err := txq.CaseMilestones(ctx, []int64{into, from.ID})
+	if err != nil {
+		return fmt.Errorf("staff: read cases %d and %d's milestones: %w", into, from.ID, err)
+	}
+	theirs := map[string]store.StaffSickCaseMilestone{}
+	for _, m := range milestones {
+		if m.CaseID == from.ID {
+			theirs[m.Kind] = m
+		}
+	}
+	for _, m := range milestones {
+		o, ok := theirs[m.Kind]
+		if m.CaseID != into || !ok {
+			continue
+		}
+		next := m
+		if m.DoneAt == nil && !m.Waived {
+			next.DoneAt, next.DoneByUserID = o.DoneAt, o.DoneByUserID
+			next.Waived, next.WaivedReason, next.WaivedByUserID = o.Waived, o.WaivedReason, o.WaivedByUserID
+		}
+		next.Note = appendNote(m.Note, o.Note, milestoneNoteMax)
+		if err := txq.SetMilestoneFacts(ctx, store.SetMilestoneFactsParams{
+			DoneAt: next.DoneAt, DoneByUserID: next.DoneByUserID, Waived: next.Waived, WaivedReason: next.WaivedReason,
+			WaivedByUserID: next.WaivedByUserID, Note: next.Note, Now: now, CaseID: into, Kind: m.Kind,
+		}); err != nil {
+			return fmt.Errorf("staff: carry case %d's %s: %w", from.ID, m.Kind, err)
+		}
+	}
+	survivor, err := txq.GetSickCase(ctx, into)
+	if err != nil {
+		return fmt.Errorf("staff: read case %d: %w", into, err)
+	}
+	estimate := survivor.MaxBenefitEstimate
+	if !estimate.Valid {
+		estimate = from.MaxBenefitEstimate
+	}
+	if _, err := txq.UpdateCaseNotes(ctx, store.UpdateCaseNotesParams{
+		AccommodationNote:  appendNote(survivor.AccommodationNote, from.AccommodationNote, accommodationNoteMax),
+		MaxBenefitEstimate: estimate, Now: now, ID: into,
+	}); err != nil {
+		return fmt.Errorf("staff: carry case %d's notes: %w", from.ID, err)
+	}
+	return s.recordCaseEvent(ctx, txq, personID, into, eventCaseMerged, "", who, nil,
+		map[string]json.RawMessage{"mergedCaseId": caseValue(from.ID)})
 }
 
 // setCaseRows names case id on every row of chain that names another.
@@ -233,15 +305,17 @@ func caseResponse(c store.StaffSickCase, milestones []store.StaffSickCaseMilesto
 			}
 			due := civilPtr(m.DueDate)
 			item := gen.StaffCaseMilestone{
-				Kind: gen.StaffMilestoneKind(m.Kind), Due: milestoneDue(open, last, due), Waived: m.Waived,
-				WaivedReason: m.WaivedReason, Revision: m.Revision, DueDate: dateOf(m.DueDate),
+				Kind: gen.StaffMilestoneKind(m.Kind), Due: milestoneDue(open, m.DoneAt != nil || m.Waived, last, due), Waived: m.Waived,
+				Revision: m.Revision, DueDate: dateOf(m.DueDate),
 			}
 			if m.DoneAt != nil {
 				y, mo, d := m.DoneAt.UTC().Date()
 				item.DoneAt = &openapi_types.Date{Time: time.Date(y, mo, d, 0, 0, 0, 0, time.UTC)}
 			}
+			// The note and the waiver's reason are free text about a
+			// sickness: the health group's (review L5).
 			if a.reads(groupHealth) {
-				item.Note = m.Note
+				item.Note, item.WaivedReason = m.Note, m.WaivedReason
 			}
 			out.Milestones = append(out.Milestones, item)
 		}
@@ -490,6 +564,9 @@ func (s *server) PutStaffCasesById(ctx context.Context, req gen.PutStaffCasesByI
 	if f.failed() {
 		return gen.PutStaffCasesById400ApplicationProblemPlusJSONResponse(invalid(invalidCaseTitle, f)), nil
 	}
+	// A field left out is kept; one sent — null included — is written
+	// (review L6).
+	setNote, setEstimate := bodyHas(ctx, "accommodationNote"), bodyHas(ctx, "maxBenefitEstimate")
 	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
 	if err != nil {
 		return nil, err
@@ -500,13 +577,16 @@ func (s *server) PutStaffCasesById(ctx context.Context, req gen.PutStaffCasesByI
 		}
 		estimate := c.MaxBenefitEstimate
 		switch {
-		case a.Manage:
+		case setEstimate && !a.Manage:
+			return refuseInvalid(invalidCaseTitle, fieldErrors{errs: fieldError("maxBenefitEstimate", "Only HR sets the 52-week estimate")})
+		case setEstimate:
 			estimate = pgtype.Date{}
 			if body.MaxBenefitEstimate != nil {
 				estimate = dayParam(body.MaxBenefitEstimate.Time)
 			}
-		case body.MaxBenefitEstimate != nil:
-			return refuseInvalid(invalidCaseTitle, fieldErrors{errs: fieldError("maxBenefitEstimate", "Only HR sets the 52-week estimate")})
+		}
+		if !setNote {
+			note = c.AccommodationNote
 		}
 		saved, err := txq.UpdateCaseNotes(ctx, store.UpdateCaseNotesParams{AccommodationNote: note, MaxBenefitEstimate: estimate, Now: s.deps.Clock(), ID: c.ID})
 		if err != nil {
@@ -591,6 +671,23 @@ func lockMilestone(ctx context.Context, txq *store.Queries, c store.StaffSickCas
 	return m, nil
 }
 
+// derivedMilestone is the field error of marking the end of the
+// arbeidsgiverperiode done or waived (review L8): it is derived from the
+// case's rows, a fact, not a task.
+func derivedMilestone() fieldErrors {
+	return fieldErrors{errs: fieldError("kind", "The end of the arbeidsgiverperiode follows from the sick days: it is neither marked done nor waived")}
+}
+
+// mergeFieldErrors is a with b's errors added.
+func mergeFieldErrors(a, b fieldErrors) fieldErrors {
+	for field, messages := range b.errs {
+		for _, m := range messages {
+			a.add(field, m)
+		}
+	}
+	return a
+}
+
 // PostStaffCasesByIdMilestonesByKindDone Mark a milestone done
 // (POST /api/v1/staff/cases/{id}/milestones/{kind}/done)
 func (s *server) PostStaffCasesByIdMilestonesByKindDone(ctx context.Context, req gen.PostStaffCasesByIdMilestonesByKindDoneRequestObject) (gen.PostStaffCasesByIdMilestonesByKindDoneResponseObject, error) {
@@ -607,7 +704,13 @@ func (s *server) PostStaffCasesByIdMilestonesByKindDone(ctx context.Context, req
 			fieldErrors{errs: fieldError("doneAt", "A milestone is done on a day that has come")})), nil
 	}
 	kind := string(req.Kind)
+	if kind == milestoneEmployerPeriodEnd {
+		return gen.PostStaffCasesByIdMilestonesByKindDone400ApplicationProblemPlusJSONResponse(invalid(invalidCaseTitle, derivedMilestone())), nil
+	}
 	out, err := s.writeCase(ctx, caller, req.Id, caseWriteMilestone, func(ctx context.Context, txq *store.Queries, c store.StaffSickCase, _ audience, who actor) error {
+		if doneOn.Before(civil(c.FirstDay)) {
+			return refuseInvalid(invalidCaseTitle, fieldErrors{errs: fieldError("doneAt", "A milestone is done on a day of the case: not before its first day")})
+		}
 		before, err := lockMilestone(ctx, txq, c, kind)
 		if err != nil {
 			return err
@@ -623,6 +726,8 @@ func (s *server) PostStaffCasesByIdMilestonesByKindDone(ctx context.Context, req
 	switch {
 	case err != nil:
 		return nil, err
+	case status == http.StatusBadRequest:
+		return gen.PostStaffCasesByIdMilestonesByKindDone400ApplicationProblemPlusJSONResponse(problem), nil
 	case status == http.StatusConflict:
 		return gen.PostStaffCasesByIdMilestonesByKindDone409ApplicationProblemPlusJSONResponse(problem), nil
 	case status != 0:
@@ -642,6 +747,9 @@ func (s *server) PostStaffCasesByIdMilestonesByKindWaive(ctx context.Context, re
 	reason := noteText(&body.Reason, waiveReasonMax, "reason", &f)
 	if reason == nil {
 		f.add("reason", "A waiver needs its reason")
+	}
+	if string(req.Kind) == milestoneEmployerPeriodEnd {
+		f = mergeFieldErrors(f, derivedMilestone())
 	}
 	if f.failed() {
 		return gen.PostStaffCasesByIdMilestonesByKindWaive400ApplicationProblemPlusJSONResponse(invalid(invalidCaseTitle, f)), nil

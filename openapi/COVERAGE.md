@@ -325,7 +325,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-## staff (110 uncovered)
+## staff (111 uncovered)
 
 - `DELETE /api/v1/staff/absences/{id}` (deleteStaffAbsencesById)
 - `DELETE /api/v1/staff/documents/{id}` (deleteStaffDocumentsById)
@@ -383,6 +383,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/staff/absences/{id}/approve` (postStaffAbsencesByIdApprove)
 - `POST /api/v1/staff/absences/{id}/cancel` (postStaffAbsencesByIdCancel)
 - `POST /api/v1/staff/absences/{id}/correct` (postStaffAbsencesByIdCorrect)
+- `POST /api/v1/staff/absences/{id}/postpone-holiday` (postStaffAbsencesByIdPostponeHoliday)
 - `POST /api/v1/staff/absences/{id}/reject` (postStaffAbsencesByIdReject)
 - `POST /api/v1/staff/absences` (postStaffAbsences)
 - `POST /api/v1/staff/business-units/{id}/archive` (postStaffBusinessUnitsByIdArchive)
@@ -438,4 +439,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/staff/settings` (putStaffSettings)
 - `PUT /api/v1/staff/terms/{id}` (putStaffTermsById)
 
-Total: 406 of 519 operations have no recorded exchange.
+Total: 407 of 520 operations have no recorded exchange.

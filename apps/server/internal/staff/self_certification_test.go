@@ -110,6 +110,12 @@ func TestSelfCertification_TheWithdrawal(t *testing.T) {
 		t.Errorf("withdrawn until %s, want 2026-12-31", civilOf(standing.WithdrawnUntil))
 	}
 	refused(t, w.kariC.Do(http.MethodPost, meAbsencesPath, absence(t, h, "egenmelding", "2026-11-30", "2026-11-30")), http.StatusConflict, "self_certification_withdrawn")
+	// The withdrawal applies from the day it was decided (review L1): an
+	// egenmelding for days before it stands.
+	if civilOf(standing.WithdrawnFrom) != today(t, h) {
+		t.Errorf("withdrawn from %s, want today %s", civilOf(standing.WithdrawnFrom), today(t, h))
+	}
+	requestOwn(t, w.kariC, absence(t, h, "egenmelding", "2026-09-01", "2026-09-01"))
 
 	for name, c := range map[string]*modtest.Client{"Kari": w.kariC, "HR": w.hr, "personal-data": w.pd} {
 		var got map[string]any
@@ -173,7 +179,7 @@ func TestCareDays(t *testing.T) {
 
 	var got gen.StaffCareDays
 	do(t, w.kariC, http.MethodGet, meCareDaysPath, nil, http.StatusOK, &got)
-	want := gen.StaffCareDays{PersonId: w.kari.Id, Year: 2026, Recorded: true, ChildrenCounted: 3, Entitlement: 25, Used: 15, Remaining: 10,
+	want := gen.StaffCareDays{PersonId: w.kari.Id, Year: 2026, Recorded: true, ChildrenCounted: 3, Entitlement: 25, Used: 15, IneligibleDays: 0, Remaining: 10,
 		EmployerPaid: 10, BeyondEmployer: 5, Eligible: true}
 	got.EligibleFrom = nil
 	if got != want {
@@ -195,6 +201,23 @@ func TestCareDays(t *testing.T) {
 	do(t, w.hr, http.MethodGet, careDaysPath(nils.Id), nil, http.StatusOK, &got)
 	if got.Eligible || civilOf(got.EligibleFrom) != "2026-09-29" || got.Recorded || got.Entitlement != 0 {
 		t.Errorf("a hire of 1 September = %+v, want not eligible before 2026-09-29, nothing recorded", got)
+	}
+	// The right is judged per day used (review L10): a sick child's day in
+	// the first four weeks is no care day; an employment that began the day
+	// after another ended continues it.
+	register(t, w.hr, nils.Id, absence(t, h, "sykt_barn", "2026-09-14", "2026-09-14"))
+	register(t, w.hr, nils.Id, absence(t, h, "sykt_barn", "2026-10-05", "2026-10-05"))
+	do(t, w.hr, http.MethodGet, careDaysPath(nils.Id), nil, http.StatusOK, &got)
+	if got.Used != 1 || got.IneligibleDays != 1 {
+		t.Errorf("a hire of 1 September = %+v, want one day used and one before the right", got)
+	}
+	h.Exec(t, `INSERT INTO staff.employments (person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, created_at, updated_at)
+		SELECT person_id, employment_number || '-0', relationship_type, business_unit_id, '2026-01-01', '2026-08-31', 'contract_ended', now(), now()
+		FROM staff.employments WHERE person_id = $1`, nils.Id)
+	got = gen.StaffCareDays{}
+	do(t, w.hr, http.MethodGet, careDaysPath(nils.Id), nil, http.StatusOK, &got)
+	if !got.Eligible || civilOf(got.EligibleFrom) != "2026-01-29" || got.Used != 2 || got.IneligibleDays != 0 {
+		t.Errorf("after an unbroken earlier employment = %+v, want eligible from 2026-01-29, both days used", got)
 	}
 	refused(t, w.nobody.Do(http.MethodGet, meCareDaysPath, nil), http.StatusNotFound, "no_person")
 }

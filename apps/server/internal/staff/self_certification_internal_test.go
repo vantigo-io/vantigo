@@ -46,33 +46,51 @@ func TestJudgeSelfCert(t *testing.T) {
 		existing  []daySpan
 		candidate daySpan
 		want      string
+		sick      []daySpan
 	}{
-		{"three days", minimum, nil, selfDays(t, "2026-10-05", "2026-10-07"), ""},
-		{"four days at once", minimum, nil, selfDays(t, "2026-10-05", "2026-10-08"), selfCertOverOccurrence},
+		{"three days", minimum, nil, selfDays(t, "2026-10-05", "2026-10-07"), "", nil},
+		{"four days at once", minimum, nil, selfDays(t, "2026-10-05", "2026-10-08"), selfCertOverOccurrence, nil},
 		{"1+1+1+1 rows on four consecutive weekdays: the fourth is refused", minimum,
 			[]daySpan{selfDays(t, "2026-10-05", "2026-10-05"), selfDays(t, "2026-10-06", "2026-10-06"), selfDays(t, "2026-10-07", "2026-10-07")},
-			selfDays(t, "2026-10-08", "2026-10-08"), selfCertOverOccurrence},
+			selfDays(t, "2026-10-08", "2026-10-08"), selfCertOverOccurrence, nil},
 		{"two contiguous rows are one occurrence", minimum,
-			[]daySpan{selfDays(t, "2026-10-05", "2026-10-05")}, selfDays(t, "2026-10-06", "2026-10-07"), ""},
+			[]daySpan{selfDays(t, "2026-10-05", "2026-10-05")}, selfDays(t, "2026-10-06", "2026-10-07"), "", nil},
 		{"Friday and again Monday: the weekend counts, Monday is day four", minimum,
-			[]daySpan{selfDays(t, "2026-10-09", "2026-10-09")}, selfDays(t, "2026-10-12", "2026-10-12"), selfCertOverOccurrence},
+			[]daySpan{selfDays(t, "2026-10-09", "2026-10-09")}, selfDays(t, "2026-10-12", "2026-10-12"), selfCertOverOccurrence, nil},
 		{"two short occurrences ten days apart", minimum,
-			[]daySpan{selfDays(t, "2026-10-05", "2026-10-06")}, selfDays(t, "2026-10-16", "2026-10-16"), ""},
+			[]daySpan{selfDays(t, "2026-10-05", "2026-10-06")}, selfDays(t, "2026-10-16", "2026-10-16"), "", nil},
 		{"the fifth occurrence in a rolling year", minimum,
 			[]daySpan{selfDays(t, "2026-01-05", "2026-01-05"), selfDays(t, "2026-03-02", "2026-03-02"), selfDays(t, "2026-05-04", "2026-05-04"), selfDays(t, "2026-07-06", "2026-07-06")},
-			selfDays(t, "2026-10-05", "2026-10-05"), selfCertOverOccurrences},
+			selfDays(t, "2026-10-05", "2026-10-05"), selfCertOverOccurrences, nil},
 		{"the fifth, a year and more after the first", minimum,
 			[]daySpan{selfDays(t, "2025-09-01", "2025-09-01"), selfDays(t, "2026-03-02", "2026-03-02"), selfDays(t, "2026-05-04", "2026-05-04"), selfDays(t, "2026-07-06", "2026-07-06")},
-			selfDays(t, "2026-10-05", "2026-10-05"), ""},
-		{"eight days under extended", extended, nil, selfDays(t, "2026-10-05", "2026-10-12"), ""},
-		{"nine days under extended", extended, nil, selfDays(t, "2026-10-05", "2026-10-13"), selfCertOverOccurrence},
+			selfDays(t, "2026-10-05", "2026-10-05"), "", nil},
+		{"eight days under extended", extended, nil, selfDays(t, "2026-10-05", "2026-10-12"), "", nil},
+		{"nine days under extended", extended, nil, selfDays(t, "2026-10-05", "2026-10-13"), selfCertOverOccurrence, nil},
 		{"the 24th day under extended", extended,
-			[]daySpan{selfDays(t, "2026-02-02", "2026-02-09"), selfDays(t, "2026-04-06", "2026-04-13")}, selfDays(t, "2026-09-07", "2026-09-14"), ""},
+			[]daySpan{selfDays(t, "2026-02-02", "2026-02-09"), selfDays(t, "2026-04-06", "2026-04-13")}, selfDays(t, "2026-09-07", "2026-09-14"), "", nil},
 		{"the 25th day under extended", extended,
 			[]daySpan{selfDays(t, "2026-02-02", "2026-02-09"), selfDays(t, "2026-04-06", "2026-04-13"), selfDays(t, "2026-09-07", "2026-09-14")},
-			selfDays(t, "2026-10-05", "2026-10-05"), selfCertOverDays},
+			selfDays(t, "2026-10-05", "2026-10-05"), selfCertOverDays, nil},
+		// One illness is one occurrence (review M4): the days a sykmelding
+		// covers join the egenmelding on either side, and count no
+		// self-certified day.
+		{"Monday and Wednesday around a Tuesday sykmelding, then Thursday", minimum,
+			[]daySpan{selfDays(t, "2026-10-05", "2026-10-05"), selfDays(t, "2026-10-07", "2026-10-07")},
+			selfDays(t, "2026-10-08", "2026-10-08"), "", []daySpan{selfDays(t, "2026-10-06", "2026-10-06")}},
+		{"and Friday as well: the fourth self-certified day", minimum,
+			[]daySpan{selfDays(t, "2026-10-05", "2026-10-05"), selfDays(t, "2026-10-07", "2026-10-08")},
+			selfDays(t, "2026-10-09", "2026-10-09"), selfCertOverOccurrence, []daySpan{selfDays(t, "2026-10-06", "2026-10-06")}},
+		// A backdated egenmelding is judged in every rolling year it lies in,
+		// the later occurrences counted too (review L10).
+		{"a backdated fifth occurrence", minimum,
+			[]daySpan{selfDays(t, "2026-03-02", "2026-03-02"), selfDays(t, "2026-05-04", "2026-05-04"), selfDays(t, "2026-07-06", "2026-07-06"), selfDays(t, "2026-09-07", "2026-09-07")},
+			selfDays(t, "2026-01-05", "2026-01-05"), selfCertOverOccurrences, nil},
+		{"a backdated 25th day under extended", extended,
+			[]daySpan{selfDays(t, "2026-02-02", "2026-02-09"), selfDays(t, "2026-04-06", "2026-04-13"), selfDays(t, "2026-09-07", "2026-09-14")},
+			selfDays(t, "2026-01-05", "2026-01-05"), selfCertOverDays, nil},
 	} {
-		if got := judgeSelfCert(c.limits, c.existing, c.candidate); got != c.want {
+		if got := judgeSelfCert(c.limits, c.existing, c.candidate, c.sick); got != c.want {
 			t.Errorf("%s: refusal = %q, want %q", c.name, got, c.want)
 		}
 	}
@@ -83,8 +101,19 @@ func TestJudgeSelfCert(t *testing.T) {
 func TestSelfCertStanding(t *testing.T) {
 	t.Parallel()
 	rows := []daySpan{selfDays(t, "2025-09-01", "2025-09-02"), selfDays(t, "2026-03-02", "2026-03-03"), selfDays(t, "2026-10-09", "2026-10-09"), selfDays(t, "2026-10-12", "2026-10-12")}
-	occurrences, total := selfCertUsed(rows, day(t, "2026-10-20"))
+	occurrences, total := selfCertUsed(rows, nil, day(t, "2026-10-20"))
 	if occurrences != 2 || total != 6 {
 		t.Errorf("used = %d occurrences, %d days, want 2 and 6 (Friday to Monday is one of four days)", occurrences, total)
+	}
+}
+
+// The standing counts one illness once (review M4): an egenmelding cut in
+// two by a sykmelding is one occurrence of its self-certified days.
+func TestSelfCertStandingAroundASykmelding(t *testing.T) {
+	t.Parallel()
+	rows := []daySpan{selfDays(t, "2026-10-05", "2026-10-05"), selfDays(t, "2026-10-07", "2026-10-07")}
+	occurrences, total := selfCertUsed(rows, []daySpan{selfDays(t, "2026-10-06", "2026-10-06")}, day(t, "2026-10-20"))
+	if occurrences != 1 || total != 2 {
+		t.Errorf("used = %d occurrences, %d days, want 1 and 2", occurrences, total)
 	}
 }

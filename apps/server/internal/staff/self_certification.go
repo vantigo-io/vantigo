@@ -10,10 +10,14 @@ import (
 // days: rows that touch, or that only Saturdays, Sundays and public holidays
 // lie between, are one (plan pre-flight I2, Revision 2 Q7a), counted in
 // calendar days with the bridged days included ("også arbeidsfrie dager tas
-// med", R08-00 § 8-24). Rows further apart are two occurrences, even within
-// one case. The per-occurrence cap is judged on the run a new row joins; the
-// rolling year's limit counts the earlier occurrences under the minimum
-// policy, the days under the extended one, and both under custom. The limits
+// med", R08-00 § 8-24). Days a sykmelding covers join the egenmelding on
+// either side too — one illness is one occurrence (Task 5 review M4) — but
+// count no self-certified day. Rows further apart are two occurrences, even
+// within one case. The per-occurrence cap is judged on the run a new row
+// joins; the rolling year's limit — in every rolling year the new row lies
+// in, later occurrences counted too, for a backdated row (review L10) —
+// counts the occurrences under the minimum policy, the days under the
+// extended one, and both under custom. The limits
 // key on the policy's name: under minimum and extended the preset's numbers
 // are used whatever the settings row holds, and its counters are read under
 // custom only (Task 2 review).
@@ -65,14 +69,36 @@ func limitsOf(p selfCertPolicy) selfCertLimits {
 	}
 }
 
+// covered is whether d lies in one of spans.
+func covered(spans []daySpan, d time.Time) bool {
+	for _, s := range spans {
+		if !d.Before(s.First) && !d.After(s.Last) {
+			return true
+		}
+	}
+	return false
+}
+
+// bridgedBy is whether every day after from and before to is a day off or
+// one sick covers.
+func bridgedBy(from, to time.Time, sick []daySpan) bool {
+	for d := from.AddDate(0, 0, 1); d.Before(to); d = d.AddDate(0, 0, 1) {
+		if worksOn(d) && !covered(sick, d) {
+			return false
+		}
+	}
+	return true
+}
+
 // occurrencesOf is rows gathered into occurrences, oldest first: rows that
-// overlap, touch or have only days off between them are one.
-func occurrencesOf(rows []daySpan) []daySpan {
+// overlap, touch or have only days off and sykmelding days between them are
+// one.
+func occurrencesOf(rows, sick []daySpan) []daySpan {
 	sorted := slices.Clone(rows)
 	slices.SortStableFunc(sorted, func(a, b daySpan) int { return a.First.Compare(b.First) })
 	var out []daySpan
 	for _, r := range sorted {
-		if n := len(out); n > 0 && (!r.First.After(out[n-1].Last) || bridged(out[n-1].Last, r.First)) {
+		if n := len(out); n > 0 && (!r.First.After(out[n-1].Last) || bridgedBy(out[n-1].Last, r.First, sick)) {
 			if r.Last.After(out[n-1].Last) {
 				out[n-1].Last = r.Last
 			}
@@ -83,8 +109,9 @@ func occurrencesOf(rows []daySpan) []daySpan {
 	return out
 }
 
-// daysWithin is the days of s from from to to, both counted.
-func daysWithin(s daySpan, from, to time.Time) int {
+// daysWithin is the self-certified days of s from from to to, both counted:
+// its calendar days but those a sykmelding covers.
+func daysWithin(s daySpan, from, to time.Time, sick []daySpan) int {
 	first, last := s.First, s.Last
 	if first.Before(from) {
 		first = from
@@ -92,13 +119,19 @@ func daysWithin(s daySpan, from, to time.Time) int {
 	if last.After(to) {
 		last = to
 	}
-	return calendarDays(first, last)
+	n := 0
+	for d := first; !d.After(last); d = d.AddDate(0, 0, 1) {
+		if !covered(sick, d) {
+			n++
+		}
+	}
+	return n
 }
 
 // judgeSelfCert is what candidate, beside the person's existing egenmelding
-// rows, goes past under l: "" when nothing.
-func judgeSelfCert(l selfCertLimits, existing []daySpan, candidate daySpan) string {
-	runs := occurrencesOf(append(slices.Clone(existing), candidate))
+// rows and their sykmelding days sick, goes past under l: "" when nothing.
+func judgeSelfCert(l selfCertLimits, existing []daySpan, candidate daySpan, sick []daySpan) string {
+	runs := occurrencesOf(append(slices.Clone(existing), candidate), sick)
 	var own daySpan
 	for _, r := range runs {
 		if !r.First.After(candidate.First) && !r.Last.Before(candidate.Last) {
@@ -106,41 +139,36 @@ func judgeSelfCert(l selfCertLimits, existing []daySpan, candidate daySpan) stri
 			break
 		}
 	}
-	if calendarDays(own.First, own.Last) > l.DaysPerOccurrence {
+	if daysWithin(own, own.First, own.Last, sick) > l.DaysPerOccurrence {
 		return selfCertOverOccurrence
 	}
-	if l.JudgeOccurrences {
-		earlier := 0
-		since := own.First.AddDate(0, 0, -rollingYear)
+	// Every rolling year holding a day of the candidate.
+	for from := candidate.First.AddDate(0, 0, 1-rollingYear); !from.After(candidate.Last); from = from.AddDate(0, 0, 1) {
+		to := from.AddDate(0, 0, rollingYear-1)
+		occurrences, total := 0, 0
 		for _, r := range runs {
-			if r.First.Before(own.First) && !r.Last.Before(since) {
-				earlier++
+			if n := daysWithin(r, from, to, sick); n > 0 {
+				occurrences++
+				total += n
 			}
 		}
-		if earlier >= l.OccurrencesPerYear {
+		if l.JudgeOccurrences && occurrences > l.OccurrencesPerYear {
 			return selfCertOverOccurrences
 		}
-	}
-	if l.JudgeDays {
-		to := candidate.Last
-		from := to.AddDate(0, 0, 1-rollingYear)
-		total := 0
-		for _, r := range runs {
-			total += daysWithin(r, from, to)
-		}
-		if total > l.DaysPerYear {
+		if l.JudgeDays && total > l.DaysPerYear {
 			return selfCertOverDays
 		}
 	}
 	return ""
 }
 
-// selfCertUsed is the occurrences and the days of rows in the rolling year
-// ending today: an occurrence touching it counts, and its days within it.
-func selfCertUsed(rows []daySpan, today time.Time) (occurrences, days int) {
+// selfCertUsed is the occurrences and the self-certified days of rows in the
+// rolling year ending today: an occurrence touching it counts, and its days
+// within it.
+func selfCertUsed(rows, sick []daySpan, today time.Time) (occurrences, days int) {
 	from := today.AddDate(0, 0, 1-rollingYear)
-	for _, r := range occurrencesOf(rows) {
-		if n := daysWithin(r, from, today); n > 0 {
+	for _, r := range occurrencesOf(rows, sick) {
+		if n := daysWithin(r, from, today, sick); n > 0 {
 			occurrences++
 			days += n
 		}
