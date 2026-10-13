@@ -4257,7 +4257,7 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   refunded amounts, when it was created, when it expires or expired, when it was
   authorized, captured and finished, and an abandoned one's time and reason; never its
   `redirect_url` (the payer's page at Vipps, or the on-site QR's target), its
-  idempotency keys, its sales unit, its PSP references, its lease or its errors, which
+  idempotency keys, its sales unit, its PSP reference, its lease or its errors, which
   are the integration's, not the person's. Each is
   `[]` on an issued document with none; a draft has none of them. The section carries the customer's
   `reminderPolicy` — its mode, note and when it was set — when there is one; a customer

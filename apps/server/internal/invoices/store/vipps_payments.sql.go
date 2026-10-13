@@ -17,7 +17,7 @@ const cancelOnSiteAttempt = `-- name: CancelOnSiteAttempt :one
 UPDATE invoices.payment_attempts
 SET state = 'cancelling', next_poll_at = $1::timestamptz, failures = 0
 WHERE id = $2 AND flow = 'on_site' AND state = 'created'
-RETURNING id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason
+RETURNING id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason
 `
 
 type CancelOnSiteAttemptParams struct {
@@ -54,7 +54,6 @@ func (q *Queries) CancelOnSiteAttempt(ctx context.Context, arg CancelOnSiteAttem
 		&i.CancelledAmount,
 		&i.RefundedAmount,
 		&i.ReservedAmount,
-		&i.CapturePspReference,
 		&i.CaptureGuaranteedUntil,
 		&i.CreatedAt,
 		&i.CreatedByUserID,
@@ -129,7 +128,7 @@ func (q *Queries) InsertVippsDayReconciliation(ctx context.Context, arg InsertVi
 
 const liveOnSiteAttempt = `-- name: LiveOnSiteAttempt :one
 
-SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts
+SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts
 WHERE invoice_id = $1 AND flow = 'on_site'
   AND state IN ('creating', 'created', 'authorized', 'capturing', 'capture_unknown')
 ORDER BY id DESC
@@ -171,7 +170,6 @@ func (q *Queries) LiveOnSiteAttempt(ctx context.Context, invoiceID int64) (Invoi
 		&i.CancelledAmount,
 		&i.RefundedAmount,
 		&i.ReservedAmount,
-		&i.CapturePspReference,
 		&i.CaptureGuaranteedUntil,
 		&i.CreatedAt,
 		&i.CreatedByUserID,

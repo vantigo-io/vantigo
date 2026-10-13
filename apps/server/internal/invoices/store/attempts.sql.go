@@ -19,7 +19,7 @@ SET state = 'abandoned', reserved_amount = NULL, abandoned_by_user_id = $1,
     abandoned_at = $2::timestamptz, abandon_reason = $3::text, finished_at = $2::timestamptz,
     next_poll_at = NULL, registration_failed_at = NULL, lease_id = NULL, lease_until = NULL
 WHERE id = $4 AND state IN ('creating', 'created', 'capturing', 'capture_unknown')
-RETURNING id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason
+RETURNING id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason
 `
 
 type AbandonPaymentAttemptParams struct {
@@ -63,7 +63,6 @@ func (q *Queries) AbandonPaymentAttempt(ctx context.Context, arg AbandonPaymentA
 		&i.CancelledAmount,
 		&i.RefundedAmount,
 		&i.ReservedAmount,
-		&i.CapturePspReference,
 		&i.CaptureGuaranteedUntil,
 		&i.CreatedAt,
 		&i.CreatedByUserID,
@@ -89,7 +88,7 @@ func (q *Queries) AbandonPaymentAttempt(ctx context.Context, arg AbandonPaymentA
 }
 
 const getPaymentAttempt = `-- name: GetPaymentAttempt :one
-SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE id = $1
+SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE id = $1
 `
 
 // GetPaymentAttempt is one attempt by id, read on the pool before an
@@ -119,7 +118,6 @@ func (q *Queries) GetPaymentAttempt(ctx context.Context, id int64) (InvoicesPaym
 		&i.CancelledAmount,
 		&i.RefundedAmount,
 		&i.ReservedAmount,
-		&i.CapturePspReference,
 		&i.CaptureGuaranteedUntil,
 		&i.CreatedAt,
 		&i.CreatedByUserID,
@@ -153,7 +151,7 @@ INSERT INTO invoices.payment_attempts (
     $7, $8, 'creating', $9::timestamptz, $10,
     $11::timestamptz, $12::timestamptz
 )
-RETURNING id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason
+RETURNING id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason
 `
 
 type InsertPaymentAttemptParams struct {
@@ -212,7 +210,6 @@ func (q *Queries) InsertPaymentAttempt(ctx context.Context, arg InsertPaymentAtt
 		&i.CancelledAmount,
 		&i.RefundedAmount,
 		&i.ReservedAmount,
-		&i.CapturePspReference,
 		&i.CaptureGuaranteedUntil,
 		&i.CreatedAt,
 		&i.CreatedByUserID,
@@ -366,7 +363,7 @@ func (q *Queries) MarkAttemptFailed(ctx context.Context, arg MarkAttemptFailedPa
 }
 
 const payAttemptByReference = `-- name: PayAttemptByReference :one
-SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE reference = $1 AND flow = 'pay_link'
+SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE reference = $1 AND flow = 'pay_link'
 `
 
 // PayAttemptByReference is a pay-page attempt by its reference, for the
@@ -397,7 +394,6 @@ func (q *Queries) PayAttemptByReference(ctx context.Context, reference string) (
 		&i.CancelledAmount,
 		&i.RefundedAmount,
 		&i.ReservedAmount,
-		&i.CapturePspReference,
 		&i.CaptureGuaranteedUntil,
 		&i.CreatedAt,
 		&i.CreatedByUserID,
@@ -452,7 +448,7 @@ func (q *Queries) PayLinkByToken(ctx context.Context, tokenSha256 string) (Invoi
 }
 
 const paymentAttemptsOf = `-- name: PaymentAttemptsOf :many
-SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE invoice_id = $1 ORDER BY id
+SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE invoice_id = $1 ORDER BY id
 `
 
 // PaymentAttemptsOf is every attempt of an invoice, oldest first, for the
@@ -488,7 +484,6 @@ func (q *Queries) PaymentAttemptsOf(ctx context.Context, invoiceID int64) ([]Inv
 			&i.CancelledAmount,
 			&i.RefundedAmount,
 			&i.ReservedAmount,
-			&i.CapturePspReference,
 			&i.CaptureGuaranteedUntil,
 			&i.CreatedAt,
 			&i.CreatedByUserID,

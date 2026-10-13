@@ -13,7 +13,7 @@ import (
 )
 
 const attemptsOfDocuments = `-- name: AttemptsOfDocuments :many
-SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE invoice_id = ANY($1::bigint[]) ORDER BY invoice_id, id
+SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE invoice_id = ANY($1::bigint[]) ORDER BY invoice_id, id
 `
 
 // AttemptsOfDocuments is every Vipps payment attempt of several documents at
@@ -51,7 +51,6 @@ func (q *Queries) AttemptsOfDocuments(ctx context.Context, invoiceIds []int64) (
 			&i.CancelledAmount,
 			&i.RefundedAmount,
 			&i.ReservedAmount,
-			&i.CapturePspReference,
 			&i.CaptureGuaranteedUntil,
 			&i.CreatedAt,
 			&i.CreatedByUserID,

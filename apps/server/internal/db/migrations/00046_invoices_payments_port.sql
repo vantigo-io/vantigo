@@ -190,7 +190,6 @@ CREATE TABLE invoices.payment_attempts (
     cancelled_amount         numeric(14,2),
     refunded_amount          numeric(14,2),
     reserved_amount          numeric(14,2),
-    capture_psp_reference    varchar(100),
     capture_guaranteed_until timestamptz,
     created_at               timestamptz   NOT NULL,
     created_by_user_id       uuid,
