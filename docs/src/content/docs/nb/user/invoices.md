@@ -22,6 +22,10 @@ installasjonen er satt opp for det
 Å åpne appen i det hele tatt krever `invoices:access`; de andre rettighetene nevnes der
 de gjelder og er samlet under [Rettigheter](#rettigheter).
 
+Når Fakturaer avviser noe, sier den hvorfor med ord, på ditt språk. Det gjelder også
+avvisningene for Vipps-betalinger, betalingslenker og hurtigfakturaen, som Fakturaer
+allerede setter ord på før disse funksjonene kommer.
+
 ## Før den første fakturaen
 
 Ingenting kan utstedes før selskapet selv er beskrevet. Inntil da viser listen

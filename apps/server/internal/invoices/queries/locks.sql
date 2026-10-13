@@ -122,3 +122,34 @@ SELECT * FROM invoices.invoices
 WHERE id = ANY(sqlc.arg(ids)::bigint[])
 ORDER BY id DESC
 FOR UPDATE;
+
+-- name: LockPaymentAttempt :one
+-- LockPaymentAttempt takes a payment attempt FOR NO KEY UPDATE: a payment's
+-- payment_attempt_id takes KEY SHARE on it, which FOR UPDATE would needlessly
+-- conflict with (plan reading 7). The first lock of the capture decision and
+-- the registration, and the only one of a cancel, a release, an abandon and
+-- a webhook's nudge (D18's 4C rows).
+SELECT * FROM invoices.payment_attempts WHERE id = @id FOR NO KEY UPDATE;
+
+-- name: LockPayLink :one
+-- LockPayLink takes a pay link FOR NO KEY UPDATE, for the same reason: an
+-- attempt's pay_link_id takes KEY SHARE on it. A revocation's, after the
+-- invoice.
+SELECT * FROM invoices.pay_links WHERE id = @id FOR NO KEY UPDATE;
+
+-- name: LockPaymentCredentials :one
+-- LockPaymentCredentials takes the payment provider's credentials FOR
+-- UPDATE: a credentials PUT's, a DELETE's and a webhook registration's only
+-- lock, under which the live attempts are counted (D14, I20).
+SELECT * FROM invoices.payment_provider_credentials WHERE id = 1 FOR UPDATE;
+
+-- name: SharePaymentCredentials :one
+-- SharePaymentCredentials reads the payment provider's credentials FOR
+-- SHARE: an attempt's create, after the invoice, so a sales-unit change
+-- waits for the attempt it would strand, and sees it (plan reading 8).
+SELECT * FROM invoices.payment_provider_credentials WHERE id = 1 FOR SHARE;
+
+-- name: LockPaymentSettings :one
+-- LockPaymentSettings takes the payment settings row FOR UPDATE: a payment
+-- settings PUT's only lock (D14).
+SELECT * FROM invoices.payment_settings WHERE id = 1 FOR UPDATE;

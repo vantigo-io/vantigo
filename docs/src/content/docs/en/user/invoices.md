@@ -23,6 +23,10 @@ network, once your installation is set up for it
 Opening the app at all needs `invoices:access`; the other permissions are named where
 they apply and summed up under [Permissions](#permissions).
 
+When Invoices refuses something, it says why in words, in your language. That includes
+the refusals of Vipps payments, pay links and the quick invoice, which Invoices already
+names in words ahead of those features.
+
 ## Before the first invoice
 
 Nothing can be issued until the company itself is described. Until then the list shows

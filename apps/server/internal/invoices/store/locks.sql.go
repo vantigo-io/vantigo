@@ -243,6 +243,133 @@ func (q *Queries) LockInvoicesDescending(ctx context.Context, ids []int64) ([]In
 	return items, nil
 }
 
+const lockPayLink = `-- name: LockPayLink :one
+SELECT id, invoice_id, token_sha256, url_ciphertext, created_at, created_by_user_id, revoked_at, revoked_by_user_id FROM invoices.pay_links WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// LockPayLink takes a pay link FOR NO KEY UPDATE, for the same reason: an
+// attempt's pay_link_id takes KEY SHARE on it. A revocation's, after the
+// invoice.
+func (q *Queries) LockPayLink(ctx context.Context, id int64) (InvoicesPayLink, error) {
+	row := q.db.QueryRow(ctx, lockPayLink, id)
+	var i InvoicesPayLink
+	err := row.Scan(
+		&i.ID,
+		&i.InvoiceID,
+		&i.TokenSha256,
+		&i.UrlCiphertext,
+		&i.CreatedAt,
+		&i.CreatedByUserID,
+		&i.RevokedAt,
+		&i.RevokedByUserID,
+	)
+	return i, err
+}
+
+const lockPaymentAttempt = `-- name: LockPaymentAttempt :one
+SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, lease_id, lease_until, last_error, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// LockPaymentAttempt takes a payment attempt FOR NO KEY UPDATE: a payment's
+// payment_attempt_id takes KEY SHARE on it, which FOR UPDATE would needlessly
+// conflict with (plan reading 7). The first lock of the capture decision and
+// the registration, and the only one of a cancel, a release, an abandon and
+// a webhook's nudge (D18's 4C rows).
+func (q *Queries) LockPaymentAttempt(ctx context.Context, id int64) (InvoicesPaymentAttempt, error) {
+	row := q.db.QueryRow(ctx, lockPaymentAttempt, id)
+	var i InvoicesPaymentAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.InvoiceID,
+		&i.Provider,
+		&i.Msn,
+		&i.ReturnNonceSha256,
+		&i.Flow,
+		&i.PayLinkID,
+		&i.Reference,
+		&i.Amount,
+		&i.CreateKey,
+		&i.CaptureKey,
+		&i.CancelKey,
+		&i.State,
+		&i.ReleasePending,
+		&i.PspReference,
+		&i.RedirectUrl,
+		&i.AuthorizedAmount,
+		&i.CapturedAmount,
+		&i.CancelledAmount,
+		&i.RefundedAmount,
+		&i.ReservedAmount,
+		&i.CapturePspReference,
+		&i.CaptureGuaranteedUntil,
+		&i.CreatedAt,
+		&i.CreatedByUserID,
+		&i.ExpiresAt,
+		&i.AuthorizedAt,
+		&i.CapturedAt,
+		&i.FinishedAt,
+		&i.RefundWatchUntil,
+		&i.NextPollAt,
+		&i.Polls,
+		&i.CaptureAttempts,
+		&i.LeaseID,
+		&i.LeaseUntil,
+		&i.LastError,
+		&i.AbandonedByUserID,
+		&i.AbandonedAt,
+		&i.AbandonReason,
+	)
+	return i, err
+}
+
+const lockPaymentCredentials = `-- name: LockPaymentCredentials :one
+SELECT id, provider, settings_json, secret_ciphertext, webhook_id, webhook_secret_ciphertext, rejected_at, updated_at FROM invoices.payment_provider_credentials WHERE id = 1 FOR UPDATE
+`
+
+// LockPaymentCredentials takes the payment provider's credentials FOR
+// UPDATE: a credentials PUT's, a DELETE's and a webhook registration's only
+// lock, under which the live attempts are counted (D14, I20).
+func (q *Queries) LockPaymentCredentials(ctx context.Context) (InvoicesPaymentProviderCredential, error) {
+	row := q.db.QueryRow(ctx, lockPaymentCredentials)
+	var i InvoicesPaymentProviderCredential
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.SettingsJson,
+		&i.SecretCiphertext,
+		&i.WebhookID,
+		&i.WebhookSecretCiphertext,
+		&i.RejectedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lockPaymentSettings = `-- name: LockPaymentSettings :one
+SELECT id, reference_prefix, pay_links_enabled, terms_url, privacy_url, on_site_payments_enabled, kontantsalg_acknowledged_by_user_id, kontantsalg_acknowledged_at, revision, updated_at, updated_by_user_id FROM invoices.payment_settings WHERE id = 1 FOR UPDATE
+`
+
+// LockPaymentSettings takes the payment settings row FOR UPDATE: a payment
+// settings PUT's only lock (D14).
+func (q *Queries) LockPaymentSettings(ctx context.Context) (InvoicesPaymentSetting, error) {
+	row := q.db.QueryRow(ctx, lockPaymentSettings)
+	var i InvoicesPaymentSetting
+	err := row.Scan(
+		&i.ID,
+		&i.ReferencePrefix,
+		&i.PayLinksEnabled,
+		&i.TermsUrl,
+		&i.PrivacyUrl,
+		&i.OnSitePaymentsEnabled,
+		&i.KontantsalgAcknowledgedByUserID,
+		&i.KontantsalgAcknowledgedAt,
+		&i.Revision,
+		&i.UpdatedAt,
+		&i.UpdatedByUserID,
+	)
+	return i, err
+}
+
 const lockPolicies = `-- name: LockPolicies :many
 SELECT customer_id FROM invoices.customer_reminder_policies
 WHERE customer_id = ANY($1::integer[])
@@ -476,6 +603,29 @@ func (q *Queries) ShareOwnPrintBatch(ctx context.Context, id int64) (bool, error
 	var closed bool
 	err := row.Scan(&closed)
 	return closed, err
+}
+
+const sharePaymentCredentials = `-- name: SharePaymentCredentials :one
+SELECT id, provider, settings_json, secret_ciphertext, webhook_id, webhook_secret_ciphertext, rejected_at, updated_at FROM invoices.payment_provider_credentials WHERE id = 1 FOR SHARE
+`
+
+// SharePaymentCredentials reads the payment provider's credentials FOR
+// SHARE: an attempt's create, after the invoice, so a sales-unit change
+// waits for the attempt it would strand, and sees it (plan reading 8).
+func (q *Queries) SharePaymentCredentials(ctx context.Context) (InvoicesPaymentProviderCredential, error) {
+	row := q.db.QueryRow(ctx, sharePaymentCredentials)
+	var i InvoicesPaymentProviderCredential
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.SettingsJson,
+		&i.SecretCiphertext,
+		&i.WebhookID,
+		&i.WebhookSecretCiphertext,
+		&i.RejectedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const upsertImportAccounts = `-- name: UpsertImportAccounts :exec

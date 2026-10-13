@@ -263,3 +263,83 @@ func TestLocks_TheImportAccountsOrderNeverDeadlocks(t *testing.T) {
 		t.Errorf("Postgres broke %d deadlock(s) between the two imports", after-before)
 	}
 }
+
+// TestLocks_PaymentPortHelpers takes each of the payments port's lock
+// helpers (D18's 4C rows) on a transaction of a connection of its own: the
+// seam sees what each locks and its key, and the NOWAIT probes prove the
+// mode — an attempt and a pay link FOR NO KEY UPDATE (plan reading 7: the
+// KEY SHARE of a payment's or an attempt's foreign key passes, SHARE does
+// not), the credentials FOR UPDATE (a credentials PUT's) or FOR SHARE (an
+// attempt's create: SHARE passes, UPDATE does not), and the payment settings
+// FOR UPDATE.
+func TestLocks_PaymentPortHelpers(t *testing.T) {
+	h := raceHarness(t)
+	saveSeller(t, h, completeSeller(1))
+	inv := issuedFor(t, h, customerAcme, line("Konsulenttimer", 1, 1000, vat25))
+	link := plantID(t, h, `INSERT INTO invoices.pay_links (invoice_id, token_sha256, url_ciphertext, created_at)
+		VALUES ($1, repeat('a', 64), 'sealed', now()) RETURNING id`, inv.ID)
+	attempt := plantID(t, h, `
+		INSERT INTO invoices.payment_attempts (invoice_id, provider, msn, flow, pay_link_id, return_nonce_sha256, amount,
+		    cancel_key, state, created_at, expires_at)
+		VALUES ($1, 'vipps', '123456', 'pay_link', $2, repeat('b', 64), 1250, gen_random_uuid(), 'created', now(), now())
+		RETURNING id`, inv.ID, link)
+	h.Exec(t, `INSERT INTO invoices.payment_provider_credentials (id, provider, settings_json, secret_ciphertext, updated_at)
+		VALUES (1, 'vipps', '{"msn":"123456"}', 'sealed', now())`)
+
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+	seen := &lockSeen{}
+	restore := invoices.SetLockTaken(seen.note)
+	defer restore()
+	ctx := context.Background()
+
+	for _, c := range []struct {
+		helper  string
+		keys    []string
+		seen    string
+		table   string
+		where   string
+		row     any
+		passes  []string // probe modes that must get through
+		refused []string // probe modes that must answer 55P03
+	}{
+		{"lockPaymentAttempt", []string{idKey(attempt)}, "payment_attempt " + idKey(attempt),
+			"invoices.payment_attempts", "id = $1", attempt, []string{modeKeyShare}, []string{modeShare}},
+		{"lockPayLink", []string{idKey(link)}, "pay_link " + idKey(link),
+			"invoices.pay_links", "id = $1", link, []string{modeKeyShare}, []string{modeShare}},
+		{"lockPaymentCredentials", nil, "payment_credentials 1",
+			"invoices.payment_provider_credentials", "id = $1", 1, nil, []string{modeKeyShare, modeShare}},
+		{"sharePaymentCredentials", nil, "payment_credentials 1",
+			"invoices.payment_provider_credentials", "id = $1", 1, []string{modeKeyShare, modeShare}, []string{modeNoKeyUpdate, modeUpdate}},
+		{"lockPaymentSettings", nil, "payment_settings 1",
+			"invoices.payment_settings", "id = $1", 1, nil, []string{modeKeyShare, modeShare}},
+	} {
+		tx, _ := rawTx(t, h)
+		if err := invoices.LockForTest(ctx, tx, c.helper, c.keys...); err != nil {
+			t.Fatalf("%s(%v): %v", c.helper, c.keys, err)
+		}
+		if got := seen.take(); !slices.Equal(got, []string{c.seen}) {
+			t.Errorf("%s(%v) reported %v, want [%s]", c.helper, c.keys, got, c.seen)
+		}
+		for _, mode := range c.passes {
+			if err := probe(probeConn, mode, c.table, c.where, c.row); err != nil {
+				t.Errorf("%s held: a FOR %s NOWAIT probe = %v, want it through", c.helper, mode, err)
+			}
+		}
+		for _, mode := range c.refused {
+			if err := probe(probeConn, mode, c.table, c.where, c.row); !isLockNotAvailable(err) {
+				t.Errorf("%s held: a FOR %s NOWAIT probe = %v, want 55P03", c.helper, mode, err)
+			}
+		}
+		if err := tx.Rollback(ctx); err != nil {
+			t.Fatalf("roll back %s: %v", c.helper, err)
+		}
+		if got := heldMode(t, probeConn, c.table, c.where, c.row); got != "" {
+			t.Errorf("%s rolled back: %s still held FOR %s", c.helper, c.table, got)
+		}
+	}
+
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("Postgres broke %d deadlock(s) while the helpers held their rows", after-before)
+	}
+}

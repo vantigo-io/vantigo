@@ -2402,14 +2402,17 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// deliveries, erased_customers and payments are 00035's,
 	// access_point_credentials and transmissions 00036's, line_releases,
 	// line_sources and timesheet_rows 00040's, and the bank, rate, reminder,
-	// charge, hold and hand-off tables 00041's; applyUpDownUp ends with every
-	// migration applied, so they stand here beside the seven this one creates.
+	// charge, hold and hand-off tables 00041's, and the payment credentials,
+	// settings, pay links, attempts and day reconciliations 00046's;
+	// applyUpDownUp ends with every migration applied, so they stand here
+	// beside the seven this one creates.
 	if want := []string{"access_point_credentials", "bank_files", "bank_import_accounts", "bank_transaction_events",
 		"bank_transactions", "charge_payments", "charge_waivers", "collection_handoffs", "collection_rates", "counters",
 		"customer_reminder_policies", "deliveries", "erased_customers", "invoice_holds", "invoices", "line_releases",
-		"line_sources", "lines", "manual_deliveries", "payments", "reminder_print_batches", "reminder_runs",
+		"line_sources", "lines", "manual_deliveries", "pay_links", "payment_attempts", "payment_provider_credentials",
+		"payment_settings", "payments", "reminder_print_batches", "reminder_runs",
 		"reminder_settings", "reminders", "settings", "timesheet_rows", "transmissions", "vat_code_rates", "vat_codes",
-		"vat_summaries"}; !equalStrings(gotTables, want) {
+		"vat_summaries", "vipps_day_reconciliations"}; !equalStrings(gotTables, want) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
 	}
 
@@ -2519,8 +2522,8 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	}
 	// The four on deliveries and payments are 00035's, the two on
 	// transmissions 00036's, the three on line_releases, line_sources and
-	// timesheet_rows 00040's, and the twenty on the receivables' tables
-	// 00041's, as above.
+	// timesheet_rows 00040's, the twenty on the receivables' tables 00041's,
+	// and the seven on the payments port's tables 00046's, as above.
 	if want := []string{
 		"bank_files:tr_bank_files_immutable", "bank_import_accounts:tr_bank_import_accounts_immutable",
 		"bank_transaction_events:tr_bank_transaction_events_immutable", "bank_transactions:tr_bank_transactions_immutable",
@@ -2534,6 +2537,9 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"line_releases:tr_line_releases_immutable", "line_sources:tr_line_sources_immutable",
 		"lines:tr_lines_immutable",
 		"manual_deliveries:tr_manual_deliveries_immutable", "manual_deliveries:tr_manual_deliveries_parent",
+		"pay_links:tr_pay_links_immutable", "pay_links:tr_pay_links_parent",
+		"payment_attempts:tr_payment_attempts_immutable", "payment_attempts:tr_payment_attempts_parent",
+		"payment_attempts:tr_payment_attempts_reference", "payment_settings:tr_payment_settings_kept",
 		"payments:tr_payments_immutable", "payments:tr_payments_parent",
 		"reminder_print_batches:tr_reminder_print_batches_immutable", "reminder_runs:tr_reminder_runs_immutable",
 		"reminder_settings:tr_reminder_settings_kept",
@@ -2541,6 +2547,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"timesheet_rows:tr_timesheet_rows_immutable",
 		"transmissions:tr_transmissions_immutable", "transmissions:tr_transmissions_parent",
 		"vat_summaries:tr_vat_summaries_immutable",
+		"vipps_day_reconciliations:tr_vipps_day_reconciliations_immutable",
 	}; !equalStrings(gotTriggers, want) {
 		t.Errorf("triggers = %v, want %v", gotTriggers, want)
 	}
@@ -3233,7 +3240,7 @@ func TestInvoicesEhfKid_AppliesAndIsIdempotent(t *testing.T) {
 // quote one, and no generated field is named after a keyword.
 func TestInvoicesSchema_NamesNoColumnWithAReservedWord(t *testing.T) {
 	url := testdb.URL(t)
-	migrateTo(t, url, 41)
+	migrateTo(t, url, 46)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

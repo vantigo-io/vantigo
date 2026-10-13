@@ -316,6 +316,17 @@ type InvoicesManualDelivery struct {
 	RemovalReason    *string
 }
 
+type InvoicesPayLink struct {
+	ID              int64
+	InvoiceID       int64
+	TokenSha256     string
+	UrlCiphertext   string
+	CreatedAt       time.Time
+	CreatedByUserID *uuid.UUID
+	RevokedAt       *time.Time
+	RevokedByUserID *uuid.UUID
+}
+
 type InvoicesPayment struct {
 	ID                 int64
 	InvoiceID          int64
@@ -331,6 +342,74 @@ type InvoicesPayment struct {
 	RemovalReason      *string
 	Source             string
 	BankTransactionID  *int64
+	PaymentAttemptID   *int64
+}
+
+type InvoicesPaymentAttempt struct {
+	ID                     int64
+	InvoiceID              int64
+	Provider               string
+	Msn                    string
+	ReturnNonceSha256      *string
+	Flow                   string
+	PayLinkID              *int64
+	Reference              string
+	Amount                 pgtype.Numeric
+	CreateKey              *uuid.UUID
+	CaptureKey             *uuid.UUID
+	CancelKey              uuid.UUID
+	State                  string
+	ReleasePending         bool
+	PspReference           *string
+	RedirectUrl            *string
+	AuthorizedAmount       pgtype.Numeric
+	CapturedAmount         pgtype.Numeric
+	CancelledAmount        pgtype.Numeric
+	RefundedAmount         pgtype.Numeric
+	ReservedAmount         pgtype.Numeric
+	CapturePspReference    *string
+	CaptureGuaranteedUntil *time.Time
+	CreatedAt              time.Time
+	CreatedByUserID        *uuid.UUID
+	ExpiresAt              time.Time
+	AuthorizedAt           *time.Time
+	CapturedAt             *time.Time
+	FinishedAt             *time.Time
+	RefundWatchUntil       *time.Time
+	NextPollAt             *time.Time
+	Polls                  int32
+	CaptureAttempts        int32
+	LeaseID                *string
+	LeaseUntil             *time.Time
+	LastError              *string
+	AbandonedByUserID      *uuid.UUID
+	AbandonedAt            *time.Time
+	AbandonReason          *string
+}
+
+type InvoicesPaymentProviderCredential struct {
+	ID                      int32
+	Provider                string
+	SettingsJson            string
+	SecretCiphertext        string
+	WebhookID               *string
+	WebhookSecretCiphertext *string
+	RejectedAt              *time.Time
+	UpdatedAt               time.Time
+}
+
+type InvoicesPaymentSetting struct {
+	ID                              int16
+	ReferencePrefix                 string
+	PayLinksEnabled                 bool
+	TermsUrl                        *string
+	PrivacyUrl                      *string
+	OnSitePaymentsEnabled           bool
+	KontantsalgAcknowledgedByUserID *uuid.UUID
+	KontantsalgAcknowledgedAt       *time.Time
+	Revision                        int32
+	UpdatedAt                       time.Time
+	UpdatedByUserID                 *uuid.UUID
 }
 
 type InvoicesReminder struct {
@@ -535,4 +614,15 @@ type InvoicesVatSummary struct {
 	TaxableAmount   pgtype.Numeric
 	VatAmount       pgtype.Numeric
 	VatAmountNok    pgtype.Numeric
+}
+
+type InvoicesVippsDayReconciliation struct {
+	Day                pgtype.Date
+	Payments           int32
+	Total              pgtype.Numeric
+	OnSiteTotal        pgtype.Numeric
+	PayLinkTotal       pgtype.Numeric
+	ReconciledByUserID uuid.UUID
+	ReconciledAt       time.Time
+	Note               string
 }

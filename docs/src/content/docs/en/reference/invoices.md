@@ -3793,7 +3793,15 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 - **4C** (next, the phase's second pull request): the payments port and its Vipps
   adapter, pay links and the public pay page, and the quick invoice — paid on site, a
   kontantfaktura ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
-  D13–D17). Attention's item shape takes its four types by adding enum values.
+  D13–D17). Its schema is in place — migration `00046_invoices_payments_port.sql`:
+  the provider's credentials, the payment settings with the installation's reference
+  prefix, pay links, payment attempts, a Vipps payment's origin on the payments (`source
+  = vipps`, naming its attempt, with no user and no bank line) and the day's
+  reconciliations — and so are its refusal codes, listed in the contract's
+  `InvoicesConflictProblem` and worded in both languages, and attention's four types
+  (`paymentCaptureFailed`, `paymentCaptureUnknown`, `paymentReservationStranded`,
+  `vippsRefundSeen`) as enum values no item is answered with yet. No endpoint uses
+  them yet.
 - **5**: energy consumption billing.
 
 Phase 4's first pull request built receiving payments from the bank — OCR giro and
