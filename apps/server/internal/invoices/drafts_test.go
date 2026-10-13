@@ -125,6 +125,7 @@ type invoiceJSON struct {
 	SendDefaults       *sendDefaultsJSON `json:"sendDefaults"`
 	CustomerAnonymised *bool             `json:"customerAnonymised"`
 	Ehf                *ehfJSON          `json:"ehf"`
+	PayLink            *payLinkJSON      `json:"payLink"`
 }
 
 // line is one request line on code vatCodeID.

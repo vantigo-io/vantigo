@@ -175,8 +175,9 @@ func pdfLineOf(l store.InvoicesLine) (pdfLine, error) {
 	return pl, nil
 }
 
-// renderIssued renders an issued document from its own rows.
-func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice) ([]byte, error) {
+// renderIssued renders an issued document from its own rows, with payLink
+// its live pay link's URL, "" for none.
+func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, payLink string) ([]byte, error) {
 	lines, err := q.Lines(ctx, inv.ID)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read document %d's lines: %w", inv.ID, err)
@@ -204,6 +205,7 @@ func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoi
 	if doc.timesheet, err = timesheetOf(ctx, q, inv); err != nil {
 		return nil, err
 	}
+	doc.payLink = payLink
 	m := buildPDFModel(doc)
 	if pdfModelBuilt != nil {
 		pdfModelBuilt(inv.ID, m)
@@ -274,8 +276,16 @@ var afterPDFRender func(ctx context.Context, body []byte) []byte
 // row has no hash. A loser of a race sees no row updated, re-reads the row and
 // answers the winner's key without bytes; its own object is an orphan nothing
 // ever serves.
+//
+// An invoice's live pay link is read and opened now, outside any lock, and
+// printed (D15, plan reading 13): a link revoked before this first store is
+// not printed, and once stored the PDF never changes.
 func (s *server) storeOnce(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice) (storedPDF, error) {
-	body, err := renderIssued(ctx, q, inv)
+	payLink, err := s.printablePayLink(ctx, q, inv)
+	if err != nil {
+		return storedPDF{}, err
+	}
+	body, err := renderIssued(ctx, q, inv, payLink)
 	if err != nil {
 		return storedPDF{}, err
 	}

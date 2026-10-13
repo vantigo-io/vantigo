@@ -312,7 +312,7 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			refusal = ptr(invoiceIssued())
 			return errRefused
 		}
-		issued, refusal, err = s.issueLocked(ctx, tx, txq, locked, draft, profile, work, req.Body.IssueDate)
+		issued, refusal, err = s.issueLocked(ctx, tx, txq, locked, draft, profile, work, req.Body.IssueDate, false)
 		if err != nil {
 			return err
 		}
@@ -347,9 +347,11 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 // checks, the work's write-back and the writes. draft is the document as it
 // was read before the transaction, with the billing profile and the work read
 // then. It answers the issued document, or the refusal that must roll the
-// transaction back, or an error. issueAfterAllocation runs here.
+// transaction back, or an error. issueAfterAllocation runs here. Last, an
+// invoice gets its pay link when pay links are available (D15) — when
+// handedOver, the quick invoice's, only when on-site payment is too (I5).
 func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries, locked store.InvoicesInvoice,
-	draft store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, work issueWork, issueDateReq *openapi_types.Date,
+	draft store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, work issueWork, issueDateReq *openapi_types.Date, handedOver bool,
 ) (store.InvoicesInvoice, *gen.InvoicesConflictProblem, error) {
 	var refusal *gen.InvoicesConflictProblem
 	refused := func() (store.InvoicesInvoice, *gen.InvoicesConflictProblem, error) {
@@ -578,6 +580,10 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 	issued, err := txq.IssueDocument(ctx, params)
 	if err != nil {
 		return failed(fmt.Errorf("invoices: issue document %d: %w", locked.ID, err))
+	}
+	// 7. The pay link, on the document just issued (D15).
+	if err := s.payLinkAtIssue(ctx, txq, issued, handedOver); err != nil {
+		return failed(err)
 	}
 
 	return issued, nil, nil

@@ -1350,6 +1350,27 @@ Begge krever lagrede Vipps-nøkler for å kunne slås på. Om hver av dem faktis
 tilgjengelig — slått på av driftsansvarlig, nøklene ikke avvist, innstillingen på — er
 det Fakturaer-appen går etter.
 
+### Betalingslenken på en faktura
+
+Mens betalingslenker er tilgjengelige, får hver faktura du utsteder en betalingslenke,
+og PDF-en skriver **Betal med Vipps**, lenken og en QR-kode av den under
+betalingsopplysningene, slik at en kunde som leser fakturaen hjemme, kan betale den fra
+telefonen. PDF-en lages én gang, når fakturaen utstedes, og endres aldri: en faktura
+utstedt før betalingslenker ble slått på, har ingen lenke i PDF-en.
+
+Lenken følger også fakturaen når du **sender den på e-post** — e-posten sier *Du kan
+også betale med Vipps* med lenken — og med hvert **purrebrev**, som legger til at
+lenken betaler selve fakturaen, mens gebyrer og renter betales til kontonummeret med
+KID. Når du sender en faktura som ikke har noen lenke på e-post, lages det en først. En
+hurtigfaktura som overleveres på stedet, får lenke ved utstedelse bare når betaling på
+stedet er slått på; ellers får den en når du sender den på e-post.
+
+Den som har `invoices:issue`, kan trekke tilbake en fakturas lenke og lage en ny: en
+tilbaketrukket lenke betaler ikke lenger fakturaen, og e-poster og brev slutter å ta den
+med — en PDF laget tidligere skriver den fortsatt. Selve lenken og QR-koden vises på
+skjermen bare mens betaling på stedet er slått på: å vise kunden lenken der du står, er
+også kontantsalg.
+
 ## Kontrollere journalen
 
 **Fakturajournal** i sidemenyen er beviset bokføringsforskriften krever: hvert utstedte

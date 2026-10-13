@@ -35,14 +35,19 @@ type reminderWords struct {
 	// the base.
 	interestFrom, interestSegment, interestWaived, interestPaid, total string
 	// payBy: the amount and the deadline.
-	payBy                       string
-	account, kid, iban, bic     string
-	quoteKID, quoteNumber       string
-	paidMeanwhile, objection    string
-	notice, noticeCosts         string
-	announcement                string
-	greeting, coverIntro, cover string
-	coverMoot, closing          string
+	payBy                    string
+	account, kid, iban, bic  string
+	quoteKID, quoteNumber    string
+	paidMeanwhile, objection string
+	// payLink: the invoice's pay link (D15); payLinkChargesKID and
+	// payLinkChargesNumber: the charges, which the link does not pay, paid
+	// by bank — with the KID, or the invoice number without one (plan
+	// reading 5, open question 2).
+	payLink, payLinkChargesKID, payLinkChargesNumber string
+	notice, noticeCosts                              string
+	announcement                                     string
+	greeting, coverIntro, cover                      string
+	coverMoot, closing                               string
 }
 
 // reminderText is the words of a letter of level in lang ("en", else
@@ -67,12 +72,15 @@ func reminderText(lang string, level reminderrules.Level, announces bool) remind
 			payBy:   "Please pay %s by %s.",
 			account: "Account number", kid: "KID", iban: "IBAN", bic: "BIC",
 			quoteKID: "Please quote KID %s with your payment.", quoteNumber: "Please quote invoice number %d with your payment.",
-			paidMeanwhile: "If you have paid in the meantime, please disregard this letter.",
-			objection:     "If you dispute the claim, let us know before the deadline.",
-			notice:        "The claim will be sent to debt collection if it is not paid by %s.",
-			noticeCosts:   "Debt collection may add further costs.",
-			announcement:  "The claim will be handed over to a debt collection agency if it is not paid by %s.",
-			greeting:      "Hello,", coverIntro: "Please find attached a payment reminder for invoice %d from %s.",
+			paidMeanwhile:        "If you have paid in the meantime, please disregard this letter.",
+			payLink:              "You can pay the invoice with Vipps: %s",
+			payLinkChargesKID:    "The link pays the invoice's outstanding principal only. Please pay fees, compensation and interest to the account above, quoting KID %s.",
+			payLinkChargesNumber: "The link pays the invoice's outstanding principal only. Please pay fees, compensation and interest to the account above, quoting invoice number %d.",
+			objection:            "If you dispute the claim, let us know before the deadline.",
+			notice:               "The claim will be sent to debt collection if it is not paid by %s.",
+			noticeCosts:          "Debt collection may add further costs.",
+			announcement:         "The claim will be handed over to a debt collection agency if it is not paid by %s.",
+			greeting:             "Hello,", coverIntro: "Please find attached a payment reminder for invoice %d from %s.",
 			cover:     "The amount due is %s, to be paid by %s.",
 			coverMoot: "If you have paid in the meantime, please disregard this e-mail.", closing: "Kind regards",
 		}
@@ -102,12 +110,15 @@ func reminderText(lang string, level reminderrules.Level, announces bool) remind
 		payBy:   "Betal %s innen %s.",
 		account: "Kontonummer", kid: "KID", iban: "IBAN", bic: "BIC",
 		quoteKID: "Merk betalingen med KID %s.", quoteNumber: "Merk betalingen med fakturanummer %d.",
-		paidMeanwhile: "Har du betalt i mellomtiden, kan du se bort fra dette brevet.",
-		objection:     "Har du innsigelser mot kravet, gi oss beskjed før fristen.",
-		notice:        "Kravet vil bli sendt til inkasso dersom det ikke er betalt innen %s.",
-		noticeCosts:   "Inkasso kan føre til at det påløper ytterligere kostnader.",
-		announcement:  "Kravet vil bli oversendt til et inkassoforetak dersom det ikke er betalt innen %s.",
-		greeting:      "Hei,", coverIntro: "Vedlagt følger en purring på faktura %d fra %s.",
+		paidMeanwhile:        "Har du betalt i mellomtiden, kan du se bort fra dette brevet.",
+		payLink:              "Du kan betale fakturaen med Vipps: %s",
+		payLinkChargesKID:    "Lenken betaler bare fakturaens utestående hovedstol. Gebyrer, kompensasjon og renter betales til kontonummeret over, merket med KID %s.",
+		payLinkChargesNumber: "Lenken betaler bare fakturaens utestående hovedstol. Gebyrer, kompensasjon og renter betales til kontonummeret over, merket med fakturanummer %d.",
+		objection:            "Har du innsigelser mot kravet, gi oss beskjed før fristen.",
+		notice:               "Kravet vil bli sendt til inkasso dersom det ikke er betalt innen %s.",
+		noticeCosts:          "Inkasso kan føre til at det påløper ytterligere kostnader.",
+		announcement:         "Kravet vil bli oversendt til et inkassoforetak dersom det ikke er betalt innen %s.",
+		greeting:             "Hei,", coverIntro: "Vedlagt følger en purring på faktura %d fra %s.",
 		cover:     "Å betale er %s, innen %s.",
 		coverMoot: "Har du betalt i mellomtiden, kan du se bort fra denne e-posten.", closing: "Med vennlig hilsen",
 	}

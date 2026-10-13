@@ -255,7 +255,11 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 		return c.fail(ctx, reasonNoStorage)
 	}
 	q := store.New(c.w.deps.Pool)
-	m, body, err := renderLetter(letter, inv)
+	payLink, err := c.s.printablePayLink(ctx, q, inv)
+	if err != nil {
+		return err
+	}
+	m, body, err := renderLetter(letter, inv, payLink)
 	if err != nil {
 		if failErr := c.fail(ctx, reasonLetterNotRendered); failErr != nil {
 			return failErr
@@ -523,11 +527,13 @@ func letterFactsParams(id int64, f *reminderrules.LetterFacts, notes []string, c
 }
 
 // renderLetter is a letter's model and PDF, from its row — its facts,
-// credited among them — and its invoice's snapshots alone: nothing read
-// live, so a row renders the same bytes every time, whatever was credited or
-// paid since its facts were written. Never under a lock.
-func renderLetter(letter store.InvoicesReminder, inv store.InvoicesInvoice) (reminderModel, []byte, error) {
-	m, err := reminderModelOf(letter, inv)
+// credited among them — and its invoice's snapshots: no amount read live, so
+// a row renders the same bytes every time, whatever was credited or paid
+// since its facts were written. payLink, the invoice's live pay link read by
+// the caller (D15), is the one thing that may differ: a link revoked is no
+// longer printed. Never under a lock.
+func renderLetter(letter store.InvoicesReminder, inv store.InvoicesInvoice, payLink string) (reminderModel, []byte, error) {
+	m, err := reminderModelOf(letter, inv, payLink)
 	if err != nil {
 		return reminderModel{}, nil, err
 	}

@@ -404,6 +404,11 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			if err := withHoldAndHandoff(ctx, q, inv.ID, &resp); err != nil {
 				return gen.InvoicesInvoiceResponse{}, err
 			}
+			// Its live pay link: the URL and its QR only to an issuer while
+			// on-site payment is available (D15, I21).
+			if err := s.withPayLink(ctx, q, inv, canIssue, &resp); err != nil {
+				return gen.InvoicesInvoiceResponse{}, err
+			}
 		}
 		return resp, creditLinks(ctx, q, inv, &resp, nil)
 	}

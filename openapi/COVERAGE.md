@@ -244,7 +244,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-## invoices (85 uncovered)
+## invoices (87 uncovered)
 
 - `DELETE /api/v1/invoices/collection-rates/{id}` (deleteInvoicesCollectionRatesById)
 - `DELETE /api/v1/invoices/settings/access-point` (deleteInvoicesSettingsAccessPoint)
@@ -315,6 +315,8 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/invoices/{id}/issue` (postInvoicesByIdIssue)
 - `POST /api/v1/invoices/{id}/manual-deliveries/{deliveryId}/remove` (postInvoicesByIdManualDeliveriesByDeliveryIdRemove)
 - `POST /api/v1/invoices/{id}/manual-deliveries` (postInvoicesByIdManualDeliveries)
+- `POST /api/v1/invoices/{id}/pay-link/revoke` (postInvoicesByIdPayLinkRevoke)
+- `POST /api/v1/invoices/{id}/pay-link` (postInvoicesByIdPayLink)
 - `POST /api/v1/invoices/{id}/payments/{paymentId}/remove` (postInvoicesByIdPaymentsByPaymentIdRemove)
 - `POST /api/v1/invoices/{id}/payments` (postInvoicesByIdPayments)
 - `POST /api/v1/invoices/{id}/send-ehf` (postInvoicesByIdSendEhf)
@@ -386,4 +388,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/staff/settings` (putStaffSettings)
 - `PUT /api/v1/staff/terms/{id}` (putStaffTermsById)
 
-Total: 348 of 483 operations have no recorded exchange.
+Total: 350 of 485 operations have no recorded exchange.

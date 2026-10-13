@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/johnfercher/go-tree/node"
+	"github.com/johnfercher/maroto/v2/pkg/core"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -146,6 +148,8 @@ type PDFModel struct {
 	Watermark string
 	Numbered  bool
 	Timesheet *PDFTimesheet
+	// PayLink is the pay link's heading and URL (D15), empty for none.
+	PayLink [2]string
 }
 
 // PDFTimesheet is a model's timesheet block as it prints it (invoices work
@@ -164,7 +168,7 @@ type PDFTimesheet struct {
 // package's.
 func SetPDFModelBuilt(hook func(invoiceID int64, m PDFModel)) func() {
 	pdfModelBuilt = func(id int64, m pdfModel) {
-		report := PDFModel{Watermark: m.watermark}
+		report := PDFModel{Watermark: m.watermark, PayLink: m.payLink}
 		for _, row := range m.meta {
 			report.Numbered = report.Numbered || row[0] == labels["nb"].number || row[0] == labels["en"].number
 		}
@@ -596,7 +600,11 @@ func RenderLetterForTest(ctx context.Context, d module.Deps, reminderID int64) (
 	if err != nil {
 		return nil, err
 	}
-	_, body, err := renderLetter(letter, inv)
+	payLink, err := (&server{deps: d}).printablePayLink(ctx, q, inv)
+	if err != nil {
+		return nil, err
+	}
+	_, body, err := renderLetter(letter, inv, payLink)
 	return body, err
 }
 
@@ -655,4 +663,35 @@ func SetVippsVerifyBeforeClear(hook func()) func() {
 func SetQuickAfterInsert(hook func(ctx context.Context, invoiceID int64) error) func() {
 	quickAfterInsert = hook
 	return func() { quickAfterInsert = nil }
+}
+
+// SetPayLinkToken installs fn as the source of every new pay link's token in
+// place of 32 random bytes, and answers the function that removes it. A test
+// using it does not run in parallel: the seam is the package's.
+func SetPayLinkToken(fn func() string) func() {
+	payLinkToken = fn
+	return func() { payLinkToken = nil }
+}
+
+// PDFPayLinkQR lays out a model printing payLink and answers the text of
+// every QR code the layout carries — what a reader of the PDF would decode.
+func PDFPayLinkQR(payLink string) ([]string, error) {
+	m := buildPDFModel(pdfDocument{kind: kindInvoice, language: "nb", currency: "NOK", payLink: payLink,
+		totals: documentTotals{net: new(big.Rat), vat: new(big.Rat), gross: new(big.Rat)}})
+	doc, err := layoutPDF(m)
+	if err != nil {
+		return nil, err
+	}
+	var codes []string
+	var walk func(n *node.Node[core.Structure])
+	walk = func(n *node.Node[core.Structure]) {
+		if data := n.GetData(); data.Type == "qrcode" {
+			codes = append(codes, fmt.Sprint(data.Value))
+		}
+		for _, c := range n.GetNexts() {
+			walk(c)
+		}
+	}
+	walk(doc.GetStructure())
+	return codes, nil
 }

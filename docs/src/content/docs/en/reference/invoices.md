@@ -115,6 +115,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.collection_handoffs` | An invoice's hand-off to a collection agency ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)): the invoice, `handed_on`, the agency, its reference, a note, who recorded it and when, and — once withdrawn — `withdrawn_on`, by whom and why, together (`ck_collection_handoffs_withdrawal`). One live hand-off per invoice (`ux_collection_handoffs_live`). Never deleted; an update is the withdrawal, once, or the erase's blanking of the note. |
 | `invoices.payment_provider_credentials` | One row (`id = 1`): the payment provider (`vipps`), its settings that are not secret (`settings_json`, the sales unit's `msn`), the sales unit's three keys sealed together by the secrets box, a webhook registration's id and sealed secret (both or neither), `rejected_at` once Vipps refused the keys or they could not be opened, and `updated_at` ([Credentials and payment settings](#credentials-and-payment-settings)). Kept off every other row: an attempt's create shares it, a credentials change locks it. |
 | `invoices.payment_settings` | One row (`id = 1`), inserted by the migration: the installation's `reference_prefix` (six base36 characters, never changed), `pay_links_enabled` with the seller's `terms_url` and `privacy_url` (both required while pay links are on), `on_site_payments_enabled` with the kontantsalg acknowledgement — who and when, both or neither, required while on-site payment is on — and the row's revision, who changed it and when. Never deleted ([Credentials and payment settings](#credentials-and-payment-settings)). |
+| `invoices.pay_links` | An issued invoice's pay link ([Pay links](#pay-links)): the invoice, `token_sha256` (the token's SHA-256, unique — never the token), `url_ciphertext` (the whole URL sealed under `invoices/pay-link`), who made it (NULL when the issue did) and when, and — once revoked — when and by whom. One live link per invoice (`ux_pay_links_live`). A trigger refuses one under a draft, a credit note or an anonymised customer's invoice; another refuses a DELETE and every update but the revocation, once. |
 
 A document's state is not a column: `invoices.document_state(...)` derives it, see
 [Payments and the state of an invoice](#payments-and-the-state-of-an-invoice).
@@ -1109,7 +1110,9 @@ The PDF is stored after the commit, as an issue's is. The answer is 201
 ordinary series with terms and a due date like any other; a replay is 200 with the same
 `invoice` and no `paymentRequestError`. `payOnSite: true` asks for a
 Vipps payment on site; on-site payment is not offered yet, so the invoice is issued and
-`paymentRequestError` carries `on_site_payments_unavailable`. A quick invoice paid later —
+`paymentRequestError` carries `on_site_payments_unavailable`. It gets a pay link at
+issue only when on-site payment is available; otherwise the e-mail send makes one
+([Pay links](#pay-links)). A quick invoice paid later —
 by KID through the bank, or by a pay link once the tradesperson has left — is a **credit
 sale**; paid on site with Vipps it is kontantsalg, which Invoices offers only as a
 kontantfaktura ([Vipps payments](#vipps-payments)). Meta answers
@@ -3459,6 +3462,56 @@ transaction by a path that re-judges under its locks. A setting left on therefor
 back into service by itself when good keys are stored again, and on-site payment keeps
 the acknowledgement given when it was turned on.
 
+### Pay links
+
+A **pay link** is an issued invoice's stable address on the installation's pay page,
+`PUBLIC_BASE_URL/pay?token=<token>`, where the customer pays the invoice with Vipps; the
+Vipps payment itself is made only when the customer asks for it there. The token is 32
+random bytes, base64url without padding — only `A–Z`, `a–z`, `0–9`, `-` and `_` — and
+travels in the query string, which the request log never writes. The row
+(`invoices.pay_links`) keeps only the token's SHA-256, for the lookup, and the whole URL
+sealed by the secrets box under `invoices/pay-link`, so the PDF, the cover e-mail and a
+reminder letter can print it again. An invoice has at most one live link.
+
+**Made at issue.** The issue inserts the link in its own transaction, after the
+document is written, when pay links are available (`paymentsAvailable`, judged through
+that transaction — never `pay_links_enabled` alone) and the customer is not anonymised;
+it is made by nobody (`created_by_user_id` NULL). **The quick invoice** is handed over on
+site, where a link shown to the customer is kontantsalg, so it gets a link at issue only
+when on-site payment is available too. A credit note never gets one.
+
+**Made on demand.** `POST /invoices/{id}/pay-link` (`invoices:issue`) locks the invoice
+and refuses, in order, `credit_note_no_payments`, `invoice_draft`,
+`customer_anonymised`, `pay_links_unavailable` and `pay_link_exists`, then inserts the
+link: 201, the invoice. **The e-mail send** makes one the same way — in a transaction of
+its own, before the cover text is written — when pay links are available and the invoice
+has no live link, so a quick invoice or an invoice issued before pay links is e-mailed
+with one; a refusal there is no failure of the send.
+
+**Revoked.** `POST /invoices/{id}/pay-link/revoke` (`invoices:issue`) locks the invoice,
+then the link (`FOR NO KEY UPDATE`), and revokes it once, with who and when: 204, or 404
+when there is no live link. A new link can then be made.
+
+**Where it is printed.** The PDF prints **"Betal med Vipps"** ("Pay with Vipps"), the URL
+and a QR code of it under the payment block, from the live link read and opened when the
+PDF is first stored, outside any lock: a link revoked before that store is not printed,
+and a stored PDF never changes — an invoice issued before pay links, or a quick invoice
+without on-site payment, has none in its PDF. The **cover e-mail** of an invoice with
+something open carries "Du kan også betale med Vipps: <URL>" ("You can also pay with
+Vipps"). A **reminder letter** prints "Du kan betale fakturaen med Vipps: <URL>" and —
+the link pays the invoice's principal only — when the letter claims fees, compensation or
+interest, that those are paid by bank to the account above, marked with the KID or the
+invoice number. The e-mail and the letter read the live link when they are written,
+and print it only while pay links are available, so a revoked link is no longer
+carried. A link that cannot be opened is logged and left out.
+
+**What the response answers.** An issued invoice with a live link carries
+`payLink {id, createdAt}` to every reader. Its `url` and `qrSvg` — the URL as a QR code,
+an SVG of squares alone, shown as an image and never inlined — are answered only to a
+caller holding `invoices:issue` while `onSitePaymentsAvailable` is true: without on-site
+payment the app shows no pay link on screen, because a link a customer is shown on site
+is kontantsalg (D17). The rule is the server's, not the frontend's.
+
 ## The journal
 
 `GET /invoices/journal?from&to` lists the issued documents with an issue date in the
@@ -3945,6 +3998,8 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /{id}/charges/waive` | `invoices:payments` | 400 on `waivers`, `reason` or `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; 404 a letter not the document's; 409 `charge_not_claimed` |
 | `POST /{id}/manual-deliveries` | `invoices:issue` | 404; 409 `credit_note_no_reminders`, `invoice_draft`; 400 on `kind`, `deliveredOn` or `note` |
 | `POST /{id}/manual-deliveries/{deliveryId}/remove` | `invoices:issue` | 400 on `reason`; 404 the document, or a delivery not its own; 409 `delivery_removed`, `delivery_relied_on` |
+| `POST /{id}/pay-link` | `invoices:issue` | 404; then under the lock 409 `credit_note_no_payments`, `invoice_draft`, `customer_anonymised`, `pay_links_unavailable`, `pay_link_exists` |
+| `POST /{id}/pay-link/revoke` | `invoices:issue` | 404 the document, or no live link |
 | `POST /{id}/hold` | `invoices:payments` | 400 on `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; then under the lock 409 `invoice_on_hold` |
 | `POST /{id}/hold/lift` | `invoices:payments` | 400 on `chargesAllowed` (absent or not a boolean) or `note`; 404; 409 `invoice_not_on_hold` |
 | `POST /{id}/collection` | `invoices:payments` | 400 on `handedOn` (missing or after today), `agency`, `agencyReference` or `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; 400 on `handedOn` before the issue date; then under the lock 409 `invoice_settled`, `invoice_handed_off`, `invoice_not_delivered` (unless `acknowledgeNotDelivered`) |
