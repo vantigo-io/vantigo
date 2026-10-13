@@ -288,7 +288,8 @@ may withdraw the right for a period:
    `withdrawnReason` are there.
 3. From today until that day, an egenmelding for the person is refused
    (`self_certification_withdrawn`); they register a sykmelding instead. Egenmelding for
-   days before you recorded the withdrawal still stands.
+   days before you recorded the withdrawal still stands. Extending a withdrawal still in
+   force keeps the day you first recorded it.
 
 To lift it early, send `{"until": null}`. The withdrawal and its lifting are in the
 person's history for the person, HR and `staff:personal-data` — never for the manager,
@@ -352,8 +353,11 @@ Meanwhile your dashboard lists the ferie under *ferie affected by sickness*.
    dashboard.
 
 Sickness that began **before** the holiday must have been demanded by the last working
-day before it; a later demand is refused (`holiday_postponement_too_late`). Sickness
-**during** the holiday gives replacement days whenever it is demanded. A sykmelding over
+day before it; a later demand is refused (`holiday_postponement_too_late`), and the
+dashboard stops listing such a holiday once it has begun. Sickness **during** the
+holiday gives replacement days; the employee is to demand them without undue delay
+once back at work. A demand is never dated before the sykmelding's first day, and the
+law sets no least number of sick days. A sykmelding over
 a ferie that is only requested leaves the request; its approval is then refused.
 
 ## The care-day fields

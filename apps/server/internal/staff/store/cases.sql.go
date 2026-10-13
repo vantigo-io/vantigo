@@ -226,6 +226,9 @@ JOIN staff.absences s ON s.person_id = f.person_id AND s.status = 'registered'
     AND (s.degree_percent IS NULL OR s.degree_percent = 100)
 JOIN staff.absence_types st ON st.id = s.type_id AND st.kind = 'sick_certified'
 WHERE f.status = 'approved' AND f.last_day + 28 >= $1::date
+  -- Sickness that began before the holiday is past its § 9 (1) deadline
+  -- once the holiday has begun: nothing to act on (re-check 3).
+  AND (s.first_day >= f.first_day OR f.first_day > $1::date)
 ORDER BY f.first_day, f.id
 `
 
@@ -237,7 +240,8 @@ type HolidayAffectedBySicknessRow struct {
 }
 
 // HolidayAffectedBySickness is every approved ferie row a 100 % sykmelding
-// lies over, until four weeks after the ferie's last day: the employee may
+// lies over, until four weeks after the ferie's last day — one whose
+// sickness began before it only until it begins: the employee may
 // demand to postpone it (ferieloven § 9), which HR records — the attention
 // item holidayAffectedBySickness.
 func (q *Queries) HolidayAffectedBySickness(ctx context.Context, today pgtype.Date) ([]HolidayAffectedBySicknessRow, error) {

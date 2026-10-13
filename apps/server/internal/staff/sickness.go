@@ -289,7 +289,10 @@ func postponementRefusal(code, title, detail string) error {
 // sickness before the holiday must have been demanded by the last working
 // day before it (§ 9 (1)), sickness during it gives replacement days (§ 9
 // (2)). Each ferie row is split around the sykmelding (carve) under the
-// person's lock, its absence_split event carrying the demand.
+// person's lock, its absence_split event carrying the demand. Today's § 9
+// sets no least number of sick days, for either paragraph (Lovdata,
+// checked 2026-10-14); § 9 (2)'s demand is to come "uten ugrunnet opphold"
+// after the work is resumed, which HR judges and the module does not.
 func (s *server) PostStaffAbsencesByIdPostponeHoliday(ctx context.Context, req gen.PostStaffAbsencesByIdPostponeHolidayRequestObject) (gen.PostStaffAbsencesByIdPostponeHolidayResponseObject, error) {
 	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
 	if err != nil {
@@ -337,6 +340,13 @@ func (s *server) PostStaffAbsencesByIdPostponeHoliday(ctx context.Context, req g
 			if r.Kind != kindHoliday || r.StaffAbsence.Status != absenceApproved {
 				continue
 			}
+			// A demand follows the sickness (re-check 1): not before the
+			// sykmelding's first day — under § 9 (1) the day it began before
+			// the holiday, under § 9 (2) its first day within the holiday.
+			if demanded.Before(sickFirst) {
+				return refuseInvalid(invalidAbsenceTitle, fieldErrors{errs: fieldError("demandedOn",
+					fmt.Sprintf("A demand follows the sickness: not before %s", sickFirst.Format(time.DateOnly)))})
+			}
 			if f := civil(r.StaffAbsence.FirstDay); sickFirst.Before(f) && demanded.After(lastWorkingDayBefore(f)) {
 				return postponementRefusal(codePostponementTooLate, "Demanded too late",
 					fmt.Sprintf("Sickness that began before the holiday is to be demanded by the last working day before it, %s (ferieloven § 9 (1)).",
@@ -377,8 +387,11 @@ func (s *server) PostStaffAbsencesByIdPostponeHoliday(ctx context.Context, req g
 		return gen.PostStaffAbsencesByIdPostponeHoliday404Response{}, nil
 	}
 	if r, ok := asRefusal(err); ok {
-		if r.status == http.StatusConflict {
+		switch r.status {
+		case http.StatusConflict:
 			return gen.PostStaffAbsencesByIdPostponeHoliday409ApplicationProblemPlusJSONResponse(r.problem), nil
+		case http.StatusBadRequest:
+			return gen.PostStaffAbsencesByIdPostponeHoliday400ApplicationProblemPlusJSONResponse(r.problem), nil
 		}
 		return gen.PostStaffAbsencesByIdPostponeHoliday404Response{}, nil
 	}
@@ -558,8 +571,14 @@ func (s *server) PutStaffPeopleByIdSelfCertificationWithdrawal(ctx context.Conte
 		if err != nil {
 			return fmt.Errorf("staff: read person %d's withdrawal: %w", req.Id, err)
 		}
+		// The day it was decided; re-issuing a withdrawal still in force
+		// keeps it, so extending one opens no days between (re-check 2).
 		var from pgtype.Date
-		if until.Valid {
+		switch {
+		case !until.Valid:
+		case current.SelfCertWithdrawnFrom.Valid && current.SelfCertWithdrawnUntil.Valid && !current.SelfCertWithdrawnUntil.Time.Before(caller.Today):
+			from = current.SelfCertWithdrawnFrom
+		default:
 			from = dayParam(caller.Today)
 		}
 		if err := txq.SetSelfCertWithdrawal(ctx, store.SetSelfCertWithdrawalParams{Until: until, Reason: reason, FromDay: from, Now: s.deps.Clock(), ID: req.Id}); err != nil {

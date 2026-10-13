@@ -206,7 +206,8 @@ WHERE case_id = @case_id AND kind = @kind;
 
 -- name: HolidayAffectedBySickness :many
 -- HolidayAffectedBySickness is every approved ferie row a 100 % sykmelding
--- lies over, until four weeks after the ferie's last day: the employee may
+-- lies over, until four weeks after the ferie's last day — one whose
+-- sickness began before it only until it begins: the employee may
 -- demand to postpone it (ferieloven § 9), which HR records — the attention
 -- item holidayAffectedBySickness.
 SELECT DISTINCT f.id, f.person_id, f.first_day, p.display_name
@@ -218,4 +219,7 @@ JOIN staff.absences s ON s.person_id = f.person_id AND s.status = 'registered'
     AND (s.degree_percent IS NULL OR s.degree_percent = 100)
 JOIN staff.absence_types st ON st.id = s.type_id AND st.kind = 'sick_certified'
 WHERE f.status = 'approved' AND f.last_day + 28 >= @today::date
+  -- Sickness that began before the holiday is past its § 9 (1) deadline
+  -- once the holiday has begun: nothing to act on (re-check 3).
+  AND (s.first_day >= f.first_day OR f.first_day > @today::date)
 ORDER BY f.first_day, f.id;
