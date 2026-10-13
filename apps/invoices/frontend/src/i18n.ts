@@ -546,6 +546,8 @@ export const invoicesCatalog = {
     "refusal.day_not_over": "This day is not over yet. Reconcile it from tomorrow.",
     "refusal.payment_in_progress":
       "A Vipps payment of this invoice is being completed, and it leaves less than kr 1.00 open. Wait for it to finish.",
+    "refusal.request_id_reused":
+      "This quick invoice was sent before with other contents. Start a new quick invoice to issue another.",
     "workRefusal.source_not_invoiceable":
       "Some of the chosen work can no longer be invoiced: it was unapproved, invoiced elsewhere, or its module is off. Read the work again.",
     "workRefusal.source_changed":
@@ -2144,6 +2146,8 @@ export const invoicesCatalog = {
     "refusal.day_not_over": "Denne dagen er ikke over ennå. Avstem den fra i morgen.",
     "refusal.payment_in_progress":
       "En Vipps-betaling av denne fakturaen fullføres nå, og den gjør at mindre enn kr 1,00 står åpent. Vent til den er ferdig.",
+    "refusal.request_id_reused":
+      "Denne hurtigfakturaen er sendt før med annet innhold. Start en ny hurtigfaktura for å utstede en til.",
     "workRefusal.source_not_invoiceable":
       "Noe av det valgte arbeidet kan ikke lenger faktureres: godkjenningen er trukket, det er fakturert et annet sted, eller modulen er slått av. Les arbeidet på nytt.",
     "workRefusal.source_changed":

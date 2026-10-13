@@ -551,6 +551,8 @@ Stopper noe fakturaen — et felt som ikke er riktig fylt ut, en kunde som ikke 
 faktureres, en kjøper uten fullstendig adresse eller organisasjonsnummer, en mva-kode som
 ikke kan brukes, eller noe annet som avviser en vanlig utstedelse — beholdes ingenting:
 ingen utkast blir liggende igjen og ingen nummer brukes. Rett opp og utsted på nytt.
+Faller forbindelsen etter at du valgte **Utsted**, lager det aldri en faktura til å utstede
+på nytt fra det samme skjermbildet: du får den som allerede er utstedt.
 
 En hurtigfaktura kunden betaler senere — i banken med KID, eller via en betalingslenke
 de åpner etter at du har dratt — er et vanlig kredittsalg. Betalt med Vipps på stedet,

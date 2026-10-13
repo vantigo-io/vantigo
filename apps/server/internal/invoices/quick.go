@@ -2,9 +2,14 @@ package invoices
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -28,6 +33,15 @@ import (
 
 // maxQuickLines is how many lines a quick invoice carries (D17).
 const maxQuickLines = 10
+
+// codeRequestIDReused refuses a quick invoice whose requestId came before
+// with another body (D17, after review).
+const codeRequestIDReused = "request_id_reused"
+
+// errQuickReplay is a quick invoice's transaction finding its requestId
+// taken by a request that committed first: rolled back, and the first's
+// invoice answered.
+var errQuickReplay = errors.New("invoices: the quick invoice's request id is taken")
 
 // deliveryHandedOver is the manual delivery a quick invoice records (D8).
 const deliveryHandedOver = "handed_over"
@@ -62,6 +76,18 @@ func quickDraft(body gen.InvoicesQuickInvoiceRequest, today openapi_types.Date) 
 // (POST /api/v1/invoices/quick)
 func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuickRequestObject) (gen.PostInvoicesQuickResponseObject, error) {
 	q := store.New(s.deps.Pool)
+	// A requestId used before is answered before anything else is read or
+	// judged: the first's invoice for the same body, a 409 for another.
+	bodySHA, err := quickBodySHA(*req.Body)
+	if err != nil {
+		return nil, err
+	}
+	if id := req.Body.RequestId; id != nil {
+		replay, refusal, err := s.quickReplay(ctx, q, *id, bodySHA)
+		if err != nil || refusal != nil || replay != nil {
+			return quickReplied(replay, refusal, err)
+		}
+	}
 	settings, err := q.GetSettings(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the settings: %w", err)
@@ -148,6 +174,20 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 		if _, err := writeLines(ctx, txq, draft.ID, in.lines); err != nil {
 			return err
 		}
+		// The requestId, right after the document: a second request with it
+		// waits here on this key, holding only its own uncommitted draft,
+		// and finds it taken once this one commits.
+		if id := req.Body.RequestId; id != nil {
+			n, err := txq.InsertQuickRequest(ctx, store.InsertQuickRequestParams{
+				RequestID: *id, InvoiceID: draft.ID, BodySha256: bodySHA, CreatedAt: now,
+			})
+			if err != nil {
+				return fmt.Errorf("invoices: keep quick invoice %d's request id: %w", draft.ID, err)
+			}
+			if n == 0 {
+				return errQuickReplay
+			}
+		}
 		if quickAfterInsert != nil {
 			if err := quickAfterInsert(ctx, draft.ID); err != nil {
 				return err
@@ -173,6 +213,9 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 	})
 	if refusal != nil {
 		return gen.PostInvoicesQuick409ApplicationProblemPlusJSONResponse(*refusal), nil
+	}
+	if errors.Is(err, errQuickReplay) {
+		return quickReplied(s.quickReplay(ctx, q, *req.Body.RequestId, bodySHA))
 	}
 	if err != nil {
 		return nil, err
@@ -255,4 +298,61 @@ func (s *server) quickFollowMerge(ctx context.Context, inv store.InvoicesInvoice
 		return inv
 	}
 	return moved
+}
+
+// quickBodySHA is the hex SHA-256 of a quick invoice's body as decoded and
+// encoded again — the same fields give the same hash, however the client
+// spaced or ordered them.
+func quickBodySHA(body gen.InvoicesQuickInvoiceRequest) (string, error) {
+	b, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("invoices: encode a quick invoice's body: %w", err)
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// quickReplay answers a requestId used before (D17, after review): nil, nil
+// when it was not; the first request's invoice when bodySHA is its body's —
+// read as it stands, a merge the first missed followed, nothing else run
+// again, and no payment request made again; 409 request_id_reused for
+// another body.
+func (s *server) quickReplay(ctx context.Context, q *store.Queries, id uuid.UUID, bodySHA string,
+) (*gen.InvoicesQuickInvoiceResponse, *gen.InvoicesConflictProblem, error) {
+	kept, err := q.QuickRequest(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("invoices: read quick request %s: %w", id, err)
+	}
+	if kept.BodySha256 != bodySHA {
+		return nil, ptr(conflict(codeRequestIDReused, "The quick invoice cannot be created",
+			"This requestId was sent before with another body. Send a new requestId for a new invoice.")), nil
+	}
+	inv, err := q.GetInvoice(ctx, kept.InvoiceID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invoices: read quick invoice %d: %w", kept.InvoiceID, err)
+	}
+	inv = s.quickFollowMerge(ctx, inv)
+	resp, err := s.invoiceResponse(ctx, q, inv, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &gen.InvoicesQuickInvoiceResponse{Invoice: resp}, nil, nil
+}
+
+// quickReplied is quickReplay's answer as the handler's: 200, 409 or an
+// error.
+func quickReplied(replay *gen.InvoicesQuickInvoiceResponse, refusal *gen.InvoicesConflictProblem, err error,
+) (gen.PostInvoicesQuickResponseObject, error) {
+	switch {
+	case err != nil:
+		return nil, err
+	case refusal != nil:
+		return gen.PostInvoicesQuick409ApplicationProblemPlusJSONResponse(*refusal), nil
+	case replay == nil:
+		return nil, errors.New("invoices: a quick invoice's request id was taken and then not found")
+	}
+	return gen.PostInvoicesQuick200JSONResponse(*replay), nil
 }

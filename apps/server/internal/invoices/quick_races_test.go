@@ -255,3 +255,69 @@ func TestQuickInvoice_RacesIssue(t *testing.T) {
 		t.Errorf("the counter's next = %d, want 6", n)
 	}
 }
+
+// TestQuickInvoice_RequestIdDoubleSubmit (D17, after review): two quick
+// invoices with one requestId at once. The first, parked on
+// SetQuickAfterInsert, holds the id's key uncommitted; the second waits on
+// it — pg_blocking_pids names the first — and, once the first commits, finds
+// the id taken and answers 200 with the first's invoice. One document, one
+// number, never 40P01. Not parallel: the seam is the package's.
+func TestQuickInvoice_RequestIdDoubleSubmit(t *testing.T) {
+	h := raceHarness(t)
+	saveSeller(t, h, completeSeller(1))
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	parked, release := make(chan struct{}), make(chan struct{})
+	var once atomic.Bool
+	restore := invoices.SetQuickAfterInsert(func(ctx context.Context, _ int64) error {
+		if once.Swap(true) {
+			return nil
+		}
+		close(parked)
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
+	defer restore()
+	body := quickBody(customerAcme, line("Utrykning", 1, 950, vat25))
+	body["requestId"] = "0b7a3f4e-1c2d-4e5f-8a9b-0c1d2e3f4a5b"
+	firstClient, secondClient := quicker(t, h), quicker(t, h)
+
+	firstDone := make(chan *modtest.Response, 1)
+	go func() { firstDone <- firstClient.Do(http.MethodPost, quickPath, body, modtest.Context(ctx)) }()
+	select {
+	case <-parked:
+	case <-ctx.Done():
+		t.Fatal("the first never reached the seam")
+	}
+	first := idleInTransaction(t, probeConn)
+	secondDone := make(chan *modtest.Response, 1)
+	go func() { secondDone <- secondClient.Do(http.MethodPost, quickPath, body, modtest.Context(ctx)) }()
+	waiter := newWaiter(t, probeConn)
+	if got := blockersOf(t, probeConn, waiter); !slices.Equal(got, []uint32{first}) {
+		t.Errorf("pg_blocking_pids(the second) = %v, want the first %d", got, first)
+	}
+	close(release)
+
+	a, b := <-firstDone, <-secondDone
+	if a.Status != http.StatusCreated || b.Status != http.StatusOK {
+		t.Fatalf("first %d %s, second %d %s; want 201 and 200 — never 40P01", a.Status, a.Body, b.Status, b.Body)
+	}
+	var x, y quickJSON
+	a.JSON(&x)
+	b.JSON(&y)
+	if x.Invoice.ID != y.Invoice.ID || *y.Invoice.Number != 1 {
+		t.Errorf("first %d, second %d (number %d); want one invoice, number 1", x.Invoice.ID, y.Invoice.ID, *y.Invoice.Number)
+	}
+	if n, next := documentCount(t, h), counterNext(t, h); n != 1 || next != 2 {
+		t.Errorf("documents %d, counter %d; want 1 and 2", n, next)
+	}
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("deadlocks = %d, was %d", after, before)
+	}
+}

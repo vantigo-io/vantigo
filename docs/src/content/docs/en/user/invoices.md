@@ -540,7 +540,9 @@ under your name; that record is the delivery a later reminder relies on
 If anything stops the invoice — a field that is not filled in right, a customer who
 cannot be invoiced, a buyer without a complete address or an organisation number, a VAT
 code that cannot be used, or anything else that refuses an ordinary issue — nothing is
-kept: no draft is left behind and no number is used. Correct it and issue again.
+kept: no draft is left behind and no number is used. Correct it and issue again. If the
+connection drops after you chose **Issue**, issuing again from the same screen never makes
+a second invoice: you get the one already issued.
 
 A quick invoice the customer pays later — by bank with the KID, or through a pay link
 they open after you have left — is an ordinary credit sale. Paid on site with Vipps, or
