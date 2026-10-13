@@ -28,6 +28,7 @@ const paymentsPortVersion = 46
 // them.
 var paymentsPortTables = []string{
 	"payment_provider_credentials", "payment_settings", "pay_links", "payment_attempts", "vipps_day_reconciliations",
+	"quick_requests",
 }
 
 // paymentsPortObjects is what 00046 adds to the invoices schema, as found:
@@ -110,8 +111,11 @@ func TestInvoicesPaymentsPort_AppliesAndIsIdempotent(t *testing.T) {
 	defer pool.Close()
 
 	want := map[string][]string{
-		"columns":     paymentsPortColumns,
-		"tables":      {"pay_links", "payment_attempts", "payment_provider_credentials", "payment_settings", "vipps_day_reconciliations"},
+		"columns": paymentsPortColumns,
+		"tables": {
+			"pay_links", "payment_attempts", "payment_provider_credentials", "payment_settings", "quick_requests",
+			"vipps_day_reconciliations",
+		},
 		"constraints": paymentsPortConstraints,
 		"triggers": {
 			"pay_links:tr_pay_links_immutable:refuse_pay_link_change",
@@ -120,6 +124,7 @@ func TestInvoicesPaymentsPort_AppliesAndIsIdempotent(t *testing.T) {
 			"payment_attempts:tr_payment_attempts_parent:guard_payment_child_insert",
 			"payment_attempts:tr_payment_attempts_reference:set_payment_attempt_reference",
 			"payment_settings:tr_payment_settings_kept:refuse_payment_settings_change",
+			"quick_requests:tr_quick_requests_immutable:refuse_row_change",
 			"vipps_day_reconciliations:tr_vipps_day_reconciliations_immutable:refuse_row_change",
 		},
 		"functions": {
@@ -269,6 +274,10 @@ var paymentsPortColumns = []string{
 	"payment_settings.updated_at:timestamp with time zone::NO:",
 	"payment_settings.updated_by_user_id:uuid::YES:",
 	"payments.payment_attempt_id:bigint::YES:",
+	"quick_requests.body_sha256:character:64:NO:",
+	"quick_requests.created_at:timestamp with time zone::NO:",
+	"quick_requests.invoice_id:bigint::NO:",
+	"quick_requests.request_id:uuid::NO:",
 	"vipps_day_reconciliations.day:date::NO:",
 	"vipps_day_reconciliations.note:character varying:500:NO:''::character varying",
 	"vipps_day_reconciliations.on_site_total:numeric:14,2:NO:",
@@ -312,6 +321,10 @@ var paymentsPortConstraints = []string{
 	"invoices.payments:ck_payments_source:CHECK (((source)::text = ANY ((ARRAY['manual'::character varying, 'ocr'::character varying, 'camt054'::character varying, 'vipps'::character varying])::text[])))",
 	"invoices.payments:payments_payment_attempt_id_fkey:FOREIGN KEY (payment_attempt_id) REFERENCES invoices.payment_attempts(id) ON DELETE RESTRICT",
 	"invoices.payments:payments_payment_attempt_id_key:UNIQUE (payment_attempt_id)",
+	"invoices.quick_requests:ck_quick_requests_body:CHECK ((body_sha256 ~ '^[0-9a-f]{64}$'::text))",
+	"invoices.quick_requests:quick_requests_invoice_id_fkey:FOREIGN KEY (invoice_id) REFERENCES invoices.invoices(id) ON DELETE RESTRICT",
+	"invoices.quick_requests:quick_requests_invoice_id_key:UNIQUE (invoice_id)",
+	"invoices.quick_requests:quick_requests_pkey:PRIMARY KEY (request_id)",
 	"invoices.vipps_day_reconciliations:vipps_day_reconciliations_pkey:PRIMARY KEY (day)",
 }
 
@@ -330,6 +343,8 @@ var paymentsPortIndexes = []string{
 	"uq_payment_attempts_reference:CREATE UNIQUE INDEX uq_payment_attempts_reference ON invoices.payment_attempts USING btree (reference)",
 	"ux_pay_links_live:CREATE UNIQUE INDEX ux_pay_links_live ON invoices.pay_links USING btree (invoice_id) WHERE (revoked_at IS NULL)",
 	"ux_payment_attempts_on_site_live:CREATE UNIQUE INDEX ux_payment_attempts_on_site_live ON invoices.payment_attempts USING btree (invoice_id) WHERE (((flow)::text = 'on_site'::text) AND ((state)::text = ANY ((ARRAY['creating'::character varying, 'created'::character varying, 'authorized'::character varying, 'capturing'::character varying, 'capture_unknown'::character varying])::text[])))",
+	"quick_requests_invoice_id_key:CREATE UNIQUE INDEX quick_requests_invoice_id_key ON invoices.quick_requests USING btree (invoice_id)",
+	"quick_requests_pkey:CREATE UNIQUE INDEX quick_requests_pkey ON invoices.quick_requests USING btree (request_id)",
 	"vipps_day_reconciliations_pkey:CREATE UNIQUE INDEX vipps_day_reconciliations_pkey ON invoices.vipps_day_reconciliations USING btree (day)",
 }
 
@@ -342,6 +357,7 @@ const (
 	attemptCaptureKeyReplaced = "invoices: a payment attempt's capture key is replaced only before its first capture"
 	paymentSettingsKept       = "invoices: the payment settings row is never deleted, and its reference prefix never changes"
 	vippsDayImmutable         = "invoices: a row of vipps_day_reconciliations is never changed"
+	quickRequestImmutable     = "invoices: a row of quick_requests is never changed"
 )
 
 // attemptFinal is the refusal of a change to a terminal attempt in state.
@@ -910,5 +926,41 @@ func TestVippsDayReconciliations_Immutable(t *testing.T) {
 	}
 	if err := f.exec(`DELETE FROM invoices.vipps_day_reconciliations`); !refusedWith(err, vippsDayImmutable) {
 		t.Errorf("DELETE: %v, want %q", err, vippsDayImmutable)
+	}
+}
+
+// A quick invoice's request id (D17, after review): one row per id and one
+// per invoice, a body hash of 64 lowercase hex digits, under an existing
+// invoice; never changed or deleted.
+func TestQuickRequests_TheRow(t *testing.T) {
+	t.Parallel()
+	f := newReceivablesFixture(t)
+	invoice := f.issued(7)
+	other := f.issued(7)
+	insert := func(request string, invoiceID int64, sha string) error {
+		return f.exec(`INSERT INTO invoices.quick_requests (request_id, invoice_id, body_sha256, created_at)
+			VALUES ($1::uuid, $2, $3, now())`, request, invoiceID, sha)
+	}
+	sha := strings.Repeat("a", 64)
+	first := "00000000-0000-4000-8000-000000000001"
+	if err := insert(first, invoice, sha); err != nil {
+		t.Fatalf("the first request: %v", err)
+	}
+	if err := insert(first, other, sha); !uniqueViolationOf(err, "quick_requests_pkey") {
+		t.Errorf("the id again: %v, want quick_requests_pkey", err)
+	}
+	if err := insert("00000000-0000-4000-8000-000000000002", invoice, sha); !uniqueViolationOf(err, "quick_requests_invoice_id_key") {
+		t.Errorf("a second id for the invoice: %v, want quick_requests_invoice_id_key", err)
+	}
+	if err := insert("00000000-0000-4000-8000-000000000003", other, strings.Repeat("A", 64)); !checkViolationOf(err, "ck_quick_requests_body") {
+		t.Errorf("an uppercase hash: %v, want ck_quick_requests_body", err)
+	}
+	if err := insert("00000000-0000-4000-8000-000000000004", 999999, sha); err == nil {
+		t.Error("a request of no invoice was accepted")
+	}
+	for _, sql := range []string{`UPDATE invoices.quick_requests SET created_at = created_at`, `DELETE FROM invoices.quick_requests`} {
+		if err := f.exec(sql); !refusedWith(err, quickRequestImmutable) {
+			t.Errorf("%s: %v, want %q", sql, err, quickRequestImmutable)
+		}
 	}
 }
