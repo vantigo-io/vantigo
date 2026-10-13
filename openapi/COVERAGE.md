@@ -244,7 +244,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-## invoices (90 uncovered)
+## invoices (91 uncovered)
 
 - `DELETE /api/v1/invoices/collection-rates/{id}` (deleteInvoicesCollectionRatesById)
 - `DELETE /api/v1/invoices/settings/access-point` (deleteInvoicesSettingsAccessPoint)
@@ -296,6 +296,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/invoices/from-work` (postInvoicesFromWork)
 - `POST /api/v1/invoices/pay/attempts` (postInvoicesPayAttempts)
 - `POST /api/v1/invoices/pay/read` (postInvoicesPayRead)
+- `POST /api/v1/invoices/payment-attempts/{id}/abandon` (postInvoicesPaymentAttemptsByIdAbandon)
 - `POST /api/v1/invoices/quick` (postInvoicesQuick)
 - `POST /api/v1/invoices/reminder-print-batches/{id}/posted` (postInvoicesReminderPrintBatchesByIdPosted)
 - `POST /api/v1/invoices/reminder-print-batches/{id}/reprint` (postInvoicesReminderPrintBatchesByIdReprint)

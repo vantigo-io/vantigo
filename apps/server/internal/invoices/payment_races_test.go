@@ -323,3 +323,100 @@ func TestVippsCapture_RacesCreditNote(t *testing.T) {
 		t.Errorf("Postgres broke %d deadlock(s)", after-before)
 	}
 }
+
+// startAbandon abandons attempt id as c on its own goroutine under a
+// 30-second deadline.
+func startAbandon(c *modtest.Client, id int64) <-chan raceRequest {
+	done := make(chan raceRequest, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		done <- raceRequest{c.Do(http.MethodPost, abandonPath(id), abandonBody("Sjekket i Vipps-portalen", true), modtest.Context(ctx))}
+	}()
+	return done
+}
+
+// TestVippsAbandon_RacesCapture (D16, D18): a capture_unknown attempt the
+// worker holds while it counts a capture — its claim's lease is live, so
+// the abandon is refused at once without reading Vipps; the capture lands
+// and is registered once. Reversed, an abandon holding the attempt
+// after Vipps showed it ended: the worker's claim passes it by, and once the
+// abandon commits no claim takes the abandoned row and no capture is sent.
+// No deadlock.
+func TestVippsAbandon_RacesCapture(t *testing.T) {
+	t.Run("the capture first", func(t *testing.T) {
+		h := workerReady(t, modtest.WithPoolMaxConns(2))
+		inv, ref := unknownAttempt(t, h)
+		id := attemptOf(t, h, ref).ID
+		h.Advance(time.Hour)
+		probeConn := ownConn(t, h)
+		before := deadlocks(t, probeConn)
+		hook, parked, release := parkOnce(t)
+		defer invoices.SetCaptureAfterAttemptLock(hook)()
+
+		capture := startClaim(h)
+		pid := parkedPID(t, "the capture's count", parked)
+		// The claim's lease is live: the abandon is refused at once, without
+		// waiting on the attempt, and never reads Vipps.
+		gets := vippsCalls(h, ref, http.MethodGet, ref)
+		refusedAs(t, "the abandon", finished(t, "the abandon", startAbandon(vippsManager(t, h), id), http.StatusConflict), "attempt_not_abandonable")
+		if got := blockersOf(t, probeConn, pid); len(got) != 0 {
+			t.Errorf("the capture waits on %v", got)
+		}
+		if n := vippsCalls(h, ref, http.MethodGet, ref); n != gets {
+			t.Errorf("the refused abandon read Vipps %d time(s)", n-gets)
+		}
+		release.Close()
+		claimDone(t, "the capture", capture)
+		if a := attemptOf(t, h, ref); a.State != "captured" {
+			t.Errorf("the attempt = %s, want captured", a.State)
+		}
+		if got := vippsPaymentsOf(t, h, inv.ID); len(got) != 1 {
+			t.Errorf("the Vipps payments = %v, want one", got)
+		}
+		if after := deadlocks(t, probeConn); after != before {
+			t.Errorf("Postgres broke %d deadlock(s)", after-before)
+		}
+	})
+
+	t.Run("the abandon first", func(t *testing.T) {
+		h := workerReady(t, modtest.WithPoolMaxConns(2))
+		inv, ref := unknownAttempt(t, h)
+		id := attemptOf(t, h, ref).ID
+		if _, err := portal(t, h).Cancel(context.Background(), ref, "portal-cancel"); err != nil {
+			t.Fatalf("cancel in the portal: %v", err)
+		}
+		h.Advance(time.Hour)
+		probeConn := ownConn(t, h)
+		before := deadlocks(t, probeConn)
+		captures := vippsCalls(h, ref, http.MethodPost, "/capture")
+		hook, parked, release := parkOnce(t)
+		defer invoices.SetAbandonAfterAttemptLock(hook)()
+
+		abandon := startAbandon(vippsManager(t, h), id)
+		parkedPID(t, "the abandon", parked)
+		if got := heldMode(t, probeConn, "invoices.payment_attempts", "id = $1", id); got != modeNoKeyUpdate {
+			t.Errorf("the attempt is held %q, want FOR NO KEY UPDATE", got)
+		}
+		if got := heldMode(t, probeConn, "invoices.invoices", "id = $1", inv.ID); got != "" {
+			t.Errorf("the abandon holds the invoice %q, want the attempt alone", got)
+		}
+		if ok, err := invoices.NewPaymentWorker(h.Deps()).ProcessOne(context.Background()); err != nil || ok {
+			t.Errorf("a claim while the abandon holds the attempt = %v, %v; want none claimed", ok, err)
+		}
+		release.Close()
+		finished(t, "the abandon", abandon, http.StatusOK)
+		if ok, err := invoices.NewPaymentWorker(h.Deps()).ProcessOne(context.Background()); err != nil || ok {
+			t.Errorf("a claim after the abandon = %v, %v; want none claimed", ok, err)
+		}
+		if a := attemptOf(t, h, ref); a.State != "abandoned" || a.Reserved != nil {
+			t.Errorf("the attempt = %s reserved %s, want abandoned, released", a.State, text(a.Reserved))
+		}
+		if n := vippsCalls(h, ref, http.MethodPost, "/capture"); n != captures {
+			t.Errorf("%d captures sent around the abandon", n-captures)
+		}
+		if after := deadlocks(t, probeConn); after != before {
+			t.Errorf("Postgres broke %d deadlock(s)", after-before)
+		}
+	})
+}

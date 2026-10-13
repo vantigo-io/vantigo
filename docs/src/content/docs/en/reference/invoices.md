@@ -1002,7 +1002,8 @@ seam its tests pin.
 | a payment attempt's create | the invoice, then the payment credentials `FOR SHARE`, then the attempt inserted; Vipps' answer is recorded in a second transaction under the attempt alone (`FOR NO KEY UPDATE`) |
 | the payments worker's claim | one statement, the attempt `FOR NO KEY UPDATE SKIP LOCKED` for that statement alone — outside the helpers and the seam |
 | the capture decision, the capture's count before its first call, the registration | the attempt `FOR NO KEY UPDATE`, then its invoice |
-| the worker's other writes: authorized, ended, a later capture's count, unknown, failed, cancelled, released, rescheduled | the attempt alone |
+| the worker's other writes: authorized, ended, a later capture's count, unknown, failed, cancelled, released, a refund recorded, rescheduled | the attempt alone |
+| an abandon | its lease, one statement as the claim's; its write the attempt alone `FOR NO KEY UPDATE`; when Vipps shows money captured, the registration's attempt and then its invoice |
 | the erase | the person's documents `FOR UPDATE`, newest first, then their letters, then their children's notes, then the resolved bank lines (below) |
 
 **No path locks an invoice and then a bank line, an account row, a print batch or a
@@ -3742,7 +3743,7 @@ reserved amount under the key:
   while the money may have been taken — and it is read every hour up to 180 days after
   the authorization (Vipps' capture limit), then daily; the first definitive answer
   resolves it as above. A person who has checked in the Vipps portal that nothing was
-  captured may abandon it.
+  captured may [abandon](#abandon) it once Vipps' own read agrees.
 
 **The registration** reads the time of the capture from Vipps' event log first, outside
 any lock — the earliest successful `CAPTURED` — then, in one transaction, the attempt
@@ -3774,8 +3775,74 @@ while its read still shows an amount neither captured nor released is **parked**
 it in the Vipps portal. A parked release still counts as live against a change of the
 sales unit or its keys (`payment_attempts_active`).
 
-**The refund watch.** A captured attempt is due once a day until `refund_watch_until`,
-then never again.
+### Abandon
+
+`POST /invoices/payment-attempts/{id}/abandon` (`invoices:manage`) takes `{reason,
+confirmNotCaptured}`: the person has checked in the Vipps portal that nothing was
+captured, and says why. `confirmNotCaptured` must be `true` and `reason` 1–500
+characters once trimmed, or 400; no attempt with that id is a 404. The request reads the
+clock once. **Abandon never loses money**: a capture may be in flight, so the person's
+check is not taken on its own.
+
+Abandonable, as read on the pool, are an attempt **`capture_unknown`**, one
+**`capturing`** that the worker cannot carry, and a **create the worker gave up on** —
+`creating` or `created` with `next_poll_at` cleared after ten tries, which on site holds
+the invoice's one live on-site attempt (`ux_payment_attempts_on_site_live`), so no new
+request can be made until it is abandoned. Every other state is 409
+`attempt_not_abandonable`.
+
+**Where Vipps can be read** for the attempt — Vipps on, its sales unit the stored one —
+a `capturing` attempt is the worker's and is refused. Otherwise the abandon first takes
+a lease on the attempt of its own, in one statement as the worker's claim does, only
+while no claim's lease is live and the attempt is still in the state and at the count
+of captures sent it read (else 409, *the payments worker is reading it*); while the
+lease lives no worker claims the attempt, so nothing is sent to Vipps between the read
+and the write. Then `Get`, outside any lock:
+
+- a read that fails — 502 `provider_failed`, the lease given back, nothing changed;
+- **money captured** on a capture — registered exactly as [the
+  worker](#capture-and-the-reservation) registers it, under the abandon's lease (the
+  attempt, then its invoice; the event log's day as `paid_on`), and the abandon refused
+  with the amount named;
+- a create Vipps does not know (404), or has ended with nothing captured — abandoned;
+- a create Vipps knows and has not ended (`CREATED`, `AUTHORIZED`, or anything
+  captured) — handed back to the worker, `next_poll_at` the request's time, and refused:
+  the worker completes it and registers what it captures;
+- a capture Vipps still holds capturable — `AUTHORIZED` with nothing captured and
+  nothing released — refused, the lease given back: release it in the portal first;
+- a capture Vipps has ended (`ABORTED`, `EXPIRED`, `TERMINATED`, or its authorization
+  released) with nothing captured — abandoned.
+
+**Where Vipps cannot be read** — `INVOICES_VIPPS_ENABLED=0`, no usable credentials, or
+the attempt made under a sales unit that is no longer the stored one (I20; the
+reservation stranded) — only a capture **never sent** (`capture_attempts = 0`) is
+abandoned: no money can have moved by Vantigo's hand. A capture sent, or a create, is
+refused until Vipps can be read again.
+
+**The write** takes the attempt alone `FOR NO KEY UPDATE` (D18) and judges it again: the
+same state and captures sent, and the abandon's lease (or, unread, no live claim) — else
+409. The attempt becomes `abandoned`, `reserved_amount` released, `abandoned_by_user_id`,
+`abandoned_at` and `abandon_reason` set (00046's check requires all three), finished,
+never polled again; 200 answers the attempt with them. A capture discovered later is
+registered by hand. A claim that held the attempt before the abandon finds its lease gone
+and changes nothing.
+
+**A parked release** — a captured or failed attempt whose release of the uncaptured rest
+Vipps refused for good — is never abandoned: it holds no reservation and its payment is
+registered. Once the person has released the rest in the Vipps portal, the call hands it
+back to the worker, due at once, and answers 409; the worker reads Vipps again and
+records the release.
+
+### The refund watch
+
+A captured attempt (`refund_watch_until`, 30 days after the capture) is read with `Get`
+once a day, the last read on that day, then never again. A `refundedAmount` above the
+recorded one — a refund made in the Vipps portal — is stored in `refunded_amount`, with
+a warning in the log, and raises `vippsRefundSeen` ([Attention](#attention)). **No
+payment is removed**: the person removes the Vipps payment (and registers the part kept,
+if any), which clears the item. A read that fails is tried again on the backoff and
+changes no money; past the 30 days it ends the watch. There is no column for "seen" and
+nothing to acknowledge: the item is the stored refund on a payment still live.
 
 ## The journal
 
@@ -3898,7 +3965,7 @@ the same length just before" is what the delta compares against. There is no tim
 item shape every module's `/stats/attention` shares — `id`, `type`, `title`,
 `occurredAt`, `entityId` and, where an item stands for several things, `count` — the
 host translating the sentence from `type` (design D12, plan reading 29). It needs
-`invoices:access`. The first two types are answered to every caller; the other four
+`invoices:access`. The first two types are answered to every caller; the other eight
 only to a caller who also holds `invoices:payments`, and a caller without it is answered
 the first two — never a 403. Every item is derived from the rows as they are, so nothing
 is dismissed: each clears when what it is about is done. One clock read: "today" is the
@@ -3906,14 +3973,19 @@ request's Oslo day.
 
 | `type` | One item per | `entityId`, `title`, `occurredAt`, `count` | Clears when |
 | --- | --- | --- | --- |
-| `invoiceOverdue` | one of the **20 most overdue** issued invoices — overdue today by the state the list derives, oldest due date first — once the day after its effective due date E has come (the due date moved off a weekend or a public holiday; an invoice due on a Saturday is an item from the Tuesday) | the invoice; the buyer's name; the day after E at UTC midnight; — | it is paid or credited |
+| `invoiceOverdue` | one of the **20 most overdue** issued invoices — overdue today by the state the list derives, its live Vipps reservations counted with its payments, so an invoice a capture in progress holds whole is none, as it leaves the overdue list (m14), oldest due date first — once the day after its effective due date E has come (the due date moved off a weekend or a public holiday; an invoice due on a Saturday is an item from the Tuesday) | the invoice; the buyer's name; the day after E at UTC midnight; — | it is paid or credited |
 | `invoiceRefundDue` | every issued invoice whose open amount is **below zero** — a credit note issued after a payment (M16) — or whose charge payments exceed every charge less its waivers (the [charges](#charges)' `refundDue`); uncapped | the invoice; the buyer's name; when its money last moved (the latest credit note issued, payment or charge payment registered, or waiver); — | the money paid back outside Vantigo is recorded by removing the payment or the charge payment with a reason — refunds are not a flow in this phase |
 | `bankTransactionsOpen` | bank file with lines `pending` (matching stopped early), `exception` or `duplicate` | the file; its booking days (`2026-10-01`, or `2026-10-01 – 2026-10-07`); its upload; the open lines, as the queue counts them | every line is matched or resolved ([The exception queue](#the-exception-queue)) |
 | `reminderFailed` | letter whose e-mail failed for good | the letter's invoice (the item's `id` names the letter, `reminderFailed/<letterId>`); the buyer's name; its failure; — | it is retried or withdrawn |
 | `remindersHeld` | cause queued letters wait on (`held_reason`, plan reading 46): `collectionRatesOutdated` — a collection rate missing for a half-year a letter needs — or `collectionRegimeUnreviewed` — the 1988 regime past its review | the cause, as `entityId` and `title`; the oldest waiting letter's creation; the letters waiting | the rate is added or the review made, and the worker sends them |
 | `reminderBatchUnposted` | print batch neither confirmed posted nor reprinted from **two days** after its posting day | the batch; its posting day; that day plus two at UTC midnight; its printed letters | it is confirmed posted or reprinted ([Paper and posting](#paper-and-posting)) |
+| `paymentCaptureUnknown` | Vipps payment attempt `capture_unknown`, and one whose money Vipps shows captured but whose registration failed (`last_error` the worker's "The capture could not be registered: …") | the attempt's invoice; the buyer's name; the authorization; — | Vipps' answer resolves it, the capture is registered, or a manager [abandons](#abandon) it |
+| `paymentCaptureFailed` | attempt `capture_failed` finished in the last **14 days** whose invoice is still open (gross less credited and paid above zero) and of which no later attempt captured | the attempt's invoice; the buyer's name; its end; — | 14 days pass, the invoice is settled, or a later attempt captures |
+| `paymentReservationStranded` | attempt the worker cannot carry: a reservation (`capturing`, `capture_unknown`) while `INVOICES_VIPPS_ENABLED=0` or made under a sales unit that is not the stored one (D1, I20), and an attempt **parked** for a person — a create given up after ten tries, a release Vipps refuses for good | the attempt's invoice; the buyer's name; the authorization, or the creation; — | Vipps or the sales unit is back, the attempt is abandoned, or — a parked release — it is released in the portal and handed back by an abandon |
+| `vippsRefundSeen` | captured attempt with a refund stored by [the refund watch](#the-refund-watch) (`refunded_amount` above zero) whose payment is still live (I6) | the attempt's invoice; the buyer's name; the capture; — | the payment is removed |
 
-`id` is `<type>/<entityId>` but for `reminderFailed`. A credited invoice whose letters'
+`id` is `<type>/<entityId>` but for `reminderFailed` and the four Vipps types, whose id
+names the attempt: `<type>/<attemptId>`. A credited invoice whose letters'
 charges are still outstanding is in none of them: it owes nothing back, and the overdue
 list's `charges=outstanding` covers only paid invoices — a follow-up.
 
@@ -4139,8 +4211,8 @@ administrator reads when building a role, say so.
 | `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; the attention items about overdue invoices and refunds due ([Attention](#attention)). |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)). |
-| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the Vipps credentials and the payment settings, the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
-| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); the attention items about the bank lines, the letters and the print batches ([Attention](#attention)). |
+| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the Vipps credentials and the payment settings, abandoning a stuck Vipps payment attempt ([Abandon](#abandon)), the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
+| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); the attention items about the bank lines, the letters, the print batches and the Vipps payments ([Attention](#attention)). |
 
 **The quick invoice needs `invoices:create` and `invoices:issue` both** ([The quick
 invoice](#the-quick-invoice)): it creates a draft and issues it in one step, so it asks
@@ -4306,10 +4378,8 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
   prefix, pay links, payment attempts, a Vipps payment's origin on the payments (`source
   = vipps`, naming its attempt, with no user and no bank line) and the day's
   reconciliations — and so are its refusal codes, listed in the contract's
-  `InvoicesConflictProblem` and worded in both languages, and attention's four types
-  (`paymentCaptureFailed`, `paymentCaptureUnknown`, `paymentReservationStranded`,
-  `vippsRefundSeen`) as enum values no item is answered with yet. No endpoint uses
-  them yet.
+  `InvoicesConflictProblem` and worded in both languages, and attention's four Vipps
+  types ([Attention](#attention)).
 - **5**: energy consumption billing.
 
 Phase 4's first pull request built receiving payments from the bank — OCR giro and

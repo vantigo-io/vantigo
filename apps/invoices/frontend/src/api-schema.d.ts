@@ -1022,6 +1022,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/payment-attempts/{id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandon a stuck Vipps payment attempt
+         * @description Abandons a stuck Vipps payment attempt (invoices payments and reminders design D16): the person has checked in the Vipps portal that nothing was captured, says why (reason, 1-500 characters once trimmed) and confirms it (confirmNotCaptured: true). Abandonable are an attempt capture_unknown; one capturing that the payments worker cannot carry — INVOICES_VIPPS_ENABLED=0, or made under a sales unit that is no longer the stored one; and a create the worker gave up on (creating or created, never polled again), which on site holds the invoice's one live on-site request. Wherever Vipps can be read, it is read first, outside any lock, under the attempt's lease, so the payments worker cannot send a capture meanwhile: money Vipps shows captured is registered as a payment of the invoice, as the worker registers it, and the abandon refused; a payment Vipps still holds capturable is refused (release it in the portal first); a create Vipps knows and has not ended is handed back to the worker, due at once, and refused. Where Vipps cannot be read, only a capture never sent is abandoned. A captured or failed attempt whose release of the uncaptured rest Vipps refused for good is never abandoned: once the person has released the rest in the Vipps portal, the call hands it back to the worker, due at once, and answers attempt_not_abandonable. An abandoned attempt's reservation is released, who, when and why recorded, and it is never polled again; a capture discovered later is registered by hand. The attempt alone is locked (D18).
+         */
+        post: operations["postInvoicesPaymentAttemptsByIdAbandon"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/{id}/hold": {
         parameters: {
             query?: never;
@@ -3431,8 +3451,14 @@ export interface components {
             name: string;
             organisationNumber: string;
         };
-        /** @description One Vipps payment attempt of an invoice (invoices payments and reminders design D16): its reference at Vipps, flow (pay_link, made from the pay page, or on_site), state as the payments worker knows it, amount (the open amount when it was made), the amounts Vipps reported — authorized, captured, cancelled and refunded — the reservation while a capture is decided and not yet registered (reservedAmount), whether the uncaptured rest is still to be released (releasePending), and when it was made, by whom (absent for the pay page's), when it expires, was authorized, captured and finished. The address the payer is sent to is never answered. */
+        /** @description One Vipps payment attempt of an invoice (invoices payments and reminders design D16): its reference at Vipps, flow (pay_link, made from the pay page, or on_site), state as the payments worker knows it, amount (the open amount when it was made), the amounts Vipps reported — authorized, captured, cancelled and refunded — the reservation while a capture is decided and not yet registered (reservedAmount), whether the uncaptured rest is still to be released (releasePending), and when it was made, by whom (absent for the pay page's), when it expires, was authorized, captured and finished, and — abandoned — who abandoned it, when and why. The address the payer is sent to is never answered. */
         InvoicesPaymentAttempt: {
+            /** @description Why a person abandoned the attempt; with abandonedAt and abandonedByUserId, only on an abandoned one. */
+            abandonReason?: string;
+            /** Format: date-time */
+            abandonedAt?: string;
+            /** Format: uuid */
+            abandonedByUserId?: string;
             /** Format: double */
             amount: number;
             /** Format: double */
@@ -3465,6 +3491,11 @@ export interface components {
             reservedAmount?: number;
             /** @enum {string} */
             state: "creating" | "created" | "authorized" | "capturing" | "capture_unknown" | "captured" | "cancelling" | "cancelled" | "aborted" | "expired" | "terminated" | "capture_failed" | "failed" | "abandoned";
+        };
+        /** @description POST /invoices/payment-attempts/{id}/abandon's body (D16): reason is why the attempt is abandoned, 1-500 characters once trimmed; confirmNotCaptured must be true — the person has checked in the Vipps portal that nothing was captured. */
+        InvoicesPaymentAttemptAbandonRequest: {
+            confirmNotCaptured: boolean;
+            reason: string;
         };
         /** @description What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the Oslo business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read. */
         InvoicesSendDefaults: {
@@ -3834,7 +3865,15 @@ export interface components {
          *
          *     `reminderBatchUnposted`: one per print batch neither confirmed posted nor reprinted from two days after its posting day; id 'reminderBatchUnposted/<batchId>', entityId the batch id, title its posting day, occurredAt two days after it at UTC midnight, count its printed letters. It clears when the batch is confirmed posted or reprinted.
          *
-         *     `paymentCaptureFailed`, `paymentCaptureUnknown`, `paymentReservationStranded` and `vippsRefundSeen` are the Vipps payments' (design D12, D16), declared ahead of the payments port; no item of these types is answered yet.
+         *     The Vipps payments' four (design D12, D16), each id '<type>/<attemptId>', entityId the attempt's invoice id, title the buyer's name:
+         *
+         *     `paymentCaptureUnknown`: one per attempt whose capture's outcome is unknown (capture_unknown), and one per attempt whose money Vipps shows captured but whose registration as a payment failed; occurredAt its authorization. It clears when Vipps' answer resolves it, the capture is registered, or a manager abandons it.
+         *
+         *     `paymentCaptureFailed`: one per failed capture (capture_failed) of the last 14 days whose invoice is still open; occurredAt its end. It clears after 14 days, when the invoice is settled, or when a later attempt of the invoice captures.
+         *
+         *     `paymentReservationStranded`: one per attempt the payments worker cannot carry — a capture in progress or of unknown outcome while INVOICES_VIPPS_ENABLED=0 or made under a sales unit that is no longer the stored one, and an attempt parked for a person: a create given up after ten tries, or a release of the uncaptured rest Vipps refuses for good; occurredAt its authorization, or its creation. It clears when the switch or the sales unit is back, when the attempt is abandoned, or — a release — once the rest is released in the Vipps portal and an abandon hands the attempt back to the worker, which reads it again.
+         *
+         *     `vippsRefundSeen`: one per captured attempt Vipps shows refunded in part or whole (a refund made in the Vipps portal, seen by the 30-day refund watch) whose payment is still live; occurredAt its capture. It clears when the payment is removed (and the part kept registered again).
          */
         InvoicesStatsAttentionItem: {
             /**
@@ -7578,6 +7617,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoicesPaymentAttemptsByIdAbandon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesPaymentAttemptAbandonRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the attempt, abandoned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesPaymentAttempt"];
+                };
+            };
+            /** @description Bad Request — confirmNotCaptured is not true, or the reason is empty or over 500 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no payment attempt has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — attempt_not_abandonable; the attempt is in no abandonable state, the payments worker is reading it right now, Vipps still holds it capturable or knows the create, a capture was sent while Vipps cannot be read, or Vipps shows money captured, which is then registered (the detail names the amount). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Bad Gateway — provider_failed; Vipps could not be read. Nothing changed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
                 };
             };
         };

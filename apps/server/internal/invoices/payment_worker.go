@@ -76,7 +76,11 @@ import (
 //     shows an amount still unreleased is parked — next_poll_at NULL, never
 //     polled again, still counted live against a change of the credentials —
 //     for a person to settle in the Vipps portal.
-//   - captured: the refund watch's cadence, daily to refund_watch_until.
+//   - captured: the refund watch (the spec's "gap"): read daily to
+//     refund_watch_until, a refund Vipps shows above the recorded one stored
+//     — a refund made in the Vipps portal, which raises vippsRefundSeen until
+//     the person removes the payment. A read that fails changes nothing but
+//     when it is read again; no payment is ever removed by the watch.
 
 const (
 	// paymentWorkerName is what the runner logs this worker as.
@@ -117,6 +121,11 @@ const (
 	// maxPaymentBackoff caps the wait after a failed call.
 	maxPaymentBackoff = 10 * time.Minute
 )
+
+// registrationFailed starts the last_error of an attempt whose captured
+// money could not be registered; attention's paymentCaptureUnknown finds it
+// by these words.
+const registrationFailed = "The capture could not be registered: "
 
 // paymentWorkerLease is the lease a claim takes. A test shortens it
 // (export_test.go).
@@ -732,7 +741,7 @@ func (c *paymentClaim) register(ctx context.Context, capturedMinor int64) error 
 		// state and reservation, says why, and is tried again.
 		c.w.logger().ErrorContext(ctx, "invoices: a Vipps capture could not be registered; it is tried again",
 			"worker", paymentWorkerName, "attempt_id", c.row.ID, "error", err.Error())
-		if rerr := c.retry(ctx, "The capture could not be registered: "+err.Error(), 0); rerr != nil && !errors.Is(rerr, errClaimLost) {
+		if rerr := c.retry(ctx, registrationFailed+err.Error(), 0); rerr != nil && !errors.Is(rerr, errClaimLost) {
 			return errors.Join(err, rerr)
 		}
 	}
@@ -812,11 +821,48 @@ func (c *paymentClaim) released(ctx context.Context, cancelling bool, minor int6
 	})
 }
 
-// watch is a captured attempt's refund watch: read again daily until
-// refund_watch_until, then never (D16; the read itself is plan Task 9's).
+// watch is a captured attempt's refund watch (D16, I6): Vipps read once a
+// day until refund_watch_until — the last read on that day, then never — and
+// a refund above the recorded one stored. A read that fails is tried again
+// on the backoff and changes no money; past the watch it ends it.
 func (c *paymentClaim) watch(ctx context.Context) error {
-	if c.row.RefundWatchUntil != nil && c.now.Before(*c.row.RefundWatchUntil) {
-		return c.reschedule(ctx, c.now.Add(watchPoll), "")
+	if c.row.RefundWatchUntil == nil {
+		return c.reschedule(ctx, time.Time{}, "")
 	}
-	return c.reschedule(ctx, time.Time{}, "")
+	over := !c.now.Before(*c.row.RefundWatchUntil)
+	next := c.now.Add(watchPoll)
+	if over {
+		next = time.Time{}
+	}
+	p, err := c.provider.Get(ctx, c.row.Reference)
+	if err != nil {
+		if over {
+			return c.rescheduleAs(ctx, time.Time{}, err.Error(), true, 0)
+		}
+		return c.retry(ctx, err.Error(), 0)
+	}
+	recorded := new(big.Rat)
+	if c.row.RefundedAmount.Valid {
+		if recorded, err = ratFromNumeric(c.row.RefundedAmount); err != nil {
+			return err
+		}
+	}
+	refunded := ratOfMinor(p.Refunded.Minor)
+	if refunded.Cmp(recorded) <= 0 {
+		return c.reschedule(ctx, next, "")
+	}
+	amount, err := numericFromRat(refunded, 2)
+	if err != nil {
+		return err
+	}
+	c.w.logger().WarnContext(ctx, "invoices: Vipps shows a captured payment refunded; its payment is left for a person",
+		"worker", paymentWorkerName, "attempt_id", c.row.ID, "refunded", refunded.FloatString(2))
+	var at *time.Time
+	if !next.IsZero() {
+		at = &next
+	}
+	return c.attemptTx(ctx, false, nil, nil, func(ctx context.Context, txq *store.Queries, _ store.InvoicesPaymentAttempt, _ store.InvoicesInvoice) error {
+		n, err := txq.RecordAttemptRefund(ctx, store.RecordAttemptRefundParams{RefundedAmount: amount, NextPollAt: at, ID: c.row.ID, LeaseID: c.lease})
+		return one(n, err, "record the refund of", c.row.ID)
+	})
 }

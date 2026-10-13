@@ -762,3 +762,12 @@ func SetPaymentWorkerLease(d time.Duration) func() {
 	paymentWorkerLease = d
 	return func() { paymentWorkerLease = paymentWorkerDefaultLease }
 }
+
+// SetAbandonAfterAttemptLock installs a hook an abandon calls inside its
+// transaction right after the attempt's lock, with that transaction, and
+// answers the function that removes it. A test using it does not run in
+// parallel: the hook is the package's.
+func SetAbandonAfterAttemptLock(hook func(ctx context.Context, tx pgx.Tx)) func() {
+	abandonAfterAttemptLock = hook
+	return func() { abandonAfterAttemptLock = nil }
+}

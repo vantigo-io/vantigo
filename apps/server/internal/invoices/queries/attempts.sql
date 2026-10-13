@@ -71,3 +71,47 @@ SELECT * FROM invoices.payment_attempts WHERE reference = @reference AND flow = 
 -- PaymentAttemptsOf is every attempt of an invoice, oldest first, for the
 -- document.
 SELECT * FROM invoices.payment_attempts WHERE invoice_id = @invoice_id ORDER BY id;
+
+-- name: GetPaymentAttempt :one
+-- GetPaymentAttempt is one attempt by id, read on the pool before an
+-- abandon judges it; no row is pgx.ErrNoRows.
+SELECT * FROM invoices.payment_attempts WHERE id = @id;
+
+-- name: LeaseAttemptForAbandon :execrows
+-- LeaseAttemptForAbandon takes an abandon's lease on an attempt it may
+-- abandon, while no claim's lease is live: one statement, its row lock held
+-- for it alone, as the worker's claim (m11). While the lease lives no worker
+-- claims the attempt, so nothing is sent to Vipps between the abandon's read
+-- and its write. Nothing leased when a claim holds it or it moved.
+UPDATE invoices.payment_attempts
+SET lease_id = @lease_id::text, lease_until = @lease_until::timestamptz
+WHERE id = @id AND state = @state::text AND capture_attempts = @capture_attempts
+  AND (lease_until IS NULL OR lease_until <= @now::timestamptz);
+
+-- name: ReleaseAttemptLease :execrows
+-- ReleaseAttemptLease gives an abandon's lease back, nothing else changed.
+UPDATE invoices.payment_attempts
+SET lease_id = NULL, lease_until = NULL
+WHERE id = @id AND lease_id = @lease_id::text;
+
+-- name: UnparkAttempt :execrows
+-- UnparkAttempt hands an attempt parked for a person back to the payments
+-- worker, due at @now: a create Vipps turns out to know, or a release the
+-- person made in the Vipps portal. Its lease, the abandon's or none live,
+-- ends; its failures in a row start again.
+UPDATE invoices.payment_attempts
+SET next_poll_at = @now::timestamptz, failures = 0, lease_id = NULL, lease_until = NULL
+WHERE id = @id AND next_poll_at IS NULL
+  AND (lease_id = @lease_id::text OR lease_until IS NULL OR lease_until <= @now::timestamptz);
+
+-- name: AbandonPaymentAttempt :one
+-- AbandonPaymentAttempt is an abandon's write (D16), under the attempt's own
+-- lock: abandoned, the reservation released, who, when and why recorded,
+-- never polled again. The caller has judged the state, the captures sent and
+-- the lease under that lock.
+UPDATE invoices.payment_attempts
+SET state = 'abandoned', reserved_amount = NULL, abandoned_by_user_id = @abandoned_by_user_id,
+    abandoned_at = @now::timestamptz, abandon_reason = @abandon_reason::text, finished_at = @now::timestamptz,
+    next_poll_at = NULL, lease_id = NULL, lease_until = NULL
+WHERE id = @id AND state IN ('creating', 'created', 'capturing', 'capture_unknown')
+RETURNING *;

@@ -273,8 +273,20 @@ sekund og behandler alle betalinger som er klare, i hver syklus. Reglene står i
 **Mens et trekk fullføres, er beløpet reservert** på fakturaen: en manuell betaling, en
 bankfil eller en purring kan ikke ta det, og en avvisning sier at en Vipps-betaling
 fullføres. Med `INVOICES_VIPPS_ENABLED=0` kjører ikke jobben og ingen betaling kommer
-videre, men reservasjonene står — slå Vipps på igjen, eller la en leder forlate hver
-betaling som pågår etter å ha sjekket den i portalen.
+videre, men reservasjonene står, hver vist på dashbordet som en strandet reservasjon —
+slå Vipps på igjen, eller la en leder forlate hver betaling der trekket aldri ble sendt,
+etter å ha sjekket den i portalen. En betaling der trekket ble sendt, kan forlates først
+når Vipps kan leses igjen.
+
+**Å forlate en betaling** (*Forlat* på fakturaens Vipps-betaling, `invoices:manage`)
+krever en begrunnelse og en bekreftelse på at portalen ikke viser noe trukket. Vantigo
+tar ikke bekreftelsen for god fisk: der den kan lese Vipps, leser den betalingen først.
+Penger Vipps viser som trukket, registreres som en betaling av fakturaen, og forlatingen
+avvises; en betaling Vipps fortsatt kan trekke, avvises til den er frigitt i portalen; en
+betalingsforespørsel Vipps kjenner og ikke har avsluttet, gis tilbake til jobben. Først
+da forlates forsøket: det reserverte beløpet frigis, og hvem, når og hvorfor lagres. Et
+trekk som oppdages senere, registreres for hånd. Reglene står i
+[referansen](/en/reference/invoices/#abandon).
 
 **Kontroller:** en testbetaling av en liten faktura, godkjent i Vipps-appen (eller
 testmiljøets), registreres på fakturaen i løpet av sekunder som en Vipps-betaling.
@@ -286,9 +298,10 @@ testmiljøets), registreres på fakturaen i løpet av sekunder som en Vipps-beta
   struping. Beløpet forblir reservert, og jobben leser betalingen hver time i opptil 180
   dager. Slå opp betalingen i Vipps-portalen på referansen
   (`<prefiks>-<fakturanummer>-<forsøks-id>`, vist på fakturaen): er den trukket der,
-  registreres den ved neste lesing når Vipps svarer igjen; er den ikke trukket, forlater
-  en leder forsøket, og reservasjonen frigis. Sjekk nøklene først — en avvist nøkkel
-  (*Avvist* ved bekreftelse) gir ukjent utfall på hvert trekk.
+  registreres den ved neste lesing når Vipps svarer igjen; er den ikke trukket, frigis
+  reservasjonen i portalen, og en leder forlater forsøket, slik at reservasjonen frigis
+  også her. Sjekk nøklene først — en avvist nøkkel (*Avvist* ved bekreftelse) gir ukjent
+  utfall på hvert trekk. Den vises på dashbordet som et trekk med ukjent utfall.
 - *Et mislykket trekk* (`capture_failed`). Vipps avviste trekket for manglende dekning
   eller som mislykket, og fortsatte å avvise det til reservasjonen gikk ut, eller Vipps
   avsluttet betalingen. Ingenting ble tatt; fakturaen er åpen igjen, og kunden betaler
@@ -296,17 +309,32 @@ testmiljøets), registreres på fakturaen i løpet av sekunder som en Vipps-beta
   i portalen — registrerer jobben betalingen så snart den leser den.
 - *En opprettelse som aldri avklares.* Når opprettelsen av en betaling aldri ble
   besvart og det å sende den på nytt fortsetter å gi konflikt, gir jobben opp etter ti
-  forsøk, og betalingens siste feil sier at referansen må slås opp i Vipps-portalen.
+  forsøk, og betalingens siste feil sier at referansen må slås opp i Vipps-portalen. Den
+  vises på dashbordet som strandet, og på stedet holder den fakturaens ene levende
+  betalingsforespørsel, så ingen ny kan lages: en leder forlater den. Vantigo leser Vipps
+  først — en betaling Vipps ikke kjenner, eller har avsluttet, forlates; en den kjenner
+  og ikke har avsluttet, gis tilbake til jobben, som fullfører den og registrerer det som
+  er trukket.
 - *Et trekk som ikke kan registreres.* Pengene er trukket, men betalingen kunne ikke
   skrives; forsøket beholder reservasjonen, den siste feilen sier hvorfor, og jobben
-  prøver igjen.
+  prøver igjen. Den vises på dashbordet som et trekk med ukjent utfall til den er
+  registrert.
 - *En frigivelse som aldri blir ferdig.* Når Vipps for godt nekter å frigi et beløp som
   ble reservert og ikke trukket, slutter jobben å spørre: betalingens siste feil sier at
   det må frigis i Vipps-portalen. En slik betaling teller fortsatt som pågående, så
-  salgsenheten og nøklene kan ikke endres før den er forlatt eller ferdig.
+  salgsenheten og nøklene kan ikke endres før den er ferdig, og den vises på dashbordet
+  som strandet. Når resten er frigitt i portalen, gir *Forlat* den tilbake til jobben —
+  selve betalingen er registrert og forlates aldri — som leser Vipps igjen og lagrer
+  frigivelsen.
 - *Salgsenheten ble endret.* En betaling laget under en annen salgsenhet enn den som er
-  lagret, sendes aldri til den nye; den venter, med beløpet reservert, til en leder
-  forlater den.
+  lagret, sendes aldri til den nye; den venter, med beløpet reservert og vist på
+  dashbordet som strandet, til en leder forlater den — bare så lenge trekket aldri ble
+  sendt, siden Vantigo ikke kan lese den under den nye salgsenheten.
+- *En refusjon gjort i Vipps-portalen.* I 30 dager etter et trekk leser jobben
+  betalingen én gang i døgnet; en refusjon gjort i portalen lagres og vises på
+  dashbordet til noen med `invoices:payments` fjerner betalingen (og registrerer den
+  delen som ble beholdt, om noen). Vantigo fjerner aldri en betaling på egen hånd, og en
+  lesing som feiler, endrer ingenting.
 
 ## Den offentlige verten
 

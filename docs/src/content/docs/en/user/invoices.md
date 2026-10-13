@@ -1372,6 +1372,33 @@ making a new one starts afresh.
 Every Vipps payment started for an invoice is listed on it, with its state and amount,
 whether it came from the pay page or was taken on site.
 
+### When a Vipps payment needs you
+
+Vantigo completes Vipps payments on its own: it takes what the customer approved and
+registers it as a payment of the invoice. A few cases need a person, and each shows in
+the dashboard's **Needs attention** list for those with `invoices:payments`:
+
+- **A payment whose capture's outcome is unknown.** Vipps has not said for a week whether
+  the money was taken, or the money was taken and could not be registered. Look the
+  payment up in the Vipps business portal by its reference (shown on the invoice). If it
+  was captured there, Vantigo registers it as soon as Vipps answers; if it was not,
+  release it in the portal and have someone with `invoices:manage` **abandon** it, with
+  a reason, confirming that nothing was captured. Vantigo reads Vipps before it lets
+  go: money Vipps shows captured is registered instead, and a payment Vipps still holds
+  is refused until it is released. The amount it held on the invoice is then free for
+  another payment.
+- **A failed payment.** Vipps refused to take the money (for lack of funds, say).
+  Nothing was taken and the invoice is open; the customer pays another way. The item
+  goes after 14 days, or once the invoice is paid.
+- **A stranded payment.** Vipps is switched off on this installation, or the payment was
+  made under another sales unit, or Vantigo gave up on a payment request (on site, it
+  blocks a new request for that invoice) or on releasing what was not taken. Switch
+  Vipps back on, or check the payment in the portal and have a manager abandon it.
+- **A refund made in the Vipps portal.** For 30 days after a payment Vantigo checks it
+  with Vipps once a day. When it sees a refund made in the portal, it removes nothing:
+  remove the Vipps payment from the invoice, and register the part the company kept, if
+  any. The item goes when the payment is removed.
+
 ## Checking the journal
 
 **Invoice journal** in the sidebar is the proof the bookkeeping regulation asks for:
@@ -1423,7 +1450,9 @@ owed back to … on an invoice* for everyone with `invoices:access`; with
 reminder that could not be sent; the reminders waiting for a collection rate or for the
 review of the collection-law regime, which lead to **Overdue**; and a print batch not
 confirmed posted two days after its posting day, with the number of printed letters
-still in it, which leads to **Paper letters**
+still in it, which leads to **Paper letters**; and the Vipps payments that need a person
+([When a Vipps payment needs you](#when-a-vipps-payment-needs-you)). An invoice a Vipps
+payment in progress covers in full is not listed as overdue
 ([attention](/en/reference/invoices/#stats)).
 
 ## A customer's invoices

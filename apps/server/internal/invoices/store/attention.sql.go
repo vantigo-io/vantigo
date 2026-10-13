@@ -59,6 +59,116 @@ func (q *Queries) AttentionBankFiles(ctx context.Context) ([]AttentionBankFilesR
 	return items, nil
 }
 
+const attentionCaptureFailed = `-- name: AttentionCaptureFailed :many
+SELECT a.id, a.invoice_id, a.finished_at::timestamptz AS occurred_at, i.buyer_name
+FROM invoices.payment_attempts a
+JOIN invoices.invoices i ON i.id = a.invoice_id
+LEFT JOIN LATERAL (
+    SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited
+    FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
+) cr ON true
+LEFT JOIN LATERAL (
+    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
+    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+) pd ON true
+WHERE a.state = 'capture_failed' AND a.finished_at >= $1::timestamptz
+  AND NOT starts_with(coalesce(a.last_error, ''), $2::text)
+  AND i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0) > 0
+  AND NOT EXISTS (
+      SELECT 1 FROM invoices.payment_attempts b
+      WHERE b.invoice_id = a.invoice_id AND b.id <> a.id AND b.state = 'captured' AND b.captured_at >= a.finished_at)
+ORDER BY a.id
+`
+
+type AttentionCaptureFailedParams struct {
+	Since              time.Time
+	RegistrationFailed string
+}
+
+type AttentionCaptureFailedRow struct {
+	ID         int64
+	InvoiceID  int64
+	OccurredAt time.Time
+	BuyerName  *string
+}
+
+// AttentionCaptureFailed is paymentCaptureFailed's attempts (D12, plan
+// reading 18): every failed capture finished since @since (14 days back)
+// whose invoice is still open — gross less the issued credit notes and the
+// live payments above zero — and of which no later attempt captured; one
+// whose registration failed is paymentCaptureUnknown's instead.
+func (q *Queries) AttentionCaptureFailed(ctx context.Context, arg AttentionCaptureFailedParams) ([]AttentionCaptureFailedRow, error) {
+	rows, err := q.db.Query(ctx, attentionCaptureFailed, arg.Since, arg.RegistrationFailed)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AttentionCaptureFailedRow
+	for rows.Next() {
+		var i AttentionCaptureFailedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.OccurredAt,
+			&i.BuyerName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const attentionCaptureUnknown = `-- name: AttentionCaptureUnknown :many
+SELECT a.id, a.invoice_id, coalesce(a.authorized_at, a.created_at)::timestamptz AS occurred_at, i.buyer_name
+FROM invoices.payment_attempts a
+JOIN invoices.invoices i ON i.id = a.invoice_id
+WHERE a.state = 'capture_unknown'
+   OR (a.state IN ('capturing', 'capture_failed', 'cancelling')
+       AND starts_with(coalesce(a.last_error, ''), $1::text))
+ORDER BY a.id
+`
+
+type AttentionCaptureUnknownRow struct {
+	ID         int64
+	InvoiceID  int64
+	OccurredAt time.Time
+	BuyerName  *string
+}
+
+// AttentionCaptureUnknown is paymentCaptureUnknown's attempts (D12, D16):
+// every capture whose outcome is unknown, and every attempt whose money
+// Vipps shows captured but whose registration failed — its last_error
+// starting with @registration_failed, the worker's own words — with the
+// invoice's buyer name.
+func (q *Queries) AttentionCaptureUnknown(ctx context.Context, registrationFailed string) ([]AttentionCaptureUnknownRow, error) {
+	rows, err := q.db.Query(ctx, attentionCaptureUnknown, registrationFailed)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AttentionCaptureUnknownRow
+	for rows.Next() {
+		var i AttentionCaptureUnknownRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.OccurredAt,
+			&i.BuyerName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const attentionFailedLetters = `-- name: AttentionFailedLetters :many
 SELECT r.id, r.invoice_id, r.failed_at, i.buyer_name
 FROM invoices.reminders r
@@ -150,8 +260,14 @@ LEFT JOIN LATERAL (
     SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
     FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
 ) pd ON true
+LEFT JOIN LATERAL (
+    SELECT coalesce(sum(a.reserved_amount), 0)::numeric(14,2) AS reserved
+    FROM invoices.payment_attempts a
+    WHERE a.invoice_id = i.id AND a.state IN ('capturing', 'capture_unknown')
+) rs ON true
 WHERE i.kind = 'invoice' AND i.status = 'issued'
-  AND invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $1::date) = 'overdue'
+  AND invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0),
+      coalesce(pd.paid, 0) + coalesce(rs.reserved, 0), i.due_date, $1::date) = 'overdue'
 ORDER BY i.due_date, i.number, i.id
 LIMIT 20
 `
@@ -168,7 +284,10 @@ type AttentionOverdueRow struct {
 // with no lock, every day a parameter from the request's one clock read.
 // AttentionOverdue is the 20 most overdue invoices: the issued invoices whose
 // state is overdue on @today — invoices.document_state, the overdue list's
-// and the stats' — the oldest due date first. E moves only with the due date
+// and the stats' — once the live Vipps reservations (D2, D16) are counted
+// with the payments, as the overdue list's engine counts them, so an
+// invoice a capture in progress holds whole is no item (m14); the oldest
+// due date first. E moves only with the due date
 // (reminderrules.EffectiveDue), so this order is E's.
 func (q *Queries) AttentionOverdue(ctx context.Context, today pgtype.Date) ([]AttentionOverdueRow, error) {
 	rows, err := q.db.Query(ctx, attentionOverdue, today)
@@ -253,6 +372,103 @@ func (q *Queries) AttentionRefundDue(ctx context.Context) ([]AttentionRefundDueR
 			&i.OpenAmount,
 			&i.HasChargePayments,
 			&i.ChangedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const attentionRefundSeen = `-- name: AttentionRefundSeen :many
+SELECT a.id, a.invoice_id, a.captured_at::timestamptz AS occurred_at, i.buyer_name
+FROM invoices.payment_attempts a
+JOIN invoices.invoices i ON i.id = a.invoice_id
+WHERE a.state = 'captured' AND a.refunded_amount > 0
+  AND EXISTS (SELECT 1 FROM invoices.payments p WHERE p.payment_attempt_id = a.id AND p.removed_at IS NULL)
+ORDER BY a.id
+`
+
+type AttentionRefundSeenRow struct {
+	ID         int64
+	InvoiceID  int64
+	OccurredAt time.Time
+	BuyerName  *string
+}
+
+// AttentionRefundSeen is vippsRefundSeen's attempts (D16, I6): every
+// captured attempt Vipps shows refunded — the refund watch stored it —
+// whose payment is still live. Removing the payment clears it.
+func (q *Queries) AttentionRefundSeen(ctx context.Context) ([]AttentionRefundSeenRow, error) {
+	rows, err := q.db.Query(ctx, attentionRefundSeen)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AttentionRefundSeenRow
+	for rows.Next() {
+		var i AttentionRefundSeenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.OccurredAt,
+			&i.BuyerName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const attentionStrandedCandidates = `-- name: AttentionStrandedCandidates :many
+SELECT a.id, a.invoice_id, a.msn, (a.next_poll_at IS NULL)::boolean AS parked,
+    coalesce(a.authorized_at, a.created_at)::timestamptz AS occurred_at, i.buyer_name
+FROM invoices.payment_attempts a
+JOIN invoices.invoices i ON i.id = a.invoice_id
+WHERE a.state IN ('capturing', 'capture_unknown')
+   OR (a.next_poll_at IS NULL
+       AND (a.state IN ('creating', 'created', 'authorized', 'cancelling') OR a.release_pending))
+ORDER BY a.id
+`
+
+type AttentionStrandedCandidatesRow struct {
+	ID         int64
+	InvoiceID  int64
+	Msn        string
+	Parked     bool
+	OccurredAt time.Time
+	BuyerName  *string
+}
+
+// AttentionStrandedCandidates is what paymentReservationStranded judges
+// (D1, D12, I20): every reservation — capturing or capture_unknown, stranded
+// when Vipps is switched off or its sales unit is no longer the stored one,
+// which the caller judges — and every attempt parked for a person: a create
+// given up, or a release Vipps refuses for good (next_poll_at NULL on a row
+// the worker would otherwise poll).
+func (q *Queries) AttentionStrandedCandidates(ctx context.Context) ([]AttentionStrandedCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, attentionStrandedCandidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AttentionStrandedCandidatesRow
+	for rows.Next() {
+		var i AttentionStrandedCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.Msn,
+			&i.Parked,
+			&i.OccurredAt,
+			&i.BuyerName,
 		); err != nil {
 			return nil, err
 		}

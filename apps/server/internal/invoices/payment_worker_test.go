@@ -1075,3 +1075,82 @@ func TestPaymentWorker_EraseBeforeRegistration(t *testing.T) {
 		t.Errorf("the payments = %v, want one vipps payment with a blank note", got)
 	}
 }
+
+// TestRefundWatch_RaisesAndClears (D16's watch, I6): a captured attempt is
+// read daily for 30 days; a refund made in the Vipps portal is stored and
+// raises vippsRefundSeen for invoices:payments; a read that fails changes
+// no money; the watch ends at 30 days; nothing is removed by it, and the
+// item clears when the person removes the payment.
+func TestRefundWatch_RaisesAndClears(t *testing.T) {
+	t.Parallel()
+	h := workerReady(t)
+	inv, ref := approvedAttempt(t, h)
+	cycle(t, h)
+	a := attemptOf(t, h, ref)
+	if a.State != "captured" || a.RefundWatchUntil == nil || a.NextPollAt == nil || !a.NextPollAt.Equal(h.Now().Add(24*time.Hour)) {
+		t.Fatalf("the captured attempt = %s watch %v next %v, want watched, read again in a day", a.State, a.RefundWatchUntil, a.NextPollAt)
+	}
+	until := *a.RefundWatchUntil
+	refundSeen := func() []attentionItemJSON { return ofType(attentionOf(t, payer(t, h)), "vippsRefundSeen") }
+
+	h.Advance(24 * time.Hour)
+	cycle(t, h)
+	if got := vippsCalls(h, ref, http.MethodGet, ref); got < 1 {
+		t.Fatalf("no read on the watch's first day")
+	}
+	if a := attemptOf(t, h, ref); a.NextPollAt == nil || !a.NextPollAt.Equal(h.Now().Add(24*time.Hour)) || len(refundSeen()) != 0 {
+		t.Fatalf("a quiet day = next %v, items %v; want the next read a day on and no item", a.NextPollAt, refundSeen())
+	}
+
+	if !h.vipps.RefundInPortal(ref, 50000) {
+		t.Fatal("vippstest refused the portal refund")
+	}
+	h.vipps.Fail(vippstest.OpGet, vippstest.Failure{Status: http.StatusInternalServerError})
+	h.Advance(24 * time.Hour)
+	cycle(t, h)
+	if got := modtest.One[*string](t, h.Harness, `SELECT refunded_amount::text FROM invoices.payment_attempts WHERE reference = $1`, ref); got != nil {
+		t.Errorf("a failing read stored a refund of %s", *got)
+	}
+	if a := attemptOf(t, h, ref); a.State != "captured" || len(vippsPaymentsOf(t, h, inv.ID)) != 1 {
+		t.Errorf("a failing read = %s, payments %v; want nothing moved", a.State, vippsPaymentsOf(t, h, inv.ID))
+	}
+	h.vipps.Clear(vippstest.OpGet)
+	h.Advance(24 * time.Hour)
+	cycle(t, h)
+	if got := modtest.One[string](t, h.Harness, `SELECT coalesce(refunded_amount::text, 'NULL') FROM invoices.payment_attempts WHERE reference = $1`, ref); got != "500.00" {
+		t.Errorf("the stored refund = %s, want 500.00", got)
+	}
+	items := refundSeen()
+	if len(items) != 1 || items[0].EntityID != entity(inv.ID) || items[0].ID != fmt.Sprintf("vippsRefundSeen/%d", a.ID) || items[0].Title != "Acme AS Norge" {
+		t.Errorf("the refund's items = %+v, want one about the invoice, named by the attempt, titled by the buyer", items)
+	}
+	if got := ofType(attentionOf(t, reader(t, h)), "vippsRefundSeen"); len(got) != 0 {
+		t.Errorf("invoices:access alone is answered %v", got)
+	}
+	if got := vippsPaymentsOf(t, h, inv.ID); len(got) != 1 {
+		t.Errorf("the watch moved the payments: %v", got)
+	}
+
+	moveClockTo(t, h, until)
+	cycle(t, h)
+	if a := attemptOf(t, h, ref); a.NextPollAt != nil {
+		t.Errorf("at 30 days the next read = %v, want none", a.NextPollAt)
+	}
+	reads := vippsCalls(h, ref, http.MethodGet, ref)
+	h.Advance(48 * time.Hour)
+	cycle(t, h)
+	if vippsCalls(h, ref, http.MethodGet, ref) != reads {
+		t.Error("the watch read on past its 30 days")
+	}
+	if len(refundSeen()) != 1 {
+		t.Error("the item cleared with the watch's end, want it until the payment is removed")
+	}
+
+	payment := modtest.One[int64](t, h.Harness, `SELECT id FROM invoices.payments WHERE invoice_id = $1 AND source = 'vipps'`, inv.ID)
+	if res := payer(t, h).Do(http.MethodPost, removalPath(inv.ID, payment), map[string]any{"reason": "Refundert i Vipps"}); res.Status != http.StatusOK {
+		t.Fatalf("remove the payment = %d %s", res.Status, res.Body)
+	}
+	if got := refundSeen(); len(got) != 0 {
+		t.Errorf("after the payment's removal = %v, want none", got)
+	}
+}
