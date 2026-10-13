@@ -246,8 +246,10 @@ var paymentsPortColumns = []string{
 	"payment_attempts.created_by_user_id:uuid::YES:",
 	"payment_attempts.expires_at:timestamp with time zone::NO:",
 	"payment_attempts.finished_at:timestamp with time zone::YES:",
+	"payment_attempts.failures:integer::NO:0",
 	"payment_attempts.flow:character varying:10:NO:",
 	"payment_attempts.id:bigint::NO:",
+	"payment_attempts.insufficient_funds:integer::NO:0",
 	"payment_attempts.invoice_id:bigint::NO:",
 	"payment_attempts.last_error:character varying:500:YES:",
 	"payment_attempts.lease_id:character varying:100:YES:",
@@ -549,6 +551,7 @@ func TestPaymentAttempts_Triggers(t *testing.T) {
 		"state = 'authorized', authorized_amount = 100, authorized_at = now(), last_error = 'slow'",
 		"state = 'capturing', reserved_amount = 100, capture_key = gen_random_uuid(), lease_id = 'l', lease_until = now()",
 		"state = 'capture_unknown', capture_attempts = 3",
+		"failures = 2, insufficient_funds = 1",
 	} {
 		if err := f.exec(`UPDATE invoices.payment_attempts SET `+set+` WHERE id = $1`, live); err != nil {
 			t.Errorf("a live attempt, SET %s: %v, want it allowed", set, err)
@@ -575,13 +578,17 @@ func TestPaymentAttempts_Triggers(t *testing.T) {
 			"lease_id = NULL, lease_until = NULL",
 			"next_poll_at = now() + interval '1 day'",
 			"polls = polls + 1, last_error = 'x'",
+			"failures = failures + 1",
 			"last_error = NULL",
 			"finished_at = now()",
 		}
 		refused := []string{
 			"state = 'creating'", "captured_amount = 1",
 			"authorized_amount = 99", "capture_attempts = capture_attempts + 1",
-			"cancelled_amount = 5",
+			"cancelled_amount = 5", "insufficient_funds = 1",
+		}
+		if state != "capture_failed" {
+			refused = append(refused, "state = 'captured', captured_amount = 50, captured_at = now()")
 		}
 		if releasable {
 			refused = append(refused, "release_pending = false")
@@ -622,6 +629,23 @@ func TestPaymentAttempts_Triggers(t *testing.T) {
 	for _, set := range []string{"cancelled_amount = 30", "release_pending = true"} {
 		if err := f.exec(`UPDATE invoices.payment_attempts SET `+set+` WHERE id = $1`, released); !refusedWith(err, attemptFinal("captured")) {
 			t.Errorf("SET %s after the release: %v, want %q", set, err, attemptFinal("captured"))
+		}
+	}
+
+	// Captured money is always registered: a failed capture whose money Vipps
+	// then shows captured becomes captured — with what was captured, never
+	// without — released or not; no other terminal state does.
+	for _, released := range []bool{false, true} {
+		failed := f.mustAttempt(other, "capture_failed", ", release_pending, authorized_amount", ", true, 100")
+		if released {
+			f.mustExec("release", `UPDATE invoices.payment_attempts SET release_pending = false, cancelled_amount = 20 WHERE id = $1`, failed)
+		}
+		if err := f.exec(`UPDATE invoices.payment_attempts SET state = 'captured' WHERE id = $1`, failed); !refusedWith(err, attemptFinal("capture_failed")) {
+			t.Errorf("capture_failed to captured with nothing captured: %v, want %q", err, attemptFinal("capture_failed"))
+		}
+		if err := f.exec(`UPDATE invoices.payment_attempts SET state = 'captured', captured_amount = 80, captured_at = now(),
+			release_pending = false, refund_watch_until = now() + interval '30 days' WHERE id = $1`, failed); err != nil {
+			t.Errorf("capture_failed (released %v) to captured with 80 captured: %v, want it allowed", released, err)
 		}
 	}
 

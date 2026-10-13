@@ -379,6 +379,8 @@ type InvoicesPaymentAttempt struct {
 	NextPollAt             *time.Time
 	Polls                  int32
 	CaptureAttempts        int32
+	Failures               int32
+	InsufficientFunds      int32
 	LeaseID                *string
 	LeaseUntil             *time.Time
 	LastError              *string

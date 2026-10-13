@@ -202,6 +202,11 @@ CREATE TABLE invoices.payment_attempts (
     next_poll_at             timestamptz,
     polls                    integer       NOT NULL DEFAULT 0,
     capture_attempts         integer       NOT NULL DEFAULT 0,
+    -- failures: the worker's failed calls in a row, reset by any success —
+    -- its backoff; insufficient_funds: the captures Vipps refused for lack of
+    -- funds (6260), which end the capture after three.
+    failures                 integer       NOT NULL DEFAULT 0,
+    insufficient_funds       integer       NOT NULL DEFAULT 0,
     lease_id                 varchar(100),
     lease_until              timestamptz,
     last_error               varchar(500),
@@ -273,12 +278,15 @@ $function$;
 -- its lease, next poll, polls and last error, and its finish, set once from
 -- NULL — its release — pending true to false, with the cancelled amount —
 -- and, captured, its refunded amount and refund watch: the release of the
--- uncaptured rest and the refund watch keep polling a finished attempt.
+-- uncaptured rest and the refund watch keep polling a finished attempt. One
+-- terminal state moves on: money Vipps shows captured is always registered,
+-- so a capture_failed attempt becomes captured — with what was captured,
+-- never without — when a later read shows the capture landed after all.
 -- +goose StatementBegin
 CREATE FUNCTION invoices.refuse_payment_attempt_change()
 RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
-    terminal_free text[] := ARRAY['lease_id', 'lease_until', 'next_poll_at', 'polls', 'last_error', 'finished_at',
+    terminal_free text[] := ARRAY['lease_id', 'lease_until', 'next_poll_at', 'polls', 'failures', 'last_error', 'finished_at',
         'release_pending', 'cancelled_amount', 'refunded_amount', 'refund_watch_until'];
 BEGIN
     IF TG_OP = 'DELETE' THEN
@@ -290,6 +298,9 @@ BEGIN
        (NEW.id, NEW.invoice_id, NEW.provider, NEW.msn, NEW.flow, NEW.pay_link_id, NEW.return_nonce_sha256,
         NEW.reference, NEW.amount, NEW.cancel_key, NEW.created_at, NEW.created_by_user_id) THEN
         RAISE EXCEPTION 'invoices: a payment attempt keeps its identity' USING ERRCODE = 'P0001';
+    END IF;
+    IF OLD.state = 'capture_failed' AND NEW.state = 'captured' AND NEW.captured_amount > 0 THEN
+        RETURN NEW;
     END IF;
     IF OLD.state IN ('captured', 'cancelled', 'aborted', 'expired', 'terminated', 'capture_failed', 'failed', 'abandoned') THEN
         IF (to_jsonb(OLD) - terminal_free) <> (to_jsonb(NEW) - terminal_free)

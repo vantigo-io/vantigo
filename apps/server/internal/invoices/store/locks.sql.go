@@ -267,7 +267,7 @@ func (q *Queries) LockPayLink(ctx context.Context, id int64) (InvoicesPayLink, e
 }
 
 const lockPaymentAttempt = `-- name: LockPaymentAttempt :one
-SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, lease_id, lease_until, last_error, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE id = $1 FOR NO KEY UPDATE
+SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE id = $1 FOR NO KEY UPDATE
 `
 
 // LockPaymentAttempt takes a payment attempt FOR NO KEY UPDATE: a payment's
@@ -312,6 +312,8 @@ func (q *Queries) LockPaymentAttempt(ctx context.Context, id int64) (InvoicesPay
 		&i.NextPollAt,
 		&i.Polls,
 		&i.CaptureAttempts,
+		&i.Failures,
+		&i.InsufficientFunds,
 		&i.LeaseID,
 		&i.LeaseUntil,
 		&i.LastError,
