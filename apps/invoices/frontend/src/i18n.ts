@@ -526,7 +526,7 @@ export const invoicesCatalog = {
     "refusal.payments_unavailable":
       "Vipps payment is not available: it is switched off, not set up, or its stored keys cannot be read. Ask whoever manages Invoices.",
     "refusal.payment_attempts_active":
-      "A Vipps payment is in flight. The sales unit and the keys cannot be changed or removed until it is finished or abandoned.",
+      "A Vipps payment is in flight. The sales unit cannot be changed, nor the keys removed, until it is finished or abandoned. New keys of the same sales unit can be saved.",
     "refusal.attempt_not_abandonable":
       "This Vipps payment cannot be abandoned now. Vipps may still hold it, the money may have been captured, or it is being completed; read the payment again.",
     "refusal.public_url_missing":
@@ -2406,7 +2406,7 @@ export const invoicesCatalog = {
     "refusal.payments_unavailable":
       "Betaling med Vipps er ikke tilgjengelig: den er slått av, ikke satt opp, eller de lagrede nøklene kan ikke leses. Spør den som administrerer Fakturaer.",
     "refusal.payment_attempts_active":
-      "En Vipps-betaling pågår. Salgsenheten og nøklene kan ikke endres eller fjernes før den er fullført eller forlatt.",
+      "En Vipps-betaling pågår. Salgsenheten kan ikke endres, og nøklene kan ikke fjernes, før den er fullført eller forlatt. Nye nøkler for samme salgsenhet kan lagres.",
     "refusal.attempt_not_abandonable":
       "Denne Vipps-betalingen kan ikke forlates nå. Vipps kan fortsatt holde den, pengene kan være trukket, eller den fullføres; les betalingen på nytt.",
     "refusal.public_url_missing":

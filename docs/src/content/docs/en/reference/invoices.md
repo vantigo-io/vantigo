@@ -3530,14 +3530,18 @@ characters. The first PUT needs all three keys; an omitted or null key keeps the
 one, which the PUT opens and seals again from the row it read `FOR UPDATE` in its own
 transaction — the one lock it takes. When a kept key cannot be opened the PUT answers 503
 `payments_unavailable` and flags the credentials as rejected. **A change of the sales
-unit** — `msn`, `clientId` or `subscriptionKey` — is refused with 409
-`payment_attempts_active` while any payment attempt is live: `creating`, `created`,
+unit** — `msn` — is refused with 409 `payment_attempts_active` while any payment attempt
+is live: `creating`, `created`,
 `authorized`, `capturing`, `capture_unknown` or `cancelling`, or captured with a release
 pending. The attempts are counted under the credentials row's lock, and an attempt's
 create shares that row after its invoice, so no attempt can be made under the old sales
-unit after the count. Stored keys that cannot be opened while all three are given count
-as a change: nothing proves they are the same. A new `clientSecret` alone is a rotation
-within the same sales unit and is allowed. With no row stored there is nothing to
+unit after the count. **New keys of the same `msn`** — `clientId`, `clientSecret`,
+`subscriptionKey`, any of them, and stored keys that cannot be opened replaced by all
+three — are a rotation and are stored whatever is live: the attempts are read and
+captured under their own `msn`, and refusing the rotation would hold keys Vipps refuses,
+and every live attempt with them, for ever. The row's `updated_at` moves, so a create
+whose provider was built from the old keys refuses with a retryable 503 (below), and a
+refusal recorded or cleared stays the old version's. With no row stored there is nothing to
 lock: the first PUT inserts it, and when a concurrent first PUT's row is there — the
 insert waits for that transaction — it writes nothing and runs once more on the locked
 path, so the second of two first PUTs is judged like any other change of the sales unit
@@ -3894,7 +3898,7 @@ Vipps' read of the payment. **A release Vipps refuses for good** — a 400 namin
 while its read still shows an amount neither captured nor released is **parked**:
 `next_poll_at` is cleared, so it is never claimed again, and `last_error` says to release
 it in the Vipps portal. A parked release still counts as live against a change of the
-sales unit or its keys (`payment_attempts_active`).
+sales unit or the keys' removal (`payment_attempts_active`).
 
 ### Abandon
 
@@ -4493,7 +4497,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `POST /settings/access-point/verify` | `invoices:manage` | 409 `ehf_unavailable`, no credentials; 503 `ehf_unavailable`, a stored key that cannot be opened |
 | `GET /settings/reminders` | | |
 | `GET /settings/vipps` | `invoices:manage` | none: 200 with `hasCredentials: false` when nothing is stored |
-| `PUT /settings/vipps` | `invoices:manage` | 400 on `msn`, `clientId`, `clientSecret` or `subscriptionKey` (blank, too long, or omitted while none is stored); 409 `payment_attempts_active`, a change of the sales unit or its keys while an attempt is live; 503 `payments_unavailable`, a kept key that cannot be opened |
+| `PUT /settings/vipps` | `invoices:manage` | 400 on `msn`, `clientId`, `clientSecret` or `subscriptionKey` (blank, too long, or omitted while none is stored); 409 `payment_attempts_active`, a change of `msn` while an attempt is live (new keys of the same `msn` are not refused); 503 `payments_unavailable`, a kept key that cannot be opened |
 | `DELETE /settings/vipps` | `invoices:manage` | 409 `payment_attempts_active` |
 | `POST /settings/vipps/verify` | `invoices:manage` | 409 `payments_unavailable`, no credentials; 503 `payments_unavailable`, Vipps switched off or keys that cannot be opened |
 | `GET /settings/payments` | | |

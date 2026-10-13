@@ -1553,6 +1553,13 @@ Rule 4: Point of sale gets its own table later.
   `authorized`, `capturing`, `capture_unknown`, `cancelling` or `release_pending`; a new
   `clientSecret` alone (a rotation within the same sales unit) is allowed. Clears
   `rejected_at`. Never answers a secret.
+  **Amended 2026-10-13 (the 4C whole-branch review):** only a change of `msn` is
+  refused while an attempt is live; new keys of the same `msn` — `clientId`,
+  `clientSecret`, `subscriptionKey` — are a rotation and always stored. Refusing them
+  would hold keys Vipps refuses for ever: every read and capture answers 401, so no
+  attempt finishes, and an abandon cannot read Vipps either. The attempts are read under
+  their own `msn`; the credentials' version still moves, so a create built from the old
+  keys refuses, and a refusal recorded or cleared stays its version's.
 - `DELETE`: 409 `payment_attempts_active` while any attempt is live; 204.
 - `POST …/verify`: a token fetch → `{result: ok | unauthorized | unreachable}`.
 - `POST …/webhook` registers `PUBLIC_BASE_URL + /api/v1/invoices/vipps/webhooks` for the

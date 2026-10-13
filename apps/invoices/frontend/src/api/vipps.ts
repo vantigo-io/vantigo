@@ -27,8 +27,8 @@ export const vippsSettingsQueryOptions = () =>
 
 /**
  * Stores the sales unit and its keys, sealed by the server and never answered.
- * A change of the sales unit or a key while a Vipps payment is in flight is a
- * 409 `payment_attempts_active`. The caller invalidates `[INVOICES_QUERY_KEY]`.
+ * A change of the sales unit while a Vipps payment is in flight is a 409
+ * `payment_attempts_active`; new keys of the same sales unit are always stored. The caller invalidates `[INVOICES_QUERY_KEY]`.
  */
 export const putVippsSettings = (input: VippsSettingsInput): Promise<VippsSettings> =>
   request<VippsSettings>("/api/v1/invoices/settings/vipps", json("PUT", input));
