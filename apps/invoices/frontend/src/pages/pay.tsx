@@ -16,7 +16,7 @@ import {
 import { IconAlertCircle, IconCircleCheck, IconClock } from "@tabler/icons-react";
 import { type Query, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   type PayAttemptStatus,
   type PayPageView,
@@ -41,6 +41,8 @@ export const PAY_STORAGE_KEY = "vantigo.invoices.pay";
 export const PAY_POLL_FAST_MS = 2000;
 export const PAY_POLL_FAST_READS = 30;
 export const PAY_POLL_SLOW_MS = 5000;
+/** Errors in a row double the delay, up to a minute; a 429 stops the poll until the payer asks again. */
+export const PAY_POLL_ERROR_CAP_MS = 60_000;
 export const PAY_POLL_MAX_READS =
   PAY_POLL_FAST_READS + (10 * 60_000 - PAY_POLL_FAST_READS * PAY_POLL_FAST_MS) / PAY_POLL_SLOW_MS;
 
@@ -128,14 +130,21 @@ const refusalKey = (error: unknown): string => {
 
 type StatusQuery = Query<PayAttemptStatus, Error, PayAttemptStatus, readonly unknown[]>;
 
-/** The next read's delay, or false once the payment is over, unknown, or ten minutes have passed. */
-const nextPoll = (query: StatusQuery): number | false => {
+const rateLimited = (error: unknown) => statusOf(error) === 429 || refusalCode(error) === "rate_limited";
+
+/**
+ * The next read's delay, or false once the payment is over, unknown, rate
+ * limited, or ten minutes have passed; `errorsInARow` failed reads double it,
+ * up to a minute.
+ */
+const nextPoll = (query: Pick<StatusQuery, "state">, errorsInARow: number): number | false => {
   const { data, error, dataUpdateCount, errorUpdateCount } = query.state;
   if (data && data.state !== "pending") return false;
-  if (error && statusOf(error) === 404) return false;
+  if (error && (statusOf(error) === 404 || rateLimited(error))) return false;
   const reads = dataUpdateCount + errorUpdateCount;
   if (reads >= PAY_POLL_MAX_READS) return false;
-  return reads < PAY_POLL_FAST_READS ? PAY_POLL_FAST_MS : PAY_POLL_SLOW_MS;
+  const delay = reads < PAY_POLL_FAST_READS ? PAY_POLL_FAST_MS : PAY_POLL_SLOW_MS;
+  return Math.min(PAY_POLL_ERROR_CAP_MS, delay * 2 ** errorsInARow);
 };
 
 const Fact = ({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) => (
@@ -248,13 +257,24 @@ const ReturnState = ({
   const { t } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const statusKey = [INVOICES_QUERY_KEY, "pay-status", attempt];
+  const errorsInARow = useRef(0);
   const status = useQuery({
     queryKey: statusKey,
-    queryFn: ({ signal }) => readPayStatus(attempt, nonce, signal),
+    queryFn: async ({ signal }) => {
+      try {
+        const answer = await readPayStatus(attempt, nonce, signal);
+        errorsInARow.current = 0;
+        return answer;
+      } catch (error) {
+        errorsInARow.current += 1;
+        throw error;
+      }
+    },
     retry: false,
     refetchOnWindowFocus: false,
-    refetchInterval: nextPoll,
-    refetchIntervalInBackground: true,
+    refetchInterval: (query) => nextPoll(query, errorsInARow.current),
+    // A hidden tab does not poll; the poll goes on when the payer comes back.
+    refetchIntervalInBackground: false,
   });
   const state = status.data?.state;
   useEffect(() => {
@@ -266,6 +286,17 @@ const ReturnState = ({
       <Alert color="red" icon={<IconAlertCircle size={16} />} role="alert">
         {t("pay.state.notFound")}
       </Alert>
+    );
+  if (status.isError && rateLimited(status.error))
+    return (
+      <Stack gap="sm">
+        <Alert color="orange" icon={<IconAlertCircle size={16} />} role="status">
+          {t("pay.refusal.rateLimited")}
+        </Alert>
+        <Button variant="light" loading={status.isFetching} onClick={() => void status.refetch()}>
+          {t("pay.checkAgain")}
+        </Button>
+      </Stack>
     );
   if (state === "paid")
     return (
@@ -325,12 +356,23 @@ const ReturnState = ({
  * The page speaks the buyer's language, as the read answers it, until the
  * reader chooses the other.
  */
-export const PayPage = () => {
+export interface PayPageProps {
+  /**
+   * Takes the token, the reference and the nonce out of the address bar once
+   * they are read — the host's router, so its own location agrees. Without it
+   * the page replaces the browser's address itself, keeping `history.state`.
+   */
+  clearAddress?: () => void;
+}
+
+export const PayPage = ({ clearAddress }: PayPageProps) => {
   const { t, locale, setLanguagePreference } = useI18n("invoices");
   const queryClient = useQueryClient();
   const [address, setAddress] = useState<PayAddress>(readAddress);
   const [chosen, setChosen] = useState<"nb" | "en" | undefined>();
-  useEffect(clearAddressBar, []);
+  // Once, on the address the page was opened at.
+  const clear = useRef(clearAddress ?? clearAddressBar);
+  useEffect(() => clear.current(), []);
   const { token, attempt, nonce } = address;
   const read = useQuery({
     queryKey: [INVOICES_QUERY_KEY, "pay-page"],

@@ -21,12 +21,28 @@ export type PayAttemptStatus = Schemas["InvoicesPayAttemptStatus"];
 export const readPayPage = (token: string): Promise<PayPageView> =>
   request<PayPageView>("/api/v1/invoices/pay/read", { ...json("POST", { token }), handleUnauthorized: false });
 
-/** Starts a Vipps payment once the payer accepted the seller's terms; answers where to send them. */
-export const startPayment = (token: string): Promise<PayAttemptCreated> =>
-  request<PayAttemptCreated>("/api/v1/invoices/pay/attempts", {
+/** Whether an address is an absolute https URL — the only kind the page leaves for. */
+const isHttps = (url: string) => {
+  try {
+    return new URL(url).protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Starts a Vipps payment once the payer accepted the seller's terms; answers
+ * where to send them. An address that is not an absolute https URL is refused
+ * here, so the page never leaves for it.
+ */
+export const startPayment = async (token: string): Promise<PayAttemptCreated> => {
+  const created = await request<PayAttemptCreated>("/api/v1/invoices/pay/attempts", {
     ...json("POST", { token, acceptTerms: true }),
     handleUnauthorized: false,
   });
+  if (!isHttps(created.redirectUrl)) throw new Error("Vipps answered an address that is not https");
+  return created;
+};
 
 /** A payment's state on return from Vipps, by its reference and the nonce its return address carried. */
 export const readPayStatus = (reference: string, nonce: string, signal?: AbortSignal): Promise<PayAttemptStatus> =>

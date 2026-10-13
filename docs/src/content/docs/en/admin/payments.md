@@ -503,7 +503,7 @@ on no list.
 | `POST` | `/api/v1/invoices/pay/read` (the page's read; the token in the body) |
 | `POST` | `/api/v1/invoices/pay/attempts` (a payment started) |
 | `GET` | `/api/v1/invoices/pay/attempts/{reference}` (its status) |
-| `GET` | `/api/v1/identity/system/status` (the page's maintenance check) |
+| `GET` | `/api/v1/identity/system/status` (the maintenance check; the pay page itself makes none) |
 | `GET`, `HEAD` | `/health/…` (probes) |
 
 **Verify** from outside, against the public host:

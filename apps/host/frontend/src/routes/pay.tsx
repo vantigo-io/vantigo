@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PayPage } from "@vantigo/invoices-ui/pages/pay";
 
 /**
@@ -9,5 +9,12 @@ import { PayPage } from "@vantigo/invoices-ui/pages/pay";
  * on `security.PayRoutes()`'s allowlist (`pay.test.tsx` holds it to that).
  */
 export const Route = createFileRoute("/pay")({
-  component: PayPage,
+  component: PayRoute,
 });
+
+function PayRoute() {
+  const navigate = useNavigate();
+  // The token, the reference and the nonce leave the address bar through the
+  // router, so its own location agrees with the browser's.
+  return <PayPage clearAddress={() => void navigate({ to: "/pay", search: {}, replace: true })} />;
+}

@@ -108,7 +108,9 @@ and dates, numbers and currency follow it. **Automatic** follows your browser's
 language. The choice is stored with your account, so it applies on every device you
 sign in from. The public [pay page](/en/user/invoices/#what-the-customer-sees-on-the-pay-page)
 your customers open from a pay link is not signed in and does not use it: it speaks the
-language the invoice names, and the customer can switch.
+language the invoice names, and the customer can switch. It asks Vantigo for nothing of
+an account — no session, no maintenance notice — and sends no referrer to the sites it
+links to.
 
 ## Change your password
 

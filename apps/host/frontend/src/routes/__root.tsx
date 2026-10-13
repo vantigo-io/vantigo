@@ -36,7 +36,7 @@ import { MaintenancePage } from "../components/errors";
 import { ModuleAccessGuard } from "../components/module-access-guard";
 import { enabledModuleKeys } from "../lib/enabled-modules";
 import { mfaEnrolmentRedirect } from "../lib/mfa-enrolment-gate";
-import { publicPaths } from "../lib/public-paths";
+import { publicPaths, sessionlessPaths } from "../lib/public-paths";
 import { activeNavPath, type NavSection, visibleNavSections } from "../navigation";
 
 const renderNavSections = (
@@ -91,6 +91,8 @@ const RootLayout = () => {
   const systemStatus = useQuery({
     queryKey: systemStatusQueryKey,
     queryFn: fetchSystemStatus,
+    // The public host's pay page shows no maintenance notice, so asks for none.
+    enabled: !sessionlessPaths.has(pathname),
     staleTime: 30_000,
     refetchInterval: 30_000,
   });

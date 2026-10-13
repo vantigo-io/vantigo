@@ -1,4 +1,4 @@
-import { notifyManager } from "@tanstack/react-query";
+import { focusManager, notifyManager } from "@tanstack/react-query";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
@@ -10,6 +10,7 @@ import { stubFetch } from "../test/fetch";
 import { payPage } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
 import {
+  PAY_POLL_ERROR_CAP_MS,
   PAY_POLL_FAST_MS,
   PAY_POLL_FAST_READS,
   PAY_POLL_MAX_READS,
@@ -18,7 +19,9 @@ import {
   PayPage,
 } from "./pay";
 
-const TOKEN = "tok-Secret_123";
+// A token with characters a URL encodes, so the encoded check below means something.
+const TOKEN = "tok-a+b/c=_Z";
+const LINK = `/pay?token=${encodeURIComponent(TOKEN)}`;
 const READ = "/api/v1/invoices/pay/read";
 const ATTEMPTS = "/api/v1/invoices/pay/attempts";
 const REFERENCE = "k3x9q2-10042-77";
@@ -71,7 +74,7 @@ afterEach(() => {
 
 describe("PayPage", () => {
   it("shows the invoice and the KID, never the buyer, and reads with the token in the body", async () => {
-    at(`/pay?token=${TOKEN}`);
+    at(LINK);
     // Whatever else an answer carried, the page shows only what it knows to show.
     const fetchMock = server({
       read: () => jsonResponse(200, { ...payPage({ language: "en" }), buyer: { name: "Kari Kunde" } }),
@@ -104,7 +107,7 @@ describe("PayPage", () => {
   });
 
   it("speaks the buyer's language from the read, and the reader may choose the other", async () => {
-    at(`/pay?token=${TOKEN}`);
+    at(LINK);
     server({ read: () => jsonResponse(200, payPage({ language: "nb" })) });
     renderWithProviders(<PayPage />);
 
@@ -114,7 +117,7 @@ describe("PayPage", () => {
   });
 
   it("works when the browser refuses storage", async () => {
-    at(`/pay?token=${TOKEN}`);
+    at(LINK);
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("SecurityError");
     });
@@ -131,7 +134,7 @@ describe("PayPage", () => {
   });
 
   it("requires the terms to be accepted before anything is sent", async () => {
-    at(`/pay?token=${TOKEN}`);
+    at(LINK);
     const fetchMock = server();
     renderWithProviders(<PayPage />);
 
@@ -148,7 +151,7 @@ describe("PayPage", () => {
   });
 
   it("opens Vipps' address at once and unchanged", async () => {
-    at(`/pay?token=${TOKEN}`);
+    at(LINK);
     server();
     renderWithProviders(<PayPage />);
 
@@ -156,6 +159,31 @@ describe("PayPage", () => {
     await userEvent.click(screen.getByRole("button", { name: en["pay.payWithVipps"] }));
     await waitFor(() => expect(payNavigation.open).toHaveBeenCalledTimes(1));
     expect(payNavigation.open).toHaveBeenCalledWith(VIPPS);
+  });
+
+  for (const address of ["javascript:alert(1)", "http://vipps.example/landing", "/landing"]) {
+    it(`never leaves for ${address}, an address that is not https`, async () => {
+      at(LINK);
+      server({ attempt: () => jsonResponse(201, { reference: REFERENCE, redirectUrl: address }) });
+      renderWithProviders(<PayPage />);
+
+      await userEvent.click(await screen.findByRole("checkbox", { name: en["pay.accept"] }));
+      await userEvent.click(screen.getByRole("button", { name: en["pay.payWithVipps"] }));
+      expect(await screen.findByText(en["pay.refusal.generic"])).toBeInTheDocument();
+      expect(payNavigation.open).not.toHaveBeenCalled();
+    });
+  }
+
+  it("hands the clearing of the address to the host when it asks to, once", async () => {
+    at(LINK);
+    server();
+    const clearAddress = vi.fn();
+    renderWithProviders(<PayPage clearAddress={clearAddress} />);
+
+    expect(await screen.findByText("Vantigo Demo AS")).toBeInTheDocument();
+    expect(clearAddress).toHaveBeenCalledTimes(1);
+    // The page leaves the address to the host's router then.
+    expect(window.location.search).not.toBe("");
   });
 
   it("says that an address with no token names no invoice, and asks for nothing", async () => {
@@ -168,7 +196,7 @@ describe("PayPage", () => {
   });
 
   it("says an unknown token in words", async () => {
-    at(`/pay?token=${TOKEN}`);
+    at(LINK);
     server({ read: () => new Response(null, { status: 404 }) });
     renderWithProviders(<PayPage />);
 
@@ -189,7 +217,7 @@ describe("PayPage", () => {
     const words = invoicesCatalog[language] as Record<Key, string>;
     for (const reason of reasons) {
       it(`says the read's ${reason} in words (${language}), offering no payment`, async () => {
-        at(`/pay?token=${TOKEN}`);
+        at(LINK);
         server({ read: () => jsonResponse(200, payPage({ language, payable: false, reason })) });
         renderWithProviders(<PayPage />);
 
@@ -220,7 +248,7 @@ describe("PayPage", () => {
     ];
     for (const [name, answer, key] of refusals) {
       it(`says the attempt's ${name} in words (${language}), never the server's English`, async () => {
-        at(`/pay?token=${TOKEN}`);
+        at(LINK);
         server({ read: () => jsonResponse(200, payPage({ language })), attempt: answer });
         renderWithProviders(<PayPage />);
 
@@ -322,6 +350,68 @@ describe("PayPage on return from Vipps", () => {
     });
   }
 
+  it("stops at a 429 and offers to check again, once, by hand", async () => {
+    window.sessionStorage.setItem(PAY_STORAGE_KEY, JSON.stringify({ token: TOKEN }));
+    at(`/pay?attempt=${REFERENCE}&nonce=${NONCE}`);
+    let limited = true;
+    const fetchMock = server({
+      status: () =>
+        limited ? jsonResponse(429, { error: { code: "rate_limited", message: "Too many" } }) : { state: "pending" },
+    });
+    renderWithProviders(<PayPage />);
+
+    await elapse(0);
+    expect(statusReads(fetchMock)).toBe(1);
+    expect(screen.getByText(en["pay.refusal.rateLimited"])).toBeInTheDocument();
+    await elapse(5 * 60_000);
+    expect(statusReads(fetchMock)).toBe(1);
+    limited = false;
+    await act(async () => {
+      screen.getByRole("button", { name: en["pay.checkAgain"] }).click();
+    });
+    await elapse(0);
+    expect(statusReads(fetchMock)).toBe(2);
+  });
+
+  it("backs off exponentially on any other error, to a minute between reads", async () => {
+    window.sessionStorage.setItem(PAY_STORAGE_KEY, JSON.stringify({ token: TOKEN }));
+    at(`/pay?attempt=${REFERENCE}&nonce=${NONCE}`);
+    const fetchMock = server({ status: () => refusal(503, "unavailable") });
+    renderWithProviders(<PayPage />);
+
+    await elapse(0);
+    expect(statusReads(fetchMock)).toBe(1);
+    // 2 s doubled per error in a row: 4 s, 8 s, 16 s, 32 s, then a minute at most.
+    await elapse(PAY_POLL_FAST_MS * 2 - 1);
+    expect(statusReads(fetchMock)).toBe(1);
+    await elapse(1);
+    expect(statusReads(fetchMock)).toBe(2);
+    await elapse(PAY_POLL_FAST_MS * 4);
+    expect(statusReads(fetchMock)).toBe(3);
+    await elapse(PAY_POLL_FAST_MS * 8 + PAY_POLL_FAST_MS * 16);
+    expect(statusReads(fetchMock)).toBe(5);
+    await elapse(PAY_POLL_ERROR_CAP_MS * 3);
+    expect(statusReads(fetchMock)).toBe(8);
+    expect(PAY_POLL_ERROR_CAP_MS).toBe(60_000);
+    expect(screen.getByText(en["pay.state.couldNotRead"])).toBeInTheDocument();
+  });
+
+  it("does not poll while the tab is hidden", async () => {
+    window.sessionStorage.setItem(PAY_STORAGE_KEY, JSON.stringify({ token: TOKEN }));
+    at(`/pay?attempt=${REFERENCE}&nonce=${NONCE}`);
+    const fetchMock = server();
+    try {
+      focusManager.setFocused(false);
+      renderWithProviders(<PayPage />);
+      await elapse(0);
+      const reads = statusReads(fetchMock);
+      await elapse(60_000);
+      expect(statusReads(fetchMock)).toBe(reads);
+    } finally {
+      focusManager.setFocused(undefined);
+    }
+  });
+
   it("in another browser — no token kept — shows the payment's state only", async () => {
     at(`/pay?attempt=${REFERENCE}&nonce=${NONCE}`);
     const fetchMock = server({ status: () => ({ state: "paid" }) });
@@ -347,7 +437,7 @@ describe("PayPage on return from Vipps", () => {
 
 describe("the pay page's requests", () => {
   it("never carry the token in an API URL, from the read through the return", async () => {
-    at(`/pay?token=${TOKEN}`);
+    at(LINK);
     const fetchMock = server({ status: () => ({ state: "paid" }) });
     const first = renderWithProviders(<PayPage />);
     await userEvent.click(await screen.findByRole("checkbox", { name: en["pay.accept"] }));
