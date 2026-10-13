@@ -118,11 +118,13 @@ func TestDecisions_WhoDecides(t *testing.T) {
 	}
 	own := ferie(w.kariC, "2026-10-08")
 	refused(t, decide(w.kariC, approvePath(own.Id), ""), http.StatusForbidden, "own_request")
-	// staff:personal-data alone reads the request and decides nothing; a
-	// manager of someone else does not even read it.
-	refused(t, decide(w.pd, approvePath(own.Id), ""), http.StatusForbidden, "decision_not_yours")
-	if r := decide(w.sigridC, approvePath(own.Id), ""); r.Status != http.StatusNotFound {
-		t.Errorf("another person's manager approving: %d, want 404", r.Status)
+	// staff:personal-data alone reads the request and decides nothing, and a
+	// manager of someone else does not even read it: both get the 404 of a
+	// row they cannot write (review C1).
+	for name, c := range map[string]*modtest.Client{"personal-data alone": w.pd, "another person's manager": w.sigridC} {
+		if r := decide(c, approvePath(own.Id), ""); r.Status != http.StatusNotFound {
+			t.Errorf("%s approving: %d, want 404", name, r.Status)
+		}
 	}
 	for name, c := range map[string]*modtest.Client{"a colleague": w.viewer, "a stranger": w.nobody} {
 		if r := decide(c, approvePath(own.Id), ""); r.Status != http.StatusNotFound {
@@ -241,8 +243,11 @@ func TestDecisions_RejectCancelCorrect(t *testing.T) {
 		http.StatusConflict, "absence_not_cancellable")
 	approved(t, w.bossC, ahead.Id)
 	refused(t, w.kariC.Do(http.MethodPost, cancelAbsencePath(ahead.Id), nil), http.StatusConflict, "absence_not_cancellable")
-	refused(t, w.viewer.Do(http.MethodPost, cancelAbsencePath(ahead.Id), nil), http.StatusForbidden, "decision_not_yours")
-	refused(t, w.pd.Do(http.MethodPost, cancelAbsencePath(ahead.Id), nil), http.StatusForbidden, "decision_not_yours")
+	for name, c := range map[string]*modtest.Client{"a colleague": w.viewer, "personal-data alone": w.pd} {
+		if r := c.Do(http.MethodPost, cancelAbsencePath(ahead.Id), nil); r.Status != http.StatusNotFound {
+			t.Errorf("%s cancelling: %d, want the 404 of a row they cannot write", name, r.Status)
+		}
+	}
 	do(t, w.bossC, http.MethodPost, cancelAbsencePath(ahead.Id), nil, http.StatusOK, nil)
 	if statusIn(t, h, ahead.Id) != "cancelled" {
 		t.Error("the decider's cancel did not cancel")
@@ -290,6 +295,10 @@ func TestDecisions_TheApproverAudience(t *testing.T) {
 	ferie := requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-10-05", "2026-10-09", "note", "Høstferie"))
 	hrOnly := requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
 	sick := register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-12-07", "2026-12-11", "degreePercent", 50))
+	if r := w.approver.Do(http.MethodGet, absencePath(hrOnly.Id), nil); r.Status != http.StatusNotFound {
+		t.Errorf("the Approver reads an HR-only request: %d, want 404 (review H4)", r.Status)
+	}
+	approved(t, w.pd, hrOnly.Id)
 
 	person := raw(t, w.approver.Do(http.MethodGet, personPath(w.kari.Id), nil))
 	if person["givenName"] != "Kari" {
@@ -388,11 +397,13 @@ func TestApprovals_TheInbox(t *testing.T) {
 		c    *modtest.Client
 		want []int64
 	}{
-		{"Kari's manager", w.bossC, []int64{first.Id, hrOnly.Id}},
+		// An HR-only request is staff:personal-data's alone (review H4).
+		{"Kari's manager", w.bossC, []int64{first.Id}},
 		{"Bjørn's manager", w.sigridC, []int64{bjorn.Id}},
-		{"the Approver", w.approver, []int64{first.Id, hrOnly.Id, bjorn.Id, olav.Id, hilde.Id}},
-		{"Olav, the self-approver", w.olavC, []int64{first.Id, hrOnly.Id, bjorn.Id, olav.Id, hilde.Id}},
-		{"Hilde", w.hildC, []int64{first.Id, hrOnly.Id, bjorn.Id, olav.Id}},
+		{"the Approver", w.approver, []int64{first.Id, bjorn.Id, olav.Id, hilde.Id}},
+		{"Olav, the self-approver", w.olavC, []int64{first.Id, bjorn.Id, olav.Id, hilde.Id}},
+		{"Hilde", w.hildC, []int64{first.Id, bjorn.Id, olav.Id}},
+		{"personal-data", w.pd, []int64{hrOnly.Id}},
 		{"Kari", w.kariC, nil},
 		{"a colleague", w.viewer, nil},
 	} {
@@ -413,8 +424,8 @@ func TestApprovals_TheInbox(t *testing.T) {
 		}
 	}
 	approved(t, w.bossC, first.Id)
-	if got := ids(inbox(w.bossC)); !slices.Equal(got, []int64{hrOnly.Id}) {
-		t.Errorf("after the approval the inbox = %v, want only the HR-only request", got)
+	if got := ids(inbox(w.bossC)); len(got) != 0 {
+		t.Errorf("after the approval the inbox = %v, want it empty", got)
 	}
 }
 
@@ -531,8 +542,19 @@ func TestDecisions_EventsCarryTypesAndStayShaped(t *testing.T) {
 	if r.Status != http.StatusOK {
 		t.Fatalf("approve: %d %s", r.Status, r.Body)
 	}
-	approved(t, w.approver, perm.Id)
-	do(t, w.bossC, http.MethodPost, cancelAbsencePath(perm.Id), nil, http.StatusOK, nil)
+	if r := decide(w.pd, approvePath(perm.Id), "Gratulerer"); r.Status != http.StatusOK {
+		t.Fatalf("approve: %d %s", r.Status, r.Body)
+	}
+	for name, c := range map[string]*modtest.Client{"her manager": w.bossC, "HR": w.hr} {
+		if a := raw(t, c.Do(http.MethodGet, absencePath(perm.Id), nil)); a["decisionNote"] != nil || a["status"] != "approved" {
+			t.Errorf("%s reads the leave-shown row as %v, want approved with no decision field", name, a)
+		}
+	}
+	do(t, w.pd, http.MethodPost, cancelAbsencePath(perm.Id), nil, http.StatusOK, nil)
+	// Cancelled, it is gone from its leave-readers (review H4).
+	if r := w.bossC.Do(http.MethodGet, absencePath(perm.Id), nil); r.Status != http.StatusNotFound {
+		t.Errorf("her manager reads the cancelled HR-only row: %d, want 404", r.Status)
+	}
 
 	for _, kind := range []string{"absence_approved", "absence_cancelled"} {
 		if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE kind = $1 AND jsonb_array_length(payload->'typeIds') = 1
@@ -547,9 +569,6 @@ func TestDecisions_EventsCarryTypesAndStayShaped(t *testing.T) {
 		e := eventsAbout(t, c, w.kari.Id, ferie.Id)
 		if len(e) != 2 || e[0].Kind != "absence_approved" || e[0].Fields["decisionNote"] == nil {
 			t.Errorf("%s reads the ferie's events as %v, want its request and its approval with the note", name, e)
-		}
-		if a := raw(t, c.Do(http.MethodGet, absencePath(perm.Id), nil)); a["decisionNote"] != nil {
-			t.Errorf("%s reads a decision field on the leave-shown row: %v", name, a)
 		}
 	}
 	if e := eventsAbout(t, w.pd, w.kari.Id, perm.Id); len(e) != 3 {

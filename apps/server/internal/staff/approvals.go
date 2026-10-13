@@ -12,7 +12,8 @@ import (
 
 // This file is the approvals inbox (design §7, plan Task 4): the requests
 // the caller decides, oldest first — every person's for staff:approve and
-// staff:manage, a manager's reports' today by the one manager rule — never
+// staff:manage, a manager's reports' today by the one manager rule, and an
+// HR-only type's for staff:personal-data alone (review H4) — never
 // the caller's own but the self-approver's (deciders.go). Each row is shaped
 // as GET /absences shapes it for the caller, so an HR-only request is
 // "leave" to all but staff:personal-data, with no revision to anyone who
@@ -30,18 +31,16 @@ func (s *server) GetStaffApprovals(ctx context.Context, req gen.GetStaffApproval
 		return nil, err
 	}
 	everyone := caller.Approve || caller.Manage
-	exclude := caller.Person
+	selfApproves := false
 	if everyone && caller.Person != nil {
-		d, err := s.judgeDecider(ctx, caller, *caller.Person)
+		d, err := s.judgeDecider(ctx, caller, *caller.Person, false)
 		if err != nil {
 			return nil, err
 		}
-		if d.selfApproves {
-			exclude = nil
-		}
+		selfApproves = d.selfApproves
 	}
 	out := gen.PaginatedResponseOfStaffApproval{Data: []gen.StaffApproval{}, Pagination: apicommon.Pagination(page, pageSize, 0)}
-	if !everyone && caller.Person == nil {
+	if !everyone && !caller.PersonalData && caller.Person == nil {
 		return gen.GetStaffApprovals200JSONResponse(out), nil
 	}
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
@@ -53,15 +52,18 @@ func (s *server) GetStaffApprovals(ctx context.Context, req gen.GetStaffApproval
 			}
 			reports = g.reportsOf(*caller.Person, caller.Today)
 		}
-		if !everyone && len(reports) == 0 {
+		if !everyone && !caller.PersonalData && len(reports) == 0 {
 			return nil
 		}
-		total, err := q.CountRequestedAbsences(ctx, store.CountRequestedAbsencesParams{Everyone: everyone, PersonIds: reports, ExcludePerson: exclude})
+		total, err := q.CountRequestedAbsences(ctx, store.CountRequestedAbsencesParams{
+			Everyone: everyone, PersonIds: reports, PersonalData: caller.PersonalData, SelfID: caller.Person, SelfApproves: selfApproves,
+		})
 		if err != nil {
 			return fmt.Errorf("staff: count the requests: %w", err)
 		}
 		rows, err := q.RequestedAbsences(ctx, store.RequestedAbsencesParams{
-			Everyone: everyone, PersonIds: reports, ExcludePerson: exclude, PageSize: pageSize, PageOffset: (page - 1) * pageSize,
+			Everyone: everyone, PersonIds: reports, PersonalData: caller.PersonalData, SelfID: caller.Person, SelfApproves: selfApproves,
+			PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 		})
 		if err != nil {
 			return fmt.Errorf("staff: list the requests: %w", err)

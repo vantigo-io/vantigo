@@ -30,6 +30,11 @@ import (
 // structure today (headsTopOfStructure) and for whom (a) is empty approves
 // their own, recorded absence_self_approved and listed to staff:manage.
 //
+// A request of an HR-only type (review H4, interim option b, reading 33) is
+// decided by staff:personal-data alone — §5 gives HR-only types to that
+// permission — and never by its own holder: there is no self-approval for
+// it; with no other holder it waits.
+//
 // The rule reads the manager graph in a read snapshot and the directory
 // after it — never inside a transaction (the lock rule) — so a decision
 // judges its decider before it takes the person's lock, and judges the row
@@ -42,9 +47,13 @@ type decider struct {
 	selfApproves bool // own, and the caller approves their own (I7)
 }
 
-// judgeDecider is what the caller is to personID's requests today.
-func (s *server) judgeDecider(ctx context.Context, caller *callerContext, personID int64) (decider, error) {
+// judgeDecider is what the caller is to personID's requests today — of an
+// HR-only type when hrOnly.
+func (s *server) judgeDecider(ctx context.Context, caller *callerContext, personID int64, hrOnly bool) (decider, error) {
 	own := caller.Person != nil && *caller.Person == personID
+	if hrOnly {
+		return decider{decides: caller.PersonalData && !own, own: own}, nil
+	}
 	byRight := caller.Approve || caller.Manage
 	if !own && byRight {
 		return decider{decides: true}, nil

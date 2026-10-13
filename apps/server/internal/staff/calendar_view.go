@@ -95,7 +95,7 @@ func (s *server) GetStaffCalendar(ctx context.Context, req gen.GetStaffCalendarR
 		for _, r := range rows {
 			pid := r.StaffAbsence.PersonID
 			a := caller.audienceOn(pid, slices.Contains(reports, pid), slices.Contains(active, pid))
-			if a.seesAbsence(r.StaffAbsence.Status) {
+			if a.seesAbsence(r.StaffAbsence.Status, r.Visibility) {
 				bars[pid] = append(bars[pid], absenceResponse(r.StaffAbsence, r.Kind, r.Visibility, r.Unit, a, s.absenceTag))
 			}
 		}

@@ -84,13 +84,13 @@ export interface paths {
         get: operations["getStaffAbsencesById"];
         /**
          * Change an absence
-         * @description Replaces an absence's type, days, percent, hours, degree and note, judged as a new one is (the row itself left out of the overlap): the person's while it is requested; a registered row — a sick one included — staff:manage's alone, since ending a sykmelding early or fixing its days is HR's (the person asks). A change never moves a row between a type that needs a decision and one that is a notification (absence_status_change). Anything else answers absence_not_requested; anyone but the person and staff:manage the uniform 403. Recorded as absence_updated with each field's before and after.
+         * @description Replaces an absence's type, days, percent, hours, degree and note, judged as a new one is (the row itself left out of the overlap): the person's while it is requested; a registered row — a sick one included — staff:manage's alone, since ending a sykmelding early or fixing its days is HR's (the person asks). A change never moves a row between a type that needs a decision and one that is a notification (absence_status_change). Anything else answers absence_not_requested; anyone but the person and staff:manage — for an HR-only row staff:manage with staff:personal-data — the 404 of a row they cannot write, whatever its status. Recorded as absence_updated with each field's before and after.
          */
         put: operations["putStaffAbsencesById"];
         post?: never;
         /**
          * Delete an absence
-         * @description Removes an absence that was never decided (reading 16): a requested row, by the person or staff:manage, or a registered one, by staff:manage alone. A decided row is cancelled, never deleted: absence_not_requested. Recorded as absence_deleted.
+         * @description Removes an absence that was never decided (reading 16): a requested row, by the person or staff:manage, or a registered one, by staff:manage alone (an HR-only row: with staff:personal-data); anyone else gets the 404 of a row they cannot write. A decided row is cancelled, never deleted: absence_not_requested. Recorded as absence_deleted.
          */
         delete: operations["deleteStaffAbsencesById"];
         options?: never;
@@ -109,7 +109,7 @@ export interface paths {
         put?: never;
         /**
          * Approve an absence request
-         * @description Approves a request (design S12): by a decider of the person today — a manager of theirs by the one manager rule, staff:approve or staff:manage — never the caller's own (own_request), except for a holder of staff:approve or staff:manage who heads the structure and has no manager with an active user, who approves their own, recorded absence_self_approved and listed to staff:manage as the attention item selfApproved (provisional, plan reading 1). Judged under the person's lock: a row that is no longer requested — another decider was quicker, or the person cancelled — is absence_not_requested; overlap is judged again. The person is told by mail, naming the type only when it is neither a sick kind nor HR-only and never a note. A type drawing on the holiday account answers the accounts after it. Recorded as absence_approved.
+         * @description Approves a request (design S12): by a decider of the person today — a manager of theirs by the one manager rule, staff:approve or staff:manage; for an HR-only type staff:personal-data alone (interim, plan reading 33) — never the caller's own (own_request), except for a holder of staff:approve or staff:manage who heads the structure and has no manager with an active user, who approves their own, recorded absence_self_approved and listed to staff:manage as the attention item selfApproved (provisional, plan reading 1). Judged under the person's lock: a row that is no longer requested — another decider was quicker, or the person cancelled — is absence_not_requested; overlap is judged again. The person is told by mail, naming the type only when it is neither a sick kind nor HR-only and never a note. A type drawing on the holiday account answers the accounts after it. A caller who is neither the person nor a decider gets the 404 of a row they cannot write, whatever its status. Recorded as absence_approved.
          */
         post: operations["postStaffAbsencesByIdApprove"];
         delete?: never;
@@ -129,7 +129,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel an absence request
-         * @description Withdraws an absence and keeps it as history (status cancelled): a requested one by the person or staff:manage; an approved one by a decider of the person today (POST /absences/{id}/approve) — never the caller's own (own_request) but for the self-approver — and, once its first day has come, by staff:manage alone. A registered, rejected or cancelled row, or an approved one the caller may no longer cancel, answers absence_not_cancellable. A decider's cancel tells the person by mail. Recorded as absence_cancelled.
+         * @description Withdraws an absence and keeps it as history (status cancelled). Authority first: a caller who is neither the person, a decider of theirs nor staff:manage — for an HR-only row staff:manage with staff:personal-data — gets the 404 of a row they cannot write, whatever its status. Then: a requested one by the person or HR; an approved one by a decider of the person today (POST /absences/{id}/approve) — never the caller's own (own_request) but for the self-approver — and, once its first day has come, by staff:manage alone. A registered, rejected or cancelled row, or an approved one the caller may no longer cancel, answers absence_not_cancellable. A decider's cancel tells the person by mail. Recorded as absence_cancelled.
          */
         post: operations["postStaffAbsencesByIdCancel"];
         delete?: never;
@@ -149,7 +149,7 @@ export interface paths {
         put?: never;
         /**
          * Correct a decided or registered absence
-         * @description HR corrects an approved or registered absence (design S12: a decided absence in the past is corrected by HR only, as an event) — its type, days, percent, hours, degree and note, judged as a new one is, the row itself left out of the overlap. A request, a rejected or a cancelled row is absence_not_cancellable (pre-flight M7); a correction never moves a row between a type that needs a decision and one that is a notification (absence_status_change); never HR's own row (own_request), but for the self-approver. The person is told by mail. Recorded as absence_corrected with each field's before and after, both types shaped by their own visibility.
+         * @description HR corrects an approved or registered absence (design S12: a decided absence in the past is corrected by HR only, as an event) — its type, days, percent, hours, degree and note, judged as a new one is, the row itself left out of the overlap. A request, a rejected or a cancelled row is absence_not_cancellable (pre-flight M7); a correction never moves a row between a type that needs a decision and one that is a notification (absence_status_change); never HR's own row (own_request), but for the self-approver; an HR-only row needs staff:personal-data too, else the 404 of a row the caller cannot write. The person is told by mail. Recorded as absence_corrected with each field's before and after, both types shaped by their own visibility.
          */
         post: operations["postStaffAbsencesByIdCorrect"];
         delete?: never;
@@ -169,7 +169,7 @@ export interface paths {
         put?: never;
         /**
          * Reject an absence request
-         * @description Rejects a request with a reason (note, required) — by a decider of the person today, as POST /absences/{id}/approve says, never the caller's own (own_request). Under the person's lock; a row no longer requested is absence_not_requested. The person is told by mail, without the reason. Recorded as absence_rejected.
+         * @description Rejects a request with a reason (note, required) — by a decider of the person today, as POST /absences/{id}/approve says, never the caller's own (own_request). Under the person's lock; a row no longer requested is absence_not_requested. The person is told by mail, without the reason. Anyone else gets the 404 of a row they cannot write. Recorded as absence_rejected.
          */
         post: operations["postStaffAbsencesByIdReject"];
         delete?: never;
@@ -187,7 +187,7 @@ export interface paths {
         };
         /**
          * List the requests I decide
-         * @description The requests the caller decides, oldest first (by when they were made): every person's for staff:approve and staff:manage, a manager's reports' today by the one manager rule — never the caller's own, but for the self-approver's (POST /absences/{id}/approve). Each with the person as the work group names them and the row shaped as GET /absences shapes it for the caller: an HR-only type as leave to all but staff:personal-data.
+         * @description The requests the caller decides, oldest first (by when they were made): every person's of a plain type for staff:approve and staff:manage, a manager's reports' today by the one manager rule, and an HR-only type's for staff:personal-data alone — never the caller's own, but for the self-approver's (POST /absences/{id}/approve). Each with the person as the work group names them and the row shaped as GET /absences shapes it for the caller: an HR-only type as leave to all but staff:personal-data.
          */
         get: operations["getStaffApprovals"];
         put?: never;
@@ -291,7 +291,7 @@ export interface paths {
         };
         /**
          * The absence calendar
-         * @description The absence calendar for from..to (at most 93 days), with the public holidays in it (internal/calendar): for staff:view, staff:approve, staff:manage and staff:personal-data everyone with an employment in the range (a colleague's only those active today too, as the directory lists them); for a manager without those, their reports today and themselves; for anyone else, themselves. departmentId narrows to the people whose terms place them in that department on the day judged — today, held inside the range. Requested, approved and registered rows only, each shaped per §5: a colleague's bar carries the dates alone (shownAs absent) and only for approved and registered rows; an HR-only type is leave to all but the person and staff:personal-data.
+         * @description The absence calendar for from..to (at most 93 days), with the public holidays in it (internal/calendar): for staff:view, staff:approve, staff:manage and staff:personal-data everyone with an employment in the range (a colleague's only those active today too, as the directory lists them); for a manager without those, their reports today and themselves; for anyone else, themselves. departmentId narrows to the people whose terms place them in that department on the day judged — today, held inside the range. Requested, approved and registered rows only — to a reader of an HR-only type as leave, its approved and registered rows only — each shaped per §5: a colleague's bar carries the dates alone (shownAs absent) and only for approved and registered rows; an HR-only type is leave to all but the person and staff:personal-data.
          */
         get: operations["getStaffCalendar"];
         put?: never;
@@ -1566,7 +1566,7 @@ export interface components {
             data: components["schemas"]["StaffPersonListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
-        /** @description An absence as the caller may read it (design §5). A colleague (staff:view alone) reads the dates and nothing else — no status, no working days, no type (shownAs absent) — so a sickness looks like any other absence. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, the working days of its days, a registered row as approved (a status filter matches it so too), no revision, and none of its events listed to them — they read its dates already, and the events' count and kinds would tell a notification from a request. A write of a type drawing on the holiday account answers the accounts of the years it touches after it. */
+        /** @description An absence as the caller may read it (design §5). A colleague (staff:view alone) reads the dates and nothing else — no status, no working days, no type (shownAs absent) — so a sickness looks like any other absence. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, no note, the working days of its days, a registered row as approved (a status filter matches it so too), no revision, only while approved or registered — staff:personal-data alone decides it, so a request, a refusal or a cancel is not shown to them — and none of its events listed to them — they read its dates already, and the events' count and kinds would tell a notification from a request. A write of a type drawing on the holiday account answers the accounts of the years it touches after it. */
         StaffAbsence: {
             /** Format: int64 */
             id: number;
@@ -3020,7 +3020,7 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, decision_not_yours, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -4048,7 +4048,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden — decision_not_yours (the caller decides nothing of the person's), or own_request (the caller's own, which another decider decides); without a code, the uniform 403. */
+            /** @description Forbidden — own_request (the caller's own, which another decider decides); without a code, the uniform 403. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4105,7 +4105,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden — decision_not_yours (the caller decides nothing of the person's), or own_request (the caller's own, which another decider decides); without a code, the uniform 403. */
+            /** @description Forbidden — own_request (the caller's own, which another decider decides); without a code, the uniform 403. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4178,7 +4178,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden — decision_not_yours (the caller decides nothing of the person's), or own_request (the caller's own, which another decider decides); without a code, the uniform 403. */
+            /** @description Forbidden — own_request (the caller's own, which another decider decides); without a code, the uniform 403. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4248,7 +4248,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden — decision_not_yours (the caller decides nothing of the person's), or own_request (the caller's own, which another decider decides); without a code, the uniform 403. */
+            /** @description Forbidden — own_request (the caller's own, which another decider decides); without a code, the uniform 403. */
             403: {
                 headers: {
                     [name: string]: unknown;

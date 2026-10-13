@@ -608,6 +608,15 @@ avgjør sin egen søknad: en leders går til lederens egen leder, og HRs til en 
 `staff:approve` eller `staff:manage`. En leder avgjør først når personen deres er koblet
 til en aktiv bruker ([Koble personer til brukerne sine](#koble-personer-til-brukerne-sine)).
 
+**HR-permisjon avgjøres av `staff:personal-data`** (foreløpig, inntil eieren har
+bestemt seg): en søknad om en HR-type — svangerskapspermisjon, en religiøs høytid, en
+egen type merket som HR-type — går ikke til noen leder, ingen med `staff:approve` og ingen
+HR uten `staff:personal-data`, og ingen av dem får e-post om den. Alle med
+`staff:personal-data` unntatt personen selv avgjør den i godkjenningsinnboksen sin, og bare
+HR med `staff:personal-data` endrer, kansellerer eller retter en slik rad. Gi den
+rettigheten til den som skal avgjøre slik permisjon; finnes ingen andre med den, venter
+søknaden. For alle andre vises permisjonen først når den er godkjent, som *permisjon*.
+
 **Det ene unntaket, foreløpig** (inntil eieren har bestemt seg): den som har
 `staff:approve` eller `staff:manage`, står øverst i strukturen — leder en avdeling uten
 noen leder over seg — og ikke har noen leder med aktiv bruker, kan godkjenne sitt eget.

@@ -317,12 +317,19 @@ func TestAbsences_EditDeleteCancel(t *testing.T) {
 		if r := c.Do(http.MethodDelete, absencePath(req.Id), nil); r.Status != http.StatusForbidden && r.Status != http.StatusNotFound {
 			t.Errorf("%s deleting Kari's request: %d, want 403 or 404", name, r.Status)
 		}
-		if r := c.Do(http.MethodPost, cancelAbsencePath(req.Id), nil); r.Status != http.StatusForbidden && r.Status != http.StatusNotFound {
-			t.Errorf("%s cancelling Kari's request: %d, want 403 or 404", name, r.Status)
+		if c == w.bossC {
+			continue
+		}
+		if r := c.Do(http.MethodPost, cancelAbsencePath(req.Id), nil); r.Status != http.StatusNotFound {
+			t.Errorf("%s cancelling Kari's request: %d, want 404", name, r.Status)
 		}
 	}
-	if r := w.bossC.Do(http.MethodDelete, absencePath(req.Id), nil); r.Status != http.StatusForbidden {
-		t.Errorf("her manager, who sees the row, deleting it: %d, want the uniform 403", r.Status)
+	// Her manager decides the request: rejecting it is hers, cancelling it
+	// is not (she reads its status, so the refusal may name it); changing or
+	// deleting it is the 404 of a row she cannot write (review C1).
+	refused(t, w.bossC.Do(http.MethodPost, cancelAbsencePath(req.Id), nil), http.StatusConflict, "absence_not_cancellable")
+	if r := w.bossC.Do(http.MethodDelete, absencePath(req.Id), nil); r.Status != http.StatusNotFound {
+		t.Errorf("her manager, who sees the row, deleting it: %d, want 404", r.Status)
 	}
 	if r := w.nobody.Do(http.MethodGet, absencePath(req.Id), nil); r.Status != http.StatusNotFound {
 		t.Errorf("a stranger reading the row: %d, want 404", r.Status)
@@ -475,7 +482,9 @@ func TestAbsences_EventsShaped(t *testing.T) {
 	ferieType, hrOnlyType := typeID(t, h, "ferie"), typeID(t, h, "svangerskapspermisjon")
 
 	hrOnly := requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
-	do(t, w.hr, http.MethodPut, absencePath(hrOnly.Id), absence(t, h, "ferie", "2026-11-02", "2026-11-06"), http.StatusOK, nil, ifMatchAs(t, w.hr, hrOnly.Id))
+	// An HR-only row is changed by HR with staff:personal-data (review H2).
+	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	do(t, hrPD, http.MethodPut, absencePath(hrOnly.Id), absence(t, h, "ferie", "2026-11-02", "2026-11-06"), http.StatusOK, nil, ifMatchAs(t, hrPD, hrOnly.Id))
 	for _, c := range []struct {
 		name     string
 		c        *modtest.Client

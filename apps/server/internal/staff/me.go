@@ -96,7 +96,7 @@ func (s *server) respondSelf(ctx context.Context, caller *callerContext, row sto
 	if err != nil {
 		return gen.StaffPerson{}, err
 	}
-	d, err := s.judgeDecider(ctx, caller, row.ID)
+	d, err := s.judgeDecider(ctx, caller, row.ID, false)
 	if err != nil {
 		return gen.StaffPerson{}, err
 	}

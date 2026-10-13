@@ -132,7 +132,7 @@ func (s *server) respondPerson(ctx context.Context, caller *callerContext, row s
 			return gen.StaffPerson{}, err
 		}
 	}
-	d, err := s.judgeDecider(ctx, caller, row.ID)
+	d, err := s.judgeDecider(ctx, caller, row.ID, false)
 	if err != nil {
 		return gen.StaffPerson{}, err
 	}
