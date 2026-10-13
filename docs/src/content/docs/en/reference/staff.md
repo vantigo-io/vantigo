@@ -73,10 +73,12 @@ default, `ux_holiday_schemes_default`; the statutory seed), `holiday_adjustments
 (indexed by person and year; at most one carry-over per person and year it comes
 from), `sick_cases` (indexed by person and first day), `sick_case_milestones` (one
 per kind per case) and `absences` (indexed by person and first day, by type, by case,
-and the requested ones by a partial index); and three columns to tables 00042 and
+and the requested ones by a partial index); and four columns to tables 00042 and
 00043 created: `employments.holiday_scheme_id` (with its index), `documents.case_id`
-(with its index) and `settings.auto_carry_over_since` — the one settings column B
-adds after all, so the derived carry-over reaches no year before it was turned on.
+(with its index), `settings.auto_carry_over_since` — the one settings column B
+adds after all, so the derived carry-over reaches no year before it was turned on —
+and `people.self_cert_withdrawn_from`, the day HR withdrew the right to egenmelding,
+from which it is refused.
 Still no CHECK constraint.
 
 ## Permissions
@@ -1966,7 +1968,7 @@ holds every payload field to its column's class, and a third holds this table to
 | --- | --- | --- |
 | `people` | C | `id`, `employee_number`, `given_name`, `family_name`, `display_name`, `birth_date`, `gender`, `national_id_kind`, `work_country`, `preferred_language`, `provision_account`, `provision_from`, `account_email_kind`, `erased_at`, `reassessed_at`, `reassessed_by_user_id`, `revision`, `created_at`, `updated_at` |
 | `people` | D | `national_id_sealed`, `national_id_mac`, `national_id_country`, `work_email`, `phone_work`, `phone_mobile`, `phone_private`, `private_email`, `street`, `postal_code`, `city`, `country`, `bank_account_sealed`, `bank_account_last4`, `bank_account_kind`, `children_under_12`, `sole_carer`, `chronically_ill_children`, `notes` |
-| `people` | E | `self_cert_withdrawn_until`, `self_cert_withdrawn_reason` |
+| `people` | E | `self_cert_withdrawn_until`, `self_cert_withdrawn_reason`, `self_cert_withdrawn_from` |
 | `people` | F | `legal_hold`, `legal_hold_reason`, `legal_hold_by_user_id`, `legal_hold_at` |
 | `next_of_kin` | D | every column: `id`, `person_id`, `position`, `name`, `relationship`, `phone`, `note`, `created_at`, `updated_at` |
 | `person_roles` | C | every column: `id`, `person_id`, `role`, `from_date`, `to_date`, `created_at`, `updated_at` |

@@ -14,7 +14,8 @@ import (
 // schemes with the statutory one, the holiday adjustments, the sick cases and
 // their milestones, the absences, and the three columns delivery B adds to
 // tables 00042 and 00043 created — employments.holiday_scheme_id,
-// documents.case_id and settings.auto_carry_over_since. Its own file, as
+// documents.case_id, settings.auto_carry_over_since and
+// people.self_cert_withdrawn_from. Its own file, as
 // 00042's and 00043's tests are.
 
 // staffAbsenceVersion is 00047's goose version. 00046 is not this branch's
@@ -56,7 +57,7 @@ func TestStaffAbsence_AppliesAndIsIdempotent(t *testing.T) {
 		    || coalesce(character_maximum_length::text, '') || ':' || is_nullable || ':' || coalesce(column_default, '')
 		FROM information_schema.columns
 		WHERE table_schema = 'staff' AND (table_name = ANY($1)
-		   OR (table_name, column_name) IN (('employments', 'holiday_scheme_id'), ('documents', 'case_id'), ('settings', 'auto_carry_over_since')))
+		   OR (table_name, column_name) IN (('employments', 'holiday_scheme_id'), ('documents', 'case_id'), ('settings', 'auto_carry_over_since'), ('people', 'self_cert_withdrawn_from')))
 		ORDER BY 1`, staffAbsenceTables)
 	wantColumns := []string{
 		"absence_types.allows_percent:boolean::NO:false",
@@ -121,6 +122,7 @@ func TestStaffAbsence_AppliesAndIsIdempotent(t *testing.T) {
 		"holiday_schemes.revision:integer::NO:1",
 		"holiday_schemes.seeded:boolean::NO:false",
 		"holiday_schemes.updated_at:timestamp with time zone::NO:",
+		"people.self_cert_withdrawn_from:date::YES:",
 		"settings.auto_carry_over_since:date::YES:",
 		"sick_case_milestones.case_id:bigint::NO:",
 		"sick_case_milestones.created_at:timestamp with time zone::NO:",
@@ -362,7 +364,7 @@ func TestStaffAbsence_AppliesAndIsIdempotent(t *testing.T) {
 	leftColumns := staffCollect(t, ctx, pool, "columns after the rollback", `
 		SELECT table_name || '.' || column_name FROM information_schema.columns
 		WHERE table_schema = 'staff'
-		  AND (table_name, column_name) IN (('employments', 'holiday_scheme_id'), ('documents', 'case_id'), ('settings', 'auto_carry_over_since'))`)
+		  AND (table_name, column_name) IN (('employments', 'holiday_scheme_id'), ('documents', 'case_id'), ('settings', 'auto_carry_over_since'), ('people', 'self_cert_withdrawn_from'))`)
 	if len(leftColumns) != 0 {
 		t.Errorf("the rollback left the columns %v", leftColumns)
 	}

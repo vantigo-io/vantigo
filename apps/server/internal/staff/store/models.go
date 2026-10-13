@@ -327,6 +327,7 @@ type StaffPerson struct {
 	Revision                int32
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
+	SelfCertWithdrawnFrom   pgtype.Date
 }
 
 type StaffPersonRole struct {
