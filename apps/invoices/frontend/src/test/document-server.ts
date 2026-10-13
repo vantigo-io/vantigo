@@ -8,13 +8,15 @@ export type Answer = Response | Promise<Response> | (() => Response | Promise<Re
 
 /**
  * The fetch fake for an issued document's page: meta (with `capabilities`
- * over the fixture's), document 1001 as `doc` says at each read, and each
- * write by "METHOD url". Anything else is a bare 404.
+ * over the fixture's, and `metaOverrides` over the rest of it), document 1001
+ * as `doc` says at each read, and each write by "METHOD url". Anything else
+ * is a bare 404.
  */
 export const documentServer = (
   doc: () => InvoiceDocument,
   answers: Record<string, Answer> = {},
   capabilities: Partial<ReturnType<typeof meta>["capabilities"]> = {},
+  metaOverrides: Partial<Omit<ReturnType<typeof meta>, "capabilities">> = {},
 ) =>
   stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = path(input);
@@ -22,7 +24,7 @@ export const documentServer = (
     const answer = answers[`${method} ${url}`];
     if (answer) return typeof answer === "function" ? answer() : answer;
     if (url === "/api/v1/invoices/meta") {
-      return jsonResponse(200, meta({ capabilities: { ...meta().capabilities, ...capabilities } }));
+      return jsonResponse(200, meta({ ...metaOverrides, capabilities: { ...meta().capabilities, ...capabilities } }));
     }
     if (method === "GET" && url === "/api/v1/invoices/1001") return jsonResponse(200, doc());
     return new Response(null, { status: 404 });

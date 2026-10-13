@@ -1,5 +1,6 @@
 import "./i18n";
 
+export type { OnSitePayment, OnSitePaymentStatus, PaymentAttempt, VippsPaymentsDay } from "./api/attempts";
 export * from "./api/bank";
 export * from "./api/customers";
 export * from "./api/deductible";
@@ -21,6 +22,7 @@ export * from "./lib/format";
 export * from "./lib/money";
 export * from "./lib/routes";
 export { IssueModal, type IssueModalProps } from "./pages/-issue-modal";
+export { QrScreen, type QrScreenProps } from "./pages/-qr-screen";
 export { BankFilePage, type BankFilePageProps } from "./pages/bank-file";
 export { InvoicePage, type InvoicePageProps } from "./pages/invoice";
 export { InvoicesPage, type InvoicesPageProps } from "./pages/invoices";
@@ -30,3 +32,4 @@ export { PaymentsPage, type PaymentsPageProps } from "./pages/payments";
 export { ReminderPrintPage, type ReminderPrintPageProps } from "./pages/reminder-print";
 export { ReminderRunPage, type ReminderRunPageProps } from "./pages/reminder-run";
 export { SettingsPage, type SettingsPageProps } from "./pages/settings";
+export { PaymentsTabs, VippsPaymentsPage } from "./pages/vipps-payments";

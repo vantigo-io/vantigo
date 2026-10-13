@@ -14,7 +14,7 @@ Fakturaer-appen utsteder salgsdokumentene i bokføringen din: et utkast blir en
 nummerert faktura eller kreditnota i det øyeblikket det utstedes, får en PDF, og endres
 aldri etter det. Appen har fem områder i sidemenyen: **Fakturaer**, **Fakturajournal**,
 **Forfalt** (de forfalte fakturaene og purringene deres), **Innbetalinger** (bankens
-filer og avvikskøen, vist bare med `invoices:payments`) og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
+filer og avvikskøen, og dagens Vipps-betalinger, vist bare med `invoices:payments`) og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
 PDF — ved nedlasting eller på e-post — eller som EHF-faktura i Peppol-nettverket, når
 installasjonen er satt opp for det
 ([det loven krever](/en/reference/invoices/#the-law-in-one-page)).
@@ -1309,50 +1309,74 @@ kopi til.
 
 ## Vipps og betalingslenker
 
-Fakturaer får Vipps MobilePay: en betalingslenke på en utstedt faktura som kunden
-betaler fra telefonen, og betaling på stedet, der kunden skanner en QR-kode ved disken.
-Denne delen vokser etter hvert som skjermbildene kommer; det som er på plass nå, er
-oppsettet en leder (`invoices:manage`) gjør først.
+Fakturaer tar imot betaling med Vipps MobilePay: en betalingslenke på en utstedt faktura
+som kunden betaler fra telefonen, og betaling på stedet, der kunden skanner en QR-kode
+ved disken. En leder (`invoices:manage`) setter det opp først, på to kort i
+**Fakturainnstillinger**: **Vipps** og **Betalingslenker og betaling på stedet**.
 
 ### Sett opp Vipps
 
 Vipps krever firmaets avtale med Vipps MobilePay om integrert betaling og nøklene til
-**salgsenheten** fra Vipps' bedriftsportal: salgsenhetens nummer (MSN, opptil ti
-sifre), **klient-ID**, **klienthemmelighet** og **abonnementsnøkkel**. Fyll inn alle
-fire første gang. Senere kan du fylle inn bare det som endres — en nøkkel du lar stå
-tom, beholder den lagrede. Nøklene vises aldri igjen, heller ikke for deg.
+**salgsenheten** fra Vipps' bedriftsportal. På kortet **Vipps** fyller du inn
+**Salgsenhet (MSN)** — opptil ti sifre — **Klient-id**, **Klienthemmelighet** og
+**Abonnementsnøkkel**, og klikker **Lagre Vipps**. Fyll inn alle fire første gang.
+Senere kan du fylle inn bare det som endres: et nøkkelfelt du lar stå tomt, sendes
+ikke, og den lagrede nøkkelen beholdes. Nøklene vises aldri igjen, heller ikke for deg;
+kortet sier **Nøkler lagret** når de er det.
 
-**Bekreft** spør Vipps om nøklene og salgsenheten godtas, og svarer *ok*, *avvist*
-(Vipps godtar ikke nøklene: fyll dem inn på nytt) eller *utilgjengelig* (Vipps kunne
-ikke nås; prøv igjen senere). Når Vipps avviser nøklene, når som helst, husker Fakturaer
-det og tilbyr ingen Vipps-betaling før nye nøkler er lagret eller en bekreftelse
-lykkes. Betalingslenker og betaling på stedet som sto slått på, virker da igjen av seg
-selv, uten å slås på eller bekreftes på nytt.
+**Bekreft Vipps** spør Vipps om nøklene og salgsenheten godtas, og sier *Vipps godtar
+nøklene og salgsenheten*, *Vipps avviste nøklene* (legg dem inn på nytt) eller *Vipps
+kunne ikke nås* (prøv igjen senere). Når Vipps avviser nøklene, når som helst, husker
+Fakturaer det — kortet sier **Vipps avviste nøklene** og når — og tilbyr ingen
+Vipps-betaling før nye nøkler er lagret eller en bekreftelse lykkes. Betalingslenker og
+betaling på stedet som sto slått på, virker da igjen av seg selv, uten å slås på eller
+bekreftes på nytt.
 
 Mens en Vipps-betaling pågår, kan du ikke bytte til en annen salgsenhet, en annen
-klient-ID eller en annen abonnementsnøkkel, og heller ikke fjerne nøklene: Fakturaer
-trenger dem fortsatt for å fullføre betalingen. En ny klienthemmelighet alene — en
-rotasjon for samme salgsenhet — er alltid tillatt.
+klient-id eller en annen abonnementsnøkkel, og heller ikke **Fjern Vipps-nøklene**:
+Fakturaer trenger dem fortsatt for å fullføre betalingen. En ny klienthemmelighet alene
+— en rotasjon for samme salgsenhet — er alltid tillatt.
 
 ### Betalingslenker og betaling på stedet
 
-To brytere i betalingsinnstillingene bestemmer hva Vipps brukes til. Alle med
-`invoices:access` kan lese dem; å endre dem krever `invoices:manage`.
+To brytere på kortet **Betalingslenker og betaling på stedet** bestemmer hva Vipps
+brukes til. Alle med `invoices:access` kan lese dem; å endre dem krever
+`invoices:manage`. Klikk **Lagre betalingsinnstillingene** etter en endring.
 
 - **Betalingslenker** setter en lenke til en betalingsside på utstedte fakturaer. De
-  krever adressen til salgsvilkårene og til personvernerklæringen deres — begge
-  `https`-adresser, som Vipps og betalingssiden viser kunden — lagrede Vipps-nøkler,
-  og en betalingsside som kan nås fra internett, som driftsansvarlig setter opp
-  (`PUBLIC_BASE_URL`); uten den nekter Fakturaer å slå på betalingslenker.
+  krever **Adressen til salgsvilkårene** og **Adressen til personvernerklæringen** —
+  begge `https`-adresser, som Vipps og betalingssiden viser kunden — lagrede
+  Vipps-nøkler, og en betalingsside som kan nås fra internett, som driftsansvarlig
+  setter opp (`PUBLIC_BASE_URL`); uten den nekter Fakturaer å slå på betalingslenker, og
+  sier det.
 - **Betaling på stedet** lar deg ta imot en Vipps-betaling fra en kunde som står foran
   deg. Det er kontantsalg: fakturaen er da en kontantfaktura og må oppfylle reglene for
-  en slik. Når du slår det på, vises merknaden om kontantsalg, som du må bekrefte;
-  Fakturaer registrerer hvem som bekreftet den og når, og glemmer det når betaling på
-  stedet slås av igjen.
+  en slik. For å slå det på må du krysse av for *Jeg har lest merknaden, og betaling på
+  stedet brukes bare slik den tillater*; Fakturaer registrerer hvem som krysset av og
+  når — kortet sier når — og glemmer det når betaling på stedet slås av igjen.
 
-Begge krever lagrede Vipps-nøkler for å kunne slås på. Om hver av dem faktisk er
-tilgjengelig — slått på av driftsansvarlig, nøklene ikke avvist, innstillingen på — er
-det Fakturaer-appen går etter.
+Mens en av bryterne er på, viser kortet merknaden om kontantsalg i sin helhet, siden det
+å vise en kunde en betalingslenke på stedet er det samme kontantsalget. Den lyder:
+
+> **Betaling på stedet er kontantsalg**
+>
+> - Å ta imot en Vipps-betaling fra en kunde som står foran deg, er kontantsalg, selv om
+>   kunden får en faktura: betaling med Vipps regnes som kontant betaling.
+> - Uten kassasystem er kontantsalg bare tillatt etter bokføringsforskriften § 5-4-1
+>   tredje ledd: for en virksomhet som hovedsakelig selger på kreditt til kunder den
+>   identifiserer, med en kontantfaktura for hvert salg.
+> - Salg i butikk eller over disk krever et produkterklært kassasystem. Slå ikke på
+>   betaling på stedet for slikt salg.
+> - Oppgi kjøperen sannferdig. Vantigo kontrollerer at et navn og en adresse eller et
+>   organisasjonsnummer finnes, ikke at de stemmer.
+> - Å vise en kunde på stedet en fakturas betalingslenke eller QR-koden til den er det
+>   samme kontantsalget. Derfor viser appen dem på skjermen bare mens betaling på stedet
+>   er slått på.
+
+Begge bryterne krever lagrede Vipps-nøkler for å kunne slås på. Om hver av dem faktisk
+er tilgjengelig — slått på av driftsansvarlig, nøklene ikke avvist, innstillingen på —
+er det Fakturaer-appen går etter; en bryter som er på, men ikke tilgjengelig, forklares
+på kortet, med `PUBLIC_BASE_URL` blant grunnene for betalingslenker.
 
 ### Betalingslenken på en faktura
 
@@ -1365,15 +1389,19 @@ utstedt før betalingslenker ble slått på, har ingen lenke i PDF-en.
 Lenken følger også fakturaen når du **sender den på e-post** — e-posten sier *Du kan
 også betale med Vipps* med lenken — og med hvert **purrebrev**, som legger til at
 lenken betaler selve fakturaen, mens gebyrer og renter betales til kontonummeret med
-KID, eller fakturanummeret når det ikke er noen KID. Når du sender en faktura som ikke har noen lenke på e-post, lages det en først. En
-hurtigfaktura som overleveres på stedet, får lenke ved utstedelse bare når betaling på
-stedet er slått på; ellers får den en når du sender den på e-post.
+KID, eller fakturanummeret når det ikke er noen KID. Når du sender en faktura som ikke
+har noen lenke på e-post, lages det en først. En hurtigfaktura som overleveres på
+stedet, får lenke ved utstedelse bare når betaling på stedet er slått på; ellers får den
+en når du sender den på e-post.
 
-Den som har `invoices:issue`, kan trekke tilbake en fakturas lenke og lage en ny: en
-tilbaketrukket lenke betaler ikke lenger fakturaen, og e-poster og brev slutter å ta den
-med — en PDF laget tidligere skriver den fortsatt. Selve lenken og QR-koden vises på
-skjermen bare mens betaling på stedet er slått på: å vise kunden lenken der du står, er
-også kontantsalg.
+En utstedt faktura viser kortet **Betalingslenke** mens den har en lenke eller en kan
+lages, med dagen lenken ble laget. Den som har `invoices:issue`, kan **Trekk tilbake
+lenken** (Fakturaer spør først) og **Lag en betalingslenke** på nytt: en tilbaketrukket
+lenke betaler ikke lenger fakturaen, og e-poster og brev slutter å ta den med — en PDF
+laget tidligere skriver den fortsatt. Selve lenken, QR-koden og **Kopier lenken** vises
+bare for den som har `invoices:issue`, og bare mens betaling på stedet er slått på: å
+vise kunden lenken der du står, er også kontantsalg. Ellers sier kortet at lenken følger
+med e-posten og brevene, og hvorfor den ikke vises på skjermen.
 
 ### Hva kunden ser på betalingssiden
 
@@ -1393,16 +1421,22 @@ står åpent er under 1,00 eller over 650 000,00 — siden sier hvilket. Høyst 
 Vipps-betalinger av én lenke kan pågå samtidig; den sjette betaleren blir bedt om å
 prøve igjen senere, og å trekke tilbake lenken og lage en ny begynner på nytt.
 
-Hver Vipps-betaling som er startet for en faktura, vises på den, med status og beløp,
-enten den kom fra betalingssiden eller ble tatt på stedet.
+Hver Vipps-betaling som er startet for en faktura, vises på kortet **Vipps-betalinger**,
+enten den kom fra betalingssiden (**Betalingslenke**) eller ble tatt **På stedet**:
+referansen hos Vipps, statusen — *Venter på kunden*, *Godkjent av kunden*, *Trekkes*,
+*Betalt*, *Utfall ukjent*, *Kunne ikke trekkes*, *Avbrutt*, *Utløpt* og lignende —
+beløpet, og det Vipps meldte: godkjent, trukket, frigitt, refundert i Vipps-portalen, og
+det den holder av på fakturaen mens den fullføres. En forlatt betaling sier når og
+hvorfor.
 
 ### Ta imot betaling på stedet
 
-Når jobben er gjort og kunden vil betale der og da, kan den som har `invoices:issue`, ta
-imot en **Vipps-betaling på stedet**: kunden skanner en QR-kode med Vipps-appen og
-godkjenner betalingen, og Vantigo registrerer den på fakturaen av seg selv.
-Skjermbildet viser QR-koden og følger betalingen til den er betalt, avbrutt eller utløpt;
-en QR-kode lever i ti minutter og skrives aldri ut.
+Når jobben er gjort og kunden vil betale der og da, klikker den som har
+`invoices:issue`, **Ta betalt med Vipps nå** på fakturaen: kunden skanner en QR-kode med
+Vipps-appen og godkjenner betalingen, og Vantigo registrerer den på fakturaen av seg
+selv. Knappen vises bare mens betaling på stedet er tilgjengelig og noe står åpent.
+Skjermbildet viser QR-koden i full størrelse og følger betalingen til den er betalt,
+avbrutt eller utløpt; en QR-kode lever i ti minutter og skrives aldri ut.
 
 En betaling ved overlevering er kontantsalg — betaling med Vipps regnes som kontanter —
 selv om kunden får en faktura. En virksomhet kan bare ta imot kontantsalg uten
@@ -1414,7 +1448,8 @@ produkterklært kassasystem. Derfor lar Vantigo deg bare ta imot betaling på st
   ([betalingslenker og betaling på stedet](#betalingslenker-og-betaling-på-stedet));
 - fakturaen er utstedt — aldri et utkast eller en kreditnota — og navngir kjøperen, med
   adresse eller organisasjonsnummer, og kunden ikke er anonymisert. Navngi kjøperen
-  sannferdig: Vantigo sjekker at opplysningene finnes, ikke at de er riktige;
+  sannferdig: Vantigo sjekker at opplysningene finnes, ikke at de er riktige. Mangler
+  de, sier skjermbildet det og tilbyr **Åpne kunden**;
 - betalingen gjelder hele beløpet som står åpent, og ingen annen betaling på stedet for
   fakturaen pågår. En betalingsforespørsel Vantigo har gitt opp, sperrer for en ny til en
   leder har forlatt den ([når en Vipps-betaling trenger deg](#når-en-vipps-betaling-trenger-deg)).
@@ -1424,42 +1459,52 @@ bare mot kvittering. Å vise kunden betalingslenken eller QR-koden på stedet er
 kontantsalget, og derfor vises lenken bare på skjermen mens betaling på stedet er slått
 på. En kunde som betaler senere, hjemme, gjør et vanlig kredittsalg.
 
-Du kan avbryte en forespørsel kunden ikke har godkjent; en som er godkjent, fullføres og
-registreres. Mister skjermen QR-koden — forbindelsen falt — åpner du forespørselen igjen:
-den samme QR-koden vises mens kunden ikke har svart. Ellers avbryter du den og lager en
-ny.
+**Avbryt forespørselen** stopper en forespørsel kunden ikke har godkjent; en som er
+godkjent, fullføres og registreres. Mister skjermen QR-koden — forbindelsen falt — klikker
+du **Ta betalt med Vipps nå** igjen: mens kunden ikke har svart, vises den samme
+QR-koden igjen (*Forespørselen som allerede er åpen, vises igjen*). Ellers tilbyr
+skjermbildet **Avbryt den og lag en ny**. En forespørsel som ikke kan avbrytes — Vipps
+har ikke bekreftet den, eller kunden har godkjent den — sies det fra om; blir den
+stående, forlater den som har `invoices:manage`, den på fakturaens kort
+**Vipps-betalinger**.
 
 ### Dagens Vipps-betalinger og avstemming
 
-Alle med `invoices:access` kan liste **én dags Vipps-betalinger** — hver betaling Vipps trakk den dagen, med
-fakturaen, kjøperen, beløpet, om det ble betalt på stedet eller via en betalingslenke, og
-en eventuell tilbakebetaling gjort siden, med dagens summer — på skjermen eller som en
-CSV-fil til et regneark. En betaling står på dagen Vipps trakk pengene, som i
-Vipps-oppgjøret, også når Vantigo registrerte den senere. Betalingslenke-betalinger er
-med, siden Vantigo ikke kan vite hvor kunden var da de betalte. En tilbakebetaling vises
-ved siden av betalingen og endrer ikke summene.
+Området **Innbetalinger** har to faner: **Bankfiler** og **Vipps**. Fanen **Vipps**
+lister **én dags Vipps-betalinger** — i dag som standard; **Forrige dag**, **Neste dag**
+og feltet **Dag** flytter den — med hver betaling Vipps trakk den dagen: når den ble
+registrert, fakturaen, kjøperen, beløpet, om den ble betalt **På stedet** eller via en
+**Betalingslenke**, og en eventuell refusjon gjort siden, med dagens antall og summer per
+måte. **Last ned CSV** gir den samme dagen som en fil til et regneark. En betaling står
+på dagen Vipps trakk pengene, som i Vipps-oppgjøret, også når Vantigo registrerte den
+senere. Betalingslenke-betalinger er med, siden Vantigo ikke kan vite hvor kunden var da
+de betalte. En refusjon vises ved siden av betalingen og endrer ikke summene. Dagens
+betalinger kan leses med `invoices:access`; selve området Innbetalinger vises for
+`invoices:payments`.
 
 Når en dag er over, sammenligner den som har `invoices:payments`, den med
-Vipps-oppgjøret og **registrerer dagen som avstemt**, med en merknad om noe trengte en
-forklaring. Registreringen beholder summene slik de var da, og hvem som registrerte den
-og når; den kan aldri endres eller registreres to ganger. En betaling som registreres
-senere for den dagen — en Vipps trakk den dagen og som Vantigo fikk vite om sent — vises i
-listen ved siden av registreringen. I dag kan ikke avstemmes
-før dagen er over. Skjermbildene kommer med Vipps i appen; forespørslene bak dem er på
-plass nå ([dagens Vipps-betalinger](/en/reference/invoices/#the-days-vipps-payments)).
+Vipps-oppgjøret, klikker **Merk dagen som avstemt**, legger til en **Merknad** om noe
+trengte en forklaring, og klikker **Merk som avstemt**. Registreringen beholder summene
+slik de var da, og hvem som registrerte den og når; fanen viser den i stedet for
+knappen, og den kan aldri endres eller registreres to ganger. En betaling som
+registreres senere for den dagen — en Vipps trakk den dagen og som Vantigo fikk vite om
+sent — vises i listen ved siden av registreringen. I dag kan ikke avstemmes før dagen er
+over, og fanen sier det.
 
 ### Når en Vipps-betaling trenger deg
 
 Vantigo fullfører Vipps-betalinger på egen hånd: den trekker det kunden godkjente, og
 registrerer det som en betaling av fakturaen. Noen tilfeller trenger en person, og hvert
-av dem vises i dashbordets liste **Trenger oppfølging** for dem med `invoices:payments`:
+av dem vises i dashbordets liste **Trenger oppfølging** for dem med `invoices:payments`,
+med lenke til fakturaen:
 
 - **En betaling der utfallet av trekket er ukjent.** Vipps har ikke på en uke sagt om
   pengene ble tatt, eller pengene ble tatt og kunne ikke registreres. Slå opp betalingen
   i Vipps-portalen på referansen (vist på fakturaen). Er den trukket der, registrerer
   Vantigo den så snart Vipps svarer; er den ikke det, frigi den i portalen og la noen
-  med `invoices:manage` **forlate** den, med en begrunnelse og en bekreftelse på at
-  ingenting ble trukket. Vantigo leser Vipps før den slipper: penger Vipps viser som
+  med `invoices:manage` klikke **Forlat** på fakturaens kort **Vipps-betalinger**, oppgi
+  en **Begrunnelse** og krysse av for *Jeg har sjekket i Vipps-portalen at ingenting ble
+  trukket*, og så **Forlat betalingen**. Vantigo leser Vipps før den slipper: penger Vipps viser som
   trukket, registreres i stedet, og en betaling Vipps fortsatt holder, avvises til den
   er frigitt. Beløpet den holdt av på fakturaen, er da ledig for en annen betaling.
 - **En mislykket betaling.** Vipps avviste å trekke pengene (for eksempel for manglende
@@ -1527,7 +1572,10 @@ fil; en purring som ikke kunne sendes; purringene som venter på en sats eller p
 gjennomgangen av inkassoregelverket, som leder til **Forfalt**; og en utskriftsbunke som
 ikke er bekreftet postlagt to dager etter postleggingsdagen, med antallet utskrevne brev
 som fortsatt ligger i den, som leder til **Papirbrev**; og Vipps-betalingene som trenger
-en person ([Når en Vipps-betaling trenger deg](#når-en-vipps-betaling-trenger-deg)). En
+en person, hver med lenke til fakturaen — *En Vipps-betaling fra … må sjekkes: det er
+ukjent om pengene ble trukket*, *… kunne ikke trekkes*, *… står fast og trenger en
+person* og *… ble refundert i Vipps-portalen*
+([Når en Vipps-betaling trenger deg](#når-en-vipps-betaling-trenger-deg)). En
 faktura som en pågående Vipps-betaling dekker helt, vises ikke som forfalt
 ([oppmerksomhet](/en/reference/invoices/#stats)).
 

@@ -18,6 +18,9 @@ export const invoiceHref = (invoiceId: number): string => INVOICE_ROUTE_PATH.rep
 /** The Payments area: the upload, the accounts, the files and the exception queue (D22). */
 export const PAYMENTS_ROUTE_PATH = "/invoices/payments";
 
+/** The Payments area's Vipps tab: one day's Vipps payments and its reconciliation (D17, D22). */
+export const VIPPS_PAYMENTS_ROUTE_PATH = "/invoices/payments/vipps";
+
 /** One imported bank file's result, under the Payments area. */
 export const BANK_FILE_ROUTE_PATH = "/invoices/payments/files/$bankFileId";
 

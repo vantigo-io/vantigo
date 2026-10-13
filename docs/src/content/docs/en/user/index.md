@@ -23,8 +23,10 @@ with the full-time equivalents and who starts and ends soon, for `staff:view` or
 `staff:manage` ([the dashboard](/en/user/staff/#the-dashboard)). Its **Needs attention**
 list gathers the apps' items that wait for someone — Invoices' among them: overdue
 invoices, money owed back on an invoice, and, with `invoices:payments`, bank lines in the
-exception queue, reminders that failed or wait for a rate or a review, and print batches
-not confirmed posted, each with its printed letters counted
+exception queue, reminders that failed or wait for a rate or a review, print batches
+not confirmed posted, each with its printed letters counted, and Vipps payments that
+need a person — whose outcome is unknown, that could not be taken, that are stuck, or
+that were refunded in the Vipps portal — each leading to its invoice
 ([the dashboard card](/en/user/invoices/#the-dashboard-card)); and Staff's: contracts
 not signed, probations ending, temporary employments past a year or three, people
 without a manager, reassessments due, documents the store will not delete, and the

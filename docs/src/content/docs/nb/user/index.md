@@ -22,8 +22,10 @@ tallene som trenger oppmerksomheten din — Ansattes, hvor mange som er ansatt i
 ([dashbordet](/nb/user/staff/#dashbordet)). Listen **Trenger oppfølging** samler det i
 appene som venter på noen — også fra Fakturaer: forfalte fakturaer, penger som skal
 tilbake på en faktura, og, med `invoices:payments`, banklinjer i avvikskøen, purringer
-som feilet eller venter på en sats eller en gjennomgang, og utskriftsbunker som ikke er
-bekreftet postlagt, hver med de utskrevne brevene talt
+som feilet eller venter på en sats eller en gjennomgang, utskriftsbunker som ikke er
+bekreftet postlagt, hver med de utskrevne brevene talt, og Vipps-betalinger som trenger en
+person — der det er ukjent om pengene ble trukket, som ikke kunne trekkes, som står fast,
+eller som ble refundert i Vipps-portalen — hver med lenke til fakturaen sin
 ([kortet på dashbordet](/nb/user/invoices/#kortet-på-dashbordet)); og fra Ansatte:
 arbeidsavtaler som ikke er signert, prøvetider som går ut, midlertidige arbeidsforhold
 over ett eller tre år, personer uten leder, nye vurderinger som skal gjøres, dokumenter

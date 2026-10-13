@@ -776,3 +776,45 @@ describe("Dashboard_InvoicesAttentionSentencesAndLinks", () => {
     expect(attentionTitleKey(item("somethingNew", "1", "x"))).toBeUndefined();
   });
 });
+
+/**
+ * The Vipps payments' four attention types (invoices payments and reminders
+ * design D12, D16): the server's title is the buyer's name and the entity id
+ * the attempt's invoice, so each sentence is the catalog's, in the reader's
+ * language, and each item leads to the invoice, where its Vipps payments card
+ * shows the attempt.
+ */
+describe("Dashboard_PaymentAttentionSentences", () => {
+  const item = (type: string) => ({ module: "invoices" as const, type, entityId: "1001", title: "Acme AS" });
+  const types = ["paymentCaptureUnknown", "paymentCaptureFailed", "paymentReservationStranded", "vippsRefundSeen"];
+  const sentences = (lng: "en" | "nb") =>
+    types.map((type) =>
+      attentionTitle(
+        item(type),
+        (key, values) => i18n.t(key, { ns: "host", lng, ...values }),
+        (v) => v,
+      ),
+    );
+
+  it("says every type in English", () => {
+    expect(sentences("en")).toEqual([
+      "A Vipps payment from Acme AS needs a check: whether the money was taken is unknown",
+      "A Vipps payment from Acme AS could not be taken",
+      "A Vipps payment from Acme AS is stuck and needs a person",
+      "A Vipps payment from Acme AS was refunded in the Vipps portal",
+    ]);
+  });
+
+  it("says every type in Norwegian", () => {
+    expect(sentences("nb")).toEqual([
+      "En Vipps-betaling fra Acme AS må sjekkes: det er ukjent om pengene ble trukket",
+      "En Vipps-betaling fra Acme AS kunne ikke trekkes",
+      "En Vipps-betaling fra Acme AS står fast og trenger en person",
+      "En Vipps-betaling fra Acme AS ble refundert i Vipps-portalen",
+    ]);
+  });
+
+  it("leads each item to its invoice", () => {
+    expect(types.map((type) => attentionHref(item(type)))).toEqual(types.map(() => "/invoices/1001"));
+  });
+});

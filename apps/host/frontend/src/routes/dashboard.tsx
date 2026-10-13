@@ -418,10 +418,22 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     return "/expenses";
   }
   if (item.module === "invoices") {
-    // Three types carry an invoice id; a file's open lines its bank file; an
-    // unposted batch is printed and posted on the paper letters' page. Held
-    // letters carry their cause, and the overdue list says what each needs.
-    if (["invoiceOverdue", "invoiceRefundDue", "reminderFailed"].includes(item.type)) {
+    // Three types carry an invoice id, and so do the Vipps payments' four —
+    // the attempt's invoice, whose Vipps payments card shows it; a file's
+    // open lines its bank file; an unposted batch is printed and posted on
+    // the paper letters' page. Held letters carry their cause, and the
+    // overdue list says what each needs.
+    if (
+      [
+        "invoiceOverdue",
+        "invoiceRefundDue",
+        "reminderFailed",
+        "paymentCaptureUnknown",
+        "paymentCaptureFailed",
+        "paymentReservationStranded",
+        "vippsRefundSeen",
+      ].includes(item.type)
+    ) {
       return `/invoices/${encodeURIComponent(item.entityId)}`;
     }
     if (item.type === "bankTransactionsOpen") return `/invoices/payments/files/${encodeURIComponent(item.entityId)}`;
@@ -449,6 +461,10 @@ const invoicesAttentionTitleKeys: Record<string, string> = {
   invoiceRefundDue: "dashboard.invoiceRefundDue",
   reminderFailed: "dashboard.invoiceReminderFailed",
   reminderBatchUnposted: "dashboard.invoiceBatchUnposted",
+  paymentCaptureUnknown: "dashboard.invoicePaymentCaptureUnknown",
+  paymentCaptureFailed: "dashboard.invoicePaymentCaptureFailed",
+  paymentReservationStranded: "dashboard.invoicePaymentReservationStranded",
+  vippsRefundSeen: "dashboard.invoiceVippsRefundSeen",
 };
 
 const invoicesHeldTitleKeys: Record<string, string> = {

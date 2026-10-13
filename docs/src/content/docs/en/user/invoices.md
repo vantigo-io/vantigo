@@ -14,7 +14,8 @@ The Invoices app issues the sales documents of your bookkeeping: a draft becomes
 numbered invoice or credit note the moment it is issued, gets a PDF, and from then on
 never changes. The app has five areas in its sidebar: **Invoices**, **Invoice
 journal**, **Overdue** (the overdue invoices and their reminders), **Payments** (the
-bank's files and the exception queue, shown only with `invoices:payments`) and **Invoice
+bank's files and the exception queue, and the day's Vipps payments, shown only with
+`invoices:payments`) and **Invoice
 settings**. Every amount is in NOK in this phase. An invoice is
 handed over as a PDF — by download or by e-mail — or as an EHF e-invoice over the Peppol
 network, once your installation is set up for it
@@ -1288,50 +1289,75 @@ delivered*; an e-mail then sends the customer a second copy.
 
 ## Vipps and pay links
 
-Invoices is getting Vipps MobilePay: a pay link on an issued invoice that the customer
-pays from their phone, and payment on site, where the customer scans a QR code at the
-counter. This section grows as the screens arrive; what is in place now is the setup a
-manager (`invoices:manage`) makes first.
+Invoices takes payments with Vipps MobilePay: a pay link on an issued invoice that the
+customer pays from their phone, and payment on site, where the customer scans a QR code
+at the counter. A manager (`invoices:manage`) sets it up first, on two cards in
+**Invoice settings**: **Vipps** and **Pay links and payment on site**.
 
 ### Set up Vipps
 
 Vipps needs the company's agreement with Vipps MobilePay for integrated payments and the
-keys of its **sales unit** from the Vipps business portal: the sales unit's number (the
-MSN, up to ten digits), the **client id**, the **client secret** and the **subscription
-key**. Enter all four the first time. Later you may enter only what changes — a key
-you leave empty keeps the stored one. The keys are never shown again, not even to you.
+keys of its **sales unit** from the Vipps business portal. On the **Vipps** card, fill
+in **Sales unit (MSN)** — up to ten digits — **Client id**, **Client secret** and
+**Subscription key**, and click **Save Vipps**. Enter all four the first time. Later you
+may enter only what changes: a key field you leave empty is not sent, and the stored key
+is kept. The keys are never shown again, not even to you; the card says **Keys stored**
+once they are.
 
-**Verify** asks Vipps whether it accepts the keys and the sales unit, and answers
-*ok*, *refused* (Vipps does not accept the keys: enter them again) or *unreachable*
-(Vipps could not be reached; try again later). When Vipps refuses the keys at any time,
-Invoices remembers it and offers no Vipps payment until new keys are stored or a verify
-succeeds. Pay links and payment on site that were left switched on then work again by
-themselves, without being turned on or acknowledged again.
+**Verify Vipps** asks Vipps whether it accepts the keys and the sales unit, and says
+*Vipps accepts the keys and the sales unit*, *Vipps refused the keys* (enter them
+again) or *Vipps could not be reached* (try again later). When Vipps refuses the keys at
+any time, Invoices remembers it — the card says **Vipps refused the keys** and when —
+and offers no Vipps payment until new keys are stored or a verify succeeds. Pay links
+and payment on site that were left switched on then work again by themselves, without
+being turned on or acknowledged again.
 
 While a Vipps payment is in progress you cannot switch to another sales unit, another
-client id or another subscription key, nor remove the keys: Invoices still needs them to
-finish that payment. A new client secret alone — a rotation of the same sales unit — is
-always allowed.
+client id or another subscription key, nor **Remove the Vipps keys**: Invoices still
+needs them to finish that payment. A new client secret alone — a rotation of the same
+sales unit — is always allowed.
 
 ### Pay links and payment on site
 
-Two switches in the payment settings decide what Vipps is used for. Anyone with
-`invoices:access` may read them; changing them needs `invoices:manage`.
+Two switches on the **Pay links and payment on site** card decide what Vipps is used
+for. Anyone with `invoices:access` may read them; changing them needs
+`invoices:manage`. Click **Save payment settings** after a change.
 
-- **Pay links** put a link to a pay page on issued invoices. They need the address of
-  your sales terms and of your privacy notice — both `https` addresses, which Vipps
+- **Pay links** put a link to a pay page on issued invoices. They need the **Sales terms
+  address** and the **Privacy notice address** — both `https` addresses, which Vipps
   and the pay page show the customer — stored Vipps keys, and a pay page reachable from
   the internet, which your operator sets up (`PUBLIC_BASE_URL`); without it Invoices
-  refuses to turn pay links on.
+  refuses to turn pay links on, and says so.
 - **Payment on site** lets you take a Vipps payment from a customer standing in front of
   you. That is a cash sale (*kontantsalg*): the invoice is then a cash invoice
-  (*kontantfaktura*) and must meet the rules for one. Turning it on shows the
-  kontantsalg notice, which you must acknowledge; Invoices records who acknowledged it
-  and when, and forgets it when payment on site is turned off again.
+  (*kontantfaktura*) and must meet the rules for one. Turning it on needs the box
+  *I have read the notice, and payment on site will be used only as it allows*;
+  Invoices records who ticked it and when — the card says when — and forgets it when
+  payment on site is turned off again.
 
-Both need stored Vipps keys to be turned on. Whether each is actually available —
-switched on by your operator, keys not refused, the setting on — is what the Invoices
-app goes by.
+While either switch is on, the card shows the kontantsalg notice in full, since showing
+a customer a pay link on site is the same cash sale. It reads:
+
+> **Payment on site is a cash sale (kontantsalg)**
+>
+> - Taking a Vipps payment from a customer standing in front of you is a cash sale
+>   (kontantsalg), even though the customer gets an invoice: paying with Vipps counts as
+>   cash.
+> - Without a cash register (kassasystem), a cash sale is allowed only under the
+>   bookkeeping regulation (bokføringsforskriften) § 5-4-1 third paragraph: for a
+>   business that mainly sells on credit to customers it identifies, with a cash invoice
+>   (kontantfaktura) for each sale.
+> - A shop or counter sale needs a product-declared cash register (produkterklært
+>   kassasystem). Do not turn payment on site on for such sales.
+> - Name the buyer truthfully. Vantigo checks that a name and an address or an
+>   organisation number are there, not that they are right.
+> - Showing a customer on site an invoice's pay link or its QR code is the same cash
+>   sale. That is why the app shows them on screen only while payment on site is on.
+
+Both switches need stored Vipps keys to be turned on. Whether each is actually available
+— switched on by your operator, keys not refused, the setting on — is what the Invoices
+app goes by; a switch that is on but not available is explained on the card, with
+`PUBLIC_BASE_URL` among the reasons for pay links.
 
 ### The pay link on an invoice
 
@@ -1344,16 +1370,19 @@ before pay links were turned on has no link in its PDF.
 The link also travels with the invoice when you **send it by e-mail** — the e-mail says
 *Du kan også betale med Vipps* with the link — and with every **reminder letter**,
 which adds that the link pays the invoice itself, while fees and interest are paid to
-the account with the KID, or the invoice number when there is none. When you e-mail an invoice that has no link, sending it
-makes one first. A quick invoice handed over on site gets a link at issue only when
-payment on site is turned on; otherwise it gets one when you e-mail it.
+the account with the KID, or the invoice number when there is none. When you e-mail an
+invoice that has no link, sending it makes one first. A quick invoice handed over on
+site gets a link at issue only when payment on site is turned on; otherwise it gets one
+when you e-mail it.
 
-Someone with `invoices:issue` can revoke an invoice's link and make a new one: a
-revoked link no longer pays the
+An issued invoice shows a **Pay link** card while it has a link or one could be made,
+with the day the link was made. Someone with `invoices:issue` can **Revoke the link**
+(Invoices asks first) and **Make a pay link** again: a revoked link no longer pays the
 invoice, and e-mails and letters stop carrying it — a PDF made earlier keeps printing
-it. The link itself and its QR code are shown on screen only while payment on site is
-turned on: showing a customer the link where you stand is a cash sale (*kontantsalg*)
-too.
+it. The link itself, its QR code and **Copy link** are shown only to someone with
+`invoices:issue`, and only while payment on site is turned on: showing a customer the
+link where you stand is a cash sale (*kontantsalg*) too. Otherwise the card says that
+the link travels with the e-mail and the letters, and why it is not on screen.
 
 ### What the customer sees on the pay page
 
@@ -1373,16 +1402,22 @@ is already being completed, or when the amount open is below 1.00 or above
 progress at once; the sixth payer is asked to try again later, and revoking the link and
 making a new one starts afresh.
 
-Every Vipps payment started for an invoice is listed on it, with its state and amount,
-whether it came from the pay page or was taken on site.
+Every Vipps payment started for an invoice is listed on its **Vipps payments** card,
+whether it came from the pay page (**Pay link**) or was taken **On site**: its reference
+at Vipps, its state — *Waiting for the customer*, *Approved by the customer*, *Being
+taken*, *Paid*, *Outcome unknown*, *Could not be taken*, *Cancelled*, *Expired* and the
+like — its amount, and what Vipps reported: approved, taken, released, refunded in the
+Vipps portal, and what it holds on the invoice while it is being completed. An abandoned
+one says when and why.
 
 ### Taking a payment on site
 
 When the job is done and the customer wants to pay there and then, someone with
-`invoices:issue` can take a **Vipps payment on site**: the customer scans a QR code with
-the Vipps app and approves the payment, and Vantigo registers it on the invoice by
-itself. The screen shows the QR code and follows the payment until it is paid, cancelled
-or expired; a QR code lives ten minutes and is never printed.
+`invoices:issue` clicks **Take a Vipps payment now** on the invoice: the customer scans
+a QR code with the Vipps app and approves the payment, and Vantigo registers it on the
+invoice by itself. The button is shown only while payment on site is available and
+something is open. The screen shows the QR code full size and follows the payment until
+it is paid, cancelled or expired; a QR code lives ten minutes and is never printed.
 
 A payment at handover is a cash sale (*kontantsalg*) — paying with Vipps counts as cash
 — even though the customer gets an invoice. A business may take cash sales without a
@@ -1395,7 +1430,8 @@ when:
   ([pay links and payment on site](#pay-links-and-payment-on-site));
 - the invoice is issued — never a draft or a credit note — and names the buyer, with an
   address or an organisation number, and the customer has not been anonymised. Name the
-  buyer truthfully: Vantigo checks that the details are there, not that they are right;
+  buyer truthfully: Vantigo checks that the details are there, not that they are right.
+  When they are missing, the screen says so and offers **Open the customer**;
 - the payment is for the whole amount still open, and no other payment on site of the
   invoice is in progress. A payment request Vantigo gave up on blocks a new one until a
   manager abandons it ([when a Vipps payment needs you](#when-a-vipps-payment-needs-you)).
@@ -1405,42 +1441,50 @@ receipt only. Showing the customer the pay link or its QR code on site is the sa
 sale, which is why the link is only shown on screen while payment on site is on. A
 customer who pays later, at home, makes an ordinary credit sale.
 
-You can cancel a request the customer has not approved; one they approved is completed
-and registered. If the screen loses the QR code — the connection dropped — open the
-request again: the same QR code is shown while the customer has not answered.
-Otherwise cancel it and make a new one.
+**Cancel the request** stops a request the customer has not approved; one they approved
+is completed and registered. If the screen loses the QR code — the connection dropped —
+click **Take a Vipps payment now** again: while the customer has not answered, the same
+QR code is shown again (*The request already open is shown again*). Otherwise the screen
+offers **Cancel it and make a new one**. A request that cannot be cancelled — Vipps has
+not confirmed it, or the customer approved it — is said so; if it stays, someone with
+`invoices:manage` abandons it on the invoice's **Vipps payments** card.
 
 ### The day's Vipps payments and reconciliation
 
-Anyone with `invoices:access` can list **one day's Vipps payments** — every payment Vipps took on that day, with the
-invoice, the buyer, the amount, whether it was paid on site or through a pay link, and
-any refund made since, with the day's totals — on screen or as a CSV file for a
-spreadsheet. A payment is listed on the day Vipps took the money, as in the Vipps
-settlement, even when Vantigo registered it later. Pay-link payments are included, since
-Vantigo cannot know where the customer was when they paid. A refund is shown beside its
-payment and does not change the totals.
+The **Payments** area has two tabs: **Bank files** and **Vipps**. The **Vipps** tab lists
+**one day's Vipps payments** — today by default; **Previous day**, **Next day** and the
+**Day** field move it — with every payment Vipps took on that day: when it was
+registered, the invoice, the buyer, the amount, whether it was paid **On site** or
+through a **Pay link**, and any refund made since, with the day's count and totals per
+way. **Download CSV** gives the same day as a file for a spreadsheet. A payment is
+listed on the day Vipps took the money, as in the Vipps settlement, even when Vantigo
+registered it later. Pay-link payments are included, since Vantigo cannot know where the
+customer was when they paid. A refund is shown beside its payment and does not change
+the totals. The day's payments are readable with `invoices:access`; the Payments area
+itself is shown to `invoices:payments`.
 
 Once a day is over, someone with `invoices:payments` compares it with the Vipps
-settlement and **records the day as reconciled**, with a note if something needed
-explaining. The record keeps the totals as they were then, and who recorded it and
-when; it can never be changed or recorded twice. A payment registered later for that
-day — one Vipps took that day that Vantigo learned of late — shows in the list beside
-the record. Today cannot be reconciled until it is over.
-The screens arrive with Vipps in the app; the requests behind them are in place now
-([the day's Vipps payments](/en/reference/invoices/#the-days-vipps-payments)).
+settlement, clicks **Mark the day reconciled**, adds a **Note** if something needed
+explaining, and clicks **Mark reconciled**. The record keeps the totals as they were
+then, and who recorded it and when; the tab shows it in place of the button, and it can
+never be changed or recorded twice. A payment registered later for that day — one Vipps
+took that day that Vantigo learned of late — shows in the list beside the record. Today
+cannot be reconciled until it is over, and the tab says so.
 
 ### When a Vipps payment needs you
 
 Vantigo completes Vipps payments on its own: it takes what the customer approved and
 registers it as a payment of the invoice. A few cases need a person, and each shows in
-the dashboard's **Needs attention** list for those with `invoices:payments`:
+the dashboard's **Needs attention** list for those with `invoices:payments`, leading to
+the invoice:
 
 - **A payment whose capture's outcome is unknown.** Vipps has not said for a week whether
   the money was taken, or the money was taken and could not be registered. Look the
   payment up in the Vipps business portal by its reference (shown on the invoice). If it
   was captured there, Vantigo registers it as soon as Vipps answers; if it was not,
-  release it in the portal and have someone with `invoices:manage` **abandon** it, with
-  a reason, confirming that nothing was captured. Vantigo reads Vipps before it lets
+  release it in the portal and have someone with `invoices:manage` click **Abandon** on
+  the invoice's **Vipps payments** card, give a **Reason** and tick *I have checked in
+  the Vipps portal that nothing was captured*, then **Abandon the payment**. Vantigo reads Vipps before it lets
   go: money Vipps shows captured is registered instead, and a payment Vipps still holds
   is refused until it is released. The amount it held on the invoice is then free for
   another payment.
@@ -1507,7 +1551,10 @@ owed back to … on an invoice* for everyone with `invoices:access`; with
 reminder that could not be sent; the reminders waiting for a collection rate or for the
 review of the collection-law regime, which lead to **Overdue**; and a print batch not
 confirmed posted two days after its posting day, with the number of printed letters
-still in it, which leads to **Paper letters**; and the Vipps payments that need a person
+still in it, which leads to **Paper letters**; and the Vipps payments that need a person,
+each leading to its invoice — *A Vipps payment from … needs a check: whether the money
+was taken is unknown*, *… could not be taken*, *… is stuck and needs a person* and *… was
+refunded in the Vipps portal*
 ([When a Vipps payment needs you](#when-a-vipps-payment-needs-you)). An invoice a Vipps
 payment in progress covers in full is not listed as overdue
 ([attention](/en/reference/invoices/#stats)).

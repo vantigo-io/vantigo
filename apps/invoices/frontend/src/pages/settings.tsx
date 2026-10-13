@@ -60,7 +60,9 @@ import { useInvoiceFormat } from "../lib/format";
 import { computeKid, kidFits } from "../lib/kid";
 import { rateOn } from "../lib/vat";
 import { CollectionRatesCard } from "./-collection-rates";
+import { PaymentSettingsCard } from "./-payment-settings";
 import { ReminderSettingsCard } from "./-reminder-settings";
+import { VippsSettingsCard } from "./-vipps-settings";
 
 /** The seller fields issuing needs, in the form's order (D2). */
 const requiredSellerFields = [
@@ -90,7 +92,8 @@ export interface SettingsPageProps {
  * Invoice settings (D12), `invoices:manage`'s: the seller record with the
  * completeness checklist, the series start read-only once anything is issued,
  * the VAT codes with their rate periods, and the reminder settings and the
- * collection rates (invoices payments and reminders design D6, D7). The host guards the route with
+ * collection rates (invoices payments and reminders design D6, D7), and Vipps and the payment
+ * settings with the kontantsalg notice (D14, D17). The host guards the route with
  * the permission; the page asks meta's `canManage` too, so a caller whose
  * access changed under it is told why rather than shown a form every save of
  * which is refused.
@@ -148,6 +151,8 @@ const Settings = ({ today, currentUserId }: { today: string; currentUserId?: str
       <VatCodesSection />
       <ReminderSettingsCard today={today} currentUserId={currentUserId} />
       <CollectionRatesCard today={today} currentUserId={currentUserId} />
+      <VippsSettingsCard />
+      <PaymentSettingsCard />
     </>
   );
 };

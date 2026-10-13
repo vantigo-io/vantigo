@@ -29,6 +29,7 @@ import {
   IconMail,
   IconMinus,
   IconPlus,
+  IconQrcode,
   IconRefresh,
   IconSend,
   IconTrash,
@@ -52,6 +53,7 @@ import {
 import { type InvoicesMeta, invoicesMetaQueryOptions } from "../api/meta";
 import { ApiConflictError, ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import { vatCodesQueryOptions } from "../api/vat-codes";
+import { AttemptsCard } from "../components/attempts-card";
 import { ChargesCard } from "../components/charges-card";
 import { CustomerPicker } from "../components/customer-picker";
 import { DeliveriesCard } from "../components/deliveries-card";
@@ -59,6 +61,7 @@ import { DocumentLink } from "../components/document-link";
 import { EhfCard } from "../components/ehf-card";
 import { HandoffCard } from "../components/handoff-card";
 import { HoldCard } from "../components/hold-card";
+import { PayLinkCard } from "../components/paylink-card";
 import { PaymentsCard } from "../components/payments-card";
 import { PdfButton } from "../components/pdf-button";
 import { RemindersCard, WithdrawReminderModal } from "../components/reminders-card";
@@ -75,6 +78,7 @@ import { DeductModal } from "./-deduct-modal";
 import { IssueModal } from "./-issue-modal";
 import { SendDialog } from "./-send-dialog";
 import { SendEhfDialog } from "./-send-ehf-dialog";
+import { TakePaymentModal } from "./-take-payment-modal";
 
 export interface InvoicePageProps {
   invoiceId: number;
@@ -1280,7 +1284,7 @@ const IssuedDocument = ({
   currentUserId?: string;
 }) => {
   const { t, money, unitPrice, date, number } = useInvoiceFormat();
-  const { canIssue, canRegisterPayments, canSend, canSendEhf } = meta.capabilities;
+  const { canIssue, canManage, canRegisterPayments, canSend, canSendEhf, canTakeOnSitePayment } = meta.capabilities;
   // The letters a hold, a lift, a hand-off or its withdrawal left alone (D11),
   // named until the person dismisses them or acts on them.
   const [lettersLeft, setLettersLeft] = useState<LetterLeft[]>([]);
@@ -1289,6 +1293,10 @@ const IssuedDocument = ({
   const heading = useHeading(doc);
   const [sending, setSending] = useState(false);
   const [sendingEhf, setSendingEhf] = useState(false);
+  const [takingPayment, setTakingPayment] = useState(false);
+  // "Take a Vipps payment now" (D17): on site, for the whole open amount, only
+  // where meta says the caller can — the server judges the rest, in words.
+  const takePayment = doc.kind === "invoice" && canTakeOnSitePayment && (doc.openAmount ?? 0) > 0;
   // Channel precedence (EHF and KID design D10): EHF is the primary action
   // when the caller can send it and the customer prefers it — or has a Peppol
   // id and no preference. E-mail is then secondary; neither refuses the other.
@@ -1333,6 +1341,11 @@ const IssuedDocument = ({
             {canSend && (
               <Button variant="default" leftSection={<IconMail size={16} />} onClick={() => setSending(true)}>
                 {t("send")}
+              </Button>
+            )}
+            {takePayment && (
+              <Button variant="default" leftSection={<IconQrcode size={16} />} onClick={() => setTakingPayment(true)}>
+                {t("takePayment.button")}
               </Button>
             )}
             {creditable && (
@@ -1447,6 +1460,12 @@ const IssuedDocument = ({
       {doc.kind === "invoice" && <PaymentsCard invoice={doc} canRegister={canRegisterPayments} today={meta.today} />}
       {doc.kind === "invoice" && (
         <>
+          <PayLinkCard invoice={doc} canIssue={canIssue} payLinksAvailable={meta.payLinksAvailable} />
+          <AttemptsCard invoice={doc} canManage={canManage} />
+        </>
+      )}
+      {doc.kind === "invoice" && (
+        <>
           <ChargesCard invoice={doc} canAct={canRegisterPayments} today={meta.today} currentUserId={currentUserId} />
           <RemindersCard invoice={doc} canAct={canRegisterPayments} currentUserId={currentUserId} />
           {lettersLeft.length > 0 && (
@@ -1494,6 +1513,7 @@ const IssuedDocument = ({
       </SimpleGrid>
       {sending && <SendDialog document={doc} defaults={doc.sendDefaults} onClose={() => setSending(false)} />}
       {sendingEhf && <SendEhfDialog document={doc} onClose={() => setSendingEhf(false)} />}
+      {takingPayment && <TakePaymentModal invoice={doc} onClose={() => setTakingPayment(false)} />}
     </Stack>
   );
 };
