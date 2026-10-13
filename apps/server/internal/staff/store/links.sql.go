@@ -19,6 +19,80 @@ func (q *Queries) DeletePersonLink(ctx context.Context, personID int64) error {
 	return err
 }
 
+const mailRecipients = `-- name: MailRecipients :many
+SELECT id, display_name, work_email, private_email, preferred_language
+FROM staff.people WHERE id = ANY($1::bigint[])
+`
+
+type MailRecipientsRow struct {
+	ID                int64
+	DisplayName       string
+	WorkEmail         *string
+	PrivateEmail      *string
+	PreferredLanguage string
+}
+
+// MailRecipients is what an absence mail needs of @person_ids' people: the
+// name, the addresses Staff holds and the language (plan reading 26).
+func (q *Queries) MailRecipients(ctx context.Context, personIds []int64) ([]MailRecipientsRow, error) {
+	rows, err := q.db.Query(ctx, mailRecipients, personIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MailRecipientsRow
+	for rows.Next() {
+		var i MailRecipientsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.WorkEmail,
+			&i.PrivateEmail,
+			&i.PreferredLanguage,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const peopleLinks = `-- name: PeopleLinks :many
+SELECT person_id, external_id FROM staff.identity_links
+WHERE person_id = ANY($1::bigint[]) AND provider = 'identity'
+`
+
+type PeopleLinksRow struct {
+	PersonID   int64
+	ExternalID string
+}
+
+// PeopleLinks is the self-service links of @person_ids' people under the
+// identity provider, in any state: who among a person's managers decides
+// (deciders.go), once the directory says whose user is active.
+func (q *Queries) PeopleLinks(ctx context.Context, personIds []int64) ([]PeopleLinksRow, error) {
+	rows, err := q.db.Query(ctx, peopleLinks, personIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PeopleLinksRow
+	for rows.Next() {
+		var i PeopleLinksRow
+		if err := rows.Scan(&i.PersonID, &i.ExternalID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const personLink = `-- name: PersonLink :one
 
 SELECT external_id, state, managed

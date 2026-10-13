@@ -142,7 +142,7 @@ const absenceRequestSchema = "StaffAbsenceRequest"
 
 // closedSchemas are the request schemas whose handlers refuse a property the
 // contract does not name.
-var closedSchemas = []string{personRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema, absenceRequestSchema}
+var closedSchemas = []string{personRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema, absenceRequestSchema, decisionSchema}
 
 // bodyHas reports whether the request's JSON body names property at its top
 // level — for a required property the generated decoder cannot tell from

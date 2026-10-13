@@ -96,7 +96,11 @@ func (s *server) respondSelf(ctx context.Context, caller *callerContext, row sto
 	if err != nil {
 		return gen.StaffPerson{}, err
 	}
-	return personResponse(row, placements[row.ID], selfAudience, user), nil
+	d, err := s.judgeDecider(ctx, caller, row.ID)
+	if err != nil {
+		return gen.StaffPerson{}, err
+	}
+	return personResponse(row, placements[row.ID], selfAudience, user, d.decides), nil
 }
 
 // GetStaffMe Get my own record

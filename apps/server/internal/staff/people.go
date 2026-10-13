@@ -132,7 +132,11 @@ func (s *server) respondPerson(ctx context.Context, caller *callerContext, row s
 			return gen.StaffPerson{}, err
 		}
 	}
-	return personResponse(row, placements[row.ID], a, user), nil
+	d, err := s.judgeDecider(ctx, caller, row.ID)
+	if err != nil {
+		return gen.StaffPerson{}, err
+	}
+	return personResponse(row, placements[row.ID], a, user, d.decides), nil
 }
 
 // generateEmployeeNumber is the next number of the settings' sequence — the

@@ -42,7 +42,7 @@ type absenceWorld struct {
 	hr, pd, viewer, nobody *modtest.Client
 	kari, boss             gen.StaffPerson
 	kariC, bossC           *modtest.Client
-	kariUser               uuid.UUID
+	kariUser, bossUser     uuid.UUID
 }
 
 func newAbsenceWorld(t *testing.T, opts ...modtest.Option) absenceWorld {
@@ -53,11 +53,10 @@ func newAbsenceWorld(t *testing.T, opts ...modtest.Option) absenceWorld {
 	company(t, w.hr)
 	w.boss, _ = employed(t, w.hr, "Bjørn", "2019-01-01", terms())
 	w.kari, _ = employed(t, w.hr, "Kari", "2020-01-01", terms("managerPersonId", w.boss.Id))
-	var bossUser uuid.UUID
 	w.kariC, w.kariUser = signIn(t, h)
-	w.bossC, bossUser = signIn(t, h)
+	w.bossC, w.bossUser = signIn(t, h)
 	link(t, h, w.kari.Id, w.kariUser)
-	link(t, h, w.boss.Id, bossUser)
+	link(t, h, w.boss.Id, w.bossUser)
 	w.pd, _ = signIn(t, h, "staff:personal-data")
 	w.viewer, _ = signIn(t, h, "staff:view")
 	w.nobody, _ = signIn(t, h)

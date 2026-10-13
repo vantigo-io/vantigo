@@ -486,6 +486,16 @@ step. What stands today, through the Staff API, is this:
   (a cancelled request stays in your history); to turn it into a registration — or
   the other way round — remove it and enter the other. A registered absence — a sick one
   included — is HR's to change or remove: if your sykmelding ends early, tell HR.
+- **Who decides.** Your manager — or, if you have none, whoever decides absence for
+  everyone — approves or rejects your request; a rejection says why. Nobody approves
+  their own: a manager's request goes to their own manager. Once approved, only the one
+  who decided it (or HR, once it has begun) cancels it; HR corrects a decided or
+  registered absence when the days were wrong. You are mailed when your request is
+  decided, cancelled or corrected, and your manager when you ask for or register an
+  absence — the mail never names a sickness, an HR-only type, a percentage or a note.
+- **Deciding, for managers.** The requests you decide wait in your approvals inbox,
+  oldest first; the absence calendar shows a month of your team — or, with the
+  directory, of everyone, where colleagues see only the days someone is away.
 - **Your holiday account** counts in working days, Monday to Friday without public
   holidays: your entitlement under the company's holiday scheme (25 virkedager are
   21 working days; more from the year you turn 60; fewer when you start after

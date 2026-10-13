@@ -64,6 +64,9 @@ type attentionInput struct {
 	signed       map[int64]bool
 	failing      store.FailingDeletionsRow
 	acknowledged map[string]time.Time
+	// selfApproved is the approved absences their persons approved
+	// themselves that have not ended (delivery B, Task 4).
+	selfApproved []store.SelfApprovedAbsencesRow
 }
 
 // attentionFor is the caller's items, oldest first, then by type and id, each
@@ -80,6 +83,7 @@ func attentionFor(in attentionInput, c *callerContext) []gen.StaffStatsAttention
 		items = append(items, in.reportsWithoutManager(c.Today)...)
 		items = append(items, in.retentionFailing()...)
 		items = append(items, in.thresholds(c.Today)...)
+		items = append(items, in.selfApprovedItems()...)
 	}
 	if c.PersonalData {
 		items = append(items, in.reassessmentDue(c.Today)...)
@@ -332,6 +336,24 @@ func (in attentionInput) reassessmentDue(today time.Time) []gen.StaffStatsAttent
 	return out
 }
 
+// selfApprovedItems is one item per absence its person approved themselves
+// that has not ended (provisional, plan reading 1, pre-flight I7): a holder
+// of staff:approve or staff:manage heading the structure with no manager who
+// has an active user. staff:manage's, so somebody sees what nobody else
+// decided; entityId the person, keyed by the absence, named by the person
+// and never the type.
+func (in attentionInput) selfApprovedItems() []gen.StaffStatsAttentionItem {
+	out := make([]gen.StaffStatsAttentionItem, 0, len(in.selfApproved))
+	for _, r := range in.selfApproved {
+		var at time.Time
+		if r.DecidedAt != nil {
+			at = *r.DecidedAt
+		}
+		out = append(out, personItem(gen.SelfApproved, r.ID, r.PersonID, r.DisplayName, at))
+	}
+	return out
+}
+
 // retentionFailing is the one item about the deletion ledger: rows the store
 // has refused at least once, queued more than a day ago.
 func (in attentionInput) retentionFailing() []gen.StaffStatsAttentionItem {
@@ -455,6 +477,9 @@ func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerC
 		}
 		if in.failing, err = q.FailingDeletions(ctx, s.deps.Clock().Add(-retentionFailingAfter)); err != nil {
 			return nil, fmt.Errorf("staff: read the failing deletions: %w", err)
+		}
+		if in.selfApproved, err = q.SelfApprovedAbsences(ctx, dayParam(c.Today)); err != nil {
+			return nil, fmt.Errorf("staff: read the self-approved absences: %w", err)
 		}
 	}
 	return attentionFor(in, c), nil

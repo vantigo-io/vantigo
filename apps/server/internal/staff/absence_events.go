@@ -32,6 +32,15 @@ const (
 	eventAbsenceDeleted    = "absence_deleted"
 	eventAbsenceCancelled  = "absence_cancelled"
 
+	// The decisions (Task 4): an approval — by the person themselves, the
+	// self-approver's, absence_self_approved (design S12's self_approved,
+	// provisional) — a rejection, and HR's correction of a decided or
+	// registered row. A decider's cancel is absence_cancelled.
+	eventAbsenceApproved     = "absence_approved"
+	eventAbsenceSelfApproved = "absence_self_approved"
+	eventAbsenceRejected     = "absence_rejected"
+	eventAbsenceCorrected    = "absence_corrected"
+
 	// eventAbsenceChanged is the kind an absence event of a row shown as
 	// "leave" is listed under to its reader (review H1): requested and
 	// registered would say which types an HR-only row can be. It is never
@@ -49,7 +58,10 @@ const (
 // and HR read the dates and the degree and a sick type shown to them, as §5
 // lets them read the rows themselves. Any other event touching E stays the
 // health group's.
-var absenceEventKinds = []string{eventAbsenceRequested, eventAbsenceRegistered, eventAbsenceUpdated, eventAbsenceDeleted, eventAbsenceCancelled}
+var absenceEventKinds = []string{
+	eventAbsenceRequested, eventAbsenceRegistered, eventAbsenceUpdated, eventAbsenceDeleted, eventAbsenceCancelled,
+	eventAbsenceApproved, eventAbsenceSelfApproved, eventAbsenceRejected, eventAbsenceCorrected,
+}
 
 // The absence groups' field names, as an absence event and the contract name
 // them.
@@ -165,7 +177,7 @@ func readTypeVisibilities(ctx context.Context, q *store.Queries) (typeVisibiliti
 // name it does not know nobody's.
 func absenceFieldGroup(name string) fieldGroup {
 	switch name {
-	case "firstDay", "lastDay", "status":
+	case "firstDay", "lastDay", "status", "selfApproved":
 		return groupAbsence
 	case fieldType:
 		return groupAbsenceType

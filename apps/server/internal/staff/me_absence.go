@@ -81,6 +81,7 @@ func (s *server) PostStaffMeAbsences(ctx context.Context, req gen.PostStaffMeAbs
 		return nil, err
 	}
 	w.audience = selfAudience
+	s.notifyCreated(ctx, caller, w)
 	return gen.PostStaffMeAbsences201JSONResponse(s.respondWrite(w, *caller.Person)), nil
 }
 
