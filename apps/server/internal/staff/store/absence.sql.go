@@ -34,7 +34,8 @@ WHERE ($1::bigint IS NULL OR a.person_id = $1::bigint)
   AND ($3::date IS NULL OR a.first_day <= $3::date)
   AND ($4::text IS NULL OR a.status = $4::text)
   AND ($5::boolean OR a.person_id = ANY($6::bigint[])
-       OR (a.person_id = ANY($7::bigint[]) AND a.status IN ('approved', 'registered')))
+       OR (a.person_id = ANY($7::bigint[]) AND a.status IN ('approved', 'registered')
+           AND $4::text IS NULL))
 `
 
 type CountAbsencesParams struct {
@@ -384,7 +385,8 @@ WHERE ($1::bigint IS NULL OR a.person_id = $1::bigint)
   AND ($3::date IS NULL OR a.first_day <= $3::date)
   AND ($4::text IS NULL OR a.status = $4::text)
   AND ($5::boolean OR a.person_id = ANY($6::bigint[])
-       OR (a.person_id = ANY($7::bigint[]) AND a.status IN ('approved', 'registered')))
+       OR (a.person_id = ANY($7::bigint[]) AND a.status IN ('approved', 'registered')
+           AND $4::text IS NULL))
 ORDER BY a.first_day DESC, a.id DESC
 LIMIT $9 OFFSET $8
 `
@@ -411,7 +413,9 @@ type ListAbsencesRow struct {
 // ListAbsences is one page of the absences the caller may see, newest first:
 // everyone's (@everyone), every row of @full_ids' people, and the approved
 // and registered rows of @colleague_ids' — a colleague is shown that a
-// person is away, never a request or a refusal.
+// person is away, never a request or a refusal — and those never under a
+// status filter: a colleague reads no status, and asking for the registered
+// rows must not pick out who was sick (review C1).
 func (q *Queries) ListAbsences(ctx context.Context, arg ListAbsencesParams) ([]ListAbsencesRow, error) {
 	rows, err := q.db.Query(ctx, listAbsences,
 		arg.PersonID,

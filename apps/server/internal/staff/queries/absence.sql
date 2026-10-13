@@ -131,13 +131,16 @@ WHERE (sqlc.narg('person_id')::bigint IS NULL OR a.person_id = sqlc.narg('person
   AND (sqlc.narg('to_day')::date IS NULL OR a.first_day <= sqlc.narg('to_day')::date)
   AND (sqlc.narg('status')::text IS NULL OR a.status = sqlc.narg('status')::text)
   AND (@everyone::boolean OR a.person_id = ANY(@full_ids::bigint[])
-       OR (a.person_id = ANY(@colleague_ids::bigint[]) AND a.status IN ('approved', 'registered')));
+       OR (a.person_id = ANY(@colleague_ids::bigint[]) AND a.status IN ('approved', 'registered')
+           AND sqlc.narg('status')::text IS NULL));
 
 -- name: ListAbsences :many
 -- ListAbsences is one page of the absences the caller may see, newest first:
 -- everyone's (@everyone), every row of @full_ids' people, and the approved
 -- and registered rows of @colleague_ids' — a colleague is shown that a
--- person is away, never a request or a refusal.
+-- person is away, never a request or a refusal — and those never under a
+-- status filter: a colleague reads no status, and asking for the registered
+-- rows must not pick out who was sick (review C1).
 SELECT sqlc.embed(a), t.kind, t.visibility, t.unit
 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE (sqlc.narg('person_id')::bigint IS NULL OR a.person_id = sqlc.narg('person_id')::bigint)
@@ -145,7 +148,8 @@ WHERE (sqlc.narg('person_id')::bigint IS NULL OR a.person_id = sqlc.narg('person
   AND (sqlc.narg('to_day')::date IS NULL OR a.first_day <= sqlc.narg('to_day')::date)
   AND (sqlc.narg('status')::text IS NULL OR a.status = sqlc.narg('status')::text)
   AND (@everyone::boolean OR a.person_id = ANY(@full_ids::bigint[])
-       OR (a.person_id = ANY(@colleague_ids::bigint[]) AND a.status IN ('approved', 'registered')))
+       OR (a.person_id = ANY(@colleague_ids::bigint[]) AND a.status IN ('approved', 'registered')
+           AND sqlc.narg('status')::text IS NULL))
 ORDER BY a.first_day DESC, a.id DESC
 LIMIT @page_size OFFSET @page_offset;
 

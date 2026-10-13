@@ -246,12 +246,14 @@ En person har **høyst én overføring fra et år**: en andre gir `carry_over_re
 å endre den, slett den (`DELETE /api/v1/staff/holiday-adjustments/{id}`; listen er
 `GET /api/v1/staff/people/{id}/holiday-adjustments`) og registrer den på nytt. En
 rettelse av en konto — en dag registrert feil, for eksempel — er en justering med
-`reason: "correction"` og en merknad.
+`reason: "correction"` og en merknad; en justering som er en overføring, oppgir året
+rett før året den endrer.
 
 **Automatisk overføring.** Med `autoCarryOver` slått på i innstillingene overfører en
 konto selv dagene som stod igjen året før (`carriedInDerived`), som tvungen overføring —
-men bare for år fra og med det den ble slått på, så den rekker aldri tilbake til år HR
-allerede har gjort opp. En overføring registrert for hånd for et år erstatter den
+men bare til et år der 1. januar er samme dag som eller etter dagen den ble slått på:
+slått på 12. september 2026 overfører den først 2026s dager til 2027. Den rekker aldri
+inn i et år som er i gang, der HR har gjort opp overføringen for hånd. En overføring registrert for hånd for et år erstatter den
 automatiske.
 
 ## Rett et registrert sykefravær
@@ -260,7 +262,10 @@ En egenmelding eller en sykmelding er registrert, ikke avgjort, og den ansatte k
 endre den når den først er lagt inn: slutter en sykmelding tidligere, eller var en dag
 feil, endrer HR den (`PUT /api/v1/staff/absences/{id}`, `staff:manage`, med revisjonen i
 `If-Match`) eller fjerner den (`DELETE /api/v1/staff/absences/{id}`). Begge føres i
-personens historikk. Et fravær noen har avgjort, fjernes aldri; det trekkes tilbake
+personens historikk. En endring holder raden en registrering: å gjøre en sykmelding om
+til ferie, for eksempel, avvises (`absence_status_change`) — fjern den og legg inn
+ferien. Fraværsendringer er `staff:manage` sine; `staff:personal-data` alene skriver dem
+ikke. Et fravær noen har avgjort, fjernes aldri; det trekkes tilbake
 eller rettes med avgjørelsene, i et senere steg av leveransen.
 
 ## Omsorgsdagfeltene

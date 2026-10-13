@@ -32,6 +32,12 @@ const (
 	eventAbsenceDeleted    = "absence_deleted"
 	eventAbsenceCancelled  = "absence_cancelled"
 
+	// eventAbsenceChanged is the kind an absence event of a row shown as
+	// "leave" is listed under to its reader (review H1): requested and
+	// registered would say which types an HR-only row can be. It is never
+	// stored.
+	eventAbsenceChanged = "absence_changed"
+
 	eventHolidayAdjusted          = "holiday_adjusted"
 	eventHolidayAdjustmentDeleted = "holiday_adjustment_deleted"
 	eventCarryOverRecorded        = "carry_over_recorded"
@@ -214,4 +220,53 @@ func shapeClassedFields(fields map[string]any, groupOf func(string) fieldGroup, 
 		}
 	}
 	return out
+}
+
+// rowShownAsLeave is whether a reads an absence event's row as "leave"
+// (review H1): a reader of types who does not read HR-only ones, and a row
+// whose type on either side is HR-only, or one the module cannot place — an
+// event naming no types included (fail closed).
+func rowShownAsLeave(typeIDs *[]int64, a audience, types typeVisibilities) bool {
+	if !a.reads(groupAbsenceType) || a.readsHROnlyTypes() {
+		return false
+	}
+	if typeIDs == nil || len(*typeIDs) == 0 {
+		return true
+	}
+	for _, id := range *typeIDs {
+		if types[id] != visibilityAbsent {
+			return true
+		}
+	}
+	return false
+}
+
+// asLeaveFields is an absence event's shaped fields as a row shown as
+// "leave" carries them: no hours — an hour type among the HR-only ones would
+// otherwise stand out — and a registration read as an approval.
+func asLeaveFields(fields map[string]any) map[string]any {
+	delete(fields, "hours")
+	if change, ok := fields["status"].(map[string]any); ok {
+		for side, v := range change {
+			if v == absenceRegistered {
+				change[side] = absenceApproved
+			}
+		}
+	}
+	return fields
+}
+
+// absenceEventShownAsLeave is whether an absence event of kind is listed to
+// a under the neutral absence_changed: its row is shown as "leave".
+func absenceEventShownAsLeave(kind string, stored []byte, a audience, types typeVisibilities) bool {
+	if !slices.Contains(absenceEventKinds, kind) {
+		return false
+	}
+	var payload struct {
+		TypeIDs *[]int64 `json:"typeIds"`
+	}
+	if json.Unmarshal(stored, &payload) != nil {
+		return rowShownAsLeave(nil, a, types)
+	}
+	return rowShownAsLeave(payload.TypeIDs, a, types)
 }

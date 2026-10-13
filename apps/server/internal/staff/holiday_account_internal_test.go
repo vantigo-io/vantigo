@@ -125,9 +125,10 @@ func TestHolidayAccount_ARowOverNewYear(t *testing.T) {
 }
 
 // Automatic carry-over (plan pre-flight M6, reading 5): with it on, a year
-// from the one it was turned on and with no carry-over recorded from the
-// year before derives a forced carry-in of that year's positive remaining —
-// never for a year before it was turned on, never when it is off, never
+// whose 1 January is on or after the day it was turned on, with no
+// carry-over recorded from the year before, derives a forced carry-in of that
+// year's positive remaining — so turning it on never reaches back into a year
+// already under way, whose carry-in HR settled; never when it is off, never
 // beside a carry-over recorded by hand, and never a negative one.
 func TestHolidayAccount_DerivedCarryIn(t *testing.T) {
 	t.Parallel()
@@ -151,9 +152,11 @@ func TestHolidayAccount_DerivedCarryIn(t *testing.T) {
 		want  int64
 	}{
 		{"off", nil, nil, 0},
-		{"turned on during the year", since("2026-03-01"), nil, days(5)},
+		{"turned on before the year began", since("2025-11-20"), nil, days(5)},
+		{"turned on on 1 January", since("2026-01-01"), nil, days(5)},
+		{"turned on during the year", since("2026-03-01"), nil, 0},
 		{"turned on the year after", since("2027-01-10"), nil, 0},
-		{"a carry-over recorded by hand", since("2026-03-01"),
+		{"a carry-over recorded by hand", since("2026-01-01"),
 			[]accountAdjustment{{Year: 2026, Tenths: 20, Reason: "agreed_carry_over", FromYear: from(2025)}}, 0},
 	} {
 		in := base
@@ -169,7 +172,7 @@ func TestHolidayAccount_DerivedCarryIn(t *testing.T) {
 	}
 	overdrawn := base
 	overdrawn.Absences = append(overdrawn.Absences, holidayRow(t, "2025-08-04", "2025-08-15", "approved", 10000))
-	overdrawn.AutoCarryOverSince = since("2026-03-01")
+	overdrawn.AutoCarryOverSince = since("2026-01-01")
 	if got := accountFor(overdrawn, 2026).CarriedInDerived; got != 0 {
 		t.Errorf("a negative remaining carried in %d, want nothing", got)
 	}

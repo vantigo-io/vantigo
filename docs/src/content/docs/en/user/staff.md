@@ -483,7 +483,8 @@ step. What stands today, through the Staff API, is this:
   and the percentages add up to at most 100 %. A request you have made counts as if it
   were approved, so you cannot ask twice for the same day.
 - **Changing your mind.** While a request waits, you change it, remove it or cancel it
-  (a cancelled request stays in your history). A registered absence — a sick one
+  (a cancelled request stays in your history); to turn it into a registration — or
+  the other way round — remove it and enter the other. A registered absence — a sick one
   included — is HR's to change or remove: if your sykmelding ends early, tell HR.
 - **Your holiday account** counts in working days, Monday to Friday without public
   holidays: your entitlement under the company's holiday scheme (25 virkedager are
@@ -492,11 +493,12 @@ step. What stands today, through the Staff API, is this:
   asked for and what remains. A request that would take you past what remains is still
   sent — the account shows it as overdrawn.
 
-Who sees your absence: you, your manager and HR see the dates, the type and the details;
-colleagues with access to the directory see only that you are away on an approved or
-registered day — never the type, a percentage or a note. A type that reveals health or
-family matters (such as pregnancy leave or a religious holiday) shows your manager only
-*leave*.
+Who sees your absence: you, your manager and HR see the dates, the status, the type and
+the details; colleagues with access to the directory see only the days you are away —
+never whether it was a request or a registration, the type, a percentage, hours or a
+note, so a sick day looks like a day off. A type that reveals health or family matters
+(such as pregnancy leave, an antenatal check-up or a religious holiday) shows your
+manager only *leave*, without its hours, like any other leave.
 
 ## The dashboard
 

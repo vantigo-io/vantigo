@@ -218,16 +218,16 @@ func (e StaffBankAccountKind) Valid() bool {
 
 // Defines values for StaffCarryOverRequestKind.
 const (
-	Agreed StaffCarryOverRequestKind = "agreed"
-	Forced StaffCarryOverRequestKind = "forced"
+	StaffCarryOverKindAgreed StaffCarryOverRequestKind = "agreed"
+	StaffCarryOverKindForced StaffCarryOverRequestKind = "forced"
 )
 
 // Valid indicates whether the value is a known member of the StaffCarryOverRequestKind enum.
 func (e StaffCarryOverRequestKind) Valid() bool {
 	switch e {
-	case Agreed:
+	case StaffCarryOverKindAgreed:
 		return true
-	case Forced:
+	case StaffCarryOverKindForced:
 		return true
 	default:
 		return false
@@ -783,7 +783,7 @@ type PaginatedResponseOfStaffPersonListItem struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
-// StaffAbsence An absence as the caller may read it (design §5): the dates and the status to everyone who sees the row; the type to the person, their manager and HR — an HR-only type shown as leave to all but the person and staff:personal-data (shownAs leave, no typeId) and to a colleague as absent; percent, hours, note and degree never to a colleague. A write of a type drawing on the holiday account answers the accounts of the years it touches after it.
+// StaffAbsence An absence as the caller may read it (design §5). A colleague (staff:view alone) reads the dates and nothing else — no status, no working days, no type (shownAs absent) — so a sickness looks like any other absence. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, the working days of its days, and a registered row as approved. A write of a type drawing on the holiday account answers the accounts of the years it touches after it.
 type StaffAbsence struct {
 	// Accounts On a write of a type drawing on the holiday account: the account of each year the row touches, after the write.
 	Accounts *[]StaffHolidayAccount `json:"accounts,omitempty"`
@@ -820,13 +820,13 @@ type StaffAbsence struct {
 	ShownAs StaffAbsenceShownAs `json:"shownAs"`
 
 	// Status requested (waiting for a decision), approved, rejected, cancelled, or registered (a notification, needing none).
-	Status StaffAbsenceStatus `json:"status"`
+	Status *StaffAbsenceStatus `json:"status,omitempty"`
 
 	// TypeId The type, when the caller may read it (shownAs type).
 	TypeId *int64 `json:"typeId,omitempty"`
 
-	// WorkingDays The working days from the first to the last day — Monday to Friday without public holidays — whatever the share; an hour row counts none.
-	WorkingDays int32 `json:"workingDays"`
+	// WorkingDays The working days from the first to the last day — Monday to Friday without public holidays — whatever the share; an hour row counts none, but one shown as leave counts its day. Absent to a colleague.
+	WorkingDays *int32 `json:"workingDays,omitempty"`
 }
 
 // StaffAbsenceChangeRequest An absence's fields, for a change (a full replace) and for one's own new absence. A property this request does not name is refused, so the person learns it was not written.
@@ -856,7 +856,7 @@ type StaffAbsenceChangeRequest struct {
 // StaffAbsenceKind What the rules key an absence type on (design §3.5). holiday draws on the holiday account; sick_self is egenmelding, sick_certified sykmelding, child_sick a sick child (omsorgsdager); leave, time_off and other are the rest. A company type is holiday, leave, time_off or other; the sick kinds are the seeds'.
 type StaffAbsenceKind string
 
-// StaffAbsenceRequest A new absence for a person: the caller's own, or — staff:manage — anyone's.
+// StaffAbsenceRequest A new absence for a person: the caller's own, or — staff:manage — anyone's. A property this request does not name is refused.
 type StaffAbsenceRequest struct {
 	// DegreePercent A sykmelding's degree, 1 to 100, two decimals — its share of each day; 100 when left out. Only on a sykmelding.
 	DegreePercent *float64 `json:"degreePercent,omitempty"`
@@ -2219,7 +2219,7 @@ type StaffPersonalDataPerson struct {
 	WorkEmail   *string           `json:"workEmail,omitempty"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, carry_over_recorded, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`

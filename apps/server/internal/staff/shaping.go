@@ -445,6 +445,9 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 		// (delivery B).
 		AbsenceID    *int64 `json:"absenceId"`
 		AdjustmentID *int64 `json:"adjustmentId"`
+		// The absence's type before and after (review H1), by which the
+		// whole event is shown as leave.
+		TypeIDs *[]int64 `json:"typeIds"`
 	}
 	out := map[string]any{}
 	if err := json.Unmarshal(stored, &payload); err != nil {
@@ -470,7 +473,11 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 	}
 	if payload.AbsenceID != nil {
 		out["absenceId"] = *payload.AbsenceID
-		out["fields"] = shapeClassedFields(payload.Fields, absenceFieldGroup, a, types)
+		fields := shapeClassedFields(payload.Fields, absenceFieldGroup, a, types)
+		if rowShownAsLeave(payload.TypeIDs, a, types) {
+			fields = asLeaveFields(fields)
+		}
+		out["fields"] = fields
 		return out
 	}
 	if payload.AdjustmentID != nil {
@@ -514,9 +521,13 @@ func eventResponse(row store.ListPersonEventsRow, a audience, types typeVisibili
 	if row.ActorDisplay != nil {
 		display = *row.ActorDisplay
 	}
+	kind := row.Kind
+	if absenceEventShownAsLeave(row.Kind, row.Payload, a, types) {
+		kind = eventAbsenceChanged
+	}
 	return gen.StaffEvent{
 		Id:      row.ID,
-		Kind:    row.Kind,
+		Kind:    kind,
 		At:      row.At,
 		Actor:   gen.StaffEventActor{Kind: row.ActorKind, DisplayName: display, UserId: row.ActorUserID},
 		Payload: shapePayloadTypes(row.Payload, row.PayloadClasses, a, types),

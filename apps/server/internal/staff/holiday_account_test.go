@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,6 +99,12 @@ func TestHolidayAdjustments(t *testing.T) {
 		http.StatusConflict, "carry_over_recorded")
 	refused(t, w.hr.Do(http.MethodPost, adjustmentsPath(w.kari.Id), map[string]any{"year": 2026, "days": 1, "reason": "forced_carry_over", "fromYear": 2025, "note": "x"}),
 		http.StatusConflict, "carry_over_recorded")
+	// A carry-over comes from the year just before the one it changes.
+	p := refused(t, w.hr.Do(http.MethodPost, adjustmentsPath(w.kari.Id), map[string]any{"year": 2026, "days": 1, "reason": "forced_carry_over", "fromYear": 2024, "note": "x"}),
+		http.StatusBadRequest, "")
+	if len(p.Errors["fromYear"]) == 0 {
+		t.Errorf("a carry-over from two years back: errors %v, want fromYear named", p.Errors)
+	}
 	if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1 AND kind = 'carry_over_recorded'
 		AND (payload->>'adjustmentId')::bigint = $2`, w.kari.Id, carried.Id); n != 1 {
 		t.Errorf("carry_over_recorded events = %d, want 1", n)
@@ -134,8 +141,9 @@ func TestHolidayAdjustments(t *testing.T) {
 }
 
 // Automatic carry-over (plan pre-flight M6): turned on, the account derives
-// the year before's remaining as a forced carry-in for the years from the one
-// it was turned on in — and a carry-over recorded by hand takes its place.
+// the year before's remaining as a forced carry-in into each year whose
+// 1 January is on or after the day it was turned on — turned on 12 September
+// 2026, first into 2027 — and a carry-over recorded by hand takes its place.
 func TestHolidayAccount_AutomaticCarryOver(t *testing.T) {
 	t.Parallel()
 	w := newAbsenceWorld(t)
@@ -143,14 +151,14 @@ func TestHolidayAccount_AutomaticCarryOver(t *testing.T) {
 		t.Errorf("off: derived %v, want 0", a.CarriedInDerived)
 	}
 	w.h.Exec(t, `UPDATE staff.settings SET auto_carry_over = true, auto_carry_over_since = '2026-09-12'`)
-	if a := accountOf(t, w.hr, w.kari.Id, 2026); a.CarriedInDerived != 21 || a.Remaining != 42 {
-		t.Errorf("on: %+v, want 2025's 21 carried in", a)
+	if a := accountOf(t, w.hr, w.kari.Id, 2026); a.CarriedInDerived != 0 {
+		t.Errorf("2026, already under way when it was turned on: derived %v, want 0", a.CarriedInDerived)
 	}
-	if a := accountOf(t, w.hr, w.kari.Id, 2025); a.CarriedInDerived != 0 {
-		t.Errorf("2025, before it was turned on: derived %v, want 0", a.CarriedInDerived)
+	if a := accountOf(t, w.hr, w.kari.Id, 2027); a.CarriedInDerived != 21 || a.Remaining != 42 {
+		t.Errorf("2027: %+v, want 2026's 21 carried in", a)
 	}
-	do(t, w.hr, http.MethodPost, carryOverPath(w.kari.Id), map[string]any{"fromYear": 2025, "kind": "agreed", "days": 3}, http.StatusCreated, nil)
-	if a := accountOf(t, w.hr, w.kari.Id, 2026); a.CarriedInDerived != 0 || a.CarriedIn != 3 {
+	do(t, w.hr, http.MethodPost, carryOverPath(w.kari.Id), map[string]any{"fromYear": 2026, "kind": "agreed", "days": 3}, http.StatusCreated, nil)
+	if a := accountOf(t, w.hr, w.kari.Id, 2027); a.CarriedInDerived != 0 || a.CarriedIn != 3 {
 		t.Errorf("with a carry-over by hand: %+v, want 3 carried in, nothing derived", a)
 	}
 }
@@ -192,7 +200,12 @@ func TestHolidayAdjustments_TwoCarryOversRace(t *testing.T) {
 	if err := first.Commit(ctx); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
-	refused(t, <-answered, http.StatusConflict, "carry_over_recorded")
+	// The refusal is the lock-time check's, which reads the committed row
+	// once the lock is free — not the unique index's backstop, which would
+	// answer only after a write that failed.
+	if p := refused(t, <-answered, http.StatusConflict, "carry_over_recorded"); !strings.Contains(p.Detail, "already recorded") {
+		t.Errorf("detail %q: want the lock-time check's (already recorded), not the index's", p.Detail)
+	}
 	if n := h.Count(t, `SELECT count(*) FROM staff.holiday_adjustments WHERE person_id = $1 AND from_year = 2025`, w.kari.Id); n != 1 {
 		t.Errorf("carry-overs from 2025 = %d, want 1", n)
 	}

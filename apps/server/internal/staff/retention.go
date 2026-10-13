@@ -691,18 +691,19 @@ func blankPayload(stored []byte, class string) ([]byte, bool, error) {
 			return nil, false, err
 		}
 	}
-	classOf := func(name string) string {
+	// A field its map does not class — or every field of an event without a
+	// map — is blanked by every erase: what cannot be placed is erased, not
+	// kept (review L1).
+	erases := func(name string) bool {
 		if !classed {
-			return classOfField(name)
+			return document || classOfField(name) == class
 		}
-		if c, ok := own[name]; ok {
-			return c
-		}
-		return "D"
+		c, ok := own[name]
+		return !ok || c == class
 	}
 	rewritten := false
 	for name, value := range fields {
-		if (document || classOf(name) == class) && !bytes.Equal(value, blank) {
+		if erases(name) && !bytes.Equal(value, blank) {
 			fields[name] = blank
 			rewritten = true
 		}

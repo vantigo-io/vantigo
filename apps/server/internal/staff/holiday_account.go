@@ -95,9 +95,11 @@ func carryOverReason(reason string) bool {
 //     employment in the year;
 //   - carried in: the year's agreed carry-overs, capped at the scheme's
 //     maximum converted, and its forced carry-overs and corrections uncapped;
-//   - derived carry-in: with automatic carry-over on, for a year from the one
-//     it was turned on, when no carry-over from the year before is recorded,
-//     that year's positive remaining (plan pre-flight M6);
+//   - derived carry-in: with automatic carry-over on, for a year whose
+//     1 January is on or after the day it was turned on — so it never
+//     reaches into a year already under way, whose carry-in HR settled —
+//     when no carry-over from the year before is recorded, that year's
+//     positive remaining (plan pre-flight M6, review M1);
 //   - taken and pending: the working days of the year of the approved or
 //     registered, and of the requested, rows, each times its share — a row
 //     across New Year counts in both years (§9);
@@ -142,7 +144,7 @@ func accountFor(in accountInput, year int) holidayAccount {
 		out.CarriedIn += limit
 	}
 
-	if s := in.AutoCarryOverSince; s != nil && year >= s.Year() && !recordedFromLastYear {
+	if s := in.AutoCarryOverSince; s != nil && !s.After(jan1) && !recordedFromLastYear {
 		if last := accountFor(in, year-1); last.Remaining > 0 {
 			out.CarriedInDerived = last.Remaining
 		}

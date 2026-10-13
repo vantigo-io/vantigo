@@ -254,7 +254,11 @@ func (s *server) insertAdjustment(ctx context.Context, txq *store.Queries, param
 	}
 	row, err := txq.InsertHolidayAdjustment(ctx, params)
 	if db.IsUniqueViolation(err, carryOverIndex) {
-		return row, carryOverRecorded(int(*params.FromYear))
+		// The index's backstop: reached only if a carry-over was written
+		// past the person's lock. It answers the same code, in words of its
+		// own, so a test tells it from the lock-time check.
+		return row, refuseConflict(conflict(codeCarryOverRecorded, "Carry-over recorded",
+			fmt.Sprintf("Another carry-over from %d was written at the same moment; the index refused this one.", *params.FromYear)))
 	}
 	if err != nil {
 		return row, fmt.Errorf("staff: write person %d's holiday adjustment: %w", params.PersonID, err)
@@ -319,8 +323,8 @@ func (s *server) PostStaffPeopleByIdHolidayAdjustments(ctx context.Context, req 
 	switch {
 	case carryOverReason(reason) && body.FromYear == nil:
 		f.add("fromYear", "A carry-over names the year it comes from")
-	case carryOverReason(reason) && (*body.FromYear >= body.Year || *body.FromYear < accountYearMin):
-		f.add("fromYear", "A carry-over comes from a year before the one it changes")
+	case carryOverReason(reason) && *body.FromYear != body.Year-1:
+		f.add("fromYear", "A carry-over comes from the year just before the one it changes")
 	case carryOverReason(reason):
 		v := int16(*body.FromYear)
 		fromYear = &v
@@ -416,7 +420,7 @@ func (s *server) PostStaffPeopleByIdCarryOver(ctx context.Context, req gen.PostS
 	if body.FromYear < accountYearMin || body.FromYear >= accountYearMax {
 		f.add("fromYear", fmt.Sprintf("A year is %d to %d", accountYearMin, accountYearMax-1))
 	}
-	reason := map[gen.StaffCarryOverRequestKind]string{gen.Agreed: reasonAgreedCarryOver, gen.Forced: reasonForcedCarryOver}[body.Kind]
+	reason := map[gen.StaffCarryOverRequestKind]string{gen.StaffCarryOverKindAgreed: reasonAgreedCarryOver, gen.StaffCarryOverKindForced: reasonForcedCarryOver}[body.Kind]
 	if reason == "" {
 		f.add("kind", "A carry-over is agreed or forced")
 	}
