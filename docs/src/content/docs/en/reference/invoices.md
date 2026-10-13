@@ -3496,9 +3496,8 @@ module's own. The module keeps its own tables; the port has none.
 
 **Webhooks are not supported yet**: the `invoices-payments` worker follows every
 attempt by reading Vipps (polling), and no webhook is registered or received. The
-credentials row's webhook columns stay empty, and the public host's allowlist names the
-path a webhook will use (`POST /api/v1/invoices/vipps/webhooks`), which nothing serves
-yet.
+credentials row's webhook columns stay empty, and the public host's allowlist
+(`security.PayRoutes()`) names no webhook path — one is added with the webhook itself.
 
 ### Credentials and payment settings
 
