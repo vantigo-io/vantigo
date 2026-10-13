@@ -57,6 +57,7 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 		{Key: "customers:billing-manage", Display: "Manage billing profiles", Description: "Set a customer's payment terms, invoice delivery and billing addresses for documents.", Category: "Billing", Sensitive: true, Delegable: true},
 		{Key: "customers:merge", Display: "Merge customers", Description: "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags, attachments and other modules' references, and archiving it.", Category: "Customers", Sensitive: true, Delegable: true},
 		{Key: "customers:personal-data", Display: "Manage personal data", Description: "Hand a private person all the data held about them, and schedule the anonymisation of an archived private person.", Category: "Customers", Sensitive: true, Delegable: true},
+		{Key: "customers:import", Display: "Import customers", Description: "Upload a file of customers, map its columns, check it and import it; each field written needs the permission it needs by hand.", Category: "Customers", Sensitive: true, Delegable: true},
 	}
 	if m.Name != "customers" {
 		t.Errorf("Name = %q, want customers", m.Name)
@@ -97,35 +98,42 @@ func TestModule_ContributesItsWorkers(t *testing.T) {
 		env  map[string]string
 		want []string
 	}{
-		{name: "the default installation runs all three", want: []string{"customers-anonymisation", "customers-peppol-recheck", "customers-registry-feed"}},
+		{name: "the default installation runs all four", want: []string{"customers-anonymisation", "customers-import", "customers-peppol-recheck", "customers-registry-feed"}},
 		{
-			name: "the feed worker turned off leaves the other two",
+			name: "the feed worker turned off leaves the other three",
 			env:  map[string]string{"CUSTOMERS_REGISTRY_FEED_ENABLED": "0"},
-			want: []string{"customers-anonymisation", "customers-peppol-recheck"},
+			want: []string{"customers-anonymisation", "customers-import", "customers-peppol-recheck"},
 		},
 		{
-			name: "the re-check worker turned off leaves the other two",
+			name: "the re-check worker turned off leaves the other three",
 			env:  map[string]string{"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0"},
-			want: []string{"customers-anonymisation", "customers-registry-feed"},
+			want: []string{"customers-anonymisation", "customers-import", "customers-registry-feed"},
 		},
 		{
 			// Design D6: the re-check worker is effective only alongside the
 			// lookup it uses, and "not effective" means never started.
 			name: "the Peppol lookup turned off takes the re-check worker with it",
 			env:  map[string]string{"PEPPOL_LOOKUP_ENABLED": "0"},
-			want: []string{"customers-anonymisation", "customers-registry-feed"},
+			want: []string{"customers-anonymisation", "customers-import", "customers-registry-feed"},
 		},
 		{
-			name: "the anonymisation worker turned off leaves the registry workers",
+			name: "the anonymisation worker turned off leaves the registry workers and the import",
 			env:  map[string]string{"CUSTOMERS_ANONYMISATION_ENABLED": "0"},
-			want: []string{"customers-peppol-recheck", "customers-registry-feed"},
+			want: []string{"customers-import", "customers-peppol-recheck", "customers-registry-feed"},
 		},
 		{
-			name: "all three turned off leaves none",
+			// Customers import wizard design D6: off means an import queues and waits.
+			name: "the import worker turned off leaves the other three",
+			env:  map[string]string{"CUSTOMERS_IMPORT_ENABLED": "0"},
+			want: []string{"customers-anonymisation", "customers-peppol-recheck", "customers-registry-feed"},
+		},
+		{
+			name: "all four turned off leaves none",
 			env: map[string]string{
 				"CUSTOMERS_REGISTRY_FEED_ENABLED":  "0",
 				"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0",
 				"CUSTOMERS_ANONYMISATION_ENABLED":  "0",
+				"CUSTOMERS_IMPORT_ENABLED":         "0",
 			},
 			want: nil,
 		},

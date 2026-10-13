@@ -2,19 +2,14 @@ package customers
 
 import (
 	"bytes"
-	"encoding/csv"
-	"errors"
-	"fmt"
-	"io"
 	"regexp"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 )
 
 // This file is the customers file (customers import/export design D1): one
-// canonical CSV that GET /customers/export writes, GET /customers/import/template
-// starts, and POST /customers/import reads back. Its form is the expenses
+// canonical CSV that GET /customers/export writes and GET /customers/import/template
+// starts, and that the import (imports_read.go) reads back and maps by itself. Its form is the expenses
 // payroll export's, verbatim — semicolons, a byte order mark, CRLF, RFC 4180
 // quoting, the decimal comma and the formula guard — because that is the form
 // a Norwegian Excel opens without an import dialog, and one form in the product
@@ -24,9 +19,9 @@ import (
 //
 // The header names are the API's own JSON names, so docs/src/content/docs/en/reference/customers.md's field
 // tables describe the file too. No competitor's layout is documented anywhere
-// this module could read it from, and one honest format beats three guessed
-// ones: onboarding from Tripletex, Fiken or PowerOffice is "export there,
-// rename the columns, import here".
+// this module could read it from, so the import takes any file and maps its
+// columns on screen (customers import wizard design D3); this form is the one
+// that maps itself.
 const (
 	csvByteOrderMark = "\ufeff"
 	csvSeparator     = ';'
@@ -57,12 +52,6 @@ const (
 	csvGroupTags       csvGroup = "tags"
 	csvGroupExportOnly csvGroup = "export only"
 )
-
-// csvImportGroups are the groups whose columns come together or not at all
-// (import.go's importLayoutFor). The row's own name/type/status are not one of
-// them: each already means something when it is absent. The key and the two
-// relationship columns are a single column each.
-var csvImportGroups = []csvGroup{csvGroupIdentity, csvGroupContact, csvGroupPostal, csvGroupInvoice, csvGroupBilling}
 
 // csvColumn is one column of the file: its header name and its group.
 type csvColumn struct {
@@ -200,64 +189,6 @@ func parseCSVDecimal(raw string) (float64, bool) {
 type csvRecord struct {
 	Row   int
 	Cells []string
-}
-
-// csvFile is a file read: its header as written, and its data rows.
-type csvFile struct {
-	Header []string
-	Rows   []csvRecord
-}
-
-// The reader's refusals, each a sentence a person can act on.
-const (
-	csvEmptyMessage   = "The file is empty; it needs a header row naming its columns"
-	csvNotUTF8Message = "The file is not UTF-8 text; save it from the spreadsheet as CSV UTF-8"
-)
-
-// readCSVFile reads data as the customers file: a byte order mark taken off if
-// there is one, UTF-8 required, semicolons, CRLF or LF, RFC 4180 quoting. The
-// refusal is "" on success. FieldsPerRecord is left at -1 (variable), so a row
-// with fewer or more cells than the header is never itself a file-level
-// error — a short row's Cells is simply shorter than Header, a long row's
-// longer, neither padded nor truncated; a row that disagrees with the header
-// this way is that row's problem to report (import.go), not the file's to
-// refuse. A record whose every cell is blank is skipped and numbered not at
-// all, and more than maxRows rows is refused before the rest is read.
-func readCSVFile(data []byte, maxRows int) (csvFile, string) {
-	data = bytes.TrimPrefix(data, []byte(csvByteOrderMark))
-	if !utf8.Valid(data) {
-		return csvFile{}, csvNotUTF8Message
-	}
-	reader := csv.NewReader(bytes.NewReader(data))
-	reader.Comma = csvSeparator
-	reader.FieldsPerRecord = -1
-	header, err := reader.Read()
-	if errors.Is(err, io.EOF) {
-		return csvFile{}, csvEmptyMessage
-	}
-	if err != nil {
-		return csvFile{}, fmt.Sprintf("The file is not a semicolon-separated CSV file: %v", err)
-	}
-	file := csvFile{Header: header}
-	for {
-		cells, err := reader.Read()
-		if errors.Is(err, io.EOF) {
-			return file, ""
-		}
-		if err != nil {
-			return csvFile{}, fmt.Sprintf("The file is not a semicolon-separated CSV file: %v", err)
-		}
-		if allBlank(cells) {
-			continue
-		}
-		if len(file.Rows) == maxRows {
-			return csvFile{}, fmt.Sprintf("The file holds more than %d rows, which is more than one import takes; import it in slices of at most %d", maxRows, maxRows)
-		}
-		for i, cell := range cells {
-			cells[i] = csvUnguard(cell)
-		}
-		file.Rows = append(file.Rows, csvRecord{Row: len(file.Rows) + 1, Cells: cells})
-	}
 }
 
 // allBlank reports whether every cell is empty or whitespace.

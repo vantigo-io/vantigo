@@ -242,10 +242,10 @@ func TestLeavingTheArchiveCallsTheScheduleOff(t *testing.T) {
 	// The CSV import restores through the same writeCustomerCore.
 	imported := archivedPerson(t, c, "Per Nordmann")
 	customerAnswer(t, putAnonymisation(t, scheduler, imported.Id, day(h, 30)))
-	if result := importResultOf(t, postImport(t, c, "?dryRun=false", csvFileOf(
+	if result := importFileNow(t, c, h, csvFileOf(
 		[]string{"customerNumber", "name", "status"},
 		[]string{strconv.FormatInt(imported.CustomerNumber, 10), "Per Nordmann", "active"},
-	))); result.Updated != 1 || result.Failed != 0 {
+	)); result.Updated != 1 || result.Failed != 0 {
 		t.Fatalf("import = %+v, want the row updated", result)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE id = $1 AND status = 'active' AND anonymise_on IS NULL`, imported.Id); n != 1 {
@@ -356,10 +356,10 @@ func TestAnAnonymisedCustomerIsReadOnly(t *testing.T) {
 		})
 	}
 
-	result := importResultOf(t, postImport(t, c, "?dryRun=false", csvFileOf(
+	result := importFileNow(t, c, h, csvFileOf(
 		[]string{"customerNumber", "name"},
 		[]string{strconv.FormatInt(person.CustomerNumber, 10), "Kari Nordmann"},
-	)))
+	))
 	if len(result.Errors) != 1 || result.Errors[0].Column != "customerNumber" ||
 		result.Errors[0].Message != fmt.Sprintf("Customer %d was anonymised and takes no more changes", person.CustomerNumber) {
 		t.Errorf("import = %+v, want the row refused on customerNumber", result)

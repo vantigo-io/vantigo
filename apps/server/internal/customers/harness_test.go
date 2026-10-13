@@ -24,7 +24,8 @@ func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 // authenticatedClient signs in a caller holding every permission the
 // customers CRUD/dashboard-stats (Task 6), contacts/association (Task 7) and
 // timeline (Task 9) operations can exercise, plus customers:billing-manage
-// for the billing profile (invoice-ready customer design D1, D4) — .NET's
+// for the billing profile (invoice-ready customer design D1, D4) and
+// customers:import for the import (customers import wizard design D4) — .NET's
 // CustomersApiFactory.CreateAuthenticatedClient, which the ported tests
 // assume throughout (TS/CustomersEndpointsTests.cs, TS/ContactsEndpointsTests.cs,
 // TS/TimelineEndpointsTests.cs and friends). legal-identity-manage is
@@ -50,7 +51,7 @@ func authenticatedClientWithID(t *testing.T, h *modtest.Harness) (*modtest.Clien
 		"customers:contacts-view", "customers:contacts-manage",
 		"customers:associations-view", "customers:associations-manage",
 		"customers:timeline-view", "customers:timeline-manage",
-		"customers:billing-manage")
+		"customers:billing-manage", "customers:import")
 }
 
 // userDisplayName is the display name identity.users stores for userID — the

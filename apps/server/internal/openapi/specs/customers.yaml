@@ -398,7 +398,7 @@ components:
                 - status
             type: object
         CustomerConflictProblem:
-            description: ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), customer_merged, the answer a write to a customer merged away gets (the same design), personal_data_not_a_person, personal_data_customer_active and customer_anonymised (customers GDPR design D3, D4 — the last the answer a write to an anonymised customer gets), and attachment_count_exceeded, the 201st attachment of a customer (customer attachments design D2). A revision conflict carries neither.
+            description: "ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), customer_merged, the answer a write to a customer merged away gets (the same design), personal_data_not_a_person, personal_data_customer_active and customer_anonymised (customers GDPR design D3, D4 — the last the answer a write to an anonymised customer gets), attachment_count_exceeded, the 201st attachment of a customer (customer attachments design D2), and the import's four (customers import wizard design D7): import_running (a mapping saved, a delete or a check on an import the worker is running), import_not_checked (a run on an import that is not checked), import_nothing_to_import (a run on a check that found nothing to create or update) and import_finished (a stop or a check on an import that is done). A revision conflict carries neither."
             properties:
                 code:
                     nullable: true
@@ -573,48 +573,190 @@ components:
                 - name
                 - customerCount
             type: object
-        CustomerImportError:
-            description: One problem with one row of an import (customers import/export design D3). row is the 1-based data row — the first row under the header is 1, and a row whose every cell is blank is skipped and takes no number. column is the header of the offending cell for a field's error, as the file spells it, absent for a problem with the row as a whole. message is the module's own validation wording.
+        CustomerImport:
+            description: An import of customers from a file (customers import wizard design D1, D5, D7). state is draft (uploaded, mapping being made), checking (the worker runs the dry run), checked (the dry run finished; the counts and the failed rows are on the import), importing (the worker runs the real run) or done (final; finishedAt set — and, when it was stopped, processed short of rows and the rest never attempted). encoding is utf-8 or windows-1252, separator the one character the header was split on. header is the file's header row as written, a nameless column an empty string; sample the first twenty rows, each with the errors its cells get under the saved mapping (none when there is no mapping yet). mapping is absent until PUT …/mapping saved one; suggested is the mapping the server proposes, answered on every read. processed, created, updated and failed are the worker's progress while it runs and the recounted totals once it has finished. error is a whole-run failure the worker met and will retry next cycle, with the run where it stood. createdByName is the uploader's display name through the user directory, absent when the account is gone. requestedAt is when the check or the run was asked for, startedAt when the worker took it up.
+            properties:
+                created:
+                    format: int32
+                    type: integer
+                createdAt:
+                    format: date-time
+                    type: string
+                createdByName:
+                    type: string
+                encoding:
+                    type: string
+                error:
+                    type: string
+                failed:
+                    format: int32
+                    type: integer
+                fileName:
+                    type: string
+                finishedAt:
+                    format: date-time
+                    type: string
+                header:
+                    items:
+                        type: string
+                    type: array
+                id:
+                    format: int32
+                    type: integer
+                mapping:
+                    $ref: '#/components/schemas/CustomerImportMapping'
+                processed:
+                    format: int32
+                    type: integer
+                requestedAt:
+                    format: date-time
+                    type: string
+                rows:
+                    format: int32
+                    type: integer
+                sample:
+                    items:
+                        $ref: '#/components/schemas/CustomerImportSampleRow'
+                    type: array
+                separator:
+                    type: string
+                sizeBytes:
+                    format: int64
+                    type: integer
+                startedAt:
+                    format: date-time
+                    type: string
+                state:
+                    enum:
+                        - draft
+                        - checking
+                        - checked
+                        - importing
+                        - done
+                    type: string
+                stopRequested:
+                    type: boolean
+                suggested:
+                    $ref: '#/components/schemas/CustomerImportMapping'
+                updated:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - state
+                - fileName
+                - sizeBytes
+                - encoding
+                - separator
+                - rows
+                - header
+                - sample
+                - suggested
+                - processed
+                - created
+                - updated
+                - failed
+                - stopRequested
+                - createdAt
+            type: object
+        CustomerImportMapping:
+            description: "How an import's rows become customers (customers import wizard design D3). mode: create makes every row a new customer; update finds the customer by matchBy and refuses a row that finds none; createOrUpdate updates a row that finds one and creates from a row that finds none. matchBy is customerNumber (the mapped customerNumber column) or legalId (the row's legal identity, country and id, defaults applied), required unless mode is create. allowDuplicateIdentity is the create endpoint's flag for every row. columns maps the fields: a field at most once, a column at most once, each entry a column of the file or a fixed value for every row."
+            properties:
+                allowDuplicateIdentity:
+                    type: boolean
+                columns:
+                    items:
+                        $ref: '#/components/schemas/CustomerImportMappingColumn'
+                    type: array
+                matchBy:
+                    enum:
+                        - customerNumber
+                        - legalId
+                    type: string
+                mode:
+                    enum:
+                        - create
+                        - update
+                        - createOrUpdate
+                    type: string
+            required:
+                - mode
+                - allowDuplicateIdentity
+                - columns
+            type: object
+        CustomerImportMappingColumn:
+            description: "One field of a mapping (customers import wizard design D3): field is one of the import's fields — customerNumber, name, type, status, legalCountry, legalType, legalId, legalName, email, phone, website, the two primary addresses' postalLine1 … postalCountry and invoiceLine1 … invoiceCountry, the billing profile's invoiceEmail, reminderEmail, paymentTermsDays, currency, language, invoiceDelivery, reminderDelivery, peppolId, gln, buyerReference and defaultBillRate, group and tags — and exactly one of column (the 0-based column of the file it is read from) and value (the same text for every row, read as a cell would be; customerNumber takes none)."
             properties:
                 column:
+                    format: int32
+                    type: integer
+                field:
                     type: string
-                message:
+                value:
+                    type: string
+            required:
+                - field
+            type: object
+        CustomerImportRow:
+            description: One row of an import with what the worker did with it (customers import wizard design D7). cells are the row's cells as the file had them; outcome is absent for a row not yet run; customerId and customerNumber name the customer a created or updated row made or changed; errors are a failed row's problems, each on a column of the file (the 0-based index) or on the row as a whole.
+            properties:
+                cells:
+                    items:
+                        type: string
+                    type: array
+                customerId:
+                    format: int32
+                    type: integer
+                customerNumber:
+                    format: int64
+                    type: integer
+                errors:
+                    items:
+                        $ref: '#/components/schemas/CustomerImportRowError'
+                    type: array
+                outcome:
+                    enum:
+                        - created
+                        - updated
+                        - failed
                     type: string
                 row:
                     format: int32
                     type: integer
             required:
-                - message
                 - row
+                - cells
+                - errors
             type: object
-        CustomerImportResult:
-            description: What an import did, or in a dry run would do (customers import/export design D3). rows counts the data rows read; created and updated the rows that succeeded (an update that changed nothing still counts); failed the rows that did not, each with at least one entry in errors, in row order.
+        CustomerImportRowError:
+            description: One problem with one row of an import (customers import wizard design D1). column is the 0-based index of the file column the offending cell is in — not its header, since a file may spell two columns alike — absent for a problem with the row as a whole, and absent for a fixed value's problem too, which the preview reports on every row. message is the module's own validation wording.
             properties:
-                created:
+                column:
                     format: int32
                     type: integer
-                dryRun:
-                    type: boolean
+                message:
+                    type: string
+            required:
+                - message
+            type: object
+        CustomerImportSampleRow:
+            description: One of the first rows of an import as the preview shows it (customers import wizard design D3), with the errors its cells get under the saved mapping — the row planned through the endpoints' own validators, no database asked.
+            properties:
+                cells:
+                    items:
+                        type: string
+                    type: array
                 errors:
                     items:
-                        $ref: '#/components/schemas/CustomerImportError'
+                        $ref: '#/components/schemas/CustomerImportRowError'
                     type: array
-                failed:
-                    format: int32
-                    type: integer
-                rows:
-                    format: int32
-                    type: integer
-                updated:
+                row:
                     format: int32
                     type: integer
             required:
-                - created
-                - dryRun
+                - row
+                - cells
                 - errors
-                - failed
-                - rows
-                - updated
             type: object
         CustomerMergeMove:
             description: "One kind of reference a merge moved to the surviving customer, and how many (customers merge design D3). This module's five kinds come first — customers.contacts (the absorbed customer's contact associations, a contact the survivor already had included), customers.addresses, customers.timelineEntries (its active entries), customers.tags (its tags, one the survivor already carried included) and customers.attachments (its attachments, those on its entries included; customer attachments design D5) — then each other module's, in the order the installation composes them: energy.supplyPeriods, communications.conversations, communications.conversationSuggestions, communications.conversationCandidates, projects.projects and invoices.invoices (the customer's invoices and credit notes, drafts and issued alike). A kind is listed with count 0 when there was nothing of it. Every holder the installation carries runs, its module enabled or not: every schema is migrated whatever MODULES says, so a module switched off still has references to re-point."
@@ -1609,6 +1751,30 @@ components:
                 data:
                     items:
                         $ref: '#/components/schemas/CustomerFollowUp'
+                    type: array
+                pagination:
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
+            required:
+                - data
+                - pagination
+            type: object
+        PaginatedResponseOfCustomerImport:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/CustomerImport'
+                    type: array
+                pagination:
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
+            required:
+                - data
+                - pagination
+            type: object
+        PaginatedResponseOfCustomerImportRow:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/CustomerImportRow'
                     type: array
                 pagination:
                     $ref: common.yaml#/components/schemas/PaginationMetadata
@@ -4671,79 +4837,6 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:update
-    /api/v1/customers/import:
-        post:
-            description: |-
-                Creates and updates customers from the customers file (customers import/export design D1, D3) — the columns GET /customers/export writes and GET /customers/import/template starts, read with the same format rules; id, ownerName, createdAt, updatedAt and a column named error are ignored, so an export and a failed-rows file re-import as they are. At most 5000 data rows and 5 MB.
-
-                The file may only say what its sender could say by hand. There is no import permission: the operation wants customers:create, customers:update and customers:view — view because every write the import stands in for needs it by hand (PUT /customers/{id} and each sub-resource PUT are update plus view), and because a row's errors (an unknown number, a customer's type) would otherwise tell a caller about customers they may not see — and the file is then checked against the caller before any row is read — the legal-identity columns need customers:legal-identity-manage, the billing columns customers:billing-manage — and a file carrying a column its sender may not write is refused whole. So is a file with an unknown column (a misspelt header is never a silently ignored one) or with some but not all of a group's columns: the legal identity's four, contact info's three, each address's six and the billing profile's eleven come together or not at all.
-
-                Each row, in file order: a customerNumber selects the customer to update (unknown is that row's error; no revision is sent, so the change applies regardless), a blank one creates. Each group in the header is written as its own endpoint writes it — a full replace, a blank cell clearing that field; all of an address's cells blank remove the primary address of that type when it is the only address of that type, are nothing when there is none, and are that row's error when the customer has others of the type (the file describes the primary address alone, so the same file imported twice does the same thing); a blank tags cell clears the tags — and a group not in the header is left alone. name, type and status are each optional columns: a create needs a name and defaults to business and active; on an update an absent name column keeps the name but a blank name cell is that row's error (a name is never cleared), a blank or absent status keeps the status, and a type that differs is an error (PUT /customers/{id}/type is a deliberate act). An imported legal identity's source is manual, unless it repeats the identity on file field for field, which keeps it. group and tags name existing vocabulary, case-insensitively; an unknown name is that row's error. Each row is its own transaction through the endpoints' own validation, statements and events, the caller as actor; a row that fails writes nothing and does not stop the file.
-
-                dryRun defaults to true: every row runs exactly as in a real run, each in its own transaction, rolled back instead of committed — no customer, no customer number and no event is kept (the customer-number counter rolls back with the row; only internal row ids, which the API never promises to be consecutive, may skip), and no lock outlives its row. Two rows of the file creating one legal identity are refused on the second in both runs (a check made on the file before any row runs); otherwise a dry run cannot see an earlier row's effect on a later one, and where that matters the real run refuses the later row cleanly, as that row's error. allowDuplicateIdentity is the create endpoint's flag, applied to every row.
-
-                One import runs at a time, real or dry: another one sent meanwhile is a 409, not queued.
-
-                A real run that does not answer 200 keeps every row committed before it stopped, and says which rows those were nowhere. The run stops before its next row when the connection goes (a closed tab, or a proxy that gives up and closes its connection — a hosted installation's gives up after about 100 seconds), and a server error or a whole-request 409 ends it the same way. Sending the same file again then creates those rows' customers a second time — only a row with a legal identity has the duplicate guard — and a dry run of it reports them as creates like any other. Export, or look at the list, before sending it again, and keep a file on a hosted installation well inside the cap.
-            operationId: postCustomersImport
-            parameters:
-                - description: "'true' (the default) checks the file and keeps nothing; 'false' imports it."
-                  in: query
-                  name: dryRun
-                  schema:
-                    type: string
-                - description: "'true' skips the duplicate-legal-identity check for every row; 'false' (the default) makes a duplicate that row's error."
-                  in: query
-                  name: allowDuplicateIdentity
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    multipart/form-data:
-                        schema:
-                            properties:
-                                file:
-                                    format: binary
-                                    type: string
-                            required:
-                                - file
-                            type: object
-                required: true
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/CustomerImportResult'
-                    description: OK — what the rows did, or would do in a dry run.
-                "400":
-                    content:
-                        application/problem+json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
-                    description: Bad Request — on 'file' for the file itself (no part named file or two of them, an empty part, a part or a body past 5 MB, not UTF-8, no header row, comma-separated, not a semicolon-separated CSV, more than 5000 rows, a header wider than the file's columns, a column with no name, an unknown or repeated column, part of a group, no column an import writes, or a column the caller may not write), or on 'dryRun' or 'allowDuplicateIdentity' for a value that is neither 'true' nor 'false'. A body that is not multipart at all is a bare 400.
-                "401":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Unauthorized
-                "403":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
-                "409":
-                    content:
-                        application/problem+json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Conflict — another import is running; no row of this file ran.
-            summary: Import customers from CSV
-            tags:
-                - Customers
-            x-vantigo-access: permission:customers:create+customers:update+customers:view
     /api/v1/customers/import/template:
         get:
             description: The customers file's header row alone (customers import/export design D2), with every column the caller's import can write — the export's columns less id, ownerName, createdAt and updatedAt, less the legal identity's four without customers:legal-identity-manage and the billing profile's eleven without customers:billing-manage — so a template filled in and imported by the one who downloaded it is never refused for its header. The starting point for a file made by hand.
@@ -4772,6 +4865,465 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:view
+    /api/v1/customers/imports:
+        get:
+            description: The imports, newest change first (customers import wizard design D7), each as GET /customers/imports/{importId} answers it — the page's recent imports, and the way to find a running one again.
+            operationId: getCustomersImports
+            parameters:
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfCustomerImport'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — page below 1, or pageSize outside 1 to 100.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List customer imports
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:import+customers:view
+        post:
+            description: |-
+                Uploads a file of customers and reads it once (customers import wizard design D1, D2): one multipart part named file, at most 50 MiB, 100 000 data rows and 200 columns. UTF-8 with or without a byte order mark, or — when the bytes are not valid UTF-8 — Windows-1252; the separator detected from the header line among the semicolon, the comma and the tab, the most frequent winning and a tie going to the semicolon; RFC 4180 quoting; CRLF or LF; the first non-blank row the header; blank rows skipped and never numbered; a cell beginning with an apostrophe before one of the characters the export guards has the apostrophe taken off. Nothing about the header is refused: an unknown column is a column nobody maps.
+
+                The rows are stored, the import is created in state draft, and the answer carries the header, the first twenty rows and a suggested mapping — the mapping last saved on an import with the same header, else the fields' own JSON names, else an alias table of the words these files use (navn, kundenummer, orgnr, e-post, telefon, postnummer, poststed, …) — for PUT …/mapping to start from. Rate-limited at 600 uploads an hour per client address.
+            operationId: postCustomersImports
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                file:
+                                    format: binary
+                                    type: string
+                            required:
+                                - file
+                            type: object
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerImport'
+                    description: Created — the import, in state draft, with its suggested mapping.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on 'file' for the file itself (no part named file or two of them, an empty file, one past 50 MiB, no header row, more than 200 columns, more than 100 000 rows, or a line the CSV reader cannot parse), each in a sentence saying what to do. A body that is not multipart at all is a bare 400.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — at most 600 uploads an hour from one client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Upload a file of customers
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:import+customers:view
+    /api/v1/customers/imports/{importId}:
+        delete:
+            description: Removes an import and its rows (customers import wizard design D5) — a draft, a checked or a done one; the customers a done import wrote are untouched. A running one is refused; stop it first.
+            operationId: deleteCustomersImportsByImportId
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict — import_running: the worker is checking or importing it."
+            summary: Delete a customer import
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:import+customers:view
+        get:
+            description: One import (customers import wizard design D7) — its state, the file's facts, the header, the first twenty rows with their errors under the saved mapping, the mapping and the suggestion, the counts and the progress. The page polls it every two seconds while the state is checking or importing.
+            operationId: getCustomersImportsByImportId
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerImport'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Get a customer import
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:import+customers:view
+    /api/v1/customers/imports/{importId}/check:
+        post:
+            description: Asks for the check (customers import wizard design D5) — the dry run — of a draft import with a mapping. The import goes to checking and the worker takes it up; every row runs exactly as the real run would, each in its own transaction rolled back at its end, and its outcome and errors are written to the row. Nothing a user could see is kept — no customer, no number, no event. Two rows creating one legal identity are refused on the second in both runs; otherwise a dry run cannot see an earlier row's effect on a later one, and the real run refuses the later row cleanly, as that row's error.
+            operationId: postCustomersImportsByImportIdCheck
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerImport'
+                    description: OK — the import, now checking.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on 'mapping' when the import has none yet.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict — import_running when it is already checking or importing, import_finished when it is done; a checked import is checked again by saving its mapping first."
+            summary: Check a customer import
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:import+customers:view
+    /api/v1/customers/imports/{importId}/failed-rows:
+        get:
+            description: "The rows that failed, as a file to fix and upload again (customers import wizard design D7) — the file's own header, so the same mapping is suggested, with an error column first holding every problem of the row ('<header>: message', or the message alone for the row as a whole), each row's cells exactly as they were. Semicolon-separated, UTF-8 with a byte order mark, CRLF, the export's guard against formulas. Named customers-import-<id>-failed-rows.csv. Empty but for the header when no row failed."
+            operationId: getCustomersImportsByImportIdFailedRows
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        text/csv:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — served as an attachment.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Download an import's failed rows
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:import+customers:view
+    /api/v1/customers/imports/{importId}/mapping:
+        put:
+            description: |-
+                Saves how the rows become customers (customers import wizard design D3, D4) and answers the import with its preview: the first twenty rows, each with the errors its cells get under this mapping — a phone number mapped as an email is seen here before anything runs. Allowed on a draft or a checked import; on a checked one the import goes back to draft and every row's result is cleared, since the check was about another mapping.
+
+                A mapped field is written on every row; an unmapped field is left as it is on an update and blank on a create. A mapped cell that is blank clears its field, with two exceptions the hand-written endpoints have: a blank name on an update is the row's error, and all of an address's mapped cells blank remove the primary address of that type only when it is the only one of that type. For a row whose legalId is mapped and not blank, an unmapped or blank legalCountry is NO, legalType the row's customer type, legalName the row's name. type accepts, besides business and person, bedrift, firma, selskap and company for business and privat, privatperson and private for person. A row with no type is business.
+
+                The permission rule: the operation wants customers:import, and the mapping is checked against what its sender could do by hand — mode create needs customers:create, update customers:update, createOrUpdate both; a legal-identity field mapped needs customers:legal-identity-manage; a billing field mapped needs customers:billing-manage — refused as a 400 on the field naming the key.
+            operationId: putCustomersImportsByImportIdMapping
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CustomerImportMapping'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerImport'
+                    description: OK — the import, in state draft, with the preview under this mapping.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on 'mode' or 'matchBy' for a value outside the enum, a match key missing for a mode that matches, or a mode the caller lacks the permission for; on 'columns' for a field twice, a column twice, a column outside the header, an unknown field, an entry with both or neither of column and value, a fixed value on customerNumber, a match column not mapped, no field at all, or a field the caller lacks the permission for.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict — import_running when the worker is checking or importing it, import_finished when it is done."
+            summary: Save a customer import's mapping
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:import+customers:view
+    /api/v1/customers/imports/{importId}/rows:
+        get:
+            description: An import's rows in file order (customers import wizard design D7), every one or those of one outcome, each with its cells, what the worker did with it, its errors and the customer it made or changed — the errors table after a check, the created customers after a run, a page at a time.
+            operationId: getCustomersImportsByImportIdRows
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - description: created, updated or failed; absent for every row.
+                  in: query
+                  name: outcome
+                  schema:
+                    type: string
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfCustomerImportRow'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — outcome outside created, updated and failed; page below 1; pageSize outside 1 to 500.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: List a customer import's rows
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:import+customers:view
+    /api/v1/customers/imports/{importId}/run:
+        post:
+            description: Asks for the import (customers import wizard design D5) of a checked import whose check found something to create or update. The rows' outcomes are cleared, the import goes to importing and the worker takes it up; a row's outcome is written in the row's own transaction beside the customer's statements, so a row is either committed with its outcome or neither, and a run interrupted resumes at the first row without one. Each row is written through the endpoints' own functions behind the same validators, followed by the same events, the uploader as actor; a row that fails writes nothing and does not stop the file.
+            operationId: postCustomersImportsByImportIdRun
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerImport'
+                    description: OK — the import, now importing.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict — import_running when it is already checking or importing, import_not_checked when it is a draft, import_nothing_to_import when the check found nothing to create or update, import_finished when it is done."
+            summary: Run a customer import
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:import+customers:view
+    /api/v1/customers/imports/{importId}/stop:
+        post:
+            description: Stops a check or a run (customers import wizard design D5). One the worker has not taken up goes straight back — checking to draft, importing to checked. One under way is flagged, and the worker stops before its next chunk, within a few hundred rows; a check stopped goes back to draft with its results cleared, a run stopped finishes as done with every row committed so far kept and the rest never attempted, which processed short of rows says.
+            operationId: postCustomersImportsByImportIdStop
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerImport'
+                    description: OK — the import, stopped or flagged to stop.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict — import_finished when nothing is running: a draft, a checked or a done import."
+            summary: Stop a customer import
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:import+customers:view
     /api/v1/customers/lookup/brreg:
         get:
             operationId: getCustomersLookupBrreg

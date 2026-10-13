@@ -21,6 +21,93 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for CustomerImportState.
+const (
+	Checked   CustomerImportState = "checked"
+	Checking  CustomerImportState = "checking"
+	Done      CustomerImportState = "done"
+	Draft     CustomerImportState = "draft"
+	Importing CustomerImportState = "importing"
+)
+
+// Valid indicates whether the value is a known member of the CustomerImportState enum.
+func (e CustomerImportState) Valid() bool {
+	switch e {
+	case Checked:
+		return true
+	case Checking:
+		return true
+	case Done:
+		return true
+	case Draft:
+		return true
+	case Importing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CustomerImportMappingMatchBy.
+const (
+	CustomerNumber CustomerImportMappingMatchBy = "customerNumber"
+	LegalId        CustomerImportMappingMatchBy = "legalId"
+)
+
+// Valid indicates whether the value is a known member of the CustomerImportMappingMatchBy enum.
+func (e CustomerImportMappingMatchBy) Valid() bool {
+	switch e {
+	case CustomerNumber:
+		return true
+	case LegalId:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CustomerImportMappingMode.
+const (
+	Create         CustomerImportMappingMode = "create"
+	CreateOrUpdate CustomerImportMappingMode = "createOrUpdate"
+	Update         CustomerImportMappingMode = "update"
+)
+
+// Valid indicates whether the value is a known member of the CustomerImportMappingMode enum.
+func (e CustomerImportMappingMode) Valid() bool {
+	switch e {
+	case Create:
+		return true
+	case CreateOrUpdate:
+		return true
+	case Update:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CustomerImportRowOutcome.
+const (
+	Created CustomerImportRowOutcome = "created"
+	Failed  CustomerImportRowOutcome = "failed"
+	Updated CustomerImportRowOutcome = "updated"
+)
+
+// Valid indicates whether the value is a known member of the CustomerImportRowOutcome enum.
+func (e CustomerImportRowOutcome) Valid() bool {
+	switch e {
+	case Created:
+		return true
+	case Failed:
+		return true
+	case Updated:
+		return true
+	default:
+		return false
+	}
+}
+
 // AttachCustomerContactRequest defines model for AttachCustomerContactRequest.
 type AttachCustomerContactRequest struct {
 	ContactId int32   `json:"contactId"`
@@ -202,7 +289,7 @@ type CustomerConflictDuplicate struct {
 	Status         string `json:"status"`
 }
 
-// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), customer_merged, the answer a write to a customer merged away gets (the same design), personal_data_not_a_person, personal_data_customer_active and customer_anonymised (customers GDPR design D3, D4 — the last the answer a write to an anonymised customer gets), and attachment_count_exceeded, the 201st attachment of a customer (customer attachments design D2). A revision conflict carries neither.
+// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), customer_merged, the answer a write to a customer merged away gets (the same design), personal_data_not_a_person, personal_data_customer_active and customer_anonymised (customers GDPR design D3, D4 — the last the answer a write to an anonymised customer gets), attachment_count_exceeded, the 201st attachment of a customer (customer attachments design D2), and the import's four (customers import wizard design D7): import_running (a mapping saved, a delete or a check on an import the worker is running), import_not_checked (a run on an import that is not checked), import_nothing_to_import (a run on a check that found nothing to create or update) and import_finished (a stop or a check on an import that is done). A revision conflict carries neither.
 type CustomerConflictProblem struct {
 	Code       *string                      `json:"code,omitempty"`
 	Detail     *string                      `json:"detail,omitempty"`
@@ -290,21 +377,84 @@ type CustomerGroupSummary struct {
 	Name                    string             `json:"name"`
 }
 
-// CustomerImportError One problem with one row of an import (customers import/export design D3). row is the 1-based data row — the first row under the header is 1, and a row whose every cell is blank is skipped and takes no number. column is the header of the offending cell for a field's error, as the file spells it, absent for a problem with the row as a whole. message is the module's own validation wording.
-type CustomerImportError struct {
-	Column  *string `json:"column,omitempty"`
-	Message string  `json:"message"`
-	Row     int32   `json:"row"`
+// CustomerImport An import of customers from a file (customers import wizard design D1, D5, D7). state is draft (uploaded, mapping being made), checking (the worker runs the dry run), checked (the dry run finished; the counts and the failed rows are on the import), importing (the worker runs the real run) or done (final; finishedAt set — and, when it was stopped, processed short of rows and the rest never attempted). encoding is utf-8 or windows-1252, separator the one character the header was split on. header is the file's header row as written, a nameless column an empty string; sample the first twenty rows, each with the errors its cells get under the saved mapping (none when there is no mapping yet). mapping is absent until PUT …/mapping saved one; suggested is the mapping the server proposes, answered on every read. processed, created, updated and failed are the worker's progress while it runs and the recounted totals once it has finished. error is a whole-run failure the worker met and will retry next cycle, with the run where it stood. createdByName is the uploader's display name through the user directory, absent when the account is gone. requestedAt is when the check or the run was asked for, startedAt when the worker took it up.
+type CustomerImport struct {
+	Created       int32      `json:"created"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	CreatedByName *string    `json:"createdByName,omitempty"`
+	Encoding      string     `json:"encoding"`
+	Error         *string    `json:"error,omitempty"`
+	Failed        int32      `json:"failed"`
+	FileName      string     `json:"fileName"`
+	FinishedAt    *time.Time `json:"finishedAt,omitempty"`
+	Header        []string   `json:"header"`
+	Id            int32      `json:"id"`
+
+	// Mapping How an import's rows become customers (customers import wizard design D3). mode: create makes every row a new customer; update finds the customer by matchBy and refuses a row that finds none; createOrUpdate updates a row that finds one and creates from a row that finds none. matchBy is customerNumber (the mapped customerNumber column) or legalId (the row's legal identity, country and id, defaults applied), required unless mode is create. allowDuplicateIdentity is the create endpoint's flag for every row. columns maps the fields: a field at most once, a column at most once, each entry a column of the file or a fixed value for every row.
+	Mapping       *CustomerImportMapping    `json:"mapping,omitempty"`
+	Processed     int32                     `json:"processed"`
+	RequestedAt   *time.Time                `json:"requestedAt,omitempty"`
+	Rows          int32                     `json:"rows"`
+	Sample        []CustomerImportSampleRow `json:"sample"`
+	Separator     string                    `json:"separator"`
+	SizeBytes     int64                     `json:"sizeBytes"`
+	StartedAt     *time.Time                `json:"startedAt,omitempty"`
+	State         CustomerImportState       `json:"state"`
+	StopRequested bool                      `json:"stopRequested"`
+
+	// Suggested How an import's rows become customers (customers import wizard design D3). mode: create makes every row a new customer; update finds the customer by matchBy and refuses a row that finds none; createOrUpdate updates a row that finds one and creates from a row that finds none. matchBy is customerNumber (the mapped customerNumber column) or legalId (the row's legal identity, country and id, defaults applied), required unless mode is create. allowDuplicateIdentity is the create endpoint's flag for every row. columns maps the fields: a field at most once, a column at most once, each entry a column of the file or a fixed value for every row.
+	Suggested CustomerImportMapping `json:"suggested"`
+	Updated   int32                 `json:"updated"`
 }
 
-// CustomerImportResult What an import did, or in a dry run would do (customers import/export design D3). rows counts the data rows read; created and updated the rows that succeeded (an update that changed nothing still counts); failed the rows that did not, each with at least one entry in errors, in row order.
-type CustomerImportResult struct {
-	Created int32                 `json:"created"`
-	DryRun  bool                  `json:"dryRun"`
-	Errors  []CustomerImportError `json:"errors"`
-	Failed  int32                 `json:"failed"`
-	Rows    int32                 `json:"rows"`
-	Updated int32                 `json:"updated"`
+// CustomerImportState defines model for CustomerImport.State.
+type CustomerImportState string
+
+// CustomerImportMapping How an import's rows become customers (customers import wizard design D3). mode: create makes every row a new customer; update finds the customer by matchBy and refuses a row that finds none; createOrUpdate updates a row that finds one and creates from a row that finds none. matchBy is customerNumber (the mapped customerNumber column) or legalId (the row's legal identity, country and id, defaults applied), required unless mode is create. allowDuplicateIdentity is the create endpoint's flag for every row. columns maps the fields: a field at most once, a column at most once, each entry a column of the file or a fixed value for every row.
+type CustomerImportMapping struct {
+	AllowDuplicateIdentity bool                          `json:"allowDuplicateIdentity"`
+	Columns                []CustomerImportMappingColumn `json:"columns"`
+	MatchBy                *CustomerImportMappingMatchBy `json:"matchBy,omitempty"`
+	Mode                   CustomerImportMappingMode     `json:"mode"`
+}
+
+// CustomerImportMappingMatchBy defines model for CustomerImportMapping.MatchBy.
+type CustomerImportMappingMatchBy string
+
+// CustomerImportMappingMode defines model for CustomerImportMapping.Mode.
+type CustomerImportMappingMode string
+
+// CustomerImportMappingColumn One field of a mapping (customers import wizard design D3): field is one of the import's fields — customerNumber, name, type, status, legalCountry, legalType, legalId, legalName, email, phone, website, the two primary addresses' postalLine1 … postalCountry and invoiceLine1 … invoiceCountry, the billing profile's invoiceEmail, reminderEmail, paymentTermsDays, currency, language, invoiceDelivery, reminderDelivery, peppolId, gln, buyerReference and defaultBillRate, group and tags — and exactly one of column (the 0-based column of the file it is read from) and value (the same text for every row, read as a cell would be; customerNumber takes none).
+type CustomerImportMappingColumn struct {
+	Column *int32  `json:"column,omitempty"`
+	Field  string  `json:"field"`
+	Value  *string `json:"value,omitempty"`
+}
+
+// CustomerImportRow One row of an import with what the worker did with it (customers import wizard design D7). cells are the row's cells as the file had them; outcome is absent for a row not yet run; customerId and customerNumber name the customer a created or updated row made or changed; errors are a failed row's problems, each on a column of the file (the 0-based index) or on the row as a whole.
+type CustomerImportRow struct {
+	Cells          []string                  `json:"cells"`
+	CustomerId     *int32                    `json:"customerId,omitempty"`
+	CustomerNumber *int64                    `json:"customerNumber,omitempty"`
+	Errors         []CustomerImportRowError  `json:"errors"`
+	Outcome        *CustomerImportRowOutcome `json:"outcome,omitempty"`
+	Row            int32                     `json:"row"`
+}
+
+// CustomerImportRowOutcome defines model for CustomerImportRow.Outcome.
+type CustomerImportRowOutcome string
+
+// CustomerImportRowError One problem with one row of an import (customers import wizard design D1). column is the 0-based index of the file column the offending cell is in — not its header, since a file may spell two columns alike — absent for a problem with the row as a whole, and absent for a fixed value's problem too, which the preview reports on every row. message is the module's own validation wording.
+type CustomerImportRowError struct {
+	Column  *int32 `json:"column,omitempty"`
+	Message string `json:"message"`
+}
+
+// CustomerImportSampleRow One of the first rows of an import as the preview shows it (customers import wizard design D3), with the errors its cells get under the saved mapping — the row planned through the endpoints' own validators, no database asked.
+type CustomerImportSampleRow struct {
+	Cells  []string                 `json:"cells"`
+	Errors []CustomerImportRowError `json:"errors"`
+	Row    int32                    `json:"row"`
 }
 
 // CustomerMergeMove One kind of reference a merge moved to the surviving customer, and how many (customers merge design D3). This module's five kinds come first — customers.contacts (the absorbed customer's contact associations, a contact the survivor already had included), customers.addresses, customers.timelineEntries (its active entries), customers.tags (its tags, one the survivor already carried included) and customers.attachments (its attachments, those on its entries included; customer attachments design D5) — then each other module's, in the order the installation composes them: energy.supplyPeriods, communications.conversations, communications.conversationSuggestions, communications.conversationCandidates, projects.projects and invoices.invoices (the customer's invoices and credit notes, drafts and issued alike). A kind is listed with count 0 when there was nothing of it. Every holder the installation carries runs, its module enabled or not: every schema is migrated whatever MODULES says, so a module switched off still has references to re-point.
@@ -754,6 +904,18 @@ type PaginatedResponseOfCustomerFollowUp struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
+// PaginatedResponseOfCustomerImport defines model for PaginatedResponseOfCustomerImport.
+type PaginatedResponseOfCustomerImport struct {
+	Data       []CustomerImport                `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
+// PaginatedResponseOfCustomerImportRow defines model for PaginatedResponseOfCustomerImportRow.
+type PaginatedResponseOfCustomerImportRow struct {
+	Data       []CustomerImportRow             `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
 // PaginatedResponseOfResponse defines model for PaginatedResponseOfResponse.
 type PaginatedResponseOfResponse struct {
 	Data       []GetContactsResponse           `json:"data"`
@@ -1033,18 +1195,23 @@ type GetCustomersFollowUpsParams struct {
 	CustomerId *int32  `form:"customerId,omitempty" json:"customerId,omitempty"`
 }
 
-// PostCustomersImportMultipartBody defines parameters for PostCustomersImport.
-type PostCustomersImportMultipartBody struct {
+// GetCustomersImportsParams defines parameters for GetCustomersImports.
+type GetCustomersImportsParams struct {
+	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// PostCustomersImportsMultipartBody defines parameters for PostCustomersImports.
+type PostCustomersImportsMultipartBody struct {
 	File openapi_types.File `json:"file"`
 }
 
-// PostCustomersImportParams defines parameters for PostCustomersImport.
-type PostCustomersImportParams struct {
-	// DryRun 'true' (the default) checks the file and keeps nothing; 'false' imports it.
-	DryRun *string `form:"dryRun,omitempty" json:"dryRun,omitempty"`
-
-	// AllowDuplicateIdentity 'true' skips the duplicate-legal-identity check for every row; 'false' (the default) makes a duplicate that row's error.
-	AllowDuplicateIdentity *string `form:"allowDuplicateIdentity,omitempty" json:"allowDuplicateIdentity,omitempty"`
+// GetCustomersImportsByImportIdRowsParams defines parameters for GetCustomersImportsByImportIdRows.
+type GetCustomersImportsByImportIdRowsParams struct {
+	// Outcome created, updated or failed; absent for every row.
+	Outcome  *string `form:"outcome,omitempty" json:"outcome,omitempty"`
+	Page     *int32  `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // GetCustomersLookupBrregParams defines parameters for GetCustomersLookupBrreg.
@@ -1102,8 +1269,11 @@ type PostCustomersGroupsJSONRequestBody = CustomerGroupRequest
 // PutCustomersGroupsByGroupIdJSONRequestBody defines body for PutCustomersGroupsByGroupId for application/json ContentType.
 type PutCustomersGroupsByGroupIdJSONRequestBody = CustomerGroupRequest
 
-// PostCustomersImportMultipartRequestBody defines body for PostCustomersImport for multipart/form-data ContentType.
-type PostCustomersImportMultipartRequestBody PostCustomersImportMultipartBody
+// PostCustomersImportsMultipartRequestBody defines body for PostCustomersImports for multipart/form-data ContentType.
+type PostCustomersImportsMultipartRequestBody PostCustomersImportsMultipartBody
+
+// PutCustomersImportsByImportIdMappingJSONRequestBody defines body for PutCustomersImportsByImportIdMapping for application/json ContentType.
+type PutCustomersImportsByImportIdMappingJSONRequestBody = CustomerImportMapping
 
 // PostCustomersTagsJSONRequestBody defines body for PostCustomersTags for application/json ContentType.
 type PostCustomersTagsJSONRequestBody = CustomerTagRequest
@@ -1209,12 +1379,39 @@ type ServerInterface interface {
 	// PutCustomersGroupsByGroupId Rename a customer group or change its default payment term
 	// (PUT /api/v1/customers/groups/{groupId})
 	PutCustomersGroupsByGroupId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID)
-	// PostCustomersImport Import customers from CSV
-	// (POST /api/v1/customers/import)
-	PostCustomersImport(w http.ResponseWriter, r *http.Request, params PostCustomersImportParams)
 	// GetCustomersImportTemplate Download the customers import template
 	// (GET /api/v1/customers/import/template)
 	GetCustomersImportTemplate(w http.ResponseWriter, r *http.Request)
+	// GetCustomersImports List customer imports
+	// (GET /api/v1/customers/imports)
+	GetCustomersImports(w http.ResponseWriter, r *http.Request, params GetCustomersImportsParams)
+	// PostCustomersImports Upload a file of customers
+	// (POST /api/v1/customers/imports)
+	PostCustomersImports(w http.ResponseWriter, r *http.Request)
+	// DeleteCustomersImportsByImportId Delete a customer import
+	// (DELETE /api/v1/customers/imports/{importId})
+	DeleteCustomersImportsByImportId(w http.ResponseWriter, r *http.Request, importId int32)
+	// GetCustomersImportsByImportId Get a customer import
+	// (GET /api/v1/customers/imports/{importId})
+	GetCustomersImportsByImportId(w http.ResponseWriter, r *http.Request, importId int32)
+	// PostCustomersImportsByImportIdCheck Check a customer import
+	// (POST /api/v1/customers/imports/{importId}/check)
+	PostCustomersImportsByImportIdCheck(w http.ResponseWriter, r *http.Request, importId int32)
+	// GetCustomersImportsByImportIdFailedRows Download an import's failed rows
+	// (GET /api/v1/customers/imports/{importId}/failed-rows)
+	GetCustomersImportsByImportIdFailedRows(w http.ResponseWriter, r *http.Request, importId int32)
+	// PutCustomersImportsByImportIdMapping Save a customer import's mapping
+	// (PUT /api/v1/customers/imports/{importId}/mapping)
+	PutCustomersImportsByImportIdMapping(w http.ResponseWriter, r *http.Request, importId int32)
+	// GetCustomersImportsByImportIdRows List a customer import's rows
+	// (GET /api/v1/customers/imports/{importId}/rows)
+	GetCustomersImportsByImportIdRows(w http.ResponseWriter, r *http.Request, importId int32, params GetCustomersImportsByImportIdRowsParams)
+	// PostCustomersImportsByImportIdRun Run a customer import
+	// (POST /api/v1/customers/imports/{importId}/run)
+	PostCustomersImportsByImportIdRun(w http.ResponseWriter, r *http.Request, importId int32)
+	// PostCustomersImportsByImportIdStop Stop a customer import
+	// (POST /api/v1/customers/imports/{importId}/stop)
+	PostCustomersImportsByImportIdStop(w http.ResponseWriter, r *http.Request, importId int32)
 	// GetCustomersLookupBrreg Look up business entities in Brønnøysundregisteret
 	// (GET /api/v1/customers/lookup/brreg)
 	GetCustomersLookupBrreg(w http.ResponseWriter, r *http.Request, params GetCustomersLookupBrregParams)
@@ -2104,43 +2301,11 @@ func (siw *ServerInterfaceWrapper) PutCustomersGroupsByGroupId(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
-// PostCustomersImport operation middleware
-func (siw *ServerInterfaceWrapper) PostCustomersImport(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params PostCustomersImportParams
-
-	// ------------- Optional query parameter "dryRun" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "dryRun", r.URL.Query(), &params.DryRun, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dryRun"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dryRun", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "allowDuplicateIdentity" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "allowDuplicateIdentity", r.URL.Query(), &params.AllowDuplicateIdentity, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "allowDuplicateIdentity"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "allowDuplicateIdentity", Err: err})
-		}
-		return
-	}
+// GetCustomersImportTemplate operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersImportTemplate(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostCustomersImport(w, r, params)
+		siw.Handler.GetCustomersImportTemplate(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2150,11 +2315,307 @@ func (siw *ServerInterfaceWrapper) PostCustomersImport(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
-// GetCustomersImportTemplate operation middleware
-func (siw *ServerInterfaceWrapper) GetCustomersImportTemplate(w http.ResponseWriter, r *http.Request) {
+// GetCustomersImports operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersImports(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCustomersImportsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetCustomersImportTemplate(w, r)
+		siw.Handler.GetCustomersImports(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCustomersImports operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersImports(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersImports(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCustomersImportsByImportId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCustomersImportsByImportId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCustomersImportsByImportId(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCustomersImportsByImportId operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersImportsByImportId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersImportsByImportId(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCustomersImportsByImportIdCheck operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersImportsByImportIdCheck(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersImportsByImportIdCheck(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCustomersImportsByImportIdFailedRows operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersImportsByImportIdFailedRows(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersImportsByImportIdFailedRows(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutCustomersImportsByImportIdMapping operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersImportsByImportIdMapping(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersImportsByImportIdMapping(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCustomersImportsByImportIdRows operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersImportsByImportIdRows(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCustomersImportsByImportIdRowsParams
+
+	// ------------- Optional query parameter "outcome" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcome", r.URL.Query(), &params.Outcome, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersImportsByImportIdRows(w, r, importId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCustomersImportsByImportIdRun operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersImportsByImportIdRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersImportsByImportIdRun(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCustomersImportsByImportIdStop operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersImportsByImportIdStop(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersImportsByImportIdStop(w, r, importId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3870,8 +4331,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/groups", wrapper.PostCustomersGroups)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/groups/{groupId}", wrapper.DeleteCustomersGroupsByGroupId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/groups/{groupId}", wrapper.PutCustomersGroupsByGroupId)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/import", wrapper.PostCustomersImport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/import/template", wrapper.GetCustomersImportTemplate)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/imports", wrapper.GetCustomersImports)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/imports", wrapper.PostCustomersImports)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/imports/{importId}", wrapper.DeleteCustomersImportsByImportId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/imports/{importId}", wrapper.GetCustomersImportsByImportId)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/imports/{importId}/check", wrapper.PostCustomersImportsByImportIdCheck)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/imports/{importId}/failed-rows", wrapper.GetCustomersImportsByImportIdFailedRows)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/imports/{importId}/mapping", wrapper.PutCustomersImportsByImportIdMapping)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/imports/{importId}/rows", wrapper.GetCustomersImportsByImportIdRows)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/imports/{importId}/run", wrapper.PostCustomersImportsByImportIdRun)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/imports/{importId}/stop", wrapper.PostCustomersImportsByImportIdStop)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/lookup/brreg", wrapper.GetCustomersLookupBrreg)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats", wrapper.GetCustomersStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats/attention", wrapper.GetCustomersStatsAttention)
@@ -4898,85 +5368,6 @@ func (response PutCustomersGroupsByGroupId409ApplicationProblemPlusJSONResponse)
 	return err
 }
 
-type PostCustomersImportRequestObject struct {
-	Params PostCustomersImportParams
-	Body   *multipart.Reader
-}
-
-type PostCustomersImportResponseObject interface {
-	VisitPostCustomersImportResponse(w http.ResponseWriter) error
-}
-
-type PostCustomersImport200JSONResponse CustomerImportResult
-
-func (response PostCustomersImport200JSONResponse) VisitPostCustomersImportResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostCustomersImport400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
-
-func (response PostCustomersImport400ApplicationProblemPlusJSONResponse) VisitPostCustomersImportResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostCustomersImport401JSONResponse externalRef0.AuthErrorResponse
-
-func (response PostCustomersImport401JSONResponse) VisitPostCustomersImportResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostCustomersImport403JSONResponse externalRef0.AuthErrorResponse
-
-func (response PostCustomersImport403JSONResponse) VisitPostCustomersImportResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostCustomersImport409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
-
-func (response PostCustomersImport409ApplicationProblemPlusJSONResponse) VisitPostCustomersImportResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetCustomersImportTemplateRequestObject struct {
 }
 
@@ -5028,6 +5419,736 @@ func (response GetCustomersImportTemplate403JSONResponse) VisitGetCustomersImpor
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsRequestObject struct {
+	Params GetCustomersImportsParams
+}
+
+type GetCustomersImportsResponseObject interface {
+	VisitGetCustomersImportsResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersImports200JSONResponse PaginatedResponseOfCustomerImport
+
+func (response GetCustomersImports200JSONResponse) VisitGetCustomersImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImports400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetCustomersImports400ApplicationProblemPlusJSONResponse) VisitGetCustomersImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImports401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersImports401JSONResponse) VisitGetCustomersImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImports403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersImports403JSONResponse) VisitGetCustomersImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsRequestObject struct {
+	Body *multipart.Reader
+}
+
+type PostCustomersImportsResponseObject interface {
+	VisitPostCustomersImportsResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersImports201JSONResponse CustomerImport
+
+func (response PostCustomersImports201JSONResponse) VisitPostCustomersImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImports400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostCustomersImports400ApplicationProblemPlusJSONResponse) VisitPostCustomersImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImports401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersImports401JSONResponse) VisitPostCustomersImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImports403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersImports403JSONResponse) VisitPostCustomersImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImports429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostCustomersImports429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostCustomersImports429ResponseHeaders
+}
+
+func (response PostCustomersImports429JSONResponse) VisitPostCustomersImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersImportsByImportIdRequestObject struct {
+	ImportId int32 `json:"importId"`
+}
+
+type DeleteCustomersImportsByImportIdResponseObject interface {
+	VisitDeleteCustomersImportsByImportIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteCustomersImportsByImportId204Response struct {
+}
+
+func (response DeleteCustomersImportsByImportId204Response) VisitDeleteCustomersImportsByImportIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteCustomersImportsByImportId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersImportsByImportId401JSONResponse) VisitDeleteCustomersImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersImportsByImportId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersImportsByImportId403JSONResponse) VisitDeleteCustomersImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersImportsByImportId404Response struct {
+}
+
+func (response DeleteCustomersImportsByImportId404Response) VisitDeleteCustomersImportsByImportIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteCustomersImportsByImportId409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response DeleteCustomersImportsByImportId409ApplicationProblemPlusJSONResponse) VisitDeleteCustomersImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportIdRequestObject struct {
+	ImportId int32 `json:"importId"`
+}
+
+type GetCustomersImportsByImportIdResponseObject interface {
+	VisitGetCustomersImportsByImportIdResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersImportsByImportId200JSONResponse CustomerImport
+
+func (response GetCustomersImportsByImportId200JSONResponse) VisitGetCustomersImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersImportsByImportId401JSONResponse) VisitGetCustomersImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersImportsByImportId403JSONResponse) VisitGetCustomersImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportId404Response struct {
+}
+
+func (response GetCustomersImportsByImportId404Response) VisitGetCustomersImportsByImportIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersImportsByImportIdCheckRequestObject struct {
+	ImportId int32 `json:"importId"`
+}
+
+type PostCustomersImportsByImportIdCheckResponseObject interface {
+	VisitPostCustomersImportsByImportIdCheckResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersImportsByImportIdCheck200JSONResponse CustomerImport
+
+func (response PostCustomersImportsByImportIdCheck200JSONResponse) VisitPostCustomersImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsByImportIdCheck400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostCustomersImportsByImportIdCheck400ApplicationProblemPlusJSONResponse) VisitPostCustomersImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsByImportIdCheck401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersImportsByImportIdCheck401JSONResponse) VisitPostCustomersImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsByImportIdCheck403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersImportsByImportIdCheck403JSONResponse) VisitPostCustomersImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsByImportIdCheck404Response struct {
+}
+
+func (response PostCustomersImportsByImportIdCheck404Response) VisitPostCustomersImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersImportsByImportIdCheck409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomersImportsByImportIdCheck409ApplicationProblemPlusJSONResponse) VisitPostCustomersImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportIdFailedRowsRequestObject struct {
+	ImportId int32 `json:"importId"`
+}
+
+type GetCustomersImportsByImportIdFailedRowsResponseObject interface {
+	VisitGetCustomersImportsByImportIdFailedRowsResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersImportsByImportIdFailedRows200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetCustomersImportsByImportIdFailedRows200TextcsvResponse) VisitGetCustomersImportsByImportIdFailedRowsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetCustomersImportsByImportIdFailedRows401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersImportsByImportIdFailedRows401JSONResponse) VisitGetCustomersImportsByImportIdFailedRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportIdFailedRows403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersImportsByImportIdFailedRows403JSONResponse) VisitGetCustomersImportsByImportIdFailedRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportIdFailedRows404Response struct {
+}
+
+func (response GetCustomersImportsByImportIdFailedRows404Response) VisitGetCustomersImportsByImportIdFailedRowsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersImportsByImportIdMappingRequestObject struct {
+	ImportId int32 `json:"importId"`
+	Body     *PutCustomersImportsByImportIdMappingJSONRequestBody
+}
+
+type PutCustomersImportsByImportIdMappingResponseObject interface {
+	VisitPutCustomersImportsByImportIdMappingResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersImportsByImportIdMapping200JSONResponse CustomerImport
+
+func (response PutCustomersImportsByImportIdMapping200JSONResponse) VisitPutCustomersImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersImportsByImportIdMapping400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersImportsByImportIdMapping400ApplicationProblemPlusJSONResponse) VisitPutCustomersImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersImportsByImportIdMapping401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersImportsByImportIdMapping401JSONResponse) VisitPutCustomersImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersImportsByImportIdMapping403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersImportsByImportIdMapping403JSONResponse) VisitPutCustomersImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersImportsByImportIdMapping404Response struct {
+}
+
+func (response PutCustomersImportsByImportIdMapping404Response) VisitPutCustomersImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersImportsByImportIdMapping409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersImportsByImportIdMapping409ApplicationProblemPlusJSONResponse) VisitPutCustomersImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportIdRowsRequestObject struct {
+	ImportId int32 `json:"importId"`
+	Params   GetCustomersImportsByImportIdRowsParams
+}
+
+type GetCustomersImportsByImportIdRowsResponseObject interface {
+	VisitGetCustomersImportsByImportIdRowsResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersImportsByImportIdRows200JSONResponse PaginatedResponseOfCustomerImportRow
+
+func (response GetCustomersImportsByImportIdRows200JSONResponse) VisitGetCustomersImportsByImportIdRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportIdRows400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetCustomersImportsByImportIdRows400ApplicationProblemPlusJSONResponse) VisitGetCustomersImportsByImportIdRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportIdRows401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersImportsByImportIdRows401JSONResponse) VisitGetCustomersImportsByImportIdRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportIdRows403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersImportsByImportIdRows403JSONResponse) VisitGetCustomersImportsByImportIdRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportsByImportIdRows404Response struct {
+}
+
+func (response GetCustomersImportsByImportIdRows404Response) VisitGetCustomersImportsByImportIdRowsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersImportsByImportIdRunRequestObject struct {
+	ImportId int32 `json:"importId"`
+}
+
+type PostCustomersImportsByImportIdRunResponseObject interface {
+	VisitPostCustomersImportsByImportIdRunResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersImportsByImportIdRun200JSONResponse CustomerImport
+
+func (response PostCustomersImportsByImportIdRun200JSONResponse) VisitPostCustomersImportsByImportIdRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsByImportIdRun401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersImportsByImportIdRun401JSONResponse) VisitPostCustomersImportsByImportIdRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsByImportIdRun403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersImportsByImportIdRun403JSONResponse) VisitPostCustomersImportsByImportIdRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsByImportIdRun404Response struct {
+}
+
+func (response PostCustomersImportsByImportIdRun404Response) VisitPostCustomersImportsByImportIdRunResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersImportsByImportIdRun409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomersImportsByImportIdRun409ApplicationProblemPlusJSONResponse) VisitPostCustomersImportsByImportIdRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsByImportIdStopRequestObject struct {
+	ImportId int32 `json:"importId"`
+}
+
+type PostCustomersImportsByImportIdStopResponseObject interface {
+	VisitPostCustomersImportsByImportIdStopResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersImportsByImportIdStop200JSONResponse CustomerImport
+
+func (response PostCustomersImportsByImportIdStop200JSONResponse) VisitPostCustomersImportsByImportIdStopResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsByImportIdStop401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersImportsByImportIdStop401JSONResponse) VisitPostCustomersImportsByImportIdStopResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsByImportIdStop403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersImportsByImportIdStop403JSONResponse) VisitPostCustomersImportsByImportIdStopResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportsByImportIdStop404Response struct {
+}
+
+func (response PostCustomersImportsByImportIdStop404Response) VisitPostCustomersImportsByImportIdStopResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersImportsByImportIdStop409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomersImportsByImportIdStop409ApplicationProblemPlusJSONResponse) VisitPostCustomersImportsByImportIdStopResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -8803,12 +9924,39 @@ type StrictServerInterface interface {
 	// PutCustomersGroupsByGroupId Rename a customer group or change its default payment term
 	// (PUT /api/v1/customers/groups/{groupId})
 	PutCustomersGroupsByGroupId(ctx context.Context, request PutCustomersGroupsByGroupIdRequestObject) (PutCustomersGroupsByGroupIdResponseObject, error)
-	// PostCustomersImport Import customers from CSV
-	// (POST /api/v1/customers/import)
-	PostCustomersImport(ctx context.Context, request PostCustomersImportRequestObject) (PostCustomersImportResponseObject, error)
 	// GetCustomersImportTemplate Download the customers import template
 	// (GET /api/v1/customers/import/template)
 	GetCustomersImportTemplate(ctx context.Context, request GetCustomersImportTemplateRequestObject) (GetCustomersImportTemplateResponseObject, error)
+	// GetCustomersImports List customer imports
+	// (GET /api/v1/customers/imports)
+	GetCustomersImports(ctx context.Context, request GetCustomersImportsRequestObject) (GetCustomersImportsResponseObject, error)
+	// PostCustomersImports Upload a file of customers
+	// (POST /api/v1/customers/imports)
+	PostCustomersImports(ctx context.Context, request PostCustomersImportsRequestObject) (PostCustomersImportsResponseObject, error)
+	// DeleteCustomersImportsByImportId Delete a customer import
+	// (DELETE /api/v1/customers/imports/{importId})
+	DeleteCustomersImportsByImportId(ctx context.Context, request DeleteCustomersImportsByImportIdRequestObject) (DeleteCustomersImportsByImportIdResponseObject, error)
+	// GetCustomersImportsByImportId Get a customer import
+	// (GET /api/v1/customers/imports/{importId})
+	GetCustomersImportsByImportId(ctx context.Context, request GetCustomersImportsByImportIdRequestObject) (GetCustomersImportsByImportIdResponseObject, error)
+	// PostCustomersImportsByImportIdCheck Check a customer import
+	// (POST /api/v1/customers/imports/{importId}/check)
+	PostCustomersImportsByImportIdCheck(ctx context.Context, request PostCustomersImportsByImportIdCheckRequestObject) (PostCustomersImportsByImportIdCheckResponseObject, error)
+	// GetCustomersImportsByImportIdFailedRows Download an import's failed rows
+	// (GET /api/v1/customers/imports/{importId}/failed-rows)
+	GetCustomersImportsByImportIdFailedRows(ctx context.Context, request GetCustomersImportsByImportIdFailedRowsRequestObject) (GetCustomersImportsByImportIdFailedRowsResponseObject, error)
+	// PutCustomersImportsByImportIdMapping Save a customer import's mapping
+	// (PUT /api/v1/customers/imports/{importId}/mapping)
+	PutCustomersImportsByImportIdMapping(ctx context.Context, request PutCustomersImportsByImportIdMappingRequestObject) (PutCustomersImportsByImportIdMappingResponseObject, error)
+	// GetCustomersImportsByImportIdRows List a customer import's rows
+	// (GET /api/v1/customers/imports/{importId}/rows)
+	GetCustomersImportsByImportIdRows(ctx context.Context, request GetCustomersImportsByImportIdRowsRequestObject) (GetCustomersImportsByImportIdRowsResponseObject, error)
+	// PostCustomersImportsByImportIdRun Run a customer import
+	// (POST /api/v1/customers/imports/{importId}/run)
+	PostCustomersImportsByImportIdRun(ctx context.Context, request PostCustomersImportsByImportIdRunRequestObject) (PostCustomersImportsByImportIdRunResponseObject, error)
+	// PostCustomersImportsByImportIdStop Stop a customer import
+	// (POST /api/v1/customers/imports/{importId}/stop)
+	PostCustomersImportsByImportIdStop(ctx context.Context, request PostCustomersImportsByImportIdStopRequestObject) (PostCustomersImportsByImportIdStopResponseObject, error)
 	// GetCustomersLookupBrreg Look up business entities in Brønnøysundregisteret
 	// (GET /api/v1/customers/lookup/brreg)
 	GetCustomersLookupBrreg(ctx context.Context, request GetCustomersLookupBrregRequestObject) (GetCustomersLookupBrregResponseObject, error)
@@ -9417,39 +10565,6 @@ func (sh *strictHandler) PutCustomersGroupsByGroupId(w http.ResponseWriter, r *h
 	}
 }
 
-// PostCustomersImport operation middleware
-func (sh *strictHandler) PostCustomersImport(w http.ResponseWriter, r *http.Request, params PostCustomersImportParams) {
-	var request PostCustomersImportRequestObject
-
-	request.Params = params
-
-	if reader, err := r.MultipartReader(); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
-		return
-	} else {
-		request.Body = reader
-	}
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.PostCustomersImport(ctx, request.(PostCustomersImportRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "PostCustomersImport")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(PostCustomersImportResponseObject); ok {
-		if err := validResponse.VisitPostCustomersImportResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // GetCustomersImportTemplate operation middleware
 func (sh *strictHandler) GetCustomersImportTemplate(w http.ResponseWriter, r *http.Request) {
 	var request GetCustomersImportTemplateRequestObject
@@ -9467,6 +10582,279 @@ func (sh *strictHandler) GetCustomersImportTemplate(w http.ResponseWriter, r *ht
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCustomersImportTemplateResponseObject); ok {
 		if err := validResponse.VisitGetCustomersImportTemplateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersImports operation middleware
+func (sh *strictHandler) GetCustomersImports(w http.ResponseWriter, r *http.Request, params GetCustomersImportsParams) {
+	var request GetCustomersImportsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersImports(ctx, request.(GetCustomersImportsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersImports")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersImportsResponseObject); ok {
+		if err := validResponse.VisitGetCustomersImportsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersImports operation middleware
+func (sh *strictHandler) PostCustomersImports(w http.ResponseWriter, r *http.Request) {
+	var request PostCustomersImportsRequestObject
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersImports(ctx, request.(PostCustomersImportsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersImports")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersImportsResponseObject); ok {
+		if err := validResponse.VisitPostCustomersImportsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCustomersImportsByImportId operation middleware
+func (sh *strictHandler) DeleteCustomersImportsByImportId(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request DeleteCustomersImportsByImportIdRequestObject
+
+	request.ImportId = importId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCustomersImportsByImportId(ctx, request.(DeleteCustomersImportsByImportIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCustomersImportsByImportId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCustomersImportsByImportIdResponseObject); ok {
+		if err := validResponse.VisitDeleteCustomersImportsByImportIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersImportsByImportId operation middleware
+func (sh *strictHandler) GetCustomersImportsByImportId(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request GetCustomersImportsByImportIdRequestObject
+
+	request.ImportId = importId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersImportsByImportId(ctx, request.(GetCustomersImportsByImportIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersImportsByImportId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersImportsByImportIdResponseObject); ok {
+		if err := validResponse.VisitGetCustomersImportsByImportIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersImportsByImportIdCheck operation middleware
+func (sh *strictHandler) PostCustomersImportsByImportIdCheck(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request PostCustomersImportsByImportIdCheckRequestObject
+
+	request.ImportId = importId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersImportsByImportIdCheck(ctx, request.(PostCustomersImportsByImportIdCheckRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersImportsByImportIdCheck")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersImportsByImportIdCheckResponseObject); ok {
+		if err := validResponse.VisitPostCustomersImportsByImportIdCheckResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersImportsByImportIdFailedRows operation middleware
+func (sh *strictHandler) GetCustomersImportsByImportIdFailedRows(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request GetCustomersImportsByImportIdFailedRowsRequestObject
+
+	request.ImportId = importId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersImportsByImportIdFailedRows(ctx, request.(GetCustomersImportsByImportIdFailedRowsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersImportsByImportIdFailedRows")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersImportsByImportIdFailedRowsResponseObject); ok {
+		if err := validResponse.VisitGetCustomersImportsByImportIdFailedRowsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersImportsByImportIdMapping operation middleware
+func (sh *strictHandler) PutCustomersImportsByImportIdMapping(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request PutCustomersImportsByImportIdMappingRequestObject
+
+	request.ImportId = importId
+
+	var body PutCustomersImportsByImportIdMappingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersImportsByImportIdMapping(ctx, request.(PutCustomersImportsByImportIdMappingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersImportsByImportIdMapping")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersImportsByImportIdMappingResponseObject); ok {
+		if err := validResponse.VisitPutCustomersImportsByImportIdMappingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersImportsByImportIdRows operation middleware
+func (sh *strictHandler) GetCustomersImportsByImportIdRows(w http.ResponseWriter, r *http.Request, importId int32, params GetCustomersImportsByImportIdRowsParams) {
+	var request GetCustomersImportsByImportIdRowsRequestObject
+
+	request.ImportId = importId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersImportsByImportIdRows(ctx, request.(GetCustomersImportsByImportIdRowsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersImportsByImportIdRows")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersImportsByImportIdRowsResponseObject); ok {
+		if err := validResponse.VisitGetCustomersImportsByImportIdRowsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersImportsByImportIdRun operation middleware
+func (sh *strictHandler) PostCustomersImportsByImportIdRun(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request PostCustomersImportsByImportIdRunRequestObject
+
+	request.ImportId = importId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersImportsByImportIdRun(ctx, request.(PostCustomersImportsByImportIdRunRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersImportsByImportIdRun")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersImportsByImportIdRunResponseObject); ok {
+		if err := validResponse.VisitPostCustomersImportsByImportIdRunResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersImportsByImportIdStop operation middleware
+func (sh *strictHandler) PostCustomersImportsByImportIdStop(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request PostCustomersImportsByImportIdStopRequestObject
+
+	request.ImportId = importId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersImportsByImportIdStop(ctx, request.(PostCustomersImportsByImportIdStopRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersImportsByImportIdStop")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersImportsByImportIdStopResponseObject); ok {
+		if err := validResponse.VisitPostCustomersImportsByImportIdStopResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

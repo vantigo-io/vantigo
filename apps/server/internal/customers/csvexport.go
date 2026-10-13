@@ -82,9 +82,9 @@ func exportColumns(includeIdentity bool) []csvColumn {
 // importTemplateColumns is every column its caller's import can write: the
 // table less the export-only four, less the legal identity's four without
 // customers:legal-identity-manage and the billing profile's eleven without
-// customers:billing-manage — the very columns importLayoutFor would refuse
-// the file for, so a template filled in and sent back is never refused for
-// its header.
+// customers:billing-manage — the very fields validateImportMapping would
+// refuse the mapping for (imports_mapping.go), so a template filled in, sent
+// back and mapped column for column is a mapping the import accepts.
 func importTemplateColumns(identity, billing bool) []csvColumn {
 	out := make([]csvColumn, 0, len(customerCSVColumns))
 	for _, c := range customerCSVColumns {

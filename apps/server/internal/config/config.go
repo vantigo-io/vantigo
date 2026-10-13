@@ -230,6 +230,22 @@ type Config struct {
 	// (CUSTOMERS_ANONYMISATION_POLL, default 24 hours): a schedule is a day, so
 	// once a day is on time. Each cycle is at most fifty customers, a constant.
 	CustomersAnonymisationPoll time.Duration
+	// CustomersImportEnabled is the on/off switch for the customers module's
+	// import worker (CUSTOMERS_IMPORT_ENABLED, customers import wizard design
+	// D6), the one that checks and runs the files people upload. Default ON:
+	// with it off an import queues and waits, and the page says so. A 0 means
+	// the worker is never handed to the runner.
+	CustomersImportEnabled bool
+	// CustomersImportPoll is how often that worker looks for a queued import
+	// (CUSTOMERS_IMPORT_POLL, default 5 seconds — the outbox's figure, because a
+	// person is watching this one). In the default deployment the handlers also
+	// nudge the worker in-process, so the poll is the split deployment's bound.
+	CustomersImportPoll time.Duration
+	// CustomersImportRetention is how long a finished or abandoned import and
+	// its rows are kept before the worker's sweep removes them
+	// (CUSTOMERS_IMPORT_RETENTION, default 720 hours — 30 days): the rows are
+	// personal data in flight, not a record to keep.
+	CustomersImportRetention time.Duration
 
 	// InvoicesEhfEnabled is the on/off switch for sending invoices as EHF over
 	// Peppol (INVOICES_EHF_ENABLED, EHF and KID design D1). Default ON, like
@@ -448,6 +464,7 @@ func Load(env map[string]string) (*Config, error) {
 	peppolLookup(&p, env, c)
 	customersRegistryWorkers(&p, env, c)
 	customersAnonymisation(&p, env, c)
+	customersImport(&p, env, c)
 	invoicesEhf(&p, env, c)
 	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 20000)
 	staffWorkers(&p, env, c)
@@ -648,6 +665,16 @@ func customersRegistryWorkers(p *problems, env map[string]string, c *Config) {
 func customersAnonymisation(p *problems, env map[string]string, c *Config) {
 	c.CustomersAnonymisationEnabled = boolean(p, env, "CUSTOMERS_ANONYMISATION_ENABLED", true)
 	c.CustomersAnonymisationPoll = duration(p, env, "CUSTOMERS_ANONYMISATION_POLL", 24*time.Hour)
+}
+
+// customersImport loads the import worker's settings (customers import wizard
+// design D6): its switch, on by default, its poll and the retention of a
+// finished import. The chunk — five hundred rows between progress writes —
+// is a constant in the worker, not a knob.
+func customersImport(p *problems, env map[string]string, c *Config) {
+	c.CustomersImportEnabled = boolean(p, env, "CUSTOMERS_IMPORT_ENABLED", true)
+	c.CustomersImportPoll = duration(p, env, "CUSTOMERS_IMPORT_POLL", 5*time.Second)
+	c.CustomersImportRetention = duration(p, env, "CUSTOMERS_IMPORT_RETENTION", 720*time.Hour)
 }
 
 // staffWorkersMinPoll is the shortest STAFF_WORKERS_POLL accepted.

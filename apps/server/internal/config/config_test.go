@@ -1235,6 +1235,36 @@ func TestLoad_CustomersAnonymisationWorker(t *testing.T) {
 	}
 }
 
+// TestLoad_CustomersImportWorker pins the import worker's three settings
+// (customers import wizard design D6): on unless turned off, a five-second
+// poll since a person is watching, and thirty days of retention.
+func TestLoad_CustomersImportWorker(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.CustomersImportEnabled {
+		t.Error("CUSTOMERS_IMPORT_ENABLED unset did not default to on")
+	}
+	if cfg.CustomersImportPoll != 5*time.Second {
+		t.Errorf("CustomersImportPoll = %v, want 5s", cfg.CustomersImportPoll)
+	}
+	if cfg.CustomersImportRetention != 720*time.Hour {
+		t.Errorf("CustomersImportRetention = %v, want 720h", cfg.CustomersImportRetention)
+	}
+	tuned := mustLoad(t, with(validEnv(), "CUSTOMERS_IMPORT_ENABLED", "0", "CUSTOMERS_IMPORT_POLL", "1m", "CUSTOMERS_IMPORT_RETENTION", "24h"))
+	if tuned.CustomersImportEnabled || tuned.CustomersImportPoll != time.Minute || tuned.CustomersImportRetention != 24*time.Hour {
+		t.Errorf("tuned = %v/%v/%v, want off, 1m and 24h", tuned.CustomersImportEnabled, tuned.CustomersImportPoll, tuned.CustomersImportRetention)
+	}
+	if msg := loadError(t, with(validEnv(), "CUSTOMERS_IMPORT_ENABLED", "yes")); !strings.Contains(msg, `CUSTOMERS_IMPORT_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	for _, field := range []string{"CUSTOMERS_IMPORT_POLL", "CUSTOMERS_IMPORT_RETENTION"} {
+		for _, v := range []string{"0s", "soon"} {
+			if msg := loadError(t, with(validEnv(), field, v)); !strings.Contains(msg, field+": must be a positive duration such as 30s") {
+				t.Errorf("%s=%s: error = %q", field, v, msg)
+			}
+		}
+	}
+}
+
 // The two Invoices e-invoicing settings (EHF and KID design D1): the switch
 // defaults on, like PEPPOL_LOOKUP_ENABLED, and is strict; the Storecove base
 // URL defaults to the production API, takes http or https as BRREG_BASE_URL

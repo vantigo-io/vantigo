@@ -3,7 +3,6 @@ package customers
 import (
 	"bytes"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -79,124 +78,28 @@ func TestCSVUnguard_TakesOffOnlyTheApostropheTheGuardPutOn(t *testing.T) {
 	}
 }
 
-// TestReadCSVFile_ReadsBackWhatTheWriterWrites is the round trip the import
-// exists for: a file written the export's way — BOM, semicolons, CRLF, quoting,
-// the guard — reads back as the very cells that went in, numbered from 1.
-// encoding/csv folds a quoted CRLF to LF, so the line break is written as LF.
-func TestReadCSVFile_ReadsBackWhatTheWriterWrites(t *testing.T) {
+// TestReadImportFile_ReadsBackWhatTheWriterWrites: the export's own form —
+// a quoted separator and quotes, a line break, a guarded formula, a bare CR —
+// comes back from the upload's reader as the values it was written from
+// (customers import wizard design D2), so an export re-imports as it is.
+func TestReadImportFile_ReadsBackWhatTheWriterWrites(t *testing.T) {
 	var b bytes.Buffer
 	b.WriteString(csvByteOrderMark)
-	writeCSVRow(&b, []string{"name", "phone"})
-	writeCSVRow(&b, []string{`Fjord; "Nord" AS`, "+47 22 33 44 55"})
-	writeCSVRow(&b, []string{"to\nlinjer", "=1+1"})
+	writeCSVRow(&b, []string{"name", "phone", "note"})
+	writeCSVRow(&b, []string{`Fjord; "Nord" AS`, "+47 22 33 44 55", "a\rb"})
+	writeCSVRow(&b, []string{"to\nlinjer", "=1+1", ""})
 
-	file, refusal := readCSVFile(b.Bytes(), customersFileMaxRows)
+	file, refusal := readImportFile(b.Bytes())
 	if refusal != "" {
 		t.Fatalf("refusal = %q, want none", refusal)
 	}
-	if !reflect.DeepEqual(file.Header, []string{"name", "phone"}) {
-		t.Errorf("header = %q", file.Header)
+	if !reflect.DeepEqual(file.Header, []string{"name", "phone", "note"}) || file.Separator != ';' {
+		t.Errorf("header = %q separator %q", file.Header, file.Separator)
 	}
 	want := []csvRecord{
-		{Row: 1, Cells: []string{`Fjord; "Nord" AS`, "+47 22 33 44 55"}},
-		{Row: 2, Cells: []string{"to\nlinjer", "=1+1"}},
+		{Row: 1, Cells: []string{`Fjord; "Nord" AS`, "+47 22 33 44 55", "a\rb"}},
+		{Row: 2, Cells: []string{"to\nlinjer", "=1+1", ""}},
 	}
-	if !reflect.DeepEqual(file.Rows, want) {
-		t.Errorf("rows = %+v, want %+v", file.Rows, want)
-	}
-}
-
-// TestReadCSVFile_TakesLFAndNoBOM_AndSkipsBlankRecordsUnnumbered: a file saved
-// by something other than the export still reads. A record whose every cell is
-// blank — the trailing ";;;" rows a spreadsheet leaves — is not a row: it is
-// skipped and takes no number, so row 2 is the second row a person filled in,
-// which is also how the browser numbers it (lib/csv.ts).
-func TestReadCSVFile_TakesLFAndNoBOM_AndSkipsBlankRecordsUnnumbered(t *testing.T) {
-	file, refusal := readCSVFile([]byte("name;email\nA;a@x.no\n\n; \nB;\n"), customersFileMaxRows)
-	if refusal != "" {
-		t.Fatalf("refusal = %q, want none", refusal)
-	}
-	want := []csvRecord{{Row: 1, Cells: []string{"A", "a@x.no"}}, {Row: 2, Cells: []string{"B", ""}}}
-	if !reflect.DeepEqual(file.Rows, want) {
-		t.Errorf("rows = %+v, want %+v", file.Rows, want)
-	}
-}
-
-// TestReadCSVFile_RefusesWhatIsNotACustomersFile: each way a file is not one
-// we can read is a sentence the person can act on — and a file with more rows
-// than the cap is refused before a row is looked at.
-func TestReadCSVFile_RefusesWhatIsNotACustomersFile(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		data string
-		want string
-	}{
-		{"empty", "", "The file is empty; it needs a header row naming its columns"},
-		{"only a BOM", csvByteOrderMark, "The file is empty; it needs a header row naming its columns"},
-		{"not UTF-8", "name\n\xff\xfe\n", "The file is not UTF-8 text; save it from the spreadsheet as CSV UTF-8"},
-		{"a bare quote", "name\nA \"b\" c\n", "The file is not a semicolon-separated CSV file: "},
-		{"past the cap", "name\nA\nB\nC\n", "The file holds more than 2 rows, which is more than one import takes; import it in slices of at most 2"},
-	} {
-		_, refusal := readCSVFile([]byte(tc.data), 2)
-		if !strings.HasPrefix(refusal, tc.want) {
-			t.Errorf("%s: refusal = %q, want it to start %q", tc.name, refusal, tc.want)
-		}
-	}
-	if _, refusal := readCSVFile([]byte("name\nA\nB\n"), 2); refusal != "" {
-		t.Errorf("exactly at the cap: refusal = %q, want none", refusal)
-	}
-}
-
-// TestReadCSVFile_HeaderOnlyFileHasNoDataRows: a template, or a file
-// somebody downloaded and never filled in, is not empty — it has a header —
-// so it is not the "empty" refusal; it is a file with zero rows to import.
-func TestReadCSVFile_HeaderOnlyFileHasNoDataRows(t *testing.T) {
-	file, refusal := readCSVFile([]byte("name;email\n"), customersFileMaxRows)
-	if refusal != "" {
-		t.Fatalf("refusal = %q, want none", refusal)
-	}
-	if !reflect.DeepEqual(file.Header, []string{"name", "email"}) {
-		t.Errorf("header = %q", file.Header)
-	}
-	if len(file.Rows) != 0 {
-		t.Errorf("rows = %+v, want none", file.Rows)
-	}
-}
-
-// TestReadCSVFile_RowsKeepTheirOwnWidth pins what FieldsPerRecord = -1 buys:
-// a row is never refused, nor padded, nor truncated, for disagreeing with the
-// header's column count — it keeps exactly the cells it was written with, so
-// a row with fewer or more columns than the header is left for import.go to
-// judge, row by row, against the column it is actually missing or has extra.
-func TestReadCSVFile_RowsKeepTheirOwnWidth(t *testing.T) {
-	file, refusal := readCSVFile([]byte("name;email;phone\nA;a@x.no\nB;b@x.no;123;extra\n"), customersFileMaxRows)
-	if refusal != "" {
-		t.Fatalf("refusal = %q, want none", refusal)
-	}
-	want := []csvRecord{
-		{Row: 1, Cells: []string{"A", "a@x.no"}},
-		{Row: 2, Cells: []string{"B", "b@x.no", "123", "extra"}},
-	}
-	if !reflect.DeepEqual(file.Rows, want) {
-		t.Errorf("rows = %+v, want %+v", file.Rows, want)
-	}
-}
-
-// TestReadCSVFile_ABareCRInAQuotedCellRoundTrips: encoding/csv only folds a
-// quoted CRLF to LF (TestReadCSVFile_ReadsBackWhatTheWriterWrites); a lone CR
-// with no LF after it is not that fold's business and comes back exactly as
-// written, same as any other guarded character.
-func TestReadCSVFile_ABareCRInAQuotedCellRoundTrips(t *testing.T) {
-	var b bytes.Buffer
-	b.WriteString(csvByteOrderMark)
-	writeCSVRow(&b, []string{"note"})
-	writeCSVRow(&b, []string{"a\rb"})
-
-	file, refusal := readCSVFile(b.Bytes(), customersFileMaxRows)
-	if refusal != "" {
-		t.Fatalf("refusal = %q, want none", refusal)
-	}
-	want := []csvRecord{{Row: 1, Cells: []string{"a\rb"}}}
 	if !reflect.DeepEqual(file.Rows, want) {
 		t.Errorf("rows = %+v, want %+v", file.Rows, want)
 	}

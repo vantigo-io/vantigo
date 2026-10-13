@@ -25,6 +25,7 @@ sql:
       - ../db/migrations/00029_customers_merge.sql
       - ../db/migrations/00030_customers_personal_data.sql
       - ../db/migrations/00044_customers_attachments.sql
+      - ../db/migrations/00045_customers_imports.sql
     queries: queries
     gen:
       go:
