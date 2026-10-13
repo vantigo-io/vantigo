@@ -1154,3 +1154,24 @@ func TestRefundWatch_RaisesAndClears(t *testing.T) {
 		t.Errorf("after the payment's removal = %v, want none", got)
 	}
 }
+
+// TestPaymentWorker_RetryAfterIsCapped (the review's LOW): a throttle's
+// Retry-After, however long — a day, or seconds that overflow a duration —
+// never puts the next read beyond the backoff's ten minutes, so no header
+// parks a reservation.
+func TestPaymentWorker_RetryAfterIsCapped(t *testing.T) {
+	t.Parallel()
+	for _, header := range []string{"86400", "9223372036854775807"} {
+		t.Run(header, func(t *testing.T) {
+			t.Parallel()
+			h := workerReady(t)
+			_, ref := approvedAttempt(t, h)
+			h.vipps.Fail(vippstest.OpCapture, vippstest.Failure{Status: http.StatusTooManyRequests, RetryAfter: header})
+			cycle(t, h)
+			a := attemptOf(t, h, ref)
+			if a.State != "capturing" || a.NextPollAt == nil || a.NextPollAt.After(h.Now().Add(10*time.Minute)) || !a.NextPollAt.After(h.Now()) {
+				t.Errorf("Retry-After %s: %s next %v, want capturing, read again within ten minutes", header, a.State, a.NextPollAt)
+			}
+		})
+	}
+}

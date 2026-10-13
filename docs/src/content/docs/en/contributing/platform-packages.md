@@ -103,7 +103,9 @@ refusing anything that is not a whole number of øre.
 
 An adapter answers typed errors: `ErrUnauthorized` (the keys), `ErrNotFound`,
 `ErrConflict{Code}` (a 409, or a reference or key already in use), `ErrRefused{Code}`
-(a 400), `ErrThrottled{RetryAfter}` (a 429 or 423), `ErrInsufficientFunds` and
+(a 400), `ErrThrottled{RetryAfter}` (a 429 or 423; the Vipps adapter reads `Retry-After`
+as seconds or an HTTP date and answers at most a day, so a huge or overflowing header
+is never a wait without end), `ErrInsufficientFunds` and
 `ErrCaptureFailed` (a capture that took nothing — **not final**: Vipps asks for a retry,
 and the caller decides when to capture again and when to give up),
 `ErrInvalidSignature`, and `ErrInvalidRequest` — a request the adapter

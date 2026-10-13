@@ -3737,7 +3737,8 @@ reserved amount under the key:
   does not decode — is an **unknown outcome**: the money may have moved. The attempt
   stays `capturing` with its reservation and the same key, and is tried again after
   `min(600, 2^n)` seconds, `n` the failed calls in a row (`failures`, cleared by any
-  call that succeeds; a throttle's `Retry-After` when longer). After seven days of
+  call that succeeds; a throttle's `Retry-After` when longer, but never more than ten
+  minutes, so no header leaves a reservation unread longer than the backoff would). After seven days of
   unknown outcomes from its authorization it becomes **`capture_unknown`**: **its
   reservation is kept** — no manual payment of that amount and no fee-bearing reminder
   while the money may have been taken — and it is read every hour up to 180 days after

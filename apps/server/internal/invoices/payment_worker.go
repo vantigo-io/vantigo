@@ -352,9 +352,11 @@ func (c *paymentClaim) reschedule(ctx context.Context, next time.Time, reason st
 }
 
 // retry ends a claim whose call failed: one more failure in a row, read
-// again after the backoff of that many (at least wait), reason recorded.
+// again after the backoff of that many, or after wait — a throttle's
+// Retry-After — when longer, but never beyond maxPaymentBackoff: no header
+// may hold a reservation unread for longer than the backoff would.
 func (c *paymentClaim) retry(ctx context.Context, reason string, wait time.Duration) error {
-	return c.rescheduleAs(ctx, c.now.Add(max(wait, paymentBackoff(c.row.Failures+1))), reason, true, 0)
+	return c.rescheduleAs(ctx, c.now.Add(min(maxPaymentBackoff, max(wait, paymentBackoff(c.row.Failures+1)))), reason, true, 0)
 }
 
 // rescheduleAs is reschedule and retry's write: failed counts a failure in a

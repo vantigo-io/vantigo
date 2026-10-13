@@ -585,6 +585,18 @@ func TestVipps_ErrorMapping(t *testing.T) {
 			e, ok := errors.AsType[*payments.ErrThrottled](err)
 			return ok && e.RetryAfter == 90*time.Second
 		}},
+		{"429 seconds beyond a day", vippstest.Failure{Status: 429, RetryAfter: "86401"}, func(err error) bool {
+			e, ok := errors.AsType[*payments.ErrThrottled](err)
+			return ok && e.RetryAfter == 24*time.Hour
+		}},
+		{"429 seconds that overflow", vippstest.Failure{Status: 429, RetryAfter: "9223372036854775807"}, func(err error) bool {
+			e, ok := errors.AsType[*payments.ErrThrottled](err)
+			return ok && e.RetryAfter == 24*time.Hour
+		}},
+		{"429 a date centuries on", vippstest.Failure{Status: 429, RetryAfter: start.AddDate(900, 0, 0).Format(http.TimeFormat)}, func(err error) bool {
+			e, ok := errors.AsType[*payments.ErrThrottled](err)
+			return ok && e.RetryAfter == 24*time.Hour
+		}},
 		{"409 with 6280", vippstest.Failure{Status: 409, Code: "6280"}, func(err error) bool { return err != nil && !isTyped(err) }},
 		{"423 with 6260", vippstest.Failure{Status: 423, Code: "6260"}, func(err error) bool { return err != nil && !isTyped(err) }},
 		{"503", vippstest.Failure{Status: 503}, func(err error) bool { return err != nil && !isTyped(err) }},
