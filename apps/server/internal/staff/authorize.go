@@ -37,7 +37,7 @@ type callerContext struct {
 	UserID uuid.UUID
 
 	View         bool // staff:view — the directory and the structure
-	Approve      bool // staff:approve — decides absence (delivery B); no A1 audience (plan reading 18)
+	Approve      bool // staff:approve — decides absence, and the Approver audience (delivery B, Task 4)
 	Manage       bool // staff:manage — HR
 	PersonalData bool // staff:personal-data — the sealed fields, the erase
 
@@ -90,11 +90,13 @@ func (s *server) callerFor(ctx context.Context, q *store.Queries) (*callerContex
 // columns of the field group × audience matrix at once — HR reading their own
 // record is both Self and staff:manage, and reads what either may. What each
 // may read is shaping.go's table; this is only who they are. staff:approve
-// is no audience in delivery A1 (plan reading 18).
+// is the Approver audience from delivery B's Task 4 (plan pre-flight M10,
+// reading 18).
 type audience struct {
 	Self         bool // the caller's self-service link names the person
 	Manager      bool // a manager of the person today, by the terms in force
 	Colleague    bool // staff:view
+	Approver     bool // staff:approve
 	Manage       bool // staff:manage
 	PersonalData bool // staff:personal-data
 }
@@ -109,6 +111,7 @@ func (c *callerContext) audienceOn(personID int64, manager, active bool) audienc
 		Self:         c.Person != nil && *c.Person == personID,
 		Manager:      manager,
 		Colleague:    c.View && active,
+		Approver:     c.Approve,
 		Manage:       c.Manage,
 		PersonalData: c.PersonalData,
 	}

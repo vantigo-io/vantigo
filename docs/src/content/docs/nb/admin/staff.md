@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, omsorgsdagfeltene, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, omsorgsdagfeltene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
 sidebar:
   order: 44
 sources:
@@ -24,6 +24,8 @@ sources:
   - apps/server/internal/staff/holiday_schemes.go
   - apps/server/internal/staff/absence_settings.go
   - apps/server/internal/staff/adjustments.go
+  - apps/server/internal/staff/deciders.go
+  - apps/server/internal/staff/notifications.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -63,7 +65,7 @@ Hver operasjon i Ansatte krever `staff:access`, og fire rettigheter ligger over 
 | --- | --- |
 | `staff:access` | Alle som skal se sine egne opplysninger. |
 | `staff:view` | Kolleger som skal se katalogen og bedriftens struktur. |
-| `staff:approve` | Den som avgjør fravær (den gir ingenting før fravær kommer). |
+| `staff:approve` | Den som avgjør alles fravær: godkjenner, avslår og kansellerer søknader, ser alles arbeidsopplysninger og fravær (en HR-type som permisjon), godkjenningsinnboksen og kalenderen — ikke lønn, private opplysninger eller historikk. |
 | `staff:manage` | HR: personer, arbeidsforhold, dokumenter unntatt helsedokumenter, dokumentkategoriene, strukturen og innstillingene. Sensitiv. |
 | `staff:personal-data` | Den som får vise fødselsnumre og kontonumre, og lese og arkivere helsedokumenter. Sensitiv. |
 
@@ -595,6 +597,47 @@ Hver bekreftelse registreres i innstillingene med tidspunktet, og som en
 `threshold_acknowledged`-hendelse for installasjonen som navngir hvem som bekreftet.
 Å bekrefte en terskel på nytt endrer ingenting og registrerer ingenting. En annen nøkkel
 enn de fire avvises med `threshold_unknown`.
+
+## Hvem som avgjør fravær
+
+En fraværssøknad — ferie, en permisjon, avspasering — avgjøres av personens leder i dag
+(lederen arbeidsvilkårene nevner, ellers avdelingens, og den som har sluttet hoppes
+over), av alle med `staff:approve` og av HR (`staff:manage`). Gi noen en rolle med
+`staff:approve` for å la dem avgjøre alles fravær uten HRs øvrige rettigheter. Ingen
+avgjør sin egen søknad: en leders går til lederens egen leder, og HRs til en annen med
+`staff:approve` eller `staff:manage`. En leder avgjør først når personen deres er koblet
+til en aktiv bruker ([Koble personer til brukerne sine](#koble-personer-til-brukerne-sine)).
+
+**Det ene unntaket, foreløpig** (inntil eieren har bestemt seg): den som har
+`staff:approve` eller `staff:manage`, står øverst i strukturen — leder en avdeling uten
+noen leder over seg — og ikke har noen leder med aktiv bruker, kan godkjenne sitt eget.
+Hver slik godkjenning er et oppfølgingspunkt for `staff:manage` (`selfApproved`, med
+personens navn) til fraværet er over, så noen ser det. For å unngå
+det gir du personen en leder i arbeidsvilkårene, koblet til en aktiv bruker.
+
+HR retter et godkjent eller registrert fravær — dagene, typen, prosenten eller
+graderingen — fra personens fravær; rettingen lagres med hva det var før, og personen
+får e-post. Et avgjort fravær som har begynt, kanselleres bare av HR.
+
+## E-postene om fravær
+
+Ansatte sender e-post om fravær bare til adresser den selv har — en persons
+jobb-e-post, ellers den private — på personens språk:
+
+- en **søknad** eller en **registrering** går til personens ledere som avgjør den
+  (lederen i dag, koblet til en aktiv bruker);
+- en **godkjenning**, et **avslag**, en leders **kansellering** og HRs **retting** går
+  til personen.
+
+De med `staff:approve` og `staff:manage` får **ikke** e-post — Ansatte kjenner ikke
+adressene deres — og ser det som venter på dem i godkjenningsinnboksen i stedet.
+E-posten nevner typen bare når den verken er sykdom eller en HR-type: en HR-type er
+«permisjon», sykefravær og sykt barn «fravær»; den har aldri gradering, timer, en
+merknad eller begrunnelsen for et avslag. Som e-posten om endret kontonummer nedenfor
+trenger den `MAIL_DRIVER=smtp`; med en annen driver logger serveren
+`staff: absence mail skipped: the mail driver is not smtp`, og en leder uten e-post
+hoppes over med `staff: absence mail skipped: the recipient has no email`. En sending
+som feiler, logges som en advarsel med personens id; fraværet blir stående.
 
 ## E-posten om endret kontonummer
 

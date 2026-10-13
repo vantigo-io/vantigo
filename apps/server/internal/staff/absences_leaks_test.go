@@ -102,13 +102,6 @@ func TestAbsences_RevisionOnlyToItsWriters(t *testing.T) {
 		modtest.Header("If-Match", strconv.Quote(stale))), http.StatusConflict, "revision_conflict")
 }
 
-// approveBySQL approves a request as a decision leaves it — status approved,
-// the revision moved on — for a test whose subject is how the row reads.
-func approveBySQL(t *testing.T, h *harness, id int64) {
-	t.Helper()
-	h.Exec(t, `UPDATE staff.absences SET status = 'approved', revision = revision + 1 WHERE id = $1`, id)
-}
-
 // A leave-reader cannot tell the HR-only notification from an HR-only
 // request (leak 2): to her manager and to HR without staff:personal-data, a
 // registered svangerskapskontroll and a requested-then-approved
@@ -123,7 +116,9 @@ func TestAbsences_LeaveReadersCannotTellTheHROnlyNotification(t *testing.T) {
 	h := w.h
 	check := requestOwn(t, w.kariC, absence(t, h, "svangerskapskontroll", "2026-10-07", "2026-10-07", "hours", 2))
 	perm := requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-10-12", "2026-10-16"))
-	approveBySQL(t, h, perm.Id)
+	if r := decide(w.hr, approvePath(perm.Id), "Gratulerer"); r.Status != http.StatusOK {
+		t.Fatalf("approve: %d %s", r.Status, r.Body)
+	}
 
 	for name, c := range map[string]*modtest.Client{"her manager": w.bossC, "HR without personal-data": w.hr} {
 		a := raw(t, c.Do(http.MethodGet, absencePath(check.Id), nil))
@@ -131,7 +126,7 @@ func TestAbsences_LeaveReadersCannotTellTheHROnlyNotification(t *testing.T) {
 		if !slices.Equal(keysOf(a), keysOf(b)) {
 			t.Errorf("%s: the check's keys %v, the leave's %v, want the same", name, keysOf(a), keysOf(b))
 		}
-		for _, k := range []string{"shownAs", "status", "percent"} {
+		for _, k := range []string{"shownAs", "status", "percent", "decisionNote"} {
 			if a[k] != b[k] {
 				t.Errorf("%s: %s = %v for the check, %v for the leave, want the same", name, k, a[k], b[k])
 			}

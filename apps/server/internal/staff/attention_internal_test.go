@@ -91,7 +91,8 @@ func TestReadAttention_ReadsOnlyWhatTheCallerNeeds(t *testing.T) {
 	}{
 		{"a linked caller who manages nobody", callerContext{Person: &nobody, Today: today}, 3, 0},
 		{"a manager", callerContext{Person: &manager, Today: today}, 4, 1},
-		{"staff:manage", callerContext{Manage: true, Today: today}, 6, -1},
+		// staff:manage's statements include the self-approved absences (delivery B).
+		{"staff:manage", callerContext{Manage: true, Today: today}, 7, -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})

@@ -40,6 +40,73 @@ func (q *Queries) AbsentTypeID(ctx context.Context) (int64, error) {
 	return id, err
 }
 
+const calendarAbsences = `-- name: CalendarAbsences :many
+SELECT a.id, a.person_id, a.type_id, a.first_day, a.last_day, a.hours, a.percent, a.status, a.note, a.case_id, a.degree_percent, a.requested_by_user_id, a.decided_by_user_id, a.decided_at, a.decision_note, a.self_approved, a.revision, a.created_at, a.updated_at, t.kind, t.visibility, t.unit
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.person_id = ANY($1::bigint[])
+  AND a.status IN ('requested', 'approved', 'registered')
+  AND a.first_day <= $2::date AND a.last_day >= $3::date
+ORDER BY a.person_id, a.first_day, a.id
+`
+
+type CalendarAbsencesParams struct {
+	PersonIds []int64
+	ToDay     pgtype.Date
+	FromDay   pgtype.Date
+}
+
+type CalendarAbsencesRow struct {
+	StaffAbsence StaffAbsence
+	Kind         string
+	Visibility   string
+	Unit         string
+}
+
+// CalendarAbsences is the requested, approved and registered rows of
+// @person_ids' people touching @from_day..@to_day: the calendar's bars.
+func (q *Queries) CalendarAbsences(ctx context.Context, arg CalendarAbsencesParams) ([]CalendarAbsencesRow, error) {
+	rows, err := q.db.Query(ctx, calendarAbsences, arg.PersonIds, arg.ToDay, arg.FromDay)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CalendarAbsencesRow
+	for rows.Next() {
+		var i CalendarAbsencesRow
+		if err := rows.Scan(
+			&i.StaffAbsence.ID,
+			&i.StaffAbsence.PersonID,
+			&i.StaffAbsence.TypeID,
+			&i.StaffAbsence.FirstDay,
+			&i.StaffAbsence.LastDay,
+			&i.StaffAbsence.Hours,
+			&i.StaffAbsence.Percent,
+			&i.StaffAbsence.Status,
+			&i.StaffAbsence.Note,
+			&i.StaffAbsence.CaseID,
+			&i.StaffAbsence.DegreePercent,
+			&i.StaffAbsence.RequestedByUserID,
+			&i.StaffAbsence.DecidedByUserID,
+			&i.StaffAbsence.DecidedAt,
+			&i.StaffAbsence.DecisionNote,
+			&i.StaffAbsence.SelfApproved,
+			&i.StaffAbsence.Revision,
+			&i.StaffAbsence.CreatedAt,
+			&i.StaffAbsence.UpdatedAt,
+			&i.Kind,
+			&i.Visibility,
+			&i.Unit,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countAbsences = `-- name: CountAbsences :one
 SELECT count(*) FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE ($1::bigint IS NULL OR a.person_id = $1::bigint)
@@ -81,6 +148,86 @@ func (q *Queries) CountAbsences(ctx context.Context, arg CountAbsencesParams) (i
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const countRequestedAbsences = `-- name: CountRequestedAbsences :one
+SELECT count(*) FROM staff.absences a
+WHERE a.status = 'requested'
+  AND ($1::boolean OR a.person_id = ANY($2::bigint[]))
+  AND a.person_id IS DISTINCT FROM $3::bigint
+`
+
+type CountRequestedAbsencesParams struct {
+	Everyone      bool
+	PersonIds     []int64
+	ExcludePerson *int64
+}
+
+// CountRequestedAbsences counts what RequestedAbsences pages through.
+func (q *Queries) CountRequestedAbsences(ctx context.Context, arg CountRequestedAbsencesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countRequestedAbsences, arg.Everyone, arg.PersonIds, arg.ExcludePerson)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const decideAbsence = `-- name: DecideAbsence :one
+UPDATE staff.absences SET
+    status = $1,
+    decided_by_user_id = $2,
+    decided_at = $3::timestamptz,
+    decision_note = $4,
+    self_approved = $5,
+    revision = revision + 1,
+    updated_at = $3::timestamptz
+WHERE id = $6
+RETURNING id, person_id, type_id, first_day, last_day, hours, percent, status, note, case_id, degree_percent, requested_by_user_id, decided_by_user_id, decided_at, decision_note, self_approved, revision, created_at, updated_at
+`
+
+type DecideAbsenceParams struct {
+	Status          string
+	DecidedByUserID *uuid.UUID
+	Now             time.Time
+	DecisionNote    *string
+	SelfApproved    bool
+	ID              int64
+}
+
+// DecideAbsence records a decision on a request (design S12): its status,
+// who decided it and when, the decider's note, and whether the person
+// approved their own. Taken under the person's lock, after LockAbsence.
+func (q *Queries) DecideAbsence(ctx context.Context, arg DecideAbsenceParams) (StaffAbsence, error) {
+	row := q.db.QueryRow(ctx, decideAbsence,
+		arg.Status,
+		arg.DecidedByUserID,
+		arg.Now,
+		arg.DecisionNote,
+		arg.SelfApproved,
+		arg.ID,
+	)
+	var i StaffAbsence
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.TypeID,
+		&i.FirstDay,
+		&i.LastDay,
+		&i.Hours,
+		&i.Percent,
+		&i.Status,
+		&i.Note,
+		&i.CaseID,
+		&i.DegreePercent,
+		&i.RequestedByUserID,
+		&i.DecidedByUserID,
+		&i.DecidedAt,
+		&i.DecisionNote,
+		&i.SelfApproved,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const deleteAbsence = `-- name: DeleteAbsence :exec
@@ -667,6 +814,156 @@ func (q *Queries) PeopleActiveOn(ctx context.Context, today pgtype.Date) ([]int6
 			return nil, err
 		}
 		items = append(items, person_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const peopleEmployedBetween = `-- name: PeopleEmployedBetween :many
+SELECT DISTINCT e.person_id FROM staff.employments e
+WHERE e.start_date <= $1::date AND (e.end_date IS NULL OR e.end_date >= $2::date)
+`
+
+type PeopleEmployedBetweenParams struct {
+	ToDay   pgtype.Date
+	FromDay pgtype.Date
+}
+
+// PeopleEmployedBetween is everyone with an employment touching
+// @from_day..@to_day: the calendar's people.
+func (q *Queries) PeopleEmployedBetween(ctx context.Context, arg PeopleEmployedBetweenParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, peopleEmployedBetween, arg.ToDay, arg.FromDay)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var person_id int64
+		if err := rows.Scan(&person_id); err != nil {
+			return nil, err
+		}
+		items = append(items, person_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const requestedAbsences = `-- name: RequestedAbsences :many
+SELECT a.id, a.person_id, a.type_id, a.first_day, a.last_day, a.hours, a.percent, a.status, a.note, a.case_id, a.degree_percent, a.requested_by_user_id, a.decided_by_user_id, a.decided_at, a.decision_note, a.self_approved, a.revision, a.created_at, a.updated_at, t.kind, t.visibility, t.unit
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.status = 'requested'
+  AND ($1::boolean OR a.person_id = ANY($2::bigint[]))
+  AND a.person_id IS DISTINCT FROM $3::bigint
+ORDER BY a.created_at, a.id
+LIMIT $5 OFFSET $4
+`
+
+type RequestedAbsencesParams struct {
+	Everyone      bool
+	PersonIds     []int64
+	ExcludePerson *int64
+	PageOffset    int32
+	PageSize      int32
+}
+
+type RequestedAbsencesRow struct {
+	StaffAbsence StaffAbsence
+	Kind         string
+	Visibility   string
+	Unit         string
+}
+
+// RequestedAbsences is the requests of @person_ids' people — everyone's with
+// @everyone — but @exclude_person's, oldest first: the approvals inbox
+// (plan Task 4). The partial index on requested rows serves it.
+func (q *Queries) RequestedAbsences(ctx context.Context, arg RequestedAbsencesParams) ([]RequestedAbsencesRow, error) {
+	rows, err := q.db.Query(ctx, requestedAbsences,
+		arg.Everyone,
+		arg.PersonIds,
+		arg.ExcludePerson,
+		arg.PageOffset,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RequestedAbsencesRow
+	for rows.Next() {
+		var i RequestedAbsencesRow
+		if err := rows.Scan(
+			&i.StaffAbsence.ID,
+			&i.StaffAbsence.PersonID,
+			&i.StaffAbsence.TypeID,
+			&i.StaffAbsence.FirstDay,
+			&i.StaffAbsence.LastDay,
+			&i.StaffAbsence.Hours,
+			&i.StaffAbsence.Percent,
+			&i.StaffAbsence.Status,
+			&i.StaffAbsence.Note,
+			&i.StaffAbsence.CaseID,
+			&i.StaffAbsence.DegreePercent,
+			&i.StaffAbsence.RequestedByUserID,
+			&i.StaffAbsence.DecidedByUserID,
+			&i.StaffAbsence.DecidedAt,
+			&i.StaffAbsence.DecisionNote,
+			&i.StaffAbsence.SelfApproved,
+			&i.StaffAbsence.Revision,
+			&i.StaffAbsence.CreatedAt,
+			&i.StaffAbsence.UpdatedAt,
+			&i.Kind,
+			&i.Visibility,
+			&i.Unit,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const selfApprovedAbsences = `-- name: SelfApprovedAbsences :many
+SELECT a.id, a.person_id, a.decided_at, p.display_name
+FROM staff.absences a JOIN staff.people p ON p.id = a.person_id
+WHERE a.self_approved AND a.status = 'approved' AND a.last_day >= $1::date
+ORDER BY a.decided_at, a.id
+`
+
+type SelfApprovedAbsencesRow struct {
+	ID          int64
+	PersonID    int64
+	DecidedAt   *time.Time
+	DisplayName string
+}
+
+// SelfApprovedAbsences is every approved row its person approved
+// themselves that has not ended by @today: the attention item selfApproved.
+func (q *Queries) SelfApprovedAbsences(ctx context.Context, today pgtype.Date) ([]SelfApprovedAbsencesRow, error) {
+	rows, err := q.db.Query(ctx, selfApprovedAbsences, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SelfApprovedAbsencesRow
+	for rows.Next() {
+		var i SelfApprovedAbsencesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.DecidedAt,
+			&i.DisplayName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

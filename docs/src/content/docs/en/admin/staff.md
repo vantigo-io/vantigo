@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, the care-day fields, the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
+description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, the care-day fields, who decides absence and the absence mails, the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
 sidebar:
   order: 44
 sources:
@@ -24,6 +24,8 @@ sources:
   - apps/server/internal/staff/holiday_schemes.go
   - apps/server/internal/staff/absence_settings.go
   - apps/server/internal/staff/adjustments.go
+  - apps/server/internal/staff/deciders.go
+  - apps/server/internal/staff/notifications.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -63,7 +65,7 @@ Every Staff operation requires `staff:access`, and four permissions sit above it
 | --- | --- |
 | `staff:access` | Everyone who should see their own record. |
 | `staff:view` | Colleagues who should see the directory and the company's structure. |
-| `staff:approve` | Whoever decides absence (it grants nothing until absence arrives). |
+| `staff:approve` | Whoever decides everyone's absence: they approve, reject and cancel requests, see every person's work details and absences (an HR-only type as leave), the approvals inbox and the calendar — no pay, no private details, no history. |
 | `staff:manage` | HR: people, employments, documents other than health documents, the document categories, the structure and the settings. Sensitive. |
 | `staff:personal-data` | Whoever may reveal national identity numbers and bank accounts, and read and file health documents. Sensitive. |
 
@@ -584,6 +586,48 @@ Each acknowledgement is recorded in the settings with its time, and as a
 `threshold_acknowledged` event of the installation naming who acknowledged it.
 Acknowledging a threshold again changes nothing and records nothing. A key other than
 the four is refused with `threshold_unknown`.
+
+## Who decides absence
+
+A request for absence — ferie, a leave, time off in lieu — is decided by the person's
+manager today (the manager their terms name, else their department's, skipping anyone
+who has left), by anyone holding `staff:approve`, and by HR (`staff:manage`). To let
+someone decide everyone's absence without HR's other rights, give them a role with
+`staff:approve`. Nobody decides their own request: a manager's goes to their own
+manager, and HR's to another holder of `staff:approve` or `staff:manage`. A manager
+decides only once their person is linked to an active user
+([Link people to their users](#link-people-to-their-users)).
+
+**The one exception, for now** (provisional, awaiting the owner's word): someone holding
+`staff:approve` or `staff:manage` who heads the structure — they manage a department
+with no manager above it — and has no manager with an active user may approve their
+own. Each such approval is an attention item for `staff:manage` (`selfApproved`, the
+person's name) until the absence ends, so somebody sees it. To
+avoid it, give that person a manager in their terms, linked to an active user.
+
+HR corrects an approved or registered absence — its days, type, percentage or degree —
+from the person's absences; the correction is recorded with what it was before, and the
+person is mailed. A decided absence that has begun is cancelled by HR only.
+
+## The absence mails
+
+Staff mails about absence only addresses it holds itself — a person's work email, else
+their private one — in that person's language:
+
+- a **request** or a **registration** goes to the person's managers who decide it (the
+  manager today, linked to an active user);
+- an **approval**, a **rejection**, a manager's **cancel** and HR's **correction** go to
+  the person.
+
+Holders of `staff:approve` and `staff:manage` are **not** mailed — Staff does not know
+their addresses — and see what waits for them in the approvals inbox instead. A mail
+names the type only when it is neither sickness nor an HR-only type: an HR-only type is
+"leave", a sick or child-sick absence "an absence"; it never carries a degree, hours, a
+note or a rejection's reason. Like the bank-change mail below, it needs
+`MAIL_DRIVER=smtp`; with another driver the server logs
+`staff: absence mail skipped: the mail driver is not smtp`, and a manager without any
+email is skipped with `staff: absence mail skipped: the recipient has no email`. A send
+that fails is logged as a warning naming the person's id; the absence stays saved.
 
 ## The bank-change mail
 

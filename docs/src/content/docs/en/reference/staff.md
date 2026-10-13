@@ -84,8 +84,8 @@ Still no CHECK constraint.
 | Key | Name | Grants | Sensitive |
 | --- | --- | --- | --- |
 | `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** Your absence arrives with delivery B. | no |
-| `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the calendar with types hidden. The calendar arrives with B. | no |
-| `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. From delivery B it makes `GET /meta`'s `canDecide` true; the decisions, the inbox and the cases it opens arrive with B's later steps. | no |
+| `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the [calendar](#the-calendar) with types hidden. | no |
+| `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. It [decides](#decisions) anyone's absence requests, is the [Approver audience](#field-groups-and-audiences), sees the [inbox](#the-approvals-inbox) and the [calendar](#the-calendar), and makes `GET /meta`'s `canDecide` true; the cases it opens arrive with B's later steps. | no |
 | `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, absence types and holiday schemes, the settings, documents other than health and their categories, the account flag, imports and exports, the retention run by hand, the thresholds' acknowledgement. The account flag arrives with C. | yes |
 | `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. Erasure is the [retention run](#retention)'s, on its schedule (run by hand by `staff:manage`); the milestones' notes and the HR-only types arrive with B. | yes |
 
@@ -362,19 +362,19 @@ Every field of a person belongs to one **field group**, held in one static table
 caller's audience reads the field's group. A group the audience may not read is absent
 from the response — never null.
 
-| Group | Fields | Self | Colleague (`staff:view`) | Manager | `staff:manage` | `staff:personal-data` |
-| --- | --- | --- | --- | --- | --- | --- |
-| Work | name, employee number, work email and phone, work country, language, roles; the person's place today — `manager`, `department`, `title`, `businessUnit`, `location` | ✓ | ✓ | ✓ | ✎ | ✓ |
-| Employment dates | `status`; an employment's `startDate`, `endDate`, `fteChangedAt`; a terms row's `validFrom`, `validTo`, `employmentType`, `ftePercent` | ✓ | ✓ | ✓ | ✎ | ✓ |
-| Employment | every other field of an employment and its terms but the pay | ✓ | — | ✓ | ✎ | ✓ |
-| Pay | `remunerationType`, `payComponents`, `payMethod`, `paydayText`, `seniorityDate`, `payGrade`, `salaryChangedAt` | ✓ | — | — | ✎ | ✓ |
-| Private | birth date, gender, mobile, private phone and email, home address, next of kin | ✓ | — | — | ✎ | ✓ |
-| Care days | `childrenUnder12`, `soleCarer`, `chronicallyIllChildren` ([the care-day fields](#the-care-day-fields)) | ✓ | — | — | ✎ | ✓ |
-| HR notes | `notes`; a terms row's `note` | — | — | — | ✎ | ✓ |
-| National identity number | `nationalId { kind, onFile }` | ✓ | — | — | ✓ | ✎ reveal and set |
-| Bank account | `bankAccount { kind, last4 }` | ✓ | — | — | ✓ | ✎ reveal and set |
-| Link | `user { id, displayName, active }` | ✓ | — | — | ✓ | ✓ |
-| Hold | `legalHold { held, reason, at }`, `erasedAt`, `reassessedAt` | — | — | — | ✓ | ✎ hold and reassess |
+| Group | Fields | Self | Colleague (`staff:view`) | Manager | Approver (`staff:approve`) | `staff:manage` | `staff:personal-data` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Work | name, employee number, work email and phone, work country, language, roles; the person's place today — `manager`, `department`, `title`, `businessUnit`, `location` | ✓ | ✓ | ✓ | ✓ | ✎ | ✓ |
+| Employment dates | `status`; an employment's `startDate`, `endDate`, `fteChangedAt`; a terms row's `validFrom`, `validTo`, `employmentType`, `ftePercent` | ✓ | ✓ | ✓ | ✓ | ✎ | ✓ |
+| Employment | every other field of an employment and its terms but the pay | ✓ | — | ✓ | ✓ | ✎ | ✓ |
+| Pay | `remunerationType`, `payComponents`, `payMethod`, `paydayText`, `seniorityDate`, `payGrade`, `salaryChangedAt` | ✓ | — | — | — | ✎ | ✓ |
+| Private | birth date, gender, mobile, private phone and email, home address, next of kin | ✓ | — | — | — | ✎ | ✓ |
+| Care days | `childrenUnder12`, `soleCarer`, `chronicallyIllChildren` ([the care-day fields](#the-care-day-fields)) | ✓ | — | — | — | ✎ | ✓ |
+| HR notes | `notes`; a terms row's `note` | — | — | — | — | ✎ | ✓ |
+| National identity number | `nationalId { kind, onFile }` | ✓ | — | — | — | ✓ | ✎ reveal and set |
+| Bank account | `bankAccount { kind, last4 }` | ✓ | — | — | — | ✓ | ✎ reveal and set |
+| Link | `user { id, displayName, active }` | ✓ | — | — | — | ✓ | ✓ |
+| Hold | `legalHold { held, reason, at }`, `erasedAt`, `reassessedAt` | — | — | — | — | ✓ | ✎ hold and reassess |
 
 - **Self** is the user a person's self-service link names, whatever state the link is
   in. **Colleague** is `staff:view`, and only for a person **active today**: an
@@ -384,8 +384,10 @@ from the response — never null.
   today: the manager the terms in force today name on one of the person's employments,
   or the department's when they name none (see [managers](#managers-and-the-org-view));
   concurrent employments may give two. It needs no permission. A caller holding several
-  is every one of them at once and reads what any may. `staff:approve` is no audience
-  yet (it decides absence, which arrives later).
+  is every one of them at once and reads what any may. **Approver** is `staff:approve`
+  (delivery B, plan reading 18): every person's work and non-pay employment, and their
+  absences with every type but an HR-only one (read as leave) and the detail — no
+  history, no private fields, no pay, no documents.
 - **The place today** — the manager, the department, the title and the location of the
   terms in force today, and their employment's business unit, each as an id and a
   name — is the work group's, everyone's who sees the person. A terms row's own
@@ -1019,9 +1021,10 @@ self-certification policy and automatic carry-over in the [settings](#settings),
 and registered with their [overlap](#overlap) rule, the
 [holiday account](#the-holiday-account) with its
 [adjustments and carry-over](#adjustments-and-carry-over), and
-[their events](#the-absence-events). Decisions, sick-leave cases and care-day counting
-arrive with B's later steps; until then `staff:approve` grants only `GET /meta`'s
-`canDecide`.
+[their events](#the-absence-events), the [decisions](#decisions) with their
+[mails](#the-absence-mails), the [approvals inbox](#the-approvals-inbox) and the
+[calendar](#the-calendar). Sick-leave cases and care-day counting arrive with B's later
+steps.
 
 ### Absence types
 
@@ -1203,9 +1206,8 @@ question for the owner.
 day — or one day and its hours, for a type counted in hours — a percentage of each day,
 a status and, for a sykmelding, its degree. A type that needs a decision starts
 `requested`; a type that is a notification (egenmelding, sykmelding, sykt barn, helse)
-starts `registered`. The decisions — `approved`, `rejected`, a decider's cancel and
-HR's correction — arrive with B's next step; `cancelled` is reached today by the
-person's own cancel of a request.
+starts `registered`. A request is then `approved` or `rejected` by a decider, and a
+request or an approved row may end `cancelled` ([decisions](#decisions)).
 
 **Who writes one.** `POST /me/absences` is the caller's own; `POST /absences` names
 `personId` and is the caller's own person's, or — `staff:manage` — anyone's. Nobody
@@ -1245,26 +1247,27 @@ included — is `staff:manage`'s to change: ending a sykmelding early or fixing 
 is HR's job, the person asks. `DELETE /absences/{id}` removes a row nobody decided: a
 request (the person or HR) or a registration (HR alone). Anything else is
 `absence_not_requested`. `POST /absences/{id}/cancel` withdraws a request — the
-person's or HR's — and keeps it as history (`cancelled`); a row that is not a request is
-`absence_not_cancellable`. Anyone else who sees the row gets the uniform 403; anyone who
-does not, the 404 of an unknown id.
+person's or HR's — and keeps it as history (`cancelled`); an approved row is cancelled by
+its decider ([decisions](#decisions)); anything else is `absence_not_cancellable`.
+Anyone else who sees a request gets the uniform 403; anyone who does not see the row,
+the 404 of an unknown id.
 
 **Reading them.** `GET /absences?personId&from&to&status&page&pageSize` lists, newest
-first, the rows the caller may see: everyone's to `staff:manage` and
+first, the rows the caller may see: everyone's to `staff:manage`, `staff:approve` and
 `staff:personal-data`; otherwise their own, their reports' today (the
 [one manager rule](#managers-and-the-org-view)), and — with `staff:view` — the
 `approved` and `registered` rows of every person active today, never a request or a
 refusal — and those never under a `status` filter: a colleague reads no status, so
 asking for the registered rows cannot pick out who was sick. `GET /absences/{id}` answers one, the 404 of an unknown id to anyone who may
 not see it. `GET /me/absences` lists the caller's own. Each row is shaped by three
-groups (design §5; the Approver audience is B's next step):
+groups (design §5):
 
-| Group | Fields | Self | Colleague | Manager | `staff:manage` | `staff:personal-data` |
-| --- | --- | --- | --- | --- | --- | --- |
-| Absence | `firstDay`, `lastDay` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Absence | `status`, `workingDays` | ✓ | — | ✓ | ✓ | ✓ |
-| Absence type | `typeId` (`shownAs: type`) | ✓ | — (`shownAs: absent`) | ✓; an `hr_only` type `shownAs: leave` | ✓; an `hr_only` type `shownAs: leave` | ✓ |
-| Absence detail | `percent`, `hours`, `degreePercent`, `note` | ✓ | — | ✓ | ✓ | ✓ |
+| Group | Fields | Self | Colleague | Manager | Approver | `staff:manage` | `staff:personal-data` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Absence | `firstDay`, `lastDay` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Absence | `status`, `workingDays` | ✓ | — | ✓ | ✓ | ✓ | ✓ |
+| Absence type | `typeId` (`shownAs: type`) | ✓ | — (`shownAs: absent`) | ✓; an `hr_only` type `shownAs: leave` | ✓; an `hr_only` type `shownAs: leave` | ✓; an `hr_only` type `shownAs: leave` | ✓ |
+| Absence detail | `percent`, `hours`, `degreePercent`, `note`, `decisionNote` (never on a row shown as leave) | ✓ | — | ✓ | ✓ | ✓ | ✓ |
 
 **A colleague cannot tell one absence from another.** Only the notification types —
 the sick kinds among them — start `registered`, and only an hour type counts no
@@ -1356,18 +1359,96 @@ it is recorded: judged under the person's lock and held by the unique index
 `carry_over_recorded` (409) in words of its own — it is reached only by a write past
 the lock. Deleting it lets it be recorded again.
 
+### Decisions
+
+**Who decides** (design S12, plan Task 4, readings 1, 2 and 4; `deciders.go`). The
+deciders of a person today are (a) the people the [one manager rule](#managers-and-the-org-view)
+names for them — so a manager who has left decides nothing and the department climb
+takes over — whose self-service link names an **active** user (the
+**manager-deciders**), (b) every holder of `staff:approve` and (c) every holder of
+`staff:manage`. Nobody decides their own: a manager's own request goes to their own
+manager by the same rule, and anyone else's waits for another holder (`own_request`,
+403). **Self-approval** is provisional (open question 2, pre-flight I7): a holder of
+`staff:approve` or `staff:manage` who heads the structure today — their terms place them
+in a department they manage with no manager above it — and for whom (a) is empty
+approves their own; the row is `self_approved`, the event `absence_self_approved`, and
+`staff:manage` sees the [`selfApproved`](#attention-items) item until it ends. A caller
+who sees the row and decides nothing — `staff:personal-data` alone, a colleague on an
+approved row — gets `decision_not_yours` (403); one who does not see it the 404 of an
+unknown id. The person's capabilities carry `canDecide` for the caller.
+
+The decider is judged before the person's lock — it reads the user directory, which no
+transaction may — and the row under it, so the second of two deciders, or a decider
+racing the person's cancel, finds the row no longer a request.
+
+- **`POST /absences/{id}/approve`** `{note?}` and **`/reject`** `{note}` (a rejection
+  needs its reason, at most 500 characters): a requested row only, else
+  `absence_not_requested` (409). An approval judges [overlap](#overlap) again and
+  answers the holiday accounts after it. Recorded as `absence_approved`,
+  `absence_self_approved` or `absence_rejected`, with `decisionNote` (class D) and the
+  decider as actor; the row keeps `decidedByUserId`, `decidedAt`, `decisionNote` and
+  `selfApproved`, and answers `decisionNote` with the detail — never on a row shown as
+  leave, which carries no decision field (reading 32).
+- **`POST /absences/{id}/cancel`** of an **approved** row is its decider's while its first
+  day lies ahead, and `staff:manage`'s alone once it has come (a decided absence in the
+  past is HR's, S12); the person never cancels a decided row (`absence_not_cancellable`).
+  Recorded as `absence_cancelled`.
+- **`POST /absences/{id}/correct`** (`staff:manage`, `If-Match` as a change takes it) changes
+  an `approved` or `registered` row's type, days, percent, hours, degree and note, judged
+  as a new row is; a request, a rejected or a cancelled row is `absence_not_cancellable`
+  (pre-flight M7), and a correction keeps the status, so never across the line between
+  a request and a registration (`absence_status_change`); never HR's own row but the
+  self-approver's. Recorded as `absence_corrected`, both types shaped by their own
+  visibility.
+
+### The absence mails
+
+Sent after the write has committed, outside every transaction, through the module's one
+SMTP accessor; skipped with a log line when the mail driver is not `smtp`, and never
+failing the write (reading 26). Staff mails only addresses it holds: a person's work
+email, else their private one, in that person's language — **on a request and a
+registration to each manager-decider** (holders of `staff:approve` and `staff:manage`
+by right get the inbox and the attention list, since the user directory names no
+address: reading 4, open question 1), **on an approval, a rejection, a decider's cancel
+and a correction to the person**. A recipient without an address is skipped with a log
+line naming the person's id. A mail names the type only when it is neither a sick kind
+nor HR-only — an HR-only type is "leave", a sick or child-sick one "an absence" — and
+never a degree, the hours, a note or a decision's reason (reading 15); it carries the
+dates and a link to My page.
+
+### The approvals inbox
+
+`GET /approvals?page&pageSize` lists the requests the caller decides, oldest first by
+when they were made: every person's to `staff:approve` and `staff:manage`, a manager's
+reports' today; never the caller's own but the self-approver's. Each item is
+`{absence, person}` — the person as the work group names them, the row shaped as
+`GET /absences` shapes it for the caller.
+
+### The calendar
+
+`GET /calendar?from&to&departmentId` answers a range of at most 93 days: the public
+holidays in it from the platform calendar (`internal/calendar`) and a row per person
+with their requested, approved and registered absences touching it, shaped as
+`GET /absences` shapes them. `staff:approve`, `staff:manage` and `staff:personal-data`
+see everyone with an employment in the range; `staff:view` the people among them active
+today, as the directory lists them, each bar the dates alone and only for approved and
+registered rows; anyone else their reports today and themselves. `departmentId` keeps
+the people whose terms place them in that department on the day judged — today, held
+inside the range.
+
 ### The absence events
 
 An absence's write is one event — `absence_requested`, `absence_registered`,
 `absence_updated` (each field's `from` and `to`), `absence_deleted` (the row's fields as
-they were) or `absence_cancelled` — naming the absence (`absenceId`); an adjustment's
+they were), `absence_cancelled`, or a [decision's](#decisions) `absence_approved`,
+`absence_self_approved`, `absence_rejected` and `absence_corrected` — naming the absence (`absenceId`); an adjustment's
 names it (`adjustmentId`). Beside its `fields` each carries **`classes`**, each field's
 retention class as the module wrote it (pre-flight B1), because one name means
 different data on different rows:
 
 | Field | Class |
 | --- | --- |
-| `firstDay`, `lastDay`, `percent`, `hours`, `status`; an adjustment's `year`, `days`, `reason`, `fromYear` | C |
+| `firstDay`, `lastDay`, `percent`, `hours`, `status`, `selfApproved`; an adjustment's `year`, `days`, `reason`, `fromYear` | C |
 | `note`, `decisionNote`; an adjustment's `note` | D |
 | `type`, `degree` | E on a sick or child-sick row (either side of a change), else C |
 
@@ -1949,6 +2030,7 @@ the caller's roles find is listed once.
 | `reassessmentDue` | personal-data | An erased person not yet reassessed, every employment ended, the last end twelve months ago or more ([the reassessment](#the-reassessment)). | The due day. | The person. |
 | `retentionFailing` | manage | Ledger rows the object store has refused at least once (`attempts` ≥ 1) that were queued more than 24 hours ago. One item. The settings' `failingDeletions` counts every refused row, however young. | When the oldest of them was queued. | `retention`; `count` the rows. |
 | `otpThreshold` | manage | By the `ftePercent` in force today summed per person over their employments in force today: someone at 75 % or more, or the people at 20 % or more adding up to 200 % (two full-time equivalents) — OTP-loven § 2 judged without an owner flag (plan reading 17), so the title names the exception, "unless the only such person is the owner". Not shown once `otp` is [acknowledged](#the-thresholds). One item. | Today. | `thresholds`. |
+| `selfApproved` | manage | An approved absence its person approved themselves ([self-approval](#decisions), provisional) that has not ended. One per absence; `id` `selfApproved/<absence id>`. | When it was approved. | The person. |
 | `headcountThreshold` | manage | For each of 5, 30 and 50 the `headcount` has crossed — 5 or more, 30 or more, more than 50 — and that is not [acknowledged](#the-thresholds). | Today. | The threshold (`5`, `30`, `50`); `count` the headcount. |
 
 `id` is `<type>/<employment id>` for the employment items, `<type>/<person id>` for
@@ -2041,7 +2123,9 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `absence_note_on_sick` | 400 | A note on an egenmelding, a sykmelding or a sick child's absence. |
 | `absence_overlap` | 409 | An absence that cannot stand beside the person's requested, approved or registered rows on one of its days. |
 | `absence_not_requested` | 409 | Changing or deleting an absence that is not a request — a registered one by anyone but HR, a decided or cancelled one by anyone. |
-| `absence_not_cancellable` | 409 | Cancelling an absence that is not a request. |
+| `absence_not_cancellable` | 409 | Cancelling an absence that is neither a request nor an approved row its decider may still cancel (begun: HR alone); correcting one that is neither approved nor registered. |
+| `decision_not_yours` | 403 | Deciding, cancelling or correcting the absence of a person the caller does not decide for. |
+| `own_request` | 403 | Deciding, cancelling or correcting one's own absence, but for the self-approver. |
 | `absence_status_change` | 409 | Changing an absence's type between one that needs a decision and one that is a notification. |
 | `carry_over_recorded` | 409 | A second carry-over for one person from one year. |
 | `person_erased` | 409 | Any write of a person the retention run has erased but the hold, the reassessment, an unlink and a rehire. |
@@ -2150,8 +2234,12 @@ All under `/api/v1/staff`.
 | `POST /absence-types`, `PUT /absence-types/{id}`, `POST /holiday-schemes`, `PUT /holiday-schemes/{id}` | `staff:manage` |
 | `GET /absences`, `GET /absences/{id}` | `staff:access`, then the rows the caller may see (otherwise left out, or 404) |
 | `POST /absences` | `staff:access`, then the caller's own person or `staff:manage` (otherwise 403) |
-| `PUT /absences/{id}`, `DELETE /absences/{id}`, `POST /absences/{id}/cancel` | `staff:access`, then the person or `staff:manage` (otherwise 403; 404 to one who does not see the row) |
-| `GET /people/{id}/holiday-account` | `staff:access`, then the person, a manager of theirs or HR (otherwise 404) |
+| `PUT /absences/{id}`, `DELETE /absences/{id}` | `staff:access`, then the person or `staff:manage` (otherwise 403; 404 to one who does not see the row) |
+| `POST /absences/{id}/cancel` | `staff:access`, then the person or `staff:manage` for a request, a [decider](#decisions) for an approved row (otherwise 403, `decision_not_yours` or `own_request`; 404 to one who does not see the row) |
+| `POST /absences/{id}/approve`, `/reject`, `GET /approvals` | `staff:access`, then a [decider](#decisions) of the person (otherwise `decision_not_yours` or `own_request`; 404 to one who does not see the row) |
+| `POST /absences/{id}/correct` | `staff:manage` (never one's own: `own_request`) |
+| `GET /calendar` | `staff:access`, then the people and rows the caller may see |
+| `GET /people/{id}/holiday-account` | `staff:access`, then the person, a manager of theirs, the Approver or HR (otherwise 404) |
 | `GET /people/{id}/holiday-adjustments`, `POST /people/{id}/holiday-adjustments`, `DELETE /holiday-adjustments/{id}`, `POST /people/{id}/carry-over` | `staff:manage` |
 | `GET /me/absences`, `POST /me/absences`, `GET /me/holiday-account` | `staff:access`, then a self-service link (otherwise `no_person`) |
 | `GET /people/{id}/personal-data`, `PUT /people/{id}/legal-hold`, `POST /people/{id}/reassessed` | `staff:personal-data` |

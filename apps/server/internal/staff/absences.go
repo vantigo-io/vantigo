@@ -52,7 +52,7 @@ var absenceStatuses = []string{absenceRequested, absenceApproved, absenceRejecte
 // other way: it is shown that a person is away — approved and registered
 // rows — never a request or a refusal.
 func (a audience) onlyColleague() bool {
-	return a.Colleague && !a.Self && !a.Manager && !a.Manage && !a.PersonalData
+	return a.Colleague && !a.Self && !a.Manager && !a.Approver && !a.Manage && !a.PersonalData
 }
 
 // seesAbsence is whether a sees an absence in status.
@@ -123,6 +123,11 @@ func absenceResponse(row store.StaffAbsence, kind, visibility, unit string, a au
 			out.DegreePercent = &d
 		}
 		out.Note = row.Note
+		// No decision field on a row shown as leave (leak 2): whether and
+		// how it was decided would tell a notification from a request.
+		if !asLeave {
+			out.DecisionNote = row.DecisionNote
+		}
 	}
 	return out
 }
@@ -267,6 +272,12 @@ func absenceValues(row store.StaffAbsence) map[string]json.RawMessage {
 	if row.Note != nil {
 		put("note", *row.Note)
 	}
+	if row.DecisionNote != nil {
+		put("decisionNote", *row.DecisionNote)
+	}
+	if row.SelfApproved {
+		put("selfApproved", true)
+	}
 	return out
 }
 
@@ -344,11 +355,19 @@ func judgeAbsence(ctx context.Context, txq *store.Queries, personID, exclude int
 	if f.failed() {
 		return p, t, refuseInvalid(invalidAbsenceTitle, f)
 	}
+	return p, t, judgeOverlap(ctx, txq, personID, exclude, p, t)
+}
+
+// judgeOverlap judges p, of type t, against personID's other requested,
+// approved and registered rows but exclude, read under the person's lock:
+// absence_overlap when it may not stand beside them. An approval judges its
+// row again here (plan reading 17).
+func judgeOverlap(ctx context.Context, txq *store.Queries, personID, exclude int64, p parsedAbsence, t store.StaffAbsenceType) error {
 	rows, err := txq.OverlappingAbsences(ctx, store.OverlappingAbsencesParams{
 		PersonID: personID, Exclude: exclude, FirstDay: dayParam(p.First), LastDay: dayParam(p.Last),
 	})
 	if err != nil {
-		return p, t, fmt.Errorf("staff: read person %d's absences: %w", personID, err)
+		return fmt.Errorf("staff: read person %d's absences: %w", personID, err)
 	}
 	existing := make([]overlapRow, 0, len(rows))
 	for _, r := range rows {
@@ -359,10 +378,10 @@ func judgeAbsence(ctx context.Context, txq *store.Queries, personID, exclude int
 		candidate.Hours = hundredthsOfNumeric(p.Hours)
 	}
 	if overlapRefused(candidate, existing) {
-		return p, t, refuseConflict(conflict(codeAbsenceOverlap, "Overlapping absence",
+		return refuseConflict(conflict(codeAbsenceOverlap, "Overlapping absence",
 			"The person already has an absence on one of these days that this one cannot stand beside."))
 	}
-	return p, t, nil
+	return nil
 }
 
 // overlapOf is a stored row as the overlap rule reads it.
@@ -450,6 +469,16 @@ func (s *server) createAbsence(ctx context.Context, caller *callerContext, who a
 	return out, err
 }
 
+// notifyCreated tells the person's manager-deciders of a new request or
+// registration, after it committed (notifications.go).
+func (s *server) notifyCreated(ctx context.Context, caller *callerContext, w absenceWrite) {
+	kind := noticeRegistered
+	if w.row.Status == absenceRequested {
+		kind = noticeRequested
+	}
+	s.notifyAbsence(ctx, caller.Today, noticeOf(kind, w.row, w.typ))
+}
+
 // PostStaffAbsences Request or register an absence
 // (POST /api/v1/staff/absences)
 func (s *server) PostStaffAbsences(ctx context.Context, req gen.PostStaffAbsencesRequestObject) (gen.PostStaffAbsencesResponseObject, error) {
@@ -488,6 +517,7 @@ func (s *server) PostStaffAbsences(ctx context.Context, req gen.PostStaffAbsence
 	if err != nil {
 		return nil, err
 	}
+	s.notifyCreated(ctx, caller, w)
 	return gen.PostStaffAbsences201JSONResponse(s.respondWrite(w, body.PersonId)), nil
 }
 
@@ -555,7 +585,8 @@ func (s *server) listAbsences(ctx context.Context, q *store.Queries, filter abse
 // GetStaffAbsences List absences
 // (GET /api/v1/staff/absences)
 //
-// HR — staff:manage, staff:personal-data — sees everyone's rows. Anyone else
+// HR — staff:manage, staff:personal-data — and the Approver (staff:approve)
+// see everyone's rows. Anyone else
 // sees their own, their reports' today by the one manager rule (managersOf),
 // and — with staff:view — the approved and registered rows of every person
 // active today, as a colleague.
@@ -572,7 +603,7 @@ func (s *server) GetStaffAbsences(ctx context.Context, req gen.GetStaffAbsencesR
 	filter.neutral, filter.self = !caller.PersonalData, caller.Person
 	var out gen.PaginatedResponseOfStaffAbsence
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
-		everyone := caller.Manage || caller.PersonalData
+		everyone := caller.Manage || caller.PersonalData || caller.Approve
 		var reports, active []int64
 		if !everyone && caller.Person != nil {
 			g, err := loadManagerGraph(ctx, q, nil)
@@ -841,62 +872,4 @@ func (s *server) DeleteStaffAbsencesById(ctx context.Context, req gen.DeleteStaf
 		return nil, err
 	}
 	return gen.DeleteStaffAbsencesById204Response{}, nil
-}
-
-// PostStaffAbsencesByIdCancel Cancel an absence request
-// (POST /api/v1/staff/absences/{id}/cancel)
-func (s *server) PostStaffAbsencesByIdCancel(ctx context.Context, req gen.PostStaffAbsencesByIdCancelRequestObject) (gen.PostStaffAbsencesByIdCancelResponseObject, error) {
-	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
-	if err != nil {
-		return nil, err
-	}
-	current, err := s.mayChangeAbsence(ctx, caller, req.Id)
-	if errors.Is(err, errForbidden) {
-		return gen.PostStaffAbsencesByIdCancel403JSONResponse(apicommon.ForbiddenBody()), nil
-	}
-	if _, ok := asRefusal(err); ok {
-		return gen.PostStaffAbsencesByIdCancel404Response{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	who, err := s.actorFor(ctx)
-	if err != nil {
-		return nil, err
-	}
-	personID := current.StaffAbsence.PersonID
-	var w absenceWrite
-	err = s.withPersonLock(ctx, personID, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		before, t, err := lockAbsence(ctx, txq, req.Id, personID)
-		if err != nil {
-			return err
-		}
-		if before.Status != absenceRequested {
-			return refuseConflict(conflict(codeAbsenceNotCancellable, "Not cancellable",
-				"Only a request is cancelled by its person; this absence is not one."))
-		}
-		row, err := txq.SetAbsenceStatus(ctx, store.SetAbsenceStatusParams{ID: before.ID, Status: absenceCancelled, Now: s.deps.Clock()})
-		if err != nil {
-			return fmt.Errorf("staff: cancel absence %d: %w", before.ID, err)
-		}
-		if err := s.recordAbsence(ctx, txq, personID, eventAbsenceCancelled, who, row.ID, &before, &row, t); err != nil {
-			return err
-		}
-		w = absenceWrite{row: row, typ: t}
-		w.audience, err = personAudience(ctx, txq, caller, personID)
-		return err
-	})
-	if errors.Is(err, errPersonNotFound) {
-		return gen.PostStaffAbsencesByIdCancel404Response{}, nil
-	}
-	if r, ok := asRefusal(err); ok {
-		if r.status == http.StatusConflict {
-			return gen.PostStaffAbsencesByIdCancel409ApplicationProblemPlusJSONResponse(r.problem), nil
-		}
-		return gen.PostStaffAbsencesByIdCancel404Response{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return gen.PostStaffAbsencesByIdCancel200JSONResponse(s.respondWrite(w, personID)), nil
 }

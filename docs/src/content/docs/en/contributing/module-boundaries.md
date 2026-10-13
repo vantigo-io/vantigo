@@ -494,8 +494,11 @@ valid installation, and no other module's state changes what Staff answers. It r
 three things outside its schema: identity's `Deps.Users` (`contracts.UserDirectory`,
 always set: `User`, `Users`, `SearchUsers`) for names — whoever writes a history event,
 the user a self-service link names — and the picker HR links a person with; the
-platform's mail seam (`Deps.SMTPSend`, or `mail.SendOutbound` when unset) for the one
-mail it sends, the notice of a changed bank account; and the object store
+platform's mail seam (`Deps.SMTPSend`, or `mail.SendOutbound` when unset) for the mails
+it sends — the notice of a changed bank account, and the absence notices (a request or
+a registration to the person's managers, a decision or a correction to the person) —
+each only to an address in its own register, a person's work or private email, never
+one the user directory would have to name; and the object store
 (`Deps.ObjectStore` when a harness sets one, else its own `staff`-scoped store built
 from the configuration, in the API and a worker alike, with a construction error kept
 for the calls that need a store rather than failing the process) for the bytes of

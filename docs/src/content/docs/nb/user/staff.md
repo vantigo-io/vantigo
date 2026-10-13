@@ -480,6 +480,17 @@ Dette gjelder i dag, gjennom Ansatte-API-et:
   inn på dine vegne. Lederen din legger ikke inn for deg. Et legebesøk er timer på én
   dag; alt annet er hele dager, noen typer som en prosent av hver dag. Sykefravær har
   ingen merknad.
+- **Hvem som avgjør.** Lederen din — eller, hvis du ikke har noen, den som avgjør fravær
+  for alle — godkjenner eller avslår søknaden din; et avslag sier hvorfor. Ingen
+  godkjenner sitt eget: en leders søknad går til lederens egen leder. Når den er
+  godkjent, er det bare den som avgjorde den (eller HR, når fraværet har begynt) som
+  kansellerer den; HR retter et avgjort eller registrert fravær når dagene var feil. Du
+  får e-post når søknaden din er avgjort, kansellert eller rettet, og lederen din når du
+  søker om eller registrerer fravær — e-posten nevner aldri sykdom, en HR-type, en
+  prosent eller en merknad.
+- **Å avgjøre, for ledere.** Søknadene du avgjør, venter i godkjenningsinnboksen din,
+  eldste først; fraværskalenderen viser en måned for teamet ditt — eller, med tilgang
+  til personoversikten, for alle, der kolleger bare ser dagene noen er borte.
 - **To fravær samme dag** kan stå sammen bare når begge typene tillater en prosent og
   prosentene til sammen er høyst 100 %. En søknad du har sendt teller som om den var
   innvilget, så du kan ikke søke to ganger om samme dag.

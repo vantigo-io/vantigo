@@ -574,6 +574,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         canSeePay: audience.self || audience.hr || audience.personalData,
         canSeeHealth: audience.self || audience.personalData,
         canHold: audience.personalData,
+        // Who decides the person's absence requests: their manager or HR, never
+        // they themselves (the stub knows no self-approver).
+        canDecide: (audience.manager || audience.hr) && !audience.self,
       },
     };
     return shape(audience, whole, ["id", "revision", "capabilities", "status"], personGroupOf);

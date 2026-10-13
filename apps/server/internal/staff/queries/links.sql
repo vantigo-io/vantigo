@@ -31,3 +31,16 @@ ON CONFLICT (person_id, provider) DO UPDATE SET
 
 -- name: DeletePersonLink :exec
 DELETE FROM staff.identity_links WHERE person_id = @person_id AND provider = 'identity';
+
+-- name: PeopleLinks :many
+-- PeopleLinks is the self-service links of @person_ids' people under the
+-- identity provider, in any state: who among a person's managers decides
+-- (deciders.go), once the directory says whose user is active.
+SELECT person_id, external_id FROM staff.identity_links
+WHERE person_id = ANY(@person_ids::bigint[]) AND provider = 'identity';
+
+-- name: MailRecipients :many
+-- MailRecipients is what an absence mail needs of @person_ids' people: the
+-- name, the addresses Staff holds and the language (plan reading 26).
+SELECT id, display_name, work_email, private_email, preferred_language
+FROM staff.people WHERE id = ANY(@person_ids::bigint[]);

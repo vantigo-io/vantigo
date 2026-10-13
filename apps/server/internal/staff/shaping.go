@@ -229,8 +229,9 @@ func shownOnPerson[T any](a audience, field string, v *T) *T {
 
 // reads reports whether the audience reads group g — §5's matrix. The work
 // group and an employment's dates are everyone's who may see the person; the
-// rest of the employment and its terms is the person's, their manager's and
-// HR's; the private group, the pay, the national identity number's kind, the
+// rest of the employment and its terms, an absence's type and its detail are
+// the person's, their manager's, the Approver's (staff:approve, every
+// person's, delivery B) and HR's; the private group, the pay, the national identity number's kind, the
 // bank account's last four digits, the link, the documents and the care-day
 // fields are the person's own and HR's; HR's notes are HR's alone; the health documents and
 // health events are the person's and staff:personal-data's; the hold group is
@@ -239,9 +240,9 @@ func (a audience) reads(g fieldGroup) bool {
 	hr := a.Manage || a.PersonalData
 	switch g {
 	case groupWork, groupEmploymentDates, groupAbsence:
-		return a.Self || a.Manager || a.Colleague || hr
+		return a.Self || a.Manager || a.Colleague || a.Approver || hr
 	case groupEmployment, groupAbsenceType, groupAbsenceDetail:
-		return a.Self || a.Manager || hr
+		return a.Self || a.Manager || a.Approver || hr
 	case groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCareDays:
 		return a.Self || hr
 	case groupHRNotes, groupHold:
@@ -296,8 +297,9 @@ func shown[T any](a audience, field string, v *T) *T {
 // personResponse is one person as the audience may read them, placed as p
 // says. user is the linked user as the directory named them, nil when there
 // is no link; it is read outside any transaction, and only for an audience
-// that reads the link.
-func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.StaffPersonUser) gen.StaffPerson {
+// that reads the link. canDecide is whether the caller decides the person's
+// absence requests (deciders.go).
+func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.StaffPersonUser, canDecide bool) gen.StaffPerson {
 	out := gen.StaffPerson{
 		Status:            p.status,
 		Manager:           shown(a, "manager", p.manager),
@@ -320,6 +322,7 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 			CanManageAccount:     a.Manage,
 			CanSeeHealth:         a.reads(groupHealth),
 			CanHold:              a.PersonalData,
+			CanDecide:            canDecide,
 		},
 		WorkEmail:    shown(a, "workEmail", row.WorkEmail),
 		PhoneWork:    shown(a, "phoneWork", row.PhoneWork),

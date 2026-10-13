@@ -325,7 +325,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-## staff (93 uncovered)
+## staff (98 uncovered)
 
 - `DELETE /api/v1/staff/absences/{id}` (deleteStaffAbsencesById)
 - `DELETE /api/v1/staff/documents/{id}` (deleteStaffDocumentsById)
@@ -335,8 +335,10 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/staff/absence-types` (getStaffAbsenceTypes)
 - `GET /api/v1/staff/absences/{id}` (getStaffAbsencesById)
 - `GET /api/v1/staff/absences` (getStaffAbsences)
+- `GET /api/v1/staff/approvals` (getStaffApprovals)
 - `GET /api/v1/staff/assignable-users` (getStaffAssignableUsers)
 - `GET /api/v1/staff/business-units` (getStaffBusinessUnits)
+- `GET /api/v1/staff/calendar` (getStaffCalendar)
 - `GET /api/v1/staff/departments` (getStaffDepartments)
 - `GET /api/v1/staff/document-categories` (getStaffDocumentCategories)
 - `GET /api/v1/staff/documents/{id}` (getStaffDocumentsById)
@@ -372,7 +374,10 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/staff/stats/attention` (getStaffStatsAttention)
 - `GET /api/v1/staff/stats` (getStaffStats)
 - `POST /api/v1/staff/absence-types` (postStaffAbsenceTypes)
+- `POST /api/v1/staff/absences/{id}/approve` (postStaffAbsencesByIdApprove)
 - `POST /api/v1/staff/absences/{id}/cancel` (postStaffAbsencesByIdCancel)
+- `POST /api/v1/staff/absences/{id}/correct` (postStaffAbsencesByIdCorrect)
+- `POST /api/v1/staff/absences/{id}/reject` (postStaffAbsencesByIdReject)
 - `POST /api/v1/staff/absences` (postStaffAbsences)
 - `POST /api/v1/staff/business-units/{id}/archive` (postStaffBusinessUnitsByIdArchive)
 - `POST /api/v1/staff/business-units` (postStaffBusinessUnits)
@@ -421,4 +426,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/staff/settings` (putStaffSettings)
 - `PUT /api/v1/staff/terms/{id}` (putStaffTermsById)
 
-Total: 389 of 502 operations have no recorded exchange.
+Total: 394 of 507 operations have no recorded exchange.

@@ -130,6 +130,15 @@ const (
 	codeCarryOverRecorded = "carry_over_recorded"
 )
 
+// The refusal codes of the decisions (delivery B, Task 4): 403s with a
+// problem, since they say who the caller is to the person, not the state of
+// the row — the caller decides nothing of the person's, or the request is
+// their own.
+const (
+	codeDecisionNotYours = "decision_not_yours"
+	codeOwnRequest       = "own_request"
+)
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.

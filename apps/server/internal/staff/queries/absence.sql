@@ -177,3 +177,61 @@ WHERE a.person_id = @person_id AND t.draws_holiday AND t.unit = 'days';
 -- AbsentTypeID is the reserved type the health erase writes in place of a
 -- sick or child-sick one (plan reading 12).
 SELECT id FROM staff.absence_types WHERE key = 'absent';
+
+-- name: DecideAbsence :one
+-- DecideAbsence records a decision on a request (design S12): its status,
+-- who decided it and when, the decider's note, and whether the person
+-- approved their own. Taken under the person's lock, after LockAbsence.
+UPDATE staff.absences SET
+    status = @status,
+    decided_by_user_id = @decided_by_user_id,
+    decided_at = @now::timestamptz,
+    decision_note = @decision_note,
+    self_approved = @self_approved,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE id = @id
+RETURNING *;
+
+-- name: RequestedAbsences :many
+-- RequestedAbsences is the requests of @person_ids' people — everyone's with
+-- @everyone — but @exclude_person's, oldest first: the approvals inbox
+-- (plan Task 4). The partial index on requested rows serves it.
+SELECT sqlc.embed(a), t.kind, t.visibility, t.unit
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.status = 'requested'
+  AND (@everyone::boolean OR a.person_id = ANY(@person_ids::bigint[]))
+  AND a.person_id IS DISTINCT FROM sqlc.narg('exclude_person')::bigint
+ORDER BY a.created_at, a.id
+LIMIT @page_size OFFSET @page_offset;
+
+-- name: CountRequestedAbsences :one
+-- CountRequestedAbsences counts what RequestedAbsences pages through.
+SELECT count(*) FROM staff.absences a
+WHERE a.status = 'requested'
+  AND (@everyone::boolean OR a.person_id = ANY(@person_ids::bigint[]))
+  AND a.person_id IS DISTINCT FROM sqlc.narg('exclude_person')::bigint;
+
+-- name: CalendarAbsences :many
+-- CalendarAbsences is the requested, approved and registered rows of
+-- @person_ids' people touching @from_day..@to_day: the calendar's bars.
+SELECT sqlc.embed(a), t.kind, t.visibility, t.unit
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.person_id = ANY(@person_ids::bigint[])
+  AND a.status IN ('requested', 'approved', 'registered')
+  AND a.first_day <= @to_day::date AND a.last_day >= @from_day::date
+ORDER BY a.person_id, a.first_day, a.id;
+
+-- name: PeopleEmployedBetween :many
+-- PeopleEmployedBetween is everyone with an employment touching
+-- @from_day..@to_day: the calendar's people.
+SELECT DISTINCT e.person_id FROM staff.employments e
+WHERE e.start_date <= @to_day::date AND (e.end_date IS NULL OR e.end_date >= @from_day::date);
+
+-- name: SelfApprovedAbsences :many
+-- SelfApprovedAbsences is every approved row its person approved
+-- themselves that has not ended by @today: the attention item selfApproved.
+SELECT a.id, a.person_id, a.decided_at, p.display_name
+FROM staff.absences a JOIN staff.people p ON p.id = a.person_id
+WHERE a.self_approved AND a.status = 'approved' AND a.last_day >= @today::date
+ORDER BY a.decided_at, a.id;
