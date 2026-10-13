@@ -81,7 +81,7 @@ func (s *server) PostStaffMeAbsences(ctx context.Context, req gen.PostStaffMeAbs
 		return nil, err
 	}
 	w.audience = selfAudience
-	return gen.PostStaffMeAbsences201JSONResponse(respondWrite(w, *caller.Person)), nil
+	return gen.PostStaffMeAbsences201JSONResponse(s.respondWrite(w, *caller.Person)), nil
 }
 
 // GetStaffMeHolidayAccount Get my own holiday account

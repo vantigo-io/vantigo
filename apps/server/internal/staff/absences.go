@@ -2,17 +2,20 @@ package staff
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
@@ -69,14 +72,21 @@ func (a audience) seesAbsence(status string) bool {
 // person and staff:personal-data, and its row then looks like any other
 // leave (leaveShaped): no hours, the working days of its days, a registered
 // row as approved.
-func absenceResponse(row store.StaffAbsence, kind, visibility, unit string, a audience) gen.StaffAbsence {
+func absenceResponse(row store.StaffAbsence, kind, visibility, unit string, a audience, tag absenceTagger) gen.StaffAbsence {
 	out := gen.StaffAbsence{
 		Id:       row.ID,
 		PersonId: row.PersonID,
 		FirstDay: openapi_types.Date{Time: civil(row.FirstDay)},
 		LastDay:  openapi_types.Date{Time: civil(row.LastDay)},
 		ShownAs:  gen.StaffAbsenceShownAsAbsent,
-		Revision: row.Revision,
+	}
+	switch revisionShapeOf(a) {
+	case shapeRevision:
+		revision := row.Revision
+		out.Revision = &revision
+	case shapeTag:
+		etag := tag(row.ID, row.Revision)
+		out.Etag = &etag
 	}
 	if a.onlyColleague() {
 		return out
@@ -115,6 +125,105 @@ func absenceResponse(row store.StaffAbsence, kind, visibility, unit string, a au
 		out.Note = row.Note
 	}
 	return out
+}
+
+// revisionShape is how a row's revision reaches a reader (review of Task
+// 3's fix, leak 1): a registration stays at revision 1 and a decided request
+// moves past it, so the number tells a notification from a request. It goes
+// only to whoever writes the row: the person, and staff:manage — as itself
+// to HR with staff:personal-data, who reads every type as it is, and as an
+// opaque tag (absenceTag) on every row alike to HR without it, who reads an
+// HR-only row as leave. Nobody else is sent either.
+type revisionShape int
+
+const (
+	shapeNone revisionShape = iota
+	shapeRevision
+	shapeTag
+)
+
+// revisionShapeOf is how a reads a row's revision.
+func revisionShapeOf(a audience) revisionShape {
+	switch {
+	case a.Self || (a.Manage && a.PersonalData):
+		return shapeRevision
+	case a.Manage:
+		return shapeTag
+	}
+	return shapeNone
+}
+
+// absenceTagger is an absence's opaque etag for its id and revision.
+type absenceTagger func(id int64, revision int32) string
+
+// purposeAbsenceTag is the secrets box's purpose for an absence's etag.
+const purposeAbsenceTag = "staff/absence-etag"
+
+// absenceTagPrefix starts every etag, so If-Match tells one from a bare
+// revision.
+const absenceTagPrefix = "a1-"
+
+// absenceTag is absence id's etag at revision: a keyed MAC of the two under
+// the installation's secret, so it changes with every write and tells
+// nothing of how many there were. The box's only error is its key
+// derivation's, which a working installation never answers; an empty tag
+// then matches nothing.
+func (s *server) absenceTag(id int64, revision int32) string {
+	mac, err := s.deps.Secrets.MAC(purposeAbsenceTag, []byte(fmt.Sprintf("absence:%d:%d", id, revision)))
+	if err != nil {
+		return ""
+	}
+	return absenceTagPrefix + base64.RawURLEncoding.EncodeToString(mac[:18])
+}
+
+// absenceIfMatch is an absence's If-Match as sent: a revision, or an etag.
+type absenceIfMatch struct {
+	revision int32
+	tag      string
+}
+
+// parseAbsenceIfMatch reads If-Match as an etag when it carries the tag's
+// prefix, else as a revision.
+func parseAbsenceIfMatch(raw string) (absenceIfMatch, bool) {
+	v := strings.TrimPrefix(strings.TrimSpace(raw), "W/")
+	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+		v = v[1 : len(v)-1]
+	}
+	if strings.HasPrefix(v, absenceTagPrefix) {
+		return absenceIfMatch{tag: v}, true
+	}
+	revision, ok := parseIfMatch(raw)
+	return absenceIfMatch{revision: revision}, ok
+}
+
+// absenceChanged is the conflict of an If-Match that no longer matches, in
+// words that name no revision.
+func absenceChanged() error {
+	return refuseConflict(conflict(codeRevisionConflict, "Revision conflict", "The absence has changed since it was read."))
+}
+
+// checkAbsenceIfMatch judges m against the row as the writer was sent it: a
+// writer sent etags matches only the row's etag — a bare revision, which
+// would let them probe how often a row was written, never — and the refusal
+// names no revision; any other writer the revision, as every other change.
+func (s *server) checkAbsenceIfMatch(row store.StaffAbsence, m absenceIfMatch, a audience) error {
+	if revisionShapeOf(a) != shapeTag {
+		if m.tag != "" {
+			return absenceChanged()
+		}
+		return checkRevision("absence", row.Revision, m.revision)
+	}
+	want := s.absenceTag(row.ID, row.Revision)
+	if m.tag == "" || want == "" || !secrets.MACEqual([]byte(m.tag), []byte(want)) {
+		return absenceChanged()
+	}
+	return nil
+}
+
+// writerAudience is the caller as a writer of personID's row: the person,
+// and HR as their permissions say — all the If-Match rule reads.
+func writerAudience(caller *callerContext, personID int64) audience {
+	return audience{Self: caller.Person != nil && *caller.Person == personID, Manage: caller.Manage, PersonalData: caller.PersonalData}
 }
 
 // leaveShaped is whether a reads a row of a type of visibility as "leave":
@@ -162,8 +271,10 @@ func absenceValues(row store.StaffAbsence) map[string]json.RawMessage {
 }
 
 // recordAbsence records kind about row from before to after (either nil);
-// health is whether a type on either side is health data.
-func (s *server) recordAbsence(ctx context.Context, txq *store.Queries, personID int64, kind string, who actor, id int64, before, after *store.StaffAbsence, health bool) error {
+// types are the row's types on either side, whose kinds say which are health
+// data.
+func (s *server) recordAbsence(ctx context.Context, txq *store.Queries, personID int64, kind string, who actor, id int64, before, after *store.StaffAbsence, types ...store.StaffAbsenceType) error {
+	health := slices.ContainsFunc(types, func(t store.StaffAbsenceType) bool { return healthKind(t.Kind) })
 	var b, a map[string]json.RawMessage
 	if before != nil {
 		b = absenceValues(*before)
@@ -175,13 +286,28 @@ func (s *server) recordAbsence(ctx context.Context, txq *store.Queries, personID
 	// The row's type on each side, so a reader is shown the whole event —
 	// its hours, its status, its kind — by the row's visibility as well as
 	// each type value by its own (review H1).
+	// Each type id carries its class beside it (typeClasses, leak 3): E for
+	// a sick or child-sick type, so the health erase replaces it with the
+	// reserved absent type as it blanks the type field.
 	var typeIDs []int64
+	var typeClasses []string
 	for _, r := range []*store.StaffAbsence{before, after} {
-		if r != nil && !slices.Contains(typeIDs, r.TypeID) {
-			typeIDs = append(typeIDs, r.TypeID)
+		if r == nil || slices.Contains(typeIDs, r.TypeID) {
+			continue
+		}
+		class := "C"
+		if slices.ContainsFunc(types, func(t store.StaffAbsenceType) bool { return t.ID == r.TypeID && healthKind(t.Kind) }) {
+			class = healthClass
+		}
+		typeIDs = append(typeIDs, r.TypeID)
+		typeClasses = append(typeClasses, class)
+		if !slices.Contains(classes, class) {
+			classes = append(classes, class)
+			slices.Sort(classes)
 		}
 	}
 	payload["typeIds"] = typeIDs
+	payload["typeClasses"] = typeClasses
 	return s.recordClassedEvent(ctx, txq, personID, kind, who, payload, classes)
 }
 
@@ -276,8 +402,8 @@ func (s *server) accountsAfter(ctx context.Context, txq *store.Queries, settings
 
 // respondWrite is a write's answer: the row as the writer reads it, with the
 // accounts after it and whether one is overdrawn.
-func respondWrite(w absenceWrite, personID int64) gen.StaffAbsence {
-	out := absenceResponse(w.row, w.typ.Kind, w.typ.Visibility, w.typ.Unit, w.audience)
+func (s *server) respondWrite(w absenceWrite, personID int64) gen.StaffAbsence {
+	out := absenceResponse(w.row, w.typ.Kind, w.typ.Visibility, w.typ.Unit, w.audience, s.absenceTag)
 	if w.accounts != nil {
 		accounts := make([]gen.StaffHolidayAccount, 0, len(w.accounts))
 		overdrawn := false
@@ -311,7 +437,7 @@ func (s *server) createAbsence(ctx context.Context, caller *callerContext, who a
 		if row.Status == absenceRequested {
 			kind = eventAbsenceRequested
 		}
-		if err := s.recordAbsence(ctx, txq, personID, kind, who, row.ID, nil, &row, healthKind(t.Kind)); err != nil {
+		if err := s.recordAbsence(ctx, txq, personID, kind, who, row.ID, nil, &row, t); err != nil {
 			return err
 		}
 		out = absenceWrite{row: row, typ: t}
@@ -362,15 +488,19 @@ func (s *server) PostStaffAbsences(ctx context.Context, req gen.PostStaffAbsence
 	if err != nil {
 		return nil, err
 	}
-	return gen.PostStaffAbsences201JSONResponse(respondWrite(w, body.PersonId)), nil
+	return gen.PostStaffAbsences201JSONResponse(s.respondWrite(w, body.PersonId)), nil
 }
 
-// absenceListFilter is a list's validated filters.
+// absenceListFilter is a list's validated filters, and how a status filter
+// reads a row shown as leave: neutral for a caller who reads HR-only types
+// as leave, on every row but self's (leak 2).
 type absenceListFilter struct {
 	personID       *int64
 	from, to       *openapi_types.Date
 	status         *string
 	page, pageSize int32
+	neutral        bool
+	self           *int64
 }
 
 // parseAbsenceList judges a list's filters: the paging, from on or before to,
@@ -395,7 +525,7 @@ func parseAbsenceList(personID *int64, from, to *openapi_types.Date, status *gen
 func (s *server) listAbsences(ctx context.Context, q *store.Queries, filter absenceListFilter, everyone bool, full, colleagues []int64, audienceOf func(personID int64) audience) (gen.PaginatedResponseOfStaffAbsence, error) {
 	params := store.ListAbsencesParams{
 		PersonID: filter.personID, Status: filter.status, Everyone: everyone, FullIds: full, ColleagueIds: colleagues,
-		PageSize: filter.pageSize, PageOffset: (filter.page - 1) * filter.pageSize,
+		Neutral: filter.neutral, SelfID: filter.self, PageSize: filter.pageSize, PageOffset: (filter.page - 1) * filter.pageSize,
 	}
 	if filter.from != nil {
 		params.FromDay = dayParam(filter.from.Time)
@@ -405,7 +535,7 @@ func (s *server) listAbsences(ctx context.Context, q *store.Queries, filter abse
 	}
 	total, err := q.CountAbsences(ctx, store.CountAbsencesParams{
 		PersonID: params.PersonID, FromDay: params.FromDay, ToDay: params.ToDay, Status: params.Status,
-		Everyone: everyone, FullIds: full, ColleagueIds: colleagues,
+		Everyone: everyone, FullIds: full, ColleagueIds: colleagues, Neutral: filter.neutral, SelfID: filter.self,
 	})
 	if err != nil {
 		return gen.PaginatedResponseOfStaffAbsence{}, fmt.Errorf("staff: count the absences: %w", err)
@@ -416,7 +546,7 @@ func (s *server) listAbsences(ctx context.Context, q *store.Queries, filter abse
 	}
 	return gen.PaginatedResponseOfStaffAbsence{
 		Data: mapRows(rows, func(r store.ListAbsencesRow) gen.StaffAbsence {
-			return absenceResponse(r.StaffAbsence, r.Kind, r.Visibility, r.Unit, audienceOf(r.StaffAbsence.PersonID))
+			return absenceResponse(r.StaffAbsence, r.Kind, r.Visibility, r.Unit, audienceOf(r.StaffAbsence.PersonID), s.absenceTag)
 		}),
 		Pagination: apicommon.Pagination(filter.page, filter.pageSize, int32(total)),
 	}, nil
@@ -439,6 +569,7 @@ func (s *server) GetStaffAbsences(ctx context.Context, req gen.GetStaffAbsencesR
 	if err != nil {
 		return nil, err
 	}
+	filter.neutral, filter.self = !caller.PersonalData, caller.Person
 	var out gen.PaginatedResponseOfStaffAbsence
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		everyone := caller.Manage || caller.PersonalData
@@ -508,7 +639,7 @@ func (s *server) GetStaffAbsencesById(ctx context.Context, req gen.GetStaffAbsen
 		if err != nil {
 			return err
 		}
-		out = absenceResponse(row.StaffAbsence, row.Kind, row.Visibility, row.Unit, a)
+		out = absenceResponse(row.StaffAbsence, row.Kind, row.Visibility, row.Unit, a, s.absenceTag)
 		return nil
 	})
 	if _, ok := asRefusal(err); ok {
@@ -576,7 +707,7 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 	if req.Body != nil {
 		body = *req.Body
 	}
-	revision, ok := parseIfMatch(req.Params.IfMatch)
+	match, ok := parseAbsenceIfMatch(req.Params.IfMatch)
 	if !ok {
 		return gen.PutStaffAbsencesById400ApplicationProblemPlusJSONResponse(invalid(invalidAbsenceTitle, badIfMatch())), nil
 	}
@@ -612,7 +743,7 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 		if err != nil {
 			return err
 		}
-		if err := checkRevision("absence", before.Revision, revision); err != nil {
+		if err := s.checkAbsenceIfMatch(before, match, writerAudience(caller, personID)); err != nil {
 			return err
 		}
 		if !undecidedFor(before.Status, caller.Manage) {
@@ -633,8 +764,7 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 		if err != nil {
 			return fmt.Errorf("staff: change absence %d: %w", before.ID, err)
 		}
-		if err := s.recordAbsence(ctx, txq, personID, eventAbsenceUpdated, who, row.ID, &before, &row,
-			healthKind(beforeType.Kind) || healthKind(t.Kind)); err != nil {
+		if err := s.recordAbsence(ctx, txq, personID, eventAbsenceUpdated, who, row.ID, &before, &row, beforeType, t); err != nil {
 			return err
 		}
 		w = absenceWrite{row: row, typ: t}
@@ -660,7 +790,7 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 	if err != nil {
 		return nil, err
 	}
-	return gen.PutStaffAbsencesById200JSONResponse(respondWrite(w, personID)), nil
+	return gen.PutStaffAbsencesById200JSONResponse(s.respondWrite(w, personID)), nil
 }
 
 // DeleteStaffAbsencesById Delete an absence
@@ -696,7 +826,7 @@ func (s *server) DeleteStaffAbsencesById(ctx context.Context, req gen.DeleteStaf
 		if err := txq.DeleteAbsence(ctx, row.ID); err != nil {
 			return fmt.Errorf("staff: delete absence %d: %w", row.ID, err)
 		}
-		return s.recordAbsence(ctx, txq, personID, eventAbsenceDeleted, who, row.ID, &row, nil, healthKind(t.Kind))
+		return s.recordAbsence(ctx, txq, personID, eventAbsenceDeleted, who, row.ID, &row, nil, t)
 	})
 	if errors.Is(err, errPersonNotFound) {
 		return gen.DeleteStaffAbsencesById404Response{}, nil
@@ -749,7 +879,7 @@ func (s *server) PostStaffAbsencesByIdCancel(ctx context.Context, req gen.PostSt
 		if err != nil {
 			return fmt.Errorf("staff: cancel absence %d: %w", before.ID, err)
 		}
-		if err := s.recordAbsence(ctx, txq, personID, eventAbsenceCancelled, who, row.ID, &before, &row, healthKind(t.Kind)); err != nil {
+		if err := s.recordAbsence(ctx, txq, personID, eventAbsenceCancelled, who, row.ID, &before, &row, t); err != nil {
 			return err
 		}
 		w = absenceWrite{row: row, typ: t}
@@ -768,5 +898,5 @@ func (s *server) PostStaffAbsencesByIdCancel(ctx context.Context, req gen.PostSt
 	if err != nil {
 		return nil, err
 	}
-	return gen.PostStaffAbsencesByIdCancel200JSONResponse(respondWrite(w, personID)), nil
+	return gen.PostStaffAbsencesByIdCancel200JSONResponse(s.respondWrite(w, personID)), nil
 }

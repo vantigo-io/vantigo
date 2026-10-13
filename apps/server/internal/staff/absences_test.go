@@ -279,7 +279,7 @@ func TestAbsences_Overlap(t *testing.T) {
 	requestOwn(t, w.kariC, absence(t, h, "helse", "2026-11-04", "2026-11-04", "hours", 2))
 
 	var moved gen.StaffAbsence
-	do(t, w.kariC, http.MethodPut, absencePath(ferie.Id), absence(t, h, "ferie", "2026-11-03", "2026-11-09"), http.StatusOK, &moved, ifMatch(ferie.Revision))
+	do(t, w.kariC, http.MethodPut, absencePath(ferie.Id), absence(t, h, "ferie", "2026-11-03", "2026-11-09"), http.StatusOK, &moved, ifMatch(*ferie.Revision))
 	if workingDaysOf(moved) != 5 {
 		t.Errorf("moved = %+v, want five working days", moved)
 	}
@@ -300,19 +300,19 @@ func TestAbsences_EditDeleteCancel(t *testing.T) {
 	req := requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-10-05", "2026-10-09"))
 	sick := requestOwn(t, w.kariC, absence(t, h, "egenmelding", "2026-09-14", "2026-09-15"))
 
-	refused(t, w.kariC.Do(http.MethodPut, absencePath(req.Id), absence(t, h, "ferie", "2026-10-05", "2026-10-07"), ifMatch(req.Revision+1)),
+	refused(t, w.kariC.Do(http.MethodPut, absencePath(req.Id), absence(t, h, "ferie", "2026-10-05", "2026-10-07"), ifMatch(*req.Revision+1)),
 		http.StatusConflict, "revision_conflict")
 	var changed gen.StaffAbsence
 	do(t, w.kariC, http.MethodPut, absencePath(req.Id), absence(t, h, "ferie", "2026-10-05", "2026-10-07", "note", "Kortere"),
-		http.StatusOK, &changed, ifMatch(req.Revision))
-	if workingDaysOf(changed) != 3 || changed.Revision != req.Revision+1 {
+		http.StatusOK, &changed, ifMatch(*req.Revision))
+	if workingDaysOf(changed) != 3 || *changed.Revision != *req.Revision+1 {
 		t.Errorf("changed = %+v, want three days and the revision moved on", changed)
 	}
 	if f := eventOf(t, w.kariC, w.kari.Id, "absence_updated", req.Id); f == nil || f["lastDay"] == nil || f["note"] == nil || f["type"] != nil {
 		t.Errorf("absence_updated fields = %v, want lastDay and note, not the unchanged type", f)
 	}
 	for name, c := range map[string]*modtest.Client{"her manager": w.bossC, "a colleague": w.viewer, "personal-data alone": w.pd} {
-		if r := c.Do(http.MethodPut, absencePath(req.Id), absence(t, h, "ferie", "2026-10-05", "2026-10-06"), ifMatch(changed.Revision)); r.Status != http.StatusForbidden && r.Status != http.StatusNotFound {
+		if r := c.Do(http.MethodPut, absencePath(req.Id), absence(t, h, "ferie", "2026-10-05", "2026-10-06"), ifMatch(*changed.Revision)); r.Status != http.StatusForbidden && r.Status != http.StatusNotFound {
 			t.Errorf("%s changing Kari's request: %d, want 403 or 404", name, r.Status)
 		}
 		if r := c.Do(http.MethodDelete, absencePath(req.Id), nil); r.Status != http.StatusForbidden && r.Status != http.StatusNotFound {
@@ -333,12 +333,12 @@ func TestAbsences_EditDeleteCancel(t *testing.T) {
 	}
 
 	// The registered egenmelding: the person asks; HR ends it early.
-	refused(t, w.kariC.Do(http.MethodPut, absencePath(sick.Id), absence(t, h, "egenmelding", "2026-09-14", "2026-09-14"), ifMatch(sick.Revision)),
+	refused(t, w.kariC.Do(http.MethodPut, absencePath(sick.Id), absence(t, h, "egenmelding", "2026-09-14", "2026-09-14"), ifMatch(*sick.Revision)),
 		http.StatusConflict, "absence_not_requested")
 	refused(t, w.kariC.Do(http.MethodDelete, absencePath(sick.Id), nil), http.StatusConflict, "absence_not_requested")
 	refused(t, w.kariC.Do(http.MethodPost, cancelAbsencePath(sick.Id), nil), http.StatusConflict, "absence_not_cancellable")
 	var ended gen.StaffAbsence
-	do(t, w.hr, http.MethodPut, absencePath(sick.Id), absence(t, h, "egenmelding", "2026-09-14", "2026-09-14"), http.StatusOK, &ended, ifMatch(sick.Revision))
+	do(t, w.hr, http.MethodPut, absencePath(sick.Id), absence(t, h, "egenmelding", "2026-09-14", "2026-09-14"), http.StatusOK, &ended, ifMatchAs(t, w.hr, sick.Id))
 	if ended.LastDay.Format("2006-01-02") != "2026-09-14" || statusOf(ended) != gen.Registered {
 		t.Errorf("ended = %+v, want one day, registered", ended)
 	}
@@ -356,7 +356,7 @@ func TestAbsences_EditDeleteCancel(t *testing.T) {
 	refused(t, w.kariC.Do(http.MethodPost, cancelAbsencePath(req.Id), nil), http.StatusConflict, "absence_not_cancellable")
 	refused(t, w.kariC.Do(http.MethodDelete, absencePath(req.Id), nil), http.StatusConflict, "absence_not_requested")
 	refused(t, w.hr.Do(http.MethodDelete, absencePath(req.Id), nil), http.StatusConflict, "absence_not_requested")
-	refused(t, w.kariC.Do(http.MethodPut, absencePath(req.Id), absence(t, h, "ferie", "2026-10-05", "2026-10-06"), ifMatch(cancelled.Revision)),
+	refused(t, w.kariC.Do(http.MethodPut, absencePath(req.Id), absence(t, h, "ferie", "2026-10-05", "2026-10-06"), ifMatch(*cancelled.Revision)),
 		http.StatusConflict, "absence_not_requested")
 	if f := eventOf(t, w.kariC, w.kari.Id, "absence_cancelled", req.Id); f == nil || f["status"] == nil {
 		t.Errorf("absence_cancelled fields = %v, want the status", f)
@@ -463,10 +463,12 @@ func TestAbsences_ShapingMatrix(t *testing.T) {
 }
 
 // An absence's events, shaped (plan pre-flight B2, I6): every type value by
-// its own type — a correction away from an HR-only type shows the manager
-// "leave" before and the new type after; a deleted HR-only row's event shows
-// "leave"; a sick row's event touches class E and is still listed to the
-// manager and to HR without staff:personal-data, its degree shown.
+// its own type — a correction away from an HR-only type shows the person and
+// staff:personal-data the type before and after, and is not listed at all to
+// the manager and to HR without staff:personal-data, who read the row as
+// leave (leak 2); nor is a deleted HR-only row's event. A sick row's event
+// touches class E and is still listed to the manager and to HR without
+// staff:personal-data, its degree shown.
 func TestAbsences_EventsShaped(t *testing.T) {
 	t.Parallel()
 	w := newAbsenceWorld(t)
@@ -474,31 +476,34 @@ func TestAbsences_EventsShaped(t *testing.T) {
 	ferieType, hrOnlyType := typeID(t, h, "ferie"), typeID(t, h, "svangerskapspermisjon")
 
 	hrOnly := requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
-	do(t, w.hr, http.MethodPut, absencePath(hrOnly.Id), absence(t, h, "ferie", "2026-11-02", "2026-11-06"), http.StatusOK, nil, ifMatch(hrOnly.Revision))
-	// A reader of "leave" lists the event under the neutral absence_changed
-	// (review H1), since the row was HR-only on one side.
+	do(t, w.hr, http.MethodPut, absencePath(hrOnly.Id), absence(t, h, "ferie", "2026-11-02", "2026-11-06"), http.StatusOK, nil, ifMatchAs(t, w.hr, hrOnly.Id))
 	for _, c := range []struct {
 		name     string
 		c        *modtest.Client
-		kind     string
 		from, to any
 	}{
-		{"her manager", w.bossC, "absence_changed", "leave", float64(ferieType)},
-		{"HR", w.hr, "absence_changed", "leave", float64(ferieType)},
-		{"personal-data", w.pd, "absence_updated", float64(hrOnlyType), float64(ferieType)},
-		{"the person", w.kariC, "absence_updated", float64(hrOnlyType), float64(ferieType)},
+		{"personal-data", w.pd, float64(hrOnlyType), float64(ferieType)},
+		{"the person", w.kariC, float64(hrOnlyType), float64(ferieType)},
 	} {
-		f := eventOf(t, c.c, w.kari.Id, c.kind, hrOnly.Id)
+		f := eventOf(t, c.c, w.kari.Id, "absence_updated", hrOnly.Id)
 		typ, _ := f["type"].(map[string]any)
 		if typ["from"] != c.from || typ["to"] != c.to {
 			t.Errorf("%s reads the correction's type as %v, want from %v to %v", c.name, f["type"], c.from, c.to)
 		}
 	}
+	for name, c := range map[string]*modtest.Client{"her manager": w.bossC, "HR": w.hr} {
+		if e := eventsAbout(t, c, w.kari.Id, hrOnly.Id); len(e) != 0 {
+			t.Errorf("%s is listed the HR-only row's events: %v", name, e)
+		}
+	}
 
 	gone := requestOwn(t, w.kariC, absence(t, h, "religios_hoytid", "2026-12-07", "2026-12-07"))
 	do(t, w.kariC, http.MethodDelete, absencePath(gone.Id), nil, http.StatusNoContent, nil)
-	if f := eventOf(t, w.bossC, w.kari.Id, "absence_changed", gone.Id); f == nil || f["type"].(map[string]any)["from"] != "leave" {
-		t.Errorf("the manager reads the deleted HR-only row's event as %v, want its type leave", f)
+	if e := eventsAbout(t, w.bossC, w.kari.Id, gone.Id); len(e) != 0 {
+		t.Errorf("the manager is listed the deleted HR-only row's events: %v", e)
+	}
+	if f := eventOf(t, w.pd, w.kari.Id, "absence_deleted", gone.Id); f == nil {
+		t.Error("personal-data is not listed the deleted HR-only row's event")
 	}
 
 	sick := register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-09-21", "2026-09-25", "degreePercent", 60))
@@ -567,6 +572,29 @@ func TestAbsences_TheEraseKeepsDatesAndTypes(t *testing.T) {
 	f = fieldsOf(oldSick, "absence_registered")
 	kept("the health erase, sykmelding", f, "firstDay", "lastDay", "status")
 	blanked("the health erase, sykmelding", f, "type", "degree")
+
+	// The row's types beside the fields (typeIds, review H1) are erased by
+	// their own class too (leak 3): the health erase puts the reserved
+	// absent type in place of the sick one, and leaves a ferie row's and a
+	// recent leaver's alone.
+	typeIDsOf := func(id int64, kind string) []int64 {
+		return modtest.One[[]int64](t, h.Harness, `SELECT ARRAY(SELECT jsonb_array_elements_text(payload->'typeIds')::bigint)
+			FROM staff.events WHERE kind = $1 AND (payload->>'absenceId')::bigint = $2`, kind, id)
+	}
+	for _, c := range []struct {
+		name string
+		id   int64
+		kind string
+		want int64
+	}{
+		{"an erased sykmelding", oldSick, "absence_registered", typeID(t, h, "absent")},
+		{"an erased leaver's ferie", oldFerie, "absence_requested", typeID(t, h, "ferie")},
+		{"a recent leaver's sykmelding", recentSick, "absence_registered", typeID(t, h, "sykmelding")},
+	} {
+		if got := typeIDsOf(c.id, c.kind); !slices.Equal(got, []int64{c.want}) {
+			t.Errorf("%s: typeIds = %v, want [%d]", c.name, got, c.want)
+		}
+	}
 }
 
 // rowsAs is personID's absences as c lists them, each a bare JSON object.
@@ -598,7 +626,7 @@ func TestAbsences_AColleagueSeesNoKindOfAbsence(t *testing.T) {
 	if len(rows) != 4 {
 		t.Fatalf("a colleague lists %d rows, want 4", len(rows))
 	}
-	want := []string{"firstDay", "id", "lastDay", "personId", "revision", "shownAs"}
+	want := []string{"firstDay", "id", "lastDay", "personId", "shownAs"}
 	for _, r := range rows {
 		if got := keysOf(r); !slices.Equal(got, want) || r["shownAs"] != "absent" {
 			t.Errorf("a colleague reads %v, want only %v and shownAs absent", r, want)
@@ -645,66 +673,6 @@ func eventsAbout(t *testing.T, c *modtest.Client, personID, id int64) []struct {
 	return out
 }
 
-// An HR-only hour type looks like any other leave to whoever reads it as
-// "leave" (review H1): a registered svangerskapskontroll, to the manager and
-// to HR without staff:personal-data, carries no hours, the working days of
-// its day and the status approved — as an approved religious holiday does —
-// and its events have the neutral kind absence_changed, no hours and the
-// same fields. staff:personal-data and the person read it as it is.
-func TestAbsences_AnHROnlyHourTypeLooksLikeLeave(t *testing.T) {
-	t.Parallel()
-	w := newAbsenceWorld(t)
-	h := w.h
-	check := requestOwn(t, w.kariC, absence(t, h, "svangerskapskontroll", "2026-10-07", "2026-10-07", "hours", 2))
-	holy := requestOwn(t, w.kariC, absence(t, h, "religios_hoytid", "2026-10-08", "2026-10-08"))
-	h.Exec(t, `UPDATE staff.absences SET status = 'approved' WHERE id = $1`, holy.Id)
-	if statusOf(check) != gen.Registered {
-		t.Fatalf("svangerskapskontroll = %+v, want registered", check)
-	}
-
-	for name, c := range map[string]*modtest.Client{"her manager": w.bossC, "HR without personal-data": w.hr} {
-		a := raw(t, c.Do(http.MethodGet, absencePath(check.Id), nil))
-		b := raw(t, c.Do(http.MethodGet, absencePath(holy.Id), nil))
-		if !slices.Equal(keysOf(a), keysOf(b)) {
-			t.Errorf("%s: the check's keys %v, the holiday's %v, want the same", name, keysOf(a), keysOf(b))
-		}
-		for _, k := range []string{"shownAs", "status", "workingDays", "percent"} {
-			if a[k] != b[k] {
-				t.Errorf("%s: %s = %v for the check, %v for the holiday, want the same", name, k, a[k], b[k])
-			}
-		}
-		if _, ok := a["hours"]; ok {
-			t.Errorf("%s reads the check's hours: %v", name, a)
-		}
-		for _, r := range rowsAs(t, c, fmt.Sprintf("?personId=%d", w.kari.Id)) {
-			if _, ok := r["hours"]; ok {
-				t.Errorf("%s lists a row with hours: %v", name, r)
-			}
-		}
-		ce, he := eventsAbout(t, c, w.kari.Id, check.Id), eventsAbout(t, c, w.kari.Id, holy.Id)
-		if len(ce) != 1 || len(he) != 1 {
-			t.Fatalf("%s: events %v and %v, want one each", name, ce, he)
-		}
-		if ce[0].Kind != "absence_changed" || he[0].Kind != "absence_changed" {
-			t.Errorf("%s: kinds %s and %s, want absence_changed for both", name, ce[0].Kind, he[0].Kind)
-		}
-		if !slices.Equal(keysOf(ce[0].Fields), keysOf(he[0].Fields)) {
-			t.Errorf("%s: the check's event fields %v, the holiday's %v, want the same", name, keysOf(ce[0].Fields), keysOf(he[0].Fields))
-		}
-		if s, _ := ce[0].Fields["status"].(map[string]any); s["to"] != "approved" {
-			t.Errorf("%s: the check's event status %v, want approved", name, ce[0].Fields["status"])
-		}
-	}
-	for name, c := range map[string]*modtest.Client{"personal-data": w.pd, "the person": w.kariC} {
-		if a := raw(t, c.Do(http.MethodGet, absencePath(check.Id), nil)); a["hours"] != float64(2) || a["status"] != "registered" {
-			t.Errorf("%s reads the check as %v, want its hours and registered", name, a)
-		}
-		if e := eventsAbout(t, c, w.kari.Id, check.Id); len(e) != 1 || e[0].Kind != "absence_registered" || e[0].Fields["hours"] == nil {
-			t.Errorf("%s reads the check's event as %v, want absence_registered with hours", name, e)
-		}
-	}
-}
-
 // A change never moves a row between a request and a registration (review
 // L2): a registered row changed to a type that needs a decision, or a request
 // changed to a notification, is absence_status_change.
@@ -713,10 +681,10 @@ func TestAbsences_NoChangeAcrossStatuses(t *testing.T) {
 	w := newAbsenceWorld(t)
 	h := w.h
 	sick := requestOwn(t, w.kariC, absence(t, h, "egenmelding", "2026-09-14", "2026-09-14"))
-	refused(t, w.hr.Do(http.MethodPut, absencePath(sick.Id), absence(t, h, "ferie", "2026-09-14", "2026-09-14"), ifMatch(sick.Revision)),
+	refused(t, w.hr.Do(http.MethodPut, absencePath(sick.Id), absence(t, h, "ferie", "2026-09-14", "2026-09-14"), ifMatchAs(t, w.hr, sick.Id)),
 		http.StatusConflict, "absence_status_change")
 	req := requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-10-05", "2026-10-09"))
-	refused(t, w.kariC.Do(http.MethodPut, absencePath(req.Id), absence(t, h, "egenmelding", "2026-10-05", "2026-10-05"), ifMatch(req.Revision)),
+	refused(t, w.kariC.Do(http.MethodPut, absencePath(req.Id), absence(t, h, "egenmelding", "2026-10-05", "2026-10-05"), ifMatch(*req.Revision)),
 		http.StatusConflict, "absence_status_change")
 	if n := h.Count(t, `SELECT count(*) FROM staff.absences WHERE id = ANY($1) AND revision = 1`, []int64{sick.Id, req.Id}); n != 2 {
 		t.Errorf("%d rows unchanged, want both", n)

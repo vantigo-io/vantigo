@@ -1069,7 +1069,7 @@ export interface paths {
         };
         /**
          * List a person's history
-         * @description A person's history, newest first, each payload shaped by the caller's field groups: a field of a group the caller may not read shows "changed" in place of its values, and one of the pay or of HR's notes is left out. The person themselves, a manager of theirs today, staff:manage and staff:personal-data read it; anyone else — a colleague holding staff:view included — gets a 404 identical to an unknown id.
+         * @description A person's history, newest first, each payload shaped by the caller's field groups: a field of a group the caller may not read shows "changed" in place of its values, and one of the pay or of HR's notes is left out. An absence event about a row the caller reads as leave — an HR-only type on either side, to a manager and to staff:manage without staff:personal-data — is not listed to them at all. The person themselves, a manager of theirs today, staff:manage and staff:personal-data read it; anyone else — a colleague holding staff:view included — gets a 404 identical to an unknown id.
          */
         get: operations["getStaffPeopleByIdEvents"];
         put?: never;
@@ -1462,7 +1462,7 @@ export interface components {
             data: components["schemas"]["StaffPersonListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
-        /** @description An absence as the caller may read it (design §5). A colleague (staff:view alone) reads the dates and nothing else — no status, no working days, no type (shownAs absent) — so a sickness looks like any other absence. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, the working days of its days, and a registered row as approved. A write of a type drawing on the holiday account answers the accounts of the years it touches after it. */
+        /** @description An absence as the caller may read it (design §5). A colleague (staff:view alone) reads the dates and nothing else — no status, no working days, no type (shownAs absent) — so a sickness looks like any other absence. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, the working days of its days, a registered row as approved (a status filter matches it so too), no revision, and none of its events listed to them — they read its dates already, and the events' count and kinds would tell a notification from a request. A write of a type drawing on the holiday account answers the accounts of the years it touches after it. */
         StaffAbsence: {
             /** Format: int64 */
             id: number;
@@ -1516,9 +1516,11 @@ export interface components {
             overdrawn?: boolean;
             /**
              * Format: int32
-             * @description The revision a change sends back in If-Match.
+             * @description The revision a change sends back in If-Match — to the person and to staff:manage with staff:personal-data only, who write the row and read it as it is. Nobody else is sent it: a registration stays at revision 1 and a decided request moves past it, so the number would tell which rows are notifications.
              */
-            revision: number;
+            revision?: number;
+            /** @description In place of the revision, to staff:manage without staff:personal-data — who writes every row but reads an HR-only one as leave — on every row alike: an opaque tag, sent back quoted in If-Match, that changes with the row and tells nothing of how often it has. */
+            etag?: string;
         };
         /** @description An absence's fields, for a change (a full replace) and for one's own new absence. A property this request does not name is refused, so the person learns it was not written. */
         StaffAbsenceChangeRequest: {
@@ -3750,7 +3752,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The revision the absence was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                /** @description The revision the absence was read at, bare (3) or quoted ("3") — or, for staff:manage without staff:personal-data, the etag it was read with, quoted. A revision or an etag that has moved on, or a bare revision from a caller who is sent etags, is a 409 revision_conflict that names no revision. */
                 "If-Match": string;
             };
             path: {

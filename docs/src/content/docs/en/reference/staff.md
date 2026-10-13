@@ -1276,7 +1276,23 @@ sykmelding, a sick child, a doctor's visit and a holiday are the same dates, sho
 `staff:personal-data`, a row of an HR-only type carries no `hours`, the working days of
 its days whatever its unit, and `approved` in place of `registered` — so
 svangerskapskontroll, an HR-only hour registration, is not told apart from the other
-HR-only leave. Its events are shaped the same way (below).
+HR-only leave. A status filter matches it by the status it is shown as — asking for
+`registered` rows does not list it, asking for `approved` does — and none of its events
+is listed to them (below): they read its dates already, and one registration event
+against a request and its decision would tell a notification from a request.
+
+**A row's revision goes only to whoever writes it** (Task 3 re-check, leak 1). A
+registration stays at revision 1 while a decided request moves past it, so the number
+would tell a notification from a request too. The person, and `staff:manage` with
+`staff:personal-data`, read `revision`; `staff:manage` without `staff:personal-data` —
+who writes every row but reads an HR-only one as leave — reads an opaque **`etag`** in
+its place on every row alike: an HMAC of the row's id and revision under the
+installation's secret (the secrets box, purpose `staff/absence-etag`), `a1-` and 24
+characters, which changes with every write and says nothing of how many there were. It
+sends the etag back, quoted, in `If-Match`; from such a caller a bare revision is
+`revision_conflict`, so a write cannot probe how often a row was written, and the
+conflict's detail names no revision. A manager, `staff:personal-data` alone and a
+colleague are sent neither.
 
 ### Overlap
 
@@ -1369,10 +1385,18 @@ value, before and after, by its own type's visibility** (pre-flight B2): a corre
 away from an HR-only type shows a manager `"leave"` before and the new type after; a
 deleted HR-only row's event shows `"leave"`; a type the module cannot find shows
 `"leave"` too. Each absence event also names the row's type on either side
-(`typeIds`): when one of them is HR-only, a reader of `"leave"` gets the event under the
-neutral kind `absence_changed`, without `hours`, a `registered` status read as
-`approved` — the row's own shaping, so the kind and the fields say no more than the
-row does. A sick row's event touches class E, yet the absence family is listed to
+(`typeIds`), each with its class beside it (`typeClasses`, in the same order: E for a
+sick or child-sick type, else C). **When one of them is HR-only, or the event names
+none, the event is not listed at all to a reader of `"leave"`** — the manager and HR
+without `staff:personal-data` (Task 3 re-check, leak 2; reading 32): its count and its
+kinds, one `absence_registered` against an `absence_requested` and its decision, would
+tell svangerskapskontroll from the other HR-only leave. They read the row's dates on the
+row itself. (Were one listed, its shaping would still be the row's — the neutral kind
+`absence_changed`, no `hours`, `registered` read as `approved`.) The erase treats
+`typeIds` by `typeClasses` as it treats the fields by `classes`: the health erase
+replaces a sick type's id with the reserved `absent` type's (leak 3), so neither the
+history nor the complete personal-data file, which carries each event whole, names the
+sick type once it is erased; an entry without a class is replaced by every erase. A sick row's event touches class E, yet the absence family is listed to
 everyone who reads the person's history (pre-flight I6) — the manager and HR without
 `staff:personal-data` read its dates and degree, as they read the row itself — while
 any other event touching E stays the health group's.

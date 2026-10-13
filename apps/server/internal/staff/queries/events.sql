@@ -9,11 +9,15 @@ VALUES (@person_id, @kind, @actor_kind, @actor_user_id, @actor_display, @at::tim
 -- name: CountPersonEvents :one
 -- CountPersonEvents counts what ListPersonEvents pages through, health events
 -- (those whose payload touches class E) — but the absence family's — and the
--- hold's kinds only when asked for.
+-- hold's kinds only when asked for, and an absence event of a row shown as
+-- leave never to its leave-reader.
 SELECT count(*) FROM staff.events
 WHERE person_id = @person_id
   AND (@with_health::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY(@absence_kinds::text[]))
-  AND (@with_hold::boolean OR NOT (kind = ANY(@hold_kinds::text[])));
+  AND (@with_hold::boolean OR NOT (kind = ANY(@hold_kinds::text[])))
+  AND NOT (@hide_leave_rows::boolean AND kind = ANY(@absence_kinds::text[]) AND NOT coalesce(
+      CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
+           THEN payload->'typeIds' <@ to_jsonb(@plain_type_ids::bigint[]) END, false));
 
 -- name: ListPersonEvents :many
 -- ListPersonEvents is one page of a person's history, newest first; two
@@ -24,12 +28,19 @@ WHERE person_id = @person_id
 -- the legal hold, the reassessment, the rehire, the export — are left out
 -- the same way unless asked for (@with_hold). The absence family
 -- (@absence_kinds) is listed whatever its classes (plan pre-flight I6): a
--- sick row's event is shaped field by field, each by its own group.
+-- sick row's event is shaped field by field, each by its own group — but to
+-- a reader of HR-only types as leave (@hide_leave_rows), an absence event
+-- whose types are not all @plain_type_ids (the types shown as themselves) is
+-- not listed at all, an event naming no types included (fail closed): its
+-- count and its kinds would tell the HR-only notification from a request.
 SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload, payload_classes
 FROM staff.events
 WHERE person_id = @person_id
   AND (@with_health::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY(@absence_kinds::text[]))
   AND (@with_hold::boolean OR NOT (kind = ANY(@hold_kinds::text[])))
+  AND NOT (@hide_leave_rows::boolean AND kind = ANY(@absence_kinds::text[]) AND NOT coalesce(
+      CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
+           THEN payload->'typeIds' <@ to_jsonb(@plain_type_ids::bigint[]) END, false))
 ORDER BY at DESC, id DESC
 LIMIT @page_size OFFSET @page_offset;
 

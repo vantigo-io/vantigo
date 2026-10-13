@@ -17,19 +17,25 @@ SELECT count(*) FROM staff.events
 WHERE person_id = $1
   AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[]))
   AND ($4::boolean OR NOT (kind = ANY($5::text[])))
+  AND NOT ($6::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
+      CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
+           THEN payload->'typeIds' <@ to_jsonb($7::bigint[]) END, false))
 `
 
 type CountPersonEventsParams struct {
-	PersonID     *int64
-	WithHealth   bool
-	AbsenceKinds []string
-	WithHold     bool
-	HoldKinds    []string
+	PersonID      *int64
+	WithHealth    bool
+	AbsenceKinds  []string
+	WithHold      bool
+	HoldKinds     []string
+	HideLeaveRows bool
+	PlainTypeIds  []int64
 }
 
 // CountPersonEvents counts what ListPersonEvents pages through, health events
 // (those whose payload touches class E) — but the absence family's — and the
-// hold's kinds only when asked for.
+// hold's kinds only when asked for, and an absence event of a row shown as
+// leave never to its leave-reader.
 func (q *Queries) CountPersonEvents(ctx context.Context, arg CountPersonEventsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countPersonEvents,
 		arg.PersonID,
@@ -37,6 +43,8 @@ func (q *Queries) CountPersonEvents(ctx context.Context, arg CountPersonEventsPa
 		arg.AbsenceKinds,
 		arg.WithHold,
 		arg.HoldKinds,
+		arg.HideLeaveRows,
+		arg.PlainTypeIds,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -133,18 +141,23 @@ FROM staff.events
 WHERE person_id = $1
   AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[]))
   AND ($4::boolean OR NOT (kind = ANY($5::text[])))
+  AND NOT ($6::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
+      CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
+           THEN payload->'typeIds' <@ to_jsonb($7::bigint[]) END, false))
 ORDER BY at DESC, id DESC
-LIMIT $7 OFFSET $6
+LIMIT $9 OFFSET $8
 `
 
 type ListPersonEventsParams struct {
-	PersonID     *int64
-	WithHealth   bool
-	AbsenceKinds []string
-	WithHold     bool
-	HoldKinds    []string
-	PageOffset   int32
-	PageSize     int32
+	PersonID      *int64
+	WithHealth    bool
+	AbsenceKinds  []string
+	WithHold      bool
+	HoldKinds     []string
+	HideLeaveRows bool
+	PlainTypeIds  []int64
+	PageOffset    int32
+	PageSize      int32
 }
 
 type ListPersonEventsRow struct {
@@ -166,7 +179,11 @@ type ListPersonEventsRow struct {
 // the legal hold, the reassessment, the rehire, the export — are left out
 // the same way unless asked for (@with_hold). The absence family
 // (@absence_kinds) is listed whatever its classes (plan pre-flight I6): a
-// sick row's event is shaped field by field, each by its own group.
+// sick row's event is shaped field by field, each by its own group — but to
+// a reader of HR-only types as leave (@hide_leave_rows), an absence event
+// whose types are not all @plain_type_ids (the types shown as themselves) is
+// not listed at all, an event naming no types included (fail closed): its
+// count and its kinds would tell the HR-only notification from a request.
 func (q *Queries) ListPersonEvents(ctx context.Context, arg ListPersonEventsParams) ([]ListPersonEventsRow, error) {
 	rows, err := q.db.Query(ctx, listPersonEvents,
 		arg.PersonID,
@@ -174,6 +191,8 @@ func (q *Queries) ListPersonEvents(ctx context.Context, arg ListPersonEventsPara
 		arg.AbsenceKinds,
 		arg.WithHold,
 		arg.HoldKinds,
+		arg.HideLeaveRows,
+		arg.PlainTypeIds,
 		arg.PageOffset,
 		arg.PageSize,
 	)
