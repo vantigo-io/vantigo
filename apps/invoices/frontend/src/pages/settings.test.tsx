@@ -21,6 +21,7 @@ const manager = {
   canRunReminders: false,
   canSend: false,
   canSendEhf: false,
+  canTakeOnSitePayment: false,
 };
 
 /** What the fake server holds, which a test may change under the page as another user would. */

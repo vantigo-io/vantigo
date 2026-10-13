@@ -44,10 +44,14 @@ export const meta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta => ({
     canRunReminders: true,
     canSend: true,
     canSendEhf: false,
+    canTakeOnSitePayment: false,
   },
   workAvailable: true,
   work: { hours: true, expenses: true, milestones: true },
   remindersEnabled: false,
+  payLinksAvailable: false,
+  onSitePaymentsAvailable: false,
+  vippsCredentialsRejected: false,
   ...overrides,
 });
 

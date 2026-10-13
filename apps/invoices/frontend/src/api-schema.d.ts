@@ -94,6 +94,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/settings/vipps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the Vipps credentials
+         * @description The stored Vipps MobilePay credentials (invoices payments and reminders design D14) — the sales unit, whether keys are stored and when Vipps refused them — never a key. With none stored the answer is 200 with hasCredentials false and no msn.
+         */
+        get: operations["getInvoicesSettingsVipps"];
+        /**
+         * Store the Vipps credentials
+         * @description Stores the Vipps sales unit and its keys (D14) in their own row, the keys sealed together by the secrets box under invoices/payment-provider-credential. The first PUT needs all three keys; an omitted one keeps the stored one, opened and sealed again from the row read FOR UPDATE in the same transaction. The answer never carries a key. A PUT clears rejectedAt. A change of msn, clientId or subscriptionKey — another sales unit — is refused with 409 payment_attempts_active while a Vipps payment is in flight, counted under the row's lock; a new clientSecret alone, a rotation within the same sales unit, is not.
+         */
+        put: operations["putInvoicesSettingsVipps"];
+        post?: never;
+        /**
+         * Remove the Vipps credentials
+         * @description Removes the Vipps credentials (D14); pay links and on-site payment are unavailable until new ones are stored. Refused with 409 payment_attempts_active while a Vipps payment is in flight — creating, created, authorized, capturing, of unknown outcome, being cancelled, or with a release pending — counted under the credentials row's lock. Removing what is not there is a 204 too.
+         */
+        delete: operations["deleteInvoicesSettingsVipps"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/settings/vipps/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify the Vipps credentials
+         * @description Fetches an access token with the stored keys and makes one authenticated read naming the sales unit (D14), outside any transaction, and says how it went. ok clears rejectedAt; unauthorized sets it.
+         */
+        post: operations["postInvoicesSettingsVippsVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/settings/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the payment settings
+         * @description The payment settings (invoices payments and reminders design D14) — the reference prefix, pay links and their two URLs, on-site payment and the kontantsalg acknowledgement. Every invoices:access holder may read them.
+         */
+        get: operations["getInvoicesSettingsPayments"];
+        /**
+         * Change the payment settings
+         * @description Replaces the payment settings (D14), every field required, under the row's lock, and checks the revision. In this order: 400 on the fields — termsUrl or privacyUrl not an absolute https URL, both needed for pay links, onSitePaymentsEnabled turned on without acknowledgeKontantsalg true; 409 on a stale revision (no code); 409 public_url_missing when payLinksEnabled is turned on and PUBLIC_BASE_URL is unset; 409 payments_unavailable when payLinksEnabled or onSitePaymentsEnabled is turned on and no Vipps credentials are stored. Turning onSitePaymentsEnabled on records the caller and the time as the kontantsalg acknowledgement; turning it off clears them.
+         */
+        put: operations["putInvoicesSettingsPayments"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/settings/reminders": {
         parameters: {
             query?: never;
@@ -1376,6 +1448,8 @@ export interface components {
             canSend: boolean;
             /** @description invoices:issue and ehfAvailable — send an issued document to the customer as EHF over Peppol. */
             canSendEhf: boolean;
+            /** @description invoices:issue and onSitePaymentsAvailable — take a Vipps payment on site, and see an invoice's pay link and its QR code on screen (invoices payments and reminders design D1, D17). */
+            canTakeOnSitePayment: boolean;
         };
         /** @description What every Invoices page needs before it draws anything (invoices foundation design D2). */
         InvoicesMetaResponse: {
@@ -1395,6 +1469,12 @@ export interface components {
             ehfAvailable: boolean;
             /** @description Whether this installation's mail driver is smtp. Without it nothing can be sent (503 mail_unavailable), and canSend is false. */
             mailAvailable: boolean;
+            /** @description Whether a Vipps payment can be taken on site (invoices payments and reminders design D1, D17) — INVOICES_VIPPS_ENABLED is on, Vipps credentials are stored and not rejected, and the payment settings' onSitePaymentsEnabled is on. Without it canTakeOnSitePayment is false. */
+            onSitePaymentsAvailable: boolean;
+            /** @description Whether issued invoices can carry a Vipps pay link (invoices payments and reminders design D1, D15) — INVOICES_VIPPS_ENABLED is on, PUBLIC_BASE_URL is set, Vipps credentials are stored and not rejected, and the payment settings' payLinksEnabled is on. */
+            payLinksAvailable: boolean;
+            /** @description Whether Vipps refused the stored credentials (a 401 or 403) or the server could not open them. Cleared by a new PUT /invoices/settings/vipps and by a verify that succeeds. False without credentials. While true, payLinksAvailable and onSitePaymentsAvailable are false. */
+            vippsCredentialsRejected: boolean;
             /** @description Whether reminders are offered at all — the reminder settings' enabled (invoices payments and reminders design D7). Off, every invoice's next action is blocked reminders_disabled and a run is refused. */
             remindersEnabled: boolean;
             /** @description The seller fields issuing still needs, by their camelCase names (legalName, organisationNumber, addressLine1, postalCode, city, bankAccount). Empty when the seller is complete. */
@@ -1699,6 +1779,53 @@ export interface components {
         /** @description What the provider answered the cheapest authenticated read (Storecove: the legal entity). result is ok (the key reaches the legal entity), unauthorized (the provider refused the key — 401 or 403 — which also flags it as rejected) or unreachable (anything else: the network, a timeout, a 5xx, a legal entity the key does not reach). */
         InvoicesAccessPointVerifyResponse: {
             result: string;
+        };
+        /** @description The stored Vipps MobilePay credentials as a client may see them (invoices payments and reminders design D14) — never a key. msn is the sales unit (Merchant Serial Number), absent when nothing is stored, which also answers hasCredentials false. rejectedAt is when Vipps first refused the keys (a 401 or 403) or the server could not open them, absent while it has not; a PUT and a verify that succeeds clear it. */
+        InvoicesVippsSettings: {
+            hasCredentials: boolean;
+            msn?: string;
+            /** Format: date-time */
+            rejectedAt?: string;
+        };
+        /** @description PUT /settings/vipps' body (D14). msn is the sales unit, 1-10 digits. clientId, clientSecret and subscriptionKey are the sales unit's keys, each at most 1 000 characters: omitted or null keeps the stored one — all three are required the first time — and an empty or blank one is a 400. The keys are sealed together by the secrets box and never answered. A change of msn, clientId or subscriptionKey is refused 409 payment_attempts_active while a Vipps payment is in flight; a new clientSecret alone is not. */
+        InvoicesVippsSettingsRequest: {
+            clientId?: string | null;
+            clientSecret?: string | null;
+            msn: string;
+            subscriptionKey?: string | null;
+        };
+        /** @description What Vipps answered a token fetch and an authenticated read naming the sales unit. result is ok (the keys and the sales unit are accepted; rejectedAt is cleared), unauthorized (Vipps refused them — a 401 or 403 — which also flags them as rejected) or unreachable (anything else: the network, a timeout, a 5xx, a throttle). */
+        InvoicesVippsVerifyResponse: {
+            /** @enum {string} */
+            result: "ok" | "unauthorized" | "unreachable";
+        };
+        /** @description The payment settings (invoices payments and reminders design D14). referencePrefix is the six base36 characters every Vipps payment reference starts with, made once by the installation and never changed. payLinksEnabled puts a Vipps pay link on issued invoices; termsUrl and privacyUrl are the seller's sales terms and privacy notice, shown by Vipps and on the pay page, absent while unset. onSitePaymentsEnabled offers an on-site Vipps payment, as kontantsalg on a kontantfaktura; kontantsalgAcknowledgedBy and kontantsalgAcknowledgedAt are who acknowledged the kontantsalg notice when turning it on, and when — absent while it is off. revision is the one a PUT must name. */
+        InvoicesPaymentSettings: {
+            /** Format: date-time */
+            kontantsalgAcknowledgedAt?: string;
+            /** Format: uuid */
+            kontantsalgAcknowledgedBy?: string;
+            onSitePaymentsEnabled: boolean;
+            payLinksEnabled: boolean;
+            privacyUrl?: string;
+            referencePrefix: string;
+            /** Format: int32 */
+            revision: number;
+            termsUrl?: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string;
+        };
+        /** @description PUT /settings/payments' body, a full replace (D14). payLinksEnabled, termsUrl, privacyUrl, onSitePaymentsEnabled and revision are required — a body without one is a 400 on it — and null is a value only for termsUrl and privacyUrl, each otherwise an absolute https URL of at most 500 characters. Pay links need both URLs. Turning onSitePaymentsEnabled on needs acknowledgeKontantsalg true in the same body (a 400 on acknowledgeKontantsalg otherwise), which records the caller and the time; turning it off clears them. revision is the one the caller read: a stale one is a 409 naming both. */
+        InvoicesPaymentSettingsRequest: {
+            acknowledgeKontantsalg?: boolean;
+            onSitePaymentsEnabled: boolean;
+            payLinksEnabled: boolean;
+            privacyUrl: string | null;
+            /** Format: int32 */
+            revision: number;
+            termsUrl: string | null;
         };
         /** @description One statutory rate as a dated row (invoices payments and reminders design D6), in force from validFrom until the next row of its kind. seeded rows came with a release and have no createdBy; a user adds later ones ahead of a release. releaseValue and releaseSourceRef are what a later release seeded for this kind and date over a user's row, equal or not — while releaseValue differs from value the list warns collection_rate_differs_from_release. inForce is whether the row is the one in force today (Oslo). usable is false once a printed or sent letter dated on or after validFrom and before the next row of the kind has relied on it; a row in force, a used row and a seeded row cannot be deleted. */
         InvoicesCollectionRate: {
@@ -3876,6 +4003,312 @@ export interface operations {
             };
             /** @description Service Unavailable — ehf_unavailable, the stored key cannot be opened; the credentials are flagged as rejected. Store the key again. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesSettingsVipps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesVippsSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putInvoicesSettingsVipps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesVippsSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesVippsSettings"];
+                };
+            };
+            /** @description Bad Request — msn, clientId, clientSecret or subscriptionKey did not pass, or a key was omitted while none is stored; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — payment_attempts_active, a change of the sales unit or its keys while a Vipps payment is in flight. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — payments_unavailable, a key was omitted and the stored keys cannot be opened (APP_SECRET changed, or the row was altered); the credentials are flagged as rejected. Send all three keys again. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    deleteInvoicesSettingsVipps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the credentials are gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — payment_attempts_active. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesSettingsVippsVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesVippsVerifyResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — payments_unavailable, no credentials are stored. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — payments_unavailable, Vipps is switched off on this installation (INVOICES_VIPPS_ENABLED=0) and nothing is sent, or the stored keys cannot be opened; then the credentials are flagged as rejected. Store the keys again. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesSettingsPayments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesPaymentSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putInvoicesSettingsPayments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesPaymentSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesPaymentSettings"];
+                };
+            };
+            /** @description Bad Request — a field is absent or did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — public_url_missing, payments_unavailable, or a stale revision (no code; the detail names both). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

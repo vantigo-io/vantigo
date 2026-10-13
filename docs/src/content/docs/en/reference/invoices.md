@@ -113,6 +113,8 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.reminder_print_batches` | One print batch of paper letters ([Paper and posting](#paper-and-posting)): `post_on`, the day its letters' facts were judged for and the only day it may be confirmed posted, who made it and when, and either the posting — `posted_on`, `posted_by_user_id`, `posted_at`, set together once — or `reprinted_at`, set once; never both. Never deleted or changed but by those writes. |
 | `invoices.invoice_holds` | An invoice marked disputed ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)): the invoice, `kind` (`disputed`), the note, who placed it and when, and — once lifted — when, by whom, the lift's note and `charges_allowed`, the answer to whether the objection was groundless; the lift's three facts together (`ck_invoice_holds_lift`). One live hold per invoice (`ux_invoice_holds_live`). Never deleted; an update is the lift, once, or the erase's blanking of the notes — and the lift of an anonymised customer's hold keeps no note. |
 | `invoices.collection_handoffs` | An invoice's hand-off to a collection agency ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)): the invoice, `handed_on`, the agency, its reference, a note, who recorded it and when, and — once withdrawn — `withdrawn_on`, by whom and why, together (`ck_collection_handoffs_withdrawal`). One live hand-off per invoice (`ux_collection_handoffs_live`). Never deleted; an update is the withdrawal, once, or the erase's blanking of the note. |
+| `invoices.payment_provider_credentials` | One row (`id = 1`): the payment provider (`vipps`), its settings that are not secret (`settings_json`, the sales unit's `msn`), the sales unit's three keys sealed together by the secrets box, a webhook registration's id and sealed secret (both or neither), `rejected_at` once Vipps refused the keys or they could not be opened, and `updated_at` ([Credentials and payment settings](#credentials-and-payment-settings)). Kept off every other row: an attempt's create shares it, a credentials change locks it. |
+| `invoices.payment_settings` | One row (`id = 1`), inserted by the migration: the installation's `reference_prefix` (six base36 characters, never changed), `pay_links_enabled` with the seller's `terms_url` and `privacy_url` (both required while pay links are on), `on_site_payments_enabled` with the kontantsalg acknowledgement — who and when, both or neither, required while on-site payment is on — and the row's revision, who changed it and when. Never deleted ([Credentials and payment settings](#credentials-and-payment-settings)). |
 
 A document's state is not a column: `invoices.document_state(...)` derives it, see
 [Payments and the state of an invoice](#payments-and-the-state-of-an-invoice).
@@ -3286,6 +3288,92 @@ engine's inputs (the rule-input loader's read) and the deliveries — one snapsh
 figure in the file. A customer the snapshot's rows name and the first read did not (a
 hand-off recorded in between) gets an empty `E-mail`, logged at warn.
 
+## Vipps payments
+
+Phase 4's second half (4C) lets a customer pay an issued invoice with Vipps MobilePay.
+Invoices speaks to Vipps through the platform's
+[payments port](/en/contributing/platform-packages/#the-payments-port): one interface,
+amounts in øre across it, the provider's errors typed, the idempotency keys the
+module's own. The module keeps its own tables; the port has none.
+
+### Credentials and payment settings
+
+**The credentials** are one row of their own, `invoices.payment_provider_credentials`,
+the access point's shape ([The access point's credentials](#the-access-points-credentials)):
+one sales unit per installation, its Merchant Serial Number (`msn`) stored in clear and
+its three keys — the client id, the client secret and the subscription key — sealed
+together by the secrets box under the purpose `invoices/payment-provider-credential`.
+No key is ever answered, logged or sent anywhere but to Vipps.
+
+`PUT /settings/vipps` (`invoices:manage`) takes `{msn, clientId?, clientSecret?,
+subscriptionKey?}`: `msn` is 1–10 digits, each key trimmed, non-blank and at most 1 000
+characters. The first PUT needs all three keys; an omitted or null key keeps the stored
+one, which the PUT opens and seals again from the row it read `FOR UPDATE` in its own
+transaction — the one lock it takes. When a kept key cannot be opened the PUT answers 503
+`payments_unavailable` and flags the credentials as rejected. **A change of the sales
+unit** — `msn`, `clientId` or `subscriptionKey` — is refused with 409
+`payment_attempts_active` while any payment attempt is live: `creating`, `created`,
+`authorized`, `capturing`, `capture_unknown` or `cancelling`, or captured with a release
+pending. The attempts are counted under the credentials row's lock, and an attempt's
+create shares that row after its invoice, so no attempt can be made under the old sales
+unit after the count. Stored keys that cannot be opened while all three are given count
+as a change: nothing proves they are the same. A new `clientSecret` alone is a rotation
+within the same sales unit and is allowed. A PUT clears `rejectedAt`. `DELETE` removes
+the row (204, also when there is none), refused with the same 409 while an attempt is
+live. `GET /settings/vipps` (`invoices:manage`) answers `{msn?, hasCredentials,
+rejectedAt?}`; with nothing stored a 200 with `hasCredentials: false`.
+
+`POST /settings/vipps/verify` (`invoices:manage`) fetches an access token and reads the
+sales unit's webhook registrations — the keys and the MSN together — outside any
+transaction, and answers `{result}`: `ok`, which clears `rejectedAt`; `unauthorized`, a
+401 or 403, which sets it; or `unreachable` for anything else — the network, a timeout,
+a 5xx, a throttle. Without credentials it is a 409 `payments_unavailable`; with keys
+that cannot be opened, or with Vipps switched off on the installation, a 503
+`payments_unavailable`, and nothing is sent.
+
+**The provider** is made for each use from the row, read on the pool and opened there,
+dialling `INVOICES_VIPPS_BASE_URL` (the operator's setting) through the module's HTTP
+transport; it is never made or called inside a transaction that holds a lock. With
+`INVOICES_VIPPS_ENABLED=0` no client is made at all: the verify, and every later
+provider call — an attempt's create, an on-site request, the payment worker — stops
+with `payments_unavailable`. Every call is reported as `payments.<operation>` to the
+module's contract-call check, and a 401 or 403 Vipps answers to any of them sets
+`rejected_at`, as keys the secrets box cannot open do (logged at error).
+
+**The payment settings** are one row, `invoices.payment_settings`, inserted by the
+migration with the installation's **reference prefix** — six random base36 characters
+every Vipps payment reference starts with, so references from two installations never
+collide on one sales unit; it never changes. `GET /settings/payments`
+(`invoices:access`) answers `{referencePrefix, payLinksEnabled, termsUrl?, privacyUrl?,
+onSitePaymentsEnabled, kontantsalgAcknowledgedBy?, kontantsalgAcknowledgedAt?, revision,
+updatedAt, updatedBy?}`. `PUT` (`invoices:manage`) replaces every field under the row's
+`FOR UPDATE`, its only lock, and checks, in this order:
+
+- 400 on a field: `payLinksEnabled`, `termsUrl`, `privacyUrl`, `onSitePaymentsEnabled`
+  and `revision` are required, null only for the two URLs; a URL is an absolute `https`
+  URL of at most 500 characters; pay links need both URLs (Vipps shows them as the
+  merchant's legal links, and so does the pay page); turning `onSitePaymentsEnabled` on
+  needs `acknowledgeKontantsalg: true` in the same body;
+- 409 on a stale revision (no code; the detail names both);
+- 409 `public_url_missing` when pay links are turned on and `PUBLIC_BASE_URL` is unset;
+- 409 `payments_unavailable` when pay links or on-site payment are turned on and no
+  credentials are stored.
+
+What is judged is the turning on: a setting already on stays on without being judged
+again, so a manager can still change the URLs of an installation that lost its
+credentials — meta then says nothing is available. **The kontantsalg acknowledgement**:
+turning on-site payment on records the caller and the time; it stays while on-site
+payment stays on, and turning it off clears both. An on-site Vipps payment is
+kontantsalg, offered only as a kontantfaktura, so whoever turns it on says they have read
+what that means.
+
+**Meta** answers three fields and a capability from this, touching no network:
+`payLinksAvailable` — `INVOICES_VIPPS_ENABLED` on, `PUBLIC_BASE_URL` set, credentials
+stored and not rejected, and `payLinksEnabled`; `onSitePaymentsAvailable` — the same
+without `PUBLIC_BASE_URL`, and `onSitePaymentsEnabled`; `vippsCredentialsRejected` —
+reported beside, never folded in, so a page can say why; and
+`capabilities.canTakeOnSitePayment` — `invoices:issue` and `onSitePaymentsAvailable`.
+
 ## The journal
 
 `GET /invoices/journal?from&to` lists the issued documents with an issue date in the
@@ -3645,10 +3733,10 @@ administrator reads when building a role, say so.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; the attention items about overdue invoices and refunds due ([Attention](#attention)). |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; the attention items about overdue invoices and refunds due ([Attention](#attention)). |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)). |
-| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
+| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the Vipps credentials and the payment settings, the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); the attention items about the bank lines, the letters and the print batches ([Attention](#attention)). |
 
 **Why reminders are `invoices:payments` and not `invoices:issue`.** A reminder is not a
@@ -3717,6 +3805,12 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
 | `POST /settings/access-point/verify` | `invoices:manage` | 409 `ehf_unavailable`, no credentials; 503 `ehf_unavailable`, a stored key that cannot be opened |
 | `GET /settings/reminders` | | |
+| `GET /settings/vipps` | `invoices:manage` | none: 200 with `hasCredentials: false` when nothing is stored |
+| `PUT /settings/vipps` | `invoices:manage` | 400 on `msn`, `clientId`, `clientSecret` or `subscriptionKey` (blank, too long, or omitted while none is stored); 409 `payment_attempts_active`, a change of the sales unit or its keys while an attempt is live; 503 `payments_unavailable`, a kept key that cannot be opened |
+| `DELETE /settings/vipps` | `invoices:manage` | 409 `payment_attempts_active` |
+| `POST /settings/vipps/verify` | `invoices:manage` | 409 `payments_unavailable`, no credentials; 503 `payments_unavailable`, Vipps switched off or keys that cannot be opened |
+| `GET /settings/payments` | | |
+| `PUT /settings/payments` | `invoices:manage` | 400 on the field (absent, null but for the URLs, a URL not absolute https or too long, pay links without both URLs, on-site turned on without `acknowledgeKontantsalg`); a stale revision (no code); 409 `public_url_missing`; 409 `payments_unavailable`, a feature turned on without credentials |
 | `PUT /settings/reminders` | `invoices:manage` | 400 on the field (`revision` too; absent, null but for `inkassolov2026From`, the wrong type, out of its bounds, `regimeReviewedThrough` more than a year ahead); a stale revision (no code) |
 | `GET /collection-rates` | | |
 | `POST /collection-rates` | `invoices:manage` | 400 on the field (`kind`, `validFrom` not after today, not after the latest printed or sent letter, or off 1 January and 1 July for a half-yearly kind, `value` out of its bounds or past two decimals, `sourceRef`); 409 `collection_rate_exists` |

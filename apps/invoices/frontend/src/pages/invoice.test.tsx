@@ -503,6 +503,7 @@ describe("what the editor offers", () => {
             canRunReminders: false,
             canSend: false,
             canSendEhf: false,
+            canTakeOnSitePayment: false,
           },
         },
       },
