@@ -10,6 +10,20 @@ import (
 	"time"
 )
 
+const absenceTypeInUse = `-- name: AbsenceTypeInUse :one
+SELECT EXISTS (SELECT 1 FROM staff.absences WHERE type_id = $1::bigint) AS in_use
+`
+
+// AbsenceTypeInUse is whether any absence names the type. Asked under the
+// type's FOR UPDATE, which an absence's foreign key on it (KEY SHARE) waits
+// for, so no absence names it between the answer and the change.
+func (q *Queries) AbsenceTypeInUse(ctx context.Context, id int64) (bool, error) {
+	row := q.db.QueryRow(ctx, absenceTypeInUse, id)
+	var in_use bool
+	err := row.Scan(&in_use)
+	return in_use, err
+}
+
 const insertAbsenceType = `-- name: InsertAbsenceType :one
 INSERT INTO staff.absence_types (
     key, name_en, name_nb, kind, unit, paid, draws_holiday, allows_percent, needs_decision,

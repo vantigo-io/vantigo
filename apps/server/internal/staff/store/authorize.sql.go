@@ -9,6 +9,22 @@ import (
 	"context"
 )
 
+const namedAsManager = `-- name: NamedAsManager :one
+SELECT (EXISTS (SELECT 1 FROM staff.employment_terms WHERE manager_person_id = $1::bigint)
+    OR EXISTS (SELECT 1 FROM staff.departments WHERE manager_person_id = $1::bigint))::boolean AS named
+`
+
+// NamedAsManager is whether any terms row or department names the person as
+// manager — the cheap question GET /meta asks before the one manager rule's
+// walk (managesAnyoneToday): a person nothing names manages nobody, whatever
+// the day.
+func (q *Queries) NamedAsManager(ctx context.Context, personID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, namedAsManager, personID)
+	var named bool
+	err := row.Scan(&named)
+	return named, err
+}
+
 const personForUser = `-- name: PersonForUser :one
 SELECT person_id FROM staff.identity_links
 WHERE provider = 'identity' AND external_id = $1

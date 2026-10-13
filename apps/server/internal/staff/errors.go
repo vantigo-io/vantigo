@@ -107,6 +107,9 @@ const (
 // answers A2's seed_immutable.
 const (
 	codeHolidaySchemeInUse = "holiday_scheme_in_use"
+	// codeAbsenceTypeInUse is a 409 on widening a company type's visibility
+	// (hr_only to absent) once an absence names it.
+	codeAbsenceTypeInUse = "absence_type_in_use"
 )
 
 // The titles this module's validation problems carry, one per thing a request

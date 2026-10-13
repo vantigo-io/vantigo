@@ -298,3 +298,45 @@ func TestAbsenceTypes_Change(t *testing.T) {
 	viewer, _ := signIn(t, h, "staff:view")
 	do(t, viewer, http.MethodPut, absenceTypePath(own.Id), changeOf(changed), http.StatusForbidden, nil, ifMatch(changed.Revision))
 }
+
+// A company type's visibility is widened — hr_only to absent, which shows
+// colleagues and the manager what was HR's — only while no absence names it:
+// widening it under rows would reveal, after the fact, a type their people
+// took on the promise it stayed HR's (absence_type_in_use). Narrowing —
+// absent to hr_only — is always allowed, and so is widening a type nobody
+// has taken.
+func TestAbsenceTypes_VisibilityIsNotWidenedUnderRows(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, hrID := signIn(t, h, "staff:manage")
+
+	var private gen.StaffAbsenceType
+	do(t, hr, http.MethodPost, absenceTypesPath, companyType("private_matter", map[string]any{"visibility": "hr_only"}), http.StatusCreated, &private)
+	var widened gen.StaffAbsenceType
+	do(t, hr, http.MethodPut, absenceTypePath(private.Id), changeOf(private), http.StatusOK, nil, ifMatch(private.Revision))
+	open := changeOf(private)
+	open["visibility"] = "absent"
+	do(t, hr, http.MethodPut, absenceTypePath(private.Id), open, http.StatusOK, &widened, ifMatch(private.Revision+1))
+	if widened.Visibility != gen.Absent {
+		t.Fatalf("widened while unused = %+v, want absent", widened)
+	}
+	closed := changeOf(widened)
+	closed["visibility"] = "hr_only"
+	var narrowed gen.StaffAbsenceType
+	do(t, hr, http.MethodPut, absenceTypePath(private.Id), closed, http.StatusOK, &narrowed, ifMatch(widened.Revision))
+
+	person := seedPerson(t, h, "Kari", "Nordmann")
+	h.Exec(t, `INSERT INTO staff.absences (person_id, type_id, first_day, last_day, status, requested_by_user_id, created_at, updated_at)
+		VALUES ($1, $2, '2026-10-01', '2026-10-02', 'approved', $3, now(), now())`, person, private.Id, hrID)
+	again := changeOf(narrowed)
+	again["visibility"] = "absent"
+	refused(t, hr.Do(http.MethodPut, absenceTypePath(private.Id), again, ifMatch(narrowed.Revision)), http.StatusConflict, "absence_type_in_use")
+	// A rename under rows is fine; the visibility stays HR's.
+	rename := changeOf(narrowed)
+	rename["names"] = map[string]any{"en": "Private", "nb": "Privat"}
+	var renamed gen.StaffAbsenceType
+	do(t, hr, http.MethodPut, absenceTypePath(private.Id), rename, http.StatusOK, &renamed, ifMatch(narrowed.Revision))
+	if renamed.Visibility != gen.HrOnly {
+		t.Errorf("renamed = %+v, want hr_only still", renamed)
+	}
+}

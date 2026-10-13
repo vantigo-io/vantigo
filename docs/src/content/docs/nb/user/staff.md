@@ -185,7 +185,8 @@ Med `staff:manage` tilbyr fanen og kortene:
   før gjelder da igjen.
 - **Endre arbeidsforholdet** — **Startdato** (de første vilkårene flyttes med),
   **Virksomhet**, typen arbeidsforhold og **Avtale signert**. Arbeidsforholdsnummeret
-  endres aldri.
+  endres aldri. Arbeidsforholdets ferieordning er ikke på skjemaet ennå; når du lagrer,
+  beholdes den som den er ([ferieordninger](/nb/admin/staff/#ferieordninger)).
 - **Avslutt arbeidsforholdet** — **Siste arbeidsdag**, i dag i virksomhetens tidssone
   med mindre du endrer den, og gjerne fram i tid, og **Sluttårsak**, en av
   a-meldingens seks; skjemaet ber om årsaken før noe sendes. **Gjenåpne** fjerner en

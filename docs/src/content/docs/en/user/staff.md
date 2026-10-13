@@ -184,7 +184,8 @@ With `staff:manage` the tab and the cards offer:
   is in force again.
 - **Edit employment** — the **Start date** (the first terms move with it), the
   **Business unit**, the kind of relationship and **Contract signed**. The employment
-  number never changes.
+  number never changes. The employment's holiday scheme is not on the form yet; saving
+  keeps it as it is ([holiday schemes](/en/admin/staff/#holiday-schemes)).
 - **End employment** — the **Last day worked**, today in the business time zone unless
   you change it and allowed in the future, and the **End reason**, one of the
   a-melding's six; the form asks for the reason before it sends anything. **Reopen**

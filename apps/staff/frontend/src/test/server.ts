@@ -1142,6 +1142,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         row.relationshipType = input.relationshipType ?? row.relationshipType;
         if (input.contractSignedAt) row.contractSignedAt = input.contractSignedAt;
         else delete row.contractSignedAt;
+        // The holiday scheme is replaced too: left out, the employment follows the default.
+        if (input.holidaySchemeId) row.holidaySchemeId = input.holidaySchemeId;
+        else delete row.holidaySchemeId;
         const stored = state.terms.find((one) => one.id === first?.id);
         if (stored) stored.validFrom = row.startDate;
         row.revision += 1;

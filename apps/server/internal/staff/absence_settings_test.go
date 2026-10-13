@@ -43,7 +43,7 @@ func TestSettings_TheSelfCertificationPolicy(t *testing.T) {
 		return out
 	}
 
-	s := put(map[string]any{"selfCertPolicy": "extended", "selfCertDaysPerOccurrence": 2, "selfCertDaysPerYear": 5})
+	s := put(map[string]any{"selfCertPolicy": "extended", "selfCertDaysPerOccurrence": 4, "selfCertDaysPerYear": 30})
 	if s.SelfCertPolicy != gen.Extended || s.SelfCertDaysPerOccurrence != 8 || s.SelfCertDaysPerYear != 24 {
 		t.Errorf("extended = %+v, want 8 days an occurrence and 24 a year whatever was sent", s)
 	}
@@ -63,13 +63,21 @@ func TestSettings_TheSelfCertificationPolicy(t *testing.T) {
 		t.Errorf("minimum = %+v, want 3 days and 4 occurrences, the months kept", s)
 	}
 
+	// The statutory minimum (ftrl. § 8-23) is a floor no policy goes below:
+	// 3 days an occurrence, 4 occurrences and 12 days in a rolling year. At
+	// the floor, custom is accepted.
+	s = put(map[string]any{"selfCertPolicy": "custom", "selfCertDaysPerOccurrence": 3, "selfCertOccurrencesPerYear": 4,
+		"selfCertDaysPerYear": 12, "selfCertAfterMonths": 2})
+	if s.SelfCertDaysPerOccurrence != 3 || s.SelfCertOccurrencesPerYear != 4 || s.SelfCertDaysPerYear != 12 || s.SelfCertAfterMonths != 2 {
+		t.Errorf("custom at the statutory floor = %+v, want 3/4/12 after 2 months", s)
+	}
 	for _, tc := range []struct {
 		field string
 		value any
 	}{
-		{"selfCertDaysPerOccurrence", 0}, {"selfCertDaysPerOccurrence", 17},
-		{"selfCertOccurrencesPerYear", 0}, {"selfCertOccurrencesPerYear", 53},
-		{"selfCertDaysPerYear", 0}, {"selfCertDaysPerYear", 366},
+		{"selfCertDaysPerOccurrence", 2}, {"selfCertDaysPerOccurrence", 17},
+		{"selfCertOccurrencesPerYear", 3}, {"selfCertOccurrencesPerYear", 53},
+		{"selfCertDaysPerYear", 11}, {"selfCertDaysPerYear", 366},
 		{"selfCertAfterMonths", -1}, {"selfCertAfterMonths", 3},
 	} {
 		p := refused(t, hr.Do(http.MethodPut, settingsPath, settingsBody(map[string]any{"selfCertPolicy": "custom", tc.field: tc.value}),
@@ -180,16 +188,25 @@ func TestPeople_TheCareDayFields(t *testing.T) {
 		})
 	}
 
+	// In the history a manager does not even learn that a care-day field
+	// moved: the keys are left out, as the pay's and HR's notes' are.
 	var events gen.PaginatedResponseOfStaffEvent
 	do(t, boss, http.MethodGet, eventsPath(p.Id), nil, http.StatusOK, &events)
+	inspected := 0
 	for _, e := range events.Data {
 		if e.Kind != "person_updated" {
 			continue
 		}
+		inspected++
 		fields, _ := e.Payload["fields"].(map[string]any)
-		if v, ok := fields["childrenUnder12"]; ok && v != "changed" {
-			t.Errorf("the manager reads childrenUnder12 in the history as %v, want \"changed\"", v)
+		for _, key := range []string{"childrenUnder12", "soleCarer", "chronicallyIllChildren"} {
+			if v, ok := fields[key]; ok {
+				t.Errorf("the manager's history names %s (%v), want it left out", key, v)
+			}
 		}
+	}
+	if inspected == 0 {
+		t.Error("the manager's history has no person_updated event to inspect")
 	}
 
 	me := self.Do(http.MethodGet, mePath, nil)

@@ -46,3 +46,9 @@ UPDATE staff.absence_types SET
     updated_at = @now::timestamptz
 WHERE id = @id
 RETURNING *;
+
+-- name: AbsenceTypeInUse :one
+-- AbsenceTypeInUse is whether any absence names the type. Asked under the
+-- type's FOR UPDATE, which an absence's foreign key on it (KEY SHARE) waits
+-- for, so no absence names it between the answer and the change.
+SELECT EXISTS (SELECT 1 FROM staff.absences WHERE type_id = @id::bigint) AS in_use;

@@ -73,9 +73,18 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 // managesAnyoneToday is whether the caller's linked person manages anyone
 // today by the one manager rule (managersOf): someone's effective manager on
 // an employment in force today. A caller linked to nobody manages nobody, and
-// so does one who has left, whom effectiveManager skips.
+// so does one who has left, whom effectiveManager skips. An EXISTS asks first
+// whether any terms row or department names the person at all, so the walk
+// over everyone's graph runs only for someone who may be a manager.
 func managesAnyoneToday(ctx context.Context, q *store.Queries, c *callerContext) (bool, error) {
 	if c.Person == nil {
+		return false, nil
+	}
+	named, err := q.NamedAsManager(ctx, *c.Person)
+	if err != nil {
+		return false, fmt.Errorf("staff: read whether person %d is named as a manager: %w", *c.Person, err)
+	}
+	if !named {
 		return false, nil
 	}
 	g, err := loadManagerGraph(ctx, q, nil)
