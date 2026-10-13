@@ -224,7 +224,8 @@ issued invoices, and payment on site. This is the operator's side of it; the rul
    privacy notice URLs) and payment on site.
 
 **Verify:** the verify answers *ok*. It fetches an access token with the keys and reads
-the sales unit's webhook registrations, which needs the keys and the MSN together.
+the sales unit's list of webhooks, which needs the keys and the MSN together; Vantigo
+registers no webhook — it polls ([the payments worker](#the-payments-worker)).
 
 **The address Vipps answers.** Vantigo sends a payer, or encodes in an on-site QR
 code, only an absolute `https` address that Vipps answers to a new payment. Any other
@@ -289,7 +290,9 @@ was never sent after checking it in the portal. One whose capture was sent can b
 abandoned only once Vipps can be read again.
 
 **Abandoning a payment** (*Abandon* on the invoice's Vipps payment, `invoices:manage`)
-takes a reason and the confirmation that the portal shows nothing captured. Vantigo does
+takes a reason and the confirmation that the portal shows nothing captured. Only a
+payment whose capture's outcome is unknown, one the worker cannot complete, or a request
+it gave up on can be abandoned; any other is refused, and the refusal says why. Vantigo does
 not take the confirmation on trust: wherever it can read Vipps it reads the payment
 first. Money Vipps shows captured is registered as a payment of the invoice and the
 abandon refused; a payment Vipps still holds capturable is refused until it is released
@@ -315,9 +318,9 @@ environment's), is registered on the invoice within seconds as a Vipps payment.
   attempt, which releases the reservation. Check the keys first — a refused key
   (*Refused* on verify) leaves every capture unknown. It is on the dashboard as a capture
   of unknown outcome.
-- *A failed capture* (`capture_failed`). Vipps refused the capture for lack of funds or
-  as failed, and kept refusing it until the authorization ran out, or Vipps ended the
-  payment. Nothing was taken; the invoice is open again and the customer pays another
+- *A failed capture* (`capture_failed`). Vipps refused the capture for lack of funds
+  three times, or failed it and kept failing it until the capture's guarantee ran out or
+  30 days after the authorization, or Vipps ended the payment. Nothing was taken; the invoice is open again and the customer pays another
   way. Should the money show as captured at Vipps after all — or a payment be captured
   in the portal — the worker registers it as soon as it reads it.
 - *A payment's create that never settles.* When the create of a payment was never

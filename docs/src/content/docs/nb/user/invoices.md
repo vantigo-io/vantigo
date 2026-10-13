@@ -546,7 +546,8 @@ Hurtigfakturaen er for en jobb som er gjort ferdig på stedet, på et nettbrett 
 telefon. Åpne **Hurtigfaktura** i sidemenyen; den tilbys den som har både
 `invoices:create` og `invoices:issue` (med `invoices:access`). Den som mangler dem og åpner
 adressen, får siden **Tilgang nektet**; skjermbildets eget *Ikke tillatt* vises bare hvis
-rettighetene dine endres mens du er logget inn. Deretter:
+rettighetene dine endres mens du er logget inn. Å velge kunden krever `customers:view`;
+uten den viser skjermbildet ikke skjemaet, men sier det. Deretter:
 
 1. Velg **Kunde** ved å søke etter den (dette krever `customers:view`). Kundens adresse
    vises under — den primære fakturaadressen, ellers den primære postadressen. En kunde
@@ -1418,13 +1419,13 @@ på kortet, med `PUBLIC_BASE_URL` blant grunnene for betalingslenker.
 ### Betalingslenken på en faktura
 
 Mens betalingslenker er tilgjengelige, får hver faktura du utsteder en betalingslenke,
-og PDF-en skriver **Betal med Vipps**, lenken og en QR-kode av den under
+og PDF-en skriver **Betal med Vipps** (**Pay with Vipps** på en engelsk faktura), lenken og en QR-kode av den under
 betalingsopplysningene, slik at en kunde som leser fakturaen hjemme, kan betale den fra
 telefonen. PDF-en lages én gang, når fakturaen utstedes, og endres aldri: en faktura
 utstedt før betalingslenker ble slått på, har ingen lenke i PDF-en.
 
 Lenken følger også fakturaen når du **sender den på e-post** — e-posten sier *Du kan
-også betale med Vipps* med lenken — og med hvert **purrebrev**, som legger til at
+også betale med Vipps* (*You can also pay with Vipps* på en engelsk faktura) med lenken — og med hvert **purrebrev**, som legger til at
 lenken betaler selve fakturaen, mens gebyrer og renter betales til kontonummeret med
 KID, eller fakturanummeret når det ikke er noen KID. Når du sender en faktura som ikke
 har noen lenke på e-post, lages det en først. En hurtigfaktura som overleveres på

@@ -224,7 +224,8 @@ det; reglene står i [referansen](/en/reference/invoices/#credentials-and-paymen
    salgsvilkår og personvernerklæring) og betaling på stedet.
 
 **Kontroll:** bekreftelsen svarer *ok*. Den henter et tilgangstoken med nøklene og leser
-salgsenhetens webhook-registreringer, noe som krever nøklene og MSN sammen.
+salgsenhetens liste over webhooker, noe som krever nøklene og MSN sammen; Vantigo
+registrerer ingen webhook — den spør Vipps ([betalingsjobben](#betalingsjobben)).
 
 **Adressen Vipps svarer.** Vantigo sender en betaler videre til, eller legger inn i en
 QR-kode på stedet, bare en absolutt `https`-adresse som Vipps svarer på en ny betaling.
@@ -289,7 +290,9 @@ etter å ha sjekket den i portalen. En betaling der trekket ble sendt, kan forla
 når Vipps kan leses igjen.
 
 **Å forlate en betaling** (*Forlat* på fakturaens Vipps-betaling, `invoices:manage`)
-krever en begrunnelse og en bekreftelse på at portalen ikke viser noe trukket. Vantigo
+krever en begrunnelse og en bekreftelse på at portalen ikke viser noe trukket. Bare en
+betaling der utfallet av trekket er ukjent, en jobben ikke kan fullføre, eller en
+forespørsel jobben ga opp, kan forlates; andre avvises, og avvisningen sier hvorfor. Vantigo
 tar ikke bekreftelsen for god fisk: der den kan lese Vipps, leser den betalingen først.
 Penger Vipps viser som trukket, registreres som en betaling av fakturaen, og betalingen
 forlates ikke; en betaling Vipps fortsatt kan trekke, avvises til den er frigitt i
@@ -315,8 +318,8 @@ testmiljøets), registreres på fakturaen i løpet av sekunder som en Vipps-beta
   også her. Sjekk nøklene først — en avvist nøkkel (*Avvist* ved bekreftelse) gir ukjent
   utfall på hvert trekk. Den vises på dashbordet som et trekk med ukjent utfall.
 - *Et mislykket trekk* (`capture_failed`). Vipps avviste trekket for manglende dekning
-  eller som mislykket, og fortsatte å avvise det til reservasjonen gikk ut, eller Vipps
-  avsluttet betalingen. Ingenting ble tatt; fakturaen er åpen igjen, og kunden betaler
+  tre ganger, eller avviste det som mislykket til trekkets garanti gikk ut eller 30 dager
+  etter autorisasjonen, eller Vipps avsluttet betalingen. Ingenting ble tatt; fakturaen er åpen igjen, og kunden betaler
   på annen måte. Viser pengene seg likevel trukket hos Vipps — eller trekkes betalingen
   i portalen — registrerer jobben betalingen så snart den leser den.
 - *En opprettelse som aldri avklares.* Når opprettelsen av en betaling aldri ble

@@ -2577,7 +2577,8 @@ judged against: the statutory rates as dated rows, the two collection-law regime
 their review, the reminder settings, and a customer's reminder policy; then the engine
 that decides the next letter ([The rules](#the-rules)), the overdue list it judges
 ([The overdue list](#the-overdue-list)) and the runs that make the letters
-([Runs](#runs)). Sending and printing the letters come later in the phase.
+([Runs](#runs)); the letters are then sent by e-mail ([The worker](#the-worker)) or
+printed and posted ([Paper and posting](#paper-and-posting)).
 
 ### Collection rates
 
@@ -3729,7 +3730,8 @@ proxies on the way back learn no more than one payment's outcome.
 **The status read** answers `{state}` only when the nonce hashes to the attempt's (a
 404 otherwise, as for an unknown reference): `pending` while the payment is being
 created, awaits the payer or is being captured, `paid` once its capture is registered,
-`failed` when Vipps refused it or nothing could be captured, `cancelled` when the payer
+`failed` when Vipps refused it, nothing could be captured or a manager abandoned it,
+`cancelled` when the payer
 stopped, it expired or nothing was left to capture.
 
 The three paths, and nothing else of the API, are on the public host's allowlist
@@ -4402,7 +4404,7 @@ administrator reads when building a role, say so.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; an invoice's pay link (its id and when it was made, not its address) and its Vipps payment attempts; the day's Vipps payments, their CSV and the day's reconciliation ([The day's Vipps payments](#the-days-vipps-payments)); the attention items about overdue invoices and refunds due ([Attention](#attention)). |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; an invoice's pay link (its id and when it was made, not its address) and its Vipps payment attempts; the day's Vipps payments, their CSV and whether the day is reconciled (marking it is `invoices:payments`; [The day's Vipps payments](#the-days-vipps-payments)); the attention items about overdue invoices and refunds due ([Attention](#attention)). |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)); make an invoice's pay link on demand or revoke it, and read its address and QR code while payment on site is available ([Pay links](#pay-links)); ask for a Vipps payment on site, read the request and cancel it ([Paid on site — kontantsalg](#paid-on-site--kontantsalg)). |
 | `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the Vipps credentials and the payment settings, abandoning a stuck Vipps payment attempt ([Abandon](#abandon)), the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
@@ -4548,6 +4550,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `POST /{id}/payment-requests` | `invoices:issue` | 400 on `flow`; 409 `on_site_payments_unavailable`; 404; then under the lock 409 `on_site_payments_unavailable`, `credit_note_no_payments`, `invoice_draft`, `buyer_identity_missing`, `payment_request_active`, `invoice_settled`, `invoice_fully_credited`, `invoice_handed_off`, `payment_in_progress`, `amount_out_of_range`, `too_many_attempts`, `payments_unavailable` (no credentials); 503 `payments_unavailable` (keys unreadable, refused or replaced); 502 `provider_failed` |
 | `GET /{id}/payment-requests/{attemptId}` | `invoices:issue` | 404 unless an on-site attempt of the invoice |
 | `POST /{id}/payment-requests/{attemptId}/cancel` | `invoices:issue` | 404 unless an on-site attempt of the invoice; 409 `payment_request_active` |
+| `POST /payment-attempts/{id}/abandon` | `invoices:manage` | 400 on `confirmNotCaptured` (not true) or `reason` (blank, too long); 404; 409 `attempt_not_abandonable` (its detail says why: the state, money captured and registered, a payment Vipps still holds, one handed back to the worker, or Vipps unreadable while money may have moved); 502 `provider_failed`, Vipps could not be read ([Abandon](#abandon)) |
 | `POST /{id}/hold` | `invoices:payments` | 400 on `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; then under the lock 409 `invoice_on_hold` |
 | `POST /{id}/hold/lift` | `invoices:payments` | 400 on `chargesAllowed` (absent or not a boolean) or `note`; 404; 409 `invoice_not_on_hold` |
 | `POST /{id}/collection` | `invoices:payments` | 400 on `handedOn` (missing or after today), `agency`, `agencyReference` or `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; 400 on `handedOn` before the issue date; then under the lock 409 `invoice_settled`, `invoice_handed_off`, `invoice_not_delivered` (unless `acknowledgeNotDelivered`) |
