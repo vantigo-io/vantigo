@@ -8,10 +8,12 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getSettings = `-- name: GetSettings :one
-SELECT id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at FROM staff.settings WHERE id = 1
+SELECT id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since FROM staff.settings WHERE id = 1
 `
 
 // GetSettings reads the installation's single settings row (design §3.6). The
@@ -39,12 +41,13 @@ func (q *Queries) GetSettings(ctx context.Context) (StaffSetting, error) {
 		&i.ThresholdsAcknowledged,
 		&i.Revision,
 		&i.UpdatedAt,
+		&i.AutoCarryOverSince,
 	)
 	return i, err
 }
 
 const lockSettings = `-- name: LockSettings :one
-SELECT id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at FROM staff.settings WHERE id = 1 FOR UPDATE
+SELECT id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since FROM staff.settings WHERE id = 1 FOR UPDATE
 `
 
 // LockSettings reads the settings row and holds it for the rest of the
@@ -74,6 +77,7 @@ func (q *Queries) LockSettings(ctx context.Context) (StaffSetting, error) {
 		&i.ThresholdsAcknowledged,
 		&i.Revision,
 		&i.UpdatedAt,
+		&i.AutoCarryOverSince,
 	)
 	return i, err
 }
@@ -142,26 +146,42 @@ UPDATE staff.settings SET
     injury_insurer = $5,
     retention_grace_days = coalesce($6::smallint, retention_grace_days),
     health_retention_days = coalesce($7::smallint, health_retention_days),
+    self_cert_policy = $8,
+    self_cert_days_per_occurrence = $9,
+    self_cert_occurrences_per_year = $10,
+    self_cert_days_per_year = $11,
+    self_cert_after_months = $12,
+    auto_carry_over = $13,
+    auto_carry_over_since = $14,
     revision = revision + 1,
-    updated_at = $8::timestamptz
+    updated_at = $15::timestamptz
 WHERE id = 1
-RETURNING id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at
+RETURNING id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since
 `
 
 type UpdateSettingsParams struct {
-	TimeZone             string
-	EmployeeNumberPrefix string
-	NextEmployeeNumber   int64
-	PensionProvider      *string
-	InjuryInsurer        *string
-	RetentionGraceDays   *int16
-	HealthRetentionDays  *int16
-	Now                  time.Time
+	TimeZone                   string
+	EmployeeNumberPrefix       string
+	NextEmployeeNumber         int64
+	PensionProvider            *string
+	InjuryInsurer              *string
+	RetentionGraceDays         *int16
+	HealthRetentionDays        *int16
+	SelfCertPolicy             string
+	SelfCertDaysPerOccurrence  int16
+	SelfCertOccurrencesPerYear int16
+	SelfCertDaysPerYear        int16
+	SelfCertAfterMonths        int16
+	AutoCarryOver              bool
+	AutoCarryOverSince         pgtype.Date
+	Now                        time.Time
 }
 
 // UpdateSettings replaces the settings the contract exposes and moves the
 // revision on; a retention period left out (NULL) keeps its value. The
-// columns later deliveries expose are left as they are.
+// self-certification policy and the carry-over (delivery B) are written as
+// the caller resolved them from the row it locked. The account columns,
+// delivery C's, are left as they are.
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (StaffSetting, error) {
 	row := q.db.QueryRow(ctx, updateSettings,
 		arg.TimeZone,
@@ -171,6 +191,13 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.InjuryInsurer,
 		arg.RetentionGraceDays,
 		arg.HealthRetentionDays,
+		arg.SelfCertPolicy,
+		arg.SelfCertDaysPerOccurrence,
+		arg.SelfCertOccurrencesPerYear,
+		arg.SelfCertDaysPerYear,
+		arg.SelfCertAfterMonths,
+		arg.AutoCarryOver,
+		arg.AutoCarryOverSince,
 		arg.Now,
 	)
 	var i StaffSetting
@@ -194,6 +221,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		&i.ThresholdsAcknowledged,
 		&i.Revision,
 		&i.UpdatedAt,
+		&i.AutoCarryOverSince,
 	)
 	return i, err
 }

@@ -50,6 +50,10 @@ func staffCollect(t *testing.T, ctx context.Context, pool *pgxpool.Pool, what, s
 func TestStaffFoundation_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, staffFoundationVersion)
+	// What is pinned below is 00042's own schema: the later migrations — 00047's
+	// columns on employments, documents and settings among them — are rolled
+	// back first, and pinned by their own tests.
+	migrateTo(t, url, staffFoundationVersion)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

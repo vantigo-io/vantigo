@@ -30,6 +30,14 @@ func settingsResponse(row store.StaffSetting, retention gen.StaffRetentionState)
 		Retention:              retention,
 		ThresholdsAcknowledged: thresholdsResponse(acknowledged),
 		Revision:               row.Revision,
+
+		SelfCertPolicy:             gen.StaffSelfCertPolicy(row.SelfCertPolicy),
+		SelfCertDaysPerOccurrence:  int32(row.SelfCertDaysPerOccurrence),
+		SelfCertOccurrencesPerYear: int32(row.SelfCertOccurrencesPerYear),
+		SelfCertDaysPerYear:        int32(row.SelfCertDaysPerYear),
+		SelfCertAfterMonths:        int32(row.SelfCertAfterMonths),
+		AutoCarryOver:              row.AutoCarryOver,
+		AutoCarryOverSince:         dateOf(row.AutoCarryOverSince),
 	}, nil
 }
 
@@ -88,5 +96,15 @@ func enumOf[T ~string](v *string) *T {
 		return nil
 	}
 	out := T(*v)
+	return &out
+}
+
+// stringOf is an optional value of one of the contract's enum types as the
+// text column stores it, nil when absent — enumOf the other way.
+func stringOf[T ~string](v *T) *string {
+	if v == nil {
+		return nil
+	}
+	out := string(*v)
 	return &out
 }

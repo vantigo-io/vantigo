@@ -166,6 +166,38 @@ describe("Person page — HR changes the record", () => {
     expect(await within(await region("Work")).findByText("+47 22 00 00 00")).toBeInTheDocument();
   });
 
+  it("keeps the care-day fields it does not show on the replace it sends", async () => {
+    const fetchMock = stubStaffApi({ role: "manage" });
+    const ada = fetchMock.state.people.find((one) => one.id === 101);
+    if (ada?.record) Object.assign(ada.record, { childrenUnder12: 2, soleCarer: true, chronicallyIllChildren: 1 });
+    renderRoute("/staff/people/101");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Edit details" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit details" });
+    await retype(within(dialog).getByRole("textbox", { name: "Work phone" }), "+47 22 00 00 00");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/staff\/people\/101$/)).toHaveLength(1));
+    const [put] = sent(fetchMock, "PUT", /\/staff\/people\/101$/);
+    // PUT /people/{id} is a full replace that clears what it leaves out, so a
+    // modal that does not show the care-day fields still sends them back.
+    expect(put.body).toMatchObject({ childrenUnder12: 2, soleCarer: true, chronicallyIllChildren: 1 });
+  });
+
+  it("sends no care-day field the person does not have", async () => {
+    const fetchMock = stubStaffApi({ role: "manage" });
+    renderRoute("/staff/people/101");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Edit details" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit details" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/staff\/people\/101$/)).toHaveLength(1));
+    const [put] = sent(fetchMock, "PUT", /\/staff\/people\/101$/);
+    for (const field of ["childrenUnder12", "soleCarer", "chronicallyIllChildren"])
+      expect(put.body).not.toHaveProperty(field);
+  });
+
   it("reloads with the reader's sentence when somebody else saved first", async () => {
     const fetchMock = stubStaffApi({
       role: "manage",

@@ -7,12 +7,15 @@ type Schemas = components["schemas"];
 /**
  * What the app may do, answered by the server rather than re-derived here
  * (design §5): the caller's capabilities, the business zone and its today,
- * and — for a caller holding `staff:view` — the company's structure, archived
- * rows included so a stored reference can still be named.
+ * the absence types the caller may pick and the holiday schemes, and — for a
+ * caller holding `staff:view` — the company's structure, archived rows
+ * included so a stored reference can still be named.
  */
 export type StaffMeta = Schemas["StaffMeta"];
 export type StaffCapabilities = Schemas["StaffCapabilities"];
 export type StaffStructure = Schemas["StaffStructure"];
+export type StaffAbsenceType = Schemas["StaffAbsenceType"];
+export type StaffHolidayScheme = Schemas["StaffHolidayScheme"];
 
 export const staffMetaQueryOptions = () =>
   queryOptions({

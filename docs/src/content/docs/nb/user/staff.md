@@ -107,6 +107,13 @@ går til avdelingens leder, eller nærmeste leder over.
 2. Endre det du trenger, og trykk **Lagre**. En avvisning havner på feltet den gjelder
    — for eksempel en e-post på jobb som en annen person har.
 
+En person har også tre **omsorgsdagfelt** — barna under tolv, de kronisk syke eller
+funksjonshemmede barna og om personen har omsorgen alene — som tellingen av
+omsorgsdager for sykt barn skal lese. Skjemaet viser dem ikke ennå, og når du lagrer det,
+beholdes de som de er; HR setter dem gjennom API-et til personens Fravær-fane kommer
+([omsorgsdagfeltene](/nb/admin/staff/#omsorgsdagfeltene)). Personen, HR og
+`staff:personal-data` ser dem; en leder og en kollega gjør det aldri.
+
 Har noen andre lagret personen etter at du åpnet skjemaet, lukkes skjemaet, siden lastes
 inn på nytt og sier *Noen andre lagret dette først; det er lastet inn på nytt*. Gjør
 endringen din på nytt ut fra det som står der nå.

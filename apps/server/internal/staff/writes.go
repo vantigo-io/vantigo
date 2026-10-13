@@ -42,7 +42,9 @@ func (s *server) createPerson(ctx context.Context, txq *store.Queries, parsed pa
 		WorkEmail: row.WorkEmail, PhoneWork: row.PhoneWork, PhoneMobile: row.PhoneMobile,
 		PhonePrivate: row.PhonePrivate, PrivateEmail: row.PrivateEmail, Street: row.Street,
 		PostalCode: row.PostalCode, City: row.City, Country: row.Country, WorkCountry: row.WorkCountry,
-		PreferredLanguage: row.PreferredLanguage, Notes: row.Notes, Now: s.deps.Clock(),
+		PreferredLanguage: row.PreferredLanguage, Notes: row.Notes,
+		ChildrenUnder12: row.ChildrenUnder12, SoleCarer: row.SoleCarer, ChronicallyIllChildren: row.ChronicallyIllChildren,
+		Now: s.deps.Clock(),
 	})
 	if err != nil {
 		return store.GetPersonRow{}, personWriteError(err, invalidPersonTitle)
@@ -76,6 +78,7 @@ func (s *server) updatePerson(ctx context.Context, txq *store.Queries, current s
 		PhoneMobile: next.PhoneMobile, PhonePrivate: next.PhonePrivate, PrivateEmail: next.PrivateEmail,
 		Street: next.Street, PostalCode: next.PostalCode, City: next.City, Country: next.Country,
 		WorkCountry: next.WorkCountry, PreferredLanguage: next.PreferredLanguage, Notes: next.Notes,
+		ChildrenUnder12: next.ChildrenUnder12, SoleCarer: next.SoleCarer, ChronicallyIllChildren: next.ChronicallyIllChildren,
 		Now: s.deps.Clock(),
 	}); err != nil {
 		return store.GetPersonRow{}, personWriteError(err, invalidPersonTitle)
@@ -156,6 +159,10 @@ func (s *server) addEmployment(ctx context.Context, txq *store.Queries, personID
 	if err := checkTermsReferences(ctx, txq, personID, first, nil, "terms."); err != nil {
 		return store.StaffEmployment{}, err
 	}
+	scheme, err := resolveHolidayScheme(ctx, txq, e.body.HolidaySchemeId, nil)
+	if err != nil {
+		return store.StaffEmployment{}, err
+	}
 	employmentNumber := ""
 	if e.number != nil {
 		taken, err := txq.EmploymentNumberTaken(ctx, *e.number)
@@ -171,7 +178,8 @@ func (s *server) addEmployment(ctx context.Context, txq *store.Queries, personID
 	}
 	created, err := txq.InsertEmployment(ctx, store.InsertEmploymentParams{
 		PersonID: personID, EmploymentNumber: employmentNumber, RelationshipType: e.relationship, BusinessUnitID: unit,
-		StartDate: dayParam(start), ContractSignedAt: pgDate(civilDate(e.body.ContractSignedAt)), Now: s.deps.Clock(),
+		StartDate: dayParam(start), ContractSignedAt: pgDate(civilDate(e.body.ContractSignedAt)), HolidaySchemeID: scheme,
+		Now: s.deps.Clock(),
 	})
 	if err != nil {
 		return store.StaffEmployment{}, employmentWriteError(fmt.Errorf("staff: add an employment to person %d: %w", personID, err))

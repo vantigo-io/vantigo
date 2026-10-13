@@ -25,7 +25,7 @@ func (q *Queries) CountPersonDocuments(ctx context.Context, personID int64) (int
 }
 
 const coveringEmployments = `-- name: CoveringEmployments :many
-SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at FROM staff.employments
+SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at, holiday_scheme_id FROM staff.employments
 WHERE person_id = $1 AND start_date <= $2::date AND (end_date IS NULL OR end_date >= $2::date)
 ORDER BY id
 `
@@ -59,6 +59,7 @@ func (q *Queries) CoveringEmployments(ctx context.Context, arg CoveringEmploymen
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.HolidaySchemeID,
 		); err != nil {
 			return nil, err
 		}
@@ -102,7 +103,7 @@ func (q *Queries) DocumentCategoryInUse(ctx context.Context, categoryID int64) (
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT d.id, d.person_id, d.category_id, d.employment_id, d.object_key, d.file_name, d.content_type, d.size_bytes, d.valid_to, d.signed_at, d.uploaded_by_user_id, d.revision, d.created_at, d.updated_at, c.id, c.key, c.name_en, c.name_nb, c.retention_class, c.restricted, c.seeded, c.archived_at, c.sort, c.revision, c.created_at, c.updated_at
+SELECT d.id, d.person_id, d.category_id, d.employment_id, d.object_key, d.file_name, d.content_type, d.size_bytes, d.valid_to, d.signed_at, d.uploaded_by_user_id, d.revision, d.created_at, d.updated_at, d.case_id, c.id, c.key, c.name_en, c.name_nb, c.retention_class, c.restricted, c.seeded, c.archived_at, c.sort, c.revision, c.created_at, c.updated_at
 FROM staff.documents d
 JOIN staff.document_categories c ON c.id = d.category_id
 WHERE d.id = $1
@@ -131,6 +132,7 @@ func (q *Queries) GetDocument(ctx context.Context, id int64) (GetDocumentRow, er
 		&i.StaffDocument.Revision,
 		&i.StaffDocument.CreatedAt,
 		&i.StaffDocument.UpdatedAt,
+		&i.StaffDocument.CaseID,
 		&i.StaffDocumentCategory.ID,
 		&i.StaffDocumentCategory.Key,
 		&i.StaffDocumentCategory.NameEn,
@@ -179,7 +181,7 @@ INSERT INTO staff.documents (
     $1, $2, $3, $4, $5, $6, $7, $8, $9,
     $10, $11::timestamptz, $11::timestamptz
 )
-RETURNING id, person_id, category_id, employment_id, object_key, file_name, content_type, size_bytes, valid_to, signed_at, uploaded_by_user_id, revision, created_at, updated_at
+RETURNING id, person_id, category_id, employment_id, object_key, file_name, content_type, size_bytes, valid_to, signed_at, uploaded_by_user_id, revision, created_at, updated_at, case_id
 `
 
 type InsertDocumentParams struct {
@@ -226,6 +228,7 @@ func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) 
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CaseID,
 	)
 	return i, err
 }
@@ -338,7 +341,7 @@ func (q *Queries) ListDocumentCategories(ctx context.Context) ([]StaffDocumentCa
 }
 
 const listPersonDocuments = `-- name: ListPersonDocuments :many
-SELECT d.id, d.person_id, d.category_id, d.employment_id, d.object_key, d.file_name, d.content_type, d.size_bytes, d.valid_to, d.signed_at, d.uploaded_by_user_id, d.revision, d.created_at, d.updated_at, c.id, c.key, c.name_en, c.name_nb, c.retention_class, c.restricted, c.seeded, c.archived_at, c.sort, c.revision, c.created_at, c.updated_at
+SELECT d.id, d.person_id, d.category_id, d.employment_id, d.object_key, d.file_name, d.content_type, d.size_bytes, d.valid_to, d.signed_at, d.uploaded_by_user_id, d.revision, d.created_at, d.updated_at, d.case_id, c.id, c.key, c.name_en, c.name_nb, c.retention_class, c.restricted, c.seeded, c.archived_at, c.sort, c.revision, c.created_at, c.updated_at
 FROM staff.documents d
 JOIN staff.document_categories c ON c.id = d.category_id
 WHERE d.person_id = $1 AND ($2::boolean OR NOT c.restricted)
@@ -381,6 +384,7 @@ func (q *Queries) ListPersonDocuments(ctx context.Context, arg ListPersonDocumen
 			&i.StaffDocument.Revision,
 			&i.StaffDocument.CreatedAt,
 			&i.StaffDocument.UpdatedAt,
+			&i.StaffDocument.CaseID,
 			&i.StaffDocumentCategory.ID,
 			&i.StaffDocumentCategory.Key,
 			&i.StaffDocumentCategory.NameEn,
@@ -405,7 +409,7 @@ func (q *Queries) ListPersonDocuments(ctx context.Context, arg ListPersonDocumen
 }
 
 const lockDocument = `-- name: LockDocument :one
-SELECT id, person_id, category_id, employment_id, object_key, file_name, content_type, size_bytes, valid_to, signed_at, uploaded_by_user_id, revision, created_at, updated_at FROM staff.documents WHERE id = $1 FOR NO KEY UPDATE
+SELECT id, person_id, category_id, employment_id, object_key, file_name, content_type, size_bytes, valid_to, signed_at, uploaded_by_user_id, revision, created_at, updated_at, case_id FROM staff.documents WHERE id = $1 FOR NO KEY UPDATE
 `
 
 // LockDocument takes a document's row after its person's (and, for a
@@ -428,6 +432,7 @@ func (q *Queries) LockDocument(ctx context.Context, id int64) (StaffDocument, er
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CaseID,
 	)
 	return i, err
 }
@@ -501,7 +506,7 @@ UPDATE staff.employments SET
     revision = revision + 1,
     updated_at = $2::timestamptz
 WHERE id = $3
-RETURNING id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at
+RETURNING id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at, holiday_scheme_id
 `
 
 type SetEmploymentContractSignedParams struct {
@@ -528,6 +533,7 @@ func (q *Queries) SetEmploymentContractSigned(ctx context.Context, arg SetEmploy
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HolidaySchemeID,
 	)
 	return i, err
 }
@@ -567,7 +573,7 @@ UPDATE staff.documents SET
     revision = revision + 1,
     updated_at = $5::timestamptz
 WHERE id = $6
-RETURNING id, person_id, category_id, employment_id, object_key, file_name, content_type, size_bytes, valid_to, signed_at, uploaded_by_user_id, revision, created_at, updated_at
+RETURNING id, person_id, category_id, employment_id, object_key, file_name, content_type, size_bytes, valid_to, signed_at, uploaded_by_user_id, revision, created_at, updated_at, case_id
 `
 
 type UpdateDocumentParams struct {
@@ -606,6 +612,7 @@ func (q *Queries) UpdateDocument(ctx context.Context, arg UpdateDocumentParams) 
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CaseID,
 	)
 	return i, err
 }

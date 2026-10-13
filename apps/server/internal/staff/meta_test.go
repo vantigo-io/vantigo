@@ -44,13 +44,13 @@ func TestMeta_CapabilitiesAndTheStructureFollowTheCallersPermissions(t *testing.
 	}{
 		{"staff:access alone", nil, gen.StaffCapabilities{}, false},
 		{"staff:view", []string{"staff:view"}, gen.StaffCapabilities{CanViewDirectory: true}, true},
-		{"staff:approve", []string{"staff:approve"}, gen.StaffCapabilities{}, false},
+		{"staff:approve", []string{"staff:approve"}, gen.StaffCapabilities{CanDecide: true}, false},
 		{"staff:manage without staff:view", []string{"staff:manage"},
-			gen.StaffCapabilities{CanEdit: true, CanSeePay: true}, true},
+			gen.StaffCapabilities{CanEdit: true, CanSeePay: true, CanDecide: true}, true},
 		{"staff:personal-data", []string{"staff:personal-data"},
 			gen.StaffCapabilities{CanRevealIdentifiers: true, CanSeePay: true, CanSeeHealth: true}, false},
 		{"all five", []string{"staff:view", "staff:approve", "staff:manage", "staff:personal-data"},
-			gen.StaffCapabilities{CanViewDirectory: true, CanEdit: true, CanRevealIdentifiers: true, CanSeePay: true, CanSeeHealth: true}, true},
+			gen.StaffCapabilities{CanViewDirectory: true, CanEdit: true, CanRevealIdentifiers: true, CanSeePay: true, CanSeeHealth: true, CanDecide: true}, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			caller, _ := signIn(t, h, c.perms...)

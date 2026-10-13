@@ -3,6 +3,7 @@ package staff
 import (
 	"fmt"
 	"net/mail"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -54,6 +55,9 @@ type parsedPerson struct {
 	WorkCountry       string
 	PreferredLanguage string
 	Notes             *string
+	// Care is the care-day fields (delivery B, absence_settings.go), cleared
+	// when left out as every optional field is.
+	Care careDays
 }
 
 // parsePerson runs every field's rule over a body. creating is whether the
@@ -123,6 +127,7 @@ func parsePerson(body gen.StaffPersonRequest, creating bool) (parsedPerson, fiel
 	}
 	out.Notes, msg = optionalText("Notes", body.Notes, notesMaxLength)
 	f.add("notes", msg)
+	out.Care = parseCareDays(body, &f)
 	return out, f
 }
 
@@ -192,6 +197,9 @@ func (p parsedPerson) applyTo(current store.GetPersonRow) store.GetPersonRow {
 	next.WorkCountry = p.WorkCountry
 	next.PreferredLanguage = p.PreferredLanguage
 	next.Notes = p.Notes
+	next.ChildrenUnder12 = p.Care.ChildrenUnder12
+	next.SoleCarer = p.Care.SoleCarer
+	next.ChronicallyIllChildren = p.Care.ChronicallyIllChildren
 	return next
 }
 
@@ -224,7 +232,29 @@ func personValues(row store.GetPersonRow) map[string]*string {
 		"workCountry":       text(row.WorkCountry),
 		"preferredLanguage": text(row.PreferredLanguage),
 		"notes":             row.Notes,
+
+		"childrenUnder12":        smallText(row.ChildrenUnder12),
+		"soleCarer":              boolText(row.SoleCarer),
+		"chronicallyIllChildren": smallText(row.ChronicallyIllChildren),
 	}
+}
+
+// smallText is a nullable smallint as a payload's text, nil when NULL.
+func smallText(v *int16) *string {
+	if v == nil {
+		return nil
+	}
+	out := strconv.Itoa(int(*v))
+	return &out
+}
+
+// boolText is a nullable boolean as a payload's text, nil when NULL.
+func boolText(v *bool) *string {
+	if v == nil {
+		return nil
+	}
+	out := strconv.FormatBool(*v)
+	return &out
 }
 
 // diffPerson is every editable field that differs between before and after,

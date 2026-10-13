@@ -21,6 +21,108 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for StaffAbsenceKind.
+const (
+	StaffAbsenceKindChildSick     StaffAbsenceKind = "child_sick"
+	StaffAbsenceKindHoliday       StaffAbsenceKind = "holiday"
+	StaffAbsenceKindLeave         StaffAbsenceKind = "leave"
+	StaffAbsenceKindOther         StaffAbsenceKind = "other"
+	StaffAbsenceKindSickCertified StaffAbsenceKind = "sick_certified"
+	StaffAbsenceKindSickSelf      StaffAbsenceKind = "sick_self"
+	StaffAbsenceKindTimeOff       StaffAbsenceKind = "time_off"
+)
+
+// Valid indicates whether the value is a known member of the StaffAbsenceKind enum.
+func (e StaffAbsenceKind) Valid() bool {
+	switch e {
+	case StaffAbsenceKindChildSick:
+		return true
+	case StaffAbsenceKindHoliday:
+		return true
+	case StaffAbsenceKindLeave:
+		return true
+	case StaffAbsenceKindOther:
+		return true
+	case StaffAbsenceKindSickCertified:
+		return true
+	case StaffAbsenceKindSickSelf:
+		return true
+	case StaffAbsenceKindTimeOff:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffAbsenceUnit.
+const (
+	StaffAbsenceUnitDays  StaffAbsenceUnit = "days"
+	StaffAbsenceUnitHours StaffAbsenceUnit = "hours"
+)
+
+// Valid indicates whether the value is a known member of the StaffAbsenceUnit enum.
+func (e StaffAbsenceUnit) Valid() bool {
+	switch e {
+	case StaffAbsenceUnitDays:
+		return true
+	case StaffAbsenceUnitHours:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffAbsenceVisibility.
+const (
+	Absent StaffAbsenceVisibility = "absent"
+	HrOnly StaffAbsenceVisibility = "hr_only"
+)
+
+// Valid indicates whether the value is a known member of the StaffAbsenceVisibility enum.
+func (e StaffAbsenceVisibility) Valid() bool {
+	switch e {
+	case Absent:
+		return true
+	case HrOnly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffAmeldingLeave.
+const (
+	AndreIkkeLovfestedePermisjoner   StaffAmeldingLeave = "andreIkkeLovfestedePermisjoner"
+	AndreLovfestedePermisjoner       StaffAmeldingLeave = "andreLovfestedePermisjoner"
+	PermisjonMedForeldrepenger       StaffAmeldingLeave = "permisjonMedForeldrepenger"
+	PermisjonVedMilitaertjeneste     StaffAmeldingLeave = "permisjonVedMilitaertjeneste"
+	Permittering                     StaffAmeldingLeave = "permittering"
+	UtdanningspermisjonIkkeLovfestet StaffAmeldingLeave = "utdanningspermisjonIkkeLovfestet"
+	UtdanningspermisjonLovfestet     StaffAmeldingLeave = "utdanningspermisjonLovfestet"
+)
+
+// Valid indicates whether the value is a known member of the StaffAmeldingLeave enum.
+func (e StaffAmeldingLeave) Valid() bool {
+	switch e {
+	case AndreIkkeLovfestedePermisjoner:
+		return true
+	case AndreLovfestedePermisjoner:
+		return true
+	case PermisjonMedForeldrepenger:
+		return true
+	case PermisjonVedMilitaertjeneste:
+		return true
+	case Permittering:
+		return true
+	case UtdanningspermisjonIkkeLovfestet:
+		return true
+	case UtdanningspermisjonLovfestet:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StaffAppointmentForm.
 const (
 	StaffAppointmentFormFast                        StaffAppointmentForm = "fast"
@@ -296,19 +398,19 @@ func (e StaffNextOfKinRelationship) Valid() bool {
 
 // Defines values for StaffNoticeUnit.
 const (
-	Days   StaffNoticeUnit = "days"
-	Months StaffNoticeUnit = "months"
-	Weeks  StaffNoticeUnit = "weeks"
+	StaffNoticeUnitDays   StaffNoticeUnit = "days"
+	StaffNoticeUnitMonths StaffNoticeUnit = "months"
+	StaffNoticeUnitWeeks  StaffNoticeUnit = "weeks"
 )
 
 // Valid indicates whether the value is a known member of the StaffNoticeUnit enum.
 func (e StaffNoticeUnit) Valid() bool {
 	switch e {
-	case Days:
+	case StaffNoticeUnitDays:
 		return true
-	case Months:
+	case StaffNoticeUnitMonths:
 		return true
-	case Weeks:
+	case StaffNoticeUnitWeeks:
 		return true
 	default:
 		return false
@@ -429,6 +531,27 @@ func (e StaffRemunerationType) Valid() bool {
 	case StaffRemunerationTypeMonthly:
 		return true
 	case StaffRemunerationTypePiecework:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffSelfCertPolicy.
+const (
+	Custom   StaffSelfCertPolicy = "custom"
+	Extended StaffSelfCertPolicy = "extended"
+	Minimum  StaffSelfCertPolicy = "minimum"
+)
+
+// Valid indicates whether the value is a known member of the StaffSelfCertPolicy enum.
+func (e StaffSelfCertPolicy) Valid() bool {
+	switch e {
+	case Custom:
+		return true
+	case Extended:
+		return true
+	case Minimum:
 		return true
 	default:
 		return false
@@ -567,6 +690,121 @@ type PaginatedResponseOfStaffPersonListItem struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
+// StaffAbsenceKind What the rules key an absence type on (design §3.5). holiday draws on the holiday account; sick_self is egenmelding, sick_certified sykmelding, child_sick a sick child (omsorgsdager); leave, time_off and other are the rest. A company type is holiday, leave, time_off or other; the sick kinds are the seeds'.
+type StaffAbsenceKind string
+
+// StaffAbsenceType An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order and whether it is hidden (seed_immutable otherwise); the reserved absent is never shown and never offered.
+type StaffAbsenceType struct {
+	// AllowsPercent Whether an absence of the type may be a percentage of each day. Never on a sick kind, whose share is the sykmelding's degree.
+	AllowsPercent bool `json:"allowsPercent"`
+
+	// AmeldingLeave The a-melding's permisjonsOgPermitteringsBeskrivelse a leave of the type is reported as — the six leave descriptions and permittering, in NAV's spellings. Absent when the type is not reported as leave. The codes velferdspermisjon and utdanningspermisjon expired on 31 December 2022 and are not among them.
+	AmeldingLeave *StaffAmeldingLeave `json:"ameldingLeave,omitempty"`
+
+	// DrawsHoliday Whether its approved days are taken from the holiday account.
+	DrawsHoliday bool `json:"drawsHoliday"`
+
+	// Hidden Not offered for a new absence, and listed to staff:manage alone.
+	Hidden bool   `json:"hidden"`
+	Id     int64  `json:"id"`
+	Key    string `json:"key"`
+
+	// Kind What the rules key an absence type on (design §3.5). holiday draws on the holiday account; sick_self is egenmelding, sick_certified sykmelding, child_sick a sick child (omsorgsdager); leave, time_off and other are the rest. A company type is holiday, leave, time_off or other; the sick kinds are the seeds'.
+	Kind StaffAbsenceKind `json:"kind"`
+
+	// Names A type's name in English and in Norwegian bokmål, each 1 to 100 characters.
+	Names StaffAbsenceTypeNames `json:"names"`
+
+	// NeedsDecision true — requested and decided (approved or rejected); false — a notification, registered when entered.
+	NeedsDecision bool `json:"needsDecision"`
+	Paid          bool `json:"paid"`
+
+	// Reserved The reserved type absent, which the health erase writes in place of a sick or child-sick type. Always hidden.
+	Reserved bool `json:"reserved"`
+
+	// Revision Send it back as If-Match on PUT /absence-types/{id}.
+	Revision int32 `json:"revision"`
+
+	// Seeded One of the types every installation starts with.
+	Seeded bool  `json:"seeded"`
+	Sort   int32 `json:"sort"`
+
+	// Unit days, or hours for a registration of part of one day.
+	Unit StaffAbsenceUnit `json:"unit"`
+
+	// Visibility absent — colleagues see "absent", the manager and HR the type; hr_only — the manager sees "leave", the type is staff:personal-data's (and the person's own).
+	Visibility StaffAbsenceVisibility `json:"visibility"`
+}
+
+// StaffAbsenceTypeChangeRequest A type replaced as a whole but for its key, kind and unit, which never change, and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort and hidden alone — every other value as it is, else seed_immutable — and the reserved absent stays hidden.
+type StaffAbsenceTypeChangeRequest struct {
+	// AllowsPercent Only on a type counted in days.
+	AllowsPercent bool `json:"allowsPercent"`
+
+	// AmeldingLeave The a-melding's permisjonsOgPermitteringsBeskrivelse a leave of the type is reported as — the six leave descriptions and permittering, in NAV's spellings. Absent when the type is not reported as leave. The codes velferdspermisjon and utdanningspermisjon expired on 31 December 2022 and are not among them.
+	AmeldingLeave *StaffAmeldingLeave `json:"ameldingLeave,omitempty"`
+
+	// DrawsHoliday Only on a type counted in days.
+	DrawsHoliday bool `json:"drawsHoliday"`
+	Hidden       bool `json:"hidden"`
+
+	// Names A type's name in English and in Norwegian bokmål, each 1 to 100 characters.
+	Names         StaffAbsenceTypeNames `json:"names"`
+	NeedsDecision bool                  `json:"needsDecision"`
+	Paid          bool                  `json:"paid"`
+
+	// Sort 1 to 1000.
+	Sort int32 `json:"sort"`
+
+	// Visibility absent — colleagues see "absent", the manager and HR the type; hr_only — the manager sees "leave", the type is staff:personal-data's (and the person's own).
+	Visibility StaffAbsenceVisibility `json:"visibility"`
+}
+
+// StaffAbsenceTypeNames A type's name in English and in Norwegian bokmål, each 1 to 100 characters.
+type StaffAbsenceTypeNames struct {
+	En string `json:"en"`
+	Nb string `json:"nb"`
+}
+
+// StaffAbsenceTypeRequest A company type. The key is 1 to 40 characters of a–z, 0–9 and underscores, unique; the kind is holiday, leave, time_off or other (the sick kinds are the seeds'); kind and unit are fixed from now on. A percentage and drawing on the holiday account are for a type counted in days.
+type StaffAbsenceTypeRequest struct {
+	AllowsPercent bool `json:"allowsPercent"`
+
+	// AmeldingLeave The a-melding's permisjonsOgPermitteringsBeskrivelse a leave of the type is reported as — the six leave descriptions and permittering, in NAV's spellings. Absent when the type is not reported as leave. The codes velferdspermisjon and utdanningspermisjon expired on 31 December 2022 and are not among them.
+	AmeldingLeave *StaffAmeldingLeave `json:"ameldingLeave,omitempty"`
+	DrawsHoliday  bool                `json:"drawsHoliday"`
+
+	// Hidden Left out, false.
+	Hidden *bool  `json:"hidden,omitempty"`
+	Key    string `json:"key"`
+
+	// Kind What the rules key an absence type on (design §3.5). holiday draws on the holiday account; sick_self is egenmelding, sick_certified sykmelding, child_sick a sick child (omsorgsdager); leave, time_off and other are the rest. A company type is holiday, leave, time_off or other; the sick kinds are the seeds'.
+	Kind StaffAbsenceKind `json:"kind"`
+
+	// Names A type's name in English and in Norwegian bokmål, each 1 to 100 characters.
+	Names         StaffAbsenceTypeNames `json:"names"`
+	NeedsDecision bool                  `json:"needsDecision"`
+	Paid          bool                  `json:"paid"`
+
+	// Sort 1 to 1000. Left out, after every type there is.
+	Sort *int32 `json:"sort,omitempty"`
+
+	// Unit days, or hours for a registration of part of one day.
+	Unit StaffAbsenceUnit `json:"unit"`
+
+	// Visibility absent — colleagues see "absent", the manager and HR the type; hr_only — the manager sees "leave", the type is staff:personal-data's (and the person's own).
+	Visibility StaffAbsenceVisibility `json:"visibility"`
+}
+
+// StaffAbsenceUnit days, or hours for a registration of part of one day.
+type StaffAbsenceUnit string
+
+// StaffAbsenceVisibility absent — colleagues see "absent", the manager and HR the type; hr_only — the manager sees "leave", the type is staff:personal-data's (and the person's own).
+type StaffAbsenceVisibility string
+
+// StaffAmeldingLeave The a-melding's permisjonsOgPermitteringsBeskrivelse a leave of the type is reported as — the six leave descriptions and permittering, in NAV's spellings. Absent when the type is not reported as leave. The codes velferdspermisjon and utdanningspermisjon expired on 31 December 2022 and are not among them.
+type StaffAmeldingLeave string
+
 // StaffAppointmentForm The a-melding's ansettelsesform. fast and fast_utleid go with a permanent employment, the other three with a temporary one.
 type StaffAppointmentForm string
 
@@ -634,6 +872,9 @@ type StaffBusinessUnitSummary struct {
 
 // StaffCapabilities What the caller may do in Staff, so the app never re-derives a rule this module owns. The access layer still decides every request.
 type StaffCapabilities struct {
+	// CanDecide staff:approve or staff:manage, or managing anyone today — decides absence requests (delivery B).
+	CanDecide bool `json:"canDecide"`
+
 	// CanEdit staff:manage — HR: people, employments and terms, the structure and the settings.
 	CanEdit bool `json:"canEdit"`
 
@@ -648,6 +889,9 @@ type StaffCapabilities struct {
 
 	// CanViewDirectory staff:view — the directory: everyone's work fields and the structure.
 	CanViewDirectory bool `json:"canViewDirectory"`
+
+	// ManagesAnyone The caller's linked person manages anyone today by the one manager rule — a manager who has left manages nobody. Drives My team.
+	ManagesAnyone bool `json:"managesAnyone"`
 }
 
 // StaffContractCheck The § 14-6 check of one employment (design S5).
@@ -849,8 +1093,11 @@ type StaffEmployment struct {
 
 	// FteChangedAt The date the stillingsprosent in force today (or at the start, before it; at the end, after it) took effect: the earliest row of the unbroken run of rows with that percentage. Derived, never typed.
 	FteChangedAt *openapi_types.Date `json:"fteChangedAt,omitempty"`
-	Id           int64               `json:"id"`
-	PersonId     int64               `json:"personId"`
+
+	// HolidaySchemeId The holiday scheme the employment follows — the employment group's. Absent when it follows the default.
+	HolidaySchemeId *int64 `json:"holidaySchemeId,omitempty"`
+	Id              int64  `json:"id"`
+	PersonId        int64  `json:"personId"`
 
 	// RelationshipType The a-melding's kind of arbeidsforhold.
 	RelationshipType *StaffRelationshipType `json:"relationshipType,omitempty"`
@@ -873,6 +1120,9 @@ type StaffEmploymentChangeRequest struct {
 
 	// EmploymentNumber Never changes: left out, or the employment's own.
 	EmploymentNumber *string `json:"employmentNumber,omitempty"`
+
+	// HolidaySchemeId A holiday scheme, not archived unless the employment already follows it. Left out, the default.
+	HolidaySchemeId *int64 `json:"holidaySchemeId,omitempty"`
 
 	// RelationshipType The a-melding's kind of arbeidsforhold.
 	RelationshipType StaffRelationshipType `json:"relationshipType"`
@@ -900,6 +1150,9 @@ type StaffEmploymentRequest struct {
 
 	// EmploymentNumber 1 to 40 letters, digits or hyphens, unique however cased. Left out, it is generated as <employee number>-<n>.
 	EmploymentNumber *string `json:"employmentNumber,omitempty"`
+
+	// HolidaySchemeId A holiday scheme, not archived. Left out, the default.
+	HolidaySchemeId *int64 `json:"holidaySchemeId,omitempty"`
 
 	// RelationshipType Left out, ordinary.
 	RelationshipType *StaffRelationshipType `json:"relationshipType,omitempty"`
@@ -965,6 +1218,84 @@ type StaffEventActor struct {
 
 // StaffGender female, male, other or unspecified — what the equality report (ARP) counts.
 type StaffGender string
+
+// StaffHolidayScheme A holiday scheme (design S9, §3.5), its figures in virkedager (Monday to Saturday, as the Holiday Act counts) and, in converted, the working days of a five-day week each comes to — ⌊v / 6⌋ × 5 + min(v mod 6, 5), so 25 virkedager are 21 days and 30 are 25. Exactly one is the default, the scheme of an employment that names none.
+type StaffHolidayScheme struct {
+	AfterSeptemberVirkedager int32 `json:"afterSeptemberVirkedager"`
+
+	// ArchivedAt When the scheme was archived. Absent while it is offered.
+	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
+
+	// Converted A scheme's figures in working days of a five-day week.
+	Converted              StaffHolidaySchemeConverted `json:"converted"`
+	EntitlementVirkedager  int32                       `json:"entitlementVirkedager"`
+	ExtraFrom60Virkedager  int32                       `json:"extraFrom60Virkedager"`
+	Id                     int64                       `json:"id"`
+	IsDefault              bool                        `json:"isDefault"`
+	MainPeriodVirkedager   int32                       `json:"mainPeriodVirkedager"`
+	MaxCarryOverVirkedager int32                       `json:"maxCarryOverVirkedager"`
+	Name                   string                      `json:"name"`
+
+	// Revision Send it back as If-Match on PUT /holiday-schemes/{id}.
+	Revision int32 `json:"revision"`
+
+	// Seeded The statutory scheme every installation starts with.
+	Seeded bool `json:"seeded"`
+}
+
+// StaffHolidaySchemeChangeRequest A scheme replaced as a whole, and archived or restored. isDefault true makes it the default (an archived scheme never is, structure_archived); false on the default is refused structure_default, since there is always one; left out, the flag stays. Archiving the default or a scheme an employment names is refused holiday_scheme_in_use.
+type StaffHolidaySchemeChangeRequest struct {
+	// AfterSeptemberVirkedager 0 to the entitlement. Left out, 6.
+	AfterSeptemberVirkedager *int32 `json:"afterSeptemberVirkedager,omitempty"`
+	Archived                 bool   `json:"archived"`
+
+	// EntitlementVirkedager 25 to 60.
+	EntitlementVirkedager int32 `json:"entitlementVirkedager"`
+
+	// ExtraFrom60Virkedager 6 to 30.
+	ExtraFrom60Virkedager int32 `json:"extraFrom60Virkedager"`
+	IsDefault             *bool `json:"isDefault,omitempty"`
+
+	// MainPeriodVirkedager 0 to the entitlement. Left out, 18.
+	MainPeriodVirkedager *int32 `json:"mainPeriodVirkedager,omitempty"`
+
+	// MaxCarryOverVirkedager 0 to the entitlement. Left out, 12.
+	MaxCarryOverVirkedager *int32 `json:"maxCarryOverVirkedager,omitempty"`
+
+	// Name 1 to 100 characters, unique however it is cased.
+	Name string `json:"name"`
+}
+
+// StaffHolidaySchemeConverted A scheme's figures in working days of a five-day week.
+type StaffHolidaySchemeConverted struct {
+	AfterSeptember int32 `json:"afterSeptember"`
+	Entitlement    int32 `json:"entitlement"`
+	ExtraFrom60    int32 `json:"extraFrom60"`
+	MainPeriod     int32 `json:"mainPeriod"`
+	MaxCarryOver   int32 `json:"maxCarryOver"`
+}
+
+// StaffHolidaySchemeRequest A new scheme. isDefault true makes it the default in place of the one there is.
+type StaffHolidaySchemeRequest struct {
+	// AfterSeptemberVirkedager 0 to the entitlement. Left out, 6.
+	AfterSeptemberVirkedager *int32 `json:"afterSeptemberVirkedager,omitempty"`
+
+	// EntitlementVirkedager 25 to 60.
+	EntitlementVirkedager int32 `json:"entitlementVirkedager"`
+
+	// ExtraFrom60Virkedager 6 to 30.
+	ExtraFrom60Virkedager int32 `json:"extraFrom60Virkedager"`
+	IsDefault             *bool `json:"isDefault,omitempty"`
+
+	// MainPeriodVirkedager 0 to the entitlement. Left out, 18.
+	MainPeriodVirkedager *int32 `json:"mainPeriodVirkedager,omitempty"`
+
+	// MaxCarryOverVirkedager 0 to the entitlement. Left out, 12.
+	MaxCarryOverVirkedager *int32 `json:"maxCarryOverVirkedager,omitempty"`
+
+	// Name 1 to 100 characters, unique however it is cased.
+	Name string `json:"name"`
+}
 
 // StaffImportError One problem with one row of an import. No message carries a digit of a national identity number or a bank account.
 type StaffImportError struct {
@@ -1110,8 +1441,14 @@ type StaffMeRequest struct {
 
 // StaffMeta What the Staff app needs before it draws anything.
 type StaffMeta struct {
+	// AbsenceTypes The absence types that are not hidden, in their order, names in both languages — every caller's.
+	AbsenceTypes []StaffAbsenceType `json:"absenceTypes"`
+
 	// Capabilities What the caller may do in Staff, so the app never re-derives a rule this module owns. The access layer still decides every request.
 	Capabilities StaffCapabilities `json:"capabilities"`
+
+	// HolidaySchemes Every holiday scheme, archived ones included, with its figures converted to working days.
+	HolidaySchemes []StaffHolidayScheme `json:"holidaySchemes"`
 
 	// Structure The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out.
 	Structure *StaffStructure `json:"structure,omitempty"`
@@ -1217,6 +1554,12 @@ type StaffPerson struct {
 	// Capabilities What the caller may do with this person. The access layer still decides every request.
 	Capabilities StaffPersonCapabilities `json:"capabilities"`
 
+	// ChildrenUnder12 The care-day fields (design S11): the children through the year they turn twelve without NAV's extra-days decision, 0 to 20. The person's own, staff:manage's and staff:personal-data's. Absent when not recorded.
+	ChildrenUnder12 *int32 `json:"childrenUnder12,omitempty"`
+
+	// ChronicallyIllChildren The children with NAV's decision of extra care days for a chronic illness or disability, through the year they turn eighteen, 0 to 20. A care-day field. Absent when not recorded.
+	ChronicallyIllChildren *int32 `json:"chronicallyIllChildren,omitempty"`
+
 	// City Private. Absent when not set.
 	City *string `json:"city,omitempty"`
 
@@ -1275,6 +1618,9 @@ type StaffPerson struct {
 
 	// Revision The revision a change sends back in If-Match.
 	Revision int32 `json:"revision"`
+
+	// SoleCarer Whether the person cares for the children alone (aleneomsorg). A care-day field. Absent when not recorded.
+	SoleCarer *bool `json:"soleCarer,omitempty"`
 
 	// Status Where the person stands today, in the business time zone: active (an employment has started and not ended — the end day itself is still worked), upcoming (none active, one starting later; date is the earliest such start), ended (every employment ended before today; date is the latest end) or none (no employment yet).
 	Status StaffPersonStatus `json:"status"`
@@ -1389,6 +1735,12 @@ type StaffPersonRequest struct {
 	// BirthDate A calendar date. Private.
 	BirthDate *openapi_types.Date `json:"birthDate,omitempty"`
 
+	// ChildrenUnder12 0 to 20 — the children through the year they turn twelve without NAV's extra-days decision. A care-day field; left out, it is cleared.
+	ChildrenUnder12 *int32 `json:"childrenUnder12,omitempty"`
+
+	// ChronicallyIllChildren 0 to 20 — the children with NAV's extra-days decision, through the year they turn eighteen. A care-day field; left out, it is cleared.
+	ChronicallyIllChildren *int32 `json:"chronicallyIllChildren,omitempty"`
+
 	// City Up to 100 characters. Private (the home address).
 	City *string `json:"city,omitempty"`
 
@@ -1430,6 +1782,9 @@ type StaffPersonRequest struct {
 
 	// PrivateEmail An email address of up to 254 characters, stored lower-cased. Private.
 	PrivateEmail *string `json:"privateEmail,omitempty"`
+
+	// SoleCarer Whether the person cares for the children alone. A care-day field; left out, it is cleared.
+	SoleCarer *bool `json:"soleCarer,omitempty"`
 
 	// Street Up to 200 characters. Private (the home address).
 	Street *string `json:"street,omitempty"`
@@ -1573,7 +1928,7 @@ type StaffPersonalDataPerson struct {
 	WorkEmail   *string           `json:"workEmail,omitempty"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1628,8 +1983,17 @@ type StaffRetentionState struct {
 	PendingDeletions int64 `json:"pendingDeletions"`
 }
 
+// StaffSelfCertPolicy The self-certification (egenmelding) policy (design S10): minimum — the statutory one, 3 calendar days an occurrence and 4 occurrences in a rolling year; extended — 8 days an occurrence and 24 days in a rolling year; custom — the numbers as set.
+type StaffSelfCertPolicy string
+
 // StaffSettings The Staff settings (design §3.6) as far as the deliveries so far expose them, the retention run's state, derived, and when each threshold was acknowledged, read-only. The other columns of the settings row reach the contract with the deliveries that use them.
 type StaffSettings struct {
+	// AutoCarryOver Whether holiday left at a year's end is carried into the next as forced, without HR's action (design S9). false by default.
+	AutoCarryOver bool `json:"autoCarryOver"`
+
+	// AutoCarryOverSince The day autoCarryOver was last turned on; the derived carry-over reaches no year before it. Absent when it never was.
+	AutoCarryOverSince *openapi_types.Date `json:"autoCarryOverSince,omitempty"`
+
 	// EmployeeNumberPrefix What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none.
 	EmployeeNumberPrefix string `json:"employeeNumberPrefix"`
 
@@ -1654,6 +2018,21 @@ type StaffSettings struct {
 	// Revision The revision a change sends back in If-Match.
 	Revision int32 `json:"revision"`
 
+	// SelfCertAfterMonths The months of employment before egenmelding may be used, 0 to 2.
+	SelfCertAfterMonths int32 `json:"selfCertAfterMonths"`
+
+	// SelfCertDaysPerOccurrence The calendar days one egenmelding occurrence may last, 1 to 16.
+	SelfCertDaysPerOccurrence int32 `json:"selfCertDaysPerOccurrence"`
+
+	// SelfCertDaysPerYear The self-certified days in a rolling year (extended and custom), 1 to 365.
+	SelfCertDaysPerYear int32 `json:"selfCertDaysPerYear"`
+
+	// SelfCertOccurrencesPerYear The occurrences in a rolling year (minimum and custom), 1 to 52.
+	SelfCertOccurrencesPerYear int32 `json:"selfCertOccurrencesPerYear"`
+
+	// SelfCertPolicy The self-certification (egenmelding) policy (design S10): minimum — the statutory one, 3 calendar days an occurrence and 4 occurrences in a rolling year; extended — 8 days an occurrence and 24 days in a rolling year; custom — the numbers as set.
+	SelfCertPolicy StaffSelfCertPolicy `json:"selfCertPolicy"`
+
 	// ThresholdsAcknowledged When each threshold was acknowledged (design S20) — once and permanently, by staff:manage; a threshold not yet acknowledged is absent. Who acknowledged it is in the threshold_acknowledged event.
 	ThresholdsAcknowledged StaffThresholdsAcknowledged `json:"thresholdsAcknowledged"`
 
@@ -1663,6 +2042,9 @@ type StaffSettings struct {
 
 // StaffSettingsRequest A replace of the settings. The two retention periods left out keep the values they have; everything else is replaced.
 type StaffSettingsRequest struct {
+	// AutoCarryOver Left out, it keeps its value. Turning it on records today as autoCarryOverSince.
+	AutoCarryOver *bool `json:"autoCarryOver,omitempty"`
+
 	// EmployeeNumberPrefix Up to eight letters, digits or hyphens. Left out, there is none.
 	EmployeeNumberPrefix *string `json:"employeeNumberPrefix,omitempty"`
 
@@ -1680,6 +2062,21 @@ type StaffSettingsRequest struct {
 
 	// RetentionGraceDays 0 to 3650 days. Left out, it keeps its value.
 	RetentionGraceDays *int32 `json:"retentionGraceDays,omitempty"`
+
+	// SelfCertAfterMonths 0 to 2. Left out, it keeps its value.
+	SelfCertAfterMonths *int32 `json:"selfCertAfterMonths,omitempty"`
+
+	// SelfCertDaysPerOccurrence 1 to 16. Read under custom only — a preset writes its own; left out, it keeps its value.
+	SelfCertDaysPerOccurrence *int32 `json:"selfCertDaysPerOccurrence,omitempty"`
+
+	// SelfCertDaysPerYear 1 to 365. Read under custom only — a preset writes its own; left out, it keeps its value.
+	SelfCertDaysPerYear *int32 `json:"selfCertDaysPerYear,omitempty"`
+
+	// SelfCertOccurrencesPerYear 1 to 52. Read under custom only — a preset writes its own; left out, it keeps its value.
+	SelfCertOccurrencesPerYear *int32 `json:"selfCertOccurrencesPerYear,omitempty"`
+
+	// SelfCertPolicy The self-certification (egenmelding) policy (design S10): minimum — the statutory one, 3 calendar days an occurrence and 4 occurrences in a rolling year; extended — 8 days an occurrence and 24 days in a rolling year; custom — the numbers as set.
+	SelfCertPolicy *StaffSelfCertPolicy `json:"selfCertPolicy,omitempty"`
 
 	// TimeZone An IANA name such as Europe/Oslo, which this server and its database must read the same way.
 	TimeZone string `json:"timeZone"`
@@ -1979,6 +2376,12 @@ type StaffThresholdsAcknowledged struct {
 // StaffWorkingHoursScheme The a-melding's arbeidstidsordning: not_shift (ikkeSkift), shift_365 (skift365), offshore_336 (offshore336), continuous_336 (helkontinuerligSkiftOgAndreOrdninger336), round_the_clock_355 (doegnkontinuerligSkiftOgTurnus355), other_shift (andreSkift).
 type StaffWorkingHoursScheme string
 
+// PutStaffAbsenceTypesByIdParams defines parameters for PutStaffAbsenceTypesById.
+type PutStaffAbsenceTypesByIdParams struct {
+	// IfMatch The revision the type was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
 // GetStaffAssignableUsersParams defines parameters for GetStaffAssignableUsers.
 type GetStaffAssignableUsersParams struct {
 	// Q Narrows the search. Absent or blank lists the first twenty active users.
@@ -2012,6 +2415,12 @@ type PutStaffDocumentsByIdParams struct {
 // PutStaffEmploymentsByIdParams defines parameters for PutStaffEmploymentsById.
 type PutStaffEmploymentsByIdParams struct {
 	// IfMatch The revision the employment was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// PutStaffHolidaySchemesByIdParams defines parameters for PutStaffHolidaySchemesById.
+type PutStaffHolidaySchemesByIdParams struct {
+	// IfMatch The revision the scheme was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
 	IfMatch string `json:"If-Match"`
 }
 
@@ -2126,6 +2535,12 @@ type PutStaffTermsByIdParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// PostStaffAbsenceTypesJSONRequestBody defines body for PostStaffAbsenceTypes for application/json ContentType.
+type PostStaffAbsenceTypesJSONRequestBody = StaffAbsenceTypeRequest
+
+// PutStaffAbsenceTypesByIdJSONRequestBody defines body for PutStaffAbsenceTypesById for application/json ContentType.
+type PutStaffAbsenceTypesByIdJSONRequestBody = StaffAbsenceTypeChangeRequest
+
 // PostStaffBusinessUnitsJSONRequestBody defines body for PostStaffBusinessUnits for application/json ContentType.
 type PostStaffBusinessUnitsJSONRequestBody = StaffBusinessUnitRequest
 
@@ -2155,6 +2570,12 @@ type PostStaffEmploymentsByIdEndJSONRequestBody = StaffEmploymentEndRequest
 
 // PostStaffEmploymentsByIdTermsJSONRequestBody defines body for PostStaffEmploymentsByIdTerms for application/json ContentType.
 type PostStaffEmploymentsByIdTermsJSONRequestBody = StaffTermsRequest
+
+// PostStaffHolidaySchemesJSONRequestBody defines body for PostStaffHolidaySchemes for application/json ContentType.
+type PostStaffHolidaySchemesJSONRequestBody = StaffHolidaySchemeRequest
+
+// PutStaffHolidaySchemesByIdJSONRequestBody defines body for PutStaffHolidaySchemesById for application/json ContentType.
+type PutStaffHolidaySchemesByIdJSONRequestBody = StaffHolidaySchemeChangeRequest
 
 // PostStaffLegalEntitiesJSONRequestBody defines body for PostStaffLegalEntities for application/json ContentType.
 type PostStaffLegalEntitiesJSONRequestBody = StaffLegalEntityRequest
@@ -2215,6 +2636,15 @@ type PutStaffTermsByIdJSONRequestBody = StaffTermsRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetStaffAbsenceTypes List absence types
+	// (GET /api/v1/staff/absence-types)
+	GetStaffAbsenceTypes(w http.ResponseWriter, r *http.Request)
+	// PostStaffAbsenceTypes Add an absence type
+	// (POST /api/v1/staff/absence-types)
+	PostStaffAbsenceTypes(w http.ResponseWriter, r *http.Request)
+	// PutStaffAbsenceTypesById Change an absence type
+	// (PUT /api/v1/staff/absence-types/{id})
+	PutStaffAbsenceTypesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffAbsenceTypesByIdParams)
 	// GetStaffAssignableUsers Search the users a person may be linked to
 	// (GET /api/v1/staff/assignable-users)
 	GetStaffAssignableUsers(w http.ResponseWriter, r *http.Request, params GetStaffAssignableUsersParams)
@@ -2281,6 +2711,15 @@ type ServerInterface interface {
 	// PostStaffEmploymentsByIdTerms Add a terms row
 	// (POST /api/v1/staff/employments/{id}/terms)
 	PostStaffEmploymentsByIdTerms(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffHolidaySchemes List holiday schemes
+	// (GET /api/v1/staff/holiday-schemes)
+	GetStaffHolidaySchemes(w http.ResponseWriter, r *http.Request)
+	// PostStaffHolidaySchemes Add a holiday scheme
+	// (POST /api/v1/staff/holiday-schemes)
+	PostStaffHolidaySchemes(w http.ResponseWriter, r *http.Request)
+	// PutStaffHolidaySchemesById Change a holiday scheme
+	// (PUT /api/v1/staff/holiday-schemes/{id})
+	PutStaffHolidaySchemesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffHolidaySchemesByIdParams)
 	// GetStaffLegalEntities List legal entities
 	// (GET /api/v1/staff/legal-entities)
 	GetStaffLegalEntities(w http.ResponseWriter, r *http.Request)
@@ -2444,6 +2883,88 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetStaffAbsenceTypes operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffAbsenceTypes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffAbsenceTypes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffAbsenceTypes operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffAbsenceTypes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffAbsenceTypes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffAbsenceTypesById operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffAbsenceTypesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffAbsenceTypesByIdParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffAbsenceTypesById(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetStaffAssignableUsers operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffAssignableUsers(w http.ResponseWriter, r *http.Request) {
@@ -3083,6 +3604,88 @@ func (siw *ServerInterfaceWrapper) PostStaffEmploymentsByIdTerms(w http.Response
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostStaffEmploymentsByIdTerms(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffHolidaySchemes operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffHolidaySchemes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffHolidaySchemes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffHolidaySchemes operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffHolidaySchemes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffHolidaySchemes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffHolidaySchemesById operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffHolidaySchemesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffHolidaySchemesByIdParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffHolidaySchemesById(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4713,6 +5316,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/absence-types", wrapper.GetStaffAbsenceTypes)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/absence-types", wrapper.PostStaffAbsenceTypes)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/absence-types/{id}", wrapper.PutStaffAbsenceTypesById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/assignable-users", wrapper.GetStaffAssignableUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/business-units", wrapper.GetStaffBusinessUnits)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/business-units", wrapper.PostStaffBusinessUnits)
@@ -4735,6 +5341,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/employments/{id}/reopen", wrapper.PostStaffEmploymentsByIdReopen)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/employments/{id}/terms", wrapper.GetStaffEmploymentsByIdTerms)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/employments/{id}/terms", wrapper.PostStaffEmploymentsByIdTerms)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/holiday-schemes", wrapper.GetStaffHolidaySchemes)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/holiday-schemes", wrapper.PostStaffHolidaySchemes)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/holiday-schemes/{id}", wrapper.PutStaffHolidaySchemesById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/legal-entities", wrapper.GetStaffLegalEntities)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/legal-entities", wrapper.PostStaffLegalEntities)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/legal-entities/{id}", wrapper.PutStaffLegalEntitiesById)
@@ -4788,6 +5397,207 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/thresholds/{key}/acknowledge", wrapper.PostStaffThresholdsByKeyAcknowledge)
 
 	return m
+}
+
+type GetStaffAbsenceTypesRequestObject struct {
+}
+
+type GetStaffAbsenceTypesResponseObject interface {
+	VisitGetStaffAbsenceTypesResponse(w http.ResponseWriter) error
+}
+
+type GetStaffAbsenceTypes200JSONResponse []StaffAbsenceType
+
+func (response GetStaffAbsenceTypes200JSONResponse) VisitGetStaffAbsenceTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAbsenceTypes401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffAbsenceTypes401JSONResponse) VisitGetStaffAbsenceTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAbsenceTypes403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffAbsenceTypes403JSONResponse) VisitGetStaffAbsenceTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsenceTypesRequestObject struct {
+	Body *PostStaffAbsenceTypesJSONRequestBody
+}
+
+type PostStaffAbsenceTypesResponseObject interface {
+	VisitPostStaffAbsenceTypesResponse(w http.ResponseWriter) error
+}
+
+type PostStaffAbsenceTypes201JSONResponse StaffAbsenceType
+
+func (response PostStaffAbsenceTypes201JSONResponse) VisitPostStaffAbsenceTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsenceTypes400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffAbsenceTypes400ApplicationProblemPlusJSONResponse) VisitPostStaffAbsenceTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsenceTypes401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffAbsenceTypes401JSONResponse) VisitPostStaffAbsenceTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsenceTypes403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffAbsenceTypes403JSONResponse) VisitPostStaffAbsenceTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffAbsenceTypesByIdRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutStaffAbsenceTypesByIdParams
+	Body   *PutStaffAbsenceTypesByIdJSONRequestBody
+}
+
+type PutStaffAbsenceTypesByIdResponseObject interface {
+	VisitPutStaffAbsenceTypesByIdResponse(w http.ResponseWriter) error
+}
+
+type PutStaffAbsenceTypesById200JSONResponse StaffAbsenceType
+
+func (response PutStaffAbsenceTypesById200JSONResponse) VisitPutStaffAbsenceTypesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffAbsenceTypesById400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffAbsenceTypesById400ApplicationProblemPlusJSONResponse) VisitPutStaffAbsenceTypesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffAbsenceTypesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffAbsenceTypesById401JSONResponse) VisitPutStaffAbsenceTypesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffAbsenceTypesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffAbsenceTypesById403JSONResponse) VisitPutStaffAbsenceTypesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffAbsenceTypesById404Response struct {
+}
+
+func (response PutStaffAbsenceTypesById404Response) VisitPutStaffAbsenceTypesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffAbsenceTypesById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffAbsenceTypesById409ApplicationProblemPlusJSONResponse) VisitPutStaffAbsenceTypesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetStaffAssignableUsersRequestObject struct {
@@ -6359,6 +7169,207 @@ func (response PostStaffEmploymentsByIdTerms404Response) VisitPostStaffEmploymen
 type PostStaffEmploymentsByIdTerms409ApplicationProblemPlusJSONResponse StaffProblem
 
 func (response PostStaffEmploymentsByIdTerms409ApplicationProblemPlusJSONResponse) VisitPostStaffEmploymentsByIdTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffHolidaySchemesRequestObject struct {
+}
+
+type GetStaffHolidaySchemesResponseObject interface {
+	VisitGetStaffHolidaySchemesResponse(w http.ResponseWriter) error
+}
+
+type GetStaffHolidaySchemes200JSONResponse []StaffHolidayScheme
+
+func (response GetStaffHolidaySchemes200JSONResponse) VisitGetStaffHolidaySchemesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffHolidaySchemes401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffHolidaySchemes401JSONResponse) VisitGetStaffHolidaySchemesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffHolidaySchemes403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffHolidaySchemes403JSONResponse) VisitGetStaffHolidaySchemesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffHolidaySchemesRequestObject struct {
+	Body *PostStaffHolidaySchemesJSONRequestBody
+}
+
+type PostStaffHolidaySchemesResponseObject interface {
+	VisitPostStaffHolidaySchemesResponse(w http.ResponseWriter) error
+}
+
+type PostStaffHolidaySchemes201JSONResponse StaffHolidayScheme
+
+func (response PostStaffHolidaySchemes201JSONResponse) VisitPostStaffHolidaySchemesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffHolidaySchemes400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffHolidaySchemes400ApplicationProblemPlusJSONResponse) VisitPostStaffHolidaySchemesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffHolidaySchemes401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffHolidaySchemes401JSONResponse) VisitPostStaffHolidaySchemesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffHolidaySchemes403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffHolidaySchemes403JSONResponse) VisitPostStaffHolidaySchemesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffHolidaySchemesByIdRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutStaffHolidaySchemesByIdParams
+	Body   *PutStaffHolidaySchemesByIdJSONRequestBody
+}
+
+type PutStaffHolidaySchemesByIdResponseObject interface {
+	VisitPutStaffHolidaySchemesByIdResponse(w http.ResponseWriter) error
+}
+
+type PutStaffHolidaySchemesById200JSONResponse StaffHolidayScheme
+
+func (response PutStaffHolidaySchemesById200JSONResponse) VisitPutStaffHolidaySchemesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffHolidaySchemesById400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffHolidaySchemesById400ApplicationProblemPlusJSONResponse) VisitPutStaffHolidaySchemesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffHolidaySchemesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffHolidaySchemesById401JSONResponse) VisitPutStaffHolidaySchemesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffHolidaySchemesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffHolidaySchemesById403JSONResponse) VisitPutStaffHolidaySchemesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffHolidaySchemesById404Response struct {
+}
+
+func (response PutStaffHolidaySchemesById404Response) VisitPutStaffHolidaySchemesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffHolidaySchemesById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffHolidaySchemesById409ApplicationProblemPlusJSONResponse) VisitPutStaffHolidaySchemesByIdResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -9906,6 +10917,15 @@ func (response PostStaffThresholdsByKeyAcknowledge404ApplicationProblemPlusJSONR
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// GetStaffAbsenceTypes List absence types
+	// (GET /api/v1/staff/absence-types)
+	GetStaffAbsenceTypes(ctx context.Context, request GetStaffAbsenceTypesRequestObject) (GetStaffAbsenceTypesResponseObject, error)
+	// PostStaffAbsenceTypes Add an absence type
+	// (POST /api/v1/staff/absence-types)
+	PostStaffAbsenceTypes(ctx context.Context, request PostStaffAbsenceTypesRequestObject) (PostStaffAbsenceTypesResponseObject, error)
+	// PutStaffAbsenceTypesById Change an absence type
+	// (PUT /api/v1/staff/absence-types/{id})
+	PutStaffAbsenceTypesById(ctx context.Context, request PutStaffAbsenceTypesByIdRequestObject) (PutStaffAbsenceTypesByIdResponseObject, error)
 	// GetStaffAssignableUsers Search the users a person may be linked to
 	// (GET /api/v1/staff/assignable-users)
 	GetStaffAssignableUsers(ctx context.Context, request GetStaffAssignableUsersRequestObject) (GetStaffAssignableUsersResponseObject, error)
@@ -9972,6 +10992,15 @@ type StrictServerInterface interface {
 	// PostStaffEmploymentsByIdTerms Add a terms row
 	// (POST /api/v1/staff/employments/{id}/terms)
 	PostStaffEmploymentsByIdTerms(ctx context.Context, request PostStaffEmploymentsByIdTermsRequestObject) (PostStaffEmploymentsByIdTermsResponseObject, error)
+	// GetStaffHolidaySchemes List holiday schemes
+	// (GET /api/v1/staff/holiday-schemes)
+	GetStaffHolidaySchemes(ctx context.Context, request GetStaffHolidaySchemesRequestObject) (GetStaffHolidaySchemesResponseObject, error)
+	// PostStaffHolidaySchemes Add a holiday scheme
+	// (POST /api/v1/staff/holiday-schemes)
+	PostStaffHolidaySchemes(ctx context.Context, request PostStaffHolidaySchemesRequestObject) (PostStaffHolidaySchemesResponseObject, error)
+	// PutStaffHolidaySchemesById Change a holiday scheme
+	// (PUT /api/v1/staff/holiday-schemes/{id})
+	PutStaffHolidaySchemesById(ctx context.Context, request PutStaffHolidaySchemesByIdRequestObject) (PutStaffHolidaySchemesByIdResponseObject, error)
 	// GetStaffLegalEntities List legal entities
 	// (GET /api/v1/staff/legal-entities)
 	GetStaffLegalEntities(ctx context.Context, request GetStaffLegalEntitiesRequestObject) (GetStaffLegalEntitiesResponseObject, error)
@@ -10164,6 +11193,95 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetStaffAbsenceTypes operation middleware
+func (sh *strictHandler) GetStaffAbsenceTypes(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffAbsenceTypesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffAbsenceTypes(ctx, request.(GetStaffAbsenceTypesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffAbsenceTypes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffAbsenceTypesResponseObject); ok {
+		if err := validResponse.VisitGetStaffAbsenceTypesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffAbsenceTypes operation middleware
+func (sh *strictHandler) PostStaffAbsenceTypes(w http.ResponseWriter, r *http.Request) {
+	var request PostStaffAbsenceTypesRequestObject
+
+	var body PostStaffAbsenceTypesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffAbsenceTypes(ctx, request.(PostStaffAbsenceTypesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffAbsenceTypes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffAbsenceTypesResponseObject); ok {
+		if err := validResponse.VisitPostStaffAbsenceTypesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffAbsenceTypesById operation middleware
+func (sh *strictHandler) PutStaffAbsenceTypesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffAbsenceTypesByIdParams) {
+	var request PutStaffAbsenceTypesByIdRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutStaffAbsenceTypesByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffAbsenceTypesById(ctx, request.(PutStaffAbsenceTypesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffAbsenceTypesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffAbsenceTypesByIdResponseObject); ok {
+		if err := validResponse.VisitPutStaffAbsenceTypesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetStaffAssignableUsers operation middleware
@@ -10794,6 +11912,95 @@ func (sh *strictHandler) PostStaffEmploymentsByIdTerms(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostStaffEmploymentsByIdTermsResponseObject); ok {
 		if err := validResponse.VisitPostStaffEmploymentsByIdTermsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffHolidaySchemes operation middleware
+func (sh *strictHandler) GetStaffHolidaySchemes(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffHolidaySchemesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffHolidaySchemes(ctx, request.(GetStaffHolidaySchemesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffHolidaySchemes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffHolidaySchemesResponseObject); ok {
+		if err := validResponse.VisitGetStaffHolidaySchemesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffHolidaySchemes operation middleware
+func (sh *strictHandler) PostStaffHolidaySchemes(w http.ResponseWriter, r *http.Request) {
+	var request PostStaffHolidaySchemesRequestObject
+
+	var body PostStaffHolidaySchemesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffHolidaySchemes(ctx, request.(PostStaffHolidaySchemesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffHolidaySchemes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffHolidaySchemesResponseObject); ok {
+		if err := validResponse.VisitPostStaffHolidaySchemesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffHolidaySchemesById operation middleware
+func (sh *strictHandler) PutStaffHolidaySchemesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffHolidaySchemesByIdParams) {
+	var request PutStaffHolidaySchemesByIdRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutStaffHolidaySchemesByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffHolidaySchemesById(ctx, request.(PutStaffHolidaySchemesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffHolidaySchemesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffHolidaySchemesByIdResponseObject); ok {
+		if err := validResponse.VisitPutStaffHolidaySchemesByIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

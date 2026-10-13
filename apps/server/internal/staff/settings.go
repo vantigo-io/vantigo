@@ -18,9 +18,10 @@ import (
 
 // This file is the installation's Staff settings (design §3.6): the business
 // time zone, the employee number sequence, the pension provider and the
-// injury insurer (delivery A1), and the two retention periods with the
-// retention run's state, derived (delivery A2; plan reading 2: the contract
-// grows with the deliveries; the self-certification and account columns are
+// injury insurer (delivery A1), the two retention periods with the
+// retention run's state, derived (delivery A2), and the self-certification
+// policy and automatic carry-over (delivery B, absence_settings.go; plan
+// reading 2: the contract grows with the deliveries; the account columns are
 // already on the row). There is exactly one row, written by the
 // migration, and a replace is guarded by its revision.
 
@@ -34,6 +35,9 @@ type parsedSettings struct {
 	InjuryInsurer       *string
 	RetentionGraceDays  *int16
 	HealthRetentionDays *int16
+	// Policy is delivery B's: the self-certification policy and automatic
+	// carry-over (absence_settings.go), each left out keeping its value.
+	Policy parsedPolicy
 }
 
 // The retention periods' bounds (design S15, plan "Exact values"): the grace
@@ -115,6 +119,7 @@ func parseSettings(body gen.StaffSettingsRequest) (parsedSettings, fieldErrors) 
 	f.add("retentionGraceDays", msg)
 	out.HealthRetentionDays, msg = retentionPeriod("The health documents' period", body.HealthRetentionDays, healthRetentionDaysMin)
 	f.add("healthRetentionDays", msg)
+	out.Policy = parsePolicy(body, &f)
 	return out, f
 }
 
@@ -176,7 +181,10 @@ func retentionState(ctx context.Context, q *store.Queries) (gen.StaffRetentionSt
 // PutStaffSettings Change the Staff settings
 // (PUT /api/v1/staff/settings)
 //
-// A full replace of A1's five fields, guarded by If-Match. The zone is judged
+// A full replace of A1's five fields, guarded by If-Match; A2's retention
+// periods and B's self-certification policy and carry-over each keep their
+// value when left out. The policy is resolved against the row as locked, and
+// "today" for autoCarryOverSince is the stored zone's. The zone is judged
 // by Go, then — when it changes — by the database, before the transaction;
 // the revision is judged under the row's lock, so two replaces at once queue
 // and the second is told the first won.
@@ -221,15 +229,24 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 			stale = &current.Revision
 			return nil
 		}
+		now := s.deps.Clock()
+		policy := parsed.Policy.applyTo(policyOf(current), civilToday(now, zoneOf(current)))
 		saved, err = txq.UpdateSettings(ctx, store.UpdateSettingsParams{
-			TimeZone:             parsed.TimeZone,
-			EmployeeNumberPrefix: parsed.Prefix,
-			NextEmployeeNumber:   parsed.Next,
-			PensionProvider:      parsed.PensionProvider,
-			InjuryInsurer:        parsed.InjuryInsurer,
-			RetentionGraceDays:   parsed.RetentionGraceDays,
-			HealthRetentionDays:  parsed.HealthRetentionDays,
-			Now:                  s.deps.Clock(),
+			TimeZone:                   parsed.TimeZone,
+			EmployeeNumberPrefix:       parsed.Prefix,
+			NextEmployeeNumber:         parsed.Next,
+			PensionProvider:            parsed.PensionProvider,
+			InjuryInsurer:              parsed.InjuryInsurer,
+			RetentionGraceDays:         parsed.RetentionGraceDays,
+			HealthRetentionDays:        parsed.HealthRetentionDays,
+			SelfCertPolicy:             policy.Policy,
+			SelfCertDaysPerOccurrence:  policy.DaysPerOccurrence,
+			SelfCertOccurrencesPerYear: policy.OccurrencesPerYear,
+			SelfCertDaysPerYear:        policy.DaysPerYear,
+			SelfCertAfterMonths:        policy.AfterMonths,
+			AutoCarryOver:              policy.AutoCarryOver,
+			AutoCarryOverSince:         policy.AutoCarryOverSince,
+			Now:                        now,
 		})
 		if err != nil {
 			return fmt.Errorf("staff: change the settings: %w", err)

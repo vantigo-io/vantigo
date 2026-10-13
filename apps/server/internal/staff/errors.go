@@ -102,6 +102,13 @@ const (
 	codeThresholdUnknown = "threshold_unknown"
 )
 
+// The refusal code of the holiday schemes (delivery B, Task 2): a 409 on
+// archiving the default scheme or one an employment names. A seed's change
+// answers A2's seed_immutable.
+const (
+	codeHolidaySchemeInUse = "holiday_scheme_in_use"
+)
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.
@@ -127,6 +134,8 @@ const (
 	invalidLegalHoldTitle    = "Invalid legal hold"
 	invalidImportFileTitle   = "Invalid import file"
 	invalidPayrollTitle      = "Invalid payroll export"
+	invalidAbsenceTypeTitle  = "Invalid absence type"
+	invalidSchemeTitle       = "Invalid holiday scheme"
 )
 
 // withFieldError adds one message to a map another rule may already have put

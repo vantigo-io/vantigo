@@ -232,42 +232,46 @@ SELECT
     work_email, phone_work, phone_mobile, phone_private, private_email,
     street, postal_code, city, country, work_country, preferred_language,
     bank_account_kind, bank_account_last4, notes, revision,
-    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at
+    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
+    children_under_12, sole_carer, chronically_ill_children
 FROM staff.people
 WHERE id = $1
 `
 
 type GetPersonRow struct {
-	ID                int64
-	EmployeeNumber    string
-	GivenName         string
-	FamilyName        string
-	DisplayName       string
-	BirthDate         pgtype.Date
-	Gender            *string
-	NationalIDKind    *string
-	NationalIDOnFile  bool
-	WorkEmail         *string
-	PhoneWork         *string
-	PhoneMobile       *string
-	PhonePrivate      *string
-	PrivateEmail      *string
-	Street            *string
-	PostalCode        *string
-	City              *string
-	Country           *string
-	WorkCountry       string
-	PreferredLanguage string
-	BankAccountKind   *string
-	BankAccountLast4  *string
-	Notes             *string
-	Revision          int32
-	LegalHold         bool
-	LegalHoldReason   *string
-	LegalHoldByUserID *uuid.UUID
-	LegalHoldAt       *time.Time
-	ErasedAt          *time.Time
-	ReassessedAt      *time.Time
+	ID                     int64
+	EmployeeNumber         string
+	GivenName              string
+	FamilyName             string
+	DisplayName            string
+	BirthDate              pgtype.Date
+	Gender                 *string
+	NationalIDKind         *string
+	NationalIDOnFile       bool
+	WorkEmail              *string
+	PhoneWork              *string
+	PhoneMobile            *string
+	PhonePrivate           *string
+	PrivateEmail           *string
+	Street                 *string
+	PostalCode             *string
+	City                   *string
+	Country                *string
+	WorkCountry            string
+	PreferredLanguage      string
+	BankAccountKind        *string
+	BankAccountLast4       *string
+	Notes                  *string
+	Revision               int32
+	LegalHold              bool
+	LegalHoldReason        *string
+	LegalHoldByUserID      *uuid.UUID
+	LegalHoldAt            *time.Time
+	ErasedAt               *time.Time
+	ReassessedAt           *time.Time
+	ChildrenUnder12        *int16
+	SoleCarer              *bool
+	ChronicallyIllChildren *int16
 }
 
 // The people (design S2, §3.1), their next of kin and their roles. No query
@@ -309,6 +313,9 @@ func (q *Queries) GetPerson(ctx context.Context, id int64) (GetPersonRow, error)
 		&i.LegalHoldAt,
 		&i.ErasedAt,
 		&i.ReassessedAt,
+		&i.ChildrenUnder12,
+		&i.SoleCarer,
+		&i.ChronicallyIllChildren,
 	)
 	return i, err
 }
@@ -346,36 +353,41 @@ INSERT INTO staff.people (
     employee_number, given_name, family_name, display_name, birth_date, gender,
     work_email, phone_work, phone_mobile, phone_private, private_email,
     street, postal_code, city, country, work_country, preferred_language, notes,
+    children_under_12, sole_carer, chronically_ill_children,
     created_at, updated_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
     $12, $13, $14, $15, $16, $17, $18,
-    $19::timestamptz, $19::timestamptz
+    $19, $20, $21,
+    $22::timestamptz, $22::timestamptz
 )
 RETURNING id
 `
 
 type InsertPersonParams struct {
-	EmployeeNumber    string
-	GivenName         string
-	FamilyName        string
-	DisplayName       string
-	BirthDate         pgtype.Date
-	Gender            *string
-	WorkEmail         *string
-	PhoneWork         *string
-	PhoneMobile       *string
-	PhonePrivate      *string
-	PrivateEmail      *string
-	Street            *string
-	PostalCode        *string
-	City              *string
-	Country           *string
-	WorkCountry       string
-	PreferredLanguage string
-	Notes             *string
-	Now               time.Time
+	EmployeeNumber         string
+	GivenName              string
+	FamilyName             string
+	DisplayName            string
+	BirthDate              pgtype.Date
+	Gender                 *string
+	WorkEmail              *string
+	PhoneWork              *string
+	PhoneMobile            *string
+	PhonePrivate           *string
+	PrivateEmail           *string
+	Street                 *string
+	PostalCode             *string
+	City                   *string
+	Country                *string
+	WorkCountry            string
+	PreferredLanguage      string
+	Notes                  *string
+	ChildrenUnder12        *int16
+	SoleCarer              *bool
+	ChronicallyIllChildren *int16
+	Now                    time.Time
 }
 
 func (q *Queries) InsertPerson(ctx context.Context, arg InsertPersonParams) (int64, error) {
@@ -398,6 +410,9 @@ func (q *Queries) InsertPerson(ctx context.Context, arg InsertPersonParams) (int
 		arg.WorkCountry,
 		arg.PreferredLanguage,
 		arg.Notes,
+		arg.ChildrenUnder12,
+		arg.SoleCarer,
+		arg.ChronicallyIllChildren,
 		arg.Now,
 	)
 	var id int64
@@ -619,43 +634,47 @@ SELECT
     work_email, phone_work, phone_mobile, phone_private, private_email,
     street, postal_code, city, country, work_country, preferred_language,
     bank_account_kind, bank_account_last4, notes, revision,
-    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at
+    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
+    children_under_12, sole_carer, chronically_ill_children
 FROM staff.people
 ORDER BY id
 LIMIT $1
 `
 
 type ListPeopleForExportRow struct {
-	ID                int64
-	EmployeeNumber    string
-	GivenName         string
-	FamilyName        string
-	DisplayName       string
-	BirthDate         pgtype.Date
-	Gender            *string
-	NationalIDKind    *string
-	NationalIDOnFile  bool
-	WorkEmail         *string
-	PhoneWork         *string
-	PhoneMobile       *string
-	PhonePrivate      *string
-	PrivateEmail      *string
-	Street            *string
-	PostalCode        *string
-	City              *string
-	Country           *string
-	WorkCountry       string
-	PreferredLanguage string
-	BankAccountKind   *string
-	BankAccountLast4  *string
-	Notes             *string
-	Revision          int32
-	LegalHold         bool
-	LegalHoldReason   *string
-	LegalHoldByUserID *uuid.UUID
-	LegalHoldAt       *time.Time
-	ErasedAt          *time.Time
-	ReassessedAt      *time.Time
+	ID                     int64
+	EmployeeNumber         string
+	GivenName              string
+	FamilyName             string
+	DisplayName            string
+	BirthDate              pgtype.Date
+	Gender                 *string
+	NationalIDKind         *string
+	NationalIDOnFile       bool
+	WorkEmail              *string
+	PhoneWork              *string
+	PhoneMobile            *string
+	PhonePrivate           *string
+	PrivateEmail           *string
+	Street                 *string
+	PostalCode             *string
+	City                   *string
+	Country                *string
+	WorkCountry            string
+	PreferredLanguage      string
+	BankAccountKind        *string
+	BankAccountLast4       *string
+	Notes                  *string
+	Revision               int32
+	LegalHold              bool
+	LegalHoldReason        *string
+	LegalHoldByUserID      *uuid.UUID
+	LegalHoldAt            *time.Time
+	ErasedAt               *time.Time
+	ReassessedAt           *time.Time
+	ChildrenUnder12        *int16
+	SoleCarer              *bool
+	ChronicallyIllChildren *int16
 }
 
 // ListPeopleForExport is the register's file: every person, erased ones
@@ -702,6 +721,9 @@ func (q *Queries) ListPeopleForExport(ctx context.Context, maxRows int32) ([]Lis
 			&i.LegalHoldAt,
 			&i.ErasedAt,
 			&i.ReassessedAt,
+			&i.ChildrenUnder12,
+			&i.SoleCarer,
+			&i.ChronicallyIllChildren,
 		); err != nil {
 			return nil, err
 		}
@@ -999,34 +1021,41 @@ UPDATE staff.people SET
     work_country = $15,
     preferred_language = $16,
     notes = $17,
+    children_under_12 = $18,
+    sole_carer = $19,
+    chronically_ill_children = $20,
     revision = revision + 1,
-    updated_at = $18::timestamptz
-WHERE id = $19
+    updated_at = $21::timestamptz
+WHERE id = $22
 `
 
 type UpdatePersonParams struct {
-	GivenName         string
-	FamilyName        string
-	DisplayName       string
-	BirthDate         pgtype.Date
-	Gender            *string
-	WorkEmail         *string
-	PhoneWork         *string
-	PhoneMobile       *string
-	PhonePrivate      *string
-	PrivateEmail      *string
-	Street            *string
-	PostalCode        *string
-	City              *string
-	Country           *string
-	WorkCountry       string
-	PreferredLanguage string
-	Notes             *string
-	Now               time.Time
-	ID                int64
+	GivenName              string
+	FamilyName             string
+	DisplayName            string
+	BirthDate              pgtype.Date
+	Gender                 *string
+	WorkEmail              *string
+	PhoneWork              *string
+	PhoneMobile            *string
+	PhonePrivate           *string
+	PrivateEmail           *string
+	Street                 *string
+	PostalCode             *string
+	City                   *string
+	Country                *string
+	WorkCountry            string
+	PreferredLanguage      string
+	Notes                  *string
+	ChildrenUnder12        *int16
+	SoleCarer              *bool
+	ChronicallyIllChildren *int16
+	Now                    time.Time
+	ID                     int64
 }
 
-// UpdatePerson replaces a person's editable fields and moves the revision on.
+// UpdatePerson replaces a person's editable fields — the care-day fields
+// among them (delivery B) — and moves the revision on.
 // The employee number, the sealed fields, the flags and the link are not
 // among them.
 func (q *Queries) UpdatePerson(ctx context.Context, arg UpdatePersonParams) error {
@@ -1048,6 +1077,9 @@ func (q *Queries) UpdatePerson(ctx context.Context, arg UpdatePersonParams) erro
 		arg.WorkCountry,
 		arg.PreferredLanguage,
 		arg.Notes,
+		arg.ChildrenUnder12,
+		arg.SoleCarer,
+		arg.ChronicallyIllChildren,
 		arg.Now,
 		arg.ID,
 	)

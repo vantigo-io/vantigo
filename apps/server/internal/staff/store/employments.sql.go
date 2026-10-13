@@ -122,7 +122,7 @@ func (q *Queries) FirstFreeEmploymentNumber(ctx context.Context, employeeNumber 
 
 const getEmployment = `-- name: GetEmployment :one
 
-SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at FROM staff.employments WHERE id = $1
+SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at, holiday_scheme_id FROM staff.employments WHERE id = $1
 `
 
 // The employments (design S2, §3.2) and their dated terms (S5, §3.3). Every
@@ -145,6 +145,7 @@ func (q *Queries) GetEmployment(ctx context.Context, id int64) (StaffEmployment,
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HolidaySchemeID,
 	)
 	return i, err
 }
@@ -297,11 +298,13 @@ func (q *Queries) GraphTerms(ctx context.Context, personIds []int64) ([]GraphTer
 
 const insertEmployment = `-- name: InsertEmployment :one
 INSERT INTO staff.employments (
-    person_id, employment_number, relationship_type, business_unit_id, start_date, contract_signed_at, created_at, updated_at
+    person_id, employment_number, relationship_type, business_unit_id, start_date, contract_signed_at, holiday_scheme_id,
+    created_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7::timestamptz, $7::timestamptz
+    $1, $2, $3, $4, $5, $6, $7,
+    $8::timestamptz, $8::timestamptz
 )
-RETURNING id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at
+RETURNING id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at, holiday_scheme_id
 `
 
 type InsertEmploymentParams struct {
@@ -311,6 +314,7 @@ type InsertEmploymentParams struct {
 	BusinessUnitID   int64
 	StartDate        pgtype.Date
 	ContractSignedAt pgtype.Date
+	HolidaySchemeID  *int64
 	Now              time.Time
 }
 
@@ -322,6 +326,7 @@ func (q *Queries) InsertEmployment(ctx context.Context, arg InsertEmploymentPara
 		arg.BusinessUnitID,
 		arg.StartDate,
 		arg.ContractSignedAt,
+		arg.HolidaySchemeID,
 		arg.Now,
 	)
 	var i StaffEmployment
@@ -338,6 +343,7 @@ func (q *Queries) InsertEmployment(ctx context.Context, arg InsertEmploymentPara
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HolidaySchemeID,
 	)
 	return i, err
 }
@@ -502,7 +508,7 @@ func (q *Queries) InsertTerms(ctx context.Context, arg InsertTermsParams) (Staff
 }
 
 const listAllEmployments = `-- name: ListAllEmployments :many
-SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at FROM staff.employments ORDER BY person_id, start_date, id
+SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at, holiday_scheme_id FROM staff.employments ORDER BY person_id, start_date, id
 `
 
 // ListAllEmployments is every employment, by person and start: the
@@ -530,6 +536,7 @@ func (q *Queries) ListAllEmployments(ctx context.Context) ([]StaffEmployment, er
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.HolidaySchemeID,
 		); err != nil {
 			return nil, err
 		}
@@ -542,7 +549,7 @@ func (q *Queries) ListAllEmployments(ctx context.Context) ([]StaffEmployment, er
 }
 
 const listPersonEmployments = `-- name: ListPersonEmployments :many
-SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at FROM staff.employments WHERE person_id = $1 ORDER BY start_date, id
+SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at, holiday_scheme_id FROM staff.employments WHERE person_id = $1 ORDER BY start_date, id
 `
 
 func (q *Queries) ListPersonEmployments(ctx context.Context, personID int64) ([]StaffEmployment, error) {
@@ -567,6 +574,7 @@ func (q *Queries) ListPersonEmployments(ctx context.Context, personID int64) ([]
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.HolidaySchemeID,
 		); err != nil {
 			return nil, err
 		}
@@ -720,7 +728,7 @@ func (q *Queries) ListTermsOfEmployments(ctx context.Context, employmentIds []in
 }
 
 const lockEmployment = `-- name: LockEmployment :one
-SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at FROM staff.employments WHERE id = $1 FOR NO KEY UPDATE
+SELECT id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at, holiday_scheme_id FROM staff.employments WHERE id = $1 FOR NO KEY UPDATE
 `
 
 // LockEmployment takes an employment's row after its person's, for the rest
@@ -742,6 +750,7 @@ func (q *Queries) LockEmployment(ctx context.Context, id int64) (StaffEmployment
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HolidaySchemeID,
 	)
 	return i, err
 }
@@ -801,7 +810,7 @@ UPDATE staff.employments SET
     revision = revision + 1,
     updated_at = $3::timestamptz
 WHERE id = $4
-RETURNING id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at
+RETURNING id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at, holiday_scheme_id
 `
 
 type SetEmploymentEndParams struct {
@@ -833,6 +842,7 @@ func (q *Queries) SetEmploymentEnd(ctx context.Context, arg SetEmploymentEndPara
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HolidaySchemeID,
 	)
 	return i, err
 }
@@ -890,10 +900,11 @@ UPDATE staff.employments SET
     business_unit_id = $2,
     start_date = $3,
     contract_signed_at = $4,
+    holiday_scheme_id = $5,
     revision = revision + 1,
-    updated_at = $5::timestamptz
-WHERE id = $6
-RETURNING id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at
+    updated_at = $6::timestamptz
+WHERE id = $7
+RETURNING id, person_id, employment_number, relationship_type, business_unit_id, start_date, end_date, end_reason, contract_signed_at, revision, created_at, updated_at, holiday_scheme_id
 `
 
 type UpdateEmploymentParams struct {
@@ -901,18 +912,20 @@ type UpdateEmploymentParams struct {
 	BusinessUnitID   int64
 	StartDate        pgtype.Date
 	ContractSignedAt pgtype.Date
+	HolidaySchemeID  *int64
 	Now              time.Time
 	ID               int64
 }
 
-// UpdateEmployment replaces an employment's own fields. The number, the end
-// and its reason are not among them.
+// UpdateEmployment replaces an employment's own fields, its holiday scheme
+// among them. The number, the end and its reason are not.
 func (q *Queries) UpdateEmployment(ctx context.Context, arg UpdateEmploymentParams) (StaffEmployment, error) {
 	row := q.db.QueryRow(ctx, updateEmployment,
 		arg.RelationshipType,
 		arg.BusinessUnitID,
 		arg.StartDate,
 		arg.ContractSignedAt,
+		arg.HolidaySchemeID,
 		arg.Now,
 		arg.ID,
 	)
@@ -930,6 +943,7 @@ func (q *Queries) UpdateEmployment(ctx context.Context, arg UpdateEmploymentPara
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HolidaySchemeID,
 	)
 	return i, err
 }

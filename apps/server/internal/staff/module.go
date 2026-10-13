@@ -35,9 +35,11 @@ import (
 // Two are sensitive. staff:manage is HR: every person's record, employments
 // and pay, the structure and the settings. staff:personal-data reveals what
 // nobody else may see — the national identity number and the bank account —
-// and erases people. staff:approve is registered here although it grants
-// nothing in delivery A1: it decides absence, which arrives with delivery B,
-// and a catalog that grew a key in B would leave roles built before it short.
+// and erases people. staff:approve was registered in delivery A1, before it
+// granted anything, so roles built then are not short of it: it decides
+// absence, which delivery B brings — from B's Task 2 it makes GET /meta's
+// canDecide true; the decisions, the inbox and the Approver audience follow
+// in B's later tasks.
 // All five are delegable, as every other module's are.
 var permissions = []contracts.Permission{
 	{

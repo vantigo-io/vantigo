@@ -85,7 +85,8 @@ var columnClasses = map[string]string{
 	"employments.id": "C", "employments.person_id": "C", "employments.employment_number": "C",
 	"employments.relationship_type": "C", "employments.business_unit_id": "C", "employments.start_date": "C",
 	"employments.end_date": "C", "employments.end_reason": "C", "employments.contract_signed_at": "C",
-	"employments.revision": "C", "employments.created_at": "C", "employments.updated_at": "C",
+	"employments.holiday_scheme_id": "C", // delivery B: which scheme the holiday followed
+	"employments.revision":          "C", "employments.created_at": "C", "employments.updated_at": "C",
 
 	"identity_links.id": "C", "identity_links.person_id": "C", "identity_links.provider": "C",
 	"identity_links.external_id": "C", "identity_links.state": "C", "identity_links.managed": "C",
@@ -127,6 +128,9 @@ var columnClasses = map[string]string{
 	"documents.signed_at": classOfCategory, "documents.uploaded_by_user_id": classOfCategory,
 	"documents.revision": classOfCategory, "documents.created_at": classOfCategory,
 	"documents.updated_at": classOfCategory,
+	// The case a health document belongs to (delivery B, S15): the case's
+	// schedule reaches the document through it; still the category's class.
+	"documents.case_id": classOfCategory,
 }
 
 // The kinds an erase reports, in the erased event and the run's answer.

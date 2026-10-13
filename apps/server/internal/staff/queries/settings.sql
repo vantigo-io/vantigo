@@ -13,7 +13,9 @@ SELECT * FROM staff.settings WHERE id = 1 FOR UPDATE;
 -- name: UpdateSettings :one
 -- UpdateSettings replaces the settings the contract exposes and moves the
 -- revision on; a retention period left out (NULL) keeps its value. The
--- columns later deliveries expose are left as they are.
+-- self-certification policy and the carry-over (delivery B) are written as
+-- the caller resolved them from the row it locked. The account columns,
+-- delivery C's, are left as they are.
 UPDATE staff.settings SET
     time_zone = @time_zone,
     employee_number_prefix = @employee_number_prefix,
@@ -22,6 +24,13 @@ UPDATE staff.settings SET
     injury_insurer = @injury_insurer,
     retention_grace_days = coalesce(sqlc.narg(retention_grace_days)::smallint, retention_grace_days),
     health_retention_days = coalesce(sqlc.narg(health_retention_days)::smallint, health_retention_days),
+    self_cert_policy = @self_cert_policy,
+    self_cert_days_per_occurrence = @self_cert_days_per_occurrence,
+    self_cert_occurrences_per_year = @self_cert_occurrences_per_year,
+    self_cert_days_per_year = @self_cert_days_per_year,
+    self_cert_after_months = @self_cert_after_months,
+    auto_carry_over = @auto_carry_over,
+    auto_carry_over_since = @auto_carry_over_since,
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = 1

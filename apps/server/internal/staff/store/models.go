@@ -11,6 +11,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type StaffAbsence struct {
+	ID                int64
+	PersonID          int64
+	TypeID            int64
+	FirstDay          pgtype.Date
+	LastDay           pgtype.Date
+	Hours             pgtype.Numeric
+	Percent           pgtype.Numeric
+	Status            string
+	Note              *string
+	CaseID            *int64
+	DegreePercent     pgtype.Numeric
+	RequestedByUserID uuid.UUID
+	DecidedByUserID   *uuid.UUID
+	DecidedAt         *time.Time
+	DecisionNote      *string
+	SelfApproved      bool
+	Revision          int32
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+type StaffAbsenceType struct {
+	ID            int64
+	Key           string
+	NameEn        string
+	NameNb        string
+	Kind          string
+	Unit          string
+	Paid          bool
+	DrawsHoliday  bool
+	AllowsPercent bool
+	NeedsDecision bool
+	Visibility    string
+	AmeldingLeave *string
+	Seeded        bool
+	Hidden        bool
+	Sort          int32
+	Revision      int32
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type StaffBusinessUnit struct {
 	ID            int64
 	LegalEntityID int64
@@ -52,6 +95,7 @@ type StaffDocument struct {
 	Revision         int32
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	CaseID           *int64
 }
 
 type StaffDocumentCategory struct {
@@ -82,6 +126,7 @@ type StaffEmployment struct {
 	Revision         int32
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	HolidaySchemeID  *int64
 }
 
 type StaffEmploymentTerm struct {
@@ -141,6 +186,35 @@ type StaffEvent struct {
 	At             time.Time
 	Payload        []byte
 	PayloadClasses []string
+}
+
+type StaffHolidayAdjustment struct {
+	ID        int64
+	PersonID  int64
+	Year      int16
+	Days      pgtype.Numeric
+	Reason    string
+	FromYear  *int16
+	Note      *string
+	ByUserID  uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type StaffHolidayScheme struct {
+	ID                       int64
+	Name                     string
+	EntitlementVirkedager    int16
+	ExtraFrom60Virkedager    int16
+	MainPeriodVirkedager     int16
+	AfterSeptemberVirkedager int16
+	MaxCarryOverVirkedager   int16
+	IsDefault                bool
+	Seeded                   bool
+	ArchivedAt               *time.Time
+	Revision                 int32
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
 }
 
 type StaffIdentityLink struct {
@@ -285,4 +359,34 @@ type StaffSetting struct {
 	ThresholdsAcknowledged     []byte
 	Revision                   int32
 	UpdatedAt                  time.Time
+	AutoCarryOverSince         pgtype.Date
+}
+
+type StaffSickCase struct {
+	ID                 int64
+	PersonID           int64
+	FirstDay           pgtype.Date
+	LastDay            pgtype.Date
+	ClosedAt           *time.Time
+	AccommodationNote  *string
+	MaxBenefitEstimate pgtype.Date
+	Revision           int32
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+type StaffSickCaseMilestone struct {
+	ID             int64
+	CaseID         int64
+	Kind           string
+	DueDate        pgtype.Date
+	DoneAt         *time.Time
+	DoneByUserID   *uuid.UUID
+	Waived         bool
+	WaivedReason   *string
+	WaivedByUserID *uuid.UUID
+	Note           *string
+	Revision       int32
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }

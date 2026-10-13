@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, omsorgsdagfeltene, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
 sidebar:
   order: 44
 sources:
@@ -20,6 +20,9 @@ sources:
   - apps/server/internal/staff/retention_worker.go
   - apps/server/internal/staff/object_deletions.go
   - apps/server/internal/staff/thresholds.go
+  - apps/server/internal/staff/absence_types.go
+  - apps/server/internal/staff/holiday_schemes.go
+  - apps/server/internal/staff/absence_settings.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -135,6 +138,101 @@ For å gi en nytt navn, eller slutte å tilby den, sender du `names` og `archive
 `PUT /api/v1/staff/document-categories/{id}` med revisjonen i `If-Match`. En arkivert
 kategori tilbys ikke for nye dokumenter, og bare en kategori ingen dokumenter er arkivert
 under, kan arkiveres. De seks standardkategoriene endres aldri.
+
+## Fraværstyper
+
+Fravær registreres i et vokabular av typer: ferie, egenmelding, sykmelding, de
+lovfestede permisjonene, avspasering, lege- eller tannlegetime og resten — 22
+standardtyper som hver installasjon starter med, hver knyttet til permisjonsbeskrivelsen
+den rapporteres som i a-meldingen ([referansen](/en/reference/staff/#absence-types)).
+Selve fraværet kommer med et senere steg i fraværsleveransen; typene, ferieordningene og
+reglene under kan settes opp allerede nå. Gjennom API-et, som en bruker med
+`staff:manage`:
+
+1. Les listen: `GET /api/v1/staff/absence-types` svarer med alle typene, de skjulte også
+   for deg.
+2. For å legge til en egen, `POST /api/v1/staff/absence-types` med en `key` (1–40 av
+   `a–z`, `0–9` og understreker), `names` på engelsk og norsk, en `kind` — `holiday`,
+   `leave`, `time_off` eller `other` — en `unit` (`days` eller `hours`), flaggene `paid`,
+   `drawsHoliday`, `allowsPercent` og `needsDecision`, en `visibility` (`absent`, eller
+   `hr_only` for en type som avslører særlige kategorier av personopplysninger) og, for
+   en permisjon, `ameldingLeave` den rapporteres som. Typen og enheten endres aldri.
+3. For å gi en type nytt navn, flytte den eller slutte å tilby den, sender du den tilbake
+   til `PUT /api/v1/staff/absence-types/{id}` med `hidden` og `sort` slik du vil ha dem og
+   revisjonen i `If-Match`. En standardtype endrer bare navnene, plassen og om den er
+   skjult; alt annet avvises med `seed_immutable`.
+4. Kontroller: `GET /api/v1/staff/meta` lister typene folk kan velge — uten de skjulte.
+
+**Velg a-meldingskoden etter permisjonens rettsgrunnlag.** A-meldingen tar imot seks
+permisjonsbeskrivelser og permittering. Velferdspermisjon er avtalt, ikke lovfestet, så
+standardtypen `velferdspermisjon` rapporteres som «andre ikke lovfestede permisjoner»
+(`andreIkkeLovfestedePermisjoner`); hviler velferdspermisjonen deres på en lov, bruker
+dere typen `annen_lovfestet` for den i stedet. Kodene `velferdspermisjon` og
+`utdanningspermisjon` gikk ut ved utgangen av 2022 og avvises. Bare permisjon på mer enn
+fjorten dager rapporteres, og omsorgsdager for sykt barn rapporteres aldri.
+
+## Ferieordninger
+
+En ferieordning er bedriftens ferieregel, i virkedager (mandag til lørdag, slik
+ferieloven teller). Den lovfestede ordningen — 25 dager, 6 til fra 60, 18 i
+hovedferieperioden, 6 ved start etter 30. september, 12 dagers avtalt overføring —
+finnes fra start og er standardordningen. Hver ordning svares med tallene omregnet til
+arbeidsdager i en femdagersuke: 25 virkedager er 21 dager, 30 er 25.
+
+For å gi noen eller alle ansatte mer, som en bruker med `staff:manage`:
+
+1. `POST /api/v1/staff/holiday-schemes` med et `name` og tallene, for eksempel
+   `{"name": "Fem uker", "entitlementVirkedager": 30, "extraFrom60Virkedager": 6}`
+   (hovedferieperioden, dagene etter september og overføringen er 18, 6 og 12 når de
+   utelates). Legg til `"isDefault": true` for å gjøre den til ordningen for hvert
+   arbeidsforhold som ikke nevner noen.
+2. Sett et arbeidsforhold på den: `holidaySchemeId` på
+   `POST /api/v1/staff/people/{id}/employments` eller `PUT /api/v1/staff/employments/{id}`.
+   Utelatt følger arbeidsforholdet standardordningen.
+3. Kontroller: `GET /api/v1/staff/holiday-schemes` lister den, med `converted`.
+
+For å slutte å tilby en ordning sender du den til `PUT /api/v1/staff/holiday-schemes/{id}`
+med `"archived": true`. Standardordningen kan ikke arkiveres, og heller ikke en ordning et
+arbeidsforhold følger (`holiday_scheme_in_use`): flytt arbeidsforholdene først. Det finnes
+alltid nøyaktig én standardordning; gjør en annen til standard for å flytte den.
+
+## Reglene for egenmelding
+
+Hvor mye egenmelding en ansatt kan bruke, er installasjonens regel, på
+`PUT /api/v1/staff/settings` (`staff:manage`):
+
+- `selfCertPolicy: "minimum"` — lovens regel: 3 kalenderdager om gangen, 4 ganger på
+  tolv måneder. Standard.
+- `selfCertPolicy: "extended"` — 8 kalenderdager om gangen, 24 dager på tolv måneder,
+  slik en IA-avtale gir.
+- `selfCertPolicy: "custom"` med `selfCertDaysPerOccurrence` (1–16),
+  `selfCertOccurrencesPerYear` (1–52) og `selfCertDaysPerYear` (1–365).
+
+Med en forhåndsinnstilling gjelder dens tall, uansett hva du sender.
+`selfCertAfterMonths` (0–2, standard 2) er månedene i arbeid før egenmelding kan brukes,
+under alle reglene. Reglene brukes når fravær registreres, i et senere steg av
+leveransen.
+
+**Automatisk overføring.** `autoCarryOver: true` overfører ferie som står igjen ved
+årsskiftet til neste år uten at HR gjør noe, som tvungen overføring. Dagen du slår den på
+lagres (`autoCarryOverSince`), og ingen år før den overføres automatisk. Den er av som
+standard.
+
+## Omsorgsdagfeltene
+
+En persons omsorgsdager utledes av tre felt på personen, som HR fyller inn ut fra det
+den ansatte opplyser — ingen barn navngis:
+
+- **Barn under 12** (`childrenUnder12`) — barna til og med året de fyller tolv, som
+  **ikke** har vedtak fra NAV om utvidet rett.
+- **Kronisk syke eller funksjonshemmede barn** (`chronicallyIllChildren`) — barna **med**
+  vedtak fra NAV om utvidet rett, til og med året de fyller atten.
+- **Alene om omsorgen** (`soleCarer`) — om den ansatte har omsorgen alene.
+
+Tell hvert barn én gang: et barn med vedtak fra NAV føres bare i det andre feltet.
+Feltene skrives sammen med resten av personen (`PUT /api/v1/staff/people/{id}`); den
+ansatte ser dem på sin egen side, men kan ikke endre dem. Selve telleren kommer med et
+senere steg i fraværsleveransen.
 
 ## Svar på en innsynsbegjæring
 
@@ -487,6 +585,11 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   `healthRetentionDays`, 365, fra 30 til 3650): hvor mange dager etter at personens siste
   arbeidsforhold sluttet, personaladministrasjonen og helsedokumentene slettes
   ([Oppbevaring](#oppbevaring)). Utelatt fra en erstatning beholder hver sin verdi.
+- **Regler for egenmelding** (`selfCertPolicy`, `minimum`, med
+  `selfCertDaysPerOccurrence`, `selfCertOccurrencesPerYear`, `selfCertDaysPerYear` og
+  `selfCertAfterMonths`) og **automatisk overføring** (`autoCarryOver`, av, med den
+  skrivebeskyttede `autoCarryOverSince`): [Reglene for egenmelding](#reglene-for-egenmelding).
+  Utelatt fra en erstatning beholder hver sin verdi.
 - **Oppbevaringsstatus** (`retention`, skrivebeskyttet): sletteloggens ventende og
   avviste filer, den eldste ventende, og den siste slettingen
   ([Sletteloggen](#sletteloggen)). Filer lageret har avvist minst én gang, og som ble
