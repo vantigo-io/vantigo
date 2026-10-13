@@ -162,7 +162,7 @@ func payrollRows(in payrollInput, m payrollMonth) []payrollRow {
 			payrollTerms(&r, *t, chain, on, in.Departments)
 		}
 		rows := absences[e.PersonID]
-		payrollTotals(&r, rows, employments[e.PersonID], e, m)
+		payrollTotals(&r, rows, employments[e.PersonID], e, m, mainEmployment(employments[e.PersonID], in.Terms, m) == e.ID)
 		out = append(out, r)
 		for _, l := range reportedLeaves(rows, e, m) {
 			out = append(out, payrollRow{
@@ -254,10 +254,11 @@ func payrollDays(e store.StaffEmployment, m payrollMonth) (time.Time, time.Time)
 // over each working day of e within m, each kind's share (sharesOn); the
 // hours of time off; and of the child-sick days, those beyond the
 // employer's ten of the year (ftrl. § 9-8) — the year's care days counted
-// in order from 1 January, a day before the right's four weeks counting
-// none. A person with two employments in force has their absence on each,
-// as it is from both.
-func payrollTotals(r *payrollRow, rows []store.AbsencesBetweenRow, employments []store.StaffEmployment, e store.StaffEmployment, m payrollMonth) {
+// in order from 1 January by their percent, a day before the right's four
+// weeks counting none. A person with two employments in force has their
+// absence on each, as it is from both — but the days beyond the employer's
+// ten, the person's and refunded once, on the main one alone (mainEmployment).
+func payrollTotals(r *payrollRow, rows []store.AbsencesBetweenRow, employments []store.StaffEmployment, e store.StaffEmployment, m payrollMonth, main bool) {
 	if len(rows) == 0 {
 		return
 	}
@@ -281,58 +282,91 @@ func payrollTotals(r *payrollRow, rows []store.AbsencesBetweenRow, employments [
 		sum.Leave += s.Leave
 		sum.Other += s.Other
 	}
-	beyond := childSickBeyondEmployer(rows, employments, from, to)
 	r.HolidayDays, r.SelfCertifiedSickDays, r.CertifiedSickDays = payrollTotal(sum.Holiday), payrollTotal(sum.SelfSick), payrollTotal(sum.CertifiedSick)
-	r.ChildSickDays, r.ChildSickBeyondEmployer = payrollTotal(sum.ChildSick), payrollTotal(int64(beyond)*wholeDay)
+	r.ChildSickDays = payrollTotal(sum.ChildSick)
+	if main {
+		r.ChildSickBeyondEmployer = payrollTotal(childSickBeyondEmployer(rows, employments, from, to))
+	}
 	r.LeaveDays, r.OtherDays = payrollTotal(sum.Leave), payrollTotal(sum.Other)
 	if hours > 0 {
 		r.TimeOffHours = payrollNumber(hours)
 	}
 }
 
-// childSickBeyondEmployer is the care days from..to that are beyond the
-// employer's ten of their year: each working day of a child-sick row on or
-// after the right to care days, numbered from 1 January.
-func childSickBeyondEmployer(rows []store.AbsencesBetweenRow, employments []store.StaffEmployment, from, to time.Time) int {
+// childSickBeyondEmployer is the share of the care days from..to beyond the
+// employer's ten of their year, in hundredths of a percent of a day: each
+// working day of a child-sick row on or after the right to care days, by its
+// percent, summed from 1 January.
+func childSickBeyondEmployer(rows []store.AbsencesBetweenRow, employments []store.StaffEmployment, from, to time.Time) int64 {
 	spans := employmentSpans(employments)
 	jan1 := time.Date(from.Year(), time.January, 1, 0, 0, 0, 0, time.UTC)
-	n, beyond := 0, 0
+	const bears = careDaysEmployerBears * wholeDay
+	var used, beyond int64
 	for d := jan1; !d.After(to); d = d.AddDate(0, 0, 1) {
 		if !worksOn(d) {
 			continue
 		}
-		child := false
-		for _, a := range rows {
-			if a.Kind == kindChildSick && covers(a, d) {
-				child = true
-				break
-			}
-		}
-		if !child {
+		share := sharesOn(rows, d).ChildSick
+		if share == 0 {
 			continue
 		}
 		if right := careDayRight(spans, d); right == nil || d.Before(*right) {
 			continue
 		}
-		n++
-		if n > careDaysEmployerBears && !d.Before(from) {
-			beyond++
+		before := used
+		used += share
+		if !d.Before(from) && used > bears {
+			beyond += used - max(before, bears)
 		}
 	}
 	return beyond
 }
 
+// mainEmployment is the person's employment the person-level totals go on
+// among employments in month m: the highest full-time percentage in force
+// on its terms day, ties to the lowest employment number.
+func mainEmployment(employments []store.StaffEmployment, chains map[int64][]store.StaffEmploymentTerm, m payrollMonth) int64 {
+	var best int64
+	bestFTE, bestNumber := int64(-1), ""
+	for _, e := range employments {
+		if !inPayrollMonth(e, m) {
+			continue
+		}
+		var fte int64
+		if t := termsInForce(e, chains[e.ID], payrollTermsDay(e, m)); t != nil {
+			fte = hundredthsOfNumeric(t.FtePercent)
+		}
+		if fte > bestFTE || (fte == bestFTE && e.EmploymentNumber < bestNumber) {
+			best, bestFTE, bestNumber = e.ID, fte, e.EmploymentNumber
+		}
+	}
+	return best
+}
+
 // leave is one leave as the a-melding reports it (Skatteetaten,
 // "Permisjon"): a chain of rows of one leave type with an a-melding
-// description and one percent, each starting no later than the day after
-// the one before ended — the same leave under its first row's id — with its
-// whole first and last day.
+// description and one percent, each starting no later than the next working
+// day after the one before ended — a weekend or a public holiday between
+// them does not end it — with its whole first and last day, under the lowest
+// id of its rows: the id that stays as rows are added to the chain, so the
+// a-melding's permisjonId does not move from month to month.
 type leave struct {
 	ID          int64
 	First, Last time.Time
 	Description string
 	TypeID      int64
 	Percent     int64 // hundredths of a percent
+}
+
+// continues is whether a row from next continues a leave whose last day is
+// last: it starts by the day after, or only days off lie between.
+func continues(last, next time.Time) bool {
+	for d := last.AddDate(0, 0, 1); d.Before(next); d = d.AddDate(0, 0, 1) {
+		if worksOn(d) {
+			return false
+		}
+	}
+	return true
 }
 
 // leavesOf is the person's leaves, from rows.
@@ -355,8 +389,9 @@ func leavesOf(rows []store.AbsencesBetweenRow) []leave {
 		}
 		if n := len(out); n > 0 {
 			l := &out[n-1]
-			if l.TypeID == a.TypeID && l.Percent == percent && !civil(a.FirstDay).After(l.Last.AddDate(0, 0, 1)) {
+			if l.TypeID == a.TypeID && l.Percent == percent && continues(l.Last, civil(a.FirstDay)) {
 				l.Last = maxTime(l.Last, civil(a.LastDay))
+				l.ID = min(l.ID, a.ID)
 				continue
 			}
 		}
@@ -382,10 +417,15 @@ const (
 func reportedLeaves(rows []store.AbsencesBetweenRow, e store.StaffEmployment, m payrollMonth) []leave {
 	leaves := leavesOf(rows)
 	windowFrom := m.Last.AddDate(-1, 0, 1)
-	total := 0
+	// The twelve months count each calendar day once, however many leaves
+	// lie on it.
+	days := map[time.Time]bool{}
 	for _, l := range leaves {
-		total += calendarDays(maxTime(l.First, windowFrom), minTime(l.Last, m.Last))
+		for d := maxTime(l.First, windowFrom); !d.After(minTime(l.Last, m.Last)); d = d.AddDate(0, 0, 1) {
+			days[d] = true
+		}
 	}
+	total := len(days)
 	from, to := payrollDays(e, m)
 	var out []leave
 	for _, l := range leaves {

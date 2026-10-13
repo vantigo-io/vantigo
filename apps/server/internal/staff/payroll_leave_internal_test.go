@@ -222,3 +222,167 @@ func TestPayrollColumns_TheAbsenceColumnsGoRight(t *testing.T) {
 		t.Errorf("a row has %d cells for %d columns", got, len(payrollColumns))
 	}
 }
+
+// sharesOnDay is d's shares from absences.
+func sharesOnDay(t *testing.T, d string, absences ...payrollAbsence) dayShares {
+	t.Helper()
+	rows := make([]store.AbsencesBetweenRow, 0, len(absences))
+	for _, a := range absences {
+		rows = append(rows, a.row(t))
+	}
+	return sharesOn(rows, day(t, d))
+}
+
+// A ferie day is a holiday unless a 100 % sykmelding covers it, which makes
+// it sick and not holiday (Revision 3 H1): a graded sykmelding or an
+// egenmelding over ferie counts nothing as sick — no sykepenger are paid on
+// a holiday day, and an egenmelding cannot interrupt one. Beside leave the
+// sick share is degree × (100 − the leaves' percent) / 100, the leaves summed
+// and capped at a whole day, so sickness on a 100 % leave day counts nothing.
+func TestSharesOn_FerieAndLeaveDays(t *testing.T) {
+	t.Parallel()
+	ferie := payrollAbsence{id: 1, typeID: 1, kind: "holiday", first: "2026-09-07", last: "2026-09-11"}
+	for _, c := range []struct {
+		name          string
+		absences      []payrollAbsence
+		holiday, sick int64
+	}{
+		{"a 100 % sykmelding over ferie", []payrollAbsence{ferie, {id: 2, typeID: 3, kind: "sick_certified", first: "2026-09-07", last: "2026-09-11"}}, 0, wholeDay},
+		{"a 50 % sykmelding over ferie", []payrollAbsence{ferie, {id: 2, typeID: 3, kind: "sick_certified", first: "2026-09-07", last: "2026-09-11", degree: 50}}, wholeDay, 0},
+		{"an egenmelding over ferie", []payrollAbsence{ferie, {id: 2, typeID: 2, kind: "sick_self", first: "2026-09-07", last: "2026-09-08"}}, wholeDay, 0},
+		{"a sykmelding on a 100 % leave day", []payrollAbsence{
+			{id: 3, typeID: 7, kind: "leave", first: "2026-09-07", last: "2026-09-11"},
+			{id: 4, typeID: 3, kind: "sick_certified", first: "2026-09-07", last: "2026-09-11", degree: 40},
+		}, 0, 0},
+		{"a 60 % sykmelding beside two 25 % leaves", []payrollAbsence{
+			{id: 3, typeID: 7, kind: "leave", first: "2026-09-07", last: "2026-09-11", percent: 25, allowPercent: true},
+			{id: 5, typeID: 8, kind: "leave", first: "2026-09-07", last: "2026-09-11", percent: 25, allowPercent: true},
+			{id: 4, typeID: 3, kind: "sick_certified", first: "2026-09-07", last: "2026-09-11", degree: 60},
+		}, 0, 3000},
+	} {
+		s := sharesOnDay(t, "2026-09-08", c.absences...)
+		if s.Holiday != c.holiday || s.sick() != c.sick {
+			t.Errorf("%s: holiday %d, sick %d; want %d and %d", c.name, s.Holiday, s.sick(), c.holiday, c.sick)
+		}
+	}
+}
+
+// The sick-leave rate in the SSB and NAV manner: lost working days by the
+// full-time percentage over the agreed working days — those not on holiday
+// or leave. Two weeks at 100 %: ferie Monday and Tuesday with a 50 %
+// sykmelding the whole first week (the ferie days count no sickness), a
+// 100 % leave Monday to Wednesday of the second week: 1.5 sick days over the
+// 5 agreed, 30 %.
+func TestSickRate_AgreedDaysLeaveHolidayAndLeaveOut(t *testing.T) {
+	t.Parallel()
+	e := payrollEmployment(t, 1, "2024-01-01", "")
+	r := register{
+		employments: []store.StaffEmployment{e},
+		chains:      map[int64][]store.StaffEmploymentTerm{1: {payrollTermsRow(t, 1, "2024-01-01", 100)}},
+	}
+	var rows []store.AbsencesBetweenRow
+	for _, a := range []payrollAbsence{
+		{id: 1, typeID: 1, kind: "holiday", first: "2026-09-07", last: "2026-09-08"},
+		{id: 2, typeID: 3, kind: "sick_certified", first: "2026-09-07", last: "2026-09-11", degree: 50},
+		{id: 3, typeID: 7, kind: "leave", first: "2026-09-14", last: "2026-09-16"},
+	} {
+		rows = append(rows, a.row(t))
+	}
+	if got := sickRate(r, rows, day(t, "2026-09-07"), day(t, "2026-09-18")); got != 30 {
+		t.Errorf("sickRate = %v, want 30", got)
+	}
+}
+
+// Graded sickness and egenmelding over ferie count as holiday in the
+// payroll totals, not as sick days.
+func TestPayrollTotals_FerieHoldsAgainstGradedSickness(t *testing.T) {
+	t.Parallel()
+	r := payrollWithAbsences(t,
+		payrollAbsence{id: 1, typeID: 1, kind: "holiday", first: "2026-09-07", last: "2026-09-11"},
+		payrollAbsence{id: 2, typeID: 3, kind: "sick_certified", first: "2026-09-07", last: "2026-09-09", degree: 50},
+		payrollAbsence{id: 3, typeID: 2, kind: "sick_self", first: "2026-09-10", last: "2026-09-11"},
+	)[0]
+	if r.HolidayDays != "5,00" || r.CertifiedSickDays != "" || r.SelfCertifiedSickDays != "" {
+		t.Errorf("holiday %q, certified %q, self-certified %q; want 5,00 and none", r.HolidayDays, r.CertifiedSickDays, r.SelfCertifiedSickDays)
+	}
+}
+
+// A leave continues across a gap made only of days off: Monday 7 to Friday
+// 11 September and Monday 14 to Friday 25 are one leave of nineteen days,
+// under the lowest id of its rows — the id that stays when a row is added
+// to the chain — not two.
+func TestPayrollLeave_AWeekendDoesNotBreakALeave(t *testing.T) {
+	t.Parallel()
+	got := leaveRows(payrollWithAbsences(t,
+		payrollAbsence{id: 31, typeID: 8, kind: "leave", key: "velferdspermisjon", first: "2026-09-07", last: "2026-09-11"},
+		payrollAbsence{id: 30, typeID: 8, kind: "leave", key: "velferdspermisjon", first: "2026-09-14", last: "2026-09-25"},
+	))
+	want := [5]string{"30", "2026-09-07", "2026-09-25", "andreIkkeLovfestedePermisjoner", "100,00"}
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("leave rows = %v, want the one %v", got, want)
+	}
+}
+
+// The twelve months' sum counts each calendar day once: two eight-day
+// leaves of two types over the same days are eight days, not sixteen, and
+// neither is reported.
+func TestPayrollLeave_TheTwelveMonthsCountDistinctDays(t *testing.T) {
+	t.Parallel()
+	got := leaveRows(payrollWithAbsences(t,
+		payrollAbsence{id: 40, typeID: 8, kind: "leave", key: "velferdspermisjon", first: "2026-09-07", last: "2026-09-14", percent: 50, allowPercent: true},
+		payrollAbsence{id: 41, typeID: 7, kind: "leave", key: "foreldrepermisjon", first: "2026-09-07", last: "2026-09-14", percent: 50, allowPercent: true},
+	))
+	if len(got) != 0 {
+		t.Errorf("leave rows = %v, want none: eight distinct days", got)
+	}
+}
+
+// Care days count by their percent, beyond the employer's ten as well:
+// ten whole days in August, then two half days in September — one day used
+// in the month, all of it beyond.
+func TestPayrollTotals_PartialCareDays(t *testing.T) {
+	t.Parallel()
+	r := payrollWithAbsences(t,
+		payrollAbsence{id: 1, typeID: 10, kind: "child_sick", first: "2026-08-17", last: "2026-08-28"},
+		payrollAbsence{id: 2, typeID: 10, kind: "child_sick", first: "2026-09-21", last: "2026-09-22", percent: 50},
+	)[0]
+	if r.ChildSickDays != "1,00" || r.ChildSickBeyondEmployer != "1,00" {
+		t.Errorf("child sick %q, beyond %q; want 1,00 and 1,00", r.ChildSickDays, r.ChildSickBeyondEmployer)
+	}
+}
+
+// A person with two employments in force has the days beyond the
+// employer's ten — the person's, refunded once — on one: the main one, the
+// highest full-time percentage, ties to the lowest employment number. The
+// other totals are on each.
+func TestPayrollTotals_CareDaysBeyondOnTheMainEmployment(t *testing.T) {
+	t.Parallel()
+	m := september(t)
+	main, side := payrollEmployment(t, 1, "2024-01-01", ""), payrollEmployment(t, 2, "2024-01-01", "")
+	chains := map[int64][]store.StaffEmploymentTerm{
+		1: {payrollTermsRow(t, 1, "2024-01-01", 40)},
+		2: {payrollTermsRow(t, 2, "2024-01-01", 60)},
+	}
+	var rows []store.AbsencesBetweenRow
+	for _, a := range []payrollAbsence{
+		{id: 1, typeID: 10, kind: "child_sick", first: "2026-08-17", last: "2026-08-28"},
+		{id: 2, typeID: 10, kind: "child_sick", first: "2026-09-21", last: "2026-09-22"},
+	} {
+		rows = append(rows, a.row(t))
+	}
+	org := "923609016"
+	out := payrollRows(payrollInput{
+		People:      map[int64]payrollPerson{1: {EmployeeNumber: "K-1", GivenName: "Kari", FamilyName: "Nordmann"}},
+		Employments: []store.StaffEmployment{main, side},
+		Terms:       chains,
+		Units:       map[int64]store.StaffBusinessUnit{1: {ID: 1, OrgNumber: &org}},
+		Absences:    rows,
+	}, m)
+	got := map[string][2]string{}
+	for _, r := range out {
+		got[r.EmploymentNumber] = [2]string{r.ChildSickDays, r.ChildSickBeyondEmployer}
+	}
+	if got[side.EmploymentNumber] != [2]string{"2,00", "2,00"} || got[main.EmploymentNumber] != [2]string{"2,00", ""} {
+		t.Errorf("child sick, beyond per employment = %v; want both days on each, the two beyond on %s (60 %%) alone", got, side.EmploymentNumber)
+	}
+}

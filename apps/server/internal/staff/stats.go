@@ -244,12 +244,13 @@ func onLeave(rows []store.AbsencesBetweenRow, active map[int64]int64, today time
 }
 
 // sickRate is the sick-leave rate from..to in percent to two decimals (plan
-// reading 7): over every working day of every employment in force, the sick
-// share of the day (sharesOn — by degree, beside a percentage leave the part
-// left, a ferie day under a 100 % sykmelding sick) by the full-time
-// percentage in force, divided by those days by the same percentage. Child
-// sickness is not the employee's and counts nothing; no employment, no rate
-// but 0.
+// reading 7), as SSB and NAV count it: the working days lost to sickness —
+// each working day of every employment in force, its sick share (sharesOn:
+// by degree, beside leave the part left, a ferie day sick only under a 100 %
+// sykmelding) by the full-time percentage in force — over the working days
+// agreed: the same days by the same percentage, less the share of each that
+// was holiday or leave. Child sickness is not the employee's and counts
+// nothing; no agreed day, a rate of 0.
 func sickRate(r register, rows []store.AbsencesBetweenRow, from, to time.Time) float64 {
 	byPerson := map[int64][]store.AbsencesBetweenRow{}
 	for _, a := range rows {
@@ -271,8 +272,9 @@ func sickRate(r register, rows []store.AbsencesBetweenRow, from, to time.Time) f
 				continue
 			}
 			fte := hundredthsOfNumeric(t.FtePercent)
-			agreed += fte * wholeDay
-			sick += fte * sharesOn(byPerson[e.PersonID], d).sick()
+			shares := sharesOn(byPerson[e.PersonID], d)
+			agreed += fte * max(wholeDay-shares.Holiday-shares.Leave, 0)
+			sick += fte * shares.sick()
 		}
 	}
 	if agreed == 0 {

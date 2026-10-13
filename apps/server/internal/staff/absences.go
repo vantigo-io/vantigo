@@ -346,6 +346,14 @@ func (s *server) recordAbsenceWith(ctx context.Context, txq *store.Queries, pers
 	}
 	payload["typeIds"] = typeIDs
 	payload["typeClasses"] = typeClasses
+	// The case the row is in (Task 6 review): its erase owns the event, the
+	// row deleted or moved out of it included.
+	for _, r := range []*store.StaffAbsence{before, after} {
+		if r != nil && r.CaseID != nil {
+			payload["rowCaseId"] = *r.CaseID
+			break
+		}
+	}
 	for k, v := range extra {
 		payload[k] = v
 	}
