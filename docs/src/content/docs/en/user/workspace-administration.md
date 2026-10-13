@@ -167,11 +167,14 @@ each permission unlocks in an app is listed in that app's reference page, for ex
 [Time](/en/reference/time/), [Expenses](/en/reference/expenses/),
 [Invoices](/en/reference/invoices/) and [Staff](/en/reference/staff/). The descriptions
 in the catalog say what a title does not: in Invoices, **Issue invoices** also sends a document by e-mail or as EHF
-and cancels or resolves its EHF transmissions, and records that an invoice was handed
-over; **Manage invoicing** also holds the Peppol id, the KID agreement, the e-invoicing
-access point, the reminder settings and the collection rates; and **Register payments**
-covers all of credit control — bank imports and the exception queue, reminder runs and
-letters, holds, hand-offs to collection and a customer's reminder policy. In Staff,
+and cancels or resolves its EHF transmissions, records that an invoice was handed
+over, makes or revokes a Vipps pay link and takes a Vipps payment on site — and, with
+**Create invoices**, makes a quick invoice; **Manage invoicing** also holds the Peppol id,
+the KID agreement, the e-invoicing access point, the reminder settings, the collection
+rates, the Vipps keys and the payment settings, and abandons a stuck Vipps payment; and
+**Register payments** covers all of credit control — bank imports and the exception
+queue, reminder runs and letters, holds, hand-offs to collection, a customer's reminder
+policy and marking a day's Vipps payments reconciled. In Staff,
 **Reveal and erase personal data** is the only permission that shows a national identity
 number or a bank account — **Manage staff** does not — and **Decide absence** can be
 granted already but allows nothing until absence arrives in Staff. **Manage identity**
