@@ -138,6 +138,17 @@ The allowlist is derived from `APP_URL`'s hostname plus `localhost`, `127.0.0.1`
 `::1`; a request carrying any other `Host` is answered with a 400 problem before it
 reaches the application. The port is ignored in the comparison.
 
+When `PUBLIC_BASE_URL` names a host of its own, the Invoices pay page's public host is
+admitted too — and on it the server serves only the pay page's allowlist: anything else
+answers 404 before routing, a problem document under `/api/` and an empty body
+elsewhere, while the same request on `APP_URL`'s host is served as before. Sign-in, the
+rest of the API and the documentation are therefore never reachable through the public
+host. When `PUBLIC_BASE_URL` is `APP_URL`'s own origin there is no second host and no
+such filter. The list, why it is what it is and how to verify it are on
+[Payments](/en/admin/payments/#the-public-host). The public origin is not added to the
+cross-origin protection's trusted origins: the proxy preserves `Host`, so the pay page's
+requests are same-origin already.
+
 Loopback is in that list on purpose. The container health check runs
 `vantigo healthcheck`, which probes `http://127.0.0.1:$PORT/health/ready` in-process
 with the literal address in the `Host` header, and host filtering runs before routing

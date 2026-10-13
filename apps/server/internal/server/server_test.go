@@ -386,3 +386,50 @@ func TestNew_ServesTheDocumentationUnderDocs(t *testing.T) {
 		t.Errorf("redirect under the base path: %q", rec.Header().Get("Location"))
 	}
 }
+
+// TestServer_PublicHostEndToEnd drives the whole stack with PUBLIC_BASE_URL on
+// a host of its own (payments port design D14): the host filter admits it,
+// the gate answers 404 for everything off its allowlist there while APP_URL's
+// host serves as before, and with the two hosts equal there is no gate.
+func TestServer_PublicHostEndToEnd(t *testing.T) {
+	for _, base := range []string{"", "/vantigo"} {
+		t.Run("base path "+base, func(t *testing.T) {
+			f := newFixture(t, func(cfg *config.Config, _ *Options) {
+				cfg.BasePath = base
+				cfg.PublicOrigin = "https://pay.example.com"
+				cfg.PublicHostname = "pay.example.com"
+				cfg.PublicBaseURL = cfg.PublicOrigin + base
+			})
+
+			if rec := f.do(request(http.MethodGet, "https://pay.example.com"+base+"/sign-in")); rec.Code != http.StatusNotFound {
+				t.Errorf("/sign-in on the public host: %d, want 404", rec.Code)
+			}
+			if rec := f.do(request(http.MethodGet, "https://vantigo.example.com"+base+"/sign-in")); rec.Code != http.StatusOK {
+				t.Errorf("/sign-in on APP_URL's host: %d, want 200", rec.Code)
+			}
+			if rec := f.do(request(http.MethodGet, "https://pay.example.com"+base+"/pay?token=x")); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "window.__VANTIGO_APP__") {
+				t.Errorf("/pay on the public host: %d, want the SPA's index", rec.Code)
+			}
+			if rec := f.do(request(http.MethodGet, "https://pay.example.com"+base+"/api/v1/ping")); rec.Code != http.StatusNotFound || rec.Header().Get("Content-Type") != "application/problem+json" {
+				t.Errorf("an API path off the list on the public host: %d %q, want the 404 problem", rec.Code, rec.Header().Get("Content-Type"))
+			}
+			if rec := f.do(request(http.MethodGet, "http://127.0.0.1:8080/health/ready")); rec.Code != http.StatusOK {
+				t.Errorf("loopback probe: %d, want 200", rec.Code)
+			}
+			if rec := f.do(request(http.MethodGet, "https://other.example.com"+base+"/pay")); rec.Code != http.StatusBadRequest {
+				t.Errorf("a third host: %d, want 400", rec.Code)
+			}
+		})
+	}
+
+	t.Run("the same host", func(t *testing.T) {
+		f := newFixture(t, func(cfg *config.Config, _ *Options) {
+			cfg.PublicOrigin = cfg.AppOrigin
+			cfg.PublicHostname = cfg.AppHostname
+			cfg.PublicBaseURL = cfg.AppOrigin
+		})
+		if rec := f.do(request(http.MethodGet, "https://vantigo.example.com/sign-in")); rec.Code != http.StatusOK {
+			t.Errorf("/sign-in with the two hosts equal: %d, want 200 — no gate", rec.Code)
+		}
+	})
+}

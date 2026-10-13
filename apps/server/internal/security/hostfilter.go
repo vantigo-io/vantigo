@@ -14,11 +14,13 @@ import (
 // host filtering runs before routing, so it cannot exempt that path by name.
 var loopbackHosts = []string{"localhost", "127.0.0.1", "::1"}
 
-// AllowedHosts is APP_URL's host plus loopback.
-func AllowedHosts(appHostname string) []string {
+// AllowedHosts is APP_URL's host, then any more — PUBLIC_BASE_URL's when it
+// names another host (payments port design D14) — then loopback, lower-case,
+// each once; an empty one is skipped.
+func AllowedHosts(appHostname string, more ...string) []string {
 	hosts := []string{strings.ToLower(appHostname)}
-	for _, h := range loopbackHosts {
-		if !slices.Contains(hosts, h) {
+	for _, h := range append(more, loopbackHosts...) {
+		if h = strings.ToLower(h); h != "" && !slices.Contains(hosts, h) {
 			hosts = append(hosts, h)
 		}
 	}

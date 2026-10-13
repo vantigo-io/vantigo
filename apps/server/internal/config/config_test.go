@@ -1347,3 +1347,99 @@ func TestLoad_StaffRetentionWorker(t *testing.T) {
 		}
 	}
 }
+
+// PUBLIC_BASE_URL (payments port design D14): the https URL the pay page is
+// reachable at from the internet, unset by default. https only; an origin
+// plus APP_BASE_PATH and nothing else — no user, query or fragment, and the
+// path equal to the base path, because the SPA's index is rendered once for
+// that base path and StripBasePath strips only it. Its host may be APP_URL's
+// or another; APP_URL's hostname on another port is refused, since the host
+// filter and the public host gate compare host names without the port and
+// could never tell the two apart.
+func TestConfig_PublicBaseURL(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if cfg.PublicBaseURL != "" || cfg.PublicOrigin != "" || cfg.PublicHostname != "" {
+		t.Errorf("unset: PublicBaseURL %q PublicOrigin %q PublicHostname %q, want all empty", cfg.PublicBaseURL, cfg.PublicOrigin, cfg.PublicHostname)
+	}
+
+	for _, tc := range []struct {
+		name, given, basePath, want string
+	}{
+		{"http refused", "http://pay.example.com", "", "PUBLIC_BASE_URL: must be an absolute https URL"},
+		{"not a URL", "pay.example.com", "", "PUBLIC_BASE_URL: must be an absolute https URL"},
+		{"a user refused", "https://user@pay.example.com", "", "PUBLIC_BASE_URL: must carry no user, query or fragment"},
+		{"a query refused", "https://pay.example.com/?a=1", "", "PUBLIC_BASE_URL: must carry no user, query or fragment"},
+		{"a fragment refused", "https://pay.example.com/#x", "", "PUBLIC_BASE_URL: must carry no user, query or fragment"},
+		{"another path refused", "https://pay.example.com/pay", "", `PUBLIC_BASE_URL: its path must equal APP_BASE_PATH ("")`},
+		{"no path under a base path refused", "https://pay.example.com", "/vantigo", `PUBLIC_BASE_URL: its path must equal APP_BASE_PATH ("/vantigo")`},
+		{"another path under a base path refused", "https://pay.example.com/other", "/vantigo", `PUBLIC_BASE_URL: its path must equal APP_BASE_PATH ("/vantigo")`},
+		{"APP_URL's hostname on another port refused", "https://vantigo.example.com:8443", "", "PUBLIC_BASE_URL: must not be APP_URL's host name on another port"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := with(validEnv(), "PUBLIC_BASE_URL", tc.given)
+			if tc.basePath != "" {
+				env = with(env, "APP_BASE_PATH", tc.basePath)
+			}
+			if msg := loadError(t, env); !strings.Contains(msg, tc.want) {
+				t.Errorf("%q: error = %q, want it to contain %q", tc.given, msg, tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name, given, basePath, appURL, wantBase, wantOrigin, wantHost string
+	}{
+		{"another host", "https://Pay.Example.com", "", "", "https://pay.example.com", "https://pay.example.com", "pay.example.com"},
+		{"another host with a trailing slash", "https://pay.example.com/", "", "", "https://pay.example.com", "https://pay.example.com", "pay.example.com"},
+		{"another host and port", "https://pay.example.com:8443", "", "", "https://pay.example.com:8443", "https://pay.example.com:8443", "pay.example.com"},
+		{"the same host", "https://vantigo.example.com", "", "", "https://vantigo.example.com", "https://vantigo.example.com", "vantigo.example.com"},
+		{"the same host, its default port written out", "https://vantigo.example.com:443", "", "", "https://vantigo.example.com:443", "https://vantigo.example.com:443", "vantigo.example.com"},
+		{"the same host and explicit port", "https://vantigo.example.com:8443", "", "https://vantigo.example.com:8443", "https://vantigo.example.com:8443", "https://vantigo.example.com:8443", "vantigo.example.com"},
+		{"the base path", "https://pay.example.com/vantigo", "/vantigo", "", "https://pay.example.com/vantigo", "https://pay.example.com", "pay.example.com"},
+		{"the base path with a trailing slash", "https://pay.example.com/vantigo/", "/vantigo", "", "https://pay.example.com/vantigo", "https://pay.example.com", "pay.example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := with(validEnv(), "PUBLIC_BASE_URL", tc.given)
+			if tc.basePath != "" {
+				env = with(env, "APP_BASE_PATH", tc.basePath)
+			}
+			if tc.appURL != "" {
+				env = with(env, "APP_URL", tc.appURL)
+			}
+			cfg := mustLoad(t, env)
+			if cfg.PublicBaseURL != tc.wantBase || cfg.PublicOrigin != tc.wantOrigin || cfg.PublicHostname != tc.wantHost {
+				t.Errorf("%q: PublicBaseURL %q PublicOrigin %q PublicHostname %q, want %q %q %q",
+					tc.given, cfg.PublicBaseURL, cfg.PublicOrigin, cfg.PublicHostname, tc.wantBase, tc.wantOrigin, tc.wantHost)
+			}
+		})
+	}
+}
+
+// The Vipps switch and base URL (payments port design D1): the switch
+// defaults on, like INVOICES_EHF_ENABLED, and is strict; the base URL
+// defaults to Vipps MobilePay's production API and is validated as
+// INVOICES_STORECOVE_BASE_URL is — the operator points it at the test
+// environment or a mock host.
+func TestConfig_InvoicesVipps(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.InvoicesVippsEnabled {
+		t.Error("INVOICES_VIPPS_ENABLED unset did not default to on")
+	}
+	if cfg.InvoicesVippsBaseURL != "https://api.vipps.no" {
+		t.Errorf("InvoicesVippsBaseURL = %q, want the production API", cfg.InvoicesVippsBaseURL)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "INVOICES_VIPPS_ENABLED", "0")); cfg.InvoicesVippsEnabled {
+		t.Error("INVOICES_VIPPS_ENABLED=0 left the switch on")
+	}
+	if msg := loadError(t, with(validEnv(), "INVOICES_VIPPS_ENABLED", "yes")); !strings.Contains(msg, `INVOICES_VIPPS_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "INVOICES_VIPPS_BASE_URL", "https://apitest.vipps.no/")); cfg.InvoicesVippsBaseURL != "https://apitest.vipps.no" {
+		t.Errorf("INVOICES_VIPPS_BASE_URL = %q, want the test environment without its trailing slash", cfg.InvoicesVippsBaseURL)
+	}
+	for _, bad := range []string{"not-a-url", "ftp://vipps.example.test", "https://"} {
+		if msg := loadError(t, with(validEnv(), "INVOICES_VIPPS_BASE_URL", bad)); !strings.Contains(msg, "INVOICES_VIPPS_BASE_URL: must be an absolute http or https URL") {
+			t.Errorf("%q: error = %q", bad, msg)
+		}
+	}
+}

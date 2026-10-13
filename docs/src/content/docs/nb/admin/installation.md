@@ -436,6 +436,12 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `INVOICES_EHF_ENABLED` og `INVOICES_STORECOVE_BASE_URL`, ved siden av
   Peppol-oppslagets; å sette opp sending som EHF — Storecove-kontoen, påloggingsdataene
   og KID-avtalen — er en egen prosedyre ([E-faktura](/nb/admin/e-invoicing/)).
+- `vantigo.env.example` dokumenterer også, kommentert ut, innstillingene for betaling av
+  fakturaer med Vipps MobilePay: `PUBLIC_BASE_URL`, der betalingssiden kan nås fra
+  internett, og `INVOICES_VIPPS_ENABLED` (standard på) og `INVOICES_VIPPS_BASE_URL`
+  (standard `https://api.vipps.no`). Å publisere betalingssiden — verten, proxyen og å
+  holde tokenet i betalingslenken ute av proxyens logg — er en egen prosedyre
+  ([Den offentlige verten](/nb/admin/payments/#den-offentlige-verten)).
 - `vantigo.env.example` dokumenterer også `STAFF_IMPORT_MAX_ROWS`, hvor mange personer
   én import i Ansatte tar og én eksport skriver
   ([Ansatte](/nb/admin/staff/#importer-og-eksporter-registeret)), og
