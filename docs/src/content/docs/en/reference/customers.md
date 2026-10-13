@@ -627,7 +627,7 @@ is an invisible chip. A name is normalised to Unicode NFC before it is stored or
 compared, for the same reason the uniqueness ignores case: `Café` typed with a
 precomposed `é` and `Café` typed with a combining acute are one word to every
 reader. A tag name may not contain `|` either: it is what
-[the customers file](#csv-import-and-export)'s tags cell puts between a
+[the customers file](#export-and-import-from-a-file)'s tags cell puts between a
 customer's tag names, and a name holding it would export as a cell that reads
 back as the tags on either side of it — the cell has one reading only.
 `PUT /customers/tags/{tagId}` is a full replace of both fields, so a body
@@ -1212,46 +1212,43 @@ tie-broken by `id`) with `sortDirection` (`asc`/`desc`).
   stripped from both the value and the search term, so `923 609 016` finds a legal id
   stored as `923609016`.
 
-## CSV import and export
+## Export, and import from a file
 
-Customers leave and arrive as one file (phase 6 delivery A, decided in
-[`docs/superpowers/specs/2026-09-24-customers-import-export-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-24-customers-import-export-design.md)).
-Onboarding from Tripletex, Fiken or PowerOffice is "export there, rename the
-columns, import here": no competitor's layout is documented anywhere, and one
-honest format beats three guessed ones.
+Customers leave as one file and arrive from any. The export (phase 6 delivery A,
+[`docs/superpowers/specs/2026-09-24-customers-import-export-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-24-customers-import-export-design.md))
+writes the list as the caller sees it; the import (phase 6 delivery A2,
+[`docs/superpowers/specs/2026-10-13-customers-import-wizard-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-13-customers-import-wizard-design.md))
+takes a file from Tripletex, Fiken, PowerOffice or a spreadsheet as it is — its
+headers, its separator, its encoding, as many rows as its history holds — maps its
+columns to customer fields on screen, and has a worker check and import it with
+progress. Delivery A2 replaced delivery A's request-sized `POST /customers/import`;
+the export and the template are unchanged.
 
-### The file
+### The export's file
 
 Semicolon-separated, UTF-8 with a byte order mark, CRLF line ends, a header row,
-RFC 4180 quoting, the decimal comma for money (either mark is read back, digits
-only), ISO dates — `createdAt` and `updatedAt` are UTC, RFC 3339 — and every cell
-beginning with `=`, `+`, `-`, `@`, a tab or a carriage return prefixed with an
-apostrophe, which the import takes off again. It is the expenses payroll file's
-form verbatim, the one a Norwegian Excel opens without an import dialog. The
-headers are the API's JSON names, so the field tables above describe the file:
+RFC 4180 quoting, the decimal comma for money, ISO dates — `createdAt` and
+`updatedAt` are UTC, RFC 3339 — and every cell beginning with `=`, `+`, `-`, `@`, a
+tab or a carriage return prefixed with an apostrophe, which the import takes off
+again. It is the expenses payroll file's form verbatim, the one a Norwegian Excel
+opens without an import dialog. The headers are the API's JSON names, so the field
+tables above describe the file, and a file in this form maps itself on upload:
 
-| Group | Columns | The import writes it through |
-| --- | --- | --- |
-| Row | `customerNumber` (blank creates), `name`, `type`, `status` | the create, or `PUT /{id}` |
-| Legal identity | `legalCountry`, `legalType`, `legalId`, `legalName` | the create's and `PUT /{id}`'s rules; source `manual` |
-| Contact info | `email`, `phone`, `website` | `PUT /{id}/contact-info`'s rules |
-| Postal address | `postalLine1`, `postalLine2`, `postalPostalCode`, `postalCity`, `postalRegion`, `postalCountry` | the primary `postal` address |
-| Invoice address | `invoiceLine1` … `invoiceCountry` | the primary `invoice` address |
-| Billing profile | `invoiceEmail`, `reminderEmail`, `paymentTermsDays`, `currency`, `language`, `invoiceDelivery`, `reminderDelivery`, `peppolId`, `gln`, `buyerReference`, `defaultBillRate` | `PUT /{id}/billing-profile`'s rules |
-| Relationship | `group` (its name), `tags` (names joined by `\|`) | `PUT /{id}/group`, `PUT /{id}/tags` |
-| Export only | `id`, `ownerName`, `createdAt`, `updatedAt` | ignored |
+| Group | Columns |
+| --- | --- |
+| Row | `customerNumber`, `name`, `type`, `status` |
+| Legal identity | `legalCountry`, `legalType`, `legalId`, `legalName` |
+| Contact info | `email`, `phone`, `website` |
+| Postal address | `postalLine1`, `postalLine2`, `postalPostalCode`, `postalCity`, `postalRegion`, `postalCountry` (the primary) |
+| Invoice address | `invoiceLine1` … `invoiceCountry` (the primary) |
+| Billing profile | `invoiceEmail`, `reminderEmail`, `paymentTermsDays`, `currency`, `language`, `invoiceDelivery`, `reminderDelivery`, `peppolId`, `gln`, `buyerReference`, `defaultBillRate` |
+| Relationship | `group` (its name), `tags` (names joined by `\|`) |
+| Export only | `id`, `ownerName`, `createdAt`, `updatedAt` |
 
 Delivery and visiting addresses, contacts, the timeline and the owner are not in
-the file — an owner is a user of this installation, which no file can name
-safely. A tag name can never hold `|`, the tags cell's own separator (see
-[Tags](#tags)), so the cell has one reading. Two edge cases of
-the format: a number cell of one `.` followed by exactly three digits (`1.250`) is
-refused rather than guessed at — it reads as thousands to one person and as a
-decimal to another — and a value that itself begins with an apostrophe followed by
-one of the guarded characters (a name stored as `'=x`) comes back from a round trip
-without that apostrophe, because the import cannot tell it from the guard's — so
-re-importing that export renames the customer to `=x`, the one value a round trip
-changes; it is kept that way rather than guarded twice.
+the file — an owner is a user of this installation, which no file can name safely.
+A tag name can never hold `|`, the tags cell's own separator (see [Tags](#tags)),
+so the cell has one reading.
 
 ### Export
 
@@ -1267,122 +1264,224 @@ tags, groups, billing profiles and addresses are read in bulk — a fixed number
 queries whatever the row count. `GET /customers/import/template` answers the header
 alone: every column the caller's import can write — the legal identity's four only
 with `customers:legal-identity-manage`, the billing profile's eleven only with
-`customers:billing-manage` — so a template filled in and sent back by the one who
-downloaded it is never refused for its header. An export is shaped by what its
-caller may *see*, not write: a viewer's own export carries the billing columns, so
-someone without `customers:billing-manage` re-importing it removes those eleven
-columns first, and one with `customers:legal-identity-view` but not `-manage`
-removes the identity's four — the import refuses a column its sender could not
-write.
+`customers:billing-manage` — so a template filled in, uploaded and mapped column
+for column by the one who downloaded it is a mapping the import accepts.
 
-### Import
+### The import is a record
 
-`POST /customers/import` takes one multipart part named `file` — at most 5 MB and
-**5000** data rows, the export's cap, so a round trip always fits.
+`customers.imports` is one import — its state, the file's name, size, encoding and
+separator, its header as written, its row count, the mapping, the counts and the
+times — and `customers.import_rows` its rows: each row's cells as the reader left
+them, and, once the worker has run it, its outcome (`created`, `updated` or
+`failed`), the customer it made or changed, and its errors (`[{column, message}]`,
+`column` the file's 0-based column index, absent for a problem with the row as a
+whole). The upload parses the file **once** and writes the rows with `CopyFrom`
+in the transaction that creates the import; nothing reads the bytes again, and the
+bytes are not kept — the rows are the file. The database rather than the object
+store, because the worker reads by row, resumes by row and writes a result beside
+each row, and because an installation with no `STORAGE_PROVIDER` must still import
+customers. `created_by_user_id` is identity's user, opaque here, and
+`created_by_name` the display name the upload resolved beside it — snapshotted as a
+timeline entry's actor is, because the worker that writes the rows runs without a
+user directory and names the uploader on every event from these.
 
-**A file may only say what its sender could say by hand.** There is no import key:
-the operation wants `customers:create`, `customers:update` and `customers:view` —
-view because every write the import stands in for needs it by hand, and because a
-row's errors would otherwise describe customers the caller may not see — and the header is
-checked against the caller before a row is read — the legal identity's columns need
-`customers:legal-identity-manage`, the billing profile's `customers:billing-manage`.
-A column its sender may not write refuses the **whole file** (a 400 naming the
-columns and the key), because a skipped column is a change the sender believes was
-made. So does an unknown column — a misspelt header is never silently ignored — a
-repeated one, and **part of a group**: the legal identity's four, contact info's
-three, an address's six and the billing profile's eleven come together or not at
-all. `name`, `type` and `status` are each optional. The export-only four and a
-column named `error` are ignored. A header wider than the file's 41 possible
-columns is one refusal, and columns with no name are one refusal between them, so
-the answer stays small whatever the file holds. The identity columns follow the
-create and `PUT /{id}`, which want `customers:legal-identity-manage` alone — not
-`PUT /{id}/legal-identity`, which wants `-view` as well — so a caller with manage
-but not view can write identities by file that they cannot read back, exactly as
-they can by hand.
+### Reading the file
 
-**Matching.** A row with a `customerNumber` updates that customer (an unknown number
-is that row's error; no revision is sent, so the change applies regardless); a
-blank one creates. A create needs a name and defaults to `business` and `active`.
-On an update, an absent `name` column keeps the name, but a blank `name` cell is
-that row's error — a name is never cleared; a blank or absent `status` keeps the
-status; and a `type` that differs from the customer's is an error — changing it is `PUT
-/{id}/type`'s deliberate act.
+`POST /customers/imports` takes one multipart part `file` of at most **50 MiB**,
+**100 000** data rows and **200** columns, and reads it as the person's file:
 
-**A group in the file is replaced whole; a group not in the file is left alone.**
-Inside a group, a blank cell clears that field, and a blank `tags` cell clears the
-tags. All of an address's cells blank remove the primary address of that type when
-it is the **only** address of that type, and do nothing when there is none. When the
-customer has others of the type, the row is refused on the group's first column
-(`postalLine1`, `invoiceLine1`): the file describes the primary address alone, and
-removing it would make the oldest remaining one primary, as a delete by hand does —
-so the same file imported again would remove that one too, one more address each
-run. Refused, the same file gives the same result however often it is imported;
-the other addresses are a person's to remove. The primary address
-keeps its label, which the file does not carry. `group` and `tags` name existing
-vocabulary, matched ignoring both case and Unicode normalisation (NFC/NFD) — a
-name a file spells decomposed (a macOS filename, an iOS keyboard, a paste from
-another system) still finds the word it names; an unknown name is that row's
-error, never a word created behind anybody's back. A new legal identity is `manual`; a row repeating
-the identity on file keeps its source, so re-importing an export never turns a
-Brreg pick into a manual entry. `allowDuplicateIdentity=true` is the create
-endpoint's own flag, for every row.
+- **Encoding.** UTF-8, with or without a byte order mark. A file that is not valid
+  UTF-8 is read as **Windows-1252** — every CSV a Norwegian Excel saved without
+  "UTF-8" in the name — where æ, ø and å are the bytes UTF-8 refuses; the import
+  records which (`encoding`), the preview shows the result.
+- **Separator.** Detected from the header line among `;`, `,` and tab — the one that
+  occurs most outside quotes, a tie going to the semicolon. A file whose columns come
+  out wrong is seen in the mapping table at once; it is uploaded again with
+  semicolons, never re-parsed.
+- **Quoting** is RFC 4180 with lazy quotes (a stray quote in an unquoted cell is a
+  cell with a quote in it), CRLF or LF; the first non-blank row is the header, blank
+  rows are skipped and never numbered, the formula guard's apostrophe is taken off.
+  A row is kept as wide as it is: a short row's missing cells read as blank, a row
+  longer than the header is that row's error.
+- **Nothing about the header is refused.** An unknown column is a column nobody maps;
+  a nameless one is "Column 7".
 
-**Each row is its own transaction** through the endpoints' own write functions —
-the same validation, the same guarded statements, the same events, the importer as
-actor — so a row that fails leaves nothing half-written, and a row that succeeds is
-indistinguishable from the same edits made by hand. A row that changes nothing
-writes nothing. Rows run in file order; a failing row never stops the file. There
-is no batch marker and no `customer.imported` event: the granular events are the
-audit trail.
+The refusals, each a 400 on `file` in a sentence a person can act on: no part or two,
+an empty file, over 50 MiB, no header row, more than 200 columns, more than 100 000
+rows. The upload is rate-limited at 600 an hour per client address, the attachment
+upload's figure. The answer is the import in state `draft` with its header, its first
+twenty rows (`sample`) and a `suggested` mapping.
 
-**The dry run.** `dryRun` defaults to `true`: every row runs exactly as in the real
-run — each in its own transaction — and is rolled back instead of committed.
-Nothing is kept that a user could see: no customer, no customer number, no event,
-and no lock outlives its row, so a check holds nobody up. (The tables' own row ids
-are identity columns, which a rollback does not rewind, so internal ids may skip —
-harmless, and nothing a user sees.) Because each row rolls back before the next
-runs, a dry run cannot see an earlier row's effect on a later one. The case a file
-makes likely — two rows creating customers with the same legal identity — is
-checked on the file itself before any row runs, so the second is refused in both
-runs alike (unless `allowDuplicateIdentity`). Any other dependency between rows (a
-row naming a customer an earlier row changed, say) may check clean and still be
-refused by the real run — cleanly, as that row's error, with the other rows
-imported. At the cap (5000 creates, each with contact info, a postal address, a
-billing profile and a tag) a real run took about 30 s on 4 CPUs and without the
-race detector, measured by the opt-in test `VANTIGO_IMPORT_TIMING=1` (CI's own
-race-detected run says nothing about the import, so the timing test skips unless
-asked for); a dry run costs the same. The ceiling that matters is the proxy in
-front of a hosted installation, which gives up after about 100 seconds.
+### The mapping
 
-**One import at a time.** A second import — dry or real, from anybody — sent while
-one runs is a 409 (`An import is already running`), not queued: a run at the cap is
-half a minute of row transactions, and two side by side would only share the
-database between them. A file refused for its header never takes the turn.
+`PUT /customers/imports/{id}/mapping` saves `CustomerImportMapping`:
 
-**A run cut off.** The server cancels a request whose connection went — a closed
-tab, an abandoned check, a proxy that gives up and closes its connection to the
-server (what cloudflared does after its ~100 s has not been measured) — and the
-import stops before its next row, so an abandoned run does not hold the turn
-above. A real run that ends in anything but a 200 — a disconnect, a server error, a
-stray database conflict answered as a whole-request 409 — keeps every row committed
-before it stopped, and no result says which rows those were. Sending the same file
-again then creates those rows' customers **a second time**: only a row with a legal
-identity has the duplicate guard, and a dry run of the file reports the others as
-creates like any other. Before sending it again, export or look at the list and
-take the rows already in out of the file; on a hosted installation, keep files well
-inside the cap.
+```
+{ mode: "create" | "update" | "createOrUpdate",
+  matchBy?: "customerNumber" | "legalId",          // required unless mode is create
+  allowDuplicateIdentity: boolean,
+  columns: [{ field, column }, { field, value }, …] }
+```
 
-**The result** is `CustomerImportResult` — `dryRun`, `rows`, `created`, `updated`
-(an unchanged update counts), `failed`, and `errors[]` of `{row, column?,
-message}`: `row` is the 1-based data row (the header is row 0; an all-blank row is
-skipped and takes no number), `column` the header of a field's error as the file
-spells it (headers match without regard to case; a problem with the row as a whole —
-a create in a file with no `name` column, say — has none), `message` the module's
-own validation wording. File-level refusals are 400s on `file`, never a
-result. The frontend builds the **failed-rows file** from these errors and the bytes
-it read at Check: the original rows that failed, each as wide as it was (never padded
-or cut), with an `error` column first — the import ignores that column wherever it
-sits — fix them and import that file.
+The **fields** are the export's import columns — `customerNumber` as a match key,
+never a value written — thirty-seven in all, each written through the function its
+endpoint calls, behind its validator, followed by its event, the uploader as actor.
+An entry reads a field from a **column** of the file (0-based) or gives it one
+**value** for every row — `status: active`, `currency: NOK`, `legalCountry: NO`,
+`group: Imported 2026` — read exactly as a cell would be and needing the same
+permission its column would; `customerNumber` takes no fixed value.
+
+**A mapped field is written; an unmapped field is left as it is.** On an update the
+row's group is the customer's current group with the mapped fields laid over it,
+then validated and written as a whole through the same function — mapping `email`
+alone keeps the phone and the website; mapping `postalCity` alone onto a customer
+with no postal address is that row's error, since an address needs a line and a
+country. On a create an unmapped field is blank. A mapped cell that **is blank
+clears** its field, with the two rules the hand-written endpoints have: a blank
+`name` on an update is the row's error, and all of an address's mapped cells blank
+remove the primary address of that type only when it is the only one of that type
+(removing it would make the next one primary, so the same file imported again
+would remove that one too). A blank `tags` cell clears the tags.
+
+**Defaults.** For a row whose `legalId` is mapped and not blank: an unmapped or
+blank `legalCountry` is `NO`, `legalType` the row's customer type, `legalName` the
+row's name — a Norwegian file has an organisation number and nothing else about the
+identity. The identity is validated as a whole (the check digit included); its
+source is `manual`, or kept when the row repeats the identity on file field for
+field. `type` accepts, besides `business` and `person`, `bedrift`, `firma`,
+`selskap` and `company` for a business and `privat`, `privatperson` and `private`
+for a person, folded in the import alone. A row with no `type` is `business`, with
+no `status` `active`.
+
+**Mode and match.** `create` makes every row a new customer. `update` and
+`createOrUpdate` find the customer by the mapped match column: `customerNumber`
+(a cell that is not a whole number is the row's error) or `legalId` (the identity's
+country and id, defaults applied — the duplicate guard's own query, every status
+included). In `update`, a row that finds nobody is refused. In `createOrUpdate`, a
+row with a **blank** key creates, a legal id nobody holds creates, and a customer
+number nobody has is refused — a typo, never a customer with another number. **More
+than one** holder of a legal id is the row's error naming them. Two rows of the file
+with one legal identity are refused on the second in every mode; a matched customer
+that is merged away or anonymised is refused; `type` may not change by import.
+
+**Suggestions.** The upload answers, and every read repeats, a `suggested` mapping
+in three tiers, the first that fits a column winning and a field taken by the first
+column that claims it: the mapping last saved on an import with the **same header**
+(so a failed-rows file, or next month's export from the same system, maps itself);
+the field's own JSON name; and an alias table of the words these files use
+(`navn`, `kundenummer`, `orgnr`, `e-post`, `telefon`, `adresse`, `postnummer`,
+`poststed`, `land`, `fakturaepost`, `betalingsbetingelser`, `valuta`,
+`kundegruppe`, `stikkord`, …), matched after lowercasing and dropping everything but
+letters and digits. The default mode is `createOrUpdate` by `customerNumber` when a
+customer-number column was suggested, otherwise `create`.
+
+**Validating the mapping** (400 on `mode`, `matchBy` or `columns`): a mode or match
+key outside the enum, a mode that matches without its match column mapped, an
+unknown field, a field or a column twice, a column outside the header, an entry with
+both or neither of column and value, a fixed value on `customerNumber`, no field
+written — and the permissions below. A mapping is saved on a `draft` or a `checked`
+import (409 `import_running` while the worker has it, `import_finished` once done);
+saving on a checked one returns it to `draft` and clears every row's result. The
+answer is the import with its **preview**: the first twenty rows, each with the
+errors its cells get under this mapping — the row planned through the endpoints'
+validators with no database asked. In `create` mode that is the whole row (a create
+with no name column is the row's own problem); in the two update modes an unmapped
+field's problem is the customer's to answer, so only the mapped fields' own errors
+are shown, and the rest is judged by the check.
+
+### The permission rule
+
+Every import operation wants **`customers:import`** and `customers:view` — view
+because every answer names customers by number and name. The key is the door, not
+the content: a file may still only say what its sender could say by hand, and the
+mapping is where that is checked, as a 400 naming the key — a mode that creates
+needs `customers:create`, one that updates `customers:update`, `createOrUpdate`
+both; a legal-identity field mapped (by column or by value) needs
+`customers:legal-identity-manage`; a billing field `customers:billing-manage`. The
+page hides what the person may not map and disables the modes they may not run;
+the server refuses either regardless.
+
+### The lifecycle
+
+```
+draft ──check──▶ checking ──(worker)──▶ checked ──run──▶ importing ──(worker)──▶ done
+  ▲                 │                     │                  │
+  └── mapping ──────┴── stop ─────────────┘                  └── stop ──▶ done (stopped)
+```
+
+- `POST …/check` on a `draft` with a mapping, or on a `checked` import (checked
+  again), clears the rows' results and queues the check; the worker runs every row
+  exactly as the real run would, each in its own transaction rolled back at its end
+  — no customer, no number, no event kept — and writes each row's outcome and errors
+  after it. Two rows creating one legal identity are refused on the second in both
+  runs (a pass over the file before any row runs); otherwise a dry run cannot see an
+  earlier row's effect on a later one, and the real run refuses the later row
+  cleanly, as that row's error.
+- `POST …/run` on a `checked` import with `created + updated > 0` clears the rows'
+  results and queues the run (409 `import_not_checked` on a draft,
+  `import_nothing_to_import` when the check found nothing, `import_running`,
+  `import_finished`). In the real run a row's outcome is written **inside the row's
+  transaction**, beside the customer's statements, so a row is either committed with
+  its outcome or neither: a process that dies mid-import loses nothing and
+  double-writes nothing, and the next cycle resumes at the first row with no outcome.
+- `POST …/stop`: an import the worker has not taken up goes straight back (checking
+  to draft, importing to checked, the check's counts intact); one under way is
+  flagged, and the worker stops between chunks — a check stopped goes back to
+  `draft` with its results cleared, a run stopped finishes as `done` with every row
+  committed so far kept and the rest never attempted, which `processed` short of
+  `rows` says. 409 `import_finished` when nothing is running.
+- `DELETE …` removes a draft, a checked or a done import with its rows; a running one
+  is 409 `import_running`. The customers a done import wrote are untouched.
+- A whole-run failure inside the worker — a database gone, a mapping it cannot read
+  — is logged, written to `error` on the import, and retried next cycle from where
+  the run stood; it is never silently dropped, and the page shows it.
+
+The counts on the import are the worker's progress while it runs (`processed`,
+`created`, `updated`, `failed`, written after every chunk) and the totals recounted
+from the rows once it has finished. `requestedAt` is when the check or the run was
+asked for, `startedAt` when the worker took it up, `finishedAt` when it ended.
+
+### The worker: `customers-import`
+
+The anonymisation worker's shape: an advisory lease (key `CUSTIMP1`, one cycle at a
+time per installation), everything on the lease's connection. A cycle takes the
+oldest queued import, resolves the actor (from the import's own snapshot), the group
+and tag vocabularies and the in-file duplicates once, then walks the rows with no
+outcome in **chunks of 500** in file order — each row a transaction (import.go's
+`runImportRow`), the chunk's outcomes written, `processed` and the counts updated,
+the stop flag read — then the next queued import, then the sweep. One import
+failing as a whole ends the cycle there; the next cycle takes it up again.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `CUSTOMERS_IMPORT_ENABLED` | `1` | `0` → the worker is never handed to the runner; an import queues and the page says it is waiting |
+| `CUSTOMERS_IMPORT_POLL` | `5s` | how often a cycle looks for a queued import — the outbox's figure, since a person is watching |
+| `CUSTOMERS_IMPORT_RETENTION` | `720h` | how long a finished or abandoned import and its rows are kept before the sweep removes them |
+
+In the default deployment (`WORKERS_IN_PROCESS=1`) the check and run handlers also
+**nudge** the worker in-process, so a check starts the moment it is asked for; in a
+split deployment the poll is the bound. The page says "waiting for the background
+worker" once a queued import has gone a minute without being taken up. At the old
+import's measured pace (about 6 ms a row at the cap) a hundred thousand rows is
+about ten minutes a run, check and import each; the opt-in timing test
+(`VANTIGO_IMPORT_TIMING=1`, twenty thousand rows) prints what this machine takes.
+The sweep deletes every import not running whose last change is older than the
+retention, rows by cascade — the rows are personal data in flight, not a record to
+keep; the granular events remain the audit trail, and no `customer.imported` event
+exists.
+
+### Rows and the failed-rows file
+
+`GET …/rows?outcome=failed|created|updated&page&pageSize` (page size 1–500, default
+50) is the rows in file order, every one or those of one outcome, each with its
+cells, outcome, errors and the customer's id and number — the errors table after a
+check, the created customers after a run. `GET …/failed-rows` is the failed rows as
+a file to fix and upload again: the file's **own header**, so the same mapping is
+suggested when it comes back, behind an `error` column holding every problem of the
+row ("`<header>: message`", the message alone for the row as a whole, a nameless
+column as "Column 7"), each row's cells exactly as they were, semicolon-separated,
+UTF-8 with a byte order mark, named `customers-import-<id>-failed-rows.csv`.
+`GET /customers/imports?page&pageSize` lists the imports, newest change first.
 
 ## Revision and concurrency
 
@@ -2599,7 +2698,7 @@ you, or not installed".
 
 ## Permissions
 
-Sixteen keys, category-grouped, every one delegable. Only `view`, `create` and
+Seventeen keys, category-grouped, every one delegable. Only `view`, `create` and
 `update` are non-sensitive.
 
 | Key | Category | Meaning | Sensitive |
@@ -2620,6 +2719,7 @@ Sixteen keys, category-grouped, every one delegable. Only `view`, `create` and
 | `customers:billing-manage` | Billing | Set a customer's payment terms, invoice delivery and billing addresses for documents. | yes |
 | `customers:merge` | Customers | Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags, attachments and other modules' references, and archiving it. | yes |
 | `customers:personal-data` | Customers | Hand a private person all the data held about them, and schedule the anonymisation of an archived private person. | yes |
+| `customers:import` | Customers | Upload a file of customers, map its columns, check it and import it; each field written needs the permission it needs by hand. | yes |
 
 `customers:billing-manage` is the one key with no earlier counterpart: writing a
 customer's billing profile is deliberately gated separately from
@@ -2638,6 +2738,16 @@ anonymisation](#personal-data-and-anonymisation)): handing a person their whole 
 reads what `customers:legal-identity-view` and `customers:contacts-view` each guard, and
 an anonymisation removes more than any delete, so it is its own sensitive key, implied
 by none of the others.
+
+`customers:import` is the fourth ([Export, and import from a
+file](#export-and-import-from-a-file)): one import writes thousands of customers
+under one name, so it is its own sensitive key, and an administrator grants it to the
+one person doing the onboarding without granting it to everyone who may create a
+customer. It is the door, not the content: every import operation wants it with
+`customers:view`, and the mapping is then checked against what its sender could do by
+hand — `customers:create` for a mode that creates, `customers:update` for one that
+updates, `customers:legal-identity-manage` for a legal-identity field,
+`customers:billing-manage` for a billing field — refused as a 400 naming the key.
 
 Two permissions combine to widen list search beyond name/number:
 `customers:legal-identity-view` alone unlocks legal name/id; **both**
@@ -2710,16 +2820,10 @@ can attach to it. A key of its own would have been a fourth every installation r
 to grant for a thing that, at every point of use, sits inside the timeline's door. The
 two keys' descriptions name attachments.
 
-The [CSV import](#csv-import-and-export) adds no key either. It wants
-`customers:create`, `customers:update` and `customers:view` together — view because
-every write it stands in for needs view by hand — and checks the file's columns
-against the caller's keys before reading a row — the legal identity's against
-`customers:legal-identity-manage`, the billing profile's against
-`customers:billing-manage` — refusing the whole file for a column its sender could
-not write by hand. The export needs `customers:view`, and shapes its columns by
+The export needs `customers:view`, and shapes its columns by
 `customers:legal-identity-view` the way a customer response does; the template
 shapes its columns by the write keys instead — `customers:legal-identity-manage`,
-`customers:billing-manage` — so it is always a header its caller's import accepts.
+`customers:billing-manage` — so it is always a header its caller's mapping accepts.
 
 ## `contracts.CustomerDirectory`
 
@@ -2871,22 +2975,42 @@ The rules it is written to:
   group**, then each group, reflected in the URL as `groupId` — with a **Manage
   groups** button beside it, opening the vocabulary editor for a caller the host
   says may edit.
-  [CSV import and export](#csv-import-and-export) added **Export**, which downloads
-  the list's current filter and sort as the customers file (the reimbursements
-  download: a plain `fetch`, the server's filename, an object URL), and **Import**,
-  which opens a modal: pick a file (drop or choose, with a **Download template**
-  link), **Check** — the dry run's counts and an errors table of row, column and
-  problem — then **Import**, enabled once the check found a row that would succeed,
-  and afterwards the counts again and, when rows failed, **Download failed rows**:
-  the original rows with an `error` column first, built in the browser from the
-  bytes it read at Check (a file over 5 MiB is refused before it is sent; picking a
-  new file or toggling **Allow duplicate identity** discards the check; a check the
-  person abandons is cancelled, and a real run cannot be closed until it answers —
-  its failed rows exist only there; after a failed real run the modal says rows may
-  already have been saved only when the server did not answer). The list refreshes
-  when an import completes. The host passes two more
-  props: `canExport` (`customers:view`) and `canImport` (`customers:create`,
-  `customers:update` and `customers:view` — the import operation's own rule).
+  [Export, and import from a file](#export-and-import-from-a-file) added **Export**,
+  which downloads the list's current filter and sort as the customers file (the
+  reimbursements download: a plain `fetch`, the server's filename, an object URL),
+  and **Import**, a link to the import pages. The host passes two more props:
+  `canExport` (`customers:view`) and `canImport` (`customers:import` and
+  `customers:view` — the import's own rule).
+- **Import** (`/customers/import`, `/customers/import/$importId`; customers import
+  wizard design D8) — two pages under the customers prefix, thin host wrappers over
+  this package's `ImportStartPage` and `ImportPage`. The start page: a dropzone
+  (uploaded and parsed once, then the import's own page; a file over 50 MiB refused
+  before it is sent; the server's refusal shown in its words), **Download
+  template**, and **Recent imports** — file, uploader, last change, state, result or
+  progress, each a link, a delete with a confirmation for one not running. The
+  import page: the file's facts in the header, a stepper **Map columns · Check ·
+  Import** whose active step is derived from the state (a refresh lands where the
+  person was), and the page polls every two seconds while the worker works. Step 1:
+  what to do with the rows (a segmented control; a mode the person may not run is
+  disabled with the key named), find the customer by, the duplicate-identity
+  checkbox; one row per file column with its first values and an **Imported as**
+  Select grouped by field group (the identity and billing groups absent without
+  their keys, a field taken elsewhere disabled and saying where); **Same value for
+  every row** entries; the preview — the first twenty rows under the mapped fields,
+  a cell with an error marked with its message, the problems listed by row and
+  column; the mapping saved as it changes (debounced; the preview is the save's
+  answer); **Check file**. Step 2: the progress bar with the rows done, the counts
+  so far and **Stop**; once checked, Rows · Would be created · Would be updated ·
+  Have errors, the failed rows a page at a time (row, column as the file spells it,
+  problem), **Download failed rows**, **Change mapping** (which saves the mapping
+  as it is, returning the import to draft) and **Import** behind a confirmation
+  that says the counts. Step 3: the bar with **Stop** behind a confirmation; once
+  done, Created · Updated · Failed and, after a stop, Not attempted, the failed rows,
+  the created and updated customers as links, **Start another import** and **Go to
+  customers**. A whole-run error is an alert that says it is retried; an import
+  nobody has taken up in a minute says the worker may not be running. The host's
+  `-import-pages.tsx` computes the four capabilities (`canCreate`, `canUpdate`,
+  `canMapIdentity`, `canMapBilling`) from the caller's permissions.
 - **Merge…** on the customer page header, for a caller the host says may merge (a
   new `canMerge` prop, read from `customers:merge`): a modal with this package's own
   customer picker (the projects picker's shape, over this module's list with
@@ -3085,7 +3209,7 @@ The rules it is written to:
 ## API
 
 Every operation is under `/api/v1/customers`, authenticated with the shared identity
-session cookie. 67 operations in total, each exercised by the module's own
+session cookie. 76 operations in total, each exercised by the module's own
 contract-validated test coverage gate — every operation in `openapi/customers.yaml`
 must be exercised by at least one successful exchange, with no allow-list.
 
@@ -3093,7 +3217,7 @@ must be exercised by at least one successful exchange, with no allow-list.
 | --- | --- |
 | `GET /`, `GET /{id}` | `customers:view` |
 | `GET /export`, `GET /import/template` | `customers:view` (the export's legal-identity columns only with `customers:legal-identity-view`; the template's only with `customers:legal-identity-manage`, its billing columns only with `customers:billing-manage`) |
-| `POST /import` | `customers:create` + `customers:update` + `customers:view` (plus `customers:legal-identity-manage` for a file with the legal-identity columns, `customers:billing-manage` for one with the billing columns) |
+| `GET /imports`, `POST /imports`, `GET /imports/{importId}`, `DELETE /imports/{importId}`, `PUT /imports/{importId}/mapping`, `POST /imports/{importId}/check`, `POST /imports/{importId}/run`, `POST /imports/{importId}/stop`, `GET /imports/{importId}/rows`, `GET /imports/{importId}/failed-rows` | `customers:import` + `customers:view` (the mapping additionally checked against `customers:create` / `customers:update` by mode, `customers:legal-identity-manage` for an identity field, `customers:billing-manage` for a billing field) |
 | `POST /` | `customers:create` (plus `customers:legal-identity-manage` if the body carries an `identity`) |
 | `PUT /{id}`, `PUT /{id}/type` | `customers:update` + `customers:view` (plus `legal-identity-manage` if the body carries an `identity`) |
 | `DELETE /{id}` (archive) | `customers:delete` |
@@ -3266,14 +3390,20 @@ implements, shaped by `invoices:access` alone, and two more dates in `lastActivi
 No permission key was added. Still ahead in phase 5: other modules writing to the
 customer timeline (on the outbox deferred until Orders).
 
-**Phase 6 delivery A** — [CSV import and export](#csv-import-and-export) — has
-landed, decided in
+**Phase 6 delivery A** — the CSV export and the first import — landed, decided in
 [`docs/superpowers/specs/2026-09-24-customers-import-export-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-24-customers-import-export-design.md):
 one canonical file (the payroll export's form, the API's JSON names), the list
-exported as the caller sees it and capped at 5000 rows, and an import that creates
-and updates by `customerNumber` through the endpoints' own write paths, a group at a
-time, with a dry run by default and the failed rows handed back for a re-run. No
-permission key, no event type and no migration were added. Delivery B followed it
+exported as the caller sees it and capped at 5000 rows, and a request-sized import of
+that file. **Delivery A2** — [Export, and import from a
+file](#export-and-import-from-a-file) — replaced that import, decided in
+[`docs/superpowers/specs/2026-10-13-customers-import-wizard-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-13-customers-import-wizard-design.md):
+an import is a record (migration `00045`), the file read once with its own encoding
+and separator up to 50 MiB and a hundred thousand rows, its columns mapped to fields
+on screen with a preview, a mapped field written and an unmapped one kept, matching
+by customer number or organisation number, fixed values for every row, and the
+`customers-import` worker checking and running it in chunks with progress, a stop and
+a resume; behind the new `customers:import`, the content still checked against the
+keys each field needs by hand. The export is unchanged. Delivery B followed A
 (below).
 
 **Phase 6 delivery B** — [Merging duplicates](#merging-duplicates) — has landed,

@@ -387,6 +387,9 @@ oppstarten feiler.
 | `STAFF_IMPORT_MAX_ROWS` | Personer én import i Ansatte tar og én eksport skriver, fra `5000` til `20000` — ett tall for begge, så en eksport alltid kan importeres tilbake (over 20000 personer ville en eksport bli større enn importens fil på 5 MiB) ([Ansatte](/nb/admin/staff/#importer-og-eksporter-registeret)) | `5000` |
 | `STAFF_RETENTION_ENABLED` | Av/på-bryter for oppbevaringsarbeideren i Ansatte, `staff-retention`, som sletter det oppbevaringsreglene ikke lenger lar registeret beholde og fullfører slettingen av dokumentenes filer; slått av slettes ingenting etter tidsplanen, og `POST /retention/run` kjører den fortsatt for hånd ([Ansatte](/nb/admin/staff/#oppbevaring)) | `1` |
 | `STAFF_WORKERS_POLL` | Hvor ofte arbeiderne i Ansatte ser etter: en sletterunde på høyst femti personer og en runde i sletteloggen; en varighet på minst `1m` | `1h` |
+| `CUSTOMERS_IMPORT_ENABLED` | Kjør kundemodulens importjobb, som kontrollerer og importerer opplastede filer; `0` lar importer vente | `1` |
+| `CUSTOMERS_IMPORT_POLL` | Hvor ofte kundemodulens importjobb ser etter en import i kø | `5s` |
+| `CUSTOMERS_IMPORT_RETENTION` | Hvor lenge en ferdig eller forlatt kundeimport og radene dens beholdes | `720h` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | Profilering av SPA-en | ikke satt |
 
 Peppol-oppslaget behandler NXDOMAIN og NOERROR-uten-NAPTR-poster som det samme

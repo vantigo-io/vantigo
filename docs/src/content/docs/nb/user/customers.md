@@ -6,6 +6,10 @@ sidebar:
 sources:
   - apps/customers/frontend
   - apps/host/frontend/src/routes/customers/-customer-360-panel.tsx
+  - apps/host/frontend/src/routes/customers/-customers-list.tsx
+  - apps/host/frontend/src/routes/customers/-import-pages.tsx
+  - apps/host/frontend/src/routes/customers/import.index.tsx
+  - apps/host/frontend/src/routes/customers/import.$importId.tsx
   - apps/host/frontend/src/api/customer-overview.ts
   - apps/host/frontend/src/catalogs/customer.ts
 ---
@@ -307,24 +311,47 @@ navngir en kunde. Se [Follow-ups](/en/reference/customers/#follow-ups).
 sortering, alle sider — som semikolonseparert CSV. Identitetskolonnene krever
 `customers:legal-identity-view`; over 5000 kunder avvises — snevre inn filteret.
 
-**Importer** krever `customers:create`, `customers:update` og `customers:view`, og
-åpner **Importer kunder**:
+**Importer** henter inn kundene dine fra et annet system eller et regneark. Det krever
+`customers:import` og `customers:view`; det importen skriver, krever de samme
+tillatelsene som å skrive det for hånd (se tabellen nedenfor). Trykk **Importer** i
+kundelisten for å åpne **Importer kunder**.
 
-1. **Last ned mal** gir deg overskriftsraden importen din kan skrive. En fil på høyst
-   5 MB, i UTF-8, med malens kolonner — eller en eksports, om du kan skrive alle
-   kolonnene den har. En rad med kundenummer oppdaterer den kunden; en rad uten
-   oppretter en ny kunde.
-2. Slipp filen eller **Velg CSV-fil**. Kryss av **Tillat at en kunde har samme
-   juridiske identitet som en annen kunde** bare om det er meningen.
-3. **Kontroller** kjører importen uten å lagre noe og rapporterer **Rader**, **Ville
-   blitt opprettet**, **Ville blitt oppdatert** og **Har feil**, hvert problem etter
-   **Rad** og **Kolonne**. Rett filen og kontroller igjen til noe kan importeres.
-4. **Importer** lagrer radene og rapporterer **Opprettet**, **Oppdatert** og
-   **Feilet**. Feilet noen rader, gir **Last ned radene som feilet** deg akkurat de
-   radene med en feilkolonne først, til å rette og importere for seg.
+1. **Last opp filen.** Slipp en CSV-fil på siden eller velg en. Filer separert med
+   semikolon, komma og tabulator leses alle, i UTF-8 eller Windows-kodingen (ANSI)
+   eldre Excel lagrer i, med første rad som kolonnenavn. En fil kan være opptil 50 MB
+   og 100 000 rader; del en større fil og importer den i flere omganger. **Last ned
+   mal** gir deg en overskriftsrad med alle kolonnene du kan importere.
+2. **Velg kolonner.** Velg **Hva som skal gjøres med radene**: **Opprett nye
+   kunder**, **Oppdater eksisterende kunder** eller **Opprett og oppdater**. Ved
+   oppdatering velger du hvordan du vil **Finn kunden etter**: **Kundenummer** eller
+   **Organisasjonsnummer**. Hver kolonne i filen står oppført med de første verdiene;
+   velg under **Importeres som** hvilket kundefelt den blir, eller la den stå som
+   **Importeres ikke**. Vantigo foreslår felt for vanlige navn som *Kundenr*,
+   *Org.nr*, *E-post* og *Postnummer*, og husker valgene du gjorde for en fil med de
+   samme kolonnene. Mangler filen et felt alle kundene trenger, bruker du **Legg til
+   en verdi for alle rader** for å sette én verdi for alle — et land, en status, en
+   valuta, eller en gruppe eller merkelapp som markerer partiet.
+   **Forhåndsvisning** viser de første radene slik de vil bli lest, med eventuelle
+   feil markert. Valgene lagres etter hvert som du gjør dem.
+3. **Kontroller filen.** Hver rad prøves akkurat som importen ville gjort, uten å
+   lagre noe. En fremdriftslinje viser hvor langt den har kommet, og **Stopp**
+   avbryter. Resultatet er **Rader**, **Ville blitt opprettet**, **Ville blitt
+   oppdatert** og **Har feil**, med hver feil etter **Rad** og **Kolonne**. **Endre
+   valg av kolonner** tar deg tilbake til steg 2.
+4. **Importer** lagrer radene, etter en bekreftelse som sier hvor mange kunder som
+   opprettes og oppdateres. Du kan forlate siden og komme tilbake: importen kjører i
+   bakgrunnen, og siden viser fremdriften. **Stopp** beholder radene som allerede er
+   lagret, og prøver ikke resten. Når den er ferdig, viser siden **Opprettet**,
+   **Oppdatert** og **Feilet**, og lister de nye kundene som lenker.
 
-Én import kjører om gangen; en til avvises med **En import kjører allerede**. Filformatet
-og alle reglene står i [CSV import and export](/en/reference/customers/#csv-import-and-export).
+Feiler noen rader, gir **Last ned radene som feilet** deg akkurat de radene, med dine
+egne kolonner og en feilkolonne først. Rett dem og last opp den filen: valget av
+kolonner foreslås igjen. Ved oppdatering endres bare feltene som er valgt; en tom
+celle i en valgt kolonne tømmer feltet, og en kundes navn tømmes aldri. **Siste
+importer** på importsiden lister tidligere importer du kan fortsette med eller
+slette; de fjernes automatisk etter 30 dager. Kundene en import opprettet, blir
+stående. Alle reglene står i [Export, and import from a
+file](/en/reference/customers/#export-and-import-from-a-file).
 
 ## Slå sammen duplikater
 
@@ -383,7 +410,7 @@ på den kan endres, og bare eksporten står igjen. Se
 | Lese tidslinjen og oppfølginger; se og laste ned vedlegg | `customers:timeline-view` |
 | Legge til, redigere og slette tidslinjehendelser; sette og krysse av oppfølginger; legge til og slette vedlegg | `customers:timeline-manage` |
 | Redigere faktureringsprofilen, sjekke og bruke EHF | `customers:billing-manage` |
-| Importere kunder | `customers:create`, `customers:update` og `customers:view` |
+| Importere kunder | `customers:import` og `customers:view`; å opprette og oppdatere krever `customers:create` og `customers:update`, og feltene for juridisk identitet og fakturering sine egne nøkler |
 | Slå sammen et duplikat | `customers:merge` |
 | Eksportere personopplysninger og planlegge en anonymisering | `customers:personal-data` |
 

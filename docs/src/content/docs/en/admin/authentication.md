@@ -375,6 +375,9 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `STAFF_IMPORT_MAX_ROWS` | People one Staff import takes and one Staff export writes, from `5000` to `20000` — one number for both, so an export always imports back (above 20000 people an export would outgrow the import's 5 MiB file) ([Staff](/en/admin/staff/#import-and-export-the-register)) | `5000` |
 | `STAFF_RETENTION_ENABLED` | On/off switch for the Staff retention worker, `staff-retention`, which erases what the retention rules no longer let the register keep and finishes deleting documents' files; off, nothing is erased on a schedule and `POST /retention/run` still runs it by hand ([Staff](/en/admin/staff/#retention)) | `1` |
 | `STAFF_WORKERS_POLL` | How often the Staff workers look: an erase cycle of at most fifty people and a pass over the deletion ledger; a duration of at least `1m` | `1h` |
+| `CUSTOMERS_IMPORT_ENABLED` | Run the customers import worker, which checks and imports uploaded files; `0` leaves imports waiting | `1` |
+| `CUSTOMERS_IMPORT_POLL` | How often the customers import worker looks for a queued import | `5s` |
+| `CUSTOMERS_IMPORT_RETENTION` | How long a finished or abandoned customer import and its rows are kept | `720h` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding | unset |
 
 The Peppol lookup treats NXDOMAIN and NOERROR-with-no-NAPTR-records as the same

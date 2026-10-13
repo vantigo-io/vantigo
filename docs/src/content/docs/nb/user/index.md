@@ -46,6 +46,11 @@ din:
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
 | [Energi](/nb/user/energy/) | Målepunkter |
 
+Noen få skjermbilder hører til et område uten å ha en egen oppføring i sidefeltet, og
+åpnes i stedet fra en knapp i områdets toppfelt — **Importer kunder**, for eksempel,
+fra **Importer** i kundelisten ([Eksport og
+import](/nb/user/customers/#eksport-og-import)).
+
 ## Søk
 
 Søkefeltet i toppfeltet (eller hurtigtasten som vises i det) åpner et søk som hopper
