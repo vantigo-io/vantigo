@@ -298,12 +298,12 @@ func (s *server) GetStaffMeEvents(ctx context.Context, req gen.GetStaffMeEventsR
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
 		if total, err = q.CountPersonEvents(ctx, store.CountPersonEventsParams{
-			PersonID: &id, WithHealth: selfAudience.reads(groupHealth), WithHold: selfAudience.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds,
+			PersonID: &id, WithHealth: selfAudience.reads(groupHealth), WithHold: selfAudience.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds, WithCare: selfAudience.reads(groupCareDays), CareKinds: careEventKinds,
 		}); err != nil {
 			return fmt.Errorf("staff: count person %d's events: %w", id, err)
 		}
 		rows, err = q.ListPersonEvents(ctx, store.ListPersonEventsParams{
-			PersonID: &id, WithHealth: selfAudience.reads(groupHealth), WithHold: selfAudience.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds,
+			PersonID: &id, WithHealth: selfAudience.reads(groupHealth), WithHold: selfAudience.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds, WithCare: selfAudience.reads(groupCareDays), CareKinds: careEventKinds,
 			PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 		})
 		if err != nil {

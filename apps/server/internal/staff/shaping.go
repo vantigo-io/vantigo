@@ -75,10 +75,14 @@ const (
 	// the holiday account (§5's "Absence note, degree" row, plan pre-flight
 	// I4): the person, their manager and HR; never a colleague.
 	groupAbsenceDetail
+	// groupAccommodation is a sick-leave case's accommodation note (§5's
+	// "Accommodation note" row, delivery B Task 5): the person, their
+	// manager and HR — never the Approver, who reads the case's milestones.
+	groupAccommodation
 )
 
 func (g fieldGroup) String() string {
-	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days", "absence", "absence-type", "absence-detail"}[g]
+	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days", "absence", "absence-type", "absence-detail", "accommodation"}[g]
 }
 
 // fieldGroups is the one table: every field of the person — as the contract
@@ -243,6 +247,8 @@ func (a audience) reads(g fieldGroup) bool {
 		return a.Self || a.Manager || a.Colleague || a.Approver || hr
 	case groupEmployment, groupAbsenceType, groupAbsenceDetail:
 		return a.Self || a.Manager || a.Approver || hr
+	case groupAccommodation:
+		return a.Self || a.Manager || hr
 	case groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCareDays:
 		return a.Self || hr
 	case groupHRNotes, groupHold:
@@ -448,6 +454,14 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 		// (delivery B).
 		AbsenceID    *int64 `json:"absenceId"`
 		AdjustmentID *int64 `json:"adjustmentId"`
+		// The row a sykmelding's split inserted (Task 5).
+		SplitAbsenceID *int64 `json:"splitAbsenceId"`
+		// Which sick-leave case, and which of its milestones, a case event
+		// is about (Task 5); and whether the event is the withdrawal of
+		// egenmelding.
+		CaseID             *int64  `json:"caseId"`
+		Milestone          *string `json:"milestone"`
+		SelfCertWithdrawal bool    `json:"selfCertWithdrawal"`
 		// The absence's type before and after (review H1), by which the
 		// whole event is shown as leave.
 		TypeIDs *[]int64 `json:"typeIds"`
@@ -474,8 +488,30 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 	if payload.TermsID != nil {
 		out["termsId"] = *payload.TermsID
 	}
+	if payload.SelfCertWithdrawal {
+		// The withdrawal (ftrl. § 8-27): the care-day fields' readers read
+		// it, and to anyone else — whom the listing never shows it — its
+		// fields are left out, as the care-day fields' are.
+		fields := map[string]any{}
+		if a.reads(groupCareDays) {
+			fields = shapeClassedFields(payload.Fields, withdrawalFieldGroup, a, types)
+		}
+		out["fields"] = fields
+		return out
+	}
+	if payload.CaseID != nil {
+		out["caseId"] = *payload.CaseID
+		if payload.Milestone != nil {
+			out["milestone"] = *payload.Milestone
+		}
+		out["fields"] = shapeClassedFields(payload.Fields, caseFieldGroup, a, types)
+		return out
+	}
 	if payload.AbsenceID != nil {
 		out["absenceId"] = *payload.AbsenceID
+		if payload.SplitAbsenceID != nil {
+			out["splitAbsenceId"] = *payload.SplitAbsenceID
+		}
 		fields := shapeClassedFields(payload.Fields, absenceFieldGroup, a, types)
 		if rowShownAsLeave(payload.TypeIDs, a, types) {
 			fields = asLeaveFields(fields)

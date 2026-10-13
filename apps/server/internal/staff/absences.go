@@ -32,9 +32,10 @@ import (
 // Locking): the person, then the type it names FOR KEY SHARE (a change
 // widening the type waits for it, Task 2), then their rows, read in the lock
 // for the overlap rule. The decisions — approve, reject, a decider's cancel,
-// HR's correction — are delivery B's Task 4's; the sick-leave case a sick
-// row joins is Task 5's, until when a sick row is a plain registration with
-// no case.
+// HR's correction — are delivery B's Task 4's. A sick row is judged by
+// sickness.go too — an egenmelding against the policy — and, once written,
+// splits the ferie or trims the egenmelding beneath it and derives the
+// person's sick-leave cases again (Task 5).
 
 // The statuses of an absence (design §3.5, S12).
 const (
@@ -298,6 +299,12 @@ func absenceValues(row store.StaffAbsence) map[string]json.RawMessage {
 // types are the row's types on either side, whose kinds say which are health
 // data.
 func (s *server) recordAbsence(ctx context.Context, txq *store.Queries, personID int64, kind string, who actor, id int64, before, after *store.StaffAbsence, types ...store.StaffAbsenceType) error {
+	return s.recordAbsenceWith(ctx, txq, personID, kind, who, id, before, after, nil, types...)
+}
+
+// recordAbsenceWith is recordAbsence with extra keys on the payload — ids, not
+// fields: the row a split inserted.
+func (s *server) recordAbsenceWith(ctx context.Context, txq *store.Queries, personID int64, kind string, who actor, id int64, before, after *store.StaffAbsence, extra map[string]any, types ...store.StaffAbsenceType) error {
 	health := slices.ContainsFunc(types, func(t store.StaffAbsenceType) bool { return healthKind(t.Kind) })
 	var b, a map[string]json.RawMessage
 	if before != nil {
@@ -332,6 +339,9 @@ func (s *server) recordAbsence(ctx context.Context, txq *store.Queries, personID
 	}
 	payload["typeIds"] = typeIDs
 	payload["typeClasses"] = typeClasses
+	for k, v := range extra {
+		payload[k] = v
+	}
 	return s.recordClassedEvent(ctx, txq, personID, kind, who, payload, classes)
 }
 
@@ -386,7 +396,7 @@ func judgeOverlap(ctx context.Context, txq *store.Queries, personID, exclude int
 	for _, r := range rows {
 		existing = append(existing, overlapOf(r.StaffAbsence, r.Kind, r.Unit, r.AllowsPercent))
 	}
-	candidate := overlapRow{First: p.First, Last: p.Last, AllowsPercent: t.AllowsPercent, Share: shareOf(t.Kind, p.Percent, p.Degree)}
+	candidate := overlapRow{First: p.First, Last: p.Last, AllowsPercent: t.AllowsPercent, Share: shareOf(t.Kind, p.Percent, p.Degree), Kind: t.Kind}
 	if t.Unit == unitHours {
 		candidate.Hours = hundredthsOfNumeric(p.Hours)
 	}
@@ -399,7 +409,7 @@ func judgeOverlap(ctx context.Context, txq *store.Queries, personID, exclude int
 
 // overlapOf is a stored row as the overlap rule reads it.
 func overlapOf(a store.StaffAbsence, kind, unit string, allowsPercent bool) overlapRow {
-	out := overlapRow{First: civil(a.FirstDay), Last: civil(a.LastDay), AllowsPercent: allowsPercent, Share: shareOf(kind, a.Percent, a.DegreePercent)}
+	out := overlapRow{First: civil(a.FirstDay), Last: civil(a.LastDay), AllowsPercent: allowsPercent, Share: shareOf(kind, a.Percent, a.DegreePercent), Kind: kind, Status: a.Status}
 	if unit == unitHours {
 		out.Hours = hundredthsOfNumeric(a.Hours)
 	}
@@ -457,6 +467,9 @@ func (s *server) createAbsence(ctx context.Context, caller *callerContext, who a
 		if err != nil {
 			return err
 		}
+		if err := judgeSickness(ctx, txq, caller.Settings, personID, 0, p, t); err != nil {
+			return err
+		}
 		row, err := txq.InsertAbsence(ctx, store.InsertAbsenceParams{
 			PersonID: personID, TypeID: t.ID, FirstDay: dayParam(p.First), LastDay: dayParam(p.Last), Hours: p.Hours,
 			Percent: p.Percent, Status: statusFor(t), Note: p.Note, DegreePercent: p.Degree,
@@ -471,6 +484,11 @@ func (s *server) createAbsence(ctx context.Context, caller *callerContext, who a
 		}
 		if err := s.recordAbsence(ctx, txq, personID, kind, who, row.ID, nil, &row, t); err != nil {
 			return err
+		}
+		if sickKind(t.Kind) {
+			if err := s.afterSickWrite(ctx, txq, who, personID, &row, t); err != nil {
+				return err
+			}
 		}
 		out = absenceWrite{row: row, typ: t}
 		if out.accounts, err = s.accountsAfter(ctx, txq, caller.Settings, t, row); err != nil {
@@ -778,6 +796,9 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 		if err != nil {
 			return err
 		}
+		if err := judgeSickness(ctx, txq, caller.Settings, personID, before.ID, p, t); err != nil {
+			return err
+		}
 		if statusFor(t) != before.Status {
 			return refuseConflict(conflict(codeAbsenceStatusChange, "Another kind of absence",
 				"A change keeps a request a request and a registration a registration: a type that needs a decision and one that is a notification are not swapped. Remove this absence and enter the other."))
@@ -791,6 +812,11 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 		}
 		if err := s.recordAbsence(ctx, txq, personID, eventAbsenceUpdated, who, row.ID, &before, &row, beforeType, t); err != nil {
 			return err
+		}
+		if sickKind(t.Kind) || sickKind(beforeType.Kind) {
+			if err := s.afterSickWrite(ctx, txq, who, personID, &row, t); err != nil {
+				return err
+			}
 		}
 		w = absenceWrite{row: row, typ: t}
 		if w.accounts, err = s.accountsAfter(ctx, txq, caller.Settings, t, row); err != nil {
@@ -848,7 +874,13 @@ func (s *server) DeleteStaffAbsencesById(ctx context.Context, req gen.DeleteStaf
 		if err := txq.DeleteAbsence(ctx, row.ID); err != nil {
 			return fmt.Errorf("staff: delete absence %d: %w", row.ID, err)
 		}
-		return s.recordAbsence(ctx, txq, personID, eventAbsenceDeleted, who, row.ID, &row, nil, t)
+		if err := s.recordAbsence(ctx, txq, personID, eventAbsenceDeleted, who, row.ID, &row, nil, t); err != nil {
+			return err
+		}
+		if sickKind(t.Kind) {
+			return s.afterSickWrite(ctx, txq, who, personID, nil, t)
+		}
+		return nil
 	})
 	if errors.Is(err, errPersonNotFound) {
 		return gen.DeleteStaffAbsencesById404Response{}, nil

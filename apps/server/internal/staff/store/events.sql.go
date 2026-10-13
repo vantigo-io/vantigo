@@ -15,17 +15,20 @@ import (
 const countPersonEvents = `-- name: CountPersonEvents :one
 SELECT count(*) FROM staff.events
 WHERE person_id = $1
-  AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[]))
-  AND ($4::boolean OR NOT (kind = ANY($5::text[])))
-  AND NOT ($6::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
+  AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[])
+       OR ($4::boolean AND kind = ANY($5::text[])))
+  AND ($6::boolean OR NOT (kind = ANY($7::text[])))
+  AND NOT ($8::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
       CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
-           THEN payload->'typeIds' <@ to_jsonb($7::bigint[]) END, false))
+           THEN payload->'typeIds' <@ to_jsonb($9::bigint[]) END, false))
 `
 
 type CountPersonEventsParams struct {
 	PersonID      *int64
 	WithHealth    bool
 	AbsenceKinds  []string
+	WithCare      bool
+	CareKinds     []string
 	WithHold      bool
 	HoldKinds     []string
 	HideLeaveRows bool
@@ -34,13 +37,16 @@ type CountPersonEventsParams struct {
 
 // CountPersonEvents counts what ListPersonEvents pages through, health events
 // (those whose payload touches class E) — but the absence family's — and the
-// hold's kinds only when asked for, and an absence event of a row shown as
-// leave never to its leave-reader.
+// hold's kinds only when asked for, the withdrawal of egenmelding
+// (@care_kinds) to the readers of the care-day fields (@with_care), and an
+// absence event of a row shown as leave never to its leave-reader.
 func (q *Queries) CountPersonEvents(ctx context.Context, arg CountPersonEventsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countPersonEvents,
 		arg.PersonID,
 		arg.WithHealth,
 		arg.AbsenceKinds,
+		arg.WithCare,
+		arg.CareKinds,
 		arg.WithHold,
 		arg.HoldKinds,
 		arg.HideLeaveRows,
@@ -139,19 +145,22 @@ const listPersonEvents = `-- name: ListPersonEvents :many
 SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload, payload_classes
 FROM staff.events
 WHERE person_id = $1
-  AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[]))
-  AND ($4::boolean OR NOT (kind = ANY($5::text[])))
-  AND NOT ($6::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
+  AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[])
+       OR ($4::boolean AND kind = ANY($5::text[])))
+  AND ($6::boolean OR NOT (kind = ANY($7::text[])))
+  AND NOT ($8::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
       CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
-           THEN payload->'typeIds' <@ to_jsonb($7::bigint[]) END, false))
+           THEN payload->'typeIds' <@ to_jsonb($9::bigint[]) END, false))
 ORDER BY at DESC, id DESC
-LIMIT $9 OFFSET $8
+LIMIT $11 OFFSET $10
 `
 
 type ListPersonEventsParams struct {
 	PersonID      *int64
 	WithHealth    bool
 	AbsenceKinds  []string
+	WithCare      bool
+	CareKinds     []string
 	WithHold      bool
 	HoldKinds     []string
 	HideLeaveRows bool
@@ -184,11 +193,17 @@ type ListPersonEventsRow struct {
 // whose types are not all @plain_type_ids (the types shown as themselves) is
 // not listed at all, an event naming no types included (fail closed): its
 // count and its kinds would tell the HR-only notification from a request.
+// The withdrawal of egenmelding and its restoring (@care_kinds), class E,
+// are listed to the readers of the care-day fields (@with_care) — the
+// person, staff:manage, staff:personal-data — and never to a manager (plan
+// pre-flight I6).
 func (q *Queries) ListPersonEvents(ctx context.Context, arg ListPersonEventsParams) ([]ListPersonEventsRow, error) {
 	rows, err := q.db.Query(ctx, listPersonEvents,
 		arg.PersonID,
 		arg.WithHealth,
 		arg.AbsenceKinds,
+		arg.WithCare,
+		arg.CareKinds,
 		arg.WithHold,
 		arg.HoldKinds,
 		arg.HideLeaveRows,

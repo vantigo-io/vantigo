@@ -1,0 +1,44 @@
+package staff
+
+import "testing"
+
+// Care days per calendar year (ftrl. § 9-6, Revision 2 Q7b): the children
+// counted are those under twelve and the chronically ill or disabled ones
+// (plan reading 29 — no child counted twice); 10 for one or two, 15 for three
+// or more, doubled for a sole carer (20, 30); plus 10 per chronically ill
+// child, 20 for a sole carer.
+func TestCareDayEntitlement(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name         string
+		under12, ill int
+		sole         bool
+		want         int
+	}{
+		{"no children", 0, 0, false, 0},
+		{"no children, a sole carer", 0, 0, true, 0},
+		{"one child", 1, 0, false, 10},
+		{"two children", 2, 0, false, 10},
+		{"three children", 3, 0, false, 15},
+		{"a sole carer of one", 1, 0, true, 20},
+		{"a sole carer of three", 3, 0, true, 30},
+		{"one chronically ill child", 0, 1, false, 20},
+		{"one chronically ill child, a sole carer", 0, 1, true, 40},
+		{"three children of whom one chronically ill", 2, 1, false, 25},
+	} {
+		if got := careDayEntitlement(c.under12, c.ill, c.sole); got != c.want {
+			t.Errorf("%s: entitlement = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// The employer pays the first ten days itself and is refunded from day
+// eleven (ftrl. § 9-8): the year's used days split at ten.
+func TestCareDaySplit(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ used, employer, beyond int }{{0, 0, 0}, {7, 7, 0}, {10, 10, 0}, {13, 10, 3}} {
+		if e, b := careDaySplit(c.used); e != c.employer || b != c.beyond {
+			t.Errorf("%d used: employer %d, beyond %d, want %d and %d", c.used, e, b, c.employer, c.beyond)
+		}
+	}
+}

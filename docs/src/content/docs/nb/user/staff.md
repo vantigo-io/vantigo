@@ -496,8 +496,28 @@ Dette gjelder i dag, gjennom Ansatte-API-et:
   eldste først; fraværskalenderen viser en måned for teamet ditt — eller, med tilgang
   til personoversikten, for alle, der kolleger bare ser dagene noen er borte.
 - **To fravær samme dag** kan stå sammen bare når begge typene tillater en prosent og
-  prosentene til sammen er høyst 100 %. En søknad du har sendt teller som om den var
+  prosentene til sammen er høyst 100 % — en gradert sykmelding teller med graden sin, så
+  50 % syk ved siden av 50 % permisjon går. En søknad du har sendt teller som om den var
   innvilget, så du kan ikke søke to ganger om samme dag.
+- **Syk i ferien.** En 100 % sykmelding over innvilget ferie deler ferien rundt seg og
+  gir dagene tilbake til kontoen din; en gradert sykmelding lar ferien stå. En
+  sykmelding over en egenmelding erstatter dagene den dekker.
+- **Egenmelding** følger selskapets regler: med lovens minimum tre kalenderdager om
+  gangen og fire ganger på tolv måneder. Dager på rad er én egenmelding, og en helg
+  mellom to teller med — egenmelding fredag og igjen mandag er fire dager. Den avvises,
+  med begrunnelse, når du har brukt det reglene tillater, før du har vært ansatt de
+  månedene de krever, etter sekstende dag av et sykefravær, eller mens HR har trukket
+  tilbake retten din; da trenger du sykmelding. Egenmeldingsstatusen din viser hva du
+  har brukt de siste tolv månedene.
+- **Sykefraværssaken din.** Sykefraværene dine samles i en sak — en ny når det har gått
+  mer enn seksten dager siden forrige. Oppfølgingen — slutten på arbeidsgiverens
+  seksten dager, oppfølgingsplanen etter fire uker, dialogmøtene etter sju og tjueseks,
+  NAVs aktivitetskrav etter åtte — markerer lederen din og HR; du ser den og
+  tilretteleggingsnotatene, men aldri en diagnose: det finnes ikke noe sted å skrive en.
+- **Omsorgsdager** for sykt barn teller mot dagene dine for året — 10 for ett eller to
+  barn, 15 for tre eller flere, flere når du er alene om omsorgen eller har et kronisk
+  sykt barn — ut fra opplysningene HR har registrert. Går du over, vises det, men det
+  avvises aldri.
 - **Når du ombestemmer deg.** Mens en søknad venter, kan du endre den, fjerne den eller
   trekke den tilbake (en tilbaketrukket søknad blir stående i historikken); for å gjøre
   den om til en registrering — eller omvendt — fjern den og legg inn den andre. Et registrert

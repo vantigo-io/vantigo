@@ -139,6 +139,17 @@ const (
 	codeOwnRequest = "own_request"
 )
 
+// The refusal codes of egenmelding (delivery B, Task 5; design §4
+// Egenmelding): a 409 telling the person to register a sykmelding — past
+// the policy's counters or the case's sixteenth day, before the months of
+// employment the policy asks, or while HR has withdrawn the right
+// (ftrl. § 8-27).
+const (
+	codeSelfCertExhausted = "self_certification_exhausted"
+	codeSelfCertTooEarly  = "self_certification_too_early"
+	codeSelfCertWithdrawn = "self_certification_withdrawn"
+)
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.

@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -960,6 +960,11 @@ person never writes their own documents, and anyone else gets the uniform 403.
   `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff` and
   `Content-Security-Policy: default-src 'none'; sandbox` — the 404 and the 503 carry
   the same headers. An object the store cannot read is 503 `storage_unavailable`.
+- **`PUT /documents/{id}`** files a document of a restricted category under one of the
+  person's [sick-leave cases](#sick-leave-cases) with `caseId` (`staff:personal-data`;
+  replaced only when named, null clearing it), so the case's own erase reaches it
+  (S15); `caseId` on another category, or a case not the person's, is a 400, and a
+  document moved out of a restricted category leaves its case.
 - **`PUT /documents/{id}`** replaces `categoryId`, `validTo` and `signedAt` under
   `If-Match` — a date left out is cleared; the file never changes. `employmentId` is
   replaced only when the body names it: `null` clears it, and left out the document
@@ -1023,8 +1028,11 @@ and registered with their [overlap](#overlap) rule, the
 [adjustments and carry-over](#adjustments-and-carry-over), and
 [their events](#the-absence-events), the [decisions](#decisions) with their
 [mails](#the-absence-mails), the [approvals inbox](#the-approvals-inbox) and the
-[calendar](#the-calendar). Sick-leave cases and care-day counting arrive with B's later
-steps.
+[calendar](#the-calendar), the [sick-leave cases](#sick-leave-cases) with the
+[arbeidsgiverperiode and the milestones](#the-arbeidsgiverperiode-and-the-milestones),
+[sickness over ferie and egenmelding](#a-sykmelding-over-other-rows),
+[egenmelding](#egenmelding) with its [withdrawal](#the-withdrawal), and
+[care days](#care-days).
 
 ### Absence types
 
@@ -1172,8 +1180,8 @@ changed.
 
 ### The care-day fields
 
-Three fields on a person feed the care-day counter (omsorgsdager, ftrl. § 9-6) that
-arrives later in delivery B. HR types them from what the employee declares; no child
+Three fields on a person feed the [care-day counter](#care-days) (omsorgsdager,
+ftrl. § 9-6). HR types them from what the employee declares; no child
 is named.
 
 | Field | Rule |
@@ -1310,10 +1318,15 @@ percentage, as the new one must, and the shares of all of them that day sum to a
 100 % — otherwise `absence_overlap` (409). A request blocks as an approved row does
 (reading 17). Hour rows overlap only hour rows, on their one day, by hours summed to
 at most 24; an hour row counts no day, so it neither blocks nor is blocked by a day row
-(reading 27). The two exceptions for sickness over approved ferie — a 100 % sykmelding
-splitting the ferie, a graded one beside it — arrive with the sick-leave cases; until
-then they are refused like any overlap. A sick row is a plain registration until then
-too, with no case.
+(reading 27). A sykmelding stands outside the share rule over approved ferie — a
+100 % one splits it, a graded one stands beside it — and over an egenmelding, which it
+trims ([a sykmelding over other rows](#a-sykmelding-over-other-rows)); an egenmelding on
+a day a sykmelding covers, and a sykmelding over a *requested* ferie, are refused as
+any overlap. A graded sykmelding takes its degree's share of a day beside a leave that
+allows a percentage: 50 % sick beside 50 % parental leave stands, 50 % beside 60 % is
+`absence_overlap` (Task 3 review L5 — the doctor grades the sick leave against the work
+that is left). Two sykmeldinger never share a day, and a 100 % one shares it with
+nothing.
 
 ### The holiday account
 
@@ -1460,7 +1473,9 @@ inside the range.
 An absence's write is one event — `absence_requested`, `absence_registered`,
 `absence_updated` (each field's `from` and `to`), `absence_deleted` (the row's fields as
 they were), `absence_cancelled`, or a [decision's](#decisions) `absence_approved`,
-`absence_self_approved`, `absence_rejected` and `absence_corrected` — naming the absence (`absenceId`); an adjustment's
+`absence_self_approved`, `absence_rejected` and `absence_corrected`, or a sykmelding's
+`absence_split` of a row beneath it ([below](#a-sykmelding-over-other-rows); the part
+it inserted named `splitAbsenceId`) — naming the absence (`absenceId`); an adjustment's
 names it (`adjustmentId`). Beside its `fields` each carries **`classes`**, each field's
 retention class as the module wrote it (pre-flight B1), because one name means
 different data on different rows:
@@ -1500,6 +1515,181 @@ sick type once it is erased; an entry without a class is replaced by every erase
 everyone who reads the person's history (pre-flight I6) — the manager and HR without
 `staff:personal-data` read its dates and degree, as they read the row itself — while
 any other event touching E stays the health group's.
+
+The [sick-leave case's](#sick-leave-cases) events — `case_opened`, `case_updated`,
+`case_closed`, `milestone_done`, `milestone_waived`, `milestone_note_updated` — name the
+case (`caseId`) and, for a milestone's, the milestone (`milestone`); every field is class
+E, and each carries the case's types as `typeIds` and `typeClasses`. They are listed to
+everyone who reads the person's history, field by field: the days, the close, the
+estimate and the milestones' facts to the case's readers, the accommodation note as
+the case's own, a milestone's note to the person and `staff:personal-data` alone
+(`"changed"` to anyone else). The [withdrawal's](#the-withdrawal) events are listed only
+to the care-day fields' readers.
+
+### Sick-leave cases
+
+`staff.sick_cases` gathers a person's egenmelding and sykmelding rows (both
+`registered`) into the sickness they belong to (design S10). It is **derived**: every
+write of a sick row — a registration, HR's change, correction or removal of one —
+derives the person's cases again from their sick rows, under the person's lock, and
+stores the result (plan reading 13):
+
+- **The join** (ftrl. § 8-19 third paragraph, pre-flight I1): a sick row joins a case
+  when fewer than sixteen calendar days lie between the case's last day and the row's
+  first — `first_day ≤ last_day + 16`. A case ending 1 January is joined by a row from
+  17 January (2–16 January between, fifteen days); a row from 18 January opens a new
+  case (`case_opened`).
+- **Its days**: `first_day` the first row's, `last_day` the last row's, stored. A case
+  keeps its id while its rows do; a row that fills the gap between two cases merges
+  them into the older, its documents moving with it; a case whose rows are all gone is
+  removed, its documents leaving it.
+- **Open or closed**: a case is closed when HR closed it (`POST /cases/{id}/close`,
+  `staff:manage`, `case_closed`) or when `last_day + 16` is before today — the join's own
+  bound, so a case closes on the day a new row would no longer join it (reading 5). A
+  row that joins a case HR closed opens it again.
+- **The 52-week estimate** (`maxBenefitEstimate`) is `first_day + 364` until HR sets it
+  (`PUT /cases/{id}`, `staff:manage`); null returns it to the derived day (M5). It is an
+  estimate NAV may correct.
+- **The accommodation note** (`accommodationNote`, at most 2000 characters) is the
+  manager's and HR's: functional notes about tilrettelegging (aml. § 4-6), never a
+  diagnosis — there is no field for one.
+
+`GET /cases?personId&status&page&pageSize` lists the cases the caller reads, newest
+first — `status` `open` (the default), `closed` or `all` — and `GET /cases/{id}` one
+case with its milestones. A case and its milestones are class **E** whole.
+
+| | Self | Manager | Approver | `staff:manage` | `staff:personal-data` | Colleague |
+| --- | --- | --- | --- | --- | --- | --- |
+| The case, its dates and milestones | ✓ | ✎ | ✎ | ✎ | ✎ | — |
+| The accommodation note | ✓ | ✎ | — | ✎ | ✎ | — |
+| The estimate, the close | ✓ | ✓ | ✓ | ✎ | ✓ | — |
+| A milestone's note | ✓ | — | — | — | ✎ | — |
+
+A caller who may not write what a write asks for gets the 404 of a case they cannot
+write, whatever its state (authority before status); a case they may not read is a 404
+on every operation. `PUT /cases/{id}` and `PUT /cases/{id}/milestones/{kind}/note`
+take `If-Match` (the case's and the milestone's revision). The estimate sent by anyone
+but `staff:manage` is a 400; the note left out or empty clears it.
+
+### The arbeidsgiverperiode and the milestones
+
+Each case has five milestones (`staff.sick_case_milestones`), dated when the case's
+rows change — never touching a milestone's done day, its waiver or its note:
+
+| Kind | Date |
+| --- | --- |
+| `employer_period_end` | The case's sixteenth sick day; none until the rows reach it. |
+| `follow_up_plan` | `first_day + 28` — the follow-up plan (aml. § 4-6 (3)). |
+| `dialogue_1` | `first_day + 49` — the first dialogue meeting. |
+| `nav_activity` | `first_day + 56` — NAV's activity requirement (ftrl. § 8-7 a). |
+| `dialogue_2` | `first_day + 182` — the second dialogue meeting. |
+
+**The arbeidsgiverperiode** (ftrl. § 8-19, NAV's R08-00 on § 8-19, Revision 2 Q7a)
+ends on the day the case's sick days reach sixteen. Every day of its rows counts —
+a graded day as one, whatever its degree — and so does every day of a gap between two
+rows made **only** of Saturdays, Sundays and public holidays: sick on Friday and again
+on Monday, the weekend counts. Egenmelding Monday–Friday and a sykmelding from the next
+Monday end the period on the Tuesday of week 3. A gap holding a working day — a day the
+person worked between two absences — is not bridged and none of its days count; the
+module knows no work schedule, so another agreed day off between two rows is not
+bridged either, and HR registers it when it should count (reading 30). The employer
+pays the sixteen days only for a person who has worked for it four weeks before the
+absence (ftrl. § 8-18); the module does not judge that condition.
+
+A milestone is **due** (`due`) only while its case is open and the case has lasted to
+within a week of the milestone's date — `last_day ≥ date − 7` (pre-flight I5): a
+three-day case has none due. The person's manager, the Approver and HR mark one done
+(`POST /cases/{id}/milestones/{kind}/done {doneAt?}` — today when left out, never a
+later day; `milestone_done`) or waive it as plainly unnecessary with a reason of 1–500
+characters (`/waive`, `milestone_waived`; the actor recorded); either clears the other.
+`staff:personal-data` writes a milestone's note (`PUT .../note`,
+`milestone_note_updated`), which the person and `staff:personal-data` alone read.
+
+### A sykmelding over other rows
+
+Registered over the person's rows, a sykmelding does more than stand beside them:
+
+- **Approved ferie under a 100 % sykmelding** is split around it (ferieloven § 9 (1),
+  readings 24 and 29): the part before stays on the row, the part after becomes a new
+  approved row with the same decision, and ferie the sykmelding covers whole is
+  cancelled. The days return to the account through its arithmetic alone — no
+  adjustment is written. One `absence_split` event on the ferie row says so.
+- **A graded sykmelding over approved ferie** stands beside it and splits nothing
+  (reading 25).
+- **An egenmelding under a sykmelding** is trimmed to the days before (or after) it, and
+  removed when wholly covered (`absence_split`); the case stays the same (reading 24).
+
+### Egenmelding
+
+An egenmelding (`sick_self`) is judged under the person's lock against the
+self-certification policy in the [settings](#settings) (ftrl. § 8-23, § 8-24;
+pre-flight I2):
+
+- **An occurrence** is a maximal run of contiguous egenmelding days: rows that touch,
+  or that only Saturdays, Sundays and public holidays lie between, are one — counted
+  in **calendar days, the days off included** (R08-00 § 8-24: "også arbeidsfrie dager
+  tas med"). Rows further apart are two occurrences, even within one case. One
+  occurrence is at most the policy's days: 1+1+1+1 on four consecutive weekdays is
+  refused on day four under the minimum's three, and egenmelding Friday and again
+  Monday is day four.
+- **The rolling year** — the 365 days ending on the row's days: under `minimum` fewer
+  than four earlier occurrences; under `extended` at most 24 days, the new row's
+  included; under `custom` both by the stored numbers. The limits **key on the policy's
+  name**: under `minimum` and `extended` the preset's numbers are used whatever the
+  settings row holds.
+- **The case**: no day past its case's sixteenth sick day — after the
+  arbeidsgiverperiode a sykmelding is needed.
+- **Employment**: the first day at least `self_cert_after_months` after the start of
+  the employment in force on it (`self_certification_too_early`).
+- **The withdrawal**: not on or before the day HR has withdrawn it until
+  (`self_certification_withdrawn`).
+
+Past a limit is `self_certification_exhausted`; each refusal is a 409 whose detail says
+why and tells the person to register a sykmelding.
+`GET /people/{id}/self-certification` (the person, their manager, the Approver and HR)
+and `GET /me/self-certification` answer the standing today: the policy and its
+numbers, the occurrences and days used in the rolling year ending today, the day the
+months of employment allow it from (`eligibleFrom`) and — to the readers of the
+care-day fields alone — the withdrawal.
+
+### The withdrawal
+
+`PUT /people/{id}/self-certification/withdrawal {until, reason}` (`staff:manage`)
+withdraws a person's right to egenmelding (ftrl. § 8-27) until a day after today and at
+most a year ahead, with a reason of 1–500 characters; `{"until": null}` lifts it. The
+two columns are on the person (`self_cert_withdrawn_until`, `_reason`, class E). The
+events `self_cert_withdrawn` and `self_cert_restored` carry their fields with their
+classes (E) and the marker `selfCertWithdrawal`, and are listed **only to the readers
+of the care-day fields** — the person, `staff:manage` and `staff:personal-data` — never
+to a manager or the Approver (pre-flight I6), who read the standing without it.
+
+### Care days
+
+`GET /people/{id}/care-days?year` and `GET /me/care-days?year` answer a person's care
+days (omsorgsdager) for a calendar year (ftrl. § 9-6, Revision 2 Q7b), derived from
+the [care-day fields](#the-care-day-fields). With `n = childrenUnder12 +
+chronicallyIllChildren` (reading 29):
+
+| | Days |
+| --- | --- |
+| `n` = 0 | 0 |
+| one or two children | 10 (20 for a sole carer) |
+| three or more | 15 (30 for a sole carer) |
+| each chronically ill or disabled child, on top | 10 (20 for a sole carer) |
+
+So two children under twelve and one chronically ill child are three, 15 + 10 = 25; a
+sole carer of one chronically ill child has 20 + 20 = 40. `used` is the year's
+registered child-sick (`sykt_barn`) rows' working days; `employerPaid` the first ten,
+which the employer bears itself, `beyondEmployer` the rest, which NAV refunds
+(ftrl. § 9-8). When the only children who qualify are over twelve with extra days, NAV
+refunds from the first day — HR and payroll apply that; the module does not model it.
+Using more than the entitlement is shown (`exceeded`, `remaining` below zero), never
+refused. The right needs four weeks' employment (§ 9-8): `eligible` is false until
+`eligibleFrom`, four weeks after the start of the employment in force today. The
+answer says what the fields hold, so it is read by the fields' own readers — the person,
+`staff:manage`, `staff:personal-data` — and is the 404 of an unknown person to anyone
+else, a manager and the Approver included. Omsorgsdager are never reported to the
+a-melding as leave.
 
 ## The personal-data exports
 
@@ -2147,6 +2337,9 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `own_request` | 403 | Deciding, cancelling or correcting one's own absence, but for the self-approver. |
 | `absence_status_change` | 409 | Changing an absence's type between one that needs a decision and one that is a notification. |
 | `carry_over_recorded` | 409 | A second carry-over for one person from one year. |
+| `self_certification_exhausted` | 409 | An egenmelding past the policy's days of one occurrence, its rolling year's occurrences or days, or its case's sixteenth sick day. |
+| `self_certification_too_early` | 409 | An egenmelding before the policy's months of employment. |
+| `self_certification_withdrawn` | 409 | An egenmelding on or before the day HR has withdrawn the right until. |
 | `person_erased` | 409 | Any write of a person the retention run has erased but the hold, the reassessment, an unlink and a rehire. |
 | `storage_unavailable` | 503 | The object store could not be written to or read from. |
 | `import_too_large` | 400 | An import file over 5 MiB. |
@@ -2218,6 +2411,12 @@ person's, which it moves on when the list changes.
   adjustment's row. Overlap, the carry-over's "at most one" and the account an answer
   carries are judged over rows read inside that lock, so two writes for one person are
   judged one after the other.
+- **Sick-leave cases.** A sick row's write takes, after the person's row and their
+  absences, the person's cases `FOR NO KEY UPDATE` and their milestones, then their
+  documents (a merged or removed case's). A case's own write — its notes, a milestone,
+  the close — takes the person's row, then the case. Every case write and every sick
+  row of one person are judged one after the other; the case's dates are derived
+  inside the lock from the rows read in it, and the egenmelding counters likewise.
 - **The sequence.** A create that generates an employee number holds the settings row
   until it commits, so two creators take numbers one after the other.
 - **The delete.** `DELETE /people/{id}` takes the person's row, then the manager graph,
@@ -2260,7 +2459,14 @@ All under `/api/v1/staff`.
 | `GET /calendar` | `staff:access`, then the people and rows the caller may see |
 | `GET /people/{id}/holiday-account` | `staff:access`, then the person, a manager of theirs, the Approver or HR (otherwise 404) |
 | `GET /people/{id}/holiday-adjustments`, `POST /people/{id}/holiday-adjustments`, `DELETE /holiday-adjustments/{id}`, `POST /people/{id}/carry-over` | `staff:manage` |
-| `GET /me/absences`, `POST /me/absences`, `GET /me/holiday-account` | `staff:access`, then a self-service link (otherwise `no_person`) |
+| `GET /me/absences`, `POST /me/absences`, `GET /me/holiday-account`, `GET /me/self-certification`, `GET /me/care-days` | `staff:access`, then a self-service link (otherwise `no_person`) |
+| `GET /cases`, `GET /cases/{id}` | `staff:access`, then the person, a manager of theirs, the Approver or HR (otherwise left out, or 404) |
+| `PUT /cases/{id}` | `staff:access`, then a manager of the person or HR — the estimate `staff:manage` (otherwise 404) |
+| `POST /cases/{id}/milestones/{kind}/done`, `/waive` | `staff:access`, then a manager of the person, the Approver or HR (otherwise 404) |
+| `PUT /cases/{id}/milestones/{kind}/note` | `staff:personal-data` |
+| `POST /cases/{id}/close`, `PUT /people/{id}/self-certification/withdrawal` | `staff:manage` |
+| `GET /people/{id}/self-certification` | `staff:access`, then the person, a manager of theirs, the Approver or HR — the withdrawal to the care-day fields' readers (otherwise 404) |
+| `GET /people/{id}/care-days` | `staff:access`, then the person, `staff:manage` or `staff:personal-data` (otherwise 404) |
 | `GET /people/{id}/personal-data`, `PUT /people/{id}/legal-hold`, `POST /people/{id}/reassessed` | `staff:personal-data` |
 | `POST /people/similar-erased` | `staff:manage` |
 | `POST /people/import`, `GET /people/export.csv`, `GET /people/import-template.csv` | `staff:manage`; an import file's sealed columns `staff:personal-data` too (`import_sealed_columns`) |
