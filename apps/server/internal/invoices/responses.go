@@ -222,7 +222,7 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 		}
 		payments = append(payments, gen.InvoicesPayment{
 			Id: p.ID, PaidOn: wireDate(p.PaidOn.Time), Amount: floatFromRat(amount, 2), Currency: p.Currency,
-			Source: gen.InvoicesPaymentSource(p.Source), BankTransactionId: p.BankTransactionID,
+			Source: gen.InvoicesPaymentSource(p.Source), BankTransactionId: p.BankTransactionID, PaymentAttemptId: p.PaymentAttemptID,
 			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: p.RegisteredByUserID,
 			RemovedAt: p.RemovedAt, RemovedByUserId: p.RemovedByUserID, RemovalReason: p.RemovalReason,
 		})
@@ -407,6 +407,10 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			// Its live pay link: the URL and its QR only to an issuer while
 			// on-site payment is available (D15, I21).
 			if err := s.withPayLink(ctx, q, inv, canIssue, &resp); err != nil {
+				return gen.InvoicesInvoiceResponse{}, err
+			}
+			// Its Vipps payment attempts, never the payer's address (D16).
+			if err := withPaymentAttempts(ctx, q, inv, &resp); err != nil {
 				return gen.InvoicesInvoiceResponse{}, err
 			}
 		}

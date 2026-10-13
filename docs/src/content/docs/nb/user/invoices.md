@@ -1371,6 +1371,25 @@ med — en PDF laget tidligere skriver den fortsatt. Selve lenken og QR-koden vi
 skjermen bare mens betaling på stedet er slått på: å vise kunden lenken der du står, er
 også kontantsalg.
 
+### Hva kunden ser på betalingssiden
+
+Lenken åpner installasjonens **betalingsside** i kundens nettleser, uten innlogging.
+Den viser selgerens navn og organisasjonsnummer, fakturanummeret, datoene, beløpet som
+står åpent og KID — slik at kunden kan betale i banken i stedet — og lenker til
+salgsvilkårene og personvernerklæringen deres, som kunden må godta før betaling. Den
+viser aldri kundens eget navn eller adresse. **Betal med Vipps** åpner Vipps, der
+kunden godkjenner betalingen; Vipps sender så kunden tilbake til betalingssiden, som
+viser om betalingen gikk gjennom.
+
+Siden kan ikke starte en betaling når fakturaen allerede er betalt eller kreditert, når
+den er overlevert til et inkassobyrå (kunden får beskjed om å kontakte byrået), når
+lenken er trukket tilbake, når Vipps-betalinger ikke er tilgjengelige, når en
+Vipps-betaling av fakturaen allerede er i ferd med å fullføres, eller når beløpet som
+står åpent er under 1,00 eller over 650 000,00 — siden sier hvilket.
+
+Hver Vipps-betaling som er startet for en faktura, vises på den, med status og beløp,
+enten den kom fra betalingssiden eller ble tatt på stedet.
+
 ## Kontrollere journalen
 
 **Fakturajournal** i sidemenyen er beviset bokføringsforskriften krever: hvert utstedte

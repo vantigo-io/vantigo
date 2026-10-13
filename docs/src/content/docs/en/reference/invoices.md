@@ -93,7 +93,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.line_releases` | A credit note's release of an original line's source: the credit note, its line and the source, a source released once. Frozen with the credit note at its issue. |
 | `invoices.timesheet_rows` | The timesheet as printed, a snapshot: the position, the time entry, the person's label, the date, the hours, the work type and the description — never the entry's note. Written whole while the document's `timesheet` flag is on, pruned by every save to the hours the draft still holds ([The timesheet](#the-timesheet)); frozen with its document at issue, deleted with a deleted draft. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
-| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), `source` (`manual`, `ocr` or `camt054`) and the bank line of one a match took from a bank file (`ck_payments_origin`: a line exactly when the source is not `manual`, and a registering user either way), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
+| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), `source` (`manual`, `ocr`, `camt054` or `vipps`) and the bank line of one a match took from a bank file, or the payment attempt (`payment_attempt_id`) of a Vipps capture (`ck_payments_origin`: a line exactly when the source is not `manual`, and a registering user either way), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
 | `invoices.bank_import_accounts` | One row per receiving account a bank file was imported for: the `format` its files come in (`ocr` or `camt054`), set by its first import, and — once a manager changed it — the `previous_format` with `cutover_through`, the latest booking day of the account's own lines in it; who set it and when. Never deleted; an update changes only those columns ([Bank files](#bank-files-and-the-exception-queue)). |
 | `invoices.bank_files` | One imported bank file: its format, the SHA-256 of its bytes and its own identity (each unique), the object key it is stored under, its size, the accounts it names, the first and last booking day of its lines, how many transactions it brought, how many of them were `duplicates` (set once by the import, from `NULL`), how many lines were `ignored` and `ignored_kinds` by kind, who uploaded it and when. Never deleted or changed but by that one write. |
 | `invoices.bank_transactions` | One line of a bank file as the bank wrote it — the line reference, the format, the receiving account, the direction, `negative`, the booking, value and ordering days, the amount (above 0, NOK), the KID, the remittance text, the debtor's name and account, the archive reference, the bank's code — its `fingerprint` and `ordinal`, `duplicate_of_id` when it repeats a live line, and its state: `status` (`pending`, `matched`, `exception`, `resolved` or `duplicate`), the `reason` it was queued for, the suggested invoice and the resolution. One live line per account and fingerprint (`ux_bank_transactions_fingerprint`). Never deleted; only the state columns change, never back to `pending`, and a reason once set stays. |
@@ -116,6 +116,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.payment_provider_credentials` | One row (`id = 1`): the payment provider (`vipps`), its settings that are not secret (`settings_json`, the sales unit's `msn`), the sales unit's three keys sealed together by the secrets box, a webhook registration's id and sealed secret (both or neither), `rejected_at` once Vipps refused the keys or they could not be opened, and `updated_at` ([Credentials and payment settings](#credentials-and-payment-settings)). Kept off every other row: an attempt's create shares it, a credentials change locks it. |
 | `invoices.payment_settings` | One row (`id = 1`), inserted by the migration: the installation's `reference_prefix` (six base36 characters, never changed), `pay_links_enabled` with the seller's `terms_url` and `privacy_url` (both required while pay links are on), `on_site_payments_enabled` with the kontantsalg acknowledgement — who and when, both or neither, required while on-site payment is on — and the row's revision, who changed it and when. Never deleted ([Credentials and payment settings](#credentials-and-payment-settings)). |
 | `invoices.pay_links` | An issued invoice's pay link ([Pay links](#pay-links)): the invoice, `token_sha256` (the token's SHA-256, unique — never the token), `url_ciphertext` (the whole URL sealed under `invoices/pay-link`), who made it (NULL when the issue did) and when, and — once revoked — when and by whom. One live link per invoice (`ux_pay_links_live`). A trigger refuses one under a draft, a credit note or an anonymised customer's invoice; another refuses a DELETE and every update but the revocation, once. |
+| `invoices.payment_attempts` | One Vipps payment of an invoice ([Payment attempts](#payment-attempts)): the invoice, the provider (`vipps`), the sales unit (`msn`) it was made under, `flow` (`pay_link` with its pay link and `return_nonce_sha256`, the return address's nonce hashed; or `on_site`), `reference` (`<prefix>-<invoice number>-<id>`, set by a trigger from the row's own id), `amount` (the open amount when it was made), the idempotency keys (`create_key`, `capture_key`, `cancel_key`), `state`, `release_pending`, Vipps' references, `redirect_url` (the address the payer is sent to — never logged, never answered), the amounts Vipps reported and `reserved_amount` (live while `capturing` or `capture_unknown`), who made it (NULL for the pay page) and when, `expires_at`, the times it was authorized, captured and finished, the payments worker's columns and an abandonment's. Never deleted; what makes it the attempt it is never changes, and a finished one changes only the worker's bookkeeping, its release and its refund watch. |
 
 A document's state is not a column: `invoices.document_state(...)` derives it, see
 [Payments and the state of an invoice](#payments-and-the-state-of-an-invoice).
@@ -998,6 +999,7 @@ seam its tests pin.
 | a collection rate's delete | the rate row alone |
 | a letter's withdraw or retry | the letter alone |
 | a policy `PUT` | the customer's documents `FOR SHARE`, newest first, then the policy row; the merge: the documents, then the policy rows by customer id |
+| a payment attempt's create | the invoice, then the payment credentials `FOR SHARE`, then the attempt inserted; Vipps' answer is recorded in a second transaction under the attempt alone (`FOR NO KEY UPDATE`) |
 | the erase | the person's documents `FOR UPDATE`, newest first, then their letters, then their children's notes, then the resolved bank lines (below) |
 
 **No path locks an invoice and then a bank line, an account row or a print batch**, so
@@ -3528,6 +3530,113 @@ caller holding `invoices:issue` while `onSitePaymentsAvailable` is true: without
 payment the app shows no pay link on screen, because a link a customer is shown on site
 is kontantsalg (D17). The rule is the server's, not the frontend's.
 
+### The pay page
+
+The pay page (`PUBLIC_BASE_URL/pay?token=…`, a public route of the app) calls three
+operations, all **anonymous** — no session is needed, and a signed-in caller is
+answered exactly as anyone else; none reads who is asking. Each is rate limited per
+client address in a bucket of its own:
+
+| Operation | Policy | Limit |
+| --- | --- | --- |
+| `POST /invoices/pay/read` `{token}` | `invoices-pay-read` | 60 per 10 minutes |
+| `POST /invoices/pay/attempts` `{token, acceptTerms}` | `invoices-pay-attempt` | 10 per 10 minutes |
+| `GET /invoices/pay/attempts/{reference}?nonce=` | `invoices-pay-status` | 400 per 10 minutes |
+
+The limit is counted before anything is read, so an unknown token counts too. The page
+polls the status every 2 seconds for the first minute after the payer returns, then
+every 5 seconds, for at most ten minutes — about 150 reads, within its bucket. Behind a
+reverse proxy the client address is the proxy's unless `TRUSTED_PROXY_HOPS` and
+`TRUSTED_PROXY_CIDRS` are set, and every payer then shares one bucket.
+
+**The read is a POST**, with the token in the body, so the token never travels in an
+API URL, where a proxy's access log would keep it. The token is hashed and looked up;
+a token no link has, live or revoked, is a 404 — the token's 256 bits are the
+protection. The answer is what the page shows: the seller snapshot's name and
+organisation number, the invoice's number, issue date and due date, the open amount and
+its currency, the KID (to pay by bank instead), the seller's sales terms and privacy
+notice from the payment settings, and the language (`en` when the buyer snapshot's is,
+else `nb`). **It never answers the buyer's name or address.** The open amount is the
+principal open — gross less credited less paid — less the live reservations of Vipps
+payments being completed, never below 0. `payable` is true when a Vipps payment can be
+started now; otherwise `reason` says why, judged in this order:
+
+- `revoked` — the link was revoked, or the customer has been anonymised;
+- `credited` — credit notes took the whole invoice;
+- `settled` — nothing is open;
+- `handed_off` — the invoice is with a collection agency, which the payer contacts;
+- `unavailable` — pay links are not available (`paymentsAvailable`: the switch, keys
+  stored and not refused, `PUBLIC_BASE_URL`, the setting);
+- `payment_in_progress` — live reservations leave less than 1.00 open;
+- `amount_out_of_range` — the open amount is below 1.00 or above 650 000.00, Vipps'
+  limits.
+
+**The create** takes the token and `acceptTerms`, which must be true — the payer
+accepted the seller's terms and privacy notice, as Vipps requires (400 otherwise). It
+is a 404 for an unknown token; a 409 for each reason above, with `reason` beside the
+code — `invoice_settled`, `invoice_fully_credited`, `invoice_handed_off`,
+`payment_in_progress`, `amount_out_of_range`, or `pay_links_unavailable` for `revoked`
+and `unavailable`; a 409 `too_many_attempts` at five live attempts; a 503
+`payments_unavailable` when the stored keys cannot be opened or were replaced while the
+request ran; a 502 `provider_failed` when Vipps refused or did not answer; and otherwise
+a 201 `{reference, redirectUrl}`, which the page opens at once, unchanged. Vipps sends
+the payer back to `PUBLIC_BASE_URL/pay?attempt=<reference>&nonce=<nonce>`: **the nonce,
+never the token**. The nonce is 16 random bytes, base64url, stored only as its SHA-256
+on the attempt, and grants nothing but reading that attempt's state — so Vipps and the
+proxies on the way back learn no more than one payment's outcome.
+
+**The status read** answers `{state}` only when the nonce hashes to the attempt's (a
+404 otherwise, as for an unknown reference): `pending` while the payment is being
+created, awaits the payer or is being captured, `paid` once its capture is registered,
+`failed` when Vipps refused it or nothing could be captured, `cancelled` when the payer
+stopped, it expired or nothing was left to capture.
+
+The three paths, and nothing else of the API, are on the public host's allowlist
+([the public host](/en/admin/payments/#the-public-host)); the page's same-origin POSTs pass the
+platform's cross-origin protection, and a cross-site one is refused 403.
+
+### Payment attempts
+
+An **attempt** (`invoices.payment_attempts`) is one Vipps payment of an invoice: made
+by the pay page (`flow = pay_link`) or on site (`on_site`). Its **reference** is
+`<reference prefix>-<invoice number>-<attempt id>`, made by a trigger from the row's
+own id as it is inserted — letters, digits and hyphens only. An invoice has at most
+five live attempts — `creating`, `created`, `authorized`, `capturing` or
+`capture_unknown`.
+
+**The create runs in two steps around the call to Vipps**, which is never made while a
+transaction holds a lock:
+
+1. On the pool, the request is judged as the read judges it — so a link that cannot pay
+   never reaches Vipps — and the provider is built from the stored credentials, which
+   carry their version (`updated_at`).
+2. **One transaction**: the invoice `FOR UPDATE`; under that lock the link, the invoice's
+   open amount and reservations, its hand-off, the erase marker and the availability
+   (`paymentsAvailable` through the transaction — the switch, a refusal of the keys,
+   `PUBLIC_BASE_URL` and the setting, never `pay_links_enabled` alone) are read again
+   and judged, so a revoke or a settings change that committed while the create waited
+   is seen; the cap is counted; then the credentials row is read **`FOR SHARE`**, so a
+   change of the sales unit waits for this attempt and counts it, and its version is
+   compared with the provider's — keys a PUT replaced meanwhile are a retryable 503
+   with nothing inserted. The attempt is inserted `creating`, `amount` the open amount,
+   `msn` the stored sales unit, its create and cancel keys stored with it, `expires_at`
+   ten minutes on and its first poll five seconds on. Commit.
+3. **After the commit**, outside any lock, Vipps is asked for a `WEB_REDIRECT` payment of
+   the amount in øre, with the reference, the stored create key as its idempotency key,
+   the seller's terms and privacy notice and the return address.
+4. **A second transaction**, the attempt alone (`FOR NO KEY UPDATE`), records the
+   answer: `created`, with the address the payer is sent to and the next poll five
+   seconds on; or `failed` when Vipps refused for good — a 400 naming a code, refused
+   keys, a request refused before it was sent (`payments.IsDefinitiveCreateRefusal`; a
+   409 never is). Any other failure leaves the outcome unknown: the attempt stays
+   `creating` for the payments worker to read back, and the create answers 502 all the
+   same.
+
+An issued invoice answers its attempts as `paymentAttempts`, oldest first — reference,
+flow, state, amounts and times, and who made one on site — but never the address the
+payer is sent to. A payment registered from a Vipps capture carries
+`source = vipps` and `paymentAttemptId`, the attempt it came from.
+
 ## The journal
 
 `GET /invoices/journal?from&to` lists the issued documents with an issue date in the
@@ -3947,7 +4056,7 @@ customer id and checks nothing more; the app hides "New invoice" without it.
 
 ## Endpoints
 
-All under `/api/v1/invoices`, every one behind `invoices:access`. The access rules are
+All under `/api/v1/invoices`, every one behind `invoices:access` but the pay page's three, which are `anonymous` ([The pay page](#the-pay-page)). The access rules are
 `permission:invoices:access` and, with the key under "Also needs",
 `permission:invoices:access+invoices:create`, `permission:invoices:access+invoices:issue`,
 `permission:invoices:access+invoices:manage` and
@@ -4016,6 +4125,9 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /{id}/manual-deliveries/{deliveryId}/remove` | `invoices:issue` | 400 on `reason`; 404 the document, or a delivery not its own; 409 `delivery_removed`, `delivery_relied_on` |
 | `POST /{id}/pay-link` | `invoices:issue` | 404, judged under the lock; then 409 `credit_note_no_payments`, `invoice_draft`, `customer_anonymised`, `pay_links_unavailable`, `pay_link_exists` |
 | `POST /{id}/pay-link/revoke` | `invoices:issue` | 404 the document, or no live link |
+| `POST /pay/read` | anonymous; 60 per client per 10 minutes | 400 without a token; 404 an unknown token |
+| `POST /pay/attempts` | anonymous; 10 per client per 10 minutes | 400 on `acceptTerms` or `token`; 404; 409 with `reason`: `invoice_settled`, `invoice_fully_credited`, `invoice_handed_off`, `payment_in_progress`, `amount_out_of_range`, `pay_links_unavailable`; 409 `payments_unavailable` (no credentials), `too_many_attempts`; 503 `payments_unavailable`; 502 `provider_failed` |
+| `GET /pay/attempts/{reference}` | anonymous; 400 per client per 10 minutes | 400 without `nonce`; 404 unless the nonce is the attempt's |
 | `POST /{id}/hold` | `invoices:payments` | 400 on `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; then under the lock 409 `invoice_on_hold` |
 | `POST /{id}/hold/lift` | `invoices:payments` | 400 on `chargesAllowed` (absent or not a boolean) or `note`; 404; 409 `invoice_not_on_hold` |
 | `POST /{id}/collection` | `invoices:payments` | 400 on `handedOn` (missing or after today), `agency`, `agencyReference` or `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; 400 on `handedOn` before the issue date; then under the lock 409 `invoice_settled`, `invoice_handed_off`, `invoice_not_delivered` (unless `acknowledgeNotDelivered`) |

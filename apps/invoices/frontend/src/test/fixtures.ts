@@ -427,6 +427,8 @@ export const issued = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocumen
     paidAmount: 0,
     openAmount: 124.99,
     payments: [],
+    // No Vipps payment started.
+    paymentAttempts: [],
     deliveries: [],
     // Phase 4's receivables: no letter sent, so nothing claimed.
     charges: { claimed: 0, waived: 0, paid: 0, outstanding: 0 },
@@ -1678,5 +1680,21 @@ export const payLink = (overrides: Partial<PayLink> = {}): PayLink => ({
   url: "https://pay.example.com/pay?token=test-token-01_AAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
   qrSvg:
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#fff"/><path fill="#000" d="M4 4h1v1h-1z"/></svg>',
+  ...overrides,
+});
+
+type PaymentAttempt = components["schemas"]["InvoicesPaymentAttempt"];
+
+// A Vipps payment started from the pay page and awaiting the payer: never the
+// address the payer is sent to, which the server does not answer.
+export const paymentAttempt = (overrides: Partial<PaymentAttempt> = {}): PaymentAttempt => ({
+  id: 1001,
+  reference: "acme01-1-1001",
+  flow: "pay_link",
+  state: "created",
+  amount: 124.99,
+  releasePending: false,
+  createdAt: "2026-09-12T10:30:00Z",
+  expiresAt: "2026-09-12T10:40:00Z",
   ...overrides,
 });
