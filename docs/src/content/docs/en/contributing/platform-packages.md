@@ -217,12 +217,13 @@ on any other import or on a call such as `time.Now`.
 
 **A day is a civil date at UTC midnight.** The caller derives it in its own zone —
 the installation's calendar day, made `time.Date(y, m, d, 0, 0, 0, 0, time.UTC)` — so
-day arithmetic never meets a daylight-saving shift; a time that is not a UTC midnight
-gives no defined answer.
+day arithmetic never meets a daylight-saving shift. A time that is not a UTC midnight
+is read as its civil date in its own location — 10:00Z or midnight in Oslo on 17 May
+is 17 May.
 
 | Function | Answers |
 |---|---|
-| `PublicHoliday(d) bool` | whether `d` is a Norwegian public holiday: New Year's Day, Maundy Thursday, Good Friday, Easter Sunday and Monday, 1 May, 17 May, Ascension Day, Whit Sunday and Monday, Christmas Day and Boxing Day — whatever weekday it falls on. Christmas Eve and New Year's Eve are not. |
+| `PublicHoliday(d) bool` | whether `d` is a Norwegian public holiday: New Year's Day, Maundy Thursday, Good Friday, Easter Sunday and Monday, 1 May, 17 May, Ascension Day, Whit Sunday and Monday, Christmas Day and Boxing Day — whatever weekday it falls on. Christmas Eve and New Year's Eve are not; an ordinary Sunday, a helligdag in law too, is not listed but left to `BusinessDay`'s weekend test. |
 | `EasterSunday(year) time.Time` | the Gregorian Easter Sunday of the year (the anonymous Gregorian algorithm), from which the movable feasts are counted. |
 | `BusinessDay(d) bool` | whether `d` is neither a Saturday, a Sunday nor a public holiday. |
 | `NextBusinessDay(d) time.Time` | `d` when it is a business day, else the first business day after it. |

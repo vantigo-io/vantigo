@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 	"time"
+	_ "time/tzdata" // Europe/Oslo wherever the tests run
 )
 
 func day(s string) time.Time {
@@ -62,6 +63,31 @@ func TestCalendar_PublicHoliday(t *testing.T) {
 		if PublicHoliday(day(s)) {
 			t.Errorf("PublicHoliday(%s) = true; Christmas Eve, New Year's Eve, Holy Saturday and the eves are not holidays in law", s)
 		}
+	}
+}
+
+// A time that is not a UTC midnight is read as its civil date where it is
+// stated: 10:00Z and midnight in Oslo on Maundy Thursday and 17 May are those
+// holidays, and a business-day question about them gets the same answer.
+func TestCalendar_PublicHolidayReadsTheCivilDate(t *testing.T) {
+	t.Parallel()
+	oslo, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []time.Time{
+		time.Date(2026, time.April, 2, 10, 0, 0, 0, time.UTC),
+		time.Date(2026, time.April, 2, 0, 0, 0, 0, oslo),
+		time.Date(2027, time.May, 17, 10, 0, 0, 0, time.UTC),
+		time.Date(2027, time.May, 17, 0, 0, 0, 0, oslo),
+		time.Date(2026, time.May, 14, 23, 59, 0, 0, oslo), // Ascension Day
+	} {
+		if !PublicHoliday(d) || BusinessDay(d) {
+			t.Errorf("%s: PublicHoliday %v, BusinessDay %v; want a holiday", d.Format(time.RFC3339), PublicHoliday(d), BusinessDay(d))
+		}
+	}
+	if d := time.Date(2026, time.April, 1, 23, 0, 0, 0, oslo); PublicHoliday(d) {
+		t.Errorf("%s, the evening before Maundy Thursday in Oslo, is a holiday", d.Format(time.RFC3339))
 	}
 }
 
