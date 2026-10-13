@@ -249,8 +249,6 @@ CREATE INDEX ix_payment_attempts_due ON invoices.payment_attempts (next_poll_at)
     WHERE state IN ('creating', 'created', 'authorized', 'capturing', 'capture_unknown', 'cancelling')
        OR release_pending OR (state = 'captured' AND refund_watch_until IS NOT NULL);
 CREATE INDEX ix_payment_attempts_invoice ON invoices.payment_attempts (invoice_id);
--- The day's list (D17).
-CREATE INDEX ix_payment_attempts_captured_on ON invoices.payment_attempts ((captured_at));
 
 -- An attempt's reference is <prefix>-<invoice number>-<its own id> (M4, I1):
 -- set before the insert, from the identity's value, which PostgreSQL applies
@@ -368,6 +366,10 @@ ALTER TABLE invoices.payments
             AND payment_attempt_id IS NULL)
         OR (source = 'vipps' AND payment_attempt_id IS NOT NULL AND bank_transaction_id IS NULL
             AND registered_by_user_id IS NULL));
+-- The day's Vipps payments and its reconciliation (D17) by the day a Vipps
+-- payment is paid on — Vipps' capture day, the ledger's and the settlement's
+-- — never by when the payments worker registered it.
+CREATE INDEX ix_payments_vipps_paid_on ON invoices.payments (paid_on) WHERE source = 'vipps';
 
 -- A day of Vipps payments reconciled (D17, M15): recorded once, immutably.
 CREATE TABLE invoices.vipps_day_reconciliations (
@@ -516,6 +518,7 @@ $function$;
 -- +goose StatementEnd
 ALTER TABLE invoices.reminders DROP COLUMN pay_link_id;
 DROP TABLE invoices.vipps_day_reconciliations;
+DROP INDEX invoices.ix_payments_vipps_paid_on;
 ALTER TABLE invoices.payments
     DROP CONSTRAINT ck_payments_origin,
     DROP CONSTRAINT ck_payments_source;
