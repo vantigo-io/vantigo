@@ -226,6 +226,11 @@ det; reglene står i [referansen](/en/reference/invoices/#credentials-and-paymen
 **Kontroll:** bekreftelsen svarer *ok*. Den henter et tilgangstoken med nøklene og leser
 salgsenhetens webhook-registreringer, noe som krever nøklene og MSN sammen.
 
+**Adressen Vipps svarer.** Vantigo sender en betaler videre til, eller legger inn i en
+QR-kode på stedet, bare en absolutt `https`-adresse som Vipps svarer på en ny betaling.
+Ethvert annet svar regnes som et utfall som ennå ikke er kjent: betalingssiden sier at
+Vipps ikke kunne starte betalingen, og betalingsarbeideren leser betalingen på nytt.
+
 **Rotere en nøkkel.** En ny klienthemmelighet for samme salgsenhet kan lagres når som
 helst; fyll bare inn hemmeligheten, så beholdes de to andre nøklene. En endring av MSN,
 klient-ID eller abonnementsnøkkel — en annen salgsenhet — avvises mens en
