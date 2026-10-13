@@ -265,7 +265,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 
 The single-container default hosts every enabled module's background workers (outbox
 delivery, retention, attachment cleanup, the customers registry workers, the
-invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
+customers import worker `customers-import`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
 `INVOICES_EHF_ENABLED` is on, and the invoices reminder worker `invoices-reminders`,
 always) inside the
 API process: `WORKERS_IN_PROCESS=1`, the default. Deployments that scale the API
@@ -286,6 +286,16 @@ time under a time-limited lease, so any number of instances share the work witho
 sending anything twice. The reminder worker sends one letter at a time, at most one a
 second per instance, and each send must finish well inside its 60-second lease
 ([The reminder worker and mail](/en/admin/payments/#the-reminder-worker-and-mail)).
+
+The customers import worker checks and runs the customer files people upload. It
+polls every `CUSTOMERS_IMPORT_POLL` (5 seconds by default), and in the single-container
+default the API also wakes it the moment a check or an import is asked for. It takes
+an advisory lock, so one instance works on one import at a time.
+`CUSTOMERS_IMPORT_ENABLED=0` turns it off; imports then wait, and the import page says
+it is waiting for the background worker. Finished and abandoned imports, with the rows
+they uploaded, are removed after `CUSTOMERS_IMPORT_RETENTION` (`720h`, 30 days); the
+customers they created stay. See
+[Export, and import from a file](/en/reference/customers/#export-and-import-from-a-file).
 
 On shutdown the process drains for up to `SHUTDOWN_TIMEOUT` (30 seconds by default),
 enough for the longest single worker operation to finish and commit. `compose.yaml`

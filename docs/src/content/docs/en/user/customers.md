@@ -6,6 +6,10 @@ sidebar:
 sources:
   - apps/customers/frontend
   - apps/host/frontend/src/routes/customers/-customer-360-panel.tsx
+  - apps/host/frontend/src/routes/customers/-customers-list.tsx
+  - apps/host/frontend/src/routes/customers/-import-pages.tsx
+  - apps/host/frontend/src/routes/customers/import.index.tsx
+  - apps/host/frontend/src/routes/customers/import.$importId.tsx
   - apps/host/frontend/src/api/customer-overview.ts
   - apps/host/frontend/src/catalogs/customer.ts
 ---
@@ -305,25 +309,46 @@ filters and sort, every page — as a semicolon-separated CSV. The legal identit
 columns are included only with `customers:legal-identity-view`, and more than 5000
 customers is refused with a request to narrow the filter.
 
-**Import** needs `customers:create`, `customers:update` and `customers:view` together,
-and opens **Import customers**:
+**Import** brings in your existing customers from another system or a spreadsheet. It
+needs `customers:import` and `customers:view`; what the import may write needs the
+same permissions as writing it by hand (see the table below). Press **Import** on the
+customer list to open **Import customers**.
 
-1. **Download template** gives you the header your import may write. A file of at
-   most 5 MB, in UTF-8, with the template's columns — or an export's, if you may write
-   every column it carries. A row with a customer number updates that customer; a row
-   without one creates a new customer.
-2. Drop the file or **Choose CSV file**. Tick **Allow a customer to share a legal
-   identity with another customer** only if that is intended.
-3. **Check** runs the import without saving anything and reports **Rows**, **Would be
-   created**, **Would be updated** and **Have errors**, each problem by **Row** and
-   **Column**. Fix the file and check again until something can be imported.
-4. **Import** saves the rows and reports **Created**, **Updated** and **Failed**. When
-   rows failed, **Download failed rows** gives you exactly those rows with an error
-   column in front, to fix and import on their own.
+1. **Upload the file.** Drop a CSV file on the page or choose one. Semicolon, comma
+   and tab separated files are all read, in UTF-8 or the Windows (ANSI) encoding an
+   older Excel saves, with the first row as the column names. A file may be up to
+   50 MB and 100 000 rows; split a larger one and import it in several runs.
+   **Download template** gives you a header with every column you may import.
+2. **Map columns.** Choose **What to do with the rows**: **Create new customers**,
+   **Update existing customers** or **Create and update**. When updating, choose how
+   to **Find the customer by**: **Customer number** or **Organisation number**. Each
+   column of your file is listed with its first values; choose under **Imported as**
+   which customer field it becomes, or leave it **Not imported**. Vantigo suggests a
+   field for common names such as *Kundenr*, *Org.nr*, *E-post* or *Postnummer*, and
+   remembers the choices you made for a file with the same columns. When your file
+   lacks a field every customer needs, use **Add a value for every row** to set one
+   value for all of them — a country, a status, a currency, or a group or tag that
+   marks the batch. The **Preview** shows the first rows as they will be read, with
+   any problem marked. Your choices are saved as you make them.
+3. **Check file.** Every row is tried exactly as the import would, without saving
+   anything. A progress bar shows how far it has come, and **Stop** cancels it. The
+   result is **Rows**, **Would be created**, **Would be updated** and **Have errors**,
+   with each problem by **Row** and **Column**. **Change mapping** takes you back to
+   step 2.
+4. **Import** saves the rows, after a confirmation that says how many customers will
+   be created and updated. You can leave the page and come back: the import runs in
+   the background, and the page shows its progress. **Stop** keeps the rows already
+   saved and does not attempt the rest. When it is done the page shows **Created**,
+   **Updated** and **Failed**, and lists the new customers as links.
 
-One import runs at a time; a second is refused with **An import is already running**.
-The file format and every rule are in
-[CSV import and export](/en/reference/customers/#csv-import-and-export).
+When rows fail, **Download failed rows** gives you exactly those rows, with your own
+columns and an error column in front. Fix them and upload that file: your mapping is
+suggested again. On an update, only the mapped fields change; a blank cell in a
+mapped column clears that field, and a customer's name is never cleared. **Recent
+imports** on the import page lists earlier imports to pick up or delete; they are
+removed automatically after 30 days. The customers an import created stay. Every
+rule is in [Export, and import from a
+file](/en/reference/customers/#export-and-import-from-a-file).
 
 ## Merging duplicates
 
@@ -380,7 +405,7 @@ nothing on it can be changed, and only the export remains. See
 | Read the timeline and follow-ups; see and download attachments | `customers:timeline-view` |
 | Add, edit and delete timeline entries; set and tick follow-ups; add and delete attachments | `customers:timeline-manage` |
 | Edit the billing profile, check and use EHF | `customers:billing-manage` |
-| Import customers | `customers:create`, `customers:update` and `customers:view` |
+| Import customers | `customers:import` and `customers:view`; creating and updating need `customers:create` and `customers:update`, and the legal identity and billing fields their own keys |
 | Merge a duplicate | `customers:merge` |
 | Export personal data and schedule an anonymisation | `customers:personal-data` |
 

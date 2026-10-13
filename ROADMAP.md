@@ -311,8 +311,17 @@ insists, never a fødselsnummer field.
 [`docs/superpowers/specs/2026-09-24-customers-import-export-design.md`](docs/superpowers/specs/2026-09-24-customers-import-export-design.md):
 CSV export of the list as the caller sees it and CSV import that creates and updates
 through the endpoints' own write paths, with a dry run and a failed-rows file for the
-re-run; one canonical format, no import key. See
-[`docs/src/content/docs/en/reference/customers.md#csv-import-and-export`](docs/src/content/docs/en/reference/customers.md#csv-import-and-export).
+re-run; one canonical format, no import key. Its import was replaced by delivery A2.
+
+**Delivery A2 (done)** — decided in
+[`docs/superpowers/specs/2026-10-13-customers-import-wizard-design.md`](docs/superpowers/specs/2026-10-13-customers-import-wizard-design.md):
+importing customers from any file — its own headers, separator and encoding, up to
+50 MB and 100 000 rows — with the columns mapped to fields on screen and a preview,
+fixed values for every row, create, update or both by customer number or
+organisation number, and the `customers-import` worker checking and importing it in
+the background with progress, stop and resume; behind the new `customers:import`.
+See
+[`docs/src/content/docs/en/reference/customers.md#export-and-import-from-a-file`](docs/src/content/docs/en/reference/customers.md#export-and-import-from-a-file).
 
 **Delivery B (done)** — decided in
 [`docs/superpowers/specs/2026-09-24-customers-merge-design.md`](docs/superpowers/specs/2026-09-24-customers-merge-design.md):

@@ -46,6 +46,11 @@ yours:
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
 | [Energy](/en/user/energy/) | Metering points |
 
+A few screens belong to an area without a sidebar entry of their own, and are opened
+from a button in that area's header instead — **Import customers**, for example, from
+**Import** on the customer list ([Export and
+import](/en/user/customers/#export-and-import)).
+
 ## Search
 
 The search box in the top bar (or the keyboard shortcut shown in it) opens a spotlight

@@ -269,7 +269,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 
 Standardoppsettet med én container kjører bakgrunnsjobbene til hver aktivert modul
 (utboks-levering, oppbevaring, opprydding av vedlegg, kundemodulens registerjobber,
-fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
+kundemodulens importjobb `customers-import`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
 `INVOICES_EHF_ENABLED` er på, og fakturamodulens purrejobb `invoices-reminders`, alltid)
 inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
@@ -290,6 +290,16 @@ instanser deler arbeidet uten å sende noe to ganger. Purrejobben sender ett bre
 gangen, høyst ett i sekundet per instans, og hver sending må bli ferdig godt innenfor
 låsen på 60 sekunder
 ([Purrejobben og e-post](/nb/admin/payments/#purrejobben-og-e-post)).
+
+Kundemodulens importjobb kontrollerer og kjører kundefilene folk laster opp. Den ser
+etter arbeid hvert `CUSTOMERS_IMPORT_POLL` (5 sekunder som standard), og i
+standardoppsettet med én container vekker API-et den med en gang en kontroll eller en
+import blir bedt om. Den tar en rådgivende lås, så én instans arbeider med én import
+om gangen. `CUSTOMERS_IMPORT_ENABLED=0` slår den av; importer venter da, og
+importsiden sier at den venter på bakgrunnsjobben. Ferdige og forlatte importer, med
+radene de lastet opp, fjernes etter `CUSTOMERS_IMPORT_RETENTION` (`720h`, 30 dager);
+kundene de opprettet, blir stående. Se
+[Export, and import from a file](/en/reference/customers/#export-and-import-from-a-file).
 
 Ved avslutning tømmer prosessen pågående arbeid i opptil `SHUTDOWN_TIMEOUT` (30
 sekunder som standard), nok til at den lengste enkeltoperasjonen i en bakgrunnsjobb
