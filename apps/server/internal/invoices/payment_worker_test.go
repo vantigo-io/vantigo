@@ -1155,6 +1155,46 @@ func TestRefundWatch_RaisesAndClears(t *testing.T) {
 	}
 }
 
+// TestRefundWatch_EndsWithoutVipps (the whole-branch review): a captured
+// attempt's refund watch ends at refund_watch_until even when Vipps cannot be
+// read for it — the credentials removed, or another sales unit stored — rather
+// than being rescheduled hourly for ever. Before its end it waits as any
+// attempt does.
+func TestRefundWatch_EndsWithoutVipps(t *testing.T) {
+	t.Parallel()
+	for name, cut := range map[string]func(t *testing.T, h *harness){
+		"the credentials removed": func(t *testing.T, h *harness) {
+			if res := vippsManager(t, h).Do(http.MethodDelete, vippsSettingsPath, nil); res.Status != http.StatusNoContent {
+				t.Fatalf("DELETE = %d %s, want 204", res.Status, res.Body)
+			}
+		},
+		"another sales unit": func(t *testing.T, h *harness) {
+			putVipps(t, h, vippsKeys("654321", "", "", ""))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			h := workerReady(t)
+			_, ref := approvedAttempt(t, h)
+			cycle(t, h)
+			if a := attemptOf(t, h, ref); a.State != "captured" || a.RefundWatchUntil == nil {
+				t.Fatalf("the attempt = %s watched until %v, want captured and watched", a.State, a.RefundWatchUntil)
+			}
+			cut(t, h)
+			h.Advance(2 * time.Hour)
+			cycle(t, h)
+			if a := attemptOf(t, h, ref); a.NextPollAt == nil {
+				t.Error("within the watch the attempt was dropped, want it read again later")
+			}
+			h.Advance(31 * 24 * time.Hour)
+			cycle(t, h)
+			if a := attemptOf(t, h, ref); a.State != "captured" || a.NextPollAt != nil {
+				t.Errorf("past the watch the attempt = %s next %v, want captured and never claimed again", a.State, a.NextPollAt)
+			}
+		})
+	}
+}
+
 // TestPaymentWorker_RetryAfterIsCapped (the review's LOW): a throttle's
 // Retry-After, however long — a day, or seconds that overflow a duration —
 // never puts the next read beyond the backoff's ten minutes, so no header
