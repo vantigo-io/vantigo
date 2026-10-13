@@ -67,46 +67,62 @@ func TestMount_RefusesAnInstallationWithoutCustomers(t *testing.T) {
 }
 
 // The descriptions D1's table (invoices payments and reminders design)
-// rewrites, once every PR 1 operation exists (plan reading 41).
+// rewrites, once every PR 1 operation exists (plan reading 41), and again
+// with 4C's rows: Vipps, pay links, payment on site and the quick invoice
+// (the payments port plan's Task 12).
 const (
 	descAccess = "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, " +
 		"the CSV export and the stats; the overdue list and an invoice's reminder letters and their PDFs, " +
-		"hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings and a " +
-		"customer's reminder policy; and the attention items about overdue invoices and refunds due."
+		"hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings, the " +
+		"payment settings and a customer's reminder policy; an invoice's pay link and Vipps payment attempts, " +
+		"and the day's Vipps payments and their reconciliations; and the attention items about overdue " +
+		"invoices and refunds due."
 	descIssue = "Issue a draft into a numbered document that can never be changed, create credit notes, send an " +
 		"issued document by e-mail or as EHF, cancel or resolve its EHF transmissions, and record that an " +
-		"invoice was handed over or posted, or remove such a record."
+		"invoice was handed over or posted, or remove such a record; make or revoke an invoice's pay link, " +
+		"and see its address and QR code while payment on site is offered; ask for a Vipps payment on site " +
+		"and cancel the request; and, with Create invoices, make a quick invoice — created and issued in " +
+		"one step."
 	descManage = "Change the seller record and its Peppol id, the number series start, the KID agreement, the " +
 		"e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the " +
 		"regime review, the collection rates — add one ahead of a release, or delete one nothing has relied " +
-		"on — and the format a bank account's files are imported in."
+		"on — and the format a bank account's files are imported in; the Vipps credentials and the payment " +
+		"settings — pay links, payment on site and its kontantsalg acknowledgement — and abandon a stuck " +
+		"Vipps payment once it has been checked in the Vipps portal."
 	descPayments = "Register payments against issued invoices and remove a registration with a reason; import bank " +
 		"files, read the imported files, the bank accounts and their lines, and work the exception queue; " +
 		"make and read reminder runs, print paper letters and confirm them posted or reprint them, and " +
 		"withdraw and retry letters; hold a disputed invoice, hand one to collection and export the " +
 		"collection file; register and remove charge payments and waive charges; set a customer's reminder " +
-		"policy; and see the attention items about the bank lines, the letters and the print batches."
+		"policy; mark a day's Vipps payments reconciled; and see the attention items about the bank lines, " +
+		"the letters, the print batches and the Vipps payments."
 )
 
 // Each key's description names what D1's table gives it — and no other
 // key's names it — so an administrator reading the catalog sees where the
 // overdue list, the bank import, the runs, the settings and a manual
-// delivery live (invoices payments and reminders design D1); and every
-// operation's access rule is covered by the key it needs.
+// delivery live (invoices payments and reminders design D1), and with 4C
+// where the pay link, payment on site, the quick invoice, the Vipps
+// credentials, abandoning a payment and the day's reconciliation live; and
+// every operation's access rule is covered by the key it needs.
 func TestPermissions_Descriptions(t *testing.T) {
 	t.Parallel()
 	gains := map[string][]string{
 		"invoices:access": {"the overdue list", "an invoice's reminder letters and their PDFs, hold, hand-off, manual deliveries and charges",
-			"the collection rates, the reminder settings and a customer's reminder policy",
+			"the collection rates, the reminder settings, the payment settings and a customer's reminder policy",
+			"an invoice's pay link and Vipps payment attempts", "the day's Vipps payments and their reconciliations",
 			"attention items about overdue invoices and refunds due"},
-		"invoices:issue": {"record that an invoice was handed over or posted"},
+		"invoices:issue": {"record that an invoice was handed over or posted", "make or revoke an invoice's pay link",
+			"see its address and QR code while payment on site is offered", "ask for a Vipps payment on site and cancel the request",
+			"with Create invoices, make a quick invoice"},
 		"invoices:manage": {"the reminder settings and the regime review", "add one ahead of a release",
-			"delete one nothing has relied on", "the format a bank account's files are imported in"},
+			"delete one nothing has relied on", "the format a bank account's files are imported in",
+			"the Vipps credentials and the payment settings", "kontantsalg acknowledgement", "abandon a stuck Vipps payment"},
 		"invoices:payments": {"import bank files", "the bank accounts and their lines", "exception queue", "reminder runs",
 			"print paper letters and confirm them posted or reprint them", "withdraw and retry letters",
 			"hold a disputed invoice", "hand one to collection", "export the collection file", "charge payments",
-			"waive charges", "set a customer's reminder policy",
-			"attention items about the bank lines, the letters and the print batches"},
+			"waive charges", "set a customer's reminder policy", "mark a day's Vipps payments reconciled",
+			"attention items about the bank lines, the letters, the print batches and the Vipps payments"},
 	}
 	descriptions := map[string]string{}
 	for _, p := range Module().Permissions {

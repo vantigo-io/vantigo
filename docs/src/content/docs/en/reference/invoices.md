@@ -1004,10 +1004,23 @@ seam its tests pin.
 | the capture decision, the capture's count before its first call, the registration | the attempt `FOR NO KEY UPDATE`, then its invoice |
 | the worker's other writes: authorized, ended, a later capture's count, unknown, failed, cancelled, released, a refund recorded, rescheduled | the attempt alone |
 | an abandon | its lease, one statement as the claim's; its write the attempt alone `FOR NO KEY UPDATE`; when Vipps shows money captured, the registration's attempt and then its invoice |
-| the erase | the person's documents `FOR UPDATE`, newest first, then their letters, then their children's notes, then the resolved bank lines (below) |
+| a pay link made at issue or on demand | the invoice (the link inserted; its trigger shares the invoice) |
+| a pay link's revoke | the invoice, then the link `FOR NO KEY UPDATE` |
+| the issue and the quick invoice | the document (locked, or inserted and so held), settings `FOR SHARE`, the counter, as above; a pay link, a manual delivery and the quick invoice's request inserted |
+| an on-site request | the invoice, then the payment credentials `FOR SHARE`, then the attempt inserted — an attempt's create |
+| a cancel, a release, an on-site request's cancel | the attempt alone |
+| a credentials `PUT` or `DELETE` | the credentials row `FOR UPDATE` alone, the live attempts counted under it |
+| a payment-settings `PUT` | its row `FOR UPDATE` alone |
+| a day's reconciliation | none: an insert |
+| the erase | the person's documents `FOR UPDATE`, newest first, then their letters, then their children's notes, then the resolved bank lines (below), then their live pay links `FOR NO KEY UPDATE` in id order — the revoke's order, the invoice before the link; no attempt |
 
 **No path locks an invoice and then a bank line, an account row, a print batch or a
-payment attempt**, so
+payment attempt**, nor an attempt and then the credentials row: an attempt's create
+takes the invoice and the credentials before the attempt exists, and every later write
+of the attempt takes it first and then, at most, its invoice — so an invoice-then-attempt
+order never meets the capture's attempt-then-invoice order. The pay link is the one row
+taken after an invoice, by the revoke and the erase alike, and nothing takes a link and
+then an invoice. So
 the own-row-first orders cannot cycle with each other or with the invoice-only and
 descending paths of payments and credit notes. **The one named exception is the
 erase** ([Retention and personal data](#retention-and-personal-data)): holding the
@@ -4182,8 +4195,10 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   the absorbed customer, drafts and issued, reported as `invoices.invoices`. An issued
   document keeps its buyer snapshot — the id is not printed, the snapshot is — and its
   revision. Payments, deliveries and transmissions — and the receivables: charge
-  payments, waivers, manual deliveries, letters, holds and hand-offs — hang off the
-  document by id and carry no customer id, so they follow it and are not reported; bank
+  payments, waivers, manual deliveries, letters, holds and hand-offs — and its pay links
+  and Vipps payment attempts (design D19) hang off the document by id and carry no
+  customer id, so they follow it and are not reported: a live link keeps working for the
+  survivor's invoice, and an attempt in flight is captured and registered on it; bank
   lines hang off their file and name no customer at all. The customer's
   reminder policy is keyed by customer and is re-pointed after the documents, both
   rows locked by customer id ascending: moved when the survivor has none, merged into
@@ -4213,7 +4228,8 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   timesheet, issued or draft, carries `timesheet` — its rows as printed, each with its
   position, person label, date, hours, work type and description — since the customer
   received it, or would; never a time entry's note. Each payment carries its `source` —
-  `manual`, `ocr` or `camt054` — and an imported one its `bankLine`: the booking day,
+  `manual`, `ocr`, `camt054` or `vipps` — a Vipps payment its `paymentAttemptId`, the
+  attempt it was captured by, and an imported one its `bankLine`: the booking day,
   the debtor's name and account and the remittance text, as the bank wrote them. An
   issued document carries its receivables (design D19): `chargePayments` (each with
   its paid date, amount, source, reference, note, registration and removal, and an
@@ -4226,7 +4242,15 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   withdrawal's time and reason; never its PDF's key, its Message-ID or an SMTP error,
   which may quote the address — `holds` (the kind, the note, when placed, a lift's time,
   note and whether charges stay allowed) and `collectionHandoffs` (the day, the agency
-  and its reference, the note, when recorded, a withdrawal's day and reason). Each is
+  and its reference, the note, when recorded, a withdrawal's day and reason) and
+  `payAttempts` — every Vipps payment attempt of it in every state, oldest first, with
+  its id, the `reference` Vipps showed the payer, the `flow` (`pay_link` or `on_site`),
+  the `state`, the `amount` asked for and the authorized, captured, cancelled and
+  refunded amounts, when it was created, when it expires or expired, when it was
+  authorized, captured and finished, and an abandoned one's time and reason; never its
+  `redirect_url` (the payer's page at Vipps, or the on-site QR's target), its
+  idempotency keys, its sales unit, its PSP references, its lease or its errors, which
+  are the integration's, not the person's. Each is
   `[]` on an issued document with none; a draft has none of them. The section carries the customer's
   `reminderPolicy` — its mode, note and when it was set — when there is one; a customer
   with only a policy here has a section with no documents.
@@ -4257,8 +4281,18 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   empty, is blanked — the [lock order](#issuing)'s one named exception — and so is the
   note of every event of every line their payments came from, resolved or not (a
   reopened line's earlier `applied` event among them), but a `reversed` event's: an event
-  row is locked by nothing, so the line's status does not matter. Last the customer's reminder policy is
-  deleted. It reports thirteen kinds, in this order:
+  row is locked by nothing, so the line's status does not matter. Then every **live pay
+  link** of the person's documents is revoked — `revoked_at` the anonymisation's time,
+  revoked by nobody — the links locked `FOR NO KEY UPDATE` in id order after the
+  documents, the revoke's own order (design D19). The **payment attempts are not
+  touched**, in any state: one `creating`, `created` or `authorized` may still be paid
+  by the payer, and one `capturing` or `capture_unknown` may hold money Vipps has
+  already taken, so none is cancelled, abandoned or released here — the payments worker
+  carries each to its end, and money it captures is registered whatever became of the
+  person, its note blank as any payment of theirs is; `cancelling` and every final
+  state are kept as they are. No new attempt can be made: the attempts' insert trigger,
+  like the links', refuses an anonymised customer's invoice. Last the customer's reminder policy is
+  deleted. It reports fourteen kinds, in this order:
   - `invoices.drafts` — the drafts deleted, invoice and credit-note drafts alike, their
     line sources and timesheet rows with them by the cascade: a draft is not a sales
     document and has no retention basis, so GDPR art. 17 applies;
@@ -4301,6 +4335,15 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
     and every line keeps its `reversed` events' notes: the system's own words naming
     the reversal that took its payment back, the audit trail a payment's removal reason
     is;
+  - `invoices.payLinks` — the live pay links revoked: a link is a bearer token to the
+    person's invoice, which no retention rule needs once they are gone, so it stops
+    working; the row stays, its token only hashed and its URL sealed, as the record of
+    what a letter or a PDF printed. A link revoked earlier keeps its revocation. The
+    attempts are kept whole (design D19) — the record of the Vipps payments registered
+    from them, kept with the document as those payments are — and hold no name or address: the reference names the invoice
+    and the attempt, the `redirect_url` is Vipps' page or QR target and is never logged
+    or exported, and an abandon's reason is the audit trail of a person's verdict, as a
+    payment's removal reason is;
   - `invoices.customerReminderPolicies` — the reminder policy deleted (0 or 1): staff's
     decision and note about the person, which no retention rule keeps. A later PUT for
     the anonymised customer is a 404.
@@ -4312,7 +4355,10 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   later run's letter (`customer_anonymised`), and a letter row inserted after it — a
   run item that held the invoice while the erase waited — is written with no
   recipient. A child row — a charge payment, a waiver, a manual delivery, a hold, a
-  hand-off — inserted after it keeps no note, and a lift keeps no lift note. A queue
+  hand-off — inserted after it keeps no note, and a lift keeps no lift note. A pay link
+  or a payment attempt inserted after it is refused (`invoices: the customer is
+  anonymised`): the issue skips its link, and the pay page answers the invoice
+  `revoked`; a Vipps payment registered after it is kept, its note blank. A queue
   action that writes a note on a line — apply, dismiss, handle-reversal,
   confirm-duplicate — locks, after the line, the invoices it applies to and those the
   line's payments and charge payments were ever registered against, in descending id,
@@ -4354,15 +4400,26 @@ administrator reads when building a role, say so.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; the attention items about overdue invoices and refunds due ([Attention](#attention)). |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; an invoice's pay link (its id and when it was made, not its address) and its Vipps payment attempts; the day's Vipps payments, their CSV and the day's reconciliation ([The day's Vipps payments](#the-days-vipps-payments)); the attention items about overdue invoices and refunds due ([Attention](#attention)). |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
-| `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)). |
+| `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)); make an invoice's pay link on demand or revoke it, and read its address and QR code while payment on site is available ([Pay links](#pay-links)); ask for a Vipps payment on site, read the request and cancel it ([Paid on site — kontantsalg](#paid-on-site--kontantsalg)). |
 | `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the Vipps credentials and the payment settings, abandoning a stuck Vipps payment attempt ([Abandon](#abandon)), the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
-| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); the attention items about the bank lines, the letters, the print batches and the Vipps payments ([Attention](#attention)). |
+| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); mark a day's Vipps payments reconciled ([The day's Vipps payments](#the-days-vipps-payments)); the attention items about the bank lines, the letters, the print batches and the Vipps payments ([Attention](#attention)). |
 
 **The quick invoice needs `invoices:create` and `invoices:issue` both** ([The quick
 invoice](#the-quick-invoice)): it creates a draft and issues it in one step, so it asks
-for what each step asks for apart.
+for what each step asks for apart; paying it on site asks nothing more.
+
+**Vipps adds no key either** (design D1's 4C rows). Making or revoking a pay link and
+asking for a payment on site are `invoices:issue`: they hand the sale over, as sending
+does, and register no money by hand — the payments worker registers what Vipps
+captured. Reading the day's Vipps payments is `invoices:access`, and marking a day
+reconciled `invoices:payments`, credit control's. The Vipps credentials, the payment
+settings — the kontantsalg acknowledgement among them — and abandoning a stuck attempt
+are `invoices:manage`: each changes what every payment does, and an abandon releases a
+reservation only after a person has checked the payment in the Vipps portal. The pay
+page's three operations are anonymous, each rate-limited ([The pay page](#the-pay-page)).
+The catalog's descriptions, which the role editor shows, say each of these.
 
 **Why reminders are `invoices:payments` and not `invoices:issue`.** A reminder is not a
 sales document and takes no number; it is credit control — what the company says it is
@@ -4522,16 +4579,16 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 
 ## What comes next
 
-- **4C** (next, the phase's second pull request): the payments port and its Vipps
-  adapter, pay links and the public pay page, and the quick invoice — paid on site, a
-  kontantfaktura ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
-  D13–D17). Its schema is in place — migration `00046_invoices_payments_port.sql`:
-  the provider's credentials, the payment settings with the installation's reference
-  prefix, pay links, payment attempts, a Vipps payment's origin on the payments (`source
-  = vipps`, naming its attempt, with no user and no bank line) and the day's
-  reconciliations — and so are its refusal codes, listed in the contract's
-  `InvoicesConflictProblem` and worded in both languages, and attention's four Vipps
-  types ([Attention](#attention)).
+**Phase 4 is complete.** Its second pull request, 4C
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
+D13–D19), built the payments port and its Vipps MobilePay adapter, the public host and
+pay links, the public pay page, payment attempts and the `invoices-payments` worker
+that reserves, captures and registers them, abandon and the refund watch, the quick
+invoice, and on-site payment as a kontantfaktura with the day's list and its
+reconciliation — on migration `00046_invoices_payments_port.sql`. **Webhooks are not
+supported yet**: the integration polls, and the public host's allowlist names no
+webhook path (design open question 1; [Vipps payments](#vipps-payments)).
+
 - **5**: energy consumption billing.
 
 Phase 4's first pull request built receiving payments from the bank — OCR giro and

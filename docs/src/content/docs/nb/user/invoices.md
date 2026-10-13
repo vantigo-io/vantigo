@@ -1564,7 +1564,11 @@ på fakturaens kort **Purringer**, og administratorens serverlogg navngir det.
 Merknadene på betalinger av purrekrav, ettergitte purrekrav, registrerte leveringer, vent
 og overleveringer tømmes, og det samme gjør merknadene på banklinjene kundens betalinger
 kom fra; en linje som behandles i avvikskøen etterpå, får heller ingen merknad. Brevene, banklinjene og betalerens opplysninger blir
-stående, som bankens og kravets dokumentasjon. Ingen dokumenter sendes til en anonymisert kunde igjen, men en
+stående, som bankens og kravets dokumentasjon. Hver aktive betalingslenke deres trekkes
+tilbake, så en lenke på en PDF eller et brev betaler ikke lenger — betalingssiden sier at
+lenken ikke lenger gjelder — og ingen ny lages. Vipps-betalingene deres beholdes, og en
+betaling som allerede er i gang, får fullføre: penger Vipps trekker for den, registreres
+fortsatt på fakturaen. Ingen dokumenter sendes til en anonymisert kunde igjen, men en
 kreditnota kan fortsatt utstedes, med kjøperen originalen navnga.
 
 ## Rettigheter
@@ -1574,16 +1578,18 @@ Ingen innebygd rolle har disse; en eier har alt
 
 | Du vil | Du trenger |
 | --- | --- |
-| Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet, lese forfallslisten, se en fakturas purringer, purrekrav, leveringer, vent og overlevering og laste ned PDF-en til et brev, lese en kundes purreregel, inkassosatsene og purreinnstillingene, se dashbordets varsler om forfalte fakturaer og penger som skal tilbake | `invoices:access` |
+| Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet, lese forfallslisten, se en fakturas purringer, purrekrav, leveringer, vent og overlevering og laste ned PDF-en til et brev, lese en kundes purreregel, inkassosatsene og purreinnstillingene, se dashbordets varsler om forfalte fakturaer og penger som skal tilbake, se en fakturas betalingslenke og Vipps-betalinger, liste dagens Vipps-betalinger og laste dem ned som CSV | `invoices:access` |
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
-| Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en | `invoices:issue` |
-| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; se dashbordets varsler om banklinjer, brev og utskriftsbunker | `invoices:payments` |
-| Lage en hurtigfaktura — laget og utstedt i ett steg, registrert som overlevert | `invoices:create` og `invoices:issue` |
-| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger**, som også krever `invoices:payments` for å åpnes | `invoices:manage` |
+| Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en, lage eller trekke tilbake en betalingslenke og se adressen og QR-koden, ta imot en Vipps-betaling på stedet | `invoices:issue` |
+| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; registrere en dags Vipps-betalinger som avstemt; se dashbordets varsler om banklinjer, brev, utskriftsbunker og Vipps-betalinger | `invoices:payments` |
+| Lage en hurtigfaktura — laget og utstedt i ett steg, registrert som overlevert — og ta betalt for den med Vipps på stedet | `invoices:create` og `invoices:issue` |
+| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger**, som også krever `invoices:payments` for å åpnes; sette opp Vipps og betalingsinnstillingene, bekrefte kontantsalg, forlate en Vipps-betaling som står fast | `invoices:manage` |
 
 Innbetalinger og purring har ingen egen rettighet. Purringer, avvikskøen, vent og
 overlevering til inkasso krever `invoices:payments`, ikke `invoices:issue`: en purring er
 ikke et salgsdokument, men kredittstyring — det selskapet sier at det har til gode. Å
 registrere en levering manuelt hører til å overlevere salget, og er derfor
-`invoices:issue`.
+`invoices:issue` — det samme er en betalingslenke og en betaling tatt imot på stedet, som
+overleverer salget og ikke registrerer penger for hånd: Vantigo registrerer det Vipps
+trakk.

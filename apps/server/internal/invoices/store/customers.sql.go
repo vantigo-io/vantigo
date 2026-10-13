@@ -12,6 +12,77 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const attemptsOfDocuments = `-- name: AttemptsOfDocuments :many
+SELECT id, invoice_id, provider, msn, return_nonce_sha256, flow, pay_link_id, reference, amount, create_key, capture_key, cancel_key, state, release_pending, psp_reference, redirect_url, authorized_amount, captured_amount, cancelled_amount, refunded_amount, reserved_amount, capture_psp_reference, capture_guaranteed_until, created_at, created_by_user_id, expires_at, authorized_at, captured_at, finished_at, refund_watch_until, next_poll_at, polls, capture_attempts, failures, insufficient_funds, lease_id, lease_until, last_error, registration_failed_at, abandoned_by_user_id, abandoned_at, abandon_reason FROM invoices.payment_attempts WHERE invoice_id = ANY($1::bigint[]) ORDER BY invoice_id, id
+`
+
+// AttemptsOfDocuments is every Vipps payment attempt of several documents at
+// once, in every state, oldest first, for a private person's export
+// (invoices payments and reminders design D19), which writes its state,
+// amounts and times and never its redirect_url.
+func (q *Queries) AttemptsOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesPaymentAttempt, error) {
+	rows, err := q.db.Query(ctx, attemptsOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesPaymentAttempt
+	for rows.Next() {
+		var i InvoicesPaymentAttempt
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.Provider,
+			&i.Msn,
+			&i.ReturnNonceSha256,
+			&i.Flow,
+			&i.PayLinkID,
+			&i.Reference,
+			&i.Amount,
+			&i.CreateKey,
+			&i.CaptureKey,
+			&i.CancelKey,
+			&i.State,
+			&i.ReleasePending,
+			&i.PspReference,
+			&i.RedirectUrl,
+			&i.AuthorizedAmount,
+			&i.CapturedAmount,
+			&i.CancelledAmount,
+			&i.RefundedAmount,
+			&i.ReservedAmount,
+			&i.CapturePspReference,
+			&i.CaptureGuaranteedUntil,
+			&i.CreatedAt,
+			&i.CreatedByUserID,
+			&i.ExpiresAt,
+			&i.AuthorizedAt,
+			&i.CapturedAt,
+			&i.FinishedAt,
+			&i.RefundWatchUntil,
+			&i.NextPollAt,
+			&i.Polls,
+			&i.CaptureAttempts,
+			&i.Failures,
+			&i.InsufficientFunds,
+			&i.LeaseID,
+			&i.LeaseUntil,
+			&i.LastError,
+			&i.RegistrationFailedAt,
+			&i.AbandonedByUserID,
+			&i.AbandonedAt,
+			&i.AbandonReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const bankLinesOfDocuments = `-- name: BankLinesOfDocuments :many
 SELECT t.id, t.booked_on, t.debtor_name, t.debtor_account, t.remittance_text
 FROM invoices.bank_transactions t

@@ -148,6 +148,13 @@ SELECT * FROM invoices.collection_handoffs
 WHERE invoice_id = ANY(@invoice_ids::bigint[])
 ORDER BY invoice_id, created_at, id;
 
+-- name: AttemptsOfDocuments :many
+-- AttemptsOfDocuments is every Vipps payment attempt of several documents at
+-- once, in every state, oldest first, for a private person's export
+-- (invoices payments and reminders design D19), which writes its state,
+-- amounts and times and never its redirect_url.
+SELECT * FROM invoices.payment_attempts WHERE invoice_id = ANY(@invoice_ids::bigint[]) ORDER BY invoice_id, id;
+
 -- name: CustomerLetterInvoices :many
 -- CustomerLetterInvoices is the person's invoices with a letter in flight or
 -- printed, newest first, the erase's documents being locked already: each is

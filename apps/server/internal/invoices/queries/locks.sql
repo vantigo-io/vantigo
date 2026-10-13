@@ -137,6 +137,17 @@ SELECT * FROM invoices.payment_attempts WHERE id = @id FOR NO KEY UPDATE;
 -- invoice.
 SELECT * FROM invoices.pay_links WHERE id = @id FOR NO KEY UPDATE;
 
+-- name: LockCustomerLivePayLinks :many
+-- LockCustomerLivePayLinks takes every live pay link of one customer's
+-- documents FOR NO KEY UPDATE, in id order: the erase's (D19), after it has
+-- locked those documents (LockCustomerDocuments), so the order is the
+-- revoke's — the invoice, then the link. OF l: the documents are held already.
+SELECT l.* FROM invoices.pay_links l
+JOIN invoices.invoices i ON i.id = l.invoice_id
+WHERE i.customer_id = @customer_id AND l.revoked_at IS NULL
+ORDER BY l.id
+FOR NO KEY UPDATE OF l;
+
 -- name: LockPaymentCredentials :one
 -- LockPaymentCredentials takes the payment provider's credentials FOR
 -- UPDATE: a credentials PUT's, a DELETE's and a webhook registration's only

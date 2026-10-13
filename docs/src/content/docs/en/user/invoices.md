@@ -1545,8 +1545,12 @@ charges, recorded deliveries, holds and hand-offs are emptied, and so are the no
 the bank lines the customer's payments came from; a line handled in the exception queue
 afterwards keeps no note either. The
 letters, the bank lines and their payer details stay, as the bank's and the claim's
-record. No document is sent to an anonymised customer again, though a
-credit note can still be issued, naming the buyer the original named.
+record. Every live pay link of theirs is revoked, so a link on a PDF or a letter no
+longer pays — the pay page says the link is no longer valid — and no new one is made.
+Their Vipps payments are kept, and a payment already under way is left to finish: money
+Vipps takes for it is still registered on the invoice. No document is sent to an
+anonymised customer again, though a credit note can still be issued, naming the buyer
+the original named.
 
 ## Permissions
 
@@ -1555,15 +1559,17 @@ No built-in role holds these; an Owner holds everything
 
 | You want to | You need |
 | --- | --- |
-| Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list, see an invoice's reminders, charges, deliveries, hold and hand-off and download a letter's PDF, read a customer's reminder policy, the collection rates and the reminder settings, see the dashboard's notices about overdue invoices and money owed back | `invoices:access` |
+| Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list, see an invoice's reminders, charges, deliveries, hold and hand-off and download a letter's PDF, read a customer's reminder policy, the collection rates and the reminder settings, see the dashboard's notices about overdue invoices and money owed back, see an invoice's pay link and Vipps payments, list the day's Vipps payments and download them as CSV | `invoices:access` |
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
-| Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one | `invoices:issue` |
-| Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; see the dashboard's notices about bank lines, letters and print batches | `invoices:payments` |
-| Make a quick invoice — created and issued in one step, recorded as handed over | `invoices:create` and `invoices:issue` |
-| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments**, which also needs `invoices:payments` to open | `invoices:manage` |
+| Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one, make or revoke a pay link and see its address and QR code, take a Vipps payment on site | `invoices:issue` |
+| Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; mark a day's Vipps payments reconciled; see the dashboard's notices about bank lines, letters, print batches and Vipps payments | `invoices:payments` |
+| Make a quick invoice — created and issued in one step, recorded as handed over — and take payment for it with Vipps on the spot | `invoices:create` and `invoices:issue` |
+| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments**, which also needs `invoices:payments` to open; set up Vipps and the payment settings, acknowledge kontantsalg, abandon a stuck Vipps payment | `invoices:manage` |
 
 Payments and reminders add no permission of their own. Reminders, the exception queue,
 holds and hand-offs need `invoices:payments`, not `invoices:issue`: a reminder is not a
 sales document but credit control — what the company says it is owed. Recording a
-delivery by hand is part of handing the sale over, so it is `invoices:issue`.
+delivery by hand is part of handing the sale over, so it is `invoices:issue` — and so
+are a pay link and a payment taken on site, which hand the sale over and register no
+money by hand: Vantigo registers what Vipps took.

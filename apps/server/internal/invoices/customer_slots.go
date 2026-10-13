@@ -44,12 +44,17 @@ const (
 	kindInvoicesInvoiceHolds       = "invoices.invoiceHolds"
 	kindInvoicesCollectionHandoffs = "invoices.collectionHandoffs"
 	kindInvoicesBankTransactions   = "invoices.bankTransactions"
+	// kindInvoicesPayLinks is the pay links an erase revokes (D19, 4C),
+	// reported after the bank lines and before the policy.
+	kindInvoicesPayLinks = "invoices.payLinks"
 )
 
 // customerReferenceHolder is this module's contracts.CustomerReferenceHolder:
 // when two customers are merged, every document of the absorbed one — draft
 // and issued — names the survivor from then on. An issued document keeps its
-// buyer snapshot: the id is not printed, the snapshot is.
+// buyer snapshot: the id is not printed, the snapshot is. Its pay links and
+// payment attempts hang off it by id and name no customer (D19), so they
+// follow it unwritten.
 type customerReferenceHolder struct {
 	clock func() time.Time
 }
@@ -183,6 +188,9 @@ type exportedDocument struct {
 	Reminders          []exportedReminder       `json:"reminders,omitzero"`
 	Holds              []exportedHold           `json:"holds,omitzero"`
 	CollectionHandoffs []exportedHandoff        `json:"collectionHandoffs,omitzero"`
+	// PayAttempts is an issued invoice's Vipps payment attempts (invoices
+	// payments and reminders design D19, 4C), empty when it has none.
+	PayAttempts []exportedPayAttempt `json:"payAttempts,omitzero"`
 	// Timesheet is the document's timesheet as printed (invoices work design
 	// D5), an issued document's and a draft's alike — the customer received,
 	// or would receive, it; nil leaves the key out of a document without one.
@@ -217,6 +225,60 @@ type exportedPayment struct {
 	RemovedAt     *time.Time        `json:"removedAt,omitempty"`
 	RemovalReason string            `json:"removalReason,omitempty"`
 	BankLine      *exportedBankLine `json:"bankLine,omitempty"`
+	// PaymentAttemptID is, for a Vipps payment, the attempt in PayAttempts it
+	// was captured by (D19).
+	PaymentAttemptID *int64 `json:"paymentAttemptId,omitempty"`
+}
+
+// exportedPayAttempt is one Vipps payment attempt of an issued invoice
+// (D16, D19): its id, the reference Vipps showed the payer, the flow, the
+// state, the amounts and the times, and an abandoned one's reason — staff's
+// words kept as the audit trail, as a payment's removal reason is. Never its
+// redirect_url — the payer's landing page at Vipps, or the on-site QR's
+// target — its keys, its sales unit, its PSP references, its lease or its
+// errors, which are the integration's, not the person's.
+type exportedPayAttempt struct {
+	ID               int64      `json:"id"`
+	Reference        string     `json:"reference"`
+	Flow             string     `json:"flow"`
+	State            string     `json:"state"`
+	Amount           string     `json:"amount"`
+	AuthorizedAmount *string    `json:"authorizedAmount,omitempty"`
+	CapturedAmount   *string    `json:"capturedAmount,omitempty"`
+	CancelledAmount  *string    `json:"cancelledAmount,omitempty"`
+	RefundedAmount   *string    `json:"refundedAmount,omitempty"`
+	CreatedAt        time.Time  `json:"createdAt"`
+	ExpiresAt        time.Time  `json:"expiresAt"`
+	AuthorizedAt     *time.Time `json:"authorizedAt,omitempty"`
+	CapturedAt       *time.Time `json:"capturedAt,omitempty"`
+	FinishedAt       *time.Time `json:"finishedAt,omitempty"`
+	AbandonedAt      *time.Time `json:"abandonedAt,omitempty"`
+	AbandonReason    string     `json:"abandonReason,omitempty"`
+}
+
+// payAttemptExported is one attempt row as the export writes it.
+func payAttemptExported(a store.InvoicesPaymentAttempt) (exportedPayAttempt, error) {
+	e := exportedPayAttempt{
+		ID: a.ID, Reference: a.Reference, Flow: a.Flow, State: a.State, CreatedAt: a.CreatedAt.UTC(),
+		ExpiresAt: a.ExpiresAt.UTC(), AuthorizedAt: utcOf(a.AuthorizedAt), CapturedAt: utcOf(a.CapturedAt),
+		FinishedAt: utcOf(a.FinishedAt), AbandonedAt: utcOf(a.AbandonedAt), AbandonReason: orEmpty(a.AbandonReason),
+	}
+	var err error
+	if e.Amount, err = decimalOf(a.Amount, 2); err != nil {
+		return e, err
+	}
+	for _, c := range []struct {
+		dst **string
+		n   pgtype.Numeric
+	}{
+		{&e.AuthorizedAmount, a.AuthorizedAmount}, {&e.CapturedAmount, a.CapturedAmount},
+		{&e.CancelledAmount, a.CancelledAmount}, {&e.RefundedAmount, a.RefundedAmount},
+	} {
+		if *c.dst, err = decimalOrNil(c.n); err != nil {
+			return e, err
+		}
+	}
+	return e, nil
 }
 
 // exportedBankLine is the bank line an imported payment or charge payment
@@ -487,8 +549,9 @@ func decimalOf(n pgtype.Numeric, places int) (string, error) {
 // work design D9) and its timesheet as printed (D5); an issued document its
 // receivables — charge payments, waivers, manual deliveries, letters, holds
 // and hand-offs — and each payment its source and an imported one its bank
-// line (invoices payments and reminders design D19); and the section the
-// customer's reminder policy (D7, D19). Every read is in one REPEATABLE READ, READ ONLY transaction,
+// line (invoices payments and reminders design D19), an invoice its Vipps
+// payment attempts and a Vipps payment its attempt (D19, 4C); and the
+// section the customer's reminder policy (D7, D19). Every read is in one REPEATABLE READ, READ ONLY transaction,
 // as the customers module reads its own part of the export: a payment or a
 // send landing midway cannot make the file disagree with itself.
 func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
@@ -552,11 +615,24 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 			PaidOn: orEmpty(dateText(r.PaidOn)), Amount: amount, Currency: r.Currency, Source: r.Source,
 			Reference: r.Reference, Note: r.Note, RegisteredAt: r.RegisteredAt.UTC(),
 			RemovalReason: orEmpty(r.RemovalReason), BankLine: recv.lineOf(r.BankTransactionID),
+			PaymentAttemptID: r.PaymentAttemptID,
 		}
 		if r.RemovedAt != nil {
 			e.RemovedAt = ptr(r.RemovedAt.UTC())
 		}
 		paymentsOf[r.InvoiceID] = append(paymentsOf[r.InvoiceID], e)
+	}
+	attempts, err := q.AttemptsOfDocuments(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read customer %d's payment attempts: %w", customerID, err)
+	}
+	attemptsOf := map[int64][]exportedPayAttempt{}
+	for _, a := range attempts {
+		e, err := payAttemptExported(a)
+		if err != nil {
+			return nil, err
+		}
+		attemptsOf[a.InvoiceID] = append(attemptsOf[a.InvoiceID], e)
 	}
 	deliveries, err := q.DeliveriesOfDocuments(ctx, ids)
 	if err != nil {
@@ -655,6 +731,7 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 			e.Reminders = append([]exportedReminder{}, recv.reminders[d.ID]...)
 			e.Holds = append([]exportedHold{}, recv.holds[d.ID]...)
 			e.CollectionHandoffs = append([]exportedHandoff{}, recv.handoffs[d.ID]...)
+			e.PayAttempts = append([]exportedPayAttempt{}, attemptsOf[d.ID]...)
 			section.Documents = append(section.Documents, e)
 		} else {
 			section.Drafts = append(section.Drafts, e)
@@ -829,9 +906,21 @@ func readReceivables(ctx context.Context, q *store.Queries, ids []int64) (export
 // charge payments came from, and its events' notes, blanked — the lock
 // order's one named exception (D18, plan reading 54: no path locks a
 // resolved line before an invoice, and a line that is not resolved is
-// skipped, never waited for); and last the customer's reminder policy
+// skipped, never waited for); every live pay link of the documents revoked,
+// by nobody, the links locked after the documents in id order — the
+// revoke's order, the invoice and then the link — reported as
+// invoices.payLinks (D19, 4C); and last the customer's reminder policy
 // deleted (D7) — staff's decision and note about the person, which no
-// retention rule keeps, reported as invoices.customerReminderPolicies. A
+// retention rule keeps, reported as invoices.customerReminderPolicies. The
+// payment attempts are kept whole, in every state, and the erase writes
+// none: one created or authorized may still be paid, and one capturing or
+// of unknown outcome may hold money already taken, which the payments worker
+// registers whatever became of the person — its note blank, as the
+// payments' trigger blanks any payment of theirs — so neither payments nor
+// attempts are refused or cancelled here; no new attempt can be made, since
+// their insert trigger refuses an anonymised customer's invoice. An attempt
+// holds no name or address: its redirect_url is Vipps' page or QR target,
+// never exported, and an abandon's reason is the audit trail. A
 // draft is not a salgsdokument, so it has no retention basis and GDPR art.
 // 17 applies; an issued document, its buyer snapshot, its payments, its
 // letters, charge payments, waivers, deliveries, holds and hand-offs, and
@@ -920,12 +1009,25 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 		return nil, fmt.Errorf("invoices: blank customer %d's bank lines' event notes: %w", customerID, err)
 	}
 	touched := slices.Compact(slices.Sorted(slices.Values(append(lines, events...))))
+	links, err := lockCustomerLivePayLinks(ctx, q, customerID)
+	if err != nil {
+		return nil, err
+	}
+	var revoked int64
+	for _, l := range links {
+		n, err := q.RevokePayLink(ctx, store.RevokePayLinkParams{Now: now, By: nil, ID: l.ID})
+		if err != nil {
+			return nil, fmt.Errorf("invoices: revoke pay link %d: %w", l.ID, err)
+		}
+		revoked += n
+	}
 	policies, err := q.DeletePolicy(ctx, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: delete customer %d's reminder policy: %w", customerID, err)
 	}
 	return append(erased,
 		contracts.ErasedData{Kind: kindInvoicesBankTransactions, Count: int64(len(touched))},
+		contracts.ErasedData{Kind: kindInvoicesPayLinks, Count: revoked},
 		contracts.ErasedData{Kind: kindInvoicesReminderPolicies, Count: policies},
 	), nil
 }

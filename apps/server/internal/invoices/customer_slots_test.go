@@ -204,7 +204,7 @@ func TestCustomerPersonalData_Export(t *testing.T) {
 		`"deliveryAddress":{"line1":"Hytta","postalCode":"3580","city":"Geilo","country":"NO"}`, `"internalNote":"Ringte to ganger"`,
 		`"vatRatePercent":"25.00"`, `"drafts":[{"kind":"invoice"`, `"internalNote":"Utkast til neste måned"`, `"quantity":"1.500"`,
 		`"payments":[],"deliveries":[],"transmissions":[],"chargePayments":[],"chargeWaivers":[],"manualDeliveries":[],` +
-			`"reminders":[],"holds":[],"collectionHandoffs":[]}`,
+			`"reminders":[],"holds":[],"collectionHandoffs":[],"payAttempts":[]}`,
 	} {
 		if !strings.Contains(raw, want) {
 			t.Errorf("export %s has no %s", raw, want)
@@ -811,8 +811,9 @@ func TestExport_TheProjectAndTheTimesheet(t *testing.T) {
 
 // eraseReport is the erase's report in its order (D6; invoices payments and
 // reminders design D19): the drafts, the documents at 0, the payment notes,
-// the deliveries and the transmissions as given, then the receivables' eight
-// kinds, each 0 unless more names it.
+// the deliveries and the transmissions as given, then the receivables' nine
+// kinds — the pay links revoked among them, before the policy — each 0
+// unless more names it.
 func eraseReport(drafts, payments, deliveries, transmissions int64, more ...contracts.ErasedData) []contracts.ErasedData {
 	out := []contracts.ErasedData{
 		{Kind: "invoices.drafts", Count: drafts}, {Kind: "invoices.documents", Count: 0},
@@ -820,7 +821,7 @@ func eraseReport(drafts, payments, deliveries, transmissions int64, more ...cont
 		{Kind: "invoices.transmissions", Count: transmissions},
 		{Kind: "invoices.reminders"}, {Kind: "invoices.chargePayments"}, {Kind: "invoices.chargeWaivers"},
 		{Kind: "invoices.manualDeliveries"}, {Kind: "invoices.invoiceHolds"}, {Kind: "invoices.collectionHandoffs"},
-		{Kind: "invoices.bankTransactions"}, {Kind: "invoices.customerReminderPolicies"},
+		{Kind: "invoices.bankTransactions"}, {Kind: "invoices.payLinks"}, {Kind: "invoices.customerReminderPolicies"},
 	}
 	for _, m := range more {
 		for i := range out {
@@ -1456,5 +1457,183 @@ func TestErase_RacesAQueueActionActionFirst(t *testing.T) {
 	}
 	if after := deadlocks(t, probeConn); after != before {
 		t.Errorf("Postgres broke %d deadlock(s)", after-before)
+	}
+}
+
+// exportedPayAttemptJSON is one of a document's payAttempts as the export
+// writes it.
+type exportedPayAttemptJSON struct {
+	ID               int64      `json:"id"`
+	Reference        string     `json:"reference"`
+	Flow             string     `json:"flow"`
+	State            string     `json:"state"`
+	Amount           string     `json:"amount"`
+	AuthorizedAmount *string    `json:"authorizedAmount"`
+	CapturedAmount   *string    `json:"capturedAmount"`
+	CancelledAmount  *string    `json:"cancelledAmount"`
+	RefundedAmount   *string    `json:"refundedAmount"`
+	CreatedAt        time.Time  `json:"createdAt"`
+	ExpiresAt        time.Time  `json:"expiresAt"`
+	AuthorizedAt     *time.Time `json:"authorizedAt"`
+	CapturedAt       *time.Time `json:"capturedAt"`
+	FinishedAt       *time.Time `json:"finishedAt"`
+	AbandonedAt      *time.Time `json:"abandonedAt"`
+	AbandonReason    string     `json:"abandonReason"`
+}
+
+// TestExport_CarriesPayAttempts (D19): an issued document carries every
+// Vipps payment attempt of it — its id, reference, flow, state, amounts and
+// times, an abandoned one's reason — and each Vipps payment the attempt it
+// came from; never the attempt's redirect_url (the payer's landing page at
+// Vipps, or the on-site QR's target), its keys, its sales unit, its PSP
+// references or its errors.
+func TestExport_CarriesPayAttempts(t *testing.T) {
+	t.Parallel()
+	h := workerReady(t)
+	inv, ref := approvedAttempt(t, h)
+	cycle(t, h)
+	captured := attemptOf(t, h, ref)
+	if captured.State != "captured" {
+		t.Fatalf("the attempt = %s, want captured", captured.State)
+	}
+	abandoned := modtest.One[int64](t, h.Harness, `
+		INSERT INTO invoices.payment_attempts (invoice_id, provider, msn, flow, amount, cancel_key, state, redirect_url,
+		    created_at, expires_at, finished_at, abandoned_by_user_id, abandoned_at, abandon_reason)
+		VALUES ($1, 'vipps', '123456', 'on_site', 100, gen_random_uuid(), 'abandoned', 'https://qr.vipps.example/secret-target',
+		    $2::timestamptz, $2::timestamptz + interval '10 minutes', $2::timestamptz, gen_random_uuid(), $2::timestamptz,
+		    'Sjekket i Vipps-portalen')
+		RETURNING id`, inv.ID, h.Now())
+
+	section, err := invoices.Module().CustomerPersonalData(disabledDeps(h)).ExportCustomerData(context.Background(), customerAcme)
+	if err != nil {
+		t.Fatalf("ExportCustomerData: %v", err)
+	}
+	raw, _ := json.Marshal(section)
+	var file struct {
+		Documents []struct {
+			Payments []struct {
+				Source           string `json:"source"`
+				Amount           string `json:"amount"`
+				Reference        string `json:"reference"`
+				PaymentAttemptID *int64 `json:"paymentAttemptId"`
+			} `json:"payments"`
+			PayAttempts []exportedPayAttemptJSON `json:"payAttempts"`
+		} `json:"documents"`
+	}
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatal(err)
+	}
+	if len(file.Documents) != 1 {
+		t.Fatalf("documents = %s, want the one", raw)
+	}
+	doc := file.Documents[0]
+	if len(doc.Payments) != 1 || doc.Payments[0].Source != "vipps" || doc.Payments[0].Amount != "2500.00" ||
+		doc.Payments[0].Reference != ref || doc.Payments[0].PaymentAttemptID == nil || *doc.Payments[0].PaymentAttemptID != captured.ID {
+		t.Errorf("payments = %+v, want the Vipps payment naming attempt %d", doc.Payments, captured.ID)
+	}
+	if len(doc.PayAttempts) != 2 {
+		t.Fatalf("payAttempts = %+v, want both, oldest first", doc.PayAttempts)
+	}
+	got := doc.PayAttempts[0]
+	if got.ID != captured.ID || got.Reference != ref || got.Flow != "pay_link" || got.State != "captured" || got.Amount != "2500.00" ||
+		got.AuthorizedAmount == nil || *got.AuthorizedAmount != "2500.00" || got.CapturedAmount == nil || *got.CapturedAmount != "2500.00" ||
+		got.CancelledAmount != nil || got.RefundedAmount != nil || got.CreatedAt.IsZero() || got.ExpiresAt.IsZero() ||
+		got.AuthorizedAt == nil || got.CapturedAt == nil || got.FinishedAt == nil || got.AbandonedAt != nil || got.AbandonReason != "" {
+		t.Errorf("the captured attempt = %+v", got)
+	}
+	if got := doc.PayAttempts[1]; got.ID != abandoned || got.Flow != "on_site" || got.State != "abandoned" || got.Amount != "100.00" ||
+		got.AbandonedAt == nil || got.AbandonReason != "Sjekket i Vipps-portalen" || got.AuthorizedAmount != nil {
+		t.Errorf("the abandoned attempt = %+v", got)
+	}
+
+	var redirect, createKey, captureKey, cancelKey, msn string
+	var psp *string
+	if err := h.Pool().QueryRow(t.Context(), `SELECT redirect_url, create_key::text, capture_key::text, cancel_key::text, msn,
+		    psp_reference FROM invoices.payment_attempts WHERE id = $1`, captured.ID).
+		Scan(&redirect, &createKey, &captureKey, &cancelKey, &msn, &psp); err != nil {
+		t.Fatal(err)
+	}
+	never := []string{redirect, "secret-target", createKey, captureKey, cancelKey, `"` + msn + `"`, "redirect", "Key", "msn",
+		"psp", "lastError", "nonce", "lease"}
+	if psp != nil {
+		never = append(never, *psp)
+	}
+	for _, kept := range never {
+		if kept != "" && strings.Contains(string(raw), kept) {
+			t.Errorf("the export carries %q: an attempt's redirect_url, keys, sales unit, PSP reference and errors are never exported", kept)
+		}
+	}
+}
+
+// TestErase_RevokesPayLinks (D19): the erase revokes every live pay link of
+// the person's documents, by nobody, at its one clock read, after today's
+// steps and before the policy, reported as invoices.payLinks — a link
+// revoked earlier by a user keeps its revocation, and another customer's
+// stays live. Every attempt is left as it was, in every state — a payment
+// the payer started, and a capture whose outcome is unknown, may still
+// bring money, which the worker registers. Its locks, after the documents
+// it holds, are the person's live links in id order. Run twice it revokes
+// nothing; a link inserted after the marker is refused by the trigger; the
+// pay page answers the revoked link's invoice as not payable, revoked. Not
+// parallel: the lock seam is the package's.
+func TestErase_RevokesPayLinks(t *testing.T) {
+	h, _ := payReady(t)
+	c := issuer(t, h)
+	started := issuedAcme(t, h)
+	token := payToken(t, h, started.ID)
+	startedPay(t, h.Client(t), token)
+	replaced := issuedAcme(t, h)
+	if res := c.Do(http.MethodPost, payLinkRevokePath(replaced.ID), nil); res.Status != http.StatusNoContent {
+		t.Fatalf("revoke = %d %s", res.Status, res.Body)
+	}
+	if res := c.Do(http.MethodPost, payLinkPath(replaced.ID), nil); res.Status != http.StatusCreated {
+		t.Fatalf("make = %d %s", res.Status, res.Body)
+	}
+	plantReservation(t, h, replaced.ID, "capture_unknown", "100.00")
+	others := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Konsultasjon", 1, 800, vat25))).ID)
+	userRevoked := payLinkRows(t, h, replaced.ID)[1]
+	live := []int64{payLinkRows(t, h, started.ID)[0].id, payLinkRows(t, h, replaced.ID)[0].id}
+	attempts := func() string {
+		return modtest.One[string](t, h.Harness, `SELECT string_agg(to_jsonb(a)::text, '|' ORDER BY id) FROM invoices.payment_attempts a`)
+	}
+	links := `SELECT string_agg(id || ' ' || coalesce(revoked_at::text, 'live') || ' ' || coalesce(revoked_by_user_id::text, 'nobody'), ', ' ORDER BY id)
+		FROM invoices.pay_links WHERE invoice_id = ANY($1)`
+	revokedEarlier := modtest.One[string](t, h.Harness, `SELECT id || ' ' || revoked_at::text || ' ' || revoked_by_user_id::text
+		FROM invoices.pay_links WHERE id = $1`, userRevoked.id)
+	before := attempts()
+	h.Advance(time.Hour)
+
+	seen := &lockSeen{}
+	restore := invoices.SetLockTaken(seen.note)
+	got := eraseOf(t, h, disabledDeps(h), customerAcme)
+	restore()
+	if want := eraseReport(0, 0, 0, 0, contracts.ErasedData{Kind: "invoices.payLinks", Count: 2}); !slices.Equal(got, want) {
+		t.Errorf("erased = %+v, want %+v", got, want)
+	}
+	if got, want := seen.take(), []string{"pay_link " + strconv.FormatInt(live[0], 10), "pay_link " + strconv.FormatInt(live[1], 10)}; !slices.Equal(got, want) {
+		t.Errorf("the erase's reported locks = %v, want the person's live links in id order %v", got, want)
+	}
+	at := modtest.One[string](t, h.Harness, `SELECT $1::timestamptz::text`, h.Now())
+	if got, want := modtest.One[string](t, h.Harness, links, []int64{started.ID, replaced.ID}), fmt.Sprintf("%d %s nobody, %s, %d %s nobody",
+		live[0], at, revokedEarlier, live[1], at); got != want {
+		t.Errorf("the person's links = %s, want %s", got, want)
+	}
+	if got := modtest.One[string](t, h.Harness, links, []int64{others.ID}); !strings.Contains(got, "live nobody") {
+		t.Errorf("another customer's link = %s, want it live", got)
+	}
+	if after := attempts(); after != before {
+		t.Errorf("the erase changed an attempt:\nbefore %s\nafter  %s", before, after)
+	}
+	page, _ := readPay(t, h.Client(t), token)
+	if page.Payable || page.Reason == nil || *page.Reason != "revoked" {
+		t.Errorf("the pay page after the erase = payable %v reason %v, want revoked", page.Payable, page.Reason)
+	}
+	if _, err := h.Pool().Exec(t.Context(), `INSERT INTO invoices.pay_links (invoice_id, token_sha256, url_ciphertext, created_at)
+		VALUES ($1, repeat('a', 64), 'x', now())`, started.ID); err == nil || !strings.Contains(err.Error(), "anonymised") {
+		t.Errorf("a link inserted after the marker = %v, want the trigger's refusal", err)
+	}
+	h.Advance(time.Hour)
+	if got, want := eraseOf(t, h, disabledDeps(h), customerAcme), eraseReport(0, 0, 0, 0); !slices.Equal(got, want) {
+		t.Errorf("a second erase = %+v, want zeros", got)
 	}
 }
