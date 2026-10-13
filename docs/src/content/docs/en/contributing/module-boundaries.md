@@ -102,7 +102,7 @@ Communications' outbox is the working example.
    to every method and path not on `security.PayRoutes()`, before any module's router
    sees the request. A module's anonymous operation is reachable on the public host only
    when that platform list names it — today the Invoices pay page's three operations and
-   the Vipps webhook — so a module adds a public operation by changing the platform's
+   the path reserved for the Vipps webhook, not served yet — so a module adds a public operation by changing the platform's
    list, in the same change and with its test (`TestPublicHostGate`), never by mounting
    anything of its own there.
 7. **Frontend packages are isolated too.** A module frontend package (for instance

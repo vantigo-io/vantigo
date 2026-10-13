@@ -270,6 +270,11 @@ scaling](/en/admin/installation/#background-workers-and-scaling)), polls every s
 handles every payment that is due in each cycle. The rules are in [the
 reference](/en/reference/invoices/#capture-and-the-reservation).
 
+**Webhooks are not supported yet.** Vantigo follows every Vipps payment by reading it
+(polling); it registers no webhook with Vipps, and nothing needs to reach it from Vipps.
+The public host's allowlist already names the path a webhook will use, but nothing
+answers it yet.
+
 **While a capture is being completed, its amount is reserved** on the invoice: a manual
 payment, a bank file or a reminder cannot take it, and a refusal says a Vipps payment is
 being completed. With `INVOICES_VIPPS_ENABLED=0` the worker does not run and no payment
@@ -493,7 +498,7 @@ on no list.
 | `POST` | `/api/v1/invoices/pay/read` (the page's read; the token in the body) |
 | `POST` | `/api/v1/invoices/pay/attempts` (a payment started) |
 | `GET` | `/api/v1/invoices/pay/attempts/{reference}` (its status) |
-| `POST` | `/api/v1/invoices/vipps/webhooks` (Vipps' notifications) |
+| `POST` | `/api/v1/invoices/vipps/webhooks` (reserved for Vipps' notifications; not served yet — webhooks are not supported) |
 | `GET` | `/api/v1/identity/system/status` (the page's maintenance check) |
 | `GET`, `HEAD` | `/health/…` (probes) |
 
