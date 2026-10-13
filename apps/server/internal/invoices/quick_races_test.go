@@ -321,3 +321,79 @@ func TestQuickInvoice_RequestIdDoubleSubmit(t *testing.T) {
 		t.Errorf("deadlocks = %d, was %d", after, before)
 	}
 }
+
+// TestQuickInvoice_RequestIdFirstRefused (D17, after review): the first of
+// two quick invoices with one requestId, parked on SetQuickAfterInsert with
+// the id's key uncommitted, is refused afterwards (buyer_incomplete) and
+// rolls back while the second waits on the key — pg_blocking_pids names the
+// first. The second then takes the id and issues its own invoice: the next
+// number, no gap, never 40P01, deadlocks unchanged. Not parallel: the seam
+// is the package's.
+func TestQuickInvoice_RequestIdFirstRefused(t *testing.T) {
+	h := raceHarness(t)
+	saveSeller(t, h, completeSeller(1))
+	issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25))).ID) // number 1
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	parked, release := make(chan struct{}), make(chan struct{})
+	var once atomic.Bool
+	restore := invoices.SetQuickAfterInsert(func(ctx context.Context, _ int64) error {
+		if once.Swap(true) {
+			return nil
+		}
+		close(parked)
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
+	defer restore()
+	const requestID = "3c9d8e7f-6a5b-4c3d-9e2f-1a0b9c8d7e6f"
+	refusedBody := quickBody(customerNoAddress, line("Utrykning", 1, 950, vat25))
+	refusedBody["requestId"] = requestID
+	goodBody := quickBody(customerAcme, line("Utrykning", 1, 950, vat25))
+	goodBody["requestId"] = requestID
+	firstClient, secondClient := quicker(t, h), quicker(t, h)
+
+	firstDone := make(chan *modtest.Response, 1)
+	go func() { firstDone <- firstClient.Do(http.MethodPost, quickPath, refusedBody, modtest.Context(ctx)) }()
+	select {
+	case <-parked:
+	case <-ctx.Done():
+		t.Fatal("the first never reached the seam")
+	}
+	first := idleInTransaction(t, probeConn)
+	secondDone := make(chan *modtest.Response, 1)
+	go func() { secondDone <- secondClient.Do(http.MethodPost, quickPath, goodBody, modtest.Context(ctx)) }()
+	waiter := newWaiter(t, probeConn)
+	if got := blockersOf(t, probeConn, waiter); !slices.Equal(got, []uint32{first}) {
+		t.Errorf("pg_blocking_pids(the second) = %v, want the first %d", got, first)
+	}
+	close(release)
+
+	a, b := <-firstDone, <-secondDone
+	if a.Status != http.StatusConflict || problemOf(t, a).Code != "buyer_incomplete" {
+		t.Errorf("the first = %d %s, want 409 buyer_incomplete", a.Status, a.Body)
+	}
+	if b.Status != http.StatusCreated {
+		t.Fatalf("the second = %d %s, want 201 — its own invoice, never 40P01", b.Status, b.Body)
+	}
+	var got quickJSON
+	b.JSON(&got)
+	if *got.Invoice.Number != 2 || got.Invoice.CustomerID != customerAcme {
+		t.Errorf("the second = number %d for customer %d, want 2 for Acme", *got.Invoice.Number, got.Invoice.CustomerID)
+	}
+	if n := modtest.One[int64](t, h.Harness, `SELECT invoice_id FROM invoices.quick_requests WHERE request_id = $1`, requestID); n != got.Invoice.ID {
+		t.Errorf("the id is kept for invoice %d, want the second's %d", n, got.Invoice.ID)
+	}
+	if nums := issuedNumbers(t, h); !slices.Equal(nums, []int64{1, 2}) {
+		t.Errorf("numbers = %v, want 1 and 2 with no gap", nums)
+	}
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("deadlocks = %d, was %d", after, before)
+	}
+}

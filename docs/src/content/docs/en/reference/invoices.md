@@ -1093,7 +1093,7 @@ the customer merged away. After its commit the quick invoice reads the profile a
 outside any lock, follows `mergedInto` to the survivor and, when it moved, gives the
 document the survivor's id under the document's own `FOR UPDATE`, in a transaction of
 its own — exactly the re-point's write for an issued document: the customer id alone, the
-buyer snapshot as issued. The answer names the survivor. A merge that has still not
+buyer snapshot as issued, logged at info with the invoice and both customers. The answer names the survivor. This re-read and the PDF's store run after the commit without the request's cancellation, so a client that hangs up then leaves neither undone. A merge that has still not
 committed when the profile is read again is not seen, as with an ordinary issue racing
 the same merge. **An erase in the window** refuses nothing: the erase keeps issued
 documents and cannot see the uncommitted draft, and the manual delivery's parent trigger
