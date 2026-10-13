@@ -3494,6 +3494,12 @@ Invoices speaks to Vipps through the platform's
 amounts in øre across it, the provider's errors typed, the idempotency keys the
 module's own. The module keeps its own tables; the port has none.
 
+**Webhooks are not supported yet**: the `invoices-payments` worker follows every
+attempt by reading Vipps (polling), and no webhook is registered or received. The
+credentials row's webhook columns stay empty, and the public host's allowlist names the
+path a webhook will use (`POST /api/v1/invoices/vipps/webhooks`), which nothing serves
+yet.
+
 ### Credentials and payment settings
 
 **The credentials** are one row of their own, `invoices.payment_provider_credentials`,
