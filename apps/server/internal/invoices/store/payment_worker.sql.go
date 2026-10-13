@@ -16,7 +16,7 @@ import (
 const attemptCancelled = `-- name: AttemptCancelled :execrows
 UPDATE invoices.payment_attempts
 SET state = 'cancelled', cancelled_amount = $1, finished_at = $2::timestamptz,
-    next_poll_at = NULL, last_error = NULL, lease_id = NULL, lease_until = NULL
+    next_poll_at = NULL, last_error = NULL, failures = 0, lease_id = NULL, lease_until = NULL
 WHERE id = $3 AND lease_id = $4::text AND state = 'cancelling'
 `
 
@@ -44,7 +44,7 @@ func (q *Queries) AttemptCancelled(ctx context.Context, arg AttemptCancelledPara
 const attemptCaptureUnknown = `-- name: AttemptCaptureUnknown :execrows
 UPDATE invoices.payment_attempts
 SET state = 'capture_unknown', next_poll_at = $1::timestamptz, last_error = $2,
-    lease_id = NULL, lease_until = NULL
+    failures = failures + 1, lease_id = NULL, lease_until = NULL
 WHERE id = $3 AND lease_id = $4::text AND state = 'capturing'
 `
 
@@ -74,7 +74,7 @@ func (q *Queries) AttemptCaptureUnknown(ctx context.Context, arg AttemptCaptureU
 const attemptReleased = `-- name: AttemptReleased :execrows
 UPDATE invoices.payment_attempts
 SET release_pending = false, cancelled_amount = $1,
-    next_poll_at = $2::timestamptz, last_error = NULL, lease_id = NULL, lease_until = NULL
+    next_poll_at = $2::timestamptz, last_error = NULL, failures = 0, lease_id = NULL, lease_until = NULL
 WHERE id = $3 AND lease_id = $4::text AND release_pending
 `
 
@@ -106,7 +106,7 @@ UPDATE invoices.payment_attempts
 SET state = 'authorized', authorized_amount = $1, authorized_at = $2::timestamptz,
     psp_reference = coalesce($3, psp_reference),
     capture_guaranteed_until = $4::timestamptz,
-    next_poll_at = $2::timestamptz, last_error = NULL, lease_id = NULL, lease_until = NULL
+    next_poll_at = $2::timestamptz, last_error = NULL, failures = 0, lease_id = NULL, lease_until = NULL
 WHERE id = $5 AND lease_id = $6::text AND state IN ('creating', 'created')
 `
 
@@ -251,7 +251,7 @@ func (q *Queries) CountCaptureAttempt(ctx context.Context, arg CountCaptureAttem
 const decideAttemptCancel = `-- name: DecideAttemptCancel :execrows
 UPDATE invoices.payment_attempts
 SET state = 'cancelling', reserved_amount = NULL,
-    next_poll_at = $1::timestamptz, lease_id = NULL, lease_until = NULL
+    next_poll_at = $1::timestamptz, failures = 0, lease_id = NULL, lease_until = NULL
 WHERE id = $2 AND lease_id = $3::text
   AND (state = 'authorized' OR (state = 'capturing' AND capture_attempts = 0))
 `
@@ -277,7 +277,7 @@ func (q *Queries) DecideAttemptCancel(ctx context.Context, arg DecideAttemptCanc
 const decideAttemptCapture = `-- name: DecideAttemptCapture :execrows
 UPDATE invoices.payment_attempts
 SET state = 'capturing', reserved_amount = $1, capture_key = $2,
-    next_poll_at = $3::timestamptz, last_error = NULL, lease_id = NULL, lease_until = NULL
+    next_poll_at = $3::timestamptz, last_error = NULL, failures = 0, lease_id = NULL, lease_until = NULL
 WHERE id = $4 AND lease_id = $5::text AND state = 'authorized'
 `
 
@@ -311,7 +311,7 @@ const endUnauthorizedAttempt = `-- name: EndUnauthorizedAttempt :execrows
 UPDATE invoices.payment_attempts
 SET state = $1::text, psp_reference = coalesce($2, psp_reference),
     finished_at = $3::timestamptz, next_poll_at = NULL, last_error = $4,
-    lease_id = NULL, lease_until = NULL
+    failures = 0, lease_id = NULL, lease_until = NULL
 WHERE id = $5 AND lease_id = $6::text AND state IN ('creating', 'created')
 `
 
@@ -345,23 +345,27 @@ func (q *Queries) EndUnauthorizedAttempt(ctx context.Context, arg EndUnauthorize
 const failAttemptCapture = `-- name: FailAttemptCapture :execrows
 UPDATE invoices.payment_attempts
 SET state = 'capture_failed', reserved_amount = NULL, release_pending = true, finished_at = $1::timestamptz,
-    next_poll_at = $1::timestamptz, last_error = $2, lease_id = NULL, lease_until = NULL
-WHERE id = $3 AND lease_id = $4::text AND state IN ('capturing', 'capture_unknown')
+    insufficient_funds = insufficient_funds + $2::integer,
+    next_poll_at = $1::timestamptz, last_error = $3, failures = 0, lease_id = NULL, lease_until = NULL
+WHERE id = $4 AND lease_id = $5::text AND state IN ('capturing', 'capture_unknown')
 `
 
 type FailAttemptCaptureParams struct {
-	Now       time.Time
-	LastError *string
-	ID        int64
-	LeaseID   string
+	Now               time.Time
+	InsufficientFunds int32
+	LastError         *string
+	ID                int64
+	LeaseID           string
 }
 
 // FailAttemptCapture records a definitive capture failure: nothing was
 // taken and nothing can be — capture_failed, the reservation released, the
-// authorized amount's release pending and due at once.
+// authorized amount's release pending and due at once; @insufficient_funds
+// counts the 6260 that ended it.
 func (q *Queries) FailAttemptCapture(ctx context.Context, arg FailAttemptCaptureParams) (int64, error) {
 	result, err := q.db.Exec(ctx, failAttemptCapture,
 		arg.Now,
+		arg.InsufficientFunds,
 		arg.LastError,
 		arg.ID,
 		arg.LeaseID,
@@ -375,7 +379,7 @@ func (q *Queries) FailAttemptCapture(ctx context.Context, arg FailAttemptCapture
 const recreatedAttempt = `-- name: RecreatedAttempt :execrows
 UPDATE invoices.payment_attempts
 SET state = 'created', redirect_url = $1, next_poll_at = $2::timestamptz,
-    last_error = NULL, lease_id = NULL, lease_until = NULL
+    last_error = NULL, failures = 0, lease_id = NULL, lease_until = NULL
 WHERE id = $3 AND lease_id = $4::text AND state = 'creating'
 `
 
@@ -436,8 +440,8 @@ UPDATE invoices.payment_attempts
 SET state = 'captured', captured_amount = $1, captured_at = $2::timestamptz,
     reserved_amount = NULL, release_pending = $3,
     refund_watch_until = $4::timestamptz, finished_at = $2::timestamptz,
-    next_poll_at = $5::timestamptz, last_error = NULL, lease_id = NULL, lease_until = NULL
-WHERE id = $6 AND lease_id = $7::text AND state IN ('capturing', 'capture_unknown')
+    next_poll_at = $5::timestamptz, last_error = NULL, failures = 0, lease_id = NULL, lease_until = NULL
+WHERE id = $6 AND lease_id = $7::text AND state IN ('capturing', 'capture_unknown', 'capture_failed', 'cancelling')
 `
 
 type RegisterAttemptCapturedParams struct {
@@ -453,8 +457,11 @@ type RegisterAttemptCapturedParams struct {
 // RegisterAttemptCaptured is the registration's attempt half, in the
 // transaction that inserts its payment: captured, the reservation released
 // as the payment takes its place, the uncaptured rest's release pending when
-// Vipps authorized more, the refund watch set. The caller holds the attempt
-// and then its invoice.
+// Vipps authorized more and none was released, the refund watch set. Money
+// Vipps shows captured is always registered: from a capture in progress or
+// unknown, and from a failed capture or a cancel that it landed on after all
+// (00046 lets capture_failed become captured with a captured amount). The
+// caller holds the attempt and then its invoice.
 func (q *Queries) RegisterAttemptCaptured(ctx context.Context, arg RegisterAttemptCapturedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, registerAttemptCaptured,
 		arg.CapturedAmount,
@@ -474,24 +481,32 @@ func (q *Queries) RegisterAttemptCaptured(ctx context.Context, arg RegisterAttem
 const reschedulePaymentAttempt = `-- name: ReschedulePaymentAttempt :execrows
 UPDATE invoices.payment_attempts
 SET next_poll_at = $1::timestamptz, last_error = $2,
+    failures = CASE WHEN $3::boolean THEN failures + 1 ELSE 0 END,
+    insufficient_funds = insufficient_funds + $4::integer,
     lease_id = NULL, lease_until = NULL
-WHERE id = $3 AND lease_id = $4::text
+WHERE id = $5 AND lease_id = $6::text
 `
 
 type ReschedulePaymentAttemptParams struct {
-	NextPollAt *time.Time
-	LastError  *string
-	ID         int64
-	LeaseID    string
+	NextPollAt        *time.Time
+	LastError         *string
+	Failed            bool
+	InsufficientFunds int32
+	ID                int64
+	LeaseID           string
 }
 
 // ReschedulePaymentAttempt ends a claim that changes nothing but when the
 // attempt is read again: @next_poll_at NULL parks it (a release Vipps can
-// never perform), and @last_error says why, NULL clearing it.
+// never perform), and @last_error says why, NULL clearing it. @failed counts
+// one more failed call in a row — the backoff's — or clears the count;
+// @insufficient_funds adds Vipps' 6260 answers.
 func (q *Queries) ReschedulePaymentAttempt(ctx context.Context, arg ReschedulePaymentAttemptParams) (int64, error) {
 	result, err := q.db.Exec(ctx, reschedulePaymentAttempt,
 		arg.NextPollAt,
 		arg.LastError,
+		arg.Failed,
+		arg.InsufficientFunds,
 		arg.ID,
 		arg.LeaseID,
 	)

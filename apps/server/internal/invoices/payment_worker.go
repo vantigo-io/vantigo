@@ -38,30 +38,41 @@ import (
 //     a create whose outcome was never learned is no proof nothing was made:
 //     past the ten minutes the create is sent again under its stored key, so
 //     a payment that exists conflicts and one that does not is made — and
-//     ends at Vipps. AUTHORIZED → authorized, due at once.
+//     ends at Vipps; after ten such tries in a row the attempt is parked for
+//     a person. AUTHORIZED → authorized, due at once.
 //   - authorized: the capture decision, under the attempt's lock and then the
 //     invoice's: capture = min(authorized, open), open counting every other
 //     live reservation. Above zero, capturing with the amount reserved and a
 //     capture key; else cancelling. No call is made inside it.
 //   - capturing, capture_unknown: Get first — anything captured is
-//     registered. Nothing captured and no longer capturable is a capture
-//     failure. Else, in one transaction, the capture is counted with its key
+//     registered. Only Vipps' own read ends it: ABORTED, EXPIRED,
+//     TERMINATED or a released authorization with nothing captured is a
+//     capture failure. Our clock passing captureGuaranteedUntil is not:
+//     with no capture sent the capture is sent, with one sent the attempt
+//     waits as an unknown outcome. Else, in one transaction, the capture is
+//     counted with its key
 //     stored — while no capture was sent yet the decision is taken again
 //     under the attempt's and the invoice's locks, and a credit note or a
 //     payment landed since lowers the reservation under a new key or cancels
 //     it (m3) — and then Capture, outside it. Captured → registered.
-//     ErrInsufficientFunds (6260) is tried three times and ErrCaptureFailed
-//     (6280) until the capture's guarantee or 30 days after the
-//     authorization, then capture_failed. Every other error is an unknown
-//     outcome: retried with the same key, backing off to ten minutes, and
+//     ErrInsufficientFunds (6260) ends it after three 6260 answers, counted
+//     on their own, and ErrCaptureFailed (6280) is tried until the capture's
+//     guarantee or 30 days after the authorization, then capture_failed.
+//     Every other error is an unknown outcome: retried with the same key,
+//     backing off to ten minutes by the failures in a row, and
 //     after seven days capture_unknown — the reservation kept, read hourly
 //     to 180 days after the authorization, then daily.
 //   - the registration: one transaction, the attempt and then the invoice,
 //     the payment inserted (payment_attempt_id is the exactly-once guard)
 //     and the attempt captured with its reservation released in the same
-//     commit, dated by the capture event's Oslo day.
-//   - cancelling, a release pending: Cancel under the cancel key until Vipps
-//     has released the rest. A release Vipps refuses for good while its read
+//     commit, dated by the capture event's Oslo day. A registration that
+//     fails keeps the state and the reservation, records why in last_error
+//     and is tried again on the backoff.
+//   - cancelling, a release pending: money Vipps shows captured on an attempt
+//     not yet captured — a failed capture that landed after all, a capture
+//     made in the portal — is registered, never closed as a release (00046
+//     lets capture_failed become captured). Otherwise Cancel under the
+//     cancel key until Vipps has released the rest. A release Vipps refuses for good while its read
 //     shows an amount still unreleased is parked — next_poll_at NULL, never
 //     polled again, still counted live against a change of the credentials —
 //     for a person to settle in the Vipps portal.
@@ -96,6 +107,9 @@ const (
 	// many times a 6260 is.
 	captureFailureCutoff = 30 * 24 * time.Hour
 	insufficientTries    = 3
+	// recreateTries is how many times in a row a create is sent again
+	// before the attempt is parked for a person.
+	recreateTries = 10
 	// refundWatch is how long a captured attempt is watched for a refund
 	// made in the Vipps portal, and watchPoll its cadence.
 	refundWatch = 30 * 24 * time.Hour
@@ -321,16 +335,30 @@ func lastError(msg string) *string {
 	return &msg
 }
 
-// reschedule ends the claim: read again at next (zero parks the attempt),
-// reason recorded ("" clears it).
+// reschedule ends a claim that learned nothing new and failed nothing:
+// read again at next (zero parks the attempt), reason recorded ("" clears
+// it), the failures in a row cleared.
 func (c *paymentClaim) reschedule(ctx context.Context, next time.Time, reason string) error {
+	return c.rescheduleAs(ctx, next, reason, false, 0)
+}
+
+// retry ends a claim whose call failed: one more failure in a row, read
+// again after the backoff of that many (at least wait), reason recorded.
+func (c *paymentClaim) retry(ctx context.Context, reason string, wait time.Duration) error {
+	return c.rescheduleAs(ctx, c.now.Add(max(wait, paymentBackoff(c.row.Failures+1))), reason, true, 0)
+}
+
+// rescheduleAs is reschedule and retry's write: failed counts a failure in a
+// row, insufficient adds 6260 answers.
+func (c *paymentClaim) rescheduleAs(ctx context.Context, next time.Time, reason string, failed bool, insufficient int32) error {
 	var at *time.Time
 	if !next.IsZero() {
 		at = &next
 	}
 	return c.attemptTx(ctx, false, nil, nil, func(ctx context.Context, txq *store.Queries, _ store.InvoicesPaymentAttempt, _ store.InvoicesInvoice) error {
 		n, err := txq.ReschedulePaymentAttempt(ctx, store.ReschedulePaymentAttemptParams{
-			NextPollAt: at, LastError: lastError(reason), ID: c.row.ID, LeaseID: c.lease,
+			NextPollAt: at, LastError: lastError(reason), Failed: failed, InsufficientFunds: insufficient,
+			ID: c.row.ID, LeaseID: c.lease,
 		})
 		return one(n, err, "reschedule", c.row.ID)
 	})
@@ -347,12 +375,12 @@ func (c *paymentClaim) poll(ctx context.Context) error {
 	case errors.Is(err, payments.ErrNotFound) && !expired:
 		return c.reschedule(ctx, c.now.Add(createdPoll), "Vipps does not know the payment yet.")
 	default:
-		return c.reschedule(ctx, c.now.Add(paymentBackoff(c.row.Polls)), err.Error())
+		return c.retry(ctx, err.Error(), 0)
 	}
 	switch p.State {
 	case payments.StateAuthorized:
 		if p.Authorized.Minor <= 0 {
-			return c.reschedule(ctx, c.now.Add(paymentBackoff(c.row.Polls)), "Vipps answered AUTHORIZED with nothing authorized.")
+			return c.retry(ctx, "Vipps answered AUTHORIZED with nothing authorized.", 0)
 		}
 		amount, err := numericFromRat(ratOfMinor(p.Authorized.Minor), 2)
 		if err != nil {
@@ -438,7 +466,14 @@ func (c *paymentClaim) recreate(ctx context.Context) error {
 	case payments.IsDefinitiveCreateRefusal(err) && !errors.Is(err, payments.ErrUnauthorized):
 		return c.end(ctx, "failed", nil, err.Error())
 	}
-	return c.reschedule(ctx, c.now.Add(expiredPoll), err.Error())
+	if c.row.Failures+1 >= recreateTries {
+		c.w.logger().WarnContext(ctx, "invoices: a payment's create, sent again, keeps failing; the attempt is parked",
+			"worker", paymentWorkerName, "attempt_id", c.row.ID, "error", err.Error())
+		return c.rescheduleAs(ctx, time.Time{}, fmt.Sprintf(
+			"The create was sent again %d times without an answer that settles it (%s). Look the reference up in the Vipps portal.",
+			recreateTries, err.Error()), true, 0)
+	}
+	return c.retry(ctx, err.Error(), expiredPoll)
 }
 
 // decide is the capture decision (D16, m4): under the attempt's lock and
@@ -478,13 +513,16 @@ func minRat(a, b *big.Rat) *big.Rat {
 	return new(big.Rat).Set(b)
 }
 
-// capturable reports whether Vipps can still capture p as the claim reads
-// it: authorized, nothing released, and within its guarantee.
-func (c *paymentClaim) capturable(p payments.Payment) bool {
-	if p.State != payments.StateAuthorized || p.Cancelled.Minor > 0 {
+// endedAtVipps reports whether Vipps' own read says p can never be
+// captured: ended before authorization, or its authorization released, with
+// nothing captured. Our clock passing captureGuaranteedUntil is no such
+// answer: Vipps may still capture.
+func endedAtVipps(p payments.Payment) bool {
+	if p.Captured.Minor > 0 {
 		return false
 	}
-	return p.CaptureGuaranteedUntil == nil || c.now.Before(*p.CaptureGuaranteedUntil)
+	return p.State == payments.StateAborted || p.State == payments.StateExpired || p.State == payments.StateTerminated ||
+		p.Cancelled.Minor > 0
 }
 
 // capture is a capturing or capture_unknown attempt's step: read, then
@@ -492,18 +530,22 @@ func (c *paymentClaim) capturable(p payments.Payment) bool {
 func (c *paymentClaim) capture(ctx context.Context) error {
 	p, err := c.provider.Get(ctx, c.row.Reference)
 	if err != nil {
-		return c.unknown(ctx, err, 0)
+		return c.unknown(ctx, err)
 	}
 	if p.Captured.Minor > 0 {
 		return c.register(ctx, p.Captured.Minor)
 	}
-	if !c.capturable(p) {
-		return c.failCapture(ctx, "Vipps holds nothing captured, and the payment can no longer be captured.")
+	if endedAtVipps(p) {
+		return c.failCapture(ctx, "Vipps holds nothing captured, and has ended or released the payment.")
+	}
+	if c.row.CaptureAttempts > 0 && p.CaptureGuaranteedUntil != nil && !c.now.Before(*p.CaptureGuaranteedUntil) {
+		// Past the guarantee with a capture sent: nothing is sent again, and
+		// nothing is given up — the reservation stays until Vipps answers.
+		return c.unknown(ctx, errors.New("invoices: past the capture guarantee, Vipps holds nothing captured yet"))
 	}
 
 	var amount *big.Rat
 	var key uuid.UUID
-	var counted int32
 	cancelled := false
 	err = c.attemptTx(ctx, c.row.CaptureAttempts == 0, captureAfterAttemptLock, nil, func(ctx context.Context, txq *store.Queries, a store.InvoicesPaymentAttempt, inv store.InvoicesInvoice) error {
 		reserved, err := ratFromNumeric(a.ReservedAmount)
@@ -513,7 +555,7 @@ func (c *paymentClaim) capture(ctx context.Context) error {
 		if a.CaptureKey == nil {
 			return fmt.Errorf("invoices: payment attempt %d is %s without a capture key", a.ID, a.State)
 		}
-		amount, key, counted = reserved, *a.CaptureKey, a.CaptureAttempts+1
+		amount, key = reserved, *a.CaptureKey
 		if a.CaptureAttempts == 0 && a.State == "capturing" && inv.ID == a.InvoiceID {
 			// The re-decision (m3): no capture was sent, so the amount may
 			// still follow what landed on the invoice since the decision.
@@ -560,18 +602,18 @@ func (c *paymentClaim) capture(ctx context.Context) error {
 	case err == nil && p.Captured.Minor > 0:
 		return c.register(ctx, p.Captured.Minor)
 	case err == nil:
-		return c.unknown(ctx, errors.New("invoices: Vipps answered the capture with nothing captured"), counted)
+		return c.unknown(ctx, errors.New("invoices: Vipps answered the capture with nothing captured"))
 	case payments.IsCaptureFailure(err):
-		return c.captureFailure(ctx, err, counted)
+		return c.captureFailure(ctx, err)
 	}
-	return c.unknown(ctx, err, counted)
+	return c.unknown(ctx, err)
 }
 
 // captureFailure judges a capture Vipps failed (6260, 6280): nothing was
 // taken and Vipps asks for a retry, so it is tried again until the capture's
-// guarantee or 30 days after the authorization — a 6260 three times at most
-// — and then the attempt is capture_failed.
-func (c *paymentClaim) captureFailure(ctx context.Context, cause error, counted int32) error {
+// guarantee or 30 days after the authorization — after three 6260 answers
+// at most, counted on their own — and then the attempt is capture_failed.
+func (c *paymentClaim) captureFailure(ctx context.Context, cause error) error {
 	cutoff := c.now
 	if c.row.AuthorizedAt != nil {
 		cutoff = c.row.AuthorizedAt.Add(captureFailureCutoff)
@@ -579,17 +621,28 @@ func (c *paymentClaim) captureFailure(ctx context.Context, cause error, counted 
 	if g := c.row.CaptureGuaranteedUntil; g != nil && g.Before(cutoff) {
 		cutoff = *g
 	}
-	if !c.now.Before(cutoff) || (errors.Is(cause, payments.ErrInsufficientFunds) && counted >= insufficientTries) {
-		return c.failCapture(ctx, cause.Error())
+	var insufficient int32
+	if errors.Is(cause, payments.ErrInsufficientFunds) {
+		insufficient = 1
 	}
-	return c.reschedule(ctx, c.now.Add(paymentBackoff(counted)), cause.Error())
+	if !c.now.Before(cutoff) || (insufficient > 0 && c.row.InsufficientFunds+1 >= insufficientTries) {
+		return c.failCaptureAs(ctx, cause.Error(), insufficient)
+	}
+	return c.rescheduleAs(ctx, c.now.Add(paymentBackoff(c.row.Failures+1)), cause.Error(), true, insufficient)
 }
 
 // failCapture records a definitive capture failure: the reservation
 // released, the authorization's release pending.
 func (c *paymentClaim) failCapture(ctx context.Context, reason string) error {
+	return c.failCaptureAs(ctx, reason, 0)
+}
+
+// failCaptureAs is failCapture counting insufficient 6260 answers more.
+func (c *paymentClaim) failCaptureAs(ctx context.Context, reason string, insufficient int32) error {
 	return c.attemptTx(ctx, false, nil, nil, func(ctx context.Context, txq *store.Queries, _ store.InvoicesPaymentAttempt, _ store.InvoicesInvoice) error {
-		n, err := txq.FailAttemptCapture(ctx, store.FailAttemptCaptureParams{Now: c.now, LastError: lastError(reason), ID: c.row.ID, LeaseID: c.lease})
+		n, err := txq.FailAttemptCapture(ctx, store.FailAttemptCaptureParams{
+			Now: c.now, LastError: lastError(reason), InsufficientFunds: insufficient, ID: c.row.ID, LeaseID: c.lease,
+		})
 		return one(n, err, "fail the capture of", c.row.ID)
 	})
 }
@@ -597,7 +650,7 @@ func (c *paymentClaim) failCapture(ctx context.Context, reason string) error {
 // unknown is a capture whose outcome the claim could not learn: retried
 // with the same key on the backoff (a throttle's Retry-After honoured), and
 // after seven days capture_unknown, its reservation kept (B5, I2).
-func (c *paymentClaim) unknown(ctx context.Context, cause error, counted int32) error {
+func (c *paymentClaim) unknown(ctx context.Context, cause error) error {
 	since := c.row.CreatedAt
 	if c.row.AuthorizedAt != nil {
 		since = *c.row.AuthorizedAt
@@ -607,7 +660,7 @@ func (c *paymentClaim) unknown(ctx context.Context, cause error, counted int32) 
 		if !c.now.Before(since.Add(captureLimit)) {
 			next = c.now.Add(lateUnknownPoll)
 		}
-		return c.reschedule(ctx, next, cause.Error())
+		return c.rescheduleAs(ctx, next, cause.Error(), true, 0)
 	}
 	if !c.now.Before(since.Add(unknownAfter)) {
 		c.w.logger().WarnContext(ctx, "invoices: a Vipps capture's outcome is unknown after seven days; its reservation is kept",
@@ -619,11 +672,11 @@ func (c *paymentClaim) unknown(ctx context.Context, cause error, counted int32) 
 			return one(n, err, "record the unknown capture of", c.row.ID)
 		})
 	}
-	wait := paymentBackoff(max(counted, c.row.CaptureAttempts))
-	if throttled, ok := errors.AsType[*payments.ErrThrottled](cause); ok && throttled.RetryAfter > wait {
+	var wait time.Duration
+	if throttled, ok := errors.AsType[*payments.ErrThrottled](cause); ok {
 		wait = throttled.RetryAfter
 	}
-	return c.reschedule(ctx, c.now.Add(wait), cause.Error())
+	return c.retry(ctx, cause.Error(), wait)
 }
 
 // register is the registration (D16): the capture event's Oslo day read
@@ -645,8 +698,10 @@ func (c *paymentClaim) register(ctx context.Context, capturedMinor int64) error 
 	if err != nil {
 		return err
 	}
-	return c.attemptTx(ctx, true, nil, registerAfterInvoiceLock, func(ctx context.Context, txq *store.Queries, a store.InvoicesPaymentAttempt, inv store.InvoicesInvoice) error {
-		if a.State != "capturing" && a.State != "capture_unknown" {
+	err = c.attemptTx(ctx, true, nil, registerAfterInvoiceLock, func(ctx context.Context, txq *store.Queries, a store.InvoicesPaymentAttempt, inv store.InvoicesInvoice) error {
+		switch a.State {
+		case "capturing", "capture_unknown", "capture_failed", "cancelling":
+		default:
 			return errClaimLost
 		}
 		authorized, err := ratFromNumeric(a.AuthorizedAmount)
@@ -659,7 +714,9 @@ func (c *paymentClaim) register(ctx context.Context, capturedMinor int64) error 
 		}); err != nil {
 			return fmt.Errorf("invoices: register payment attempt %d's capture against %d: %w", a.ID, inv.ID, err)
 		}
-		releasePending := authorized.Cmp(captured) > 0
+		// The rest is released unless a release already took it (a failed
+		// capture's, before the money showed).
+		releasePending := authorized.Cmp(captured) > 0 && !a.CancelledAmount.Valid
 		next := c.now.Add(watchPoll)
 		if releasePending {
 			next = c.now
@@ -670,6 +727,16 @@ func (c *paymentClaim) register(ctx context.Context, capturedMinor int64) error 
 		})
 		return one(n, err, "record the capture of", a.ID)
 	})
+	if err != nil && !errors.Is(err, errClaimLost) {
+		// The money is captured and not registered: the attempt keeps its
+		// state and reservation, says why, and is tried again.
+		c.w.logger().ErrorContext(ctx, "invoices: a Vipps capture could not be registered; it is tried again",
+			"worker", paymentWorkerName, "attempt_id", c.row.ID, "error", err.Error())
+		if rerr := c.retry(ctx, "The capture could not be registered: "+err.Error(), 0); rerr != nil && !errors.Is(rerr, errClaimLost) {
+			return errors.Join(err, rerr)
+		}
+	}
+	return err
 }
 
 // release releases what Vipps authorized and did not capture — a
@@ -679,18 +746,37 @@ func (c *paymentClaim) register(ctx context.Context, capturedMinor int64) error 
 // from Vipps' read; a release Vipps refuses for good while its read still
 // shows an amount unreleased is parked (the review's decision 6).
 func (c *paymentClaim) release(ctx context.Context, cancelling bool) error {
+	// Money Vipps shows captured on an attempt not yet captured — a failed
+	// capture that landed after all, a capture made in the portal — is
+	// registered, never closed as a release.
+	unregistered := c.row.State != "captured"
+	if unregistered {
+		read, err := c.provider.Get(ctx, c.row.Reference)
+		if err != nil {
+			return c.retry(ctx, err.Error(), 0)
+		}
+		if read.Captured.Minor > 0 {
+			return c.register(ctx, read.Captured.Minor)
+		}
+	}
 	p, err := c.provider.Cancel(ctx, c.row.Reference, c.row.CancelKey.String())
+	if err == nil && unregistered && p.Captured.Minor > 0 {
+		return c.register(ctx, p.Captured.Minor)
+	}
 	if err == nil && p.Cancelled.Minor > 0 {
 		return c.released(ctx, cancelling, p.Cancelled.Minor)
 	}
 	refused, definitive := errors.AsType[*payments.ErrRefused](err)
 	definitive = definitive && refused.Code != ""
 	if err != nil && !definitive {
-		return c.reschedule(ctx, c.now.Add(paymentBackoff(c.row.Polls)), err.Error())
+		return c.retry(ctx, err.Error(), 0)
 	}
 	read, gerr := c.provider.Get(ctx, c.row.Reference)
 	if gerr != nil {
-		return c.reschedule(ctx, c.now.Add(paymentBackoff(c.row.Polls)), gerr.Error())
+		return c.retry(ctx, gerr.Error(), 0)
+	}
+	if unregistered && read.Captured.Minor > 0 {
+		return c.register(ctx, read.Captured.Minor)
 	}
 	if read.Cancelled.Minor > 0 || read.Captured.Minor+read.Cancelled.Minor >= read.Authorized.Minor || read.State != payments.StateAuthorized {
 		return c.released(ctx, cancelling, read.Cancelled.Minor)
@@ -698,10 +784,10 @@ func (c *paymentClaim) release(ctx context.Context, cancelling bool) error {
 	if definitive {
 		c.w.logger().WarnContext(ctx, "invoices: Vipps refuses to release a payment's uncaptured rest; the attempt is parked",
 			"worker", paymentWorkerName, "attempt_id", c.row.ID, "error", err.Error())
-		return c.reschedule(ctx, time.Time{},
-			"Vipps refuses to release the uncaptured amount ("+err.Error()+"). Release it in the Vipps portal.")
+		return c.rescheduleAs(ctx, time.Time{},
+			"Vipps refuses to release the uncaptured amount ("+err.Error()+"). Release it in the Vipps portal.", true, 0)
 	}
-	return c.reschedule(ctx, c.now.Add(paymentBackoff(c.row.Polls)), "Vipps released nothing yet.")
+	return c.retry(ctx, "Vipps released nothing yet.", 0)
 }
 
 // released records what Vipps released: a cancelling attempt cancelled, or

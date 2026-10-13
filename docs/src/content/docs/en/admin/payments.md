@@ -290,8 +290,16 @@ environment's), is registered on the invoice within seconds as a Vipps payment.
   captured, a manager abandons the attempt, which releases the reservation. Check the
   keys first — a refused key (*Refused* on verify) leaves every capture unknown.
 - *A failed capture* (`capture_failed`). Vipps refused the capture for lack of funds or
-  as failed, and kept refusing it until the authorization ran out. Nothing was taken;
-  the invoice is open again and the customer pays another way.
+  as failed, and kept refusing it until the authorization ran out, or Vipps ended the
+  payment. Nothing was taken; the invoice is open again and the customer pays another
+  way. Should the money show as captured at Vipps after all — or a payment be captured
+  in the portal — the worker registers it as soon as it reads it.
+- *A payment's create that never settles.* When the create of a payment was never
+  answered and sending it again keeps conflicting, the worker stops after ten tries and
+  the payment's last error says to look the reference up in the Vipps portal.
+- *A capture that cannot be registered.* The money is captured but the payment could
+  not be written; the attempt keeps its reservation, its last error says why, and the
+  worker tries again.
 - *A release that never ends.* When Vipps refuses for good to release an amount it
   authorized and did not capture, the worker stops asking: the payment's last error says
   to release it in the Vipps portal. Such a payment still counts as in progress, so the

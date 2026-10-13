@@ -3690,7 +3690,10 @@ and reference**. A payment the first create made conflicts with it, and the atte
 read on; one it never made is made now — its payer was long since told the create failed
 — and Vipps expires it. Only a refusal that names the request (a 400 with a code, or a
 request refused before it was sent) fails the attempt; refused keys say nothing about
-the first create and leave it polled.
+the first create and leave it polled. After ten tries in a row with no answer that
+settles it — a conflict on the key reused with another return address, a reference in
+use — the attempt is **parked**, `next_poll_at` cleared and `last_error` saying to look
+the reference up in the Vipps portal.
 
 **The decision**, from `authorized`, is one transaction that makes no call: the attempt
 `FOR NO KEY UPDATE`, then its invoice `FOR UPDATE`, then the open amount — gross −
@@ -3703,9 +3706,12 @@ it. Two attempts both authorized serialise on the invoice and the second capture
 what the first left, or cancels.
 
 **The capture** (`capturing`, `capture_unknown`) reads first: anything Vipps holds
-captured — the answer to an earlier capture lost on the way — is registered. Nothing
-captured on a payment Vipps can no longer capture (not `AUTHORIZED`, something already
-released, or past `captureGuaranteedUntil`) is a capture failure. Otherwise one
+captured — the answer to an earlier capture lost on the way — is registered. **Only
+Vipps' own read ends a capture**: nothing captured on a payment Vipps reports `ABORTED`,
+`EXPIRED` or `TERMINATED`, or whose authorization it has released, is a capture failure.
+Our clock passing `captureGuaranteedUntil` is no such answer — Vipps may still capture:
+with no capture sent yet the capture is sent; with one sent the attempt waits as an
+unknown outcome, its reservation kept. Otherwise one
 transaction counts the capture about to be sent (`capture_attempts`), with the key it
 will carry already stored. **While no capture has been sent** that transaction takes the
 decision's locks again — the attempt, then the invoice — and decides again on the open
@@ -3722,13 +3728,15 @@ reserved amount under the key:
   registered;
 - **a capture failure** — only Vipps' 6260 (insufficient funds) or 6280 (capture failed),
   each only on a 400 (`payments.IsCaptureFailure`) — took nothing and is not final: it
-  is tried again on the backoff, a 6260 three times, a 6280 until `captureGuaranteedUntil`
-  or 30 days after the authorization, whichever is first; then the attempt is
+  is tried again on the backoff — until three 6260 answers, counted on their own
+  (`insufficient_funds`), or for a 6280 until `captureGuaranteedUntil` or 30 days after
+  the authorization, whichever is first; then the attempt is
   **`capture_failed`**, its reservation released and its release pending;
 - **anything else** — a 401, 403, 404, 409, 423 or 429, a 5xx, a timeout, an answer that
   does not decode — is an **unknown outcome**: the money may have moved. The attempt
   stays `capturing` with its reservation and the same key, and is tried again after
-  `min(600, 2^n)` seconds (a throttle's `Retry-After` when longer). After seven days of
+  `min(600, 2^n)` seconds, `n` the failed calls in a row (`failures`, cleared by any
+  call that succeeds; a throttle's `Retry-After` when longer). After seven days of
   unknown outcomes from its authorization it becomes **`capture_unknown`**: **its
   reservation is kept** — no manual payment of that amount and no fee-bearing reminder
   while the money may have been taken — and it is read every hour up to 180 days after
@@ -3747,9 +3755,17 @@ the same commit the attempt becomes `captured` with its reservation released, so
 payment and the reservation never both count against the open amount; `release_pending`
 is set when Vipps authorized more than it captured, and `refund_watch_until` 30 days on.
 A capture of less than was reserved is registered as captured, and the rest released.
+A registration that fails keeps the attempt's state and reservation, records why in
+`last_error`, and is tried again on the backoff.
+
+**Captured money is always registered.** On an attempt not yet `captured` — a
+`capture_failed` one whose capture landed after all, a `cancelling` one captured in the
+Vipps portal — whatever Vipps' read or its answer to a cancel shows captured is
+registered as above, the attempt becoming `captured`; it is never closed as a release.
 
 **Releasing what was not captured** (`cancelling`, or a release pending after
-`captured` or `capture_failed`): `Cancel` under the attempt's cancel key, on the
+`captured` or `capture_failed`): the payment is read first unless it is already
+`captured`, then `Cancel` under the attempt's cancel key, on the
 backoff until it succeeds — "already cancelled" is success — then `cancelled_amount` and,
 from `cancelling`, the state `cancelled`. A released amount of zero is taken only from
 Vipps' read of the payment. **A release Vipps refuses for good** — a 400 naming a code —

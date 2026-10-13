@@ -13,6 +13,8 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/payments"
+	"github.com/vantigo-io/vantigo/server/internal/payments/vipps"
 	"github.com/vantigo-io/vantigo/server/internal/payments/vipps/vippstest"
 )
 
@@ -29,6 +31,7 @@ type attemptRow struct {
 	ReleasePending                           bool
 	CaptureKey                               *string
 	CaptureAttempts, Polls                   int32
+	Failures, InsufficientFunds              int32
 	NextPollAt, RefundWatchUntil, FinishedAt *time.Time
 	LastError                                *string
 }
@@ -39,10 +42,12 @@ func attemptOf(t *testing.T, h *harness, reference string) attemptRow {
 	var a attemptRow
 	err := h.Pool().QueryRow(context.Background(), `
 		SELECT id, state, reserved_amount::text, authorized_amount::text, captured_amount::text, cancelled_amount::text,
-		       release_pending, capture_key::text, capture_attempts, polls, next_poll_at, refund_watch_until, finished_at, last_error
+		       release_pending, capture_key::text, capture_attempts, polls, next_poll_at, refund_watch_until, finished_at, last_error,
+		       failures, insufficient_funds
 		FROM invoices.payment_attempts WHERE reference = $1`, reference).Scan(
 		&a.ID, &a.State, &a.Reserved, &a.Authorized, &a.Captured, &a.Released, &a.ReleasePending, &a.CaptureKey,
-		&a.CaptureAttempts, &a.Polls, &a.NextPollAt, &a.RefundWatchUntil, &a.FinishedAt, &a.LastError)
+		&a.CaptureAttempts, &a.Polls, &a.NextPollAt, &a.RefundWatchUntil, &a.FinishedAt, &a.LastError,
+		&a.Failures, &a.InsufficientFunds)
 	if err != nil {
 		t.Fatalf("read attempt %s: %v", reference, err)
 	}
@@ -433,7 +438,11 @@ func TestPaymentWorker_EachState(t *testing.T) {
 			refusedAs(t, "a manual payment while unknown", payer(t, h).Do(http.MethodPost, paymentsPath(inv.ID), pay(2500, "2026-09-12")), "invoice_settled")
 			h.vipps.Clear(vippstest.OpCapture)
 			if !captured {
-				h.vipps.GuaranteeCapture(ref, h.Now().Add(-time.Hour))
+				// Vipps' own read ends it: the reservation released in the
+				// portal, nothing captured.
+				if _, err := portal(t, h).Cancel(context.Background(), ref, "portal-cancel"); err != nil {
+					t.Fatalf("cancel in the portal: %v", err)
+				}
 			}
 			h.Advance(time.Hour)
 			cycle(t, h)
@@ -459,14 +468,15 @@ func TestPaymentWorker_EachState(t *testing.T) {
 		}
 		h.Advance(10 * time.Minute)
 		cycle(t, h)
-		if a := attemptOf(t, h, ref); !a.ReleasePending {
-			t.Fatal("the release ended while Vipps refused it")
+		if a := attemptOf(t, h, ref); !a.ReleasePending || a.Failures != 2 {
+			t.Fatalf("the release ended while Vipps refused it, or its failures = %d, want 2 in a row", a.Failures)
 		}
 		h.vipps.Clear(vippstest.OpCancel)
 		h.Advance(20 * time.Minute)
 		cycle(t, h)
-		if a := attemptOf(t, h, ref); a.ReleasePending || text(a.Released) != "1000.00" {
-			t.Errorf("the release = pending %v released %s, want done, 1000.00", a.ReleasePending, text(a.Released))
+		if a := attemptOf(t, h, ref); a.ReleasePending || text(a.Released) != "1000.00" || a.Failures != 0 {
+			t.Errorf("the release = pending %v released %s failures %d, want done, 1000.00, the failures reset",
+				a.ReleasePending, text(a.Released), a.Failures)
 		}
 	})
 
@@ -858,4 +868,210 @@ func TestPaymentWorker_ReleaseNeverPossibleIsParked(t *testing.T) {
 	}
 	res := vippsManager(t, h).Do(http.MethodDelete, vippsSettingsPath, nil)
 	refusedAs(t, "removing the credentials", res, "payment_attempts_active")
+}
+
+// portal is a Vipps client for the test's sales unit, beside the module's:
+// what a person does in the Vipps business portal.
+func portal(t *testing.T, h *harness) *vipps.Client {
+	t.Helper()
+	c, err := vipps.New(vipps.Options{
+		BaseURL: h.vipps.URL(), ClientID: vippstest.ClientID, ClientSecret: vippstest.ClientSecret,
+		SubscriptionKey: vippstest.SubscriptionKey, MSN: vippstest.MSN, Transport: h.vipps.Transport(), Now: h.Now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// TestPaymentWorker_CapturedMoneyIsAlwaysRegistered (the review's HIGH):
+// money Vipps shows captured on an attempt not yet captured is registered —
+// on a capture_failed attempt whose capture landed after all, and on a
+// cancelling attempt captured in the portal — never closed as a release.
+func TestPaymentWorker_CapturedMoneyIsAlwaysRegistered(t *testing.T) {
+	t.Parallel()
+	t.Run("after capture_failed", func(t *testing.T) {
+		t.Parallel()
+		h := workerReady(t)
+		inv, ref := approvedAttempt(t, h)
+		h.vipps.Fail(vippstest.OpCapture, vippstest.Failure{Status: http.StatusBadRequest, Code: vippstest.CodeInsufficientFunds})
+		h.vipps.Fail(vippstest.OpCancel, vippstest.Failure{Status: http.StatusInternalServerError})
+		for range 4 {
+			cycle(t, h)
+			h.Advance(10 * time.Minute)
+		}
+		if a := attemptOf(t, h, ref); a.State != "capture_failed" || !a.ReleasePending {
+			t.Fatalf("after three 6260 = %s pending %v, want capture_failed, its release pending", a.State, a.ReleasePending)
+		}
+		h.vipps.Clear(vippstest.OpCapture)
+		if _, err := portal(t, h).Capture(context.Background(), ref, payments.NOK(250000), "late-capture"); err != nil {
+			t.Fatalf("the late capture: %v", err)
+		}
+		h.vipps.Clear(vippstest.OpCancel)
+		cycle(t, h)
+		a := attemptOf(t, h, ref)
+		if a.State != "captured" || text(a.Captured) != "2500.00" || a.ReleasePending {
+			t.Errorf("the attempt = %s captured %s pending %v, want captured 2500.00", a.State, text(a.Captured), a.ReleasePending)
+		}
+		if got := vippsPaymentsOf(t, h, inv.ID); len(got) != 1 || !strings.HasPrefix(got[0], "2500.00 ") {
+			t.Errorf("the Vipps payments = %v, want one of 2500.00", got)
+		}
+	})
+	t.Run("a portal capture on a cancelling attempt", func(t *testing.T) {
+		t.Parallel()
+		h := workerReady(t)
+		inv, ref := approvedAttempt(t, h)
+		registered(t, h, inv.ID, pay(2500, "2026-09-12"))
+		h.vipps.Fail(vippstest.OpCancel, vippstest.Failure{Status: http.StatusInternalServerError})
+		cycle(t, h)
+		if a := attemptOf(t, h, ref); a.State != "cancelling" {
+			t.Fatalf("the attempt = %s, want cancelling", a.State)
+		}
+		if _, err := portal(t, h).Capture(context.Background(), ref, payments.NOK(100000), "portal-capture"); err != nil {
+			t.Fatalf("the portal capture: %v", err)
+		}
+		h.vipps.Clear(vippstest.OpCancel)
+		h.Advance(10 * time.Minute)
+		cycle(t, h)
+		a := attemptOf(t, h, ref)
+		if a.State != "captured" || text(a.Captured) != "1000.00" || a.ReleasePending || text(a.Released) != "1500.00" {
+			t.Errorf("the attempt = %s captured %s pending %v released %s, want captured 1000.00, the rest 1500.00 released",
+				a.State, text(a.Captured), a.ReleasePending, text(a.Released))
+		}
+		if got := vippsPaymentsOf(t, h, inv.ID); len(got) != 1 || !strings.HasPrefix(got[0], "1000.00 ") {
+			t.Errorf("the Vipps payments = %v, want one of 1000.00", got)
+		}
+	})
+}
+
+// TestPaymentWorker_GuaranteeAloneEndsNothing (the review's HIGH): the
+// capture guarantee passing on our clock is no answer from Vipps. With a
+// capture sent and a read of AUTHORIZED, nothing captured, the attempt stays
+// capture_unknown with its reservation; with none sent, the capture is sent.
+func TestPaymentWorker_GuaranteeAloneEndsNothing(t *testing.T) {
+	t.Parallel()
+	t.Run("a capture sent", func(t *testing.T) {
+		t.Parallel()
+		h := workerReady(t)
+		_, ref := approvedAttempt(t, h)
+		h.vipps.Fail(vippstest.OpCapture, vippstest.Failure{Status: http.StatusBadGateway})
+		cycle(t, h)
+		h.Advance(8 * 24 * time.Hour)
+		cycle(t, h)
+		h.vipps.GuaranteeCapture(ref, h.Now().Add(-time.Hour))
+		h.Advance(time.Hour)
+		cycle(t, h)
+		if a := attemptOf(t, h, ref); a.State != "capture_unknown" || text(a.Reserved) != "2500.00" {
+			t.Errorf("past the guarantee = %s reserved %s, want capture_unknown, the reservation kept", a.State, text(a.Reserved))
+		}
+	})
+	t.Run("none sent", func(t *testing.T) {
+		t.Parallel()
+		h := workerReady(t)
+		inv, ref := approvedAttempt(t, h)
+		h.vipps.GuaranteeCapture(ref, h.Now().Add(-time.Hour))
+		cycle(t, h)
+		if a := attemptOf(t, h, ref); a.State != "captured" || len(vippsPaymentsOf(t, h, inv.ID)) != 1 {
+			t.Errorf("past the guarantee, nothing sent = %s, payments %v; want the capture sent and registered", a.State, vippsPaymentsOf(t, h, inv.ID))
+		}
+	})
+}
+
+// TestPaymentWorker_RegistrationFailureRecorded (the review's MEDIUM): a
+// registration that fails keeps the attempt and its reservation, records
+// why in last_error and backs off; once it can, it registers.
+func TestPaymentWorker_RegistrationFailureRecorded(t *testing.T) {
+	t.Parallel()
+	h := workerReady(t)
+	inv, ref := approvedAttempt(t, h)
+	h.Exec(t, `CREATE FUNCTION invoices.test_refuse_vipps() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN RAISE EXCEPTION 'test: registration refused'; END $$`)
+	h.Exec(t, `CREATE TRIGGER tr_test_refuse_vipps BEFORE INSERT ON invoices.payments FOR EACH ROW
+		WHEN (NEW.source = 'vipps') EXECUTE FUNCTION invoices.test_refuse_vipps()`)
+	if err := invoices.NewPaymentWorker(h.Deps()).RunCycle(context.Background()); err == nil {
+		t.Error("the cycle with a failing registration answered no error")
+	}
+	a := attemptOf(t, h, ref)
+	if a.State != "capturing" || text(a.Reserved) != "2500.00" || !strings.Contains(text(a.LastError), "registration refused") ||
+		a.NextPollAt == nil || !a.NextPollAt.After(h.Now()) || a.Failures != 1 {
+		t.Fatalf("after a failed registration = %s reserved %s error %s next %v failures %d; want capturing, kept, recorded, backed off",
+			a.State, text(a.Reserved), text(a.LastError), a.NextPollAt, a.Failures)
+	}
+	h.Exec(t, `DROP TRIGGER tr_test_refuse_vipps ON invoices.payments`)
+	h.Advance(10 * time.Minute)
+	cycle(t, h)
+	if got := vippsPaymentsOf(t, h, inv.ID); len(got) != 1 || attemptOf(t, h, ref).State != "captured" {
+		t.Errorf("once it can: payments %v, attempt %s; want it registered", got, attemptOf(t, h, ref).State)
+	}
+}
+
+// TestPaymentWorker_InsufficientFundsCountsOnlyItsAnswers (the review's
+// LOW): two unknown outcomes and then one 6260 leave the capture tried
+// again; three 6260 answers end it.
+func TestPaymentWorker_InsufficientFundsCountsOnlyItsAnswers(t *testing.T) {
+	t.Parallel()
+	h := workerReady(t)
+	_, ref := approvedAttempt(t, h)
+	h.vipps.Fail(vippstest.OpCapture, vippstest.Failure{Status: http.StatusBadGateway, Times: 2})
+	cycle(t, h)
+	h.Advance(10 * time.Minute)
+	cycle(t, h)
+	h.vipps.Fail(vippstest.OpCapture, vippstest.Failure{Status: http.StatusBadRequest, Code: vippstest.CodeInsufficientFunds})
+	h.Advance(10 * time.Minute)
+	cycle(t, h)
+	if a := attemptOf(t, h, ref); a.State != "capturing" || a.InsufficientFunds != 1 || a.CaptureAttempts != 3 {
+		t.Fatalf("two unknowns and a 6260 = %s, %d 6260, %d captures; want capturing, one 6260 of three captures",
+			a.State, a.InsufficientFunds, a.CaptureAttempts)
+	}
+	for range 2 {
+		h.Advance(10 * time.Minute)
+		cycle(t, h)
+	}
+	if a := attemptOf(t, h, ref); a.State != "capture_failed" || a.InsufficientFunds != 3 {
+		t.Errorf("three 6260 = %s, %d; want capture_failed", a.State, a.InsufficientFunds)
+	}
+}
+
+// TestPaymentWorker_RecreateParkedAfterTenTries (the review's LOW): a
+// create sent again that keeps conflicting is parked after ten tries, with
+// why.
+func TestPaymentWorker_RecreateParkedAfterTenTries(t *testing.T) {
+	t.Parallel()
+	h := workerReady(t)
+	inv := issuedAcme(t, h)
+	h.vipps.Fail(vippstest.OpCreate, vippstest.Failure{Status: http.StatusBadGateway, Times: 1})
+	startPay(h.Client(t), payToken(t, h, inv.ID))
+	ref := modtest.One[string](t, h.Harness, `SELECT reference FROM invoices.payment_attempts WHERE invoice_id = $1`, inv.ID)
+	h.vipps.Fail(vippstest.OpCreate, vippstest.Failure{Status: http.StatusConflict, Code: "4010"})
+	h.Advance(11 * time.Minute)
+	for range 12 {
+		cycle(t, h)
+		h.Advance(11 * time.Minute)
+	}
+	a := attemptOf(t, h, ref)
+	if a.State != "creating" || a.NextPollAt != nil || a.LastError == nil {
+		t.Errorf("ten conflicting creates = %s next %v error %s, want creating, parked with why", a.State, a.NextPollAt, text(a.LastError))
+	}
+	if n := len(vippsCreates(t, h)); n != 11 {
+		t.Errorf("%d creates sent, want the first and ten more", n)
+	}
+}
+
+// TestPaymentWorker_EraseBeforeRegistration (the review): a customer erased
+// between the authorization and the registration still gets the payment —
+// one vipps payment, its note blank.
+func TestPaymentWorker_EraseBeforeRegistration(t *testing.T) {
+	t.Parallel()
+	h := workerReady(t)
+	inv, ref := approvedAttempt(t, h)
+	step(t, h)
+	step(t, h)
+	eraseOf(t, h, h.Deps(), customerAcme)
+	cycle(t, h)
+	if a := attemptOf(t, h, ref); a.State != "captured" {
+		t.Errorf("the attempt = %s, want captured", a.State)
+	}
+	if got := texts(t, h, `SELECT concat_ws(' ', amount, source, '[' || note || ']') FROM invoices.payments WHERE invoice_id = $1`, inv.ID); !slices.Equal(got, []string{"2500.00 vipps []"}) {
+		t.Errorf("the payments = %v, want one vipps payment with a blank note", got)
+	}
 }

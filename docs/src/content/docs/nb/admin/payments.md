@@ -290,8 +290,16 @@ testmiljøets), registreres på fakturaen i løpet av sekunder som en Vipps-beta
   en leder forsøket, og reservasjonen frigis. Sjekk nøklene først — en avvist nøkkel
   (*Avvist* ved bekreftelse) gir ukjent utfall på hvert trekk.
 - *Et mislykket trekk* (`capture_failed`). Vipps avviste trekket for manglende dekning
-  eller som mislykket, og fortsatte å avvise det til reservasjonen gikk ut. Ingenting ble
-  tatt; fakturaen er åpen igjen, og kunden betaler på annen måte.
+  eller som mislykket, og fortsatte å avvise det til reservasjonen gikk ut, eller Vipps
+  avsluttet betalingen. Ingenting ble tatt; fakturaen er åpen igjen, og kunden betaler
+  på annen måte. Viser pengene seg likevel trukket hos Vipps — eller trekkes betalingen
+  i portalen — registrerer jobben betalingen så snart den leser den.
+- *En opprettelse som aldri avklares.* Når opprettelsen av en betaling aldri ble
+  besvart og det å sende den på nytt fortsetter å gi konflikt, gir jobben opp etter ti
+  forsøk, og betalingens siste feil sier at referansen må slås opp i Vipps-portalen.
+- *Et trekk som ikke kan registreres.* Pengene er trukket, men betalingen kunne ikke
+  skrives; forsøket beholder reservasjonen, den siste feilen sier hvorfor, og jobben
+  prøver igjen.
 - *En frigivelse som aldri blir ferdig.* Når Vipps for godt nekter å frigi et beløp som
   ble reservert og ikke trukket, slutter jobben å spørre: betalingens siste feil sier at
   det må frigis i Vipps-portalen. En slik betaling teller fortsatt som pågående, så
