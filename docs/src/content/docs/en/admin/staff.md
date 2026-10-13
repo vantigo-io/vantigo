@@ -331,7 +331,8 @@ holds `staff:approve` everyone's.
 
 When a sick absence fills the gap between two cases, the two become one: the older
 keeps its id and takes over the other's marked milestones and notes, appended after its
-own.
+own. A note that no longer fits is not cut: the survivor's ends with a pointer, and the
+other case's notes are kept whole in the case's history.
 
 A sykmelding over an egenmelding shortens the egenmelding, or removes it when it covers
 it whole.

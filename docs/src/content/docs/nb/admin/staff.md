@@ -334,7 +334,9 @@ følger — personens leder ser sine medarbeideres, HR og den som har `staff:app
    hører til den senere, åpner den igjen.
 
 Når et sykefravær fyller gapet mellom to saker, blir de to én: den eldste beholder id-en
-sin og tar over den andres markerte milepæler og notater, lagt etter sine egne.
+sin og tar over den andres markerte milepæler og notater, lagt etter sine egne. Et
+notat som ikke lenger får plass, kuttes ikke: den gjenværende sakens notat slutter med
+en henvisning, og den andre sakens notater står hele i sakens historikk.
 
 En sykmelding over en egenmelding korter egenmeldingen inn, eller fjerner den når den
 dekker den helt.

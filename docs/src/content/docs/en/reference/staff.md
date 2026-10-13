@@ -1550,10 +1550,14 @@ stores the result (plan reading 13):
 - **A merge** (Task 5 review M3): a row that fills the gap between two cases merges
   them into the older. The younger's documents move with its rows; each of its
   milestones' done day or waiver is carried onto the older's where that has neither;
-  the milestones' notes and the accommodation note are appended after the older's (a
-  blank line between, cut at 2000 characters); its estimate is kept where the older
-  has none. `case_merged` on the survivor names the case it took in (`mergedCaseId`,
-  class E). A milestone write on the younger case once it is gone is the 404 of a case
+  the milestones' notes and the accommodation note are appended after the older's, a
+  blank line between. A note is the employer's aml. § 4-6 record and is never cut:
+  when the two no longer fit in 2000 characters, the survivor keeps its own text and
+  ends with "… continued in the case's history". Its estimate is kept where the older
+  has none. `case_merged` on the survivor names the case it took in (`mergedCaseId`)
+  and carries that case's notes whole — `mergedNotes` by milestone, read by the person
+  and `staff:personal-data`, and `mergedAccommodationNote`, read as the accommodation
+  note is — all class E. A milestone write on the younger case once it is gone is the 404 of a case
   that is not there.
 - **Open or closed**: a case is closed when HR closed it (`POST /cases/{id}/close`,
   `staff:manage`, `case_closed`) or when `last_day + 16` is before today — the join's own

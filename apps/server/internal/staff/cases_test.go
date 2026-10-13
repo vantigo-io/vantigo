@@ -560,6 +560,50 @@ func TestCases_AMergeCarriesTheMilestones(t *testing.T) {
 	}
 }
 
+// A merge loses no note (review M3 follow-up): the notes are the employer's
+// aml. § 4-6 record. When the younger case's note no longer fits after the
+// survivor's, the survivor keeps its own text with a pointer to the history,
+// and case_merged carries the younger case's notes whole (class E).
+func TestCases_AMergeLosesNoNote(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-08-03", "2026-08-05"))
+	register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-08-24", "2026-08-25"))
+	cases := listCases(t, w.hr, "?status=all")
+	older, younger := cases[1], cases[0]
+	notes := map[int64]string{older.Id: strings.Repeat("o", 1500), younger.Id: strings.Repeat("y", 1500)}
+	var out gen.StaffCase
+	for _, c := range []gen.StaffCase{older, younger} {
+		do(t, w.pd, http.MethodGet, casePath(c.Id), nil, http.StatusOK, &out)
+		do(t, w.pd, http.MethodPut, milestonePath(c.Id, "dialogue_1", "note"), map[string]any{"note": notes[c.Id]}, http.StatusOK, &out,
+			ifMatch(milestoneOf(t, out, "dialogue_1").Revision))
+		do(t, w.hr, http.MethodPut, casePath(c.Id), map[string]any{"accommodationNote": notes[c.Id]}, http.StatusOK, &out, ifMatch(out.Revision))
+	}
+
+	register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-08-12", "2026-08-13"))
+	merged := onlyCase(t, w.pd, w.kari.Id)
+	want := notes[older.Id] + "\n\n… continued in the case's history"
+	if n := milestoneOf(t, merged, "dialogue_1").Note; n == nil || *n != want {
+		t.Errorf("dialogue_1's note is %d characters, want the survivor's own and the pointer", len(*n))
+	}
+	if merged.AccommodationNote == nil || *merged.AccommodationNote != want {
+		t.Errorf("the accommodation note is not the survivor's own and the pointer")
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE kind = 'case_merged' AND (payload->>'caseId')::bigint = $1
+		AND payload->'fields'->'mergedNotes'->'to'->>'dialogue_1' = $2 AND payload->'fields'->'mergedAccommodationNote'->>'to' = $2
+		AND payload->'classes'->>'mergedNotes' = 'E'`, older.Id, notes[younger.Id]); n != 1 {
+		t.Errorf("%d case_merged events carrying the younger case's notes whole, want 1", n)
+	}
+	// The notes in the history are the health group's and the accommodation
+	// note's: the manager reads the accommodation note, not the milestone's.
+	for _, e := range eventsAs(t, w.bossC, w.kari.Id) {
+		if e.Kind == "case_merged" && strings.Contains(fmt.Sprint(e.Payload["fields"].(map[string]any)["mergedNotes"]), "yyy") {
+			t.Error("the manager reads the merged milestone notes")
+		}
+	}
+}
+
 // One illness is one egenmelding (review M4): Monday–Wednesday cut in two by
 // a Tuesday sykmelding stays one occurrence of two self-certified days.
 func TestSelfCertification_OneIllnessIsOneOccurrence(t *testing.T) {
