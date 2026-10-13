@@ -453,3 +453,61 @@ func TestQuickInvoice_AcrossOsloMidnight(t *testing.T) {
 		t.Errorf("manual deliveries = %v, want handed_over on the issue date, 2026-09-13", d)
 	}
 }
+
+// A quick invoice's requestId (D17, after review): the same request again —
+// a retry after a lost answer — answers 200 with the invoice the first
+// issued and does nothing else: no document, no number, no delivery. The
+// same id with another body is 409 request_id_reused. A request refused
+// keeps no id, so the id may come again with the body corrected.
+func TestQuickInvoice_RequestIdReplays(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	id := "6f1c1d2e-8a8b-4c3d-9e0f-112233445566"
+	body := quickBody(customerAcme, line("Utrykning", 1, 950, vat25))
+	body["requestId"], body["payOnSite"] = id, true
+	first := quickInvoiced(t, h, body)
+	documents, next := documentCount(t, h), counterNext(t, h)
+
+	res := quicker(t, h).Do(http.MethodPost, quickPath, body)
+	if res.Status != http.StatusOK {
+		t.Fatalf("the replay = %d %s, want 200", res.Status, res.Body)
+	}
+	var replay quickJSON
+	res.JSON(&replay)
+	if replay.Invoice.ID != first.Invoice.ID || *replay.Invoice.Number != *first.Invoice.Number || replay.Invoice.Status != "issued" {
+		t.Errorf("the replay = %+v, want the first's invoice %d", replay.Invoice, first.Invoice.ID)
+	}
+	if n, c := documentCount(t, h), counterNext(t, h); n != documents || c != next {
+		t.Errorf("after the replay: documents %d, counter %d; want %d and %d — nothing done again", n, c, documents, next)
+	}
+	if d := receivablesOf(t, h, first.Invoice.ID).ManualDeliveries; d == nil || len(*d) != 1 {
+		t.Errorf("manual deliveries after the replay = %v, want the one", d)
+	}
+
+	other := quickBody(customerAcme, line("Utrykning", 2, 950, vat25))
+	other["requestId"], other["payOnSite"] = id, true
+	res = quicker(t, h).Do(http.MethodPost, quickPath, other)
+	if res.Status != http.StatusConflict || problemOf(t, res).Code != "request_id_reused" {
+		t.Errorf("the id with another body = %d %s, want 409 request_id_reused", res.Status, res.Body)
+	}
+
+	refusedID := "6f1c1d2e-8a8b-4c3d-9e0f-998877665544"
+	refused := quickBody(customerNoAddress, line("Utrykning", 1, 950, vat25))
+	refused["requestId"] = refusedID
+	if res := quicker(t, h).Do(http.MethodPost, quickPath, refused); res.Status != http.StatusConflict || problemOf(t, res).Code != "buyer_incomplete" {
+		t.Fatalf("a refused request = %d %s, want 409 buyer_incomplete", res.Status, res.Body)
+	}
+	corrected := quickBody(customerAcme, line("Utrykning", 1, 950, vat25))
+	corrected["requestId"] = refusedID
+	if got := quickInvoiced(t, h, corrected).Invoice; got.Status != "issued" || got.ID == first.Invoice.ID {
+		t.Errorf("the refused id with the body corrected = %+v, want a new invoice issued", got)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.quick_requests`); n != 2 {
+		t.Errorf("request ids kept = %d, want the two that issued", n)
+	}
+	if res := quicker(t, h).Do(http.MethodPost, quickPath, map[string]any{
+		"customerId": customerAcme, "lines": []map[string]any{line("A", 1, 1, vat25)}, "requestId": "not-a-uuid",
+	}); res.Status != http.StatusBadRequest {
+		t.Errorf("a requestId that is no UUID = %d %s, want 400", res.Status, res.Body)
+	}
+}
