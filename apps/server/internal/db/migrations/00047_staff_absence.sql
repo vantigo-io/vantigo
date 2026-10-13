@@ -3,13 +3,15 @@
 -- absence types in the statutory vocabulary with their a-melding mapping, the
 -- holiday schemes and the adjustments of the holiday account they drive, the
 -- sick-leave cases with their follow-up milestones, and the absences
--- themselves. Delivery B also adds three columns to tables 00042 and 00043
+-- themselves. Delivery B also adds four columns to tables 00042 and 00043
 -- created: employments.holiday_scheme_id (00042 left it to B, with the table
 -- its key points at), documents.case_id (a health document filed under a
--- case, S15) and settings.auto_carry_over_since — the one settings column B
+-- case, S15), settings.auto_carry_over_since — the one settings column B
 -- adds after all, against 00042's "never to these two": the derived
 -- carry-over must not reach back before the day it was turned on (plan
--- reading 9, pre-flight M6).
+-- reading 9, pre-flight M6) — and people.self_cert_withdrawn_from, the day
+-- HR withdrew the right to egenmelding, from which it is refused (Task 5
+-- review L1).
 --
 -- The version is 00047 and 00046 is not this file's: the Invoices delivery
 -- planned beside this one claims it, and whichever lands second renumbers
@@ -177,6 +179,12 @@ CREATE INDEX ix_documents_case ON staff.documents (case_id);
 -- derived carry-in reaches no year before it.
 ALTER TABLE staff.settings ADD COLUMN auto_carry_over_since date;
 
+-- The day HR withdrew a person's right to egenmelding (ftrl. § 8-27, Task 5
+-- review L1): an egenmelding is refused from it until
+-- self_cert_withdrawn_until, never for days before the decision. Class E,
+-- as the withdrawal is.
+ALTER TABLE staff.people ADD COLUMN self_cert_withdrawn_from date;
+
 -- The statutory vocabulary (S8, plan Task 2 and Revision 2). The a-melding
 -- descriptions are the kodeverk PermisjonsOgPermitteringsBeskrivelse's six
 -- leave descriptions and permittering, in NAV's spellings; the codes
@@ -219,6 +227,7 @@ INSERT INTO staff.holiday_schemes
 VALUES ('Statutory (ferieloven)', 25, 6, 18, 6, 12, true, true, now(), now());
 
 -- +goose Down
+ALTER TABLE staff.people DROP COLUMN self_cert_withdrawn_from;
 ALTER TABLE staff.settings DROP COLUMN auto_carry_over_since;
 ALTER TABLE staff.documents DROP COLUMN case_id;
 DROP TABLE staff.absences;
