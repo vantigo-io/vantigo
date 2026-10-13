@@ -223,3 +223,8 @@ WHERE f.status = 'approved' AND f.last_day + 28 >= @today::date
   -- once the holiday has begun: nothing to act on (re-check 3).
   AND (s.first_day >= f.first_day OR f.first_day > @today::date)
 ORDER BY f.first_day, f.id;
+
+-- name: PersonCases :many
+-- PersonCases is every sick-leave case of the person, newest first: the
+-- personal-data file's (design S16).
+SELECT * FROM staff.sick_cases WHERE person_id = @person_id ORDER BY first_day DESC, id DESC;

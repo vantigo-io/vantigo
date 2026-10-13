@@ -19,8 +19,8 @@ Each module is an **app** with its own sidebar: Customers, Projects, Time, Expen
 Staff, Invoices, Communications, Products and Energy. The app switcher in the top bar lists
 the apps you can open; **Home** is the dashboard, where every app you use shows its own
 card with the numbers that need your attention — Staff's, the people employed today
-with the full-time equivalents and who starts and ends soon, for `staff:view` or
-`staff:manage` ([the dashboard](/en/user/staff/#the-dashboard)). Its **Needs attention**
+with the full-time equivalents, who starts and ends soon and who is away today, for
+`staff:view` or `staff:manage` ([the dashboard](/en/user/staff/#the-dashboard)). Its **Needs attention**
 list gathers the apps' items that wait for someone — Invoices' among them: overdue
 invoices, money owed back on an invoice, and, with `invoices:payments`, bank lines in the
 exception queue, reminders that failed or wait for a rate or a review, print batches
@@ -29,8 +29,11 @@ need a person — whose outcome is unknown, that could not be taken, that are st
 that were refunded in the Vipps portal — each leading to its invoice
 ([the dashboard card](/en/user/invoices/#the-dashboard-card)); and Staff's: contracts
 not signed, probations ending, temporary employments past a year or three, people
-without a manager, reassessments due, documents the store will not delete, and the
-headcount and pension thresholds not yet acknowledged.
+without a manager, reassessments due, documents the store will not delete, the
+headcount and pension thresholds not yet acknowledged, and the absence items: requests
+awaiting your decision, sick-leave follow-ups due, holiday left from last year or too
+little holiday in the main period, a self-approved absence and sickness during approved
+holiday.
 
 Inside an app, the sidebar lists its areas. Many of them are only shown to people who
 hold the matching permission — and a few, such as Invoices' **Quick invoice**, only to

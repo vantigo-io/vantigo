@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"time"
@@ -13,10 +14,11 @@ import (
 )
 
 // This file is the dashboard's attention items for the register (design S20,
-// plan Task 6), shaped per caller: staff:manage's, staff:personal-data's and a
-// manager's for the people they manage today. The rules are pure over the
-// register's snapshot (stats.go) and the caller's today; the absence and the
-// account items arrive with deliveries B and C. Each item's entityId is a
+// plan Task 6), shaped per caller: staff:manage's, staff:personal-data's,
+// staff:approve's and a manager's for the people they manage today. The rules
+// are pure over the register's snapshot (stats.go) and the caller's today;
+// delivery B's absence items are read in the same snapshot (absence
+// attention below); the account items arrive with delivery C. Each item's entityId is a
 // person's id, or the literal 'retention' or 'thresholds', or a headcount
 // threshold — what the host's link is built from.
 
@@ -70,6 +72,17 @@ type attentionInput struct {
 	// affected is the approved ferie a 100 % sykmelding lies over (Task 5
 	// review H1).
 	affected []store.HolidayAffectedBySicknessRow
+	// Delivery B's other items (Task 6), read for the caller's roles:
+	// the requests they decide, the HR-only requests stalled, the open
+	// cases' unsettled milestones, the people the caller manages today, and
+	// the people with holiday untaken last year or short in the main period.
+	awaiting    requestsWaiting
+	stalled     store.StalledHROnlyRequestsRow
+	milestones  []store.OpenCaseMilestonesRow
+	reports     []int64
+	untaken     []int64
+	mainShort   []int64
+	holidayYear int
 }
 
 // attentionFor is the caller's items, oldest first, then by type and id, each
@@ -91,6 +104,12 @@ func attentionFor(in attentionInput, c *callerContext) []gen.StaffStatsAttention
 	}
 	if c.PersonalData {
 		items = append(items, in.reassessmentDue(c.Today)...)
+		items = append(items, in.hrOnlyStalled()...)
+	}
+	items = append(items, in.awaitingDecision()...)
+	items = append(items, in.milestonesDue(c)...)
+	if c.Manage {
+		items = append(items, in.holidayItems()...)
 	}
 	slices.SortFunc(items, func(a, b gen.StaffStatsAttentionItem) int {
 		return cmp.Or(a.OccurredAt.Compare(b.OccurredAt), cmp.Compare(a.Type, b.Type), cmp.Compare(a.Id, b.Id))
@@ -434,17 +453,27 @@ func (s *server) GetStaffStatsAttention(ctx context.Context, _ gen.GetStaffStats
 	if err != nil {
 		return nil, err
 	}
-	if !caller.Manage && !caller.PersonalData && caller.Person == nil {
+	if !caller.Manage && !caller.PersonalData && !caller.Approve && caller.Person == nil {
 		return gen.GetStaffStatsAttention200JSONResponse([]gen.StaffStatsAttentionItem{}), nil
 	}
 	acknowledged, err := parseAcknowledged(caller.Settings.ThresholdsAcknowledged)
 	if err != nil {
 		return nil, err
 	}
+	// Whether the caller approves their own requests is the directory's to
+	// say, asked before the snapshot (deciders.go), as GET /approvals asks.
+	selfApproves := false
+	if (caller.Approve || caller.Manage) && caller.Person != nil {
+		d, err := s.judgeDecider(ctx, caller, *caller.Person, false)
+		if err != nil {
+			return nil, err
+		}
+		selfApproves = d.selfApproves
+	}
 	var items []gen.StaffStatsAttentionItem
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
-		items, err = s.readAttention(ctx, q, caller, acknowledged)
+		items, err = s.readAttention(ctx, q, caller, acknowledged, selfApproves)
 		return err
 	})
 	if err != nil {
@@ -459,33 +488,36 @@ func (s *server) GetStaffStatsAttention(ctx context.Context, _ gen.GetStaffStats
 // is judged as a manager — the employments, their terms and the departments
 // first, and nothing more when they manage nobody today; else the names of
 // the people they manage, for the one item a manager has.
-func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerContext, acknowledged map[string]time.Time) ([]gen.StaffStatsAttentionItem, error) {
+func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerContext, acknowledged map[string]time.Time, selfApproves bool) ([]gen.StaffStatsAttentionItem, error) {
 	in := attentionInput{acknowledged: acknowledged, signed: map[int64]bool{}}
 	var err error
 	if in.register, err = loadEmployments(ctx, q); err != nil {
 		return nil, err
 	}
-	if !c.Manage && !c.PersonalData {
-		var reports []int64
-		if c.Person != nil {
-			reports = in.reportsOf(*c.Person, c.Today)
-		}
-		if len(reports) == 0 {
+	if c.Person != nil {
+		in.reports = in.reportsOf(*c.Person, c.Today)
+	}
+	if !c.Manage && !c.PersonalData && !c.Approve {
+		if len(in.reports) == 0 {
 			return []gen.StaffStatsAttentionItem{}, nil
 		}
-		rows, err := q.PeopleSummaries(ctx, reports)
+		rows, err := q.PeopleSummaries(ctx, in.reports)
 		if err != nil {
 			return nil, fmt.Errorf("staff: read the names of a manager's reports: %w", err)
 		}
 		for _, p := range rows {
 			in.names[p.ID] = p.DisplayName
 		}
-		return attentionFor(in, c), nil
-	}
-	if err := in.loadPeople(ctx, q); err != nil {
+	} else if err := in.loadPeople(ctx, q); err != nil {
 		return nil, err
 	}
-	if c.Manage {
+	if err := s.readAbsenceAttention(ctx, q, c, selfApproves, &in); err != nil {
+		return nil, err
+	}
+	if !c.Manage {
+		return attentionFor(in, c), nil
+	}
+	{
 		signed, err := q.SignedContractEmployments(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("staff: read the signed contract documents: %w", err)
@@ -504,4 +536,228 @@ func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerC
 		}
 	}
 	return attentionFor(in, c), nil
+}
+
+// ---- Absence (delivery B, Task 6) ------------------------------------------
+
+// The absence items' constants: the entity the approvals items link to, the
+// days an HR-only request waits before it is stalled, and the windows of the
+// holiday items (plan reading 23).
+const (
+	approvalsEntity     = "approvals"
+	hrOnlyStalledDays   = 7
+	milestoneWithinDays = 7
+	mainPeriodFrom      = time.April
+	mainPeriodTo        = time.September
+)
+
+// requestsWaiting is how many requests the caller decides wait, and when
+// the oldest was made.
+type requestsWaiting struct {
+	Count  int64
+	Oldest time.Time
+}
+
+// readAbsenceAttention reads on q what the caller's absence items are judged
+// on, for their roles alone: the requests they decide (the approvals
+// inbox's count — an HR-only one only for staff:personal-data, so no count
+// reveals one to anybody else), staff:personal-data's stalled HR-only
+// requests, the open cases' milestones for a manager, staff:approve and
+// staff:manage, and staff:manage's holiday items.
+func (s *server) readAbsenceAttention(ctx context.Context, q *store.Queries, c *callerContext, selfApproves bool, in *attentionInput) error {
+	everyone := c.Approve || c.Manage
+	if everyone || c.PersonalData || len(in.reports) > 0 {
+		params := store.CountRequestedAbsencesParams{
+			Everyone: everyone, PersonIds: in.reports, PersonalData: c.PersonalData, SelfID: c.Person, SelfApproves: selfApproves,
+		}
+		count, err := q.CountRequestedAbsences(ctx, params)
+		if err != nil {
+			return fmt.Errorf("staff: count the requests the caller decides: %w", err)
+		}
+		in.awaiting.Count = count
+		if count > 0 {
+			oldest, err := q.RequestedAbsences(ctx, store.RequestedAbsencesParams{
+				Everyone: everyone, PersonIds: in.reports, PersonalData: c.PersonalData, SelfID: c.Person, SelfApproves: selfApproves,
+				PageSize: 1,
+			})
+			if err != nil {
+				return fmt.Errorf("staff: read the oldest request the caller decides: %w", err)
+			}
+			if len(oldest) == 1 {
+				in.awaiting.Oldest = oldest[0].StaffAbsence.CreatedAt
+			}
+		}
+	}
+	if c.PersonalData {
+		var err error
+		if in.stalled, err = q.StalledHROnlyRequests(ctx, s.deps.Clock().AddDate(0, 0, -hrOnlyStalledDays)); err != nil {
+			return fmt.Errorf("staff: count the stalled HR-only requests: %w", err)
+		}
+	}
+	if everyone || len(in.reports) > 0 {
+		var err error
+		if in.milestones, err = q.OpenCaseMilestones(ctx, dayParam(c.Today)); err != nil {
+			return fmt.Errorf("staff: read the open cases' milestones: %w", err)
+		}
+	}
+	if c.Manage {
+		return s.readHolidayAttention(ctx, q, c, in)
+	}
+	return nil
+}
+
+// readHolidayAttention reads staff:manage's holiday items: in January, the
+// people employed today with last year's holiday remaining and no carry-over
+// from it recorded — a carry-in derived by automatic carry-over counting as
+// recorded (pre-flight M6); from 1 April to 30 September, the people
+// employed today since before 1 June with fewer approved holiday working
+// days in 1 June – 30 September than their scheme's main period converted
+// (ferieloven § 7 (1), reading 23).
+func (s *server) readHolidayAttention(ctx context.Context, q *store.Queries, c *callerContext, in *attentionInput) error {
+	today := c.Today
+	year := today.Year()
+	in.holidayYear = year
+	active := in.activePeople(today)
+	ids := slices.Sorted(maps.Keys(active))
+	if today.Month() == time.January {
+		for _, id := range ids {
+			account, err := readAccountInput(ctx, q, c.Settings, id)
+			if err != nil {
+				return err
+			}
+			last := accountFor(account, year-1)
+			if last.Remaining <= 0 || accountFor(account, year).CarriedInDerived > 0 {
+				continue
+			}
+			recorded := slices.ContainsFunc(account.Adjustments, func(a accountAdjustment) bool {
+				return carryOverReason(a.Reason) && a.FromYear != nil && *a.FromYear == year-1
+			})
+			if !recorded {
+				in.untaken = append(in.untaken, id)
+			}
+		}
+	}
+	if today.Month() < mainPeriodFrom || today.Month() > mainPeriodTo {
+		return nil
+	}
+	june1 := time.Date(year, time.June, 1, 0, 0, 0, 0, time.UTC)
+	sep30 := time.Date(year, time.September, 30, 0, 0, 0, 0, time.UTC)
+	schemes, err := q.ListHolidaySchemes(ctx)
+	if err != nil {
+		return fmt.Errorf("staff: read the holiday schemes: %w", err)
+	}
+	mainPeriod := map[int64]int{}
+	var fallback int
+	for _, sc := range schemes {
+		mainPeriod[sc.ID] = convertVirkedager(int(sc.MainPeriodVirkedager))
+		if sc.IsDefault {
+			fallback = mainPeriod[sc.ID]
+		}
+	}
+	rows, err := q.AbsencesBetween(ctx, store.AbsencesBetweenParams{FromDay: dayParam(june1), ToDay: dayParam(sep30)})
+	if err != nil {
+		return fmt.Errorf("staff: read the summer's absences: %w", err)
+	}
+	byPerson := map[int64][]store.AbsencesBetweenRow{}
+	for _, a := range rows {
+		if a.Kind == kindHoliday && a.Status == absenceApproved {
+			byPerson[a.PersonID] = append(byPerson[a.PersonID], a)
+		}
+	}
+	for _, id := range ids {
+		var owed *int
+		for _, e := range in.employments {
+			if e.PersonID != id || !inForce(e, today) || !civil(e.StartDate).Before(june1) {
+				continue
+			}
+			days := fallback
+			if e.HolidaySchemeID != nil {
+				days = mainPeriod[*e.HolidaySchemeID]
+			}
+			owed = &days
+			break
+		}
+		if owed == nil {
+			continue
+		}
+		var taken int64
+		for d := june1; !d.After(sep30); d = d.AddDate(0, 0, 1) {
+			if worksOn(d) {
+				taken += sharesOn(byPerson[id], d).Holiday
+			}
+		}
+		if taken < int64(*owed)*wholeDay {
+			in.mainShort = append(in.mainShort, id)
+		}
+	}
+	return nil
+}
+
+// awaitingDecision is the one item of the requests the caller decides,
+// counted, dated the oldest's making; none when nothing waits.
+func (in attentionInput) awaitingDecision() []gen.StaffStatsAttentionItem {
+	if in.awaiting.Count == 0 {
+		return nil
+	}
+	count := int32(in.awaiting.Count)
+	return []gen.StaffStatsAttentionItem{{
+		Id: string(gen.AbsenceAwaitingDecision), Type: gen.AbsenceAwaitingDecision, Title: string(gen.AbsenceAwaitingDecision),
+		OccurredAt: in.awaiting.Oldest, EntityId: approvalsEntity, Count: &count,
+	}}
+}
+
+// hrOnlyStalled is staff:personal-data's one item of the HR-only requests
+// waiting more than hrOnlyStalledDays — the caller's own included, so the
+// only holder of the permission, whose own request nobody may decide, sees
+// it stall (open question 9) — dated the oldest's seventh day.
+func (in attentionInput) hrOnlyStalled() []gen.StaffStatsAttentionItem {
+	if in.stalled.Waiting == 0 {
+		return nil
+	}
+	count := in.stalled.Waiting
+	return []gen.StaffStatsAttentionItem{{
+		Id: string(gen.HrOnlyAwaitingDecision), Type: gen.HrOnlyAwaitingDecision, Title: string(gen.HrOnlyAwaitingDecision),
+		OccurredAt: in.stalled.Oldest.AddDate(0, 0, hrOnlyStalledDays), EntityId: approvalsEntity, Count: &count,
+	}}
+}
+
+// milestonesDue is the open cases' milestones the caller is shown: due by
+// Task 5's rule (milestoneDue — the case open and lasted to within a week
+// of the date, neither done nor waived; pre-flight I5) and dated within
+// milestoneWithinDays of today or past. Every person's for staff:manage and
+// staff:approve, a manager's reports' for a manager; never the end of the
+// arbeidsgiverperiode, a date and not an action.
+func (in attentionInput) milestonesDue(c *callerContext) []gen.StaffStatsAttentionItem {
+	var out []gen.StaffStatsAttentionItem
+	for _, m := range in.milestones {
+		if m.Kind == milestoneEmployerPeriodEnd {
+			continue
+		}
+		if !c.Manage && !c.Approve && !slices.Contains(in.reports, m.PersonID) {
+			continue
+		}
+		due := civilPtr(m.DueDate)
+		if !milestoneDue(true, false, civil(m.LastDay), due) || due.After(c.Today.AddDate(0, 0, milestoneWithinDays)) {
+			continue
+		}
+		out = append(out, gen.StaffStatsAttentionItem{
+			Id:   fmt.Sprintf("%s/%d/%s", gen.SickMilestoneDue, m.CaseID, m.Kind),
+			Type: gen.SickMilestoneDue, Title: m.DisplayName, OccurredAt: *due, EntityId: strconv.FormatInt(m.PersonID, 10),
+		})
+	}
+	return out
+}
+
+// holidayItems is staff:manage's holiday items, each a person's.
+func (in attentionInput) holidayItems() []gen.StaffStatsAttentionItem {
+	var out []gen.StaffStatsAttentionItem
+	jan1 := time.Date(in.holidayYear, time.January, 1, 0, 0, 0, 0, time.UTC)
+	apr1 := time.Date(in.holidayYear, mainPeriodFrom, 1, 0, 0, 0, 0, time.UTC)
+	for _, id := range in.untaken {
+		out = append(out, personItem(gen.HolidayUntaken, id, id, in.names[id], jan1))
+	}
+	for _, id := range in.mainShort {
+		out = append(out, personItem(gen.MainPeriodShort, id, id, in.names[id], apr1))
+	}
+	return out
 }

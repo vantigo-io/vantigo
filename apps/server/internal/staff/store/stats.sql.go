@@ -8,7 +8,91 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const absencesBetween = `-- name: AbsencesBetween :many
+SELECT a.id, a.person_id, a.type_id, a.first_day, a.last_day, a.hours, a.percent, a.degree_percent, a.status,
+       t.kind, t.unit, t.allows_percent, t.amelding_leave
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.status IN ('approved', 'registered')
+  AND a.first_day <= $1::date AND a.last_day >= $2::date
+ORDER BY a.person_id, a.first_day, a.id
+`
+
+type AbsencesBetweenParams struct {
+	ToDay   pgtype.Date
+	FromDay pgtype.Date
+}
+
+type AbsencesBetweenRow struct {
+	ID            int64
+	PersonID      int64
+	TypeID        int64
+	FirstDay      pgtype.Date
+	LastDay       pgtype.Date
+	Hours         pgtype.Numeric
+	Percent       pgtype.Numeric
+	DegreePercent pgtype.Numeric
+	Status        string
+	Kind          string
+	Unit          string
+	AllowsPercent bool
+	AmeldingLeave *string
+}
+
+// AbsencesBetween is every approved or registered absence touching
+// @from_day..@to_day with what its type says of it: what the payroll file's
+// totals and leave rows, the sick-leave rate and the holiday items count
+// (delivery B Task 6). A request, a refusal and a cancel count nothing.
+func (q *Queries) AbsencesBetween(ctx context.Context, arg AbsencesBetweenParams) ([]AbsencesBetweenRow, error) {
+	rows, err := q.db.Query(ctx, absencesBetween, arg.ToDay, arg.FromDay)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AbsencesBetweenRow
+	for rows.Next() {
+		var i AbsencesBetweenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.TypeID,
+			&i.FirstDay,
+			&i.LastDay,
+			&i.Hours,
+			&i.Percent,
+			&i.DegreePercent,
+			&i.Status,
+			&i.Kind,
+			&i.Unit,
+			&i.AllowsPercent,
+			&i.AmeldingLeave,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countOpenSickCases = `-- name: CountOpenSickCases :one
+SELECT count(*)::int AS open FROM staff.sick_cases
+WHERE closed_at IS NULL AND last_day + 16 >= $1::date
+`
+
+// CountOpenSickCases is the cases open on @today: not closed by HR, and
+// whose last day is at most sixteen days before it (reading 5).
+func (q *Queries) CountOpenSickCases(ctx context.Context, today pgtype.Date) (int32, error) {
+	row := q.db.QueryRow(ctx, countOpenSickCases, today)
+	var open int32
+	err := row.Scan(&open)
+	return open, err
+}
 
 const failingDeletions = `-- name: FailingDeletions :one
 SELECT
@@ -31,6 +115,55 @@ func (q *Queries) FailingDeletions(ctx context.Context, before time.Time) (Faili
 	var i FailingDeletionsRow
 	err := row.Scan(&i.Failing, &i.Oldest)
 	return i, err
+}
+
+const openCaseMilestones = `-- name: OpenCaseMilestones :many
+SELECT m.case_id, m.kind, m.due_date, c.person_id, c.last_day, p.display_name
+FROM staff.sick_case_milestones m
+JOIN staff.sick_cases c ON c.id = m.case_id
+JOIN staff.people p ON p.id = c.person_id
+WHERE c.closed_at IS NULL AND c.last_day + 16 >= $1::date
+  AND m.due_date IS NOT NULL AND m.done_at IS NULL AND NOT m.waived
+ORDER BY m.due_date, m.case_id, m.kind
+`
+
+type OpenCaseMilestonesRow struct {
+	CaseID      int64
+	Kind        string
+	DueDate     pgtype.Date
+	PersonID    int64
+	LastDay     pgtype.Date
+	DisplayName string
+}
+
+// OpenCaseMilestones is the milestones of the cases open on @today that are
+// neither done nor waived and have a date, with their case's last day and
+// person: the attention item sickMilestoneDue judges them.
+func (q *Queries) OpenCaseMilestones(ctx context.Context, today pgtype.Date) ([]OpenCaseMilestonesRow, error) {
+	rows, err := q.db.Query(ctx, openCaseMilestones, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OpenCaseMilestonesRow
+	for rows.Next() {
+		var i OpenCaseMilestonesRow
+		if err := rows.Scan(
+			&i.CaseID,
+			&i.Kind,
+			&i.DueDate,
+			&i.PersonID,
+			&i.LastDay,
+			&i.DisplayName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const signedContractEmployments = `-- name: SignedContractEmployments :many
@@ -61,6 +194,27 @@ func (q *Queries) SignedContractEmployments(ctx context.Context) ([]int64, error
 		return nil, err
 	}
 	return items, nil
+}
+
+const stalledHROnlyRequests = `-- name: StalledHROnlyRequests :one
+SELECT count(*)::int AS waiting, coalesce(min(a.created_at), $1::timestamptz)::timestamptz AS oldest
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.status = 'requested' AND t.visibility <> 'absent' AND a.created_at < $1::timestamptz
+`
+
+type StalledHROnlyRequestsRow struct {
+	Waiting int32
+	Oldest  time.Time
+}
+
+// StalledHROnlyRequests is the requests of an HR-only type made before
+// @before and still undecided, and when the oldest was made (@before when
+// there is none): the attention item hrOnlyAwaitingDecision.
+func (q *Queries) StalledHROnlyRequests(ctx context.Context, before time.Time) (StalledHROnlyRequestsRow, error) {
+	row := q.db.QueryRow(ctx, stalledHROnlyRequests, before)
+	var i StalledHROnlyRequestsRow
+	err := row.Scan(&i.Waiting, &i.Oldest)
+	return i, err
 }
 
 const statsPeople = `-- name: StatsPeople :many

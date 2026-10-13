@@ -474,7 +474,7 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 		if payload.Kinds != nil && a.reads(groupHold) {
 			kinds := make([]any, 0, len(payload.Kinds))
 			for _, k := range payload.Kinds {
-				if k["kind"] != eraseKindHealth || a.reads(groupHealth) {
+				if kind, _ := k["kind"].(string); !slices.Contains(healthEraseKinds, kind) || a.reads(groupHealth) {
 					kinds = append(kinds, k)
 				}
 			}

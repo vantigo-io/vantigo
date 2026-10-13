@@ -400,9 +400,12 @@ personopplysningsfilen HR henter ut:
    ([brukerveiledningen](/nb/user/staff/#last-ned-en-persons-opplysninger);
    `GET /api/v1/staff/people/{id}/personal-data`). Svaret er en nedlasting,
    `staff-<ansattnummer>-personal-data.json`: personens opplysninger i alle
-   feltgrupper, fødselsnummeret og kontonummeret i sin helhet, HRs notater, pårørende,
-   rollene, hvert arbeidsforhold med vilkårene (lønn og notater medregnet),
-   brukerkoblingen, listen over dokumenter og hele historikken.
+   feltgrupper og feltene for omsorgsdager, fødselsnummeret og kontonummeret i sin
+   helhet, HRs notater, pårørende, rollene, hvert arbeidsforhold med vilkårene (lønn og
+   notater medregnet), brukerkoblingen, listen over dokumenter, alt fravær,
+   ferieendringene, hver sykefraværssak med oppfølgingspunktene og notatene deres, årets
+   omsorgsdager, egenmeldingsstatusen med en eventuell tilbaketrekking, og hele
+   historikken.
 2. Last ned hvert dokument filen lister, fra personens fane **Dokumenter** (eller
    `GET /api/v1/staff/documents/{id}`); filen har metadataene deres, ikke innholdet.
 3. Kontroller: personens **Historikk** begynner nå med **Personopplysninger
@@ -569,6 +572,29 @@ Kodene for de tre ansettelsesformene som kom i 2025 (utleid, og tilkallingsvikar
 ikke verifisert mot Skatteetatens kodeliste: sjekk dem med lønnssystemet før du stoler
 på dem.
 
+**Fraværskolonnene.** Til høyre for lønnstrinnet kommer tretten til, så en
+lønnssystemkobling av de nitten første fortsatt virker. På hvert arbeidsforholds rad
+står månedens summer i arbeidsdager, hver etter sin andel: **Holiday days** (ferie),
+**Self-certified sick days** (egenmelding), **Certified sick days** (sykmelding, etter
+graden), **Child sick days** (sykt barn) og av dem **Child sick days beyond employer** —
+utover de ti arbeidsgiveren dekker i året, det NAV refunderer — **Leave days**
+(permisjon), **Time off hours** (avspasering i timer) og **Other days** (annet). Bare
+godkjent og registrert fravær teller. To regler å kjenne: en sykedag ved siden av en
+prosentpermisjon teller grad × (100 − permisjonens prosent) / 100, og godkjent ferie
+under en 100 % sykmelding teller én gang, **som syk**, til du registrerer den ansattes
+krav om å utsette den ([Utsett ferie ved sykdom](#utsett-ferie-ved-sykdom)).
+
+Etter et arbeidsforholds rad kommer **permisjonsradene**: én per permisjon a-meldingen
+skal ha (Skatteetatens *Permisjon*), med **Leave ID**, **Leave start**, **Leave end**,
+**Leave description** og **Leave percent**. En permisjon rapporteres når den varer mer
+enn fjorten dager, eller når personens permisjoner de siste tolv månedene til sammen
+passerer fjorten dager; permittering alltid; sykt barn aldri. En permisjon som
+forlenges med en ny rad, beholder den første radens id, den id-en a-meldingen kjenner
+den under. Før du kobler filen til et lønnssystem, sjekk de sju beskrivelsesverdiene
+mot kodelisten det systemet bruker: de ble sjekket mot NAVs kilder 14.10.2026, men
+Skatteetatens egen kodeliste var ikke tilgjengelig
+([referansen](/en/reference/staff/#the-payroll-export)).
+
 Fødselsnummeret og kontonummeret er **ikke** med i filen: lønnssystemet har dem
 allerede, så eksporten leser dem aldri.
 
@@ -593,8 +619,16 @@ er blitt forfalt. Hva som forfaller, og hva hver sletting fjerner, står i
   annet) — slettes **`retentionGraceDays`** (standard 90) dager etter at personens siste
   arbeidsforhold sluttet. Personen merkes da som slettet, og opplysningene blir
   skrivebeskyttet.
-- **Helsedokumenter** — de i en begrenset kategori — slettes **`healthRetentionDays`**
-  (standard 365) dager etter at det siste arbeidsforholdet sluttet.
+- **Sykefraværsopplysninger** slettes etter sin egen tidsplan, **uansett personens
+  arbeidsforhold** — også for en som fortsatt er ansatt: en sykefraværssaks notater,
+  anslag og fakta om oppfølgingspunktene, radenes sykefraværstype (som blir *Fravær*) og
+  grad, dokumentene som er lagt på saken, og det historikken sier om sykdommen, slettes
+  **`healthRetentionDays`** (standard 365) dager etter at saken ble avsluttet — av deg,
+  eller seksten dager etter siste dag. En sykt barn-rads type slettes like lenge etter
+  slutten av året, og en tilbaketrekking av egenmelding like lenge etter at den løp ut.
+  Dagene står: hvem som var borte når, beholdes.
+- **Andre helsedokumenter** — de i en begrenset kategori som ikke er lagt på en sak —
+  slettes **`healthRetentionDays`** dager etter at det siste arbeidsforholdet sluttet.
 - **Lønn** — et arbeidsforholds lønnsvilkår, ansiennitetsdato og lønnstrinn,
   arbeidsavtalene og attestene, og lønnen i historikken — slettes **fem år etter året
   arbeidsforholdet sluttet**, arbeidsforhold for arbeidsforhold: en person som har kommet
@@ -628,8 +662,9 @@ Arbeideren kjører med mindre `STAFF_RETENTION_ENABLED=0`, hver `STAFF_WORKERS_P
 ingenting forfalt andre gang, så å se etter hver time sletter hver dags forfalte personer
 én gang. Flere replikaer bytter på gjennom en lås; én kjører slettingen om gangen.
 
-Slått av slettes ingenting etter tidsplanen, og filene som venter på sletting, venter;
-kjøringen for hånd nedenfor virker fortsatt.
+Slått av slettes ingenting etter tidsplanen — **heller ikke sykefraværssakene**: de
+slettes i samme kjøring, uten en egen arbeider — og filene som venter på sletting,
+venter; kjøringen for hånd nedenfor virker fortsatt.
 
 ### Kjør den for hånd
 

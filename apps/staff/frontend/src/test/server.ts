@@ -946,7 +946,16 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (sub === "personal-data" && method === "GET") {
         if (!audience.personalData) return forbidden();
         return new Response(
-          JSON.stringify({ exportedAt: "2026-10-11T08:00:00Z", person: personOf(stored, audience), events: [] }),
+          // The file's absence arrays (delivery B, Task 6) are empty here:
+          // the fake keeps no absence.
+          JSON.stringify({
+            exportedAt: "2026-10-11T08:00:00Z",
+            person: personOf(stored, audience),
+            absences: [],
+            holidayAdjustments: [],
+            cases: [],
+            events: [],
+          }),
           {
             status: 200,
             headers: {

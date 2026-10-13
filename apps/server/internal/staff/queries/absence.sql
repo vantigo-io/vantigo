@@ -243,7 +243,21 @@ WHERE e.start_date <= @to_day::date AND (e.end_date IS NULL OR e.end_date >= @fr
 -- name: SelfApprovedAbsences :many
 -- SelfApprovedAbsences is every approved row its person approved
 -- themselves that has not ended by @today: the attention item selfApproved.
+-- Only a type of visibility absent: self-approval never reaches an HR-only
+-- type, and the item, read by staff:manage without staff:personal-data,
+-- must never name one (Task 6).
 SELECT a.id, a.person_id, a.decided_at, p.display_name
-FROM staff.absences a JOIN staff.people p ON p.id = a.person_id
+FROM staff.absences a
+JOIN staff.absence_types t ON t.id = a.type_id AND t.visibility = 'absent'
+JOIN staff.people p ON p.id = a.person_id
 WHERE a.self_approved AND a.status = 'approved' AND a.last_day >= @today::date
 ORDER BY a.decided_at, a.id;
+
+-- name: PersonAbsences :many
+-- PersonAbsences is every absence of the person in any status, newest
+-- first, with its type's kind, visibility and unit: the personal-data file's
+-- (design S16).
+SELECT sqlc.embed(a), t.kind, t.visibility, t.unit
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.person_id = @person_id
+ORDER BY a.first_day DESC, a.id DESC;

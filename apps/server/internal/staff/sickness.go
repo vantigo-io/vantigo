@@ -198,7 +198,7 @@ func (s *server) trimUnder(ctx context.Context, txq *store.Queries, who actor, p
 		if err != nil {
 			return fmt.Errorf("staff: read absence type %d: %w", r.StaffAbsence.TypeID, err)
 		}
-		if _, err := s.carve(ctx, txq, who, personID, r.StaffAbsence, t, civil(sick.FirstDay), civil(sick.LastDay), nil); err != nil {
+		if _, err := s.carve(ctx, txq, who, personID, r.StaffAbsence, t, sick.ID, civil(sick.FirstDay), civil(sick.LastDay), nil); err != nil {
 			return err
 		}
 	}
@@ -208,13 +208,15 @@ func (s *server) trimUnder(ctx context.Context, txq *store.Queries, who actor, p
 // carve takes first..last out of row: the part before stays on the row, the
 // part after becomes a new row with the row's decision, and a row with
 // neither is cancelled (ferie) or removed (an egenmelding). One
-// absence_split event says so, by the row's own type, with added's fields.
-// It answers the rows of row's left after it.
-func (s *server) carve(ctx context.Context, txq *store.Queries, who actor, personID int64, row store.StaffAbsence, t store.StaffAbsenceType, first, last time.Time, added map[string]json.RawMessage) ([]store.StaffAbsence, error) {
+// absence_split event says so, by the row's own type, with added's fields,
+// naming the sykmelding sickID it was carved for (sickAbsenceId) — the case
+// whose health erase reaches the event (Task 6). It answers the rows of
+// row's left after it.
+func (s *server) carve(ctx context.Context, txq *store.Queries, who actor, personID int64, row store.StaffAbsence, t store.StaffAbsenceType, sickID int64, first, last time.Time, added map[string]json.RawMessage) ([]store.StaffAbsence, error) {
 	rowFirst, rowLast := civil(row.FirstDay), civil(row.LastDay)
 	before, after := rowFirst.Before(first), rowLast.After(last)
 	now := s.deps.Clock()
-	var extra map[string]any
+	extra := map[string]any{"sickAbsenceId": sickID}
 	var left []store.StaffAbsence
 	if after {
 		start := last.AddDate(0, 0, 1)
@@ -223,13 +225,13 @@ func (s *server) carve(ctx context.Context, txq *store.Queries, who actor, perso
 			if err != nil {
 				return nil, fmt.Errorf("staff: trim absence %d: %w", row.ID, err)
 			}
-			return []store.StaffAbsence{moved}, s.recordAbsenceWith(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, &moved, nil, added, t)
+			return []store.StaffAbsence{moved}, s.recordAbsenceWith(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, &moved, extra, added, t)
 		}
 		piece, err := txq.InsertSplitAbsence(ctx, store.InsertSplitAbsenceParams{FirstDay: dayParam(start), Now: now, Source: row.ID})
 		if err != nil {
 			return nil, fmt.Errorf("staff: split absence %d: %w", row.ID, err)
 		}
-		extra = map[string]any{"splitAbsenceId": piece.ID}
+		extra["splitAbsenceId"] = piece.ID
 		left = append(left, piece)
 	}
 	if before {
@@ -243,13 +245,13 @@ func (s *server) carve(ctx context.Context, txq *store.Queries, who actor, perso
 		if err := txq.DeleteAbsence(ctx, row.ID); err != nil {
 			return nil, fmt.Errorf("staff: delete absence %d: %w", row.ID, err)
 		}
-		return nil, s.recordAbsenceWith(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, nil, nil, added, t)
+		return nil, s.recordAbsenceWith(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, nil, extra, added, t)
 	}
 	cancelled, err := txq.SetAbsenceStatus(ctx, store.SetAbsenceStatusParams{ID: row.ID, Status: absenceCancelled, Now: now})
 	if err != nil {
 		return nil, fmt.Errorf("staff: cancel absence %d: %w", row.ID, err)
 	}
-	return []store.StaffAbsence{cancelled}, s.recordAbsenceWith(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, &cancelled, nil, added, t)
+	return []store.StaffAbsence{cancelled}, s.recordAbsenceWith(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, &cancelled, extra, added, t)
 }
 
 // ---- Postponing holiday for sickness ---------------------------------------
@@ -371,7 +373,7 @@ func (s *server) PostStaffAbsencesByIdPostponeHoliday(ctx context.Context, req g
 			if sickFirst.Before(civil(f.FirstDay)) {
 				under = postponedBefore
 			}
-			left, err := s.carve(ctx, txq, who, personID, f, ft, sickFirst, civil(sick.LastDay), map[string]json.RawMessage{
+			left, err := s.carve(ctx, txq, who, personID, f, ft, sick.ID, sickFirst, civil(sick.LastDay), map[string]json.RawMessage{
 				fieldDemandedOn: caseValue(demanded.Format(time.DateOnly)), fieldPostponedUnder: caseValue(under),
 			})
 			if err != nil {

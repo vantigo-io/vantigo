@@ -585,6 +585,43 @@ func (q *Queries) PersonCaseExists(ctx context.Context, arg PersonCaseExistsPara
 	return found, err
 }
 
+const personCases = `-- name: PersonCases :many
+SELECT id, person_id, first_day, last_day, closed_at, accommodation_note, max_benefit_estimate, revision, created_at, updated_at FROM staff.sick_cases WHERE person_id = $1 ORDER BY first_day DESC, id DESC
+`
+
+// PersonCases is every sick-leave case of the person, newest first: the
+// personal-data file's (design S16).
+func (q *Queries) PersonCases(ctx context.Context, personID int64) ([]StaffSickCase, error) {
+	rows, err := q.db.Query(ctx, personCases, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StaffSickCase
+	for rows.Next() {
+		var i StaffSickCase
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.FirstDay,
+			&i.LastDay,
+			&i.ClosedAt,
+			&i.AccommodationNote,
+			&i.MaxBenefitEstimate,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const personSelfCertWithdrawal = `-- name: PersonSelfCertWithdrawal :one
 SELECT self_cert_withdrawn_from, self_cert_withdrawn_until, self_cert_withdrawn_reason FROM staff.people WHERE id = $1
 `

@@ -869,6 +869,66 @@ func (q *Queries) PeopleEmployedBetween(ctx context.Context, arg PeopleEmployedB
 	return items, nil
 }
 
+const personAbsences = `-- name: PersonAbsences :many
+SELECT a.id, a.person_id, a.type_id, a.first_day, a.last_day, a.hours, a.percent, a.status, a.note, a.case_id, a.degree_percent, a.requested_by_user_id, a.decided_by_user_id, a.decided_at, a.decision_note, a.self_approved, a.revision, a.created_at, a.updated_at, t.kind, t.visibility, t.unit
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.person_id = $1
+ORDER BY a.first_day DESC, a.id DESC
+`
+
+type PersonAbsencesRow struct {
+	StaffAbsence StaffAbsence
+	Kind         string
+	Visibility   string
+	Unit         string
+}
+
+// PersonAbsences is every absence of the person in any status, newest
+// first, with its type's kind, visibility and unit: the personal-data file's
+// (design S16).
+func (q *Queries) PersonAbsences(ctx context.Context, personID int64) ([]PersonAbsencesRow, error) {
+	rows, err := q.db.Query(ctx, personAbsences, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PersonAbsencesRow
+	for rows.Next() {
+		var i PersonAbsencesRow
+		if err := rows.Scan(
+			&i.StaffAbsence.ID,
+			&i.StaffAbsence.PersonID,
+			&i.StaffAbsence.TypeID,
+			&i.StaffAbsence.FirstDay,
+			&i.StaffAbsence.LastDay,
+			&i.StaffAbsence.Hours,
+			&i.StaffAbsence.Percent,
+			&i.StaffAbsence.Status,
+			&i.StaffAbsence.Note,
+			&i.StaffAbsence.CaseID,
+			&i.StaffAbsence.DegreePercent,
+			&i.StaffAbsence.RequestedByUserID,
+			&i.StaffAbsence.DecidedByUserID,
+			&i.StaffAbsence.DecidedAt,
+			&i.StaffAbsence.DecisionNote,
+			&i.StaffAbsence.SelfApproved,
+			&i.StaffAbsence.Revision,
+			&i.StaffAbsence.CreatedAt,
+			&i.StaffAbsence.UpdatedAt,
+			&i.Kind,
+			&i.Visibility,
+			&i.Unit,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const requestedAbsences = `-- name: RequestedAbsences :many
 SELECT a.id, a.person_id, a.type_id, a.first_day, a.last_day, a.hours, a.percent, a.status, a.note, a.case_id, a.degree_percent, a.requested_by_user_id, a.decided_by_user_id, a.decided_at, a.decision_note, a.self_approved, a.revision, a.created_at, a.updated_at, t.kind, t.visibility, t.unit
 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
@@ -956,7 +1016,9 @@ func (q *Queries) RequestedAbsences(ctx context.Context, arg RequestedAbsencesPa
 
 const selfApprovedAbsences = `-- name: SelfApprovedAbsences :many
 SELECT a.id, a.person_id, a.decided_at, p.display_name
-FROM staff.absences a JOIN staff.people p ON p.id = a.person_id
+FROM staff.absences a
+JOIN staff.absence_types t ON t.id = a.type_id AND t.visibility = 'absent'
+JOIN staff.people p ON p.id = a.person_id
 WHERE a.self_approved AND a.status = 'approved' AND a.last_day >= $1::date
 ORDER BY a.decided_at, a.id
 `
@@ -970,6 +1032,9 @@ type SelfApprovedAbsencesRow struct {
 
 // SelfApprovedAbsences is every approved row its person approved
 // themselves that has not ended by @today: the attention item selfApproved.
+// Only a type of visibility absent: self-approval never reaches an HR-only
+// type, and the item, read by staff:manage without staff:personal-data,
+// must never name one (Task 6).
 func (q *Queries) SelfApprovedAbsences(ctx context.Context, today pgtype.Date) ([]SelfApprovedAbsencesRow, error) {
 	rows, err := q.db.Query(ctx, selfApprovedAbsences, today)
 	if err != nil {
