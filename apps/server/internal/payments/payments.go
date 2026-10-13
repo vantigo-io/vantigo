@@ -72,11 +72,13 @@ type CreateRequest struct {
 	TermsURL, PrivacyURL string
 }
 
-// Created is a request the provider accepted: RedirectURL for FlowRedirect,
-// QRSVG for FlowQR — the code of the provider's target URL, rendered by
-// payments/qrsvg, never an image fetched from the provider. Show it as an
-// image, <img src="data:image/svg+xml;base64,…">, never inlined into markup.
-type Created struct{ Reference, RedirectURL, QRSVG string }
+// Created is a request the provider accepted: RedirectURL for FlowRedirect;
+// for FlowQR, QRTarget — the target URL the provider answered the create
+// with, which the caller may keep to show the same code again — and QRSVG,
+// its code rendered by payments/qrsvg, never an image fetched from the
+// provider. Show it as an image, <img src="data:image/svg+xml;base64,…">,
+// never inlined into markup. Neither URL is ever logged.
+type Created struct{ Reference, RedirectURL, QRTarget, QRSVG string }
 
 // State is a payment's state as the provider holds it. A capture, a cancel
 // of an authorized amount or a refund changes the amounts, not the state.

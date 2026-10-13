@@ -90,7 +90,8 @@ enforce.
 
 `payments.Provider` is one provider account (for Vipps, one sales unit):
 `Create` a payment request under the caller's reference — `FlowRedirect` with a return
-URL, or `FlowQR` answering a QR code as SVG — `Get` its state and its four
+URL, or `FlowQR` answering the QR's target URL — which the caller may keep, never
+logged, to show the same code again — and its code as SVG — `Get` its state and its four
 amounts (authorized, captured, cancelled, refunded), `Capture`, `Cancel` and
 `Refund`, `CaptureTime` (the first capture's time from the provider's event log),
 `VerifyWebhook` and `Verify`, the cheapest authenticated call for a settings page.

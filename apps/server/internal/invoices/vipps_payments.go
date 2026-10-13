@@ -18,9 +18,11 @@ import (
 )
 
 // This file is the day's Vipps payments and their reconciliation
-// (invoices payments and reminders design D17 rule 4, M15): one Oslo day's
-// captures — on site and by pay link, since Vantigo cannot know where the
-// customer stood — as JSON and as a file in the module's CSV form
+// (invoices payments and reminders design D17 rule 4, M15): one day's
+// Vipps payments — on site and by pay link, since Vantigo cannot know where
+// the customer stood — by the day they are paid on: the Oslo day of Vipps'
+// capture event, the payment's day in the ledger and in the Vipps
+// settlement, however late the payments worker registered it. As JSON and as a file in the module's CSV form
 // (csvfile.go), and an immutable record that the day was reconciled against
 // the Vipps settlement, bokføringsforskriften § 5-4-5's daily count, which
 // arguably reaches kontantfaktura sales (R4 §9.6 item 4) and is built in.
@@ -35,20 +37,11 @@ const (
 )
 
 // vippsDayHeader is the file's header row, fixed and English, in its order.
-var vippsDayHeader = []string{"Date", "Time", "Invoice number", "Buyer", "Flow", "Amount", "Reference"}
+var vippsDayHeader = []string{"Paid on", "Registered at", "Invoice number", "Buyer", "Flow", "Amount", "Refunded", "Reference"}
 
-// osloDay is the instants a calendar day spans in Oslo: from its midnight
-// to the next, so a day of a clock change is 23 or 25 hours.
-func osloDay(day time.Time) (start, end time.Time) {
-	day = utcDay(day)
-	start = time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, oslo)
-	return start, time.Date(day.Year(), day.Month(), day.Day()+1, 0, 0, 0, 0, oslo)
-}
-
-// vippsDayRows reads one Oslo day's captures.
-func vippsDayRows(ctx context.Context, q *store.Queries, day time.Time) ([]store.VippsPaymentsBetweenRow, error) {
-	start, end := osloDay(day)
-	rows, err := q.VippsPaymentsBetween(ctx, store.VippsPaymentsBetweenParams{DayStart: start, DayEnd: end})
+// vippsDayRows reads one day's Vipps payments.
+func vippsDayRows(ctx context.Context, q *store.Queries, day time.Time) ([]store.VippsPaymentsOnRow, error) {
+	rows, err := q.VippsPaymentsOn(ctx, pgDate(day))
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the Vipps payments of %s: %w", day.Format(time.DateOnly), err)
 	}
@@ -86,9 +79,17 @@ func (s *server) GetInvoicesVippsPayments(ctx context.Context, req gen.GetInvoic
 	out := gen.InvoicesVippsPaymentsDay{Date: wireDate(day), Payments: make([]gen.InvoicesVippsPayment, 0, len(rows))}
 	total, onSite, payLink := new(big.Rat), new(big.Rat), new(big.Rat)
 	for _, r := range rows {
-		amount, err := ratFromNumeric(r.CapturedAmount)
+		amount, err := ratFromNumeric(r.Amount)
 		if err != nil {
 			return nil, err
+		}
+		var refunded *float64
+		if r.RefundedAmount.Valid {
+			v, err := ratFromNumeric(r.RefundedAmount)
+			if err != nil {
+				return nil, err
+			}
+			refunded = ptr(floatFromRat(v, 2))
 		}
 		total.Add(total, amount)
 		if r.Flow == flowOnSite {
@@ -99,7 +100,7 @@ func (s *server) GetInvoicesVippsPayments(ctx context.Context, req gen.GetInvoic
 		out.Payments = append(out.Payments, gen.InvoicesVippsPayment{
 			AttemptId: r.ID, Reference: r.Reference, InvoiceId: r.InvoiceID, InvoiceNumber: deref64(r.InvoiceNumber),
 			BuyerName: deref(r.BuyerName), Flow: gen.InvoicesVippsPaymentFlow(r.Flow), Amount: floatFromRat(amount, 2),
-			CapturedAt: *r.CapturedAt,
+			PaidOn: wireDate(utcDay(r.PaidOn.Time)), CapturedAt: derefTime(r.CapturedAt), RefundedAmount: refunded,
 		})
 	}
 	out.Count = int32(len(rows))
@@ -126,8 +127,8 @@ func (d csvDownload) VisitGetInvoicesVippsPaymentsCsvResponse(w http.ResponseWri
 // GetInvoicesVippsPaymentsCsv Export a day's Vipps payments as CSV
 // (GET /api/v1/invoices/vipps-payments.csv)
 //
-// The same rows as the JSON list, in the module's CSV form: the date and
-// time of the capture in Oslo, the buyer guarded as typed text.
+// The same rows as the JSON list, in the module's CSV form: the day paid
+// on, when it was registered in Oslo, the buyer guarded as typed text.
 func (s *server) GetInvoicesVippsPaymentsCsv(ctx context.Context, req gen.GetInvoicesVippsPaymentsCsvRequestObject) (gen.GetInvoicesVippsPaymentsCsvResponseObject, error) {
 	day := utcDay(req.Params.Date.Time)
 	rows, err := vippsDayRows(ctx, store.New(s.deps.Pool), day)
@@ -142,18 +143,24 @@ func (s *server) GetInvoicesVippsPaymentsCsv(ctx context.Context, req gen.GetInv
 	}
 	writeCSVRow(&b, header)
 	for _, r := range rows {
-		amount, err := csvDecimal(r.CapturedAmount, false)
+		amount, err := csvDecimal(r.Amount, false)
 		if err != nil {
 			return nil, err
 		}
-		at := r.CapturedAt.In(oslo)
+		refunded := ""
+		if r.RefundedAmount.Valid {
+			if refunded, err = csvDecimal(r.RefundedAmount, false); err != nil {
+				return nil, err
+			}
+		}
 		writeCSVRow(&b, []csvValue{
-			{text: at.Format(time.DateOnly)},
-			{text: at.Format(time.TimeOnly)},
+			{text: utcDay(r.PaidOn.Time).Format(time.DateOnly)},
+			{text: derefTime(r.CapturedAt).In(oslo).Format(time.DateTime)},
 			{text: csvInt(r.InvoiceNumber)},
 			{text: csvText(r.BuyerName), guard: true},
 			{text: r.Flow},
 			{text: amount},
+			{text: refunded},
 			{text: r.Reference, guard: true},
 		})
 	}
@@ -163,8 +170,9 @@ func (s *server) GetInvoicesVippsPaymentsCsv(ctx context.Context, req gen.GetInv
 // PostInvoicesVippsPaymentsReconciliations Reconcile a day's Vipps payments
 // (POST /api/v1/invoices/vipps-payments/reconciliations)
 //
-// One insert sums the day as it stands and records it with the caller, the
-// time and the note, once; no lock. The day must be over in Oslo.
+// One insert sums the day's Vipps payments as they stand — refunds not
+// deducted — and records them with the caller, the time and the note,
+// once; no lock. The day must be over in Oslo.
 func (s *server) PostInvoicesVippsPaymentsReconciliations(ctx context.Context, req gen.PostInvoicesVippsPaymentsReconciliationsRequestObject) (gen.PostInvoicesVippsPaymentsReconciliationsResponseObject, error) {
 	var errs map[string][]string
 	if req.Body.Day.IsZero() {
@@ -186,9 +194,8 @@ func (s *server) PostInvoicesVippsPaymentsReconciliations(ctx context.Context, r
 		return gen.PostInvoicesVippsPaymentsReconciliations409ApplicationProblemPlusJSONResponse(conflict(codeDayNotOver, cannotReconcileTitle,
 			fmt.Sprintf("%s is not over yet: a day is reconciled from the day after.", day.Format(time.DateOnly)))), nil
 	}
-	start, end := osloDay(day)
 	rec, err := store.New(s.deps.Pool).InsertVippsDayReconciliation(ctx, store.InsertVippsDayReconciliationParams{
-		Day: pgDate(day), ReconciledByUserID: callerID(ctx), Now: now, Note: note, DayStart: start, DayEnd: end,
+		Day: pgDate(day), ReconciledByUserID: callerID(ctx), Now: now, Note: note,
 	})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):

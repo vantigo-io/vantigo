@@ -787,3 +787,12 @@ func SetAbandonAfterRead(hook func()) func() {
 	abandonAfterRead = hook
 	return func() { abandonAfterRead = nil }
 }
+
+// SetAttemptInvoiceLocked installs a hook an attempt's create calls inside
+// its transaction right after the invoice's lock, before anything is judged
+// under it, and answers the function that removes it. A test using it does
+// not run in parallel: the hook is the package's.
+func SetAttemptInvoiceLocked(hook func(ctx context.Context, tx pgx.Tx)) func() {
+	attemptInvoiceLocked = hook
+	return func() { attemptInvoiceLocked = nil }
+}
