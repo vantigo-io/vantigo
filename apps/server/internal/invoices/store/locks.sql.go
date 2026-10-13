@@ -370,8 +370,8 @@ SELECT id, provider, settings_json, secret_ciphertext, webhook_id, webhook_secre
 `
 
 // LockPaymentCredentials takes the payment provider's credentials FOR
-// UPDATE: a credentials PUT's, a DELETE's and a webhook registration's only
-// lock, under which the live attempts are counted (D14, I20).
+// UPDATE: a credentials PUT's and a DELETE's only lock, under which the live
+// attempts are counted (D14, I20).
 func (q *Queries) LockPaymentCredentials(ctx context.Context) (InvoicesPaymentProviderCredential, error) {
 	row := q.db.QueryRow(ctx, lockPaymentCredentials)
 	var i InvoicesPaymentProviderCredential

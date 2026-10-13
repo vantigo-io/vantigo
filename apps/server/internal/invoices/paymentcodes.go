@@ -16,7 +16,7 @@ const (
 	// codeAttemptNotAbandonable: the attempt is not capture_unknown, nor
 	// capturing under a switch turned off or another sales unit.
 	codeAttemptNotAbandonable = "attempt_not_abandonable"
-	// codePublicURLMissing: pay links or a webhook without PUBLIC_BASE_URL.
+	// codePublicURLMissing: pay links without PUBLIC_BASE_URL.
 	codePublicURLMissing = "public_url_missing"
 	// codeProviderFailed: Vipps refused or failed a call definitively (502).
 	codeProviderFailed = "provider_failed"
