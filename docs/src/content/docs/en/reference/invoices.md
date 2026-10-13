@@ -3972,7 +3972,10 @@ a warning in the log, and raises `vippsRefundSeen` ([Attention](#attention)). **
 payment is removed**: the person removes the Vipps payment (and registers the part kept,
 if any), which clears the item. A read that fails is tried again on the backoff and
 changes no money; past the 30 days it ends the watch, with a warning in the log that a
-refund made since is not seen. There is no column for "seen" and
+refund made since is not seen. When Vipps cannot be read for the attempt at all — the
+credentials removed, or another sales unit stored — it is read again an hour later, and
+past the 30 days the watch ends unread, with the same kind of warning, instead of
+waiting for ever. There is no column for "seen" and
 nothing to acknowledge: the item is the stored refund on a payment still live.
 
 ### The day's Vipps payments

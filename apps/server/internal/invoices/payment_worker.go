@@ -252,6 +252,16 @@ type paymentClaim struct {
 // step takes the claimed attempt one step of D16's machine.
 func (c *paymentClaim) step(ctx context.Context) error {
 	provider, creds, err := c.s.paymentProvider(ctx)
+	if c.row.State == "captured" && !c.row.ReleasePending && (err != nil || c.row.Msn != creds.msn) &&
+		(c.row.RefundWatchUntil == nil || !c.now.Before(*c.row.RefundWatchUntil)) {
+		// The refund watch is over and Vipps cannot be read for it — the
+		// keys removed or another sales unit stored: it ends unread rather
+		// than being rescheduled for ever. With Vipps readable, watch()
+		// makes its last read.
+		c.w.logger().WarnContext(ctx, "invoices: the refund watch ends unread; Vipps cannot be read for this payment from this installation",
+			"worker", paymentWorkerName, "attempt_id", c.row.ID)
+		return c.reschedule(ctx, time.Time{}, "")
+	}
 	if err != nil {
 		reason := "Vipps cannot be reached from this installation: " + err.Error()
 		if rerr := c.reschedule(ctx, c.now.Add(providerUnavailableDelay), reason); rerr != nil {
