@@ -877,6 +877,102 @@ func (q *Queries) RepointCustomer(ctx context.Context, arg RepointCustomerParams
 	return result.RowsAffected(), nil
 }
 
+const repointQuickInvoice = `-- name: RepointQuickInvoice :one
+UPDATE invoices.invoices SET customer_id = $1
+WHERE id = $2 AND customer_id = $3 AND status = 'issued'
+RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet
+`
+
+type RepointQuickInvoiceParams struct {
+	IntoCustomerID int32
+	ID             int64
+	FromCustomerID int32
+}
+
+// RepointQuickInvoice moves one issued quick invoice from a customer merged
+// away to the survivor (D17, after review): a merge whose RepointCustomer ran
+// while the quick invoice's transaction was still open did not see it. The
+// caller holds the document FOR UPDATE. Exactly RepointCustomer's write for
+// an issued document: the customer id alone, the buyer snapshot, revision
+// and updated_at untouched — the one change the immutability trigger allows.
+func (q *Queries) RepointQuickInvoice(ctx context.Context, arg RepointQuickInvoiceParams) (InvoicesInvoice, error) {
+	row := q.db.QueryRow(ctx, repointQuickInvoice, arg.IntoCustomerID, arg.ID, arg.FromCustomerID)
+	var i InvoicesInvoice
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Status,
+		&i.Number,
+		&i.CustomerID,
+		&i.CreditsInvoiceID,
+		&i.IssueDate,
+		&i.DeliveryDate,
+		&i.DeliveryFrom,
+		&i.DeliveryTo,
+		&i.DeliveryAddressLine1,
+		&i.DeliveryAddressLine2,
+		&i.DeliveryPostalCode,
+		&i.DeliveryCity,
+		&i.DeliveryCountry,
+		&i.PaymentTermsDays,
+		&i.DueDate,
+		&i.Currency,
+		&i.ExchangeRate,
+		&i.ExchangeRateDate,
+		&i.YourReference,
+		&i.OurReference,
+		&i.OrderReference,
+		&i.Note,
+		&i.InternalNote,
+		&i.BuyerCustomerNumber,
+		&i.BuyerType,
+		&i.BuyerName,
+		&i.BuyerOrganisationNumber,
+		&i.BuyerForeignID,
+		&i.BuyerAddressLine1,
+		&i.BuyerAddressLine2,
+		&i.BuyerPostalCode,
+		&i.BuyerCity,
+		&i.BuyerRegion,
+		&i.BuyerCountry,
+		&i.BuyerPeppolID,
+		&i.BuyerGln,
+		&i.BuyerLanguage,
+		&i.SellerLegalName,
+		&i.SellerOrganisationNumber,
+		&i.SellerVatRegistered,
+		&i.SellerInForetaksregisteret,
+		&i.SellerAddressLine1,
+		&i.SellerAddressLine2,
+		&i.SellerPostalCode,
+		&i.SellerCity,
+		&i.SellerCountry,
+		&i.SellerBankAccount,
+		&i.SellerIban,
+		&i.SellerBic,
+		&i.SellerEmail,
+		&i.SellerFooterText,
+		&i.NetTotal,
+		&i.VatTotal,
+		&i.GrossTotal,
+		&i.VatTotalNok,
+		&i.PdfObjectKey,
+		&i.PdfSha256,
+		&i.IssuedAt,
+		&i.IssuedByUserID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Revision,
+		&i.Kid,
+		&i.KidAlgorithm,
+		&i.ProjectID,
+		&i.ProjectReference,
+		&i.Timesheet,
+	)
+	return i, err
+}
+
 const waiversOfDocuments = `-- name: WaiversOfDocuments :many
 SELECT id, invoice_id, reminder_id, kind, amount, interest_through, reason, note, waived_by_user_id, waived_at FROM invoices.charge_waivers
 WHERE invoice_id = ANY($1::bigint[])

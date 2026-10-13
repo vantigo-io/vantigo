@@ -66,6 +66,11 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the settings: %w", err)
 	}
+	// The clock is read here once, for the draft's defaults (its delivery
+	// day and created_at), and once more by issueLocked after the counter,
+	// as the issue does: a quick invoice waiting there across Oslo midnight
+	// is issued, and handed over, the day it is issued, after the day its
+	// draft says it was delivered — never before it.
 	now := s.deps.Clock()
 	in, errs := parseDraft(quickDraft(*req.Body, wireDate(businessDay(now))), settings.DefaultCurrency)
 	switch n := len(req.Body.Lines); {
@@ -172,7 +177,9 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 	if err != nil {
 		return nil, err
 	}
-	// After the commit, the PDF is stored once (D7), as the issue does.
+	// After the commit, a merge that ran in the window follows the document
+	// (quickFollowMerge); then the PDF is stored once (D7), as the issue does.
+	issued = s.quickFollowMerge(ctx, issued)
 	issued = s.storeAfterIssue(ctx, q, issued)
 	resp, err := s.invoiceResponse(ctx, q, issued, nil)
 	if err != nil {
@@ -186,4 +193,66 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 			"On-site payment is not turned on. The invoice is issued, and is paid later like any other."))
 	}
 	return gen.PostInvoicesQuick201JSONResponse(out), nil
+}
+
+// maxMergeHops bounds how far quickFollowMerge follows MergedInto: a
+// survivor merged away in turn is followed, a cycle is not.
+const maxMergeHops = 10
+
+// quickFollowMerge moves a committed quick invoice to the customer its own
+// was merged into while its transaction was open (D17, after review). The
+// merge's RepointCustomer moves every document of the customer merged away,
+// but it cannot see one inserted by a transaction that has not committed, and
+// the quick invoice read the billing profile before its own transaction. So
+// the profile is read again after the commit, outside any lock, MergedInto
+// followed to the survivor, and the document — under its own lock, in a
+// transaction of its own — gets the survivor's id: exactly the re-point's
+// write for an issued document, the buyer snapshot unchanged. A merge that
+// still has not committed by the time of this read is not seen: its
+// re-point ran before the quick invoice committed, and the document stays
+// on the customer merged away, as an ordinary issue racing the same merge
+// leaves its document. A failure here is logged: the invoice is issued, and
+// a replay of the request (requestId) looks again.
+func (s *server) quickFollowMerge(ctx context.Context, inv store.InvoicesInvoice) store.InvoicesInvoice {
+	into := inv.CustomerID
+	for range maxMergeHops {
+		p, err := s.customerProfile(ctx, into)
+		if err != nil {
+			s.deps.Logger.ErrorContext(ctx, "invoices: a quick invoice's customer could not be read again after its issue",
+				"invoice_id", inv.ID, "customer_id", into, "error", err.Error())
+			return inv
+		}
+		if p == nil || p.MergedInto == nil || *p.MergedInto == into {
+			break
+		}
+		into = *p.MergedInto
+	}
+	if into == inv.CustomerID {
+		return inv
+	}
+	moved := inv
+	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		locked, err := lockInvoice(ctx, txq, inv.ID)
+		if err != nil {
+			return fmt.Errorf("invoices: lock quick invoice %d: %w", inv.ID, err)
+		}
+		if locked.CustomerID != inv.CustomerID {
+			// A merge that committed after the read moved it already.
+			moved = locked
+			return nil
+		}
+		moved, err = txq.RepointQuickInvoice(ctx, store.RepointQuickInvoiceParams{
+			IntoCustomerID: into, ID: inv.ID, FromCustomerID: inv.CustomerID,
+		})
+		if err != nil {
+			return fmt.Errorf("invoices: re-point quick invoice %d to customer %d: %w", inv.ID, into, err)
+		}
+		return nil
+	})
+	if err != nil {
+		s.deps.Logger.ErrorContext(ctx, "invoices: a quick invoice issued to a customer merged away was not moved to the survivor",
+			"invoice_id", inv.ID, "customer_id", inv.CustomerID, "survivor_id", into, "error", err.Error())
+		return inv
+	}
+	return moved
 }

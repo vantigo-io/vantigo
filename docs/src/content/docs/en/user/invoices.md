@@ -542,10 +542,13 @@ cannot be invoiced, a buyer without a complete address or an organisation number
 code that cannot be used, or anything else that refuses an ordinary issue — nothing is
 kept: no draft is left behind and no number is used. Correct it and issue again.
 
-A quick invoice the customer pays later — by bank with the KID, or through a pay link —
-is an ordinary credit sale. Paying on site with Vipps is a cash sale and comes with
-payment on site ([pay links and payment on site](#pay-links-and-payment-on-site)); until
-that is offered, the invoice is issued and you are told that payment on site is not
+A quick invoice the customer pays later — by bank with the KID, or through a pay link
+they open after you have left — is an ordinary credit sale. Paid on site with Vipps, or
+with the pay link or its QR code shown to the customer there, it is a cash sale
+(*kontantsalg*), which Invoices allows without a cash register only as a cash invoice
+(*kontantfaktura*) naming the buyer, through payment on site
+([pay links and payment on site](#pay-links-and-payment-on-site)). Until payment on site
+is offered, the invoice is issued and you are told that payment on site is not
 available. The quick invoice's own screen arrives with Vipps in the app; the request
 behind it is in place now ([the quick invoice](/en/reference/invoices/#the-quick-invoice)).
 
