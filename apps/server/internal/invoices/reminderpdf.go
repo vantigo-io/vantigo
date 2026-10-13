@@ -77,10 +77,10 @@ var errLetterWithoutFacts = errors.New("invoices: a letter without facts has no 
 // reminderModelOf is letter r's model: r carries its facts; inv is its
 // invoice. What it prints as credited is the row's credited, fixed with its
 // facts — never the credit notes as they stand when it is rendered. payLink
-// is the invoice's live pay link when it is rendered (D10, D15), "" for
-// none: the one thing a letter reads live, so a link revoked is no longer
-// printed. The link pays the principal only (plan reading 5), so beside a
-// letter that claims charges it says the charges are paid by bank.
+// is the URL of the pay link its facts name (D10, D15), "" for none, printed
+// whether or not the link was revoked since. The link pays the principal
+// only (plan reading 5), so beside a letter that claims charges it says the
+// charges are paid by bank.
 func reminderModelOf(r store.InvoicesReminder, inv store.InvoicesInvoice, payLink string) (reminderModel, error) {
 	if !r.SentOn.Valid || !r.Deadline.Valid || r.FeeKind == nil || !r.Credited.Valid {
 		return reminderModel{}, errLetterWithoutFacts

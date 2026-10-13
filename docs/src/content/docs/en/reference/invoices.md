@@ -109,7 +109,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.reminder_settings` | One row (`id = 1`): [the reminder settings](#the-reminder-settings), the 2026 regime's day `inkassolov_2026_from`, the review `regime_reviewed_through` with who moved it and when, and the row's revision, who changed it and when. Never deleted. |
 | `invoices.customer_reminder_policies` | One row per customer with [a reminder policy](#a-customers-reminder-policy) other than the default — keyed by the opaque `customer_id`, the mode (`normal`, `no_charges`, `none`), the note and who set it when. No row is `normal`. |
 | `invoices.reminder_runs` | One reminder run ([Runs](#runs)): the day, who made it and when, the bank data's `last_booked_on` and `stale_import_acknowledged`, and `letters` and `skipped`, set together once at its end from NULL. Never deleted or changed but by that one write. |
-| `invoices.reminders` | One letter of a run ([Letters](#letters)): the invoice, the run, its `sequence` on the invoice (unique per invoice), the level (`reminder` or `collection_notice`), `announces_collection`, the channel (`email` or `paper`), the recipient (`''` for paper and once the customer is anonymised), the language, who made it and when, the status (`queued`, `awaiting_print`, `printed`, `sent`, `withdrawn`, `failed`), and the facts written when it is sent or printed — `sent_on`, the deadline, the regime, the amounts, `credited` (what the invoice's issued credit notes had taken off it then, so the letter renders again as it went whatever is credited later), the interest segments and the charge notes — with its PDF's key and hash; the worker's columns — `message_id` (set once, while queued), `attempts`, `next_attempt_at`, `first_attempt_at`, the lease (`lease_id`, `lease_until`), `last_error`, `held_reason` (`collection_rates_outdated` or `collection_regime_unreviewed`), `failed_at` — and the withdrawal's. Created without facts; never deleted; its facts change only while it is not sent or withdrawn. |
+| `invoices.reminders` | One letter of a run ([Letters](#letters)): the invoice, the run, its `sequence` on the invoice (unique per invoice), the level (`reminder` or `collection_notice`), `announces_collection`, the channel (`email` or `paper`), the recipient (`''` for paper and once the customer is anonymised), the language, who made it and when, the status (`queued`, `awaiting_print`, `printed`, `sent`, `withdrawn`, `failed`), and the facts written when it is sent or printed — `sent_on`, the deadline, the regime, the amounts, `credited` (what the invoice's issued credit notes had taken off it then, so the letter renders again as it went whatever is credited later), the interest segments, the charge notes and `pay_link_id`, the pay link it prints ([Pay links](#pay-links)) — with its PDF's key and hash; the worker's columns — `message_id` (set once, while queued), `attempts`, `next_attempt_at`, `first_attempt_at`, the lease (`lease_id`, `lease_until`), `last_error`, `held_reason` (`collection_rates_outdated` or `collection_regime_unreviewed`), `failed_at` — and the withdrawal's. Created without facts; never deleted; its facts change only while it is not sent or withdrawn. |
 | `invoices.reminder_print_batches` | One print batch of paper letters ([Paper and posting](#paper-and-posting)): `post_on`, the day its letters' facts were judged for and the only day it may be confirmed posted, who made it and when, and either the posting — `posted_on`, `posted_by_user_id`, `posted_at`, set together once — or `reprinted_at`, set once; never both. Never deleted or changed but by those writes. |
 | `invoices.invoice_holds` | An invoice marked disputed ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)): the invoice, `kind` (`disputed`), the note, who placed it and when, and — once lifted — when, by whom, the lift's note and `charges_allowed`, the answer to whether the objection was groundless; the lift's three facts together (`ck_invoice_holds_lift`). One live hold per invoice (`ux_invoice_holds_live`). Never deleted; an update is the lift, once, or the erase's blanking of the notes — and the lift of an anonymised customer's hold keeps no note. |
 | `invoices.collection_handoffs` | An invoice's hand-off to a collection agency ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)): the invoice, `handed_on`, the agency, its reference, a note, who recorded it and when, and — once withdrawn — `withdrawn_on`, by whom and why, together (`ck_collection_handoffs_withdrawal`). One live hand-off per invoice (`ux_collection_handoffs_live`). Never deleted; an update is the withdrawal, once, or the erase's blanking of the note. |
@@ -1607,6 +1607,10 @@ worker, and a failure is the caller's to see. It needs `invoices:issue`
    buyer at today's address, not the snapshot's, because a person's mailbox changes and
    the document does not. No address is 409 `no_invoice_email`; a directory that fails
    here is a 500.
+   Then, for an invoice, **a pay link** when pay links are available and it has none
+   live, made in a transaction of its own ([Pay links](#pay-links)), so the cover text
+   carries it. A send that fails after this step — a 503, a 500 or a 502 — leaves the
+   link made: it is the invoice's, not the send's.
 5. **The PDF**, through the download's own path: stored first when it never was, and
    otherwise read and verified against its hash, so a send never attaches bytes the store
    does not hold — 503 `storage_unavailable`, and a 500 for a stored object gone or
@@ -1621,7 +1625,8 @@ worker, and a failure is the caller's to see. It needs `invoices:issue`
    `kreditnota-1002.pdf`, `credit-note-1002.pdf`. The body is plain text in the
    document's language, below: no HTML, no logo, no template, no personal message.
 7. **The send**, through the platform's guarded SMTP client with the `SMTP_*`
-   configuration. **A failure is 502 `mail_failed` and records nothing**; its detail says
+   configuration. **A failure is 502 `mail_failed` and records nothing** but a pay link
+   step 4 made; its detail says
    the mail may still have been delivered if the server timed out, so check before
    sending again. The error is logged at warn with the document id and never put on the
    wire.
@@ -3475,13 +3480,16 @@ reminder letter can print it again. An invoice has at most one live link.
 
 **Made at issue.** The issue inserts the link in its own transaction, after the
 document is written, when pay links are available (`paymentsAvailable`, judged through
-that transaction — never `pay_links_enabled` alone) and the customer is not anonymised;
-it is made by nobody (`created_by_user_id` NULL). **The quick invoice** is handed over on
+that transaction — never `pay_links_enabled` alone); it is made by nobody
+(`created_by_user_id` NULL). The insert runs under a savepoint: when its trigger refuses
+an anonymised customer — an erase whose marker committed while the issue ran, which a
+quick invoice's uncommitted draft cannot stop — the savepoint is rolled back and the
+invoice is issued without a link. **The quick invoice** is handed over on
 site, where a link shown to the customer is kontantsalg, so it gets a link at issue only
 when on-site payment is available too. A credit note never gets one.
 
 **Made on demand.** `POST /invoices/{id}/pay-link` (`invoices:issue`) locks the invoice
-and refuses, in order, `credit_note_no_payments`, `invoice_draft`,
+(404 when there is none) and refuses, in order, `credit_note_no_payments`, `invoice_draft`,
 `customer_anonymised`, `pay_links_unavailable` and `pay_link_exists`, then inserts the
 link: 201, the invoice. **The e-mail send** makes one the same way — in a transaction of
 its own, before the cover text is written — when pay links are available and the invoice
@@ -3494,16 +3502,24 @@ when there is no live link. A new link can then be made.
 
 **Where it is printed.** The PDF prints **"Betal med Vipps"** ("Pay with Vipps"), the URL
 and a QR code of it under the payment block, from the live link read and opened when the
-PDF is first stored, outside any lock: a link revoked before that store is not printed,
-and a stored PDF never changes — an invoice issued before pay links, or a quick invoice
-without on-site payment, has none in its PDF. The **cover e-mail** of an invoice with
+PDF is first stored, outside any lock, while pay links are available and the customer is
+not anonymised: a link revoked before that store is not printed, nor one while the
+credentials are briefly refused or Vipps is off, and a stored PDF never changes — an
+invoice issued before pay links, a quick invoice without on-site payment, or one whose
+PDF was first stored in such a moment, has none in its PDF. The **cover e-mail** of an invoice with
 something open carries "Du kan også betale med Vipps: <URL>" ("You can also pay with
-Vipps"). A **reminder letter** prints "Du kan betale fakturaen med Vipps: <URL>" and —
-the link pays the invoice's principal only — when the letter claims fees, compensation or
-interest, that those are paid by bank to the account above, marked with the KID or the
-invoice number. The e-mail and the letter read the live link when they are written,
-and print it only while pay links are available, so a revoked link is no longer
-carried. A link that cannot be opened is logged and left out.
+Vipps"), read live when it is written, while pay links are available and the customer is
+not anonymised, so a revoked link is no longer carried. A **reminder letter** prints "Du
+kan betale fakturaen med Vipps: <URL>" and — the link pays the invoice's principal only —
+when the letter claims fees, compensation or interest, that those are paid by bank to the
+account above, marked with the KID or the invoice number. The letter's link is **one of
+its facts** (`invoices.reminders.pay_link_id`): judged once, under the invoice's lock, as
+the facts are written — the live link while pay links are available and the customer is
+not anonymised — cleared with them, frozen once the letter is sent, and printed from that
+link's sealed URL whether or not the link was revoked later. A letter therefore renders
+the same bytes every time — a print batch downloaded again after posting is what was
+posted — and a letter whose facts are written after a revoke carries none. A link that
+cannot be opened is logged and left out.
 
 **What the response answers.** An issued invoice with a live link carries
 `payLink {id, createdAt}` to every reader. Its `url` and `qrSvg` — the URL as a QR code,
@@ -3998,7 +4014,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /{id}/charges/waive` | `invoices:payments` | 400 on `waivers`, `reason` or `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; 404 a letter not the document's; 409 `charge_not_claimed` |
 | `POST /{id}/manual-deliveries` | `invoices:issue` | 404; 409 `credit_note_no_reminders`, `invoice_draft`; 400 on `kind`, `deliveredOn` or `note` |
 | `POST /{id}/manual-deliveries/{deliveryId}/remove` | `invoices:issue` | 400 on `reason`; 404 the document, or a delivery not its own; 409 `delivery_removed`, `delivery_relied_on` |
-| `POST /{id}/pay-link` | `invoices:issue` | 404; then under the lock 409 `credit_note_no_payments`, `invoice_draft`, `customer_anonymised`, `pay_links_unavailable`, `pay_link_exists` |
+| `POST /{id}/pay-link` | `invoices:issue` | 404, judged under the lock; then 409 `credit_note_no_payments`, `invoice_draft`, `customer_anonymised`, `pay_links_unavailable`, `pay_link_exists` |
 | `POST /{id}/pay-link/revoke` | `invoices:issue` | 404 the document, or no live link |
 | `POST /{id}/hold` | `invoices:payments` | 400 on `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; then under the lock 409 `invoice_on_hold` |
 | `POST /{id}/hold/lift` | `invoices:payments` | 400 on `chargesAllowed` (absent or not a boolean) or `note`; 404; 409 `invoice_not_on_hold` |

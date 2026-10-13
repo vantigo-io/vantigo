@@ -933,7 +933,7 @@ export interface paths {
         put?: never;
         /**
          * Make a pay link
-         * @description Makes a pay link for an issued invoice that has none (invoices payments and reminders design D15) — one made at its issue revoked, or none made because pay links were not available then. One transaction locks the invoice and judges, in order: invoice_draft, credit_note_no_payments, customer_anonymised, pay_links_unavailable (pay links are not available now: INVOICES_VIPPS_ENABLED, PUBLIC_BASE_URL, Vipps credentials stored and not refused, and the payment settings' switch), pay_link_exists; then inserts the link — 32 random bytes as its token, only their SHA-256 stored, the URL sealed. The PDF is stored once and never changes, so a link made later is carried by the cover e-mail and the reminder letters, not the PDF. 201, the invoice with its link.
+         * @description Makes a pay link for an issued invoice that has none (invoices payments and reminders design D15) — one made at its issue revoked, or none made because pay links were not available then. One transaction locks the invoice — 404 when there is none — and judges, in order: credit_note_no_payments, invoice_draft, customer_anonymised, pay_links_unavailable (pay links are not available now: INVOICES_VIPPS_ENABLED, PUBLIC_BASE_URL, Vipps credentials stored and not refused, and the payment settings' switch), pay_link_exists; then inserts the link — 32 random bytes as its token, only their SHA-256 stored, the URL sealed. The PDF is stored once and never changes, so a link made later is carried by the cover e-mail and the reminder letters, not the PDF. 201, the invoice with its link.
          */
         post: operations["postInvoicesByIdPayLink"];
         delete?: never;
@@ -1053,7 +1053,7 @@ export interface paths {
         put?: never;
         /**
          * Send an issued document by e-mail
-         * @description Sends an issued document's stored PDF by e-mail (D4), in this order: 503 mail_unavailable when the installation's mail driver is not smtp, judged before anything is read; 404; 409 invoice_draft; 409 customer_anonymised when this module has anonymised the customer; the recipient — the override, else the customer's current invoice e-mail, read from the directory outside any lock (409 no_invoice_email when there is none); the stored PDF, stored first when it never was and otherwise verified against its hash (503 storage_unavailable, 500 when the stored object is gone or altered); then one plain-text mail in the buyer's language from the installation's address under the seller snapshot's name, Reply-To the current settings' e-mail, the PDF attached under the download's name. The send runs on a context the request's cancellation does not reach, bounded at 30 seconds; its log row on an uncancellable context of its own, bounded at 5 seconds, and the response is rendered uncancellable too, bounded at 5 seconds of its own. A failed send is 502 mail_failed and records nothing; a sent one is logged once, and sending again is logged again. Rate limited to 60 per client per 10 minutes. The response is the document with its deliveries and sendDefaults.
+         * @description Sends an issued document's stored PDF by e-mail (D4), in this order: 503 mail_unavailable when the installation's mail driver is not smtp, judged before anything is read; 404; 409 invoice_draft; 409 customer_anonymised when this module has anonymised the customer; the recipient — the override, else the customer's current invoice e-mail, read from the directory outside any lock (409 no_invoice_email when there is none); for an invoice, while pay links are available and it has none live, a pay link made in a transaction of its own (D15), which the cover text carries; the stored PDF, stored first when it never was and otherwise verified against its hash (503 storage_unavailable, 500 when the stored object is gone or altered); then one plain-text mail in the buyer's language from the installation's address under the seller snapshot's name, Reply-To the current settings' e-mail, the PDF attached under the download's name. The send runs on a context the request's cancellation does not reach, bounded at 30 seconds; its log row on an uncancellable context of its own, bounded at 5 seconds, and the response is rendered uncancellable too, bounded at 5 seconds of its own. A failed send is 502 mail_failed and records nothing but a pay link it made, which stays (as it does on a 503 or 500 after it); a sent one is logged once, and sending again is logged again. Rate limited to 60 per client per 10 minutes. The response is the document with its deliveries and sendDefaults.
          */
         post: operations["postInvoicesByIdSend"];
         delete?: never;
@@ -7197,7 +7197,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — invoice_draft, credit_note_no_payments, customer_anonymised, pay_links_unavailable or pay_link_exists. */
+            /** @description Conflict — credit_note_no_payments, invoice_draft, customer_anonymised, pay_links_unavailable or pay_link_exists. */
             409: {
                 headers: {
                     [name: string]: unknown;

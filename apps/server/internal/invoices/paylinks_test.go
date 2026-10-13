@@ -273,7 +273,7 @@ func TestPayLink_OnDemandAndRefusals(t *testing.T) {
 	}
 
 	if res := c.Do(http.MethodPost, payLinkPath(999999), nil); res.Status != http.StatusNotFound {
-		t.Errorf("an unknown id = %d, want 404", res.Status)
+		t.Errorf("an unknown id = %d, want 404 (the lock finds no document)", res.Status)
 	}
 	reader := h.SignIn(t, "invoices:access", "invoices:payments", "invoices:create")
 	for _, path := range []string{payLinkPath(other.ID), payLinkRevokePath(inv.ID)} {
@@ -519,6 +519,21 @@ func TestPDF_NoLinkWhenNoneLive(t *testing.T) {
 	if got, ok := models(inv.ID); !ok || got != ([2]string{}) {
 		t.Errorf("the PDF stored after the revoke prints %q, want no pay link", got)
 	}
+
+	// Nor is a live link printed for a customer anonymised meanwhile.
+	h.objects.failPuts(fmt.Errorf("the store is down"))
+	person := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Time", 1, 500, vat25))).ID)
+	if len(payLinkRows(t, h, person.ID)) != 1 {
+		t.Fatal("the issue made no link")
+	}
+	h.Exec(t, `INSERT INTO invoices.erased_customers (customer_id, erased_at) VALUES ($1, now())`, customerPerson)
+	h.objects.failPuts(nil)
+	if res := download(t, h, person.ID); res.Status != http.StatusOK {
+		t.Fatalf("download = %d %s", res.Status, res.Body)
+	}
+	if got, ok := models(person.ID); !ok || got != ([2]string{}) {
+		t.Errorf("the PDF of an anonymised customer's invoice prints %q, want no pay link", got)
+	}
 }
 
 // TestPayLink_NoCallUnderALock: making a link at issue, on demand and on a
@@ -555,7 +570,10 @@ func TestPayLink_NoCallUnderALock(t *testing.T) {
 }
 
 // TestPayLink_NeverInTheRequestLog: a pay link's URL, requested through
-// server.New, is logged by its path alone — never the token in its query.
+// server.New, is logged by its path alone — never the token in its query. A
+// guard of the platform's request log (srv/httpx), kept here beside the token
+// it protects; Task 7 retargets its API request to POST
+// /api/v1/invoices/pay/read, where the token travels in the body.
 func TestPayLink_NeverInTheRequestLog(t *testing.T) {
 	t.Parallel()
 	const token = "secret-token_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456"
@@ -587,9 +605,11 @@ func TestPayLink_NeverInTheRequestLog(t *testing.T) {
 // TestReminderLetter_PayLine (D10, D15, open question 2): a letter of an
 // invoice with a live link prints it, in the letter's language, and — since
 // the link pays the principal only — that the fees and interest it claims
-// are paid by bank, quoting the KID or, without one, the invoice number; once
-// the link is revoked a render prints neither. Not parallel: the token and
-// letter seams are the package's.
+// are paid by bank, quoting the KID or, without one, the invoice number. The
+// link is one of the letter's facts: revoked after the letter was sent, the
+// letter renders again byte for byte as stored, link and all; revoked before
+// a letter's facts are written, that letter prints none. Not parallel: the
+// token and letter seams are the package's.
 func TestReminderLetter_PayLine(t *testing.T) {
 	fixedTokens(t)
 	letters := collectLetters(t)
@@ -621,8 +641,9 @@ func TestReminderLetter_PayLine(t *testing.T) {
 			url := liveLinkURL(t, h, id)
 			letter := queueLetter(t, h, id, 1, "reminder", false, c.language)
 			dispatch(t, invoices.NewReminderWorker(h.Deps()))
-			if r := letterOf(t, h, letter); r.Status != "sent" {
-				t.Fatalf("the letter = %s (%s), want sent", r.Status, deref(r.WithdrawalReason))
+			row := letterOf(t, h, letter)
+			if row.Status != "sent" {
+				t.Fatalf("the letter = %s (%s), want sent", row.Status, deref(row.WithdrawalReason))
 			}
 			text := letters.of(letter)
 			for _, s := range append(c.has, url) {
@@ -635,12 +656,107 @@ func TestReminderLetter_PayLine(t *testing.T) {
 			if res := issuer(t, h).Do(http.MethodPost, payLinkRevokePath(id), nil); res.Status != http.StatusNoContent {
 				t.Fatalf("revoke = %d %s", res.Status, res.Body)
 			}
-			if _, err := invoices.RenderLetterForTest(context.Background(), h.Deps(), letter); err != nil {
+			again, err := invoices.RenderLetterForTest(context.Background(), h.Deps(), letter)
+			if err != nil {
 				t.Fatal(err)
 			}
-			if text := letters.of(letter); strings.Contains(text, "Vipps") || strings.Contains(text, url) {
-				t.Errorf("the letter rendered after the revoke still prints the link:\n%s", text)
+			if string(again) != string(h.objects.object(deref(row.PdfObjectKey))) || !strings.Contains(letters.of(letter), url) {
+				t.Error("the letter rendered after the revoke is not its stored PDF with the link it was sent with")
 			}
 		})
+	}
+
+	// A link revoked before the facts are written is not the letter's.
+	h, _ := workerHarness(t, "late_interest = true", modtest.WithEnv("PUBLIC_BASE_URL", publicBaseURL))
+	putVipps(t, h, vippstestKeys())
+	enablePayments(t, h)
+	id := plantLetterInvoice(t, h, letterInvoice{number: 106, customer: customerAcme, due: "2026-08-03"})
+	for _, path := range []string{payLinkPath(id), payLinkRevokePath(id)} {
+		if res := issuer(t, h).Do(http.MethodPost, path, nil); res.Status >= 300 {
+			t.Fatalf("POST %s = %d %s", path, res.Status, res.Body)
+		}
+	}
+	letter := queueLetter(t, h, id, 1, "reminder", false, "nb")
+	dispatch(t, invoices.NewReminderWorker(h.Deps()))
+	if row := letterOf(t, h, letter); row.Status != "sent" || row.PayLinkID != nil || strings.Contains(letters.of(letter), "Vipps") {
+		t.Errorf("a letter written after the revoke = %s with link %v:\n%s\nwant sent with none", row.Status, row.PayLinkID, letters.of(letter))
+	}
+}
+
+// A letter that claims no charges prints the link and no sentence about
+// charges: there is nothing for the bank to be paid besides.
+func TestReminderLetter_PayLineWithoutCharges(t *testing.T) {
+	letters := collectLetters(t)
+	h, _ := workerHarness(t, "person_charge = 'none', business_charge = 'none'", modtest.WithEnv("PUBLIC_BASE_URL", publicBaseURL))
+	putVipps(t, h, vippstestKeys())
+	enablePayments(t, h)
+	id := plantLetterInvoice(t, h, letterInvoice{number: 101, customer: customerAcme, due: "2026-08-03", kid: kidOf(t, 101)})
+	if res := issuer(t, h).Do(http.MethodPost, payLinkPath(id), nil); res.Status != http.StatusCreated {
+		t.Fatalf("POST pay-link = %d %s", res.Status, res.Body)
+	}
+	letter := queueLetter(t, h, id, 1, "reminder", false, "nb")
+	dispatch(t, invoices.NewReminderWorker(h.Deps()))
+	text := letters.of(letter)
+	if !strings.Contains(text, "Du kan betale fakturaen med Vipps: "+liveLinkURL(t, h, id)) || strings.Contains(text, "Lenken betaler") {
+		t.Errorf("a letter without charges =\n%s\nwant the pay line and no charges sentence", text)
+	}
+}
+
+// Every token drawn is 43 characters of the base64url alphabet: 32 bytes,
+// nothing the public host would have to unescape.
+func TestPayLink_TokenAlphabet(t *testing.T) {
+	t.Parallel()
+	canonical := regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
+	seen := map[string]bool{}
+	for range 1000 {
+		token, err := invoices.NewPayLinkToken()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !canonical.MatchString(token) || seen[token] {
+			t.Fatalf("token %q: want 43 base64url characters, never drawn twice", token)
+		}
+		seen[token] = true
+	}
+}
+
+// TestQuickInvoice_EraseInTheWindowSkipsTheLink: an erase whose marker
+// commits while a quick invoice is being issued — its draft invisible to the
+// erase — makes the link's trigger refuse; the insert's savepoint is rolled
+// back and the invoice is issued and handed over without a link. Not
+// parallel: the hook is the package's.
+func TestQuickInvoice_EraseInTheWindowSkipsTheLink(t *testing.T) {
+	h, _ := payReady(t)
+	defer invoices.SetPayLinkAtIssueBeforeInsert(func(context.Context, int64) {
+		h.Exec(t, `INSERT INTO invoices.erased_customers (customer_id, erased_at) VALUES ($1, now()) ON CONFLICT DO NOTHING`, customerAcme)
+	})()
+	quick := quickInvoiced(t, h, quickBody(customerAcme, line("Service", 1, 900, vat25))).Invoice
+	if quick.Status != "issued" || quick.PayLink != nil {
+		t.Fatalf("the quick invoice = %s with payLink %+v, want issued without one", quick.Status, quick.PayLink)
+	}
+	if rows := payLinkRows(t, h, quick.ID); len(rows) != 0 {
+		t.Errorf("links = %+v, want none", rows)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.manual_deliveries WHERE invoice_id = $1`, quick.ID); n != 1 {
+		t.Errorf("%d manual deliveries, want the hand-over", n)
+	}
+}
+
+// A failed attempt clears a letter's facts, its pay link with them: the
+// next attempt judges the link again.
+func TestReminderLetter_PayLinkClearedWithTheFacts(t *testing.T) {
+	t.Parallel()
+	h, mails := workerHarness(t, "late_interest = true", modtest.WithEnv("PUBLIC_BASE_URL", publicBaseURL))
+	putVipps(t, h, vippstestKeys())
+	enablePayments(t, h)
+	id := plantLetterInvoice(t, h, letterInvoice{number: 107, customer: customerAcme, due: "2026-08-03"})
+	if res := issuer(t, h).Do(http.MethodPost, payLinkPath(id), nil); res.Status != http.StatusCreated {
+		t.Fatalf("POST pay-link = %d %s", res.Status, res.Body)
+	}
+	letter := queueLetter(t, h, id, 1, "reminder", false, "nb")
+	mails.failWith(fmt.Errorf("smtp: 421 try later"))
+	dispatch(t, invoices.NewReminderWorker(h.Deps()))
+	if row := letterOf(t, h, letter); row.Status != "queued" || row.SentOn.Valid || row.PayLinkID != nil {
+		t.Errorf("after a failed attempt the letter = %s, sent_on %v, link %v; want queued with neither", row.Status, row.SentOn.Valid, row.PayLinkID)
 	}
 }

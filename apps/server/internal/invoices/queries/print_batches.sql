@@ -79,7 +79,7 @@ UPDATE invoices.reminders
 SET status = 'awaiting_print', print_batch_id = NULL,
     sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
-    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
+    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL, pay_link_id = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
 WHERE print_batch_id = @print_batch_id::bigint AND status = 'printed'
 RETURNING id;

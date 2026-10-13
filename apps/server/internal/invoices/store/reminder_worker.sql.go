@@ -147,7 +147,7 @@ SET attempts = attempts + 1, next_attempt_at = $1::timestamptz, last_error = $2:
     lease_id = NULL, lease_until = NULL,
     sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
-    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
+    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL, pay_link_id = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
 WHERE id = $4 AND lease_id = $5::text AND status = 'queued'
 `
@@ -337,7 +337,7 @@ SET status = 'failed', failed_at = $1::timestamptz, attempts = attempts + 1,
     last_error = $2::text, lease_id = NULL, lease_until = NULL,
     sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
-    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
+    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL, pay_link_id = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
 WHERE id = $3 AND lease_id = $4::text AND status = 'queued'
 `
@@ -443,7 +443,7 @@ SET next_attempt_at = $1::timestamptz, held_reason = $2::text,
     lease_id = NULL, lease_until = NULL,
     sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
-    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
+    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL, pay_link_id = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
 WHERE id = $3 AND lease_id = $4::text AND status = 'queued'
 `
@@ -576,7 +576,7 @@ SET status = 'withdrawn', withdrawn_at = $1::timestamptz, withdrawal_reason = $2
     lease_id = NULL, lease_until = NULL, held_reason = NULL,
     sent_on = NULL, deadline = NULL, regime = NULL, principal_open = NULL, credited = NULL, fee_kind = NULL, fee = NULL,
     compensation = NULL, charges_earlier = NULL, interest = NULL, interest_waived = NULL, interest_paid = NULL,
-    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL,
+    interest_from = NULL, interest_segments = NULL, inkassosats = NULL, total = NULL, charge_notes = NULL, pay_link_id = NULL,
     pdf_object_key = NULL, pdf_sha256 = NULL
 WHERE id = $3 AND lease_id = $4::text AND status = 'queued'
 `
@@ -691,10 +691,10 @@ SET sent_on = $1::date, deadline = $2::date, regime = $3::text,
     charges_earlier = $9, interest = $10, interest_waived = $11,
     interest_paid = $12, interest_from = $13::date,
     interest_segments = $14::jsonb, inkassosats = $15::numeric,
-    total = $16, charge_notes = $17::text[],
+    total = $16, charge_notes = $17::text[], pay_link_id = $18::bigint,
     pdf_object_key = NULL, pdf_sha256 = NULL, held_reason = NULL,
-    first_attempt_at = CASE WHEN status = 'queued' THEN coalesce(first_attempt_at, $18::timestamptz) ELSE first_attempt_at END
-WHERE id = $19 AND status IN ('queued', 'awaiting_print')
+    first_attempt_at = CASE WHEN status = 'queued' THEN coalesce(first_attempt_at, $19::timestamptz) ELSE first_attempt_at END
+WHERE id = $20 AND status IN ('queued', 'awaiting_print')
 RETURNING id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason, pay_link_id
 `
 
@@ -716,6 +716,7 @@ type WriteLetterFactsParams struct {
 	Inkassosats      pgtype.Numeric
 	Total            pgtype.Numeric
 	ChargeNotes      []string
+	PayLinkID        *int64
 	Now              time.Time
 	ID               int64
 }
@@ -723,7 +724,8 @@ type WriteLetterFactsParams struct {
 // WriteLetterFacts writes a letter's facts as the engine judged them on its
 // sending day — the dispatch's today, a print batch's postOn — and clears
 // held_reason and any PDF of an earlier attempt: the PDF is rendered from
-// these facts. A queued letter's first attempt is stamped once. The caller
+// these facts — the invoice's pay link among them, judged under the
+// invoice's lock. A queued letter's first attempt is stamped once. The caller
 // holds the invoice and then the letter (D18) and has judged the letter's
 // status and lease under those locks.
 func (q *Queries) WriteLetterFacts(ctx context.Context, arg WriteLetterFactsParams) (InvoicesReminder, error) {
@@ -745,6 +747,7 @@ func (q *Queries) WriteLetterFacts(ctx context.Context, arg WriteLetterFactsPara
 		arg.Inkassosats,
 		arg.Total,
 		arg.ChargeNotes,
+		arg.PayLinkID,
 		arg.Now,
 		arg.ID,
 	)

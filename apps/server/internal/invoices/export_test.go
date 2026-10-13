@@ -600,7 +600,7 @@ func RenderLetterForTest(ctx context.Context, d module.Deps, reminderID int64) (
 	if err != nil {
 		return nil, err
 	}
-	payLink, err := (&server{deps: d}).printablePayLink(ctx, q, inv)
+	payLink, err := (&server{deps: d}).letterPayLink(ctx, q, letter)
 	if err != nil {
 		return nil, err
 	}
@@ -695,3 +695,15 @@ func PDFPayLinkQR(payLink string) ([]string, error) {
 	walk(doc.GetStructure())
 	return codes, nil
 }
+
+// SetPayLinkAtIssueBeforeInsert installs a hook the issue calls inside its
+// transaction right before it inserts its pay link, with the document's id,
+// and answers the function that removes it. A test using it does not run in
+// parallel: the hook is the package's.
+func SetPayLinkAtIssueBeforeInsert(hook func(ctx context.Context, invoiceID int64)) func() {
+	payLinkAtIssueBeforeInsert = hook
+	return func() { payLinkAtIssueBeforeInsert = nil }
+}
+
+// NewPayLinkToken draws a pay link token as the module does.
+var NewPayLinkToken = newPayLinkToken
