@@ -28,4 +28,5 @@ The pages here cover the rules a change is held to:
   fixtures and the builders, and why the ISO 20022 XSD oracle is deferred.
 - [Platform packages](/en/contributing/platform-packages/) — the packages every module
   may use: the secrets box that seals and MACs values under keys derived from
-  `APP_SECRET`, the purposes convention, and what rotating `APP_SECRET` costs.
+  `APP_SECRET`, the purposes convention, and what rotating `APP_SECRET` costs; and the
+  public-holiday calendar, its functions and its UTC-midnight convention for a day.

@@ -28,4 +28,5 @@ Sidene her dekker reglene en endring holdes til, og vedlikeholdes på engelsk:
   byggerne, og hvorfor ISO 20022-XSD-oraklet er utsatt.
 - [Plattformpakker](/en/contributing/platform-packages/) — pakkene hver modul kan
   bruke: `secrets`-boksen som forsegler verdier og beregner MAC-er under nøkler avledet
-  fra `APP_SECRET`, konvensjonen for formål, og hva det koster å rotere `APP_SECRET`.
+  fra `APP_SECRET`, konvensjonen for formål, og hva det koster å rotere `APP_SECRET`;
+  og helligdagskalenderen, funksjonene dens og konvensjonen om at en dag er UTC-midnatt.

@@ -22,7 +22,8 @@ Communications' outbox is the working example.
 1. **No module→module dependencies.** A package under `internal/<module>/…` may
    import platform packages (`internal/config`, `internal/db`, `internal/httpx`,
    `internal/module`, `internal/contracts`, `internal/peppol` — the Peppol
-   SML/SMP lookup, shared by Customers and Invoices — `internal/netguard`
+   SML/SMP lookup, shared by Customers and Invoices — `internal/calendar` — the
+   Norwegian public-holiday calendar — `internal/netguard`
    — the shared table of addresses the guarded outbound clients refuse to
    dial (today `internal/mail`'s SMTP guard and `internal/peppol`'s SMP
    client; Brreg, OIDC and the AI client use `http.DefaultTransport`) —

@@ -11,13 +11,14 @@ import (
 )
 
 // The engine is a leaf (plan reading 2): its code imports a few packages of
-// the standard library only — nothing of the module, no database driver, no
-// network, no file system — and never touches the clock, called or not, so
-// "one pure function the four callers share" cannot quietly read the store
-// or the time.
+// the standard library and the platform's calendar only — nothing else of the
+// module, no database driver, no network, no file system — and never touches
+// the clock, called or not, so "one pure function the four callers share"
+// cannot quietly read the store or the time. The calendar is held to the same
+// rule by its own purity test.
 func TestReminderRules_ImportsNothingOfTheModule(t *testing.T) {
 	t.Parallel()
-	allowed := map[string]bool{"cmp": true, "fmt": true, "math/big": true, "slices": true, "sort": true, "strings": true, "time": true}
+	allowed := map[string]bool{"cmp": true, "fmt": true, "math/big": true, "slices": true, "sort": true, "strings": true, "time": true, "github.com/vantigo-io/vantigo/server/internal/calendar": true}
 	clock := map[string]bool{"Now": true, "Since": true, "Until": true, "After": true, "AfterFunc": true, "Tick": true, "NewTicker": true, "NewTimer": true, "Sleep": true, "Local": true}
 	files, err := filepath.Glob("*.go")
 	if err != nil {
