@@ -138,6 +138,7 @@ func (s *server) PostInvoicesPayAttempts(ctx context.Context, req gen.PostInvoic
 	case err != nil:
 		return nil, err
 	case refusal != nil:
+		toPayer(refusal)
 		switch *refusal.Status {
 		case http.StatusServiceUnavailable:
 			return gen.PostInvoicesPayAttempts503ApplicationProblemPlusJSONResponse(*refusal), nil
@@ -185,4 +186,16 @@ func payStateOf(state string) gen.InvoicesPayAttemptStatusState {
 		return gen.InvoicesPayAttemptStatusStateCancelled
 	}
 	return gen.InvoicesPayAttemptStatusStatePending
+}
+
+// toPayer words a refusal for the anonymous payer: payments_unavailable says
+// what the operator's switch, the keys or their replacement mean to someone
+// paying — try later, or pay by bank — never which of them it was. The code
+// and the status are kept.
+func toPayer(p *gen.InvoicesConflictProblem) {
+	if p.Code == nil || *p.Code != codePaymentsUnavailable {
+		return
+	}
+	title, detail := "Vipps payments are unavailable", "Vipps payments cannot be taken right now. Try again later, or pay by bank with the KID."
+	p.Title, p.Detail = &title, &detail
 }

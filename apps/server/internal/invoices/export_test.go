@@ -731,3 +731,6 @@ var (
 	MinorOf    = minorOf
 	RatOfMinor = ratOfMinor
 )
+
+// PayStateOf is an attempt's state as the return page reads it.
+func PayStateOf(state string) string { return string(payStateOf(state)) }

@@ -250,13 +250,13 @@ func (s *server) createAttempt(ctx context.Context, in attemptInput, now time.Ti
 			refusal = ptr(payRefusal(reason))
 			return errRefused
 		}
-		live, err := txq.LiveAttemptsOfInvoice(ctx, inv.ID)
+		live, err := txq.LiveAttemptsOfInvoice(ctx, store.LiveAttemptsOfInvoiceParams{InvoiceID: inv.ID, PayLinkID: in.payLinkID, Now: now})
 		if err != nil {
 			return fmt.Errorf("invoices: count document %d's live attempts: %w", inv.ID, err)
 		}
 		if live >= maxLiveAttempts {
 			refusal = ptr(conflict(codeTooManyAttempts, cannotPayTitle,
-				"Five Vipps payments of this invoice are in progress already. Finish one, or wait ten minutes."))
+				"Five Vipps payments of this invoice are in progress already. Try again later."))
 			return errRefused
 		}
 		row, err := sharePaymentCredentials(ctx, txq)
@@ -267,6 +267,12 @@ func (s *server) createAttempt(ctx context.Context, in attemptInput, now time.Ti
 		}
 		if err != nil {
 			return fmt.Errorf("invoices: share the Vipps credentials: %w", err)
+		}
+		if row.RejectedAt != nil {
+			c := conflict(codePaymentsUnavailable, paymentsUnavailableTitle, "Vipps refused the stored credentials.")
+			c.Status = ptr(int32(http.StatusServiceUnavailable))
+			refusal = &c
+			return errRefused
 		}
 		if !row.UpdatedAt.Equal(creds.version) {
 			c := conflict(codePaymentsUnavailable, paymentsUnavailableTitle,

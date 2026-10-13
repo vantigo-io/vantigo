@@ -1365,7 +1365,9 @@ The page cannot start a payment when the invoice is already paid or credited, wh
 is with a collection agency (the customer is told to contact the agency), when the link
 was revoked, when Vipps payments are not available, when a Vipps payment of the invoice
 is already being completed, or when the amount open is below 1.00 or above
-650 000.00 — the page says which.
+650 000.00 — the page says which. At most five Vipps payments of one link can be in
+progress at once; the sixth payer is asked to try again later, and revoking the link and
+making a new one starts afresh.
 
 Every Vipps payment started for an invoice is listed on it, with its state and amount,
 whether it came from the pay page or was taken on site.

@@ -106,14 +106,26 @@ func (q *Queries) InsertPaymentAttempt(ctx context.Context, arg InsertPaymentAtt
 const liveAttemptsOfInvoice = `-- name: LiveAttemptsOfInvoice :one
 SELECT count(*) FROM invoices.payment_attempts
 WHERE invoice_id = $1
-  AND state IN ('creating', 'created', 'authorized', 'capturing', 'capture_unknown')
+  AND ($2::bigint IS NULL OR pay_link_id = $2::bigint)
+  AND (state IN ('authorized', 'capturing', 'capture_unknown')
+       OR (state IN ('creating', 'created') AND expires_at > $3::timestamptz))
 `
 
-// LiveAttemptsOfInvoice counts an invoice's attempts that may still pay it —
-// creating, created, authorized, capturing or capture_unknown — for the cap
-// of five (D15), under the invoice's lock.
-func (q *Queries) LiveAttemptsOfInvoice(ctx context.Context, invoiceID int64) (int64, error) {
-	row := q.db.QueryRow(ctx, liveAttemptsOfInvoice, invoiceID)
+type LiveAttemptsOfInvoiceParams struct {
+	InvoiceID int64
+	PayLinkID *int64
+	Now       time.Time
+}
+
+// LiveAttemptsOfInvoice counts the attempts that hold a place under the cap
+// of five (D15), under the invoice's lock: of the pay link @pay_link_id on
+// the pay-link flow — so a revoke and a new link restore service — or of
+// the invoice when it is NULL (on site). An attempt counts while it may
+// still pay: authorized, capturing or capture_unknown, and creating or
+// created until its request expires — the payments worker still resolves
+// an expired one, but it no longer holds the payer back.
+func (q *Queries) LiveAttemptsOfInvoice(ctx context.Context, arg LiveAttemptsOfInvoiceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, liveAttemptsOfInvoice, arg.InvoiceID, arg.PayLinkID, arg.Now)
 	var count int64
 	err := row.Scan(&count)
 	return count, err

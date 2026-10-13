@@ -14,6 +14,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/health"
+	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/payments/vipps/vippstest"
 	"github.com/vantigo-io/vantigo/server/internal/server"
@@ -522,5 +523,176 @@ func TestPayPage_Anonymous(t *testing.T) {
 	created := startedPay(t, h.SignIn(t, "invoices:access"), token)
 	if by := h.Count(t, `SELECT count(*) FROM invoices.payment_attempts WHERE reference = $1 AND created_by_user_id IS NULL`, created.Reference); by != 1 {
 		t.Error("a signed-in caller's attempt names a user; the pay page's never does")
+	}
+}
+
+// plantAttemptExpiring writes a pay-link attempt of invoiceID under its live
+// link in state, expiring at expires; capturing and capture_unknown reserve
+// 1.00.
+func plantAttemptExpiring(t *testing.T, h *harness, invoiceID int64, state string, expires time.Time) {
+	t.Helper()
+	columns, values := "", ""
+	if state == "capturing" || state == "capture_unknown" {
+		columns, values = ", authorized_amount, reserved_amount", ", 1, 1"
+	}
+	h.Exec(t, `INSERT INTO invoices.payment_attempts (invoice_id, provider, msn, flow, pay_link_id, return_nonce_sha256,
+		amount, cancel_key, state, created_at, expires_at`+columns+`)
+		SELECT $1, 'vipps', '123456', 'pay_link', id, repeat('0', 64), 100, gen_random_uuid(), $2, $3::timestamptz - interval '10 minutes', $3`+values+`
+		FROM invoices.pay_links WHERE invoice_id = $1 AND revoked_at IS NULL`,
+		invoiceID, state, expires)
+}
+
+// TestPayPage_ReservationLowersTheAmount: a 2500.00 invoice of which a
+// capture in progress reserves 1000.00 shows 1500.00 open, and a payment
+// started on it asks Vipps for 150000 øre and stores 1500 as its amount.
+func TestPayPage_ReservationLowersTheAmount(t *testing.T) {
+	t.Parallel()
+	h, _ := payReady(t)
+	inv := issuedAcme(t, h)
+	token := payToken(t, h, inv.ID)
+	plantLiveAttempt(t, h, inv.ID, "capturing", "1000")
+
+	if page, _ := readPay(t, h.Client(t), token); page.OpenAmount != 1500 || !page.Payable {
+		t.Errorf("the read's openAmount = %v (payable %v), want 1500", page.OpenAmount, page.Payable)
+	}
+	created := startedPay(t, h.Client(t), token)
+	for _, c := range vippsCreates(t, h) {
+		if c.Reference == created.Reference && c.Amount.Value != 150000 {
+			t.Errorf("Vipps was asked for %d øre, want 150000", c.Amount.Value)
+		}
+	}
+	if amount := modtest.One[string](t, h.Harness, `SELECT amount::text FROM invoices.payment_attempts WHERE reference = $1`, created.Reference); amount != "1500.00" {
+		t.Errorf("the attempt's amount = %s, want 1500.00", amount)
+	}
+}
+
+// TestPayPage_TheCap: five live attempts of one pay link refuse a sixth —
+// each of creating, created, authorized, capturing and capture_unknown
+// counting while live — but a creating or created one past its expiry no
+// longer counts, and a revoked link's attempts do not hold back the new
+// link's.
+func TestPayPage_TheCap(t *testing.T) {
+	t.Parallel()
+	h, _ := payReady(t)
+	anon := h.Client(t)
+	live := h.Now().Add(10 * time.Minute)
+	for _, state := range []string{"creating", "created", "authorized", "capturing", "capture_unknown"} {
+		inv := issuedAcme(t, h)
+		for range 5 {
+			plantAttemptExpiring(t, h, inv.ID, state, live)
+		}
+		res := startPay(anon, payToken(t, h, inv.ID))
+		if res.Status != http.StatusConflict || problemOf(t, res).Code != "too_many_attempts" {
+			t.Errorf("five %s attempts: the create = %d %s, want 409 too_many_attempts", state, res.Status, res.Body)
+		}
+	}
+
+	expired := issuedAcme(t, h)
+	for range 4 {
+		plantAttemptExpiring(t, h, expired.ID, "created", live)
+	}
+	plantAttemptExpiring(t, h, expired.ID, "created", h.Now().Add(-time.Minute))
+	plantAttemptExpiring(t, h, expired.ID, "creating", h.Now().Add(-time.Minute))
+	startedPay(t, anon, payToken(t, h, expired.ID))
+
+	relinked := issuedAcme(t, h)
+	for range 5 {
+		plantAttemptExpiring(t, h, relinked.ID, "created", live)
+	}
+	c := issuer(t, h)
+	if res := c.Do(http.MethodPost, payLinkRevokePath(relinked.ID), nil); res.Status != http.StatusNoContent {
+		t.Fatalf("revoke = %d %s", res.Status, res.Body)
+	}
+	if res := c.Do(http.MethodPost, payLinkPath(relinked.ID), nil); res.Status != http.StatusCreated {
+		t.Fatalf("a new link = %d %s", res.Status, res.Body)
+	}
+	startedPay(t, anon, payToken(t, h, relinked.ID))
+}
+
+// TestPayPage_RefusalsSpeakToThePayer: what an anonymous payer is answered
+// never names the operator's switch or the keys — stored keys that cannot be
+// opened are a 503 payments_unavailable in a payer's words.
+func TestPayPage_RefusalsSpeakToThePayer(t *testing.T) {
+	t.Parallel()
+	h, _ := payReady(t)
+	token := payToken(t, h, issuedAcme(t, h).ID)
+	h.Exec(t, `UPDATE invoices.payment_provider_credentials SET secret_ciphertext = 'not-sealed'`)
+	res := startPay(h.Client(t), token)
+	if res.Status != http.StatusServiceUnavailable || problemOf(t, res).Code != "payments_unavailable" {
+		t.Fatalf("the create = %d %s, want 503 payments_unavailable", res.Status, res.Body)
+	}
+	for _, word := range []string{"INVOICES_", "keys", "Keys", "credentials"} {
+		if strings.Contains(string(res.Body), word) {
+			t.Errorf("the payer is answered %q: %s", word, res.Body)
+		}
+	}
+}
+
+// TestPayPage_MoreReasons: an anonymised customer's link reads revoked;
+// keys Vipps refused read unavailable.
+func TestPayPage_MoreReasons(t *testing.T) {
+	t.Parallel()
+	h, _ := payReady(t)
+	anon := h.Client(t)
+	token := payToken(t, h, issuedAcme(t, h).ID)
+	h.Exec(t, `INSERT INTO invoices.erased_customers (customer_id, erased_at) VALUES ($1, now())`, customerAcme)
+	if page, _ := readPay(t, anon, token); page.Reason == nil || *page.Reason != "revoked" {
+		t.Errorf("an anonymised customer's link reads %v, want revoked", deref(page.Reason))
+	}
+
+	h2, _ := payReady(t)
+	token2 := payToken(t, h2, issuedAcme(t, h2).ID)
+	h2.Exec(t, `UPDATE invoices.payment_provider_credentials SET rejected_at = now()`)
+	if page, _ := readPay(t, h2.Client(t), token2); page.Reason == nil || *page.Reason != "unavailable" {
+		t.Errorf("refused keys read %v, want unavailable", deref(page.Reason))
+	}
+}
+
+// TestPayPage_UnavailableWithoutPublicURL: without PUBLIC_BASE_URL a link
+// still on record reads unavailable, whatever the settings say.
+func TestPayPage_UnavailableWithoutPublicURL(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	saveSeller(t, h, completeSeller(1))
+	putVipps(t, h, vippstestKeys())
+	h.Exec(t, `UPDATE invoices.payment_settings SET pay_links_enabled = true, terms_url = $1, privacy_url = $2`, termsURL, privacyURL)
+	inv := issuedAcme(t, h)
+	const token = "test-token-without-public-url_AAAAAAAAAAAAA"
+	h.Exec(t, `INSERT INTO invoices.pay_links (invoice_id, token_sha256, url_ciphertext, created_at)
+		VALUES ($1, encode(sha256($2::bytea), 'hex'), 'sealed', now())`, inv.ID, token)
+	if page, _ := readPay(t, h.Client(t), token); page.Reason == nil || *page.Reason != "unavailable" {
+		t.Errorf("without PUBLIC_BASE_URL the link reads %v, want unavailable", deref(page.Reason))
+	}
+}
+
+// TestPayPage_PayerCannotChooseTheAmount: an amount in the create's body is
+// not the payer's to set: Vipps is asked for the open amount.
+func TestPayPage_PayerCannotChooseTheAmount(t *testing.T) {
+	t.Parallel()
+	h, _ := payReady(t)
+	token := payToken(t, h, issuedAcme(t, h).ID)
+	res := h.Client(t).Do(http.MethodPost, payAttemptsPath, map[string]any{"token": token, "acceptTerms": true, "amount": 1},
+		modtest.SkipContract("a field the contract does not name"))
+	if res.Status != http.StatusCreated {
+		t.Fatalf("the create = %d %s, want 201", res.Status, res.Body)
+	}
+	if creates := vippsCreates(t, h); len(creates) != 1 || creates[0].Amount.Value != 250000 {
+		t.Errorf("Vipps was asked for %+v, want 250000 øre", creates)
+	}
+}
+
+// TestPayPage_StateOfEveryAttemptState pins how the return page reads each
+// of an attempt's states.
+func TestPayPage_StateOfEveryAttemptState(t *testing.T) {
+	t.Parallel()
+	for state, want := range map[string]string{
+		"creating": "pending", "created": "pending", "authorized": "pending", "capturing": "pending",
+		"capture_unknown": "pending", "captured": "paid", "cancelling": "cancelled", "cancelled": "cancelled",
+		"aborted": "cancelled", "expired": "cancelled", "terminated": "cancelled", "capture_failed": "failed",
+		"failed": "failed", "abandoned": "failed",
+	} {
+		if got := invoices.PayStateOf(state); got != want {
+			t.Errorf("payStateOf(%s) = %s, want %s", state, got, want)
+		}
 	}
 }

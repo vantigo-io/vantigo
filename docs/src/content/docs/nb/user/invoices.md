@@ -1385,7 +1385,9 @@ Siden kan ikke starte en betaling når fakturaen allerede er betalt eller kredit
 den er overlevert til et inkassobyrå (kunden får beskjed om å kontakte byrået), når
 lenken er trukket tilbake, når Vipps-betalinger ikke er tilgjengelige, når en
 Vipps-betaling av fakturaen allerede er i ferd med å fullføres, eller når beløpet som
-står åpent er under 1,00 eller over 650 000,00 — siden sier hvilket.
+står åpent er under 1,00 eller over 650 000,00 — siden sier hvilket. Høyst fem
+Vipps-betalinger av én lenke kan pågå samtidig; den sjette betaleren blir bedt om å
+prøve igjen senere, og å trekke tilbake lenken og lage en ny begynner på nytt.
 
 Hver Vipps-betaling som er startet for en faktura, vises på den, med status og beløp,
 enten den kom fra betalingssiden eller ble tatt på stedet.

@@ -3547,7 +3547,9 @@ The limit is counted before anything is read, so an unknown token counts too. Th
 polls the status every 2 seconds for the first minute after the payer returns, then
 every 5 seconds, for at most ten minutes — about 150 reads, within its bucket. Behind a
 reverse proxy the client address is the proxy's unless `TRUSTED_PROXY_HOPS` and
-`TRUSTED_PROXY_CIDRS` are set, and every payer then shares one bucket.
+`TRUSTED_PROXY_CIDRS` are set, and every payer then shares one bucket. **A known
+limit**: a bucket is one client address, so a client holding many IPv6 addresses (a
+whole /64) is not held to one bucket.
 
 **The read is a POST**, with the token in the body, so the token never travels in an
 API URL, where a proxy's access log would keep it. The token is hashed and looked up;
@@ -3576,9 +3578,10 @@ accepted the seller's terms and privacy notice, as Vipps requires (400 otherwise
 is a 404 for an unknown token; a 409 for each reason above, with `reason` beside the
 code — `invoice_settled`, `invoice_fully_credited`, `invoice_handed_off`,
 `payment_in_progress`, `amount_out_of_range`, or `pay_links_unavailable` for `revoked`
-and `unavailable`; a 409 `too_many_attempts` at five live attempts; a 503
-`payments_unavailable` when the stored keys cannot be opened or were replaced while the
-request ran; a 502 `provider_failed` when Vipps refused or did not answer; and otherwise
+and `unavailable`; a 409 `too_many_attempts` at five live attempts of the link; a 503
+`payments_unavailable` when the stored keys cannot be opened, were refused or were
+replaced while the request ran — worded for the payer, never naming the switch or the
+keys; a 502 `provider_failed` when Vipps refused or did not answer; and otherwise
 a 201 `{reference, redirectUrl}`, which the page opens at once, unchanged. Vipps sends
 the payer back to `PUBLIC_BASE_URL/pay?attempt=<reference>&nonce=<nonce>`: **the nonce,
 never the token**. The nonce is 16 random bytes, base64url, stored only as its SHA-256
@@ -3600,9 +3603,11 @@ platform's cross-origin protection, and a cross-site one is refused 403.
 An **attempt** (`invoices.payment_attempts`) is one Vipps payment of an invoice: made
 by the pay page (`flow = pay_link`) or on site (`on_site`). Its **reference** is
 `<reference prefix>-<invoice number>-<attempt id>`, made by a trigger from the row's
-own id as it is inserted — letters, digits and hyphens only. An invoice has at most
-five live attempts — `creating`, `created`, `authorized`, `capturing` or
-`capture_unknown`.
+own id as it is inserted — letters, digits and hyphens only. A pay link has at most
+five live attempts — `authorized`, `capturing` or `capture_unknown`, or `creating` or
+`created` until the request expires ten minutes after it was made (the payments worker
+still resolves an expired one, but it no longer counts). The cap is the link's, so
+revoking a link and making a new one restores service; on site it is the invoice's.
 
 **The create runs in two steps around the call to Vipps**, which is never made while a
 transaction holds a lock:
@@ -3616,9 +3621,9 @@ transaction holds a lock:
    `PUBLIC_BASE_URL` and the setting, never `pay_links_enabled` alone) are read again
    and judged, so a revoke or a settings change that committed while the create waited
    is seen; the cap is counted; then the credentials row is read **`FOR SHARE`**, so a
-   change of the sales unit waits for this attempt and counts it, and its version is
-   compared with the provider's — keys a PUT replaced meanwhile are a retryable 503
-   with nothing inserted. The attempt is inserted `creating`, `amount` the open amount,
+   change of the sales unit waits for this attempt and counts it; keys refused
+   (`rejected_at`) meanwhile, or a version other than the provider's — keys a PUT
+   replaced meanwhile — are a retryable 503 with nothing inserted. The attempt is inserted `creating`, `amount` the open amount,
    `msn` the stored sales unit, its create and cancel keys stored with it, `expires_at`
    ten minutes on and its first poll five seconds on. Commit.
 3. **After the commit**, outside any lock, Vipps is asked for a `WEB_REDIRECT` payment of
@@ -4126,7 +4131,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `POST /{id}/pay-link` | `invoices:issue` | 404, judged under the lock; then 409 `credit_note_no_payments`, `invoice_draft`, `customer_anonymised`, `pay_links_unavailable`, `pay_link_exists` |
 | `POST /{id}/pay-link/revoke` | `invoices:issue` | 404 the document, or no live link |
 | `POST /pay/read` | anonymous; 60 per client per 10 minutes | 400 without a token; 404 an unknown token |
-| `POST /pay/attempts` | anonymous; 10 per client per 10 minutes | 400 on `acceptTerms` or `token`; 404; 409 with `reason`: `invoice_settled`, `invoice_fully_credited`, `invoice_handed_off`, `payment_in_progress`, `amount_out_of_range`, `pay_links_unavailable`; 409 `payments_unavailable` (no credentials), `too_many_attempts`; 503 `payments_unavailable`; 502 `provider_failed` |
+| `POST /pay/attempts` | anonymous; 10 per client per 10 minutes | 400 on `acceptTerms` or `token`; 404; 409 with `reason`: `invoice_settled`, `invoice_fully_credited`, `invoice_handed_off`, `payment_in_progress`, `amount_out_of_range`, `pay_links_unavailable`; 409 `payments_unavailable` (no credentials), `too_many_attempts` (five live attempts of the link); 503 `payments_unavailable` (keys unreadable, refused or replaced; in a payer's words); 502 `provider_failed` |
 | `GET /pay/attempts/{reference}` | anonymous; 400 per client per 10 minutes | 400 without `nonce`; 404 unless the nonce is the attempt's |
 | `POST /{id}/hold` | `invoices:payments` | 400 on `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; then under the lock 409 `invoice_on_hold` |
 | `POST /{id}/hold/lift` | `invoices:payments` | 400 on `chargesAllowed` (absent or not a boolean) or `note`; 404; 409 `invoice_not_on_hold` |
