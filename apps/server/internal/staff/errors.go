@@ -112,6 +112,21 @@ const (
 	codeAbsenceTypeInUse = "absence_type_in_use"
 )
 
+// The refusal codes of absences and the holiday account (delivery B,
+// Task 3): percent_not_allowed, hours_on_day_type and absence_note_on_sick
+// are 400s on the field they name; the rest 409s on the state of things.
+const (
+	codePercentNotAllowed     = "percent_not_allowed"
+	codeHoursOnDayType        = "hours_on_day_type"
+	codeAbsenceNoteOnSick     = "absence_note_on_sick"
+	codeAbsenceOverlap        = "absence_overlap"
+	codeAbsenceNotRequested   = "absence_not_requested"
+	codeAbsenceNotCancellable = "absence_not_cancellable"
+	// codeCarryOverRecorded is the plan's own (pre-flight I8): a second
+	// carry-over for one person and the year it comes from.
+	codeCarryOverRecorded = "carry_over_recorded"
+)
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.

@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Personregisteret — Personer, personsiden med dokumentene, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring og tersklene.
+description: Personregisteret — Personer, personsiden med dokumentene, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fravær og feriekontoen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring og tersklene.
 sidebar:
   order: 45
 sources:
@@ -468,6 +468,36 @@ mener din mangler.
 
 Min side er laget for mobilen først: på en smal skjerm står alt i én kolonne, og
 skjemaet fyller hele skjermen.
+
+## Fravær og ferien din
+
+Fravær bygges inn i Ansatte i flere steg; skjermbildene for det kommer i et senere steg.
+Dette gjelder i dag, gjennom Ansatte-API-et:
+
+- **Å be om fri.** En type som trenger en avgjørelse — ferie, en permisjon, avspasering —
+  blir *søkt om*; en type som er en melding — egenmelding, sykmelding, sykt barn, lege-
+  eller tannlegebesøk — blir *registrert* med en gang. Du legger inn ditt eget; HR legger
+  inn på dine vegne. Lederen din legger ikke inn for deg. Et legebesøk er timer på én
+  dag; alt annet er hele dager, noen typer som en prosent av hver dag. Sykefravær har
+  ingen merknad.
+- **To fravær samme dag** kan stå sammen bare når begge typene tillater en prosent og
+  prosentene til sammen er høyst 100 %. En søknad du har sendt teller som om den var
+  innvilget, så du kan ikke søke to ganger om samme dag.
+- **Når du ombestemmer deg.** Mens en søknad venter, kan du endre den, fjerne den eller
+  trekke den tilbake (en tilbaketrukket søknad blir stående i historikken). Et registrert
+  fravær — også sykefravær — er HRs å endre eller fjerne: slutter sykmeldingen tidligere,
+  si fra til HR.
+- **Feriekontoen din** teller i arbeidsdager, mandag til fredag uten helligdager:
+  retten din etter selskapets ferieordning (25 virkedager er 21 arbeidsdager; mer fra
+  året du fyller 60; færre når du begynner etter 30. september), det HR overførte fra i
+  fjor, det du har tatt ut, det du har søkt om og det som står igjen. En søknad som tar
+  deg forbi det som står igjen, sendes likevel — kontoen viser den som overtrukket.
+
+Hvem ser fraværet ditt: du, lederen din og HR ser datoene, typen og detaljene; kolleger
+med tilgang til personoversikten ser bare at du er borte en innvilget eller registrert
+dag — aldri typen, en prosent eller en merknad. En type som avslører helse eller
+familieforhold (som svangerskapspermisjon eller en religiøs høytid) viser lederen din
+bare *permisjon*.
 
 ## Dashbordet
 

@@ -348,6 +348,7 @@ func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffP
 	}
 	var (
 		a     audience
+		types typeVisibilities
 		rows  []store.ListPersonEventsRow
 		total int64
 	)
@@ -365,18 +366,19 @@ func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffP
 			return notFound()
 		}
 		if total, err = q.CountPersonEvents(ctx, store.CountPersonEventsParams{
-			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds,
+			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds,
 		}); err != nil {
 			return fmt.Errorf("staff: count person %d's events: %w", req.Id, err)
 		}
 		rows, err = q.ListPersonEvents(ctx, store.ListPersonEventsParams{
-			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds,
+			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds,
 			PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 		})
 		if err != nil {
 			return fmt.Errorf("staff: list person %d's events: %w", req.Id, err)
 		}
-		return nil
+		types, err = readTypeVisibilities(ctx, q)
+		return err
 	})
 	if _, ok := asRefusal(err); ok {
 		return gen.GetStaffPeopleByIdEvents404Response{}, nil
@@ -385,7 +387,7 @@ func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffP
 		return nil, err
 	}
 	return gen.GetStaffPeopleByIdEvents200JSONResponse(gen.PaginatedResponseOfStaffEvent{
-		Data:       mapRows(rows, func(r store.ListPersonEventsRow) gen.StaffEvent { return eventResponse(r, a) }),
+		Data:       mapRows(rows, func(r store.ListPersonEventsRow) gen.StaffEvent { return eventResponse(r, a, types) }),
 		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
 	}), nil
 }

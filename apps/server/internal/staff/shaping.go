@@ -63,10 +63,22 @@ const (
 	// writes them, staff:personal-data reads them; a manager and a colleague
 	// never.
 	groupCareDays
+	// groupAbsence is an absence's dates and status (design §5's "Absence:
+	// dates, status" row, delivery B): everyone who sees the person — a
+	// colleague as "absent" — reads them.
+	groupAbsence
+	// groupAbsenceType is an absence's type (§5's "Absence type" row): the
+	// person, their manager and HR, an HR-only type shown as "leave" to all
+	// but the person and staff:personal-data (readsHROnlyTypes).
+	groupAbsenceType
+	// groupAbsenceDetail is an absence's percent, hours, note and degree, and
+	// the holiday account (§5's "Absence note, degree" row, plan pre-flight
+	// I4): the person, their manager and HR; never a colleague.
+	groupAbsenceDetail
 )
 
 func (g fieldGroup) String() string {
-	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days"}[g]
+	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days", "absence", "absence-type", "absence-detail"}[g]
 }
 
 // fieldGroups is the one table: every field of the person — as the contract
@@ -226,9 +238,9 @@ func shownOnPerson[T any](a audience, field string, v *T) *T {
 func (a audience) reads(g fieldGroup) bool {
 	hr := a.Manage || a.PersonalData
 	switch g {
-	case groupWork, groupEmploymentDates:
+	case groupWork, groupEmploymentDates, groupAbsence:
 		return a.Self || a.Manager || a.Colleague || hr
-	case groupEmployment:
+	case groupEmployment, groupAbsenceType, groupAbsenceDetail:
 		return a.Self || a.Manager || hr
 	case groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCareDays:
 		return a.Self || hr
@@ -239,6 +251,11 @@ func (a audience) reads(g fieldGroup) bool {
 	}
 	return false
 }
+
+// readsHROnlyTypes is whether the audience reads an HR-only absence type as
+// itself (design §5): the person and staff:personal-data; a manager and HR
+// without it read "leave".
+func (a audience) readsHROnlyTypes() bool { return a.Self || a.PersonalData }
 
 // readsDocument is whether the audience reads a document in a category that
 // is restricted or not: a health document is the health group's, every other
@@ -404,6 +421,15 @@ const changed = "changed"
 // the health entry among them is the health group's too, so HR without it
 // does not learn that the person had health content to erase.
 func shapePayload(stored []byte, classes []string, a audience) map[string]any {
+	return shapePayloadTypes(stored, classes, a, nil)
+}
+
+// shapePayloadTypes is shapePayload with the absence types' visibility, by
+// which an absence event's type values are shaped (plan pre-flight B2): an
+// absence or adjustment event (absenceId, adjustmentId) is shaped field by
+// field by the absence groups (absence_events.go), each type value by its
+// own type's visibility, a type types does not name failing closed.
+func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVisibilities) map[string]any {
 	var payload struct {
 		Fields map[string]any `json:"fields"`
 		// What the retention run erased (an erased event): the kinds and
@@ -415,6 +441,10 @@ func shapePayload(stored []byte, classes []string, a audience) map[string]any {
 		EmploymentID *int64 `json:"employmentId"`
 		TermsID      *int64 `json:"termsId"`
 		DocumentID   *int64 `json:"documentId"`
+		// Which absence or holiday adjustment an absence event is about
+		// (delivery B).
+		AbsenceID    *int64 `json:"absenceId"`
+		AdjustmentID *int64 `json:"adjustmentId"`
 	}
 	out := map[string]any{}
 	if err := json.Unmarshal(stored, &payload); err != nil {
@@ -437,6 +467,16 @@ func shapePayload(stored []byte, classes []string, a audience) map[string]any {
 	}
 	if payload.TermsID != nil {
 		out["termsId"] = *payload.TermsID
+	}
+	if payload.AbsenceID != nil {
+		out["absenceId"] = *payload.AbsenceID
+		out["fields"] = shapeClassedFields(payload.Fields, absenceFieldGroup, a, types)
+		return out
+	}
+	if payload.AdjustmentID != nil {
+		out["adjustmentId"] = *payload.AdjustmentID
+		out["fields"] = shapeClassedFields(payload.Fields, adjustmentFieldGroup, a, types)
+		return out
 	}
 	fields := make(map[string]any, len(payload.Fields))
 	if payload.DocumentID != nil {
@@ -467,8 +507,9 @@ func shapePayload(stored []byte, classes []string, a audience) map[string]any {
 	return out
 }
 
-// eventResponse is one event as the audience may read it.
-func eventResponse(row store.ListPersonEventsRow, a audience) gen.StaffEvent {
+// eventResponse is one event as the audience may read it, an absence
+// event's type values by types (nil for an audience that reads every type).
+func eventResponse(row store.ListPersonEventsRow, a audience, types typeVisibilities) gen.StaffEvent {
 	display := unknownUserDisplay
 	if row.ActorDisplay != nil {
 		display = *row.ActorDisplay
@@ -478,7 +519,7 @@ func eventResponse(row store.ListPersonEventsRow, a audience) gen.StaffEvent {
 		Kind:    row.Kind,
 		At:      row.At,
 		Actor:   gen.StaffEventActor{Kind: row.ActorKind, DisplayName: display, UserId: row.ActorUserID},
-		Payload: shapePayload(row.Payload, row.PayloadClasses, a),
+		Payload: shapePayloadTypes(row.Payload, row.PayloadClasses, a, types),
 	}
 }
 

@@ -207,7 +207,7 @@ func personalDataResponse(f personalDataSnapshot, a audience, opened *openedSeal
 // wholeEvent is an event as the complete file carries it: its payload as
 // stored, every field and value in it.
 func wholeEvent(row store.ListAllPersonEventsRow) gen.StaffEvent {
-	out := eventResponse(store.ListPersonEventsRow(row), everything)
+	out := eventResponse(store.ListPersonEventsRow(row), everything, nil)
 	payload := map[string]any{}
 	if err := json.Unmarshal(row.Payload, &payload); err == nil {
 		out.Payload = payload
@@ -217,7 +217,7 @@ func wholeEvent(row store.ListAllPersonEventsRow) gen.StaffEvent {
 
 // selfEvent is an event as the person reads their own history.
 func selfEvent(row store.ListAllPersonEventsRow) gen.StaffEvent {
-	return eventResponse(store.ListPersonEventsRow(row), selfAudience)
+	return eventResponse(store.ListPersonEventsRow(row), selfAudience, nil)
 }
 
 // personalDataDownload writes the file: the generated 200 would be a bare

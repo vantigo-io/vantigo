@@ -1,6 +1,7 @@
 // Package calendar is the platform's public-holiday calendar: which days are
 // Norwegian public holidays, which are business days, and when Easter falls.
-// Invoices moves a due date and a reminder letter's deadline by it.
+// Invoices moves a due date and a reminder letter's deadline by it; Staff
+// counts the working days an absence deducts from the holiday account by it.
 //
 // A day is a civil date at UTC midnight. Deriving it in the installation's
 // zone is the caller's job — take the calendar day where the caller lives and

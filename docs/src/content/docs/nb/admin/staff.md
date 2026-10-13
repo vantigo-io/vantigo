@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, omsorgsdagfeltene, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, omsorgsdagfeltene, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
 sidebar:
   order: 44
 sources:
@@ -23,6 +23,7 @@ sources:
   - apps/server/internal/staff/absence_types.go
   - apps/server/internal/staff/holiday_schemes.go
   - apps/server/internal/staff/absence_settings.go
+  - apps/server/internal/staff/adjustments.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -224,6 +225,43 @@ leveransen.
 årsskiftet til neste år uten at HR gjør noe, som tvungen overføring. Dagen du slår den på
 lagres (`autoCarryOverSince`), og ingen år før den overføres automatisk. Den er av som
 standard.
+
+## Overfør ferie
+
+Ferie som står igjen ved årsskiftet, forsvinner ikke. HR overfører den til neste år med
+`POST /api/v1/staff/people/{id}/carry-over` (`staff:manage`):
+
+1. Les personens konto for året den kommer fra:
+   `GET /api/v1/staff/people/{id}/holiday-account?year=2025` — `remaining` er det som står
+   igjen.
+2. Registrer overføringen med `fromYear` og `kind`:
+   - `agreed` — det du og den ansatte avtalte, begrenset av ferieordningens maksimum
+     (12 virkedager, 10 arbeidsdager, etter lovens ordning). Utelat `days` for å overføre
+     dagene som står igjen, opp til grensen.
+   - `forced` — dager den ansatte ikke kunne ta (sykdom i ferien, for eksempel), uten
+     grense, med en `note` som sier hvorfor.
+3. Se på kontoen for neste år: dagene står i `carriedIn`.
+
+En person har **høyst én overføring fra et år**: en andre gir `carry_over_recorded`. For
+å endre den, slett den (`DELETE /api/v1/staff/holiday-adjustments/{id}`; listen er
+`GET /api/v1/staff/people/{id}/holiday-adjustments`) og registrer den på nytt. En
+rettelse av en konto — en dag registrert feil, for eksempel — er en justering med
+`reason: "correction"` og en merknad.
+
+**Automatisk overføring.** Med `autoCarryOver` slått på i innstillingene overfører en
+konto selv dagene som stod igjen året før (`carriedInDerived`), som tvungen overføring —
+men bare for år fra og med det den ble slått på, så den rekker aldri tilbake til år HR
+allerede har gjort opp. En overføring registrert for hånd for et år erstatter den
+automatiske.
+
+## Rett et registrert sykefravær
+
+En egenmelding eller en sykmelding er registrert, ikke avgjort, og den ansatte kan ikke
+endre den når den først er lagt inn: slutter en sykmelding tidligere, eller var en dag
+feil, endrer HR den (`PUT /api/v1/staff/absences/{id}`, `staff:manage`, med revisjonen i
+`If-Match`) eller fjerner den (`DELETE /api/v1/staff/absences/{id}`). Begge føres i
+personens historikk. Et fravær noen har avgjort, fjernes aldri; det trekkes tilbake
+eller rettes med avgjørelsene, i et senere steg av leveransen.
 
 ## Omsorgsdagfeltene
 

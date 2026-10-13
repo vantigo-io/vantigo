@@ -54,6 +54,54 @@ func (e StaffAbsenceKind) Valid() bool {
 	}
 }
 
+// Defines values for StaffAbsenceShownAs.
+const (
+	StaffAbsenceShownAsAbsent StaffAbsenceShownAs = "absent"
+	StaffAbsenceShownAsLeave  StaffAbsenceShownAs = "leave"
+	StaffAbsenceShownAsType   StaffAbsenceShownAs = "type"
+)
+
+// Valid indicates whether the value is a known member of the StaffAbsenceShownAs enum.
+func (e StaffAbsenceShownAs) Valid() bool {
+	switch e {
+	case StaffAbsenceShownAsAbsent:
+		return true
+	case StaffAbsenceShownAsLeave:
+		return true
+	case StaffAbsenceShownAsType:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffAbsenceStatus.
+const (
+	Approved   StaffAbsenceStatus = "approved"
+	Cancelled  StaffAbsenceStatus = "cancelled"
+	Registered StaffAbsenceStatus = "registered"
+	Rejected   StaffAbsenceStatus = "rejected"
+	Requested  StaffAbsenceStatus = "requested"
+)
+
+// Valid indicates whether the value is a known member of the StaffAbsenceStatus enum.
+func (e StaffAbsenceStatus) Valid() bool {
+	switch e {
+	case Approved:
+		return true
+	case Cancelled:
+		return true
+	case Registered:
+		return true
+	case Rejected:
+		return true
+	case Requested:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StaffAbsenceUnit.
 const (
 	StaffAbsenceUnitDays  StaffAbsenceUnit = "days"
@@ -74,16 +122,16 @@ func (e StaffAbsenceUnit) Valid() bool {
 
 // Defines values for StaffAbsenceVisibility.
 const (
-	Absent StaffAbsenceVisibility = "absent"
-	HrOnly StaffAbsenceVisibility = "hr_only"
+	StaffAbsenceVisibilityAbsent StaffAbsenceVisibility = "absent"
+	StaffAbsenceVisibilityHrOnly StaffAbsenceVisibility = "hr_only"
 )
 
 // Valid indicates whether the value is a known member of the StaffAbsenceVisibility enum.
 func (e StaffAbsenceVisibility) Valid() bool {
 	switch e {
-	case Absent:
+	case StaffAbsenceVisibilityAbsent:
 		return true
-	case HrOnly:
+	case StaffAbsenceVisibilityHrOnly:
 		return true
 	default:
 		return false
@@ -162,6 +210,24 @@ func (e StaffBankAccountKind) Valid() bool {
 	case Bban:
 		return true
 	case Iban:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffCarryOverRequestKind.
+const (
+	Agreed StaffCarryOverRequestKind = "agreed"
+	Forced StaffCarryOverRequestKind = "forced"
+)
+
+// Valid indicates whether the value is a known member of the StaffCarryOverRequestKind enum.
+func (e StaffCarryOverRequestKind) Valid() bool {
+	switch e {
+	case Agreed:
+		return true
+	case Forced:
 		return true
 	default:
 		return false
@@ -321,6 +387,27 @@ func (e StaffGender) Valid() bool {
 	case StaffGenderOther:
 		return true
 	case StaffGenderUnspecified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffHolidayAdjustmentReason.
+const (
+	AgreedCarryOver StaffHolidayAdjustmentReason = "agreed_carry_over"
+	Correction      StaffHolidayAdjustmentReason = "correction"
+	ForcedCarryOver StaffHolidayAdjustmentReason = "forced_carry_over"
+)
+
+// Valid indicates whether the value is a known member of the StaffHolidayAdjustmentReason enum.
+func (e StaffHolidayAdjustmentReason) Valid() bool {
+	switch e {
+	case AgreedCarryOver:
+		return true
+	case Correction:
+		return true
+	case ForcedCarryOver:
 		return true
 	default:
 		return false
@@ -678,6 +765,12 @@ func (e GetStaffPeopleParamsStatus) Valid() bool {
 	}
 }
 
+// PaginatedResponseOfStaffAbsence defines model for PaginatedResponseOfStaffAbsence.
+type PaginatedResponseOfStaffAbsence struct {
+	Data       []StaffAbsence                  `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
 // PaginatedResponseOfStaffEvent defines model for PaginatedResponseOfStaffEvent.
 type PaginatedResponseOfStaffEvent struct {
 	Data       []StaffEvent                    `json:"data"`
@@ -690,8 +783,111 @@ type PaginatedResponseOfStaffPersonListItem struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
+// StaffAbsence An absence as the caller may read it (design §5): the dates and the status to everyone who sees the row; the type to the person, their manager and HR — an HR-only type shown as leave to all but the person and staff:personal-data (shownAs leave, no typeId) and to a colleague as absent; percent, hours, note and degree never to a colleague. A write of a type drawing on the holiday account answers the accounts of the years it touches after it.
+type StaffAbsence struct {
+	// Accounts On a write of a type drawing on the holiday account: the account of each year the row touches, after the write.
+	Accounts *[]StaffHolidayAccount `json:"accounts,omitempty"`
+
+	// DegreePercent A sykmelding's degree.
+	DegreePercent *float64 `json:"degreePercent,omitempty"`
+
+	// FirstDay The first day.
+	FirstDay openapi_types.Date `json:"firstDay"`
+
+	// Hours The hours of an hour type's one day.
+	Hours *float64 `json:"hours,omitempty"`
+	Id    int64    `json:"id"`
+
+	// LastDay The last day.
+	LastDay openapi_types.Date `json:"lastDay"`
+
+	// Note The note.
+	Note *string `json:"note,omitempty"`
+
+	// Overdrawn On a write of a type drawing on the holiday account: whether taking every requested day would overdraw one of the accounts — a warning, never a refusal.
+	Overdrawn *bool `json:"overdrawn,omitempty"`
+
+	// Percent The percentage of each day, to the person, their manager and HR.
+	Percent *float64 `json:"percent,omitempty"`
+
+	// PersonId The person.
+	PersonId int64 `json:"personId"`
+
+	// Revision The revision a change sends back in If-Match.
+	Revision int32 `json:"revision"`
+
+	// ShownAs How the caller is shown the row's type: type (typeId names it), leave (an HR-only type to a manager or HR without staff:personal-data), or absent (a colleague, who reads no type).
+	ShownAs StaffAbsenceShownAs `json:"shownAs"`
+
+	// Status requested (waiting for a decision), approved, rejected, cancelled, or registered (a notification, needing none).
+	Status StaffAbsenceStatus `json:"status"`
+
+	// TypeId The type, when the caller may read it (shownAs type).
+	TypeId *int64 `json:"typeId,omitempty"`
+
+	// WorkingDays The working days from the first to the last day — Monday to Friday without public holidays — whatever the share; an hour row counts none.
+	WorkingDays int32 `json:"workingDays"`
+}
+
+// StaffAbsenceChangeRequest An absence's fields, for a change (a full replace) and for one's own new absence. A property this request does not name is refused, so the person learns it was not written.
+type StaffAbsenceChangeRequest struct {
+	// DegreePercent A sykmelding's degree, 1 to 100, two decimals — its share of each day; 100 when left out. Only on a sykmelding.
+	DegreePercent *float64 `json:"degreePercent,omitempty"`
+
+	// FirstDay The first day.
+	FirstDay openapi_types.Date `json:"firstDay"`
+
+	// Hours 0.25 to 24 in quarter hours, only on a type counted in hours, which also needs it (hours_on_day_type).
+	Hours *float64 `json:"hours,omitempty"`
+
+	// LastDay The last day, the first day itself when left out; an hour type's is its first day.
+	LastDay *openapi_types.Date `json:"lastDay,omitempty"`
+
+	// Note At most 500 characters; never on a sick or child-sick type (absence_note_on_sick).
+	Note *string `json:"note,omitempty"`
+
+	// Percent 1 to 100, two decimals, only on a type that allows a percentage (percent_not_allowed); 100 when left out.
+	Percent *float64 `json:"percent,omitempty"`
+
+	// TypeId The absence type.
+	TypeId int64 `json:"typeId"`
+}
+
 // StaffAbsenceKind What the rules key an absence type on (design §3.5). holiday draws on the holiday account; sick_self is egenmelding, sick_certified sykmelding, child_sick a sick child (omsorgsdager); leave, time_off and other are the rest. A company type is holiday, leave, time_off or other; the sick kinds are the seeds'.
 type StaffAbsenceKind string
+
+// StaffAbsenceRequest A new absence for a person: the caller's own, or — staff:manage — anyone's.
+type StaffAbsenceRequest struct {
+	// DegreePercent A sykmelding's degree, 1 to 100, two decimals — its share of each day; 100 when left out. Only on a sykmelding.
+	DegreePercent *float64 `json:"degreePercent,omitempty"`
+
+	// FirstDay The first day.
+	FirstDay openapi_types.Date `json:"firstDay"`
+
+	// Hours 0.25 to 24 in quarter hours, only on a type counted in hours, which also needs it (hours_on_day_type).
+	Hours *float64 `json:"hours,omitempty"`
+
+	// LastDay The last day, the first day itself when left out; an hour type's is its first day.
+	LastDay *openapi_types.Date `json:"lastDay,omitempty"`
+
+	// Note At most 500 characters; never on a sick or child-sick type (absence_note_on_sick).
+	Note *string `json:"note,omitempty"`
+
+	// Percent 1 to 100, two decimals, only on a type that allows a percentage (percent_not_allowed); 100 when left out.
+	Percent *float64 `json:"percent,omitempty"`
+
+	// PersonId The person it is for.
+	PersonId int64 `json:"personId"`
+
+	// TypeId The absence type.
+	TypeId int64 `json:"typeId"`
+}
+
+// StaffAbsenceShownAs How the caller is shown the row's type: type (typeId names it), leave (an HR-only type to a manager or HR without staff:personal-data), or absent (a colleague, who reads no type).
+type StaffAbsenceShownAs string
+
+// StaffAbsenceStatus requested (waiting for a decision), approved, rejected, cancelled, or registered (a notification, needing none).
+type StaffAbsenceStatus string
 
 // StaffAbsenceType An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order and whether it is hidden (seed_immutable otherwise); the reserved absent is never shown and never offered.
 type StaffAbsenceType struct {
@@ -893,6 +1089,24 @@ type StaffCapabilities struct {
 	// ManagesAnyone The caller's linked person manages anyone today by the one manager rule — a manager who has left manages nobody. Drives My team.
 	ManagesAnyone bool `json:"managesAnyone"`
 }
+
+// StaffCarryOverRequest A carry-over of fromYear's untaken holiday into the year after.
+type StaffCarryOverRequest struct {
+	// Days Working days, one decimal, above zero; the year's remaining rounded down to a tenth when left out.
+	Days *float64 `json:"days,omitempty"`
+
+	// FromYear The year the days come from.
+	FromYear int32 `json:"fromYear"`
+
+	// Kind agreed (capped by the scheme) or forced (uncapped, with a note).
+	Kind StaffCarryOverRequestKind `json:"kind"`
+
+	// Note At most 500 characters; required for forced.
+	Note *string `json:"note,omitempty"`
+}
+
+// StaffCarryOverRequestKind agreed (capped by the scheme) or forced (uncapped, with a note).
+type StaffCarryOverRequestKind string
 
 // StaffContractCheck The § 14-6 check of one employment (design S5).
 type StaffContractCheck struct {
@@ -1218,6 +1432,83 @@ type StaffEventActor struct {
 
 // StaffGender female, male, other or unspecified — what the equality report (ARP) counts.
 type StaffGender string
+
+// StaffHolidayAccount A person's holiday account for a year in working days (design §4): remaining is the entitlement and both carry-ins less taken; pending is shown apart.
+type StaffHolidayAccount struct {
+	// CarriedIn Agreed carry-overs (capped), forced carry-overs and corrections into the year.
+	CarriedIn float64 `json:"carriedIn"`
+
+	// CarriedInDerived The year before's remaining, carried in by automatic carry-over.
+	CarriedInDerived float64 `json:"carriedInDerived"`
+
+	// Entitlement The scheme's entitlement converted to working days, with the after-September and the sixty-year rules.
+	Entitlement float64 `json:"entitlement"`
+
+	// Overdrawn Remaining less pending is below zero.
+	Overdrawn bool `json:"overdrawn"`
+
+	// Pending Requested such days.
+	Pending float64 `json:"pending"`
+
+	// PersonId The person.
+	PersonId int64 `json:"personId"`
+
+	// Remaining What is left.
+	Remaining float64 `json:"remaining"`
+
+	// Taken Approved and registered days of the types drawing on the account, on working days of the year, each times its share.
+	Taken float64 `json:"taken"`
+
+	// Year The year.
+	Year int32 `json:"year"`
+}
+
+// StaffHolidayAdjustment A change to a person's holiday account for a year, in working days.
+type StaffHolidayAdjustment struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Days Working days, signed, one decimal.
+	Days float64 `json:"days"`
+
+	// FromYear A carry-over's year it comes from.
+	FromYear *int32 `json:"fromYear,omitempty"`
+
+	// Id The adjustment.
+	Id int64 `json:"id"`
+
+	// Note The note.
+	Note *string `json:"note,omitempty"`
+
+	// PersonId The person.
+	PersonId int64 `json:"personId"`
+
+	// Reason agreed_carry_over (capped by the scheme), forced_carry_over (uncapped) or correction.
+	Reason StaffHolidayAdjustmentReason `json:"reason"`
+
+	// Year The year it changes.
+	Year int32 `json:"year"`
+}
+
+// StaffHolidayAdjustmentReason agreed_carry_over (capped by the scheme), forced_carry_over (uncapped) or correction.
+type StaffHolidayAdjustmentReason string
+
+// StaffHolidayAdjustmentRequest A holiday adjustment: a correction, or a carry-over naming the earlier year it comes from.
+type StaffHolidayAdjustmentRequest struct {
+	// Days -366 to 366, one decimal, not zero.
+	Days float64 `json:"days"`
+
+	// FromYear A carry-over's year it comes from, before year; none on a correction.
+	FromYear *int32 `json:"fromYear,omitempty"`
+
+	// Note At most 500 characters; required with forced_carry_over and correction.
+	Note *string `json:"note,omitempty"`
+
+	// Reason agreed_carry_over (capped by the scheme), forced_carry_over (uncapped) or correction.
+	Reason StaffHolidayAdjustmentReason `json:"reason"`
+
+	// Year The year it changes, 2000 to 2100.
+	Year int32 `json:"year"`
+}
 
 // StaffHolidayScheme A holiday scheme (design S9, §3.5), its figures in virkedager (Monday to Saturday, as the Holiday Act counts) and, in converted, the working days of a five-day week each comes to — ⌊v / 6⌋ × 5 + min(v mod 6, 5), so 25 virkedager are 21 days and 30 are 25. Exactly one is the default, the scheme of an employment that names none.
 type StaffHolidayScheme struct {
@@ -1928,7 +2219,7 @@ type StaffPersonalDataPerson struct {
 	WorkEmail   *string           `json:"workEmail,omitempty"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, carry_over_recorded, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -2382,6 +2673,29 @@ type PutStaffAbsenceTypesByIdParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// GetStaffAbsencesParams defines parameters for GetStaffAbsences.
+type GetStaffAbsencesParams struct {
+	// PersonId Only this person's rows.
+	PersonId *int64 `form:"personId,omitempty" json:"personId,omitempty"`
+
+	// From Rows that end on or after this day.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Rows that start on or before this day.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+
+	// Status Only rows in this status.
+	Status   *StaffAbsenceStatus `form:"status,omitempty" json:"status,omitempty"`
+	Page     *int32              `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// PutStaffAbsencesByIdParams defines parameters for PutStaffAbsencesById.
+type PutStaffAbsencesByIdParams struct {
+	// IfMatch The revision the absence was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
 // GetStaffAssignableUsersParams defines parameters for GetStaffAssignableUsers.
 type GetStaffAssignableUsersParams struct {
 	// Q Narrows the search. Absent or blank lists the first twenty active users.
@@ -2442,10 +2756,30 @@ type PutStaffMeParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// GetStaffMeAbsencesParams defines parameters for GetStaffMeAbsences.
+type GetStaffMeAbsencesParams struct {
+	// From Rows that end on or after this day.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Rows that start on or before this day.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+
+	// Status Only rows in this status.
+	Status   *StaffAbsenceStatus `form:"status,omitempty" json:"status,omitempty"`
+	Page     *int32              `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
 // GetStaffMeEventsParams defines parameters for GetStaffMeEvents.
 type GetStaffMeEventsParams struct {
 	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
 	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// GetStaffMeHolidayAccountParams defines parameters for GetStaffMeHolidayAccount.
+type GetStaffMeHolidayAccountParams struct {
+	// Year The year, 2000 to 2100; this year in the business time zone when left out.
+	Year *int32 `form:"year,omitempty" json:"year,omitempty"`
 }
 
 // GetStaffPayrollExportParams defines parameters for GetStaffPayrollExport.
@@ -2511,6 +2845,12 @@ type GetStaffPeopleByIdEventsParams struct {
 	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
+// GetStaffPeopleByIdHolidayAccountParams defines parameters for GetStaffPeopleByIdHolidayAccount.
+type GetStaffPeopleByIdHolidayAccountParams struct {
+	// Year The year, 2000 to 2100; this year in the business time zone when left out.
+	Year *int32 `form:"year,omitempty" json:"year,omitempty"`
+}
+
 // PutStaffPeopleByIdNextOfKinParams defines parameters for PutStaffPeopleByIdNextOfKin.
 type PutStaffPeopleByIdNextOfKinParams struct {
 	// IfMatch The person's revision as read — bare (3) or quoted ("3"). A replace that changes the list moves the person's revision on; a revision that has moved on is a 409 revision_conflict.
@@ -2540,6 +2880,12 @@ type PostStaffAbsenceTypesJSONRequestBody = StaffAbsenceTypeRequest
 
 // PutStaffAbsenceTypesByIdJSONRequestBody defines body for PutStaffAbsenceTypesById for application/json ContentType.
 type PutStaffAbsenceTypesByIdJSONRequestBody = StaffAbsenceTypeChangeRequest
+
+// PostStaffAbsencesJSONRequestBody defines body for PostStaffAbsences for application/json ContentType.
+type PostStaffAbsencesJSONRequestBody = StaffAbsenceRequest
+
+// PutStaffAbsencesByIdJSONRequestBody defines body for PutStaffAbsencesById for application/json ContentType.
+type PutStaffAbsencesByIdJSONRequestBody = StaffAbsenceChangeRequest
 
 // PostStaffBusinessUnitsJSONRequestBody defines body for PostStaffBusinessUnits for application/json ContentType.
 type PostStaffBusinessUnitsJSONRequestBody = StaffBusinessUnitRequest
@@ -2592,6 +2938,9 @@ type PutStaffLocationsByIdJSONRequestBody = StaffLocationRequest
 // PutStaffMeJSONRequestBody defines body for PutStaffMe for application/json ContentType.
 type PutStaffMeJSONRequestBody = StaffMeRequest
 
+// PostStaffMeAbsencesJSONRequestBody defines body for PostStaffMeAbsences for application/json ContentType.
+type PostStaffMeAbsencesJSONRequestBody = StaffAbsenceChangeRequest
+
 // PostStaffPeopleJSONRequestBody defines body for PostStaffPeople for application/json ContentType.
 type PostStaffPeopleJSONRequestBody = StaffPersonRequest
 
@@ -2607,11 +2956,17 @@ type PutStaffPeopleByIdJSONRequestBody = StaffPersonRequest
 // PutStaffPeopleByIdBankAccountJSONRequestBody defines body for PutStaffPeopleByIdBankAccount for application/json ContentType.
 type PutStaffPeopleByIdBankAccountJSONRequestBody = StaffBankAccountRequest
 
+// PostStaffPeopleByIdCarryOverJSONRequestBody defines body for PostStaffPeopleByIdCarryOver for application/json ContentType.
+type PostStaffPeopleByIdCarryOverJSONRequestBody = StaffCarryOverRequest
+
 // PostStaffPeopleByIdDocumentsMultipartRequestBody defines body for PostStaffPeopleByIdDocuments for multipart/form-data ContentType.
 type PostStaffPeopleByIdDocumentsMultipartRequestBody PostStaffPeopleByIdDocumentsMultipartBody
 
 // PostStaffPeopleByIdEmploymentsJSONRequestBody defines body for PostStaffPeopleByIdEmployments for application/json ContentType.
 type PostStaffPeopleByIdEmploymentsJSONRequestBody = StaffEmploymentRequest
+
+// PostStaffPeopleByIdHolidayAdjustmentsJSONRequestBody defines body for PostStaffPeopleByIdHolidayAdjustments for application/json ContentType.
+type PostStaffPeopleByIdHolidayAdjustmentsJSONRequestBody = StaffHolidayAdjustmentRequest
 
 // PutStaffPeopleByIdLegalHoldJSONRequestBody defines body for PutStaffPeopleByIdLegalHold for application/json ContentType.
 type PutStaffPeopleByIdLegalHoldJSONRequestBody = StaffLegalHoldRequest
@@ -2645,6 +3000,24 @@ type ServerInterface interface {
 	// PutStaffAbsenceTypesById Change an absence type
 	// (PUT /api/v1/staff/absence-types/{id})
 	PutStaffAbsenceTypesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffAbsenceTypesByIdParams)
+	// GetStaffAbsences List absences
+	// (GET /api/v1/staff/absences)
+	GetStaffAbsences(w http.ResponseWriter, r *http.Request, params GetStaffAbsencesParams)
+	// PostStaffAbsences Request or register an absence
+	// (POST /api/v1/staff/absences)
+	PostStaffAbsences(w http.ResponseWriter, r *http.Request)
+	// DeleteStaffAbsencesById Delete an absence
+	// (DELETE /api/v1/staff/absences/{id})
+	DeleteStaffAbsencesById(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffAbsencesById Get an absence
+	// (GET /api/v1/staff/absences/{id})
+	GetStaffAbsencesById(w http.ResponseWriter, r *http.Request, id int64)
+	// PutStaffAbsencesById Change an absence
+	// (PUT /api/v1/staff/absences/{id})
+	PutStaffAbsencesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffAbsencesByIdParams)
+	// PostStaffAbsencesByIdCancel Cancel an absence request
+	// (POST /api/v1/staff/absences/{id}/cancel)
+	PostStaffAbsencesByIdCancel(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffAssignableUsers Search the users a person may be linked to
 	// (GET /api/v1/staff/assignable-users)
 	GetStaffAssignableUsers(w http.ResponseWriter, r *http.Request, params GetStaffAssignableUsersParams)
@@ -2711,6 +3084,9 @@ type ServerInterface interface {
 	// PostStaffEmploymentsByIdTerms Add a terms row
 	// (POST /api/v1/staff/employments/{id}/terms)
 	PostStaffEmploymentsByIdTerms(w http.ResponseWriter, r *http.Request, id int64)
+	// DeleteStaffHolidayAdjustmentsById Delete a holiday adjustment
+	// (DELETE /api/v1/staff/holiday-adjustments/{id})
+	DeleteStaffHolidayAdjustmentsById(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffHolidaySchemes List holiday schemes
 	// (GET /api/v1/staff/holiday-schemes)
 	GetStaffHolidaySchemes(w http.ResponseWriter, r *http.Request)
@@ -2750,6 +3126,12 @@ type ServerInterface interface {
 	// PutStaffMe Change my own record
 	// (PUT /api/v1/staff/me)
 	PutStaffMe(w http.ResponseWriter, r *http.Request, params PutStaffMeParams)
+	// GetStaffMeAbsences List my own absences
+	// (GET /api/v1/staff/me/absences)
+	GetStaffMeAbsences(w http.ResponseWriter, r *http.Request, params GetStaffMeAbsencesParams)
+	// PostStaffMeAbsences Request or register my own absence
+	// (POST /api/v1/staff/me/absences)
+	PostStaffMeAbsences(w http.ResponseWriter, r *http.Request)
 	// GetStaffMeDocuments List my own documents
 	// (GET /api/v1/staff/me/documents)
 	GetStaffMeDocuments(w http.ResponseWriter, r *http.Request)
@@ -2759,6 +3141,9 @@ type ServerInterface interface {
 	// GetStaffMeExport Export my own data
 	// (GET /api/v1/staff/me/export)
 	GetStaffMeExport(w http.ResponseWriter, r *http.Request)
+	// GetStaffMeHolidayAccount Get my own holiday account
+	// (GET /api/v1/staff/me/holiday-account)
+	GetStaffMeHolidayAccount(w http.ResponseWriter, r *http.Request, params GetStaffMeHolidayAccountParams)
 	// GetStaffMeta Get the Staff metadata
 	// (GET /api/v1/staff/meta)
 	GetStaffMeta(w http.ResponseWriter, r *http.Request)
@@ -2798,6 +3183,9 @@ type ServerInterface interface {
 	// PostStaffPeopleByIdBankAccountReveal Reveal a person's bank account
 	// (POST /api/v1/staff/people/{id}/bank-account/reveal)
 	PostStaffPeopleByIdBankAccountReveal(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffPeopleByIdCarryOver Carry holiday over
+	// (POST /api/v1/staff/people/{id}/carry-over)
+	PostStaffPeopleByIdCarryOver(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffPeopleByIdDocuments List a person's documents
 	// (GET /api/v1/staff/people/{id}/documents)
 	GetStaffPeopleByIdDocuments(w http.ResponseWriter, r *http.Request, id int64)
@@ -2813,6 +3201,15 @@ type ServerInterface interface {
 	// GetStaffPeopleByIdEvents List a person's history
 	// (GET /api/v1/staff/people/{id}/events)
 	GetStaffPeopleByIdEvents(w http.ResponseWriter, r *http.Request, id int64, params GetStaffPeopleByIdEventsParams)
+	// GetStaffPeopleByIdHolidayAccount Get a person's holiday account
+	// (GET /api/v1/staff/people/{id}/holiday-account)
+	GetStaffPeopleByIdHolidayAccount(w http.ResponseWriter, r *http.Request, id int64, params GetStaffPeopleByIdHolidayAccountParams)
+	// GetStaffPeopleByIdHolidayAdjustments List a person's holiday adjustments
+	// (GET /api/v1/staff/people/{id}/holiday-adjustments)
+	GetStaffPeopleByIdHolidayAdjustments(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffPeopleByIdHolidayAdjustments Adjust a person's holiday account
+	// (POST /api/v1/staff/people/{id}/holiday-adjustments)
+	PostStaffPeopleByIdHolidayAdjustments(w http.ResponseWriter, r *http.Request, id int64)
 	// PutStaffPeopleByIdLegalHold Set or lift a person's legal hold
 	// (PUT /api/v1/staff/people/{id}/legal-hold)
 	PutStaffPeopleByIdLegalHold(w http.ResponseWriter, r *http.Request, id int64)
@@ -2957,6 +3354,250 @@ func (siw *ServerInterfaceWrapper) PutStaffAbsenceTypesById(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutStaffAbsenceTypesById(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffAbsences operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffAbsences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetStaffAbsencesParams
+
+	// ------------- Optional query parameter "personId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "personId", r.URL.Query(), &params.PersonId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "personId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "personId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffAbsences(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffAbsences operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffAbsences(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffAbsences(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteStaffAbsencesById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteStaffAbsencesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteStaffAbsencesById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffAbsencesById operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffAbsencesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffAbsencesById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffAbsencesById operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffAbsencesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffAbsencesByIdParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffAbsencesById(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffAbsencesByIdCancel operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffAbsencesByIdCancel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffAbsencesByIdCancel(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3613,6 +4254,32 @@ func (siw *ServerInterfaceWrapper) PostStaffEmploymentsByIdTerms(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteStaffHolidayAdjustmentsById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteStaffHolidayAdjustmentsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteStaffHolidayAdjustmentsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStaffHolidaySchemes operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffHolidaySchemes(w http.ResponseWriter, r *http.Request) {
 
@@ -3970,6 +4637,105 @@ func (siw *ServerInterfaceWrapper) PutStaffMe(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffMeAbsences operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffMeAbsences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetStaffMeAbsencesParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffMeAbsences(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffMeAbsences operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffMeAbsences(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffMeAbsences(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStaffMeDocuments operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffMeDocuments(w http.ResponseWriter, r *http.Request) {
 
@@ -4035,6 +4801,39 @@ func (siw *ServerInterfaceWrapper) GetStaffMeExport(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetStaffMeExport(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffMeHolidayAccount operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffMeHolidayAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetStaffMeHolidayAccountParams
+
+	// ------------- Optional query parameter "year" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "year", r.URL.Query(), &params.Year, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "year"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "year", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffMeHolidayAccount(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4462,6 +5261,32 @@ func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdBankAccountReveal(w http.R
 	handler.ServeHTTP(w, r)
 }
 
+// PostStaffPeopleByIdCarryOver operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdCarryOver(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleByIdCarryOver(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStaffPeopleByIdDocuments operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdDocuments(w http.ResponseWriter, r *http.Request) {
 
@@ -4612,6 +5437,100 @@ func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdEvents(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetStaffPeopleByIdEvents(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffPeopleByIdHolidayAccount operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdHolidayAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetStaffPeopleByIdHolidayAccountParams
+
+	// ------------- Optional query parameter "year" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "year", r.URL.Query(), &params.Year, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "year"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "year", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdHolidayAccount(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffPeopleByIdHolidayAdjustments operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdHolidayAdjustments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdHolidayAdjustments(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffPeopleByIdHolidayAdjustments operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdHolidayAdjustments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleByIdHolidayAdjustments(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5319,6 +6238,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/absence-types", wrapper.GetStaffAbsenceTypes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/absence-types", wrapper.PostStaffAbsenceTypes)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/absence-types/{id}", wrapper.PutStaffAbsenceTypesById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/absences", wrapper.GetStaffAbsences)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/absences", wrapper.PostStaffAbsences)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/absences/{id}", wrapper.DeleteStaffAbsencesById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/absences/{id}", wrapper.GetStaffAbsencesById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/absences/{id}", wrapper.PutStaffAbsencesById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/absences/{id}/cancel", wrapper.PostStaffAbsencesByIdCancel)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/assignable-users", wrapper.GetStaffAssignableUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/business-units", wrapper.GetStaffBusinessUnits)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/business-units", wrapper.PostStaffBusinessUnits)
@@ -5341,6 +6266,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/employments/{id}/reopen", wrapper.PostStaffEmploymentsByIdReopen)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/employments/{id}/terms", wrapper.GetStaffEmploymentsByIdTerms)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/employments/{id}/terms", wrapper.PostStaffEmploymentsByIdTerms)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/holiday-adjustments/{id}", wrapper.DeleteStaffHolidayAdjustmentsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/holiday-schemes", wrapper.GetStaffHolidaySchemes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/holiday-schemes", wrapper.PostStaffHolidaySchemes)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/holiday-schemes/{id}", wrapper.PutStaffHolidaySchemesById)
@@ -5354,9 +6280,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/locations/{id}/archive", wrapper.PostStaffLocationsByIdArchive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me", wrapper.GetStaffMe)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/me", wrapper.PutStaffMe)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/absences", wrapper.GetStaffMeAbsences)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/me/absences", wrapper.PostStaffMeAbsences)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/documents", wrapper.GetStaffMeDocuments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/events", wrapper.GetStaffMeEvents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/export", wrapper.GetStaffMeExport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/me/holiday-account", wrapper.GetStaffMeHolidayAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/meta", wrapper.GetStaffMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/payroll/export", wrapper.GetStaffPayrollExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people", wrapper.GetStaffPeople)
@@ -5370,11 +6299,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.PutStaffPeopleById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account", wrapper.PutStaffPeopleByIdBankAccount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account/reveal", wrapper.PostStaffPeopleByIdBankAccountReveal)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/carry-over", wrapper.PostStaffPeopleByIdCarryOver)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/documents", wrapper.GetStaffPeopleByIdDocuments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/documents", wrapper.PostStaffPeopleByIdDocuments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/employments", wrapper.GetStaffPeopleByIdEmployments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/employments", wrapper.PostStaffPeopleByIdEmployments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/events", wrapper.GetStaffPeopleByIdEvents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/holiday-account", wrapper.GetStaffPeopleByIdHolidayAccount)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/holiday-adjustments", wrapper.GetStaffPeopleByIdHolidayAdjustments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/holiday-adjustments", wrapper.PostStaffPeopleByIdHolidayAdjustments)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/legal-hold", wrapper.PutStaffPeopleByIdLegalHold)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/national-id", wrapper.PutStaffPeopleByIdNationalId)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/national-id/reveal", wrapper.PostStaffPeopleByIdNationalIdReveal)
@@ -5589,6 +6522,440 @@ func (response PutStaffAbsenceTypesById404Response) VisitPutStaffAbsenceTypesByI
 type PutStaffAbsenceTypesById409ApplicationProblemPlusJSONResponse StaffProblem
 
 func (response PutStaffAbsenceTypesById409ApplicationProblemPlusJSONResponse) VisitPutStaffAbsenceTypesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAbsencesRequestObject struct {
+	Params GetStaffAbsencesParams
+}
+
+type GetStaffAbsencesResponseObject interface {
+	VisitGetStaffAbsencesResponse(w http.ResponseWriter) error
+}
+
+type GetStaffAbsences200JSONResponse PaginatedResponseOfStaffAbsence
+
+func (response GetStaffAbsences200JSONResponse) VisitGetStaffAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAbsences400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffAbsences400ApplicationProblemPlusJSONResponse) VisitGetStaffAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAbsences401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffAbsences401JSONResponse) VisitGetStaffAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAbsences403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffAbsences403JSONResponse) VisitGetStaffAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsencesRequestObject struct {
+	Body *PostStaffAbsencesJSONRequestBody
+}
+
+type PostStaffAbsencesResponseObject interface {
+	VisitPostStaffAbsencesResponse(w http.ResponseWriter) error
+}
+
+type PostStaffAbsences201JSONResponse StaffAbsence
+
+func (response PostStaffAbsences201JSONResponse) VisitPostStaffAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsences400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffAbsences400ApplicationProblemPlusJSONResponse) VisitPostStaffAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsences401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffAbsences401JSONResponse) VisitPostStaffAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsences403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffAbsences403JSONResponse) VisitPostStaffAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsences404Response struct {
+}
+
+func (response PostStaffAbsences404Response) VisitPostStaffAbsencesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffAbsences409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffAbsences409ApplicationProblemPlusJSONResponse) VisitPostStaffAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteStaffAbsencesByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteStaffAbsencesByIdResponseObject interface {
+	VisitDeleteStaffAbsencesByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteStaffAbsencesById204Response struct {
+}
+
+func (response DeleteStaffAbsencesById204Response) VisitDeleteStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteStaffAbsencesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteStaffAbsencesById401JSONResponse) VisitDeleteStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteStaffAbsencesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteStaffAbsencesById403JSONResponse) VisitDeleteStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteStaffAbsencesById404Response struct {
+}
+
+func (response DeleteStaffAbsencesById404Response) VisitDeleteStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteStaffAbsencesById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response DeleteStaffAbsencesById409ApplicationProblemPlusJSONResponse) VisitDeleteStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAbsencesByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffAbsencesByIdResponseObject interface {
+	VisitGetStaffAbsencesByIdResponse(w http.ResponseWriter) error
+}
+
+type GetStaffAbsencesById200JSONResponse StaffAbsence
+
+func (response GetStaffAbsencesById200JSONResponse) VisitGetStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAbsencesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffAbsencesById401JSONResponse) VisitGetStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAbsencesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffAbsencesById403JSONResponse) VisitGetStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffAbsencesById404Response struct {
+}
+
+func (response GetStaffAbsencesById404Response) VisitGetStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffAbsencesByIdRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutStaffAbsencesByIdParams
+	Body   *PutStaffAbsencesByIdJSONRequestBody
+}
+
+type PutStaffAbsencesByIdResponseObject interface {
+	VisitPutStaffAbsencesByIdResponse(w http.ResponseWriter) error
+}
+
+type PutStaffAbsencesById200JSONResponse StaffAbsence
+
+func (response PutStaffAbsencesById200JSONResponse) VisitPutStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffAbsencesById400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffAbsencesById400ApplicationProblemPlusJSONResponse) VisitPutStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffAbsencesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffAbsencesById401JSONResponse) VisitPutStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffAbsencesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffAbsencesById403JSONResponse) VisitPutStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffAbsencesById404Response struct {
+}
+
+func (response PutStaffAbsencesById404Response) VisitPutStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffAbsencesById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffAbsencesById409ApplicationProblemPlusJSONResponse) VisitPutStaffAbsencesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsencesByIdCancelRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostStaffAbsencesByIdCancelResponseObject interface {
+	VisitPostStaffAbsencesByIdCancelResponse(w http.ResponseWriter) error
+}
+
+type PostStaffAbsencesByIdCancel200JSONResponse StaffAbsence
+
+func (response PostStaffAbsencesByIdCancel200JSONResponse) VisitPostStaffAbsencesByIdCancelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsencesByIdCancel401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffAbsencesByIdCancel401JSONResponse) VisitPostStaffAbsencesByIdCancelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsencesByIdCancel403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffAbsencesByIdCancel403JSONResponse) VisitPostStaffAbsencesByIdCancelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAbsencesByIdCancel404Response struct {
+}
+
+func (response PostStaffAbsencesByIdCancel404Response) VisitPostStaffAbsencesByIdCancelResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffAbsencesByIdCancel409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffAbsencesByIdCancel409ApplicationProblemPlusJSONResponse) VisitPostStaffAbsencesByIdCancelResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7180,6 +8547,72 @@ func (response PostStaffEmploymentsByIdTerms409ApplicationProblemPlusJSONRespons
 	return err
 }
 
+type DeleteStaffHolidayAdjustmentsByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteStaffHolidayAdjustmentsByIdResponseObject interface {
+	VisitDeleteStaffHolidayAdjustmentsByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteStaffHolidayAdjustmentsById204Response struct {
+}
+
+func (response DeleteStaffHolidayAdjustmentsById204Response) VisitDeleteStaffHolidayAdjustmentsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteStaffHolidayAdjustmentsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteStaffHolidayAdjustmentsById401JSONResponse) VisitDeleteStaffHolidayAdjustmentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteStaffHolidayAdjustmentsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteStaffHolidayAdjustmentsById403JSONResponse) VisitDeleteStaffHolidayAdjustmentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteStaffHolidayAdjustmentsById404Response struct {
+}
+
+func (response DeleteStaffHolidayAdjustmentsById404Response) VisitDeleteStaffHolidayAdjustmentsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteStaffHolidayAdjustmentsById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response DeleteStaffHolidayAdjustmentsById409ApplicationProblemPlusJSONResponse) VisitDeleteStaffHolidayAdjustmentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStaffHolidaySchemesRequestObject struct {
 }
 
@@ -8069,6 +9502,176 @@ func (response PutStaffMe409ApplicationProblemPlusJSONResponse) VisitPutStaffMeR
 	return err
 }
 
+type GetStaffMeAbsencesRequestObject struct {
+	Params GetStaffMeAbsencesParams
+}
+
+type GetStaffMeAbsencesResponseObject interface {
+	VisitGetStaffMeAbsencesResponse(w http.ResponseWriter) error
+}
+
+type GetStaffMeAbsences200JSONResponse PaginatedResponseOfStaffAbsence
+
+func (response GetStaffMeAbsences200JSONResponse) VisitGetStaffMeAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeAbsences400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffMeAbsences400ApplicationProblemPlusJSONResponse) VisitGetStaffMeAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeAbsences401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMeAbsences401JSONResponse) VisitGetStaffMeAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeAbsences403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMeAbsences403JSONResponse) VisitGetStaffMeAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeAbsences404ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffMeAbsences404ApplicationProblemPlusJSONResponse) VisitGetStaffMeAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffMeAbsencesRequestObject struct {
+	Body *PostStaffMeAbsencesJSONRequestBody
+}
+
+type PostStaffMeAbsencesResponseObject interface {
+	VisitPostStaffMeAbsencesResponse(w http.ResponseWriter) error
+}
+
+type PostStaffMeAbsences201JSONResponse StaffAbsence
+
+func (response PostStaffMeAbsences201JSONResponse) VisitPostStaffMeAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffMeAbsences400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffMeAbsences400ApplicationProblemPlusJSONResponse) VisitPostStaffMeAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffMeAbsences401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffMeAbsences401JSONResponse) VisitPostStaffMeAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffMeAbsences403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffMeAbsences403JSONResponse) VisitPostStaffMeAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffMeAbsences404ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffMeAbsences404ApplicationProblemPlusJSONResponse) VisitPostStaffMeAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffMeAbsences409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffMeAbsences409ApplicationProblemPlusJSONResponse) VisitPostStaffMeAbsencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStaffMeDocumentsRequestObject struct {
 }
 
@@ -8262,6 +9865,84 @@ func (response GetStaffMeExport403JSONResponse) VisitGetStaffMeExportResponse(w 
 type GetStaffMeExport404ApplicationProblemPlusJSONResponse StaffProblem
 
 func (response GetStaffMeExport404ApplicationProblemPlusJSONResponse) VisitGetStaffMeExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeHolidayAccountRequestObject struct {
+	Params GetStaffMeHolidayAccountParams
+}
+
+type GetStaffMeHolidayAccountResponseObject interface {
+	VisitGetStaffMeHolidayAccountResponse(w http.ResponseWriter) error
+}
+
+type GetStaffMeHolidayAccount200JSONResponse StaffHolidayAccount
+
+func (response GetStaffMeHolidayAccount200JSONResponse) VisitGetStaffMeHolidayAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeHolidayAccount400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffMeHolidayAccount400ApplicationProblemPlusJSONResponse) VisitGetStaffMeHolidayAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeHolidayAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMeHolidayAccount401JSONResponse) VisitGetStaffMeHolidayAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeHolidayAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffMeHolidayAccount403JSONResponse) VisitGetStaffMeHolidayAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffMeHolidayAccount404ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffMeHolidayAccount404ApplicationProblemPlusJSONResponse) VisitGetStaffMeHolidayAccountResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -9140,6 +10821,93 @@ func (response PostStaffPeopleByIdBankAccountReveal404Response) VisitPostStaffPe
 	return nil
 }
 
+type PostStaffPeopleByIdCarryOverRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostStaffPeopleByIdCarryOverJSONRequestBody
+}
+
+type PostStaffPeopleByIdCarryOverResponseObject interface {
+	VisitPostStaffPeopleByIdCarryOverResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleByIdCarryOver201JSONResponse StaffHolidayAdjustment
+
+func (response PostStaffPeopleByIdCarryOver201JSONResponse) VisitPostStaffPeopleByIdCarryOverResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdCarryOver400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdCarryOver400ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdCarryOverResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdCarryOver401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdCarryOver401JSONResponse) VisitPostStaffPeopleByIdCarryOverResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdCarryOver403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdCarryOver403JSONResponse) VisitPostStaffPeopleByIdCarryOverResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdCarryOver404Response struct {
+}
+
+func (response PostStaffPeopleByIdCarryOver404Response) VisitPostStaffPeopleByIdCarryOverResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdCarryOver409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdCarryOver409ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdCarryOverResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStaffPeopleByIdDocumentsRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -9553,6 +11321,224 @@ type GetStaffPeopleByIdEvents404Response struct {
 func (response GetStaffPeopleByIdEvents404Response) VisitGetStaffPeopleByIdEventsResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetStaffPeopleByIdHolidayAccountRequestObject struct {
+	Id     int64 `json:"id"`
+	Params GetStaffPeopleByIdHolidayAccountParams
+}
+
+type GetStaffPeopleByIdHolidayAccountResponseObject interface {
+	VisitGetStaffPeopleByIdHolidayAccountResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdHolidayAccount200JSONResponse StaffHolidayAccount
+
+func (response GetStaffPeopleByIdHolidayAccount200JSONResponse) VisitGetStaffPeopleByIdHolidayAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdHolidayAccount400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffPeopleByIdHolidayAccount400ApplicationProblemPlusJSONResponse) VisitGetStaffPeopleByIdHolidayAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdHolidayAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdHolidayAccount401JSONResponse) VisitGetStaffPeopleByIdHolidayAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdHolidayAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdHolidayAccount403JSONResponse) VisitGetStaffPeopleByIdHolidayAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdHolidayAccount404Response struct {
+}
+
+func (response GetStaffPeopleByIdHolidayAccount404Response) VisitGetStaffPeopleByIdHolidayAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetStaffPeopleByIdHolidayAdjustmentsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdHolidayAdjustmentsResponseObject interface {
+	VisitGetStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdHolidayAdjustments200JSONResponse []StaffHolidayAdjustment
+
+func (response GetStaffPeopleByIdHolidayAdjustments200JSONResponse) VisitGetStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdHolidayAdjustments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdHolidayAdjustments401JSONResponse) VisitGetStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdHolidayAdjustments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdHolidayAdjustments403JSONResponse) VisitGetStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdHolidayAdjustments404Response struct {
+}
+
+func (response GetStaffPeopleByIdHolidayAdjustments404Response) VisitGetStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdHolidayAdjustmentsRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostStaffPeopleByIdHolidayAdjustmentsJSONRequestBody
+}
+
+type PostStaffPeopleByIdHolidayAdjustmentsResponseObject interface {
+	VisitPostStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleByIdHolidayAdjustments201JSONResponse StaffHolidayAdjustment
+
+func (response PostStaffPeopleByIdHolidayAdjustments201JSONResponse) VisitPostStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdHolidayAdjustments400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdHolidayAdjustments400ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdHolidayAdjustments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdHolidayAdjustments401JSONResponse) VisitPostStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdHolidayAdjustments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdHolidayAdjustments403JSONResponse) VisitPostStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdHolidayAdjustments404Response struct {
+}
+
+func (response PostStaffPeopleByIdHolidayAdjustments404Response) VisitPostStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdHolidayAdjustments409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdHolidayAdjustments409ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdHolidayAdjustmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PutStaffPeopleByIdLegalHoldRequestObject struct {
@@ -10926,6 +12912,24 @@ type StrictServerInterface interface {
 	// PutStaffAbsenceTypesById Change an absence type
 	// (PUT /api/v1/staff/absence-types/{id})
 	PutStaffAbsenceTypesById(ctx context.Context, request PutStaffAbsenceTypesByIdRequestObject) (PutStaffAbsenceTypesByIdResponseObject, error)
+	// GetStaffAbsences List absences
+	// (GET /api/v1/staff/absences)
+	GetStaffAbsences(ctx context.Context, request GetStaffAbsencesRequestObject) (GetStaffAbsencesResponseObject, error)
+	// PostStaffAbsences Request or register an absence
+	// (POST /api/v1/staff/absences)
+	PostStaffAbsences(ctx context.Context, request PostStaffAbsencesRequestObject) (PostStaffAbsencesResponseObject, error)
+	// DeleteStaffAbsencesById Delete an absence
+	// (DELETE /api/v1/staff/absences/{id})
+	DeleteStaffAbsencesById(ctx context.Context, request DeleteStaffAbsencesByIdRequestObject) (DeleteStaffAbsencesByIdResponseObject, error)
+	// GetStaffAbsencesById Get an absence
+	// (GET /api/v1/staff/absences/{id})
+	GetStaffAbsencesById(ctx context.Context, request GetStaffAbsencesByIdRequestObject) (GetStaffAbsencesByIdResponseObject, error)
+	// PutStaffAbsencesById Change an absence
+	// (PUT /api/v1/staff/absences/{id})
+	PutStaffAbsencesById(ctx context.Context, request PutStaffAbsencesByIdRequestObject) (PutStaffAbsencesByIdResponseObject, error)
+	// PostStaffAbsencesByIdCancel Cancel an absence request
+	// (POST /api/v1/staff/absences/{id}/cancel)
+	PostStaffAbsencesByIdCancel(ctx context.Context, request PostStaffAbsencesByIdCancelRequestObject) (PostStaffAbsencesByIdCancelResponseObject, error)
 	// GetStaffAssignableUsers Search the users a person may be linked to
 	// (GET /api/v1/staff/assignable-users)
 	GetStaffAssignableUsers(ctx context.Context, request GetStaffAssignableUsersRequestObject) (GetStaffAssignableUsersResponseObject, error)
@@ -10992,6 +12996,9 @@ type StrictServerInterface interface {
 	// PostStaffEmploymentsByIdTerms Add a terms row
 	// (POST /api/v1/staff/employments/{id}/terms)
 	PostStaffEmploymentsByIdTerms(ctx context.Context, request PostStaffEmploymentsByIdTermsRequestObject) (PostStaffEmploymentsByIdTermsResponseObject, error)
+	// DeleteStaffHolidayAdjustmentsById Delete a holiday adjustment
+	// (DELETE /api/v1/staff/holiday-adjustments/{id})
+	DeleteStaffHolidayAdjustmentsById(ctx context.Context, request DeleteStaffHolidayAdjustmentsByIdRequestObject) (DeleteStaffHolidayAdjustmentsByIdResponseObject, error)
 	// GetStaffHolidaySchemes List holiday schemes
 	// (GET /api/v1/staff/holiday-schemes)
 	GetStaffHolidaySchemes(ctx context.Context, request GetStaffHolidaySchemesRequestObject) (GetStaffHolidaySchemesResponseObject, error)
@@ -11031,6 +13038,12 @@ type StrictServerInterface interface {
 	// PutStaffMe Change my own record
 	// (PUT /api/v1/staff/me)
 	PutStaffMe(ctx context.Context, request PutStaffMeRequestObject) (PutStaffMeResponseObject, error)
+	// GetStaffMeAbsences List my own absences
+	// (GET /api/v1/staff/me/absences)
+	GetStaffMeAbsences(ctx context.Context, request GetStaffMeAbsencesRequestObject) (GetStaffMeAbsencesResponseObject, error)
+	// PostStaffMeAbsences Request or register my own absence
+	// (POST /api/v1/staff/me/absences)
+	PostStaffMeAbsences(ctx context.Context, request PostStaffMeAbsencesRequestObject) (PostStaffMeAbsencesResponseObject, error)
 	// GetStaffMeDocuments List my own documents
 	// (GET /api/v1/staff/me/documents)
 	GetStaffMeDocuments(ctx context.Context, request GetStaffMeDocumentsRequestObject) (GetStaffMeDocumentsResponseObject, error)
@@ -11040,6 +13053,9 @@ type StrictServerInterface interface {
 	// GetStaffMeExport Export my own data
 	// (GET /api/v1/staff/me/export)
 	GetStaffMeExport(ctx context.Context, request GetStaffMeExportRequestObject) (GetStaffMeExportResponseObject, error)
+	// GetStaffMeHolidayAccount Get my own holiday account
+	// (GET /api/v1/staff/me/holiday-account)
+	GetStaffMeHolidayAccount(ctx context.Context, request GetStaffMeHolidayAccountRequestObject) (GetStaffMeHolidayAccountResponseObject, error)
 	// GetStaffMeta Get the Staff metadata
 	// (GET /api/v1/staff/meta)
 	GetStaffMeta(ctx context.Context, request GetStaffMetaRequestObject) (GetStaffMetaResponseObject, error)
@@ -11079,6 +13095,9 @@ type StrictServerInterface interface {
 	// PostStaffPeopleByIdBankAccountReveal Reveal a person's bank account
 	// (POST /api/v1/staff/people/{id}/bank-account/reveal)
 	PostStaffPeopleByIdBankAccountReveal(ctx context.Context, request PostStaffPeopleByIdBankAccountRevealRequestObject) (PostStaffPeopleByIdBankAccountRevealResponseObject, error)
+	// PostStaffPeopleByIdCarryOver Carry holiday over
+	// (POST /api/v1/staff/people/{id}/carry-over)
+	PostStaffPeopleByIdCarryOver(ctx context.Context, request PostStaffPeopleByIdCarryOverRequestObject) (PostStaffPeopleByIdCarryOverResponseObject, error)
 	// GetStaffPeopleByIdDocuments List a person's documents
 	// (GET /api/v1/staff/people/{id}/documents)
 	GetStaffPeopleByIdDocuments(ctx context.Context, request GetStaffPeopleByIdDocumentsRequestObject) (GetStaffPeopleByIdDocumentsResponseObject, error)
@@ -11094,6 +13113,15 @@ type StrictServerInterface interface {
 	// GetStaffPeopleByIdEvents List a person's history
 	// (GET /api/v1/staff/people/{id}/events)
 	GetStaffPeopleByIdEvents(ctx context.Context, request GetStaffPeopleByIdEventsRequestObject) (GetStaffPeopleByIdEventsResponseObject, error)
+	// GetStaffPeopleByIdHolidayAccount Get a person's holiday account
+	// (GET /api/v1/staff/people/{id}/holiday-account)
+	GetStaffPeopleByIdHolidayAccount(ctx context.Context, request GetStaffPeopleByIdHolidayAccountRequestObject) (GetStaffPeopleByIdHolidayAccountResponseObject, error)
+	// GetStaffPeopleByIdHolidayAdjustments List a person's holiday adjustments
+	// (GET /api/v1/staff/people/{id}/holiday-adjustments)
+	GetStaffPeopleByIdHolidayAdjustments(ctx context.Context, request GetStaffPeopleByIdHolidayAdjustmentsRequestObject) (GetStaffPeopleByIdHolidayAdjustmentsResponseObject, error)
+	// PostStaffPeopleByIdHolidayAdjustments Adjust a person's holiday account
+	// (POST /api/v1/staff/people/{id}/holiday-adjustments)
+	PostStaffPeopleByIdHolidayAdjustments(ctx context.Context, request PostStaffPeopleByIdHolidayAdjustmentsRequestObject) (PostStaffPeopleByIdHolidayAdjustmentsResponseObject, error)
 	// PutStaffPeopleByIdLegalHold Set or lift a person's legal hold
 	// (PUT /api/v1/staff/people/{id}/legal-hold)
 	PutStaffPeopleByIdLegalHold(ctx context.Context, request PutStaffPeopleByIdLegalHoldRequestObject) (PutStaffPeopleByIdLegalHoldResponseObject, error)
@@ -11277,6 +13305,175 @@ func (sh *strictHandler) PutStaffAbsenceTypesById(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutStaffAbsenceTypesByIdResponseObject); ok {
 		if err := validResponse.VisitPutStaffAbsenceTypesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffAbsences operation middleware
+func (sh *strictHandler) GetStaffAbsences(w http.ResponseWriter, r *http.Request, params GetStaffAbsencesParams) {
+	var request GetStaffAbsencesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffAbsences(ctx, request.(GetStaffAbsencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffAbsences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffAbsencesResponseObject); ok {
+		if err := validResponse.VisitGetStaffAbsencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffAbsences operation middleware
+func (sh *strictHandler) PostStaffAbsences(w http.ResponseWriter, r *http.Request) {
+	var request PostStaffAbsencesRequestObject
+
+	var body PostStaffAbsencesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffAbsences(ctx, request.(PostStaffAbsencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffAbsences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffAbsencesResponseObject); ok {
+		if err := validResponse.VisitPostStaffAbsencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteStaffAbsencesById operation middleware
+func (sh *strictHandler) DeleteStaffAbsencesById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteStaffAbsencesByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteStaffAbsencesById(ctx, request.(DeleteStaffAbsencesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteStaffAbsencesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteStaffAbsencesByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteStaffAbsencesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffAbsencesById operation middleware
+func (sh *strictHandler) GetStaffAbsencesById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffAbsencesByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffAbsencesById(ctx, request.(GetStaffAbsencesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffAbsencesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffAbsencesByIdResponseObject); ok {
+		if err := validResponse.VisitGetStaffAbsencesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffAbsencesById operation middleware
+func (sh *strictHandler) PutStaffAbsencesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffAbsencesByIdParams) {
+	var request PutStaffAbsencesByIdRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutStaffAbsencesByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffAbsencesById(ctx, request.(PutStaffAbsencesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffAbsencesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffAbsencesByIdResponseObject); ok {
+		if err := validResponse.VisitPutStaffAbsencesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffAbsencesByIdCancel operation middleware
+func (sh *strictHandler) PostStaffAbsencesByIdCancel(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffAbsencesByIdCancelRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffAbsencesByIdCancel(ctx, request.(PostStaffAbsencesByIdCancelRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffAbsencesByIdCancel")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffAbsencesByIdCancelResponseObject); ok {
+		if err := validResponse.VisitPostStaffAbsencesByIdCancelResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -11919,6 +14116,32 @@ func (sh *strictHandler) PostStaffEmploymentsByIdTerms(w http.ResponseWriter, r 
 	}
 }
 
+// DeleteStaffHolidayAdjustmentsById operation middleware
+func (sh *strictHandler) DeleteStaffHolidayAdjustmentsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteStaffHolidayAdjustmentsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteStaffHolidayAdjustmentsById(ctx, request.(DeleteStaffHolidayAdjustmentsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteStaffHolidayAdjustmentsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteStaffHolidayAdjustmentsByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteStaffHolidayAdjustmentsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetStaffHolidaySchemes operation middleware
 func (sh *strictHandler) GetStaffHolidaySchemes(w http.ResponseWriter, r *http.Request) {
 	var request GetStaffHolidaySchemesRequestObject
@@ -12295,6 +14518,63 @@ func (sh *strictHandler) PutStaffMe(w http.ResponseWriter, r *http.Request, para
 	}
 }
 
+// GetStaffMeAbsences operation middleware
+func (sh *strictHandler) GetStaffMeAbsences(w http.ResponseWriter, r *http.Request, params GetStaffMeAbsencesParams) {
+	var request GetStaffMeAbsencesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffMeAbsences(ctx, request.(GetStaffMeAbsencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffMeAbsences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffMeAbsencesResponseObject); ok {
+		if err := validResponse.VisitGetStaffMeAbsencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffMeAbsences operation middleware
+func (sh *strictHandler) PostStaffMeAbsences(w http.ResponseWriter, r *http.Request) {
+	var request PostStaffMeAbsencesRequestObject
+
+	var body PostStaffMeAbsencesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffMeAbsences(ctx, request.(PostStaffMeAbsencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffMeAbsences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffMeAbsencesResponseObject); ok {
+		if err := validResponse.VisitPostStaffMeAbsencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetStaffMeDocuments operation middleware
 func (sh *strictHandler) GetStaffMeDocuments(w http.ResponseWriter, r *http.Request) {
 	var request GetStaffMeDocumentsRequestObject
@@ -12362,6 +14642,32 @@ func (sh *strictHandler) GetStaffMeExport(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetStaffMeExportResponseObject); ok {
 		if err := validResponse.VisitGetStaffMeExportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffMeHolidayAccount operation middleware
+func (sh *strictHandler) GetStaffMeHolidayAccount(w http.ResponseWriter, r *http.Request, params GetStaffMeHolidayAccountParams) {
+	var request GetStaffMeHolidayAccountRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffMeHolidayAccount(ctx, request.(GetStaffMeHolidayAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffMeHolidayAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffMeHolidayAccountResponseObject); ok {
+		if err := validResponse.VisitGetStaffMeHolidayAccountResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12733,6 +15039,39 @@ func (sh *strictHandler) PostStaffPeopleByIdBankAccountReveal(w http.ResponseWri
 	}
 }
 
+// PostStaffPeopleByIdCarryOver operation middleware
+func (sh *strictHandler) PostStaffPeopleByIdCarryOver(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffPeopleByIdCarryOverRequestObject
+
+	request.Id = id
+
+	var body PostStaffPeopleByIdCarryOverJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleByIdCarryOver(ctx, request.(PostStaffPeopleByIdCarryOverRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleByIdCarryOver")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleByIdCarryOverResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleByIdCarryOverResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetStaffPeopleByIdDocuments operation middleware
 func (sh *strictHandler) GetStaffPeopleByIdDocuments(w http.ResponseWriter, r *http.Request, id int64) {
 	var request GetStaffPeopleByIdDocumentsRequestObject
@@ -12871,6 +15210,92 @@ func (sh *strictHandler) GetStaffPeopleByIdEvents(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetStaffPeopleByIdEventsResponseObject); ok {
 		if err := validResponse.VisitGetStaffPeopleByIdEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleByIdHolidayAccount operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdHolidayAccount(w http.ResponseWriter, r *http.Request, id int64, params GetStaffPeopleByIdHolidayAccountParams) {
+	var request GetStaffPeopleByIdHolidayAccountRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdHolidayAccount(ctx, request.(GetStaffPeopleByIdHolidayAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdHolidayAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdHolidayAccountResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdHolidayAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleByIdHolidayAdjustments operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdHolidayAdjustments(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdHolidayAdjustmentsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdHolidayAdjustments(ctx, request.(GetStaffPeopleByIdHolidayAdjustmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdHolidayAdjustments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdHolidayAdjustmentsResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdHolidayAdjustmentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleByIdHolidayAdjustments operation middleware
+func (sh *strictHandler) PostStaffPeopleByIdHolidayAdjustments(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffPeopleByIdHolidayAdjustmentsRequestObject
+
+	request.Id = id
+
+	var body PostStaffPeopleByIdHolidayAdjustmentsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleByIdHolidayAdjustments(ctx, request.(PostStaffPeopleByIdHolidayAdjustmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleByIdHolidayAdjustments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleByIdHolidayAdjustmentsResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleByIdHolidayAdjustmentsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

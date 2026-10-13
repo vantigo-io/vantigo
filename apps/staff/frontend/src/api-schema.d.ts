@@ -46,6 +46,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/absences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List absences
+         * @description The absences the caller may see, newest first: their own, their reports' today (a manager by the one manager rule), every active person's approved and registered rows to staff:view — shaped as "absent", no type, percent, hours or note — and everyone's to staff:manage and staff:personal-data. A row the caller may not see is left out. personId narrows to one person; from and to to the rows that touch the range.
+         */
+        get: operations["getStaffAbsences"];
+        put?: never;
+        /**
+         * Request or register an absence
+         * @description Requests an absence of a type that needs a decision (status requested) or registers one that is a notification (status registered), for the caller's own person or — staff:manage — anyone's; nobody else, a manager included, gets the uniform 403. Judged under the person's lock: the type visible and not the reserved absent, the days within one of the person's employments, percent only on a type that allows it (percent_not_allowed), hours on an hour type and only there (hours_on_day_type), no note on a sick or child-sick type (absence_note_on_sick), the degree on a sykmelding only, and no overlap with the person's requested, approved or registered rows (absence_overlap). A type drawing on the holiday account answers the account of each year the row touches after it, and overdrawn when taking every requested day would overdraw one — a warning, never a refusal. Recorded as absence_requested or absence_registered.
+         */
+        post: operations["postStaffAbsences"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/absences/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get an absence
+         * @description One absence, shaped as GET /absences shapes it. One the caller may not see is a 404 identical to an unknown id.
+         */
+        get: operations["getStaffAbsencesById"];
+        /**
+         * Change an absence
+         * @description Replaces an absence's type, days, percent, hours, degree and note, judged as a new one is (the row itself left out of the overlap): the person's while it is requested; a registered row — a sick one included — staff:manage's alone, since ending a sykmelding early or fixing its days is HR's (the person asks). Anything else answers absence_not_requested; anyone but the person and staff:manage the uniform 403. Recorded as absence_updated with each field's before and after.
+         */
+        put: operations["putStaffAbsencesById"];
+        post?: never;
+        /**
+         * Delete an absence
+         * @description Removes an absence that was never decided (reading 16): a requested row, by the person or staff:manage, or a registered one, by staff:manage alone. A decided row is cancelled, never deleted: absence_not_requested. Recorded as absence_deleted.
+         */
+        delete: operations["deleteStaffAbsencesById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/absences/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an absence request
+         * @description Withdraws a requested absence and keeps it as history (status cancelled): the person's, or staff:manage's. A row that is not requested answers absence_not_cancellable (the decider's cancel of a decided row arrives with the decisions). Recorded as absence_cancelled.
+         */
+        post: operations["postStaffAbsencesByIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/assignable-users": {
         parameters: {
             query?: never;
@@ -374,6 +446,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/holiday-adjustments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a holiday adjustment
+         * @description Removes a holiday adjustment — a carry-over or a correction — recorded as holiday_adjustment_deleted. A carry-over removed may be recorded again.
+         */
+        delete: operations["deleteStaffHolidayAdjustmentsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/holiday-schemes": {
         parameters: {
             query?: never;
@@ -570,6 +662,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/me/absences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List my own absences
+         * @description The caller's own absences, newest first, as they read them themselves. A caller linked to nobody gets the 404 no_person.
+         */
+        get: operations["getStaffMeAbsences"];
+        put?: never;
+        /**
+         * Request or register my own absence
+         * @description POST /absences for the caller's own person: the same rules, the same answer. A caller linked to nobody gets the 404 no_person.
+         */
+        post: operations["postStaffMeAbsences"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/me/documents": {
         parameters: {
             query?: never;
@@ -622,6 +738,26 @@ export interface paths {
          * @description The caller's own data in one file (design S16, reading 31 and 35): their record, next of kin, roles, employments with their terms, self-service link, documents' metadata and history, read in one snapshot. The sealed values are left out — the national identity number is its kind and whether one is on file, the bank account its kind and last four digits — and so are HR's notes and the terms' notes; the history is shaped as the person reads it on My page. Served as an attachment named staff-<employeeNumber>-personal-data.json, and never cached. The person's own copy records no event. A caller linked to nobody gets the 404 no_person.
          */
         get: operations["getStaffMeExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/me/holiday-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get my own holiday account
+         * @description The caller's own holiday account for a year. A caller linked to nobody gets the 404 no_person.
+         */
+        get: operations["getStaffMeHolidayAccount"];
         put?: never;
         post?: never;
         delete?: never;
@@ -856,6 +992,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/people/{id}/carry-over": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Carry holiday over
+         * @description Records the carry-over of a year's untaken holiday into the next: agreed — capped at the scheme's maximum, converted — or forced, uncapped and with a note. days defaults to the year's remaining, rounded down to a tenth. At most one carry-over per person and year it comes from, judged under the person's lock and held by a unique index: a second answers carry_over_recorded. Recorded as carry_over_recorded.
+         */
+        post: operations["postStaffPeopleByIdCarryOver"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/people/{id}/documents": {
         parameters: {
             query?: never;
@@ -918,6 +1074,50 @@ export interface paths {
         get: operations["getStaffPeopleByIdEvents"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/holiday-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a person's holiday account
+         * @description A person's holiday account for a year, in working days: the entitlement of the earliest employment's scheme converted, carried in (agreed capped, forced and corrections not), carried in by automatic carry-over, taken, pending and remaining. The person, a manager of theirs today, staff:manage and staff:personal-data read it; anyone else gets a 404 identical to an unknown id.
+         */
+        get: operations["getStaffPeopleByIdHolidayAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/holiday-adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's holiday adjustments
+         * @description A person's holiday adjustments, newest year first.
+         */
+        get: operations["getStaffPeopleByIdHolidayAdjustments"];
+        put?: never;
+        /**
+         * Adjust a person's holiday account
+         * @description Records a holiday adjustment for a year: a correction, or a carry-over naming the earlier year it comes from (at most one per person and that year: carry_over_recorded). A forced carry-over and a correction carry a note. Recorded as holiday_adjusted.
+         */
+        post: operations["postStaffPeopleByIdHolidayAdjustments"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1250,6 +1450,10 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        PaginatedResponseOfStaffAbsence: {
+            data: components["schemas"]["StaffAbsence"][];
+            pagination: components["schemas"]["PaginationMetadata"];
+        };
         PaginatedResponseOfStaffEvent: {
             data: components["schemas"]["StaffEvent"][];
             pagination: components["schemas"]["PaginationMetadata"];
@@ -1258,11 +1462,154 @@ export interface components {
             data: components["schemas"]["StaffPersonListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
+        /** @description An absence as the caller may read it (design §5): the dates and the status to everyone who sees the row; the type to the person, their manager and HR — an HR-only type shown as leave to all but the person and staff:personal-data (shownAs leave, no typeId) and to a colleague as absent; percent, hours, note and degree never to a colleague. A write of a type drawing on the holiday account answers the accounts of the years it touches after it. */
+        StaffAbsence: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description The person.
+             */
+            personId: number;
+            status: components["schemas"]["StaffAbsenceStatus"];
+            /**
+             * Format: date
+             * @description The first day.
+             */
+            firstDay: string;
+            /**
+             * Format: date
+             * @description The last day.
+             */
+            lastDay: string;
+            /**
+             * Format: int32
+             * @description The working days from the first to the last day — Monday to Friday without public holidays — whatever the share; an hour row counts none.
+             */
+            workingDays: number;
+            shownAs: components["schemas"]["StaffAbsenceShownAs"];
+            /**
+             * Format: int64
+             * @description The type, when the caller may read it (shownAs type).
+             */
+            typeId?: number;
+            /**
+             * Format: double
+             * @description The percentage of each day, to the person, their manager and HR.
+             */
+            percent?: number;
+            /**
+             * Format: double
+             * @description The hours of an hour type's one day.
+             */
+            hours?: number;
+            /**
+             * Format: double
+             * @description A sykmelding's degree.
+             */
+            degreePercent?: number;
+            /** @description The note. */
+            note?: string;
+            /** @description On a write of a type drawing on the holiday account: the account of each year the row touches, after the write. */
+            accounts?: components["schemas"]["StaffHolidayAccount"][];
+            /** @description On a write of a type drawing on the holiday account: whether taking every requested day would overdraw one of the accounts — a warning, never a refusal. */
+            overdrawn?: boolean;
+            /**
+             * Format: int32
+             * @description The revision a change sends back in If-Match.
+             */
+            revision: number;
+        };
+        /** @description An absence's fields, for a change (a full replace) and for one's own new absence. A property this request does not name is refused, so the person learns it was not written. */
+        StaffAbsenceChangeRequest: {
+            /**
+             * Format: int64
+             * @description The absence type.
+             */
+            typeId: number;
+            /**
+             * Format: date
+             * @description The first day.
+             */
+            firstDay: string;
+            /**
+             * Format: date
+             * @description The last day, the first day itself when left out; an hour type's is its first day.
+             */
+            lastDay?: string;
+            /**
+             * Format: double
+             * @description 1 to 100, two decimals, only on a type that allows a percentage (percent_not_allowed); 100 when left out.
+             */
+            percent?: number;
+            /**
+             * Format: double
+             * @description 0.25 to 24 in quarter hours, only on a type counted in hours, which also needs it (hours_on_day_type).
+             */
+            hours?: number;
+            /**
+             * Format: double
+             * @description A sykmelding's degree, 1 to 100, two decimals — its share of each day; 100 when left out. Only on a sykmelding.
+             */
+            degreePercent?: number;
+            /** @description At most 500 characters; never on a sick or child-sick type (absence_note_on_sick). */
+            note?: string;
+        };
         /**
          * @description What the rules key an absence type on (design §3.5). holiday draws on the holiday account; sick_self is egenmelding, sick_certified sykmelding, child_sick a sick child (omsorgsdager); leave, time_off and other are the rest. A company type is holiday, leave, time_off or other; the sick kinds are the seeds'.
          * @enum {string}
          */
         StaffAbsenceKind: "holiday" | "sick_self" | "sick_certified" | "child_sick" | "leave" | "time_off" | "other";
+        /** @description A new absence for a person: the caller's own, or — staff:manage — anyone's. */
+        StaffAbsenceRequest: {
+            /**
+             * Format: int64
+             * @description The person it is for.
+             */
+            personId: number;
+            /**
+             * Format: int64
+             * @description The absence type.
+             */
+            typeId: number;
+            /**
+             * Format: date
+             * @description The first day.
+             */
+            firstDay: string;
+            /**
+             * Format: date
+             * @description The last day, the first day itself when left out; an hour type's is its first day.
+             */
+            lastDay?: string;
+            /**
+             * Format: double
+             * @description 1 to 100, two decimals, only on a type that allows a percentage (percent_not_allowed); 100 when left out.
+             */
+            percent?: number;
+            /**
+             * Format: double
+             * @description 0.25 to 24 in quarter hours, only on a type counted in hours, which also needs it (hours_on_day_type).
+             */
+            hours?: number;
+            /**
+             * Format: double
+             * @description A sykmelding's degree, 1 to 100, two decimals — its share of each day; 100 when left out. Only on a sykmelding.
+             */
+            degreePercent?: number;
+            /** @description At most 500 characters; never on a sick or child-sick type (absence_note_on_sick). */
+            note?: string;
+        };
+        /**
+         * @description How the caller is shown the row's type: type (typeId names it), leave (an HR-only type to a manager or HR without staff:personal-data), or absent (a colleague, who reads no type).
+         * @enum {string}
+         */
+        StaffAbsenceShownAs: "type" | "leave" | "absent";
+        /**
+         * @description requested (waiting for a decision), approved, rejected, cancelled, or registered (a notification, needing none).
+         * @enum {string}
+         */
+        StaffAbsenceStatus: "requested" | "approved" | "rejected" | "cancelled" | "registered";
         /** @description An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order and whether it is hidden (seed_immutable otherwise); the reserved absent is never shown and never offered. */
         StaffAbsenceType: {
             /** @description Whether an absence of the type may be a percentage of each day. Never on a sick kind, whose share is the sykmelding's degree. */
@@ -1431,6 +1778,26 @@ export interface components {
             canViewDirectory: boolean;
             /** @description The caller's linked person manages anyone today by the one manager rule — a manager who has left manages nobody. Drives My team. */
             managesAnyone: boolean;
+        };
+        /** @description A carry-over of fromYear's untaken holiday into the year after. */
+        StaffCarryOverRequest: {
+            /**
+             * Format: int32
+             * @description The year the days come from.
+             */
+            fromYear: number;
+            /**
+             * @description agreed (capped by the scheme) or forced (uncapped, with a note).
+             * @enum {string}
+             */
+            kind: "agreed" | "forced";
+            /**
+             * Format: double
+             * @description Working days, one decimal, above zero; the year's remaining rounded down to a tenth when left out.
+             */
+            days?: number;
+            /** @description At most 500 characters; required for forced. */
+            note?: string;
         };
         /** @description The § 14-6 check of one employment (design S5). */
         StaffContractCheck: {
@@ -1783,6 +2150,110 @@ export interface components {
          * @enum {string}
          */
         StaffGender: "female" | "male" | "other" | "unspecified";
+        /** @description A person's holiday account for a year in working days (design §4): remaining is the entitlement and both carry-ins less taken; pending is shown apart. */
+        StaffHolidayAccount: {
+            /**
+             * Format: int64
+             * @description The person.
+             */
+            personId: number;
+            /**
+             * Format: int32
+             * @description The year.
+             */
+            year: number;
+            /**
+             * Format: double
+             * @description The scheme's entitlement converted to working days, with the after-September and the sixty-year rules.
+             */
+            entitlement: number;
+            /**
+             * Format: double
+             * @description Agreed carry-overs (capped), forced carry-overs and corrections into the year.
+             */
+            carriedIn: number;
+            /**
+             * Format: double
+             * @description The year before's remaining, carried in by automatic carry-over.
+             */
+            carriedInDerived: number;
+            /**
+             * Format: double
+             * @description Approved and registered days of the types drawing on the account, on working days of the year, each times its share.
+             */
+            taken: number;
+            /**
+             * Format: double
+             * @description Requested such days.
+             */
+            pending: number;
+            /**
+             * Format: double
+             * @description What is left.
+             */
+            remaining: number;
+            /** @description Remaining less pending is below zero. */
+            overdrawn: boolean;
+        };
+        /** @description A change to a person's holiday account for a year, in working days. */
+        StaffHolidayAdjustment: {
+            /**
+             * Format: int64
+             * @description The adjustment.
+             */
+            id: number;
+            /**
+             * Format: int64
+             * @description The person.
+             */
+            personId: number;
+            /**
+             * Format: int32
+             * @description The year it changes.
+             */
+            year: number;
+            /**
+             * Format: double
+             * @description Working days, signed, one decimal.
+             */
+            days: number;
+            reason: components["schemas"]["StaffHolidayAdjustmentReason"];
+            /**
+             * Format: int32
+             * @description A carry-over's year it comes from.
+             */
+            fromYear?: number;
+            /** @description The note. */
+            note?: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * @description agreed_carry_over (capped by the scheme), forced_carry_over (uncapped) or correction.
+         * @enum {string}
+         */
+        StaffHolidayAdjustmentReason: "agreed_carry_over" | "forced_carry_over" | "correction";
+        /** @description A holiday adjustment: a correction, or a carry-over naming the earlier year it comes from. */
+        StaffHolidayAdjustmentRequest: {
+            /**
+             * Format: int32
+             * @description The year it changes, 2000 to 2100.
+             */
+            year: number;
+            /**
+             * Format: double
+             * @description -366 to 366, one decimal, not zero.
+             */
+            days: number;
+            reason: components["schemas"]["StaffHolidayAdjustmentReason"];
+            /**
+             * Format: int32
+             * @description A carry-over's year it comes from, before year; none on a correction.
+             */
+            fromYear?: number;
+            /** @description At most 500 characters; required with forced_carry_over and correction. */
+            note?: string;
+        };
         /** @description One problem with one row of an import. No message carries a digit of a national identity number or a bank account. */
         StaffImportError: {
             /** @description The column the problem is in, as the file's header spells it; absent for a problem with the row as a whole. */
@@ -2415,7 +2886,7 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, carry_over_recorded, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -3093,6 +3564,360 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — revision_conflict, seed_immutable, or absence_type_in_use (widening a type's visibility from hr_only to absent once an absence names it). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffAbsences: {
+        parameters: {
+            query?: {
+                /** @description Only this person's rows. */
+                personId?: number;
+                /** @description Rows that end on or after this day. */
+                from?: string;
+                /** @description Rows that start on or before this day. */
+                to?: string;
+                /** @description Only rows in this status. */
+                status?: components["schemas"]["StaffAbsenceStatus"];
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfStaffAbsence"];
+                };
+            };
+            /** @description Bad Request — a filter or paging out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postStaffAbsences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffAbsenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAbsence"];
+                };
+            };
+            /** @description Bad Request — a field did not pass: percent_not_allowed, hours_on_day_type, absence_note_on_sick, or a plain field error. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — absence_overlap, or person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffAbsencesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAbsence"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such absence, or one the caller may not see. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffAbsencesById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the absence was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffAbsenceChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAbsence"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, or If-Match is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such absence, or one the caller may not see. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, absence_not_requested, absence_overlap, or person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    deleteStaffAbsencesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such absence, or one the caller may not see. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — absence_not_requested, or person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    postStaffAbsencesByIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAbsence"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such absence, or one the caller may not see. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — absence_not_cancellable, or person_erased. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4339,6 +5164,60 @@ export interface operations {
             };
         };
     };
+    deleteStaffHolidayAdjustmentsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such adjustment. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
     getStaffHolidaySchemes: {
         parameters: {
             query?: never;
@@ -5044,6 +5923,140 @@ export interface operations {
             };
         };
     };
+    getStaffMeAbsences: {
+        parameters: {
+            query?: {
+                /** @description Rows that end on or after this day. */
+                from?: string;
+                /** @description Rows that start on or before this day. */
+                to?: string;
+                /** @description Only rows in this status. */
+                status?: components["schemas"]["StaffAbsenceStatus"];
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfStaffAbsence"];
+                };
+            };
+            /** @description Bad Request — a filter or paging out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person, the caller is linked to no person. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    postStaffMeAbsences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffAbsenceChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAbsence"];
+                };
+            };
+            /** @description Bad Request — a field did not pass: percent_not_allowed, hours_on_day_type, absence_note_on_sick, or a plain field error. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person, the caller is linked to no person. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Conflict — absence_overlap, or person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
     getStaffMeDocuments: {
         parameters: {
             query?: never;
@@ -5166,6 +6179,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffPersonalData"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person, the caller is linked to no person. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffMeHolidayAccount: {
+        parameters: {
+            query?: {
+                /** @description The year, 2000 to 2100; this year in the business time zone when left out. */
+                year?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffHolidayAccount"];
+                };
+            };
+            /** @description Bad Request — the year is out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
                 };
             };
             /** @description Unauthorized */
@@ -5882,6 +6954,75 @@ export interface operations {
             };
         };
     };
+    postStaffPeopleByIdCarryOver: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffCarryOverRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffHolidayAdjustment"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, nothing remains to carry over, or an agreed carry-over above the cap. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — carry_over_recorded, or person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
     getStaffPeopleByIdDocuments: {
         parameters: {
             query?: never;
@@ -6199,6 +7340,181 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getStaffPeopleByIdHolidayAccount: {
+        parameters: {
+            query?: {
+                /** @description The year, 2000 to 2100; this year in the business time zone when left out. */
+                year?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffHolidayAccount"];
+                };
+            };
+            /** @description Bad Request — the year is out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or one whose account the caller may not read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getStaffPeopleByIdHolidayAdjustments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffHolidayAdjustment"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postStaffPeopleByIdHolidayAdjustments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffHolidayAdjustmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffHolidayAdjustment"];
+                };
+            };
+            /** @description Bad Request — a field did not pass. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — carry_over_recorded, or person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
             };
         };
     };

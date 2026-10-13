@@ -1,0 +1,217 @@
+package staff
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"slices"
+	"strconv"
+
+	"github.com/vantigo-io/vantigo/server/internal/staff/store"
+)
+
+// This file is absence's history (design S21, plan pre-flight B1 and B2,
+// reading 3). An absence or holiday-adjustment event names what it is about
+// (absenceId, adjustmentId; delivery B's cases add caseId) and carries its
+// fields with, beside them, each field's retention class as the module wrote
+// it at the time — classes, a map — since one name means different data on
+// different rows: an absence's type is class C on a ferie row and class E,
+// health data, on a sick or child-sick one. payload_classes is the map's
+// union. None of these names enters fieldClasses or fieldGroups: the erase
+// blanks such an event by its own map (blankPayload), and shapePayload shapes
+// it by the absence groups — every type value, before and after, by that
+// type's own visibility, looked up by id, an unknown one failing closed.
+
+// The absence events of delivery B's Task 3. Each names the absence
+// (absenceId) or the adjustment (adjustmentId), its fields before and after,
+// and their classes.
+const (
+	eventAbsenceRequested  = "absence_requested"
+	eventAbsenceRegistered = "absence_registered"
+	eventAbsenceUpdated    = "absence_updated"
+	eventAbsenceDeleted    = "absence_deleted"
+	eventAbsenceCancelled  = "absence_cancelled"
+
+	eventHolidayAdjusted          = "holiday_adjusted"
+	eventHolidayAdjustmentDeleted = "holiday_adjustment_deleted"
+	eventCarryOverRecorded        = "carry_over_recorded"
+)
+
+// absenceEventKinds are the absence family: listed to everyone who reads the
+// person's history (seesEvents) although a sick row's event touches class E
+// (plan pre-flight I6) — each field then shaped by its group, so a manager
+// and HR read the dates and the degree and a sick type shown to them, as §5
+// lets them read the rows themselves. Any other event touching E stays the
+// health group's.
+var absenceEventKinds = []string{eventAbsenceRequested, eventAbsenceRegistered, eventAbsenceUpdated, eventAbsenceDeleted, eventAbsenceCancelled}
+
+// The absence groups' field names, as an absence event and the contract name
+// them.
+const (
+	fieldType   = "type"
+	fieldDegree = "degree"
+)
+
+// absenceFieldClass is the class of an absence event's field (Global
+// Constraints "Event classes"): the note and the decision note D; the type
+// and the degree E when the row is health data (a sick or child-sick type,
+// on either side of a change), else C; the dates, the percent, the hours and
+// the status C.
+func absenceFieldClass(name string, health bool) string {
+	switch name {
+	case "note", "decisionNote":
+		return "D"
+	case fieldType, fieldDegree:
+		if health {
+			return "E"
+		}
+	}
+	return "C"
+}
+
+// adjustmentFieldClass is the class of an adjustment event's field: its note
+// D, the rest — the year, the days, the reason, the year it comes from — C.
+func adjustmentFieldClass(name string) string {
+	if name == "note" {
+		return "D"
+	}
+	return "C"
+}
+
+// classedPayload is an event's payload naming idName = id, with c's fields
+// and each one's class by classOf, and the classes' union.
+func classedPayload(idName string, id int64, c changes, classOf func(string) string) (map[string]any, []string) {
+	classes := make(map[string]string, len(c))
+	var union []string
+	for name := range c {
+		class := classOf(name)
+		classes[name] = class
+		if !slices.Contains(union, class) {
+			union = append(union, class)
+		}
+	}
+	slices.Sort(union)
+	return map[string]any{idName: id, "fields": c, "classes": classes}, union
+}
+
+// absenceEventPayload is an absence event's payload from before to after
+// (either nil: a creation, a deletion) and its payload_classes; health is
+// whether the type on either side is health data.
+func absenceEventPayload(id int64, before, after map[string]json.RawMessage, health bool) (map[string]any, []string) {
+	return classedPayload("absenceId", id, diffFields(before, after), func(name string) string { return absenceFieldClass(name, health) })
+}
+
+// adjustmentEventPayload is a holiday adjustment event's payload and its
+// payload_classes.
+func adjustmentEventPayload(id int64, before, after map[string]json.RawMessage) (map[string]any, []string) {
+	return classedPayload("adjustmentId", id, diffFields(before, after), adjustmentFieldClass)
+}
+
+// recordClassedEvent records kind for personID with payload and its classes;
+// nothing when the payload names no field, since a write that changed
+// nothing has nothing to say.
+func (s *server) recordClassedEvent(ctx context.Context, txq *store.Queries, personID int64, kind string, who actor, payload map[string]any, classes []string) error {
+	if c, _ := payload["fields"].(changes); len(c) == 0 {
+		return nil
+	}
+	return s.recordEvent(ctx, txq, &personID, kind, who, payload, classes)
+}
+
+// typeVisibilities is the absence types' visibility by id — absent or
+// hr_only — which an absence event's type values are shaped by.
+type typeVisibilities map[int64]string
+
+// readTypeVisibilities is every type's visibility, hidden ones included.
+func readTypeVisibilities(ctx context.Context, q *store.Queries) (typeVisibilities, error) {
+	rows, err := q.ListAbsenceTypes(ctx, true)
+	if err != nil {
+		return nil, fmt.Errorf("staff: read the absence types' visibility: %w", err)
+	}
+	out := make(typeVisibilities, len(rows))
+	for _, r := range rows {
+		out[r.ID] = r.Visibility
+	}
+	return out, nil
+}
+
+// absenceFieldGroup is an absence event field's group: the dates and the
+// status the absence group's, the type the type's, the rest the detail's; a
+// name it does not know nobody's.
+func absenceFieldGroup(name string) fieldGroup {
+	switch name {
+	case "firstDay", "lastDay", "status":
+		return groupAbsence
+	case fieldType:
+		return groupAbsenceType
+	case "percent", "hours", "note", fieldDegree, "decisionNote":
+		return groupAbsenceDetail
+	}
+	return groupNobody
+}
+
+// adjustmentFieldGroup is an adjustment event field's group: what the account
+// shows — its readers' — and the note, HR's own.
+func adjustmentFieldGroup(name string) fieldGroup {
+	switch name {
+	case "year", "days", "reason", "fromYear":
+		return groupAbsenceDetail
+	case "note":
+		return groupHRNotes
+	}
+	return groupNobody
+}
+
+// leaveLabel is what an HR-only type shows to a reader who may read absence
+// types but not that one (design §5): leave.
+const leaveLabel = "leave"
+
+// typeShown is one type value as a reads it: the value when a reads every
+// type (the person, staff:personal-data) or the type is one everybody may be
+// shown; "leave" for an HR-only type, or one the lookup does not know (fail
+// closed).
+func typeShown(value any, a audience, types typeVisibilities) any {
+	if a.readsHROnlyTypes() {
+		return value
+	}
+	if id, ok := typeID(value); ok && types[id] == visibilityAbsent {
+		return value
+	}
+	return leaveLabel
+}
+
+// typeID is a stored type value as an id.
+func typeID(value any) (int64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return int64(v), float64(int64(v)) == v
+	case json.Number:
+		id, err := strconv.ParseInt(string(v), 10, 64)
+		return id, err == nil
+	}
+	return 0, false
+}
+
+// shapeClassedFields is a classed event's fields as a reads them, by group:
+// a field of a group a reads kept — a type value each side by its own
+// visibility — one of HR's notes left out, anything else "changed".
+func shapeClassedFields(fields map[string]any, groupOf func(string) fieldGroup, a audience, types typeVisibilities) map[string]any {
+	out := make(map[string]any, len(fields))
+	for name, value := range fields {
+		g := groupOf(name)
+		switch {
+		case !a.reads(g) && g == groupHRNotes:
+		case !a.reads(g):
+			out[name] = changed
+		case g == groupAbsenceType:
+			change, _ := value.(map[string]any)
+			shaped := map[string]any{}
+			for side, v := range change {
+				shaped[side] = typeShown(v, a, types)
+			}
+			out[name] = shaped
+		default:
+			out[name] = value
+		}
+	}
+	return out
+}

@@ -678,9 +678,31 @@ func blankPayload(stored []byte, class string) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	_, document := payload["documentId"]
+	// An absence, adjustment or case event (delivery B) carries each
+	// field's class in its own map, written when it was recorded: it is
+	// blanked by that map, a field it does not class counting as D.
+	var own map[string]string
+	_, absence := payload["absenceId"]
+	_, adjustment := payload["adjustmentId"]
+	_, sickCase := payload["caseId"]
+	classed := absence || adjustment || sickCase
+	if raw, ok := payload["classes"]; ok && classed {
+		if err := json.Unmarshal(raw, &own); err != nil {
+			return nil, false, err
+		}
+	}
+	classOf := func(name string) string {
+		if !classed {
+			return classOfField(name)
+		}
+		if c, ok := own[name]; ok {
+			return c
+		}
+		return "D"
+	}
 	rewritten := false
 	for name, value := range fields {
-		if (document || classOfField(name) == class) && !bytes.Equal(value, blank) {
+		if (document || classOf(name) == class) && !bytes.Equal(value, blank) {
 			fields[name] = blank
 			rewritten = true
 		}
