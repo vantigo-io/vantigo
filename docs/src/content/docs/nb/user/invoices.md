@@ -8,6 +8,8 @@ sources:
   - apps/host/frontend/src/routes/customers/-customer-invoices-tab.tsx
   - apps/host/frontend/src/lib/invoice-access.ts
   - apps/host/frontend/src/routes/invoices
+  - apps/host/frontend/src/routes/pay.tsx
+  - apps/host/frontend/src/lib/public-paths.ts
 ---
 
 Fakturaer-appen utsteder salgsdokumentene i bokføringen din: et utkast blir en
@@ -1440,21 +1442,41 @@ med e-posten og brevene, og hvorfor den ikke vises på skjermen.
 
 ### Hva kunden ser på betalingssiden
 
-Lenken åpner installasjonens **betalingsside** i kundens nettleser, uten innlogging.
-Den viser selgerens navn og organisasjonsnummer, fakturanummeret, datoene, beløpet som
-står åpent og KID — slik at kunden kan betale i banken i stedet — og lenker til
-salgsvilkårene og personvernerklæringen deres, som kunden må godta før betaling. Den
-viser aldri kundens eget navn eller adresse. **Betal med Vipps** åpner Vipps, der
-kunden godkjenner betalingen; Vipps sender så kunden tilbake til betalingssiden, som
-viser om betalingen gikk gjennom.
+Lenken åpner installasjonens **betalingsside** i kundens nettleser. Den virker uten
+innlogging, og på mobil like godt som på datamaskin. Steg for steg:
+
+1. **Fakturaen.** Siden viser selgerens navn og organisasjonsnummer, fakturanummeret,
+   fakturadatoen og forfallsdatoen, **Å betale** og **KID**, med en linje om at kunden
+   heller kan betale i nettbanken med KID. Den viser aldri kundens eget navn eller
+   adresse. Siden er på kundens språk slik fakturaen oppgir det, norsk eller engelsk,
+   og kunden kan bytte mellom **Norsk** og **English** øverst.
+2. **Vilkårene.** Lenker til **Salgsvilkår** og **Personvernerklæring**, og en boks å
+   krysse av: *Jeg godtar selgerens salgsvilkår og personvernerklæring*. Uten krysset
+   ber **Betal med Vipps** bare om det.
+3. **Vipps.** **Betal med Vipps** åpner Vipps med en gang, der kunden godkjenner
+   betalingen.
+4. **Tilbake på betalingssiden.** Vipps sender kunden tilbake, og siden venter på at
+   Vipps bekrefter: den sjekker hvert annet sekund det første minuttet, deretter hvert
+   femte sekund, i opptil ti minutter. Så sier den at **betalingen gikk gjennom og
+   fakturaen er betalt**, at den **ikke gikk gjennom**, eller at den ble **avbrutt eller
+   gikk ut på tid** — med **Prøv igjen** i samme nettleser. Har Vipps ikke bekreftet
+   etter ti minutter, sier siden det, og at kunden ikke skal betale igjen; **Sjekk
+   igjen** spør én gang til. Åpnet i en annen nettleser enn den som startet betalingen,
+   viser siden bare utfallet av betalingen.
+
+Lenkens kode tas ut av adresselinjen så snart siden har lest den, så den ikke blir
+liggende i nettleserens historikk eller i et skjermbilde; nettleserfanen tar vare på
+den så lenge den er åpen.
 
 Siden kan ikke starte en betaling når fakturaen allerede er betalt eller kreditert, når
 den er overlevert til et inkassobyrå (kunden får beskjed om å kontakte byrået), når
 lenken er trukket tilbake, når Vipps-betalinger ikke er tilgjengelige, når en
 Vipps-betaling av fakturaen allerede er i ferd med å fullføres, eller når beløpet som
-står åpent er under 1,00 eller over 650 000,00 — siden sier hvilket. Høyst fem
-Vipps-betalinger av én lenke kan pågå samtidig; den sjette betaleren blir bedt om å
-prøve igjen senere, og å trekke tilbake lenken og lage en ny begynner på nytt.
+står åpent er under 1,00 eller over 650 000,00 — siden sier hvilket, med enkle ord, og
+viser til betaling i nettbanken med KID. Høyst fem Vipps-betalinger av én lenke kan
+pågå samtidig; den sjette betaleren blir bedt om å prøve igjen senere, og å trekke
+tilbake lenken og lage en ny begynner på nytt. En lenke som ikke viser til noen faktura,
+og en kunde som prøver for mange ganger på kort tid, får også beskjed om det.
 
 Hver Vipps-betaling som er startet for en faktura, vises på kortet **Vipps-betalinger**,
 enten den kom fra betalingssiden (**Betalingslenke**) eller ble tatt **På stedet**:

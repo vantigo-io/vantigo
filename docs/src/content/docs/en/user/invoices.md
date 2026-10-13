@@ -8,6 +8,8 @@ sources:
   - apps/host/frontend/src/routes/customers/-customer-invoices-tab.tsx
   - apps/host/frontend/src/lib/invoice-access.ts
   - apps/host/frontend/src/routes/invoices
+  - apps/host/frontend/src/routes/pay.tsx
+  - apps/host/frontend/src/lib/public-paths.ts
 ---
 
 The Invoices app issues the sales documents of your bookkeeping: a draft becomes a
@@ -1422,21 +1424,42 @@ the link travels with the e-mail and the letters, and why it is not on screen.
 
 ### What the customer sees on the pay page
 
-The link opens the installation's **pay page** in the customer's browser, without
-signing in. It shows the seller's name and organisation number, the invoice number,
-its dates, the amount still open and the KID — so the customer can pay by bank instead
-— and links to your sales terms and privacy notice, which the customer must accept
-before paying. It never shows the customer's own name or address. **Betal med Vipps**
-opens Vipps, where the customer approves the payment; Vipps then sends them back to
-the pay page, which shows whether the payment went through.
+The link opens the installation's **pay page** in the customer's browser. It works
+without signing in, and on a phone as well as on a computer. Step by step:
+
+1. **The invoice.** The page shows the seller's name and organisation number, the
+   invoice number, the invoice date and the due date, the **Amount to pay** and the
+   **KID**, with a line saying that the customer can pay by bank with the KID instead.
+   It never shows the customer's own name or address. The page is in the customer's
+   language as the invoice names it, Norwegian or English, and the customer can switch
+   between **Norsk** and **English** at the top.
+2. **The terms.** Links to your **Sales terms** and **Privacy notice**, and a box to
+   tick: *I accept the seller's sales terms and privacy notice*. Without the tick,
+   **Pay with Vipps** (*Betal med Vipps*) only asks for it.
+3. **Vipps.** **Pay with Vipps** opens Vipps at once, where the customer approves the
+   payment.
+4. **Back on the pay page.** Vipps sends the customer back, and the page waits for
+   Vipps to confirm: it checks every two seconds for the first minute, then every five
+   seconds, for up to ten minutes. It then says **the payment went through and the
+   invoice is paid**, that it **did not go through**, or that it was **cancelled or timed
+   out** — with **Try again** in the same browser. If Vipps has not confirmed after ten
+   minutes, the page says so and that the customer must not pay again; **Check again**
+   asks once more. Opened in another browser than the one that started the payment,
+   the page shows only the payment's outcome.
+
+The link's code is taken out of the address bar as soon as the page has read it, so it
+does not linger in the browser's history or in a screenshot; the browser tab keeps it
+for as long as it is open.
 
 The page cannot start a payment when the invoice is already paid or credited, when it
 is with a collection agency (the customer is told to contact the agency), when the link
 was revoked, when Vipps payments are not available, when a Vipps payment of the invoice
 is already being completed, or when the amount open is below 1.00 or above
-650 000.00 — the page says which. At most five Vipps payments of one link can be in
-progress at once; the sixth payer is asked to try again later, and revoking the link and
-making a new one starts afresh.
+650 000.00 — the page says which, in plain words, and points to paying by bank with the
+KID. At most five Vipps payments of one link can be in progress at once; the sixth payer
+is asked to try again later, and revoking the link and making a new one starts afresh. A
+link that names no invoice, and a customer who tries too often in a short while, are
+told so too.
 
 Every Vipps payment started for an invoice is listed on its **Vipps payments** card,
 whether it came from the pay page (**Pay link**) or was taken **On site**: its reference

@@ -20,6 +20,7 @@ import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as InvoicesRouteImport } from './routes/invoices'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
+import { Route as PayRouteImport } from './routes/pay'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
@@ -154,6 +155,11 @@ const InvoicesRoute = InvoicesRouteImport.update({
 const PasswordResetRoute = PasswordResetRouteImport.update({
   id: '/password-reset',
   path: '/password-reset',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PayRoute = PayRouteImport.update({
+  id: '/pay',
+  path: '/pay',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProductsRoute = ProductsRouteImport.update({
@@ -583,6 +589,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/invoices': typeof InvoicesRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
+  '/pay': typeof PayRoute
   '/products': typeof ProductsRouteWithChildren
   '/projects': typeof ProjectsRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
@@ -670,6 +677,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
+  '/pay': typeof PayRoute
   '/reset-password': typeof ResetPasswordRoute
   '/session-expired': typeof SessionExpiredRoute
   '/setup': typeof SetupRoute
@@ -756,6 +764,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/invoices': typeof InvoicesRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
+  '/pay': typeof PayRoute
   '/products': typeof ProductsRouteWithChildren
   '/projects': typeof ProjectsRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
@@ -851,6 +860,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/invoices'
     | '/password-reset'
+    | '/pay'
     | '/products'
     | '/projects'
     | '/reset-password'
@@ -938,6 +948,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/forgot-password'
     | '/password-reset'
+    | '/pay'
     | '/reset-password'
     | '/session-expired'
     | '/setup'
@@ -1023,6 +1034,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/invoices'
     | '/password-reset'
+    | '/pay'
     | '/products'
     | '/projects'
     | '/reset-password'
@@ -1117,6 +1129,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   InvoicesRoute: typeof InvoicesRouteWithChildren
   PasswordResetRoute: typeof PasswordResetRoute
+  PayRoute: typeof PayRoute
   ProductsRoute: typeof ProductsRouteWithChildren
   ProjectsRoute: typeof ProjectsRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -1207,6 +1220,13 @@ declare module '@tanstack/react-router' {
       path: '/password-reset'
       fullPath: '/password-reset'
       preLoaderRoute: typeof PasswordResetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pay': {
+      id: '/pay'
+      path: '/pay'
+      fullPath: '/pay'
+      preLoaderRoute: typeof PayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/products': {
@@ -2054,6 +2074,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   InvoicesRoute: InvoicesRouteWithChildren,
   PasswordResetRoute: PasswordResetRoute,
+  PayRoute: PayRoute,
   ProductsRoute: ProductsRouteWithChildren,
   ProjectsRoute: ProjectsRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,

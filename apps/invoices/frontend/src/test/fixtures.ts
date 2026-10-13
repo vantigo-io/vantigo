@@ -1767,3 +1767,25 @@ export const vippsPaymentsDay = (overrides: Partial<VippsPaymentsDay> = {}): Vip
   payLinkTotal: 0,
   ...overrides,
 });
+
+type PayPageView = components["schemas"]["InvoicesPayPage"];
+
+/**
+ * POST /pay/read as the server answers it: the seller, invoice 10042's
+ * number, dates, open amount and KID, the seller's terms and privacy notice,
+ * payable in Norwegian — and nothing of the buyer, which the server never sends.
+ */
+export const payPage = (overrides: Partial<PayPageView> = {}): PayPageView => ({
+  seller: { name: "Vantigo Demo AS", organisationNumber: "999888777" },
+  invoiceNumber: 10042,
+  issueDate: "2026-09-01",
+  dueDate: "2026-09-15",
+  openAmount: 1250,
+  currency: "NOK",
+  kid: "0001004207",
+  termsUrl: "https://seller.example.com/terms",
+  privacyUrl: "https://seller.example.com/privacy",
+  language: "nb",
+  payable: true,
+  ...overrides,
+});

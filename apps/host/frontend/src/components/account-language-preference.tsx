@@ -3,9 +3,17 @@ import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { useLayoutEffect, useRef } from "react";
 import { getProfile, profileQueryKey } from "../api/account";
 import { fetchSession, sessionQueryKey } from "../api/auth";
+import { sessionlessPaths } from "../lib/public-paths";
 
 export const AccountLanguagePreference = () => {
-  const session = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
+  // The pay page, on the public host, asks for no session: the request would
+  // leave the host's allowlist (D14). A session the root fetched still arrives
+  // from the cache; on /pay there is none.
+  const session = useQuery({
+    queryKey: sessionQueryKey,
+    queryFn: fetchSession,
+    enabled: !sessionlessPaths.has(window.location.pathname),
+  });
   const userId = session.data?.user.id;
   const profile = useQuery({
     queryKey: profileQueryKey(userId ?? "unknown"),

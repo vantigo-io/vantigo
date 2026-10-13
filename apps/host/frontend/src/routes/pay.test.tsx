@@ -1,0 +1,160 @@
+import { MantineProvider } from "@mantine/core";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
+import { render, screen } from "@testing-library/react";
+import { I18nProvider, setLanguagePreference } from "@vantigo/frontend-shell";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AccountLanguagePreference } from "../components/account-language-preference";
+import { publicPaths } from "../lib/public-paths";
+import { routeTree } from "../routeTree.gen";
+
+const TOKEN = "tok-Secret_123";
+
+interface AllowedRoute {
+  methods: string[];
+  path: string;
+  prefix: boolean;
+  oneSegment: boolean;
+}
+
+/**
+ * The public host's allowlist, read from the server's own source
+ * (`security.PayRoutes()`), so this test and the gate cannot drift apart.
+ */
+const payRoutes = (): AllowedRoute[] => {
+  const source = Object.values(
+    import.meta.glob<string>("../../../../server/internal/security/publichost.go", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }),
+  )[0];
+  if (!source) throw new Error("publichost.go was not found");
+  const body = source.slice(source.indexOf("func PayRoutes()"));
+  const block = body.slice(0, body.indexOf("\n}\n"));
+  const methods: Record<string, string[]> = { getHead: ["GET", "HEAD"], get: ["GET"], post: ["POST"] };
+  const routes = [...block.matchAll(/\{Methods: (\w+), Path: "([^"]+)"([^}]*)\}/g)].map(([, m, p, rest]) => ({
+    methods: methods[m] ?? [],
+    path: p,
+    prefix: rest.includes("Prefix: true"),
+    oneSegment: rest.includes("OneSegment: true"),
+  }));
+  if (routes.length === 0) throw new Error("PayRoutes() was not found in publichost.go");
+  return routes;
+};
+
+/** Whether the gate admits a request — `Route.matches` in publichost.go, on the path alone (any query). */
+const admitted = (routes: AllowedRoute[], method: string, url: string) => {
+  const { pathname } = new URL(url, "https://pay.example.com");
+  return routes.some((route) => {
+    if (!route.methods.includes(method)) return false;
+    if (route.prefix) return pathname.startsWith(route.path);
+    if (route.oneSegment) {
+      const rest = pathname.startsWith(route.path) ? pathname.slice(route.path.length) : undefined;
+      return rest !== undefined && rest !== "" && !rest.includes("/");
+    }
+    return pathname === route.path;
+  });
+};
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+/** Every request the SPA makes, recorded; the pay page's read and the maintenance poll answered. */
+const recordFetch = () => {
+  const requests: { url: string; method: string; init?: RequestInit }[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      requests.push({ url, method, init });
+      if (url === "/api/v1/identity/system/status") return Promise.resolve(json({ maintenance: false, message: null }));
+      if (url === "/api/v1/invoices/pay/read" && method === "POST")
+        return Promise.resolve(
+          json({
+            seller: { name: "Vantigo Demo AS", organisationNumber: "999888777" },
+            invoiceNumber: 10042,
+            issueDate: "2026-09-01",
+            dueDate: "2026-09-15",
+            openAmount: 1250,
+            currency: "NOK",
+            kid: "0001004207",
+            termsUrl: "https://seller.example.com/terms",
+            privacyUrl: "https://seller.example.com/privacy",
+            language: "en",
+            payable: true,
+          }),
+        );
+      // What the public host answers anything else: a 404.
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }),
+  );
+  return requests;
+};
+
+/** The SPA as main.tsx mounts it — the providers above the router, the account language among them — at `address`. */
+const renderSpaAt = (address: string) => {
+  window.history.replaceState(null, "", address);
+  const queryClient = new QueryClient();
+  const router = createRouter({
+    routeTree,
+    context: { queryClient },
+    history: createMemoryHistory({ initialEntries: [address] }),
+  });
+  render(
+    <MantineProvider env="test">
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider>
+          <AccountLanguagePreference />
+          <RouterProvider router={router} />
+        </I18nProvider>
+      </QueryClientProvider>
+    </MantineProvider>,
+  );
+  return router;
+};
+
+afterEach(() => {
+  window.history.replaceState(null, "", "/");
+  window.sessionStorage.clear();
+  setLanguagePreference("auto");
+});
+
+describe("the /pay route", () => {
+  it("renders without a session and asks for nothing outside the public host's allowlist", async () => {
+    const requests = recordFetch();
+    renderSpaAt(`/pay?token=${TOKEN}`);
+
+    expect(await screen.findByText("Vantigo Demo AS")).toBeInTheDocument();
+    // Let the root's queries — the maintenance poll above all — go out.
+    await vi.waitFor(() =>
+      expect(requests.some((request) => request.url === "/api/v1/identity/system/status")).toBe(true),
+    );
+
+    const routes = payRoutes();
+    const refused = requests.filter((request) => !admitted(routes, request.method, request.url));
+    expect(refused.map((request) => `${request.method} ${request.url}`)).toEqual([]);
+    const urls = requests.map((request) => request.url);
+    expect(urls.some((url) => url.startsWith("/api/v1/identity/session"))).toBe(false);
+    expect(urls.some((url) => url.startsWith("/api/v1/authorization"))).toBe(false);
+    expect(urls.some((url) => url.includes("/profile"))).toBe(false);
+    // The token is in no API URL: the read carries it in its body.
+    expect(urls.some((url) => url.includes(TOKEN))).toBe(false);
+    const read = requests.find((request) => request.url === "/api/v1/invoices/pay/read");
+    expect(JSON.parse(String(read?.init?.body))).toEqual({ token: TOKEN });
+    // Same-origin requests only, so no credential travels anywhere else.
+    expect(urls.every((url) => url.startsWith("/"))).toBe(true);
+    // And the token is gone from the address bar.
+    expect(window.location.search).toBe("");
+  });
+});
+
+describe("publicPaths", () => {
+  it("holds /pay exactly, and not the signed-in Payments area", () => {
+    expect(publicPaths.has("/pay")).toBe(true);
+    expect(publicPaths.has("/pay/")).toBe(false);
+    expect(publicPaths.has("/invoices/payments")).toBe(false);
+    expect(publicPaths.has("/invoices/payments/vipps")).toBe(false);
+  });
+});
