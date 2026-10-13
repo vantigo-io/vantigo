@@ -290,7 +290,8 @@ fullføres. Med `INVOICES_VIPPS_ENABLED=0` kjører ikke jobben og ingen betaling
 videre, men reservasjonene står, hver vist på dashbordet som en strandet reservasjon —
 slå Vipps på igjen, eller la en leder forlate hver betaling der trekket aldri ble sendt,
 etter å ha sjekket den i portalen. En betaling der trekket ble sendt, kan forlates først
-når Vipps kan leses igjen.
+når Vipps kan leses igjen, og det samme gjelder en betalingsforespørsel jobben ga opp —
+også en på stedet, som til da holder fakturaens ene forespørsel på stedet.
 
 **Å forlate en betaling** (*Forlat* på fakturaens Vipps-betaling, `invoices:manage`)
 krever en begrunnelse og en bekreftelse på at portalen ikke viser noe trukket. Bare en

@@ -290,7 +290,8 @@ being completed. With `INVOICES_VIPPS_ENABLED=0` the worker does not run and no 
 moves on, but the reservations stay, each shown on the dashboard as a stranded
 reservation — switch Vipps back on, or have a manager abandon each payment whose capture
 was never sent after checking it in the portal. One whose capture was sent can be
-abandoned only once Vipps can be read again.
+abandoned only once Vipps can be read again, and so can a payment request the worker gave
+up on — an on-site one too, which until then holds its invoice's one on-site request.
 
 **Abandoning a payment** (*Abandon* on the invoice's Vipps payment, `invoices:manage`)
 takes a reason and the confirmation that the portal shows nothing captured. Only a
