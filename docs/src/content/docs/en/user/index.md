@@ -33,8 +33,9 @@ without a manager, reassessments due, documents the store will not delete, and t
 headcount and pension thresholds not yet acknowledged.
 
 Inside an app, the sidebar lists its areas. Many of them are only shown to people who
-hold the matching permission, so a colleague's sidebar may be longer or shorter than
-yours:
+hold the matching permission — and a few, such as Invoices' **Quick invoice**, only to
+people who hold several permissions together — so a colleague's sidebar may be longer or
+shorter than yours:
 
 | App | Areas |
 | --- | --- |
@@ -43,7 +44,7 @@ yours:
 | [Time](/en/user/time/) | My week, Approvals, People, Time settings |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
 | [Staff](/en/user/staff/) | My page, Staff directory, Staff settings |
-| [Invoices](/en/user/invoices/) | Invoices, Invoice journal, Overdue, Payments, Invoice settings |
+| [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
 | [Energy](/en/user/energy/) | Metering points |

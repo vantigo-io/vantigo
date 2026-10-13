@@ -25,6 +25,14 @@ export interface NavItem {
   capability?: "authorization";
   requiredPermissions?: readonly string[];
   /**
+   * Permissions the caller must hold every one of, beside any one of
+   * `requiredPermissions` — for a destination whose API asks several
+   * together, which `requiredPermissions` (any-of) cannot say. The quick
+   * invoice is the case: its API needs invoices:create and invoices:issue
+   * both. The route guard asks for them too.
+   */
+  requiredAllPermissions?: readonly string[];
+  /**
    * What the route guard demands on this destination's URL prefix, when that
    * is less than the sidebar entry asks for. The Time app's approval queue is
    * the case it exists for: the entry is offered to the permission-holding
@@ -56,6 +64,10 @@ export const hasPermissions = (permissions: string[] | undefined, required?: rea
   permissions?.includes("*") === true ||
   required.some((permission) => permissions?.includes(permission));
 
+/** Whether the caller holds every one of `required` (all-of), each judged as `hasPermissions` judges one. */
+export const hasAllPermissions = (permissions: string[] | undefined, required?: readonly string[]) =>
+  (required ?? []).every((permission) => hasPermissions(permissions, [permission]));
+
 export interface NavVisibilityContext {
   permissions: string[] | undefined;
   isOwner: boolean;
@@ -83,7 +95,8 @@ export const visibleNavSections = <S extends NavSection>(
           (!item.systemAdminOnly || isSystemAdmin) &&
           (!item.capability || canManageAuthorization) &&
           (!item.module || enabledModules?.includes(item.module) === true) &&
-          hasPermissions(permissions, item.requiredPermissions),
+          hasPermissions(permissions, item.requiredPermissions) &&
+          hasAllPermissions(permissions, item.requiredAllPermissions),
       ),
     }))
     .filter((section) => section.items.length > 0);

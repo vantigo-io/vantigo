@@ -31,6 +31,12 @@ export const useInvoiceAccess = () => {
     canCreateInvoices:
       hasPermissions(authorization.data?.permissions, ["invoices:access"]) &&
       hasPermissions(authorization.data?.permissions, ["invoices:create"]),
+    // The quick invoice's "New customer" creates the customer and then its
+    // address, which the customers API asks customers:create and
+    // customers:update for (invoices payments and reminders design D22).
+    canCreateCustomers:
+      hasPermissions(authorization.data?.permissions, ["customers:create"]) &&
+      hasPermissions(authorization.data?.permissions, ["customers:update"]),
     // The reminder policy is read with invoices:access and changed with
     // invoices:payments (invoices payments and reminders design D7).
     canChangeReminderPolicy:

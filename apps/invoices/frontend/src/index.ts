@@ -29,6 +29,7 @@ export { InvoicesPage, type InvoicesPageProps } from "./pages/invoices";
 export { JournalPage } from "./pages/journal";
 export { OverduePage, type OverduePageProps } from "./pages/overdue";
 export { PaymentsPage, type PaymentsPageProps } from "./pages/payments";
+export { QuickInvoicePage, type QuickInvoicePageProps } from "./pages/quick-invoice";
 export { ReminderPrintPage, type ReminderPrintPageProps } from "./pages/reminder-print";
 export { ReminderRunPage, type ReminderRunPageProps } from "./pages/reminder-run";
 export { SettingsPage, type SettingsPageProps } from "./pages/settings";
