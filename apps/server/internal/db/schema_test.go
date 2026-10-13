@@ -2410,7 +2410,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"bank_transactions", "charge_payments", "charge_waivers", "collection_handoffs", "collection_rates", "counters",
 		"customer_reminder_policies", "deliveries", "erased_customers", "invoice_holds", "invoices", "line_releases",
 		"line_sources", "lines", "manual_deliveries", "pay_links", "payment_attempts", "payment_provider_credentials",
-		"payment_settings", "payments", "reminder_print_batches", "reminder_runs",
+		"payment_settings", "payments", "quick_requests", "reminder_print_batches", "reminder_runs",
 		"reminder_settings", "reminders", "settings", "timesheet_rows", "transmissions", "vat_code_rates", "vat_codes",
 		"vat_summaries", "vipps_day_reconciliations"}; !equalStrings(gotTables, want) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
@@ -2540,7 +2540,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"pay_links:tr_pay_links_immutable", "pay_links:tr_pay_links_parent",
 		"payment_attempts:tr_payment_attempts_immutable", "payment_attempts:tr_payment_attempts_parent",
 		"payment_attempts:tr_payment_attempts_reference", "payment_settings:tr_payment_settings_kept",
-		"payments:tr_payments_immutable", "payments:tr_payments_parent",
+		"payments:tr_payments_immutable", "payments:tr_payments_parent", "quick_requests:tr_quick_requests_immutable",
 		"reminder_print_batches:tr_reminder_print_batches_immutable", "reminder_runs:tr_reminder_runs_immutable",
 		"reminder_settings:tr_reminder_settings_kept",
 		"reminders:tr_reminders_immutable", "reminders:tr_reminders_parent",

@@ -412,6 +412,13 @@ type InvoicesPaymentSetting struct {
 	UpdatedByUserID                 *uuid.UUID
 }
 
+type InvoicesQuickRequest struct {
+	RequestID  uuid.UUID
+	InvoiceID  int64
+	BodySha256 string
+	CreatedAt  time.Time
+}
+
 type InvoicesReminder struct {
 	ID                  int64
 	InvoiceID           int64

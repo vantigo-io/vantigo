@@ -359,12 +359,34 @@ CREATE TRIGGER tr_vipps_day_reconciliations_immutable
     BEFORE UPDATE OR DELETE ON invoices.vipps_day_reconciliations
     FOR EACH ROW EXECUTE FUNCTION invoices.refuse_row_change();
 
+-- A quick invoice's request id (D17; after review): the client's own key for
+-- one quick invoice, so a retry after a lost answer finds the invoice the
+-- first request issued instead of issuing a second. A table of its own, not
+-- a column on invoices.invoices: the key is a fact about the request, not
+-- the sales document, so the document's row, its immutability trigger and
+-- every read and export of it stay as they are. body_sha256 is the request
+-- as first sent; the same id with another body is refused. Inserted in the
+-- quick invoice's transaction right after its draft, so a second request
+-- with the id waits on the key and finds the first's; never changed.
+CREATE TABLE invoices.quick_requests (
+    request_id  uuid        PRIMARY KEY,
+    invoice_id  bigint      NOT NULL UNIQUE REFERENCES invoices.invoices (id) ON DELETE RESTRICT,
+    body_sha256 char(64)    NOT NULL,
+    created_at  timestamptz NOT NULL,
+    CONSTRAINT ck_quick_requests_body CHECK (body_sha256 ~ '^[0-9a-f]{64}$')
+);
+
+CREATE TRIGGER tr_quick_requests_immutable
+    BEFORE UPDATE OR DELETE ON invoices.quick_requests
+    FOR EACH ROW EXECUTE FUNCTION invoices.refuse_row_change();
+
 -- +goose Down
--- Everything 00046 added, in reverse: the reconciliations, the payments'
+-- Everything 00046 added, in reverse: the quick requests, the reconciliations, the payments'
 -- attempt with 00041's two CHECKs restored — which fails while a Vipps
 -- payment exists, the honest answer: a Down never deletes bookkeeping —
 -- then the attempts, the links, the settings, the credentials (their
 -- triggers and indexes go with them) and the functions.
+DROP TABLE invoices.quick_requests;
 DROP TABLE invoices.vipps_day_reconciliations;
 ALTER TABLE invoices.payments
     DROP CONSTRAINT ck_payments_origin,
