@@ -768,7 +768,7 @@ const (
 
 // TestPayments_SourceCheck pins D2's origin: a manual payment has a user and
 // no bank line; an imported one has both; a source outside the three is
-// refused. (The Vipps branch is 00042's.)
+// refused. (The Vipps branch is 00046's, pinned by TestPayments_VippsSourceCheck.)
 func TestPayments_SourceCheck(t *testing.T) {
 	t.Parallel()
 	f := newReceivablesFixture(t)

@@ -79,7 +79,7 @@ func paymentsPortObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) 
 			SELECT p.proname || ':' || p.provolatile::text || ':' || pg_catalog.format_type(p.prorettype, NULL)
 			FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 			WHERE n.nspname = 'invoices' AND p.proname IN ('refuse_row_change', 'refuse_payment_settings_change',
-			    'guard_pay_link_insert', 'refuse_pay_link_change', 'set_payment_attempt_reference',
+			    'guard_payment_child_insert', 'refuse_pay_link_change', 'set_payment_attempt_reference',
 			    'refuse_payment_attempt_change')`),
 		"indexes": collect("indexes", `
 			SELECT indexname || ':' || indexdef FROM pg_indexes
@@ -115,15 +115,15 @@ func TestInvoicesPaymentsPort_AppliesAndIsIdempotent(t *testing.T) {
 		"constraints": paymentsPortConstraints,
 		"triggers": {
 			"pay_links:tr_pay_links_immutable:refuse_pay_link_change",
-			"pay_links:tr_pay_links_parent:guard_pay_link_insert",
+			"pay_links:tr_pay_links_parent:guard_payment_child_insert",
 			"payment_attempts:tr_payment_attempts_immutable:refuse_payment_attempt_change",
-			"payment_attempts:tr_payment_attempts_parent:guard_pay_link_insert",
+			"payment_attempts:tr_payment_attempts_parent:guard_payment_child_insert",
 			"payment_attempts:tr_payment_attempts_reference:set_payment_attempt_reference",
 			"payment_settings:tr_payment_settings_kept:refuse_payment_settings_change",
 			"vipps_day_reconciliations:tr_vipps_day_reconciliations_immutable:refuse_row_change",
 		},
 		"functions": {
-			"guard_pay_link_insert:v:trigger",
+			"guard_payment_child_insert:v:trigger",
 			"refuse_pay_link_change:v:trigger",
 			"refuse_payment_attempt_change:v:trigger",
 			"refuse_payment_settings_change:v:trigger",
@@ -171,9 +171,32 @@ func TestInvoicesPaymentsPort_AppliesAndIsIdempotent(t *testing.T) {
 
 	migrateTo(t, url, paymentsPortVersion-1)
 	expect("after down", wantDown)
+	receivablesBefore := receivablesObjectsBut00046(t, ctx, pool)
 
 	migrateTo(t, url, paymentsPortVersion)
 	expect("after up again", want)
+
+	// 00046 leaves the rest of 00041's objects as they were: only the
+	// payments' two CHECKs are replaced.
+	receivablesAfter := receivablesObjectsBut00046(t, ctx, pool)
+	for what, before := range receivablesBefore {
+		if !equalStrings(receivablesAfter[what], before) {
+			t.Errorf("00041's %s changed under 00046:\n%s\nwas\n%s", what,
+				strings.Join(receivablesAfter[what], "\n"), strings.Join(before, "\n"))
+		}
+	}
+}
+
+// receivablesObjectsBut00046 is receivablesObjects less the payments' two
+// CHECKs 00046 replaces.
+func receivablesObjectsBut00046(t *testing.T, ctx context.Context, pool *pgxpool.Pool) map[string][]string {
+	t.Helper()
+	objects := receivablesObjects(t, ctx, pool)
+	objects["constraints"] = slices.DeleteFunc(objects["constraints"], func(c string) bool {
+		return strings.HasPrefix(c, "invoices.payments:ck_payments_source:") ||
+			strings.HasPrefix(c, "invoices.payments:ck_payments_origin:")
+	})
+	return objects
 }
 
 // paymentsPortColumns is D14, D15, D16 and D17 written out, with the
@@ -514,14 +537,19 @@ func TestPaymentAttempts_Triggers(t *testing.T) {
 			values += ", gen_random_uuid(), now(), 'checked the portal'"
 		}
 		id := f.mustAttempt(other, state, columns, values)
+		// The worker's bookkeeping: the release and the refund watch keep
+		// polling a finished attempt.
 		allowed := []string{
 			"lease_id = 'lease', lease_until = now() + interval '1 minute'",
 			"lease_id = NULL, lease_until = NULL",
 			"next_poll_at = now() + interval '1 day'",
+			"polls = polls + 1, last_error = 'x'",
+			"last_error = NULL",
+			"finished_at = now()",
 		}
 		refused := []string{
-			"state = 'creating'", "polls = polls + 1", "last_error = 'x'", "captured_amount = 1",
-			"authorized_amount = 99", "finished_at = now()", "capture_attempts = capture_attempts + 1",
+			"state = 'creating'", "captured_amount = 1",
+			"authorized_amount = 99", "capture_attempts = capture_attempts + 1",
 			"cancelled_amount = 5",
 		}
 		if releasable {
@@ -544,6 +572,12 @@ func TestPaymentAttempts_Triggers(t *testing.T) {
 		for _, set := range allowed {
 			if err := f.exec(`UPDATE invoices.payment_attempts SET `+set+` WHERE id = $1`, id); err != nil {
 				t.Errorf("%s: SET %s: %v, want it allowed", state, set, err)
+			}
+		}
+		// Its finish is set once.
+		for _, set := range []string{"finished_at = finished_at + interval '1 second'", "finished_at = NULL"} {
+			if err := f.exec(`UPDATE invoices.payment_attempts SET `+set+` WHERE id = $1`, id); !refusedWith(err, attemptFinal(state)) {
+				t.Errorf("%s, finished: SET %s: %v, want %q", state, set, err, attemptFinal(state))
 			}
 		}
 		if err := f.exec(`DELETE FROM invoices.payment_attempts WHERE id = $1`, id); !refusedWith(err, attemptNeverDeleted) {
