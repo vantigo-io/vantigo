@@ -549,10 +549,14 @@ they open after you have left — is an ordinary credit sale. Paid on site with 
 with the pay link or its QR code shown to the customer there, it is a cash sale
 (*kontantsalg*), which Invoices allows without a cash register only as a cash invoice
 (*kontantfaktura*) naming the buyer, through payment on site
-([pay links and payment on site](#pay-links-and-payment-on-site)). Until payment on site
-is offered, the invoice is issued and you are told that payment on site is not
-available. The quick invoice's own screen arrives with Vipps in the app; the request
-behind it is in place now ([the quick invoice](/en/reference/invoices/#the-quick-invoice)).
+([taking a payment on site](#taking-a-payment-on-site)). Ask for **payment on site**
+when you issue it, and the invoice is issued and a Vipps QR code made for the customer
+in one go; if the QR cannot be made — payment on site is off, the buyer is not named
+with an address or an organisation number, Vipps refuses — the invoice is issued all the
+same and you are told why. Issuing again after a lost connection never makes a second
+QR code: you are told the one already made. The quick invoice's own screen arrives with
+Vipps in the app; the request behind it is in place now
+([the quick invoice](/en/reference/invoices/#the-quick-invoice)).
 
 ## Downloading the PDF
 
@@ -1371,6 +1375,53 @@ making a new one starts afresh.
 
 Every Vipps payment started for an invoice is listed on it, with its state and amount,
 whether it came from the pay page or was taken on site.
+
+### Taking a payment on site
+
+When the job is done and the customer wants to pay there and then, someone with
+`invoices:issue` can take a **Vipps payment on site**: the customer scans a QR code with
+the Vipps app and approves the payment, and Vantigo registers it on the invoice by
+itself. The screen shows the QR code and follows the payment until it is paid, cancelled
+or expired; a QR code lives ten minutes and is never printed.
+
+A payment at handover is a cash sale (*kontantsalg*) — paying with Vipps counts as cash
+— even though the customer gets an invoice. A business may take cash sales without a
+cash register (*kassasystem*) only by writing a cash invoice (*kontantfaktura*) for each
+one, and only if it mainly sells on credit to customers it knows: a shop or counter
+sale needs a declared cash register. So Vantigo only lets you take a payment on site
+when:
+
+- payment on site is turned on, with the kontantsalg notice acknowledged by a manager
+  ([pay links and payment on site](#pay-links-and-payment-on-site));
+- the invoice is issued — never a draft or a credit note — and names the buyer, with an
+  address or an organisation number, and the customer has not been anonymised. Name the
+  buyer truthfully: Vantigo checks that the details are there, not that they are right;
+- the payment is for the whole amount still open, and no other payment on site of the
+  invoice is in progress. A payment request Vantigo gave up on blocks a new one until a
+  manager abandons it ([when a Vipps payment needs you](#when-a-vipps-payment-needs-you)).
+
+There is no way to take a payment without an invoice, for an unnamed customer, or as a
+receipt only. Showing the customer the pay link or its QR code on site is the same cash
+sale, which is why the link is only shown on screen while payment on site is on. A
+customer who pays later, at home, makes an ordinary credit sale.
+
+You can cancel a request the customer has not approved; one they approved is completed
+and registered.
+
+### The day's Vipps payments and reconciliation
+
+Anyone with `invoices:access` can list **one day's Vipps payments** — the time, the
+invoice, the buyer, the amount and whether it was paid on site or through a pay link,
+with the day's totals — on screen or as a CSV file for a spreadsheet. Pay-link payments
+are included, since Vantigo cannot know where the customer was when they paid.
+
+Once a day is over, someone with `invoices:payments` compares it with the Vipps
+settlement and **records the day as reconciled**, with a note if something needed
+explaining. The record keeps the totals as they were then, and who recorded it and
+when; it can never be changed or recorded twice. A payment registered later for that
+day shows in the list beside the record. Today cannot be reconciled until it is over.
+The screens arrive with Vipps in the app; the requests behind them are in place now
+([the day's Vipps payments](/en/reference/invoices/#the-days-vipps-payments)).
 
 ### When a Vipps payment needs you
 

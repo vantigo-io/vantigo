@@ -1714,3 +1714,55 @@ export const abandonedPaymentAttempt = (overrides: Partial<PaymentAttempt> = {})
     abandonReason: "Sjekket i Vipps-portalen: ingenting trukket",
     ...overrides,
   });
+
+type OnSitePayment = components["schemas"]["InvoicesOnSitePayment"];
+type VippsPayment = components["schemas"]["InvoicesVippsPayment"];
+type VippsPaymentsDay = components["schemas"]["InvoicesVippsPaymentsDay"];
+type VippsDayReconciliation = components["schemas"]["InvoicesVippsDayReconciliation"];
+
+// An on-site payment request as POST /{id}/payment-requests answers it: the
+// QR is SVG markup, shown as an image, never inlined.
+export const onSitePayment = (overrides: Partial<OnSitePayment> = {}): OnSitePayment => ({
+  attemptId: 1001,
+  reference: "k3x9q2-1-1001",
+  qrSvg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29"><path d="M4 4h1v1h-1z"/></svg>',
+  expiresAt: "2026-09-12T10:40:00Z",
+  ...overrides,
+});
+
+// One Vipps payment of the day's list.
+export const vippsPayment = (overrides: Partial<VippsPayment> = {}): VippsPayment => ({
+  attemptId: 1001,
+  reference: "k3x9q2-1-1001",
+  invoiceId: 1,
+  invoiceNumber: 1,
+  buyerName: "Acme AS",
+  flow: "on_site",
+  amount: 1250,
+  capturedAt: "2026-09-12T10:31:05Z",
+  ...overrides,
+});
+
+// A day's reconciliation record.
+export const vippsDayReconciliation = (overrides: Partial<VippsDayReconciliation> = {}): VippsDayReconciliation => ({
+  day: "2026-09-11",
+  payments: 1,
+  total: 1250,
+  onSiteTotal: 1250,
+  payLinkTotal: 0,
+  reconciledBy: CURRENT_USER_ID,
+  reconciledAt: "2026-09-12T07:00:00Z",
+  note: "",
+  ...overrides,
+});
+
+// One Oslo day's Vipps payments, not yet reconciled.
+export const vippsPaymentsDay = (overrides: Partial<VippsPaymentsDay> = {}): VippsPaymentsDay => ({
+  date: "2026-09-12",
+  payments: [vippsPayment()],
+  count: 1,
+  total: 1250,
+  onSiteTotal: 1250,
+  payLinkTotal: 0,
+  ...overrides,
+});

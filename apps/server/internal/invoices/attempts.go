@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
@@ -261,6 +262,18 @@ func (s *server) createAttempt(ctx context.Context, in attemptInput, now time.Ti
 			}
 			return fmt.Errorf("invoices: lock document %d: %w", in.invoiceID, err)
 		}
+		if in.flow == flowOnSite {
+			// D17's hard rules, judged again under the invoice's lock
+			// (onsite.go), before the facts every flow shares.
+			onSite, err := s.onSiteRefusal(ctx, txq, inv)
+			if err != nil {
+				return err
+			}
+			if onSite != nil {
+				refusal = onSite
+				return errRefused
+			}
+		}
 		var link *store.InvoicesPayLink
 		if in.payLinkID != nil {
 			link = &store.InvoicesPayLink{ID: *in.payLinkID}
@@ -327,6 +340,12 @@ func (s *server) createAttempt(ctx context.Context, in attemptInput, now time.Ti
 			params.ReturnNonceSha256 = ptr(tokenSHA256(in.nonce))
 		}
 		if attempt, err = txq.InsertPaymentAttempt(ctx, params); err != nil {
+			if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" && pgErr.ConstraintName == "ux_payment_attempts_on_site_live" {
+				// The index is the rule's last word; under the invoice's
+				// lock onSiteRefusal has already said it.
+				refusal = ptr(conflict(codePaymentRequestActive, cannotOnSiteTitle, "A payment request of this invoice is in progress already."))
+				return errRefused
+			}
 			return fmt.Errorf("invoices: insert document %d's payment attempt: %w", inv.ID, err)
 		}
 		return nil

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -32,7 +33,7 @@ import (
 // and no number is taken.
 // Paid later it is a credit sale like any invoice; paid on site with Vipps it
 // is kontantsalg, offered only as a kontantfaktura (D17's hard rules), which
-// payOnSite asks for.
+// payOnSite asks for (onsite.go).
 
 // maxQuickLines is how many lines a quick invoice carries (D17).
 const maxQuickLines = 10
@@ -231,16 +232,29 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 	afterCommit := context.WithoutCancel(ctx)
 	issued = s.quickFollowMerge(afterCommit, issued)
 	issued = s.storeAfterIssue(afterCommit, q, issued)
-	resp, err := s.invoiceResponse(ctx, q, issued, nil)
-	if err != nil {
-		return nil, err
-	}
-	out := gen.InvoicesQuickInvoiceResponse{Invoice: resp}
+	var out gen.InvoicesQuickInvoiceResponse
 	if req.Body.PayOnSite != nil && *req.Body.PayOnSite {
-		// On-site payment is not offered yet: the invoice stands issued, and
-		// the answer says why no payment request was made.
-		out.PaymentRequestError = ptr(conflict(codeOnSitePaymentsUnavailable, "The payment cannot be requested",
-			"On-site payment is not turned on. The invoice is issued, and is paid later like any other."))
+		// The on-site request, as POST /{id}/payment-requests makes it — by
+		// this request alone, the one that issued the invoice: a replay
+		// only reports it (quickReplay). It is a step of its own after the
+		// commit, so it reads the clock for itself. Whatever stops it, the
+		// invoice stands issued and the answer says why.
+		pr, refusal, err := s.requestOnSite(ctx, issued.ID, s.deps.Clock())
+		switch {
+		case err != nil:
+			s.deps.Logger.ErrorContext(ctx, "invoices: a quick invoice's on-site payment request failed",
+				"invoice_id", issued.ID, "error", err.Error())
+			title, detail, status := "The payment could not be requested",
+				"The invoice is issued; the payment request failed. Make it again from the invoice.", int32(http.StatusInternalServerError)
+			out.PaymentRequestError = &gen.InvoicesConflictProblem{Title: &title, Detail: &detail, Status: &status}
+		case refusal != nil:
+			out.PaymentRequestError = refusal
+		default:
+			out.PaymentRequest = pr
+		}
+	}
+	if out.Invoice, err = s.invoiceResponse(ctx, q, issued, nil); err != nil {
+		return nil, err
 	}
 	return gen.PostInvoicesQuick201JSONResponse(out), nil
 }
@@ -327,7 +341,7 @@ func quickBodySHA(body gen.InvoicesQuickInvoiceRequest) (string, error) {
 // quickReplay answers a requestId used before (D17, after review): nil, nil
 // when it was not; the first request's invoice when bodySHA is its body's —
 // read as it stands, a merge the first missed followed, nothing else run
-// again, and no payment request made again; 409 request_id_reused for
+// again, and no payment request made again — a live one reported; 409 request_id_reused for
 // another body.
 func (s *server) quickReplay(ctx context.Context, q *store.Queries, id uuid.UUID, bodySHA string,
 ) (*gen.InvoicesQuickInvoiceResponse, *gen.InvoicesConflictProblem, error) {
@@ -351,7 +365,13 @@ func (s *server) quickReplay(ctx context.Context, q *store.Queries, id uuid.UUID
 	if err != nil {
 		return nil, nil, err
 	}
-	return &gen.InvoicesQuickInvoiceResponse{Invoice: resp}, nil, nil
+	// The first request's on-site payment request, if one lives: reported
+	// so a retrying client knows a QR exists, never made again (D17).
+	live, err := liveOnSiteRequest(ctx, q, inv.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &gen.InvoicesQuickInvoiceResponse{Invoice: resp, PaymentRequest: live}, nil, nil
 }
 
 // quickReplied is quickReplay's answer as the handler's: 200, 409 or an
