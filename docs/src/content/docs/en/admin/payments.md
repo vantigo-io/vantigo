@@ -232,11 +232,14 @@ code, only an absolute `https` address that Vipps answers to a new payment. Any 
 answer counts as an outcome not yet known: the pay page says Vipps could not start the
 payment, and the payments worker reads the payment again.
 
-**Rotating a key.** A new client secret for the same sales unit may be stored at any
-time; enter only the secret, and the other two keys are kept. A change of the MSN, the
-client id or the subscription key — another sales unit — is refused while a Vipps
-payment is in progress, because finishing it needs the keys it was made with: wait until
-the payments in progress are finished. Removing the keys is refused for the same reason.
+**Rotating keys.** New keys for the same sales unit — a client secret, a client id, a
+subscription key, or all three — may be stored at any time, also while Vipps payments
+are in progress; enter only what changes, and the other keys are kept. Payments in
+progress are read and captured under their sales unit with the new keys, so keys Vipps
+refuses are replaced without waiting. A change of the MSN — another sales unit — is
+refused while a Vipps payment is in progress, because finishing it needs that sales
+unit: wait until the payments in progress are finished, or abandon them. Removing the
+keys is refused for the same reason.
 
 **Storing keys again returns what was on to service.** While Vipps refuses the keys,
 or they cannot be opened, nothing Vipps offers is available, but the payment settings
@@ -338,7 +341,7 @@ environment's), is registered on the invoice within seconds as a Vipps payment.
 - *A release that never ends.* When Vipps refuses for good to release an amount it
   authorized and did not capture, the worker stops asking: the payment's last error says
   to release it in the Vipps portal. Such a payment still counts as in progress, so the
-  sales unit and its keys cannot be changed until it is finished, and it shows on the
+  sales unit cannot be changed, nor the keys removed, until it is finished, and it shows on the
   dashboard as stranded. Once the rest is released in the portal, *Abandon* hands it
   back to the worker — the payment itself is registered and is never abandoned — which
   reads Vipps again and records the release.

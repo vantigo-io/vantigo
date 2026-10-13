@@ -229,9 +229,9 @@ func TestVippsSettings_OmittedSecretKept(t *testing.T) {
 	}
 }
 
-// While an attempt is live — each live state planted — a change of the MSN,
-// the client id or the subscription key is refused, counted under the row's
-// lock; a new client secret alone is a rotation and allowed.
+// While an attempt is live — each live state planted — a change of the MSN
+// is refused, counted under the row's lock; new keys of the same MSN (client
+// id, secret, subscription key) are a rotation and allowed.
 func TestVippsSettings_SalesUnitChangeRefusedWhileLive(t *testing.T) {
 	t.Parallel()
 	for _, state := range liveAttemptStates {
@@ -242,16 +242,20 @@ func TestVippsSettings_SalesUnitChangeRefusedWhileLive(t *testing.T) {
 			plantAttempt(t, h, state)
 			manager := vippsManager(t, h)
 			for name, body := range map[string]map[string]any{
-				"the MSN":              vippsKeys("654321", "", "", ""),
-				"the client id":        vippsKeys(vippstest.MSN, "another-id", "", ""),
-				"the subscription key": vippsKeys(vippstest.MSN, "", "", "another-sub"),
+				"the MSN":          vippsKeys("654321", "", "", ""),
+				"the MSN and keys": vippsKeys("654321", "another-id", "", "another-sub"),
 			} {
 				res := manager.Do(http.MethodPut, vippsSettingsPath, body)
 				if res.Status != http.StatusConflict || problemOf(t, res).Code != "payment_attempts_active" {
 					t.Errorf("a change of %s while %s = %d %s, want 409 payment_attempts_active", name, state, res.Status, res.Body)
 				}
 			}
-			// The same keys again, and the same MSN, are no change.
+			// The keys of the same sales unit rotate while it is live: the
+			// attempts stay readable under the same MSN.
+			putVipps(t, h, vippsKeys(vippstest.MSN, "another-id", "", "another-sub"))
+			if keys := openedVippsKeys(t, h); !strings.Contains(keys, `"clientId":"another-id"`) || !strings.Contains(keys, `"subscriptionKey":"another-sub"`) {
+				t.Errorf("after rotating the keys while %s they are %s", state, keys)
+			}
 			putVipps(t, h, vippstestKeys())
 			putVipps(t, h, vippsKeys(vippstest.MSN, "", "rotated-secret", ""))
 			if keys := openedVippsKeys(t, h); !strings.Contains(keys, `"clientSecret":"rotated-secret"`) || !strings.Contains(keys, vippstest.ClientID) {
@@ -265,6 +269,56 @@ func TestVippsSettings_SalesUnitChangeRefusedWhileLive(t *testing.T) {
 	putVipps(t, h, vippstestKeys())
 	plantAttempt(t, h, "cancelled")
 	putVipps(t, h, vippsKeys("654321", "another-id", "", "another-sub"))
+}
+
+// TestVippsSettings_KeyRotationFreesALiveCapture (the whole-branch review):
+// keys Vipps refuses leave a capture of unknown outcome, and new keys of the
+// same sales unit are stored while it is live — then the worker captures and
+// registers it. Refusing the rotation would hold the credentials for ever:
+// no call succeeds, so the attempt never finishes, and abandon cannot read
+// Vipps either.
+func TestVippsSettings_KeyRotationFreesALiveCapture(t *testing.T) {
+	t.Parallel()
+	h := workerReady(t)
+	inv, ref := approvedAttempt(t, h)
+	step(t, h)
+	if a := attemptOf(t, h, ref); a.State != "authorized" {
+		t.Fatalf("after one claim the attempt is %s, want authorized", a.State)
+	}
+	stale, err := h.Deps().Secrets.SealString(vippsPurpose, fmt.Sprintf(
+		`{"clientId":%q,"clientSecret":%q,"subscriptionKey":"stale-sub"}`, vippstest.ClientID, vippstest.ClientSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Exec(t, `UPDATE invoices.payment_provider_credentials SET secret_ciphertext = $1, updated_at = updated_at + interval '1 second'`, stale)
+	h.Advance(time.Minute)
+	cycle(t, h)
+	if a := attemptOf(t, h, ref); a.State != "capturing" {
+		t.Fatalf("with refused keys the attempt is %s, want capturing", a.State)
+	}
+	if storedVipps(t, h).RejectedAt == nil {
+		t.Fatal("the refused keys were not flagged")
+	}
+
+	got := putVipps(t, h, vippsKeys(vippstest.MSN, "", "", vippstest.SubscriptionKey))
+	if got.RejectedAt != nil {
+		t.Errorf("the rotated keys answer rejectedAt %v, want none", got.RejectedAt)
+	}
+	h.Advance(time.Hour)
+	cycle(t, h)
+	if a := attemptOf(t, h, ref); a.State != "captured" {
+		t.Errorf("after the rotation the attempt is %s, want captured", a.State)
+	}
+	if n := len(vippsPaymentsOf(t, h, inv.ID)); n != 1 {
+		t.Errorf("%d Vipps payments registered, want 1", n)
+	}
+
+	// A change of sales unit is still refused while anything is live.
+	plantAttempt(t, h, "capturing")
+	res := vippsManager(t, h).Do(http.MethodPut, vippsSettingsPath, vippsKeys("654321", "", "", ""))
+	if res.Status != http.StatusConflict || problemOf(t, res).Code != "payment_attempts_active" {
+		t.Errorf("an MSN change while live = %d %s, want 409 payment_attempts_active", res.Status, res.Body)
+	}
 }
 
 // DELETE is refused while an attempt is live, and is a 204 otherwise — also

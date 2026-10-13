@@ -1368,10 +1368,10 @@ Vipps-betaling før nye nøkler er lagret eller en bekreftelse lykkes. Betalings
 betaling på stedet som sto slått på, virker da igjen av seg selv, uten å slås på eller
 bekreftes på nytt.
 
-Mens en Vipps-betaling pågår, kan du ikke bytte til en annen salgsenhet, en annen
-klient-id eller en annen abonnementsnøkkel, og heller ikke **Fjern Vipps-nøklene**:
-Fakturaer trenger dem fortsatt for å fullføre betalingen. En ny klienthemmelighet alene
-— en rotasjon for samme salgsenhet — er alltid tillatt.
+Mens en Vipps-betaling pågår, kan du ikke bytte til en annen salgsenhet (MSN), og heller
+ikke **Fjern Vipps-nøklene**: Fakturaer trenger fortsatt den salgsenheten for å fullføre
+betalingen. Nye nøkler for samme salgsenhet — en ny klient-id, klienthemmelighet eller
+abonnementsnøkkel — kan alltid lagres, så nøkler Vipps har avvist kan byttes når som helst.
 
 ### Betalingslenker og betaling på stedet
 

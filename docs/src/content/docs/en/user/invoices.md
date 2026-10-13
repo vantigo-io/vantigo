@@ -1349,10 +1349,10 @@ and offers no Vipps payment until new keys are stored or a verify succeeds. Pay 
 and payment on site that were left switched on then work again by themselves, without
 being turned on or acknowledged again.
 
-While a Vipps payment is in progress you cannot switch to another sales unit, another
-client id or another subscription key, nor **Remove the Vipps keys**: Invoices still
-needs them to finish that payment. A new client secret alone — a rotation of the same
-sales unit — is always allowed.
+While a Vipps payment is in progress you cannot switch to another sales unit (MSN), nor
+**Remove the Vipps keys**: Invoices still needs that sales unit to finish the payment.
+New keys of the same sales unit — a new client id, client secret or subscription key —
+can always be saved, so keys Vipps has refused can be replaced at any time.
 
 ### Pay links and payment on site
 

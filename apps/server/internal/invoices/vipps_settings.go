@@ -95,11 +95,13 @@ func paymentsUnavailable(err error) (gen.InvoicesConflictProblem, bool) {
 }
 
 // paymentAttemptsActive is the 409 a sales-unit change or a DELETE answers
-// while an attempt is live (I20).
+// while an attempt is live (I20). The keys of the same sales unit may
+// change at any time: attempts are read under their MSN, and refusing a
+// rotation would hold keys Vipps refuses — and every live attempt — for ever.
 func paymentAttemptsActive() gen.InvoicesConflictProblem {
 	return conflict(codePaymentAttemptsActive, paymentAttemptsTitle,
 		"A Vipps payment is being created, awaits the payer, is authorized, is being captured or released, or its outcome is unknown. "+
-			"Wait until it is finished, or abandon it, before changing the sales unit or its keys or removing them. A new client secret alone may be stored.")
+			"Wait until it is finished, or abandon it, before changing the sales unit (MSN) or removing the keys. New keys of the same sales unit may be stored at any time.")
 }
 
 // vippsRequest is a PUT body that passed: a nil key keeps the stored one.
@@ -288,6 +290,10 @@ func (s *server) putVippsOnce(ctx context.Context, in vippsRequest) (vippsPutOut
 			return fmt.Errorf("invoices: lock the Vipps credentials: %w", err)
 		}
 		var keys vippsKeys
+		// changed is a change of sales unit: only that is refused while an
+		// attempt is live. New keys of the same MSN are stored whatever is
+		// live — the version moves, so a create built from the old keys
+		// refuses on the mismatch, and a refusal stays the old version's.
 		changed := false
 		if stored {
 			settings, err := vippsSettingsOf(current)
@@ -300,7 +306,6 @@ func (s *server) putVippsOnce(ctx context.Context, in vippsRequest) (vippsPutOut
 					out.unreadable, out.version = true, current.UpdatedAt
 					return errRefused
 				}
-				changed = true
 			}
 		} else {
 			for field, v := range map[string]*string{"clientId": in.clientID, "clientSecret": in.clientSecret, "subscriptionKey": in.subscription} {
@@ -313,11 +318,9 @@ func (s *server) putVippsOnce(ctx context.Context, in vippsRequest) (vippsPutOut
 			}
 		}
 		if in.clientID != nil {
-			changed = changed || *in.clientID != keys.ClientID
 			keys.ClientID = *in.clientID
 		}
 		if in.subscription != nil {
-			changed = changed || *in.subscription != keys.SubscriptionKey
 			keys.SubscriptionKey = *in.subscription
 		}
 		if in.clientSecret != nil {

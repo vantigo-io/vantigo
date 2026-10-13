@@ -239,7 +239,7 @@ func TestVippsCredentials_SalesUnitChangeRacesCreate(t *testing.T) {
 
 // TestAttempts_CredentialsVersionMismatch: the provider is built on the
 // pool from the credentials as they were; a PUT that replaced them — a new
-// client secret alone, allowed while attempts are live — commits while the
+// client secret of the same sales unit, allowed while attempts are live — commits while the
 // create waits on the row. The create compares the version it shares under
 // the invoice's lock with the provider's and refuses with a retryable 503
 // payments_unavailable: nothing inserted, nothing sent with the old keys. A

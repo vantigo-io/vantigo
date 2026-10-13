@@ -194,7 +194,7 @@ describe("VippsSettings_KeysWriteOnlyVerifyAndRejected", () => {
 
     expect(
       await within(card).findByText(
-        "A Vipps payment is in flight. The sales unit and the keys cannot be changed or removed until it is finished or abandoned.",
+        "A Vipps payment is in flight. The sales unit cannot be changed, nor the keys removed, until it is finished or abandoned. New keys of the same sales unit can be saved.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("The server's English.")).not.toBeInTheDocument();

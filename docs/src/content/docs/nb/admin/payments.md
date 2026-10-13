@@ -232,11 +232,14 @@ QR-kode på stedet, bare en absolutt `https`-adresse som Vipps svarer på en ny 
 Ethvert annet svar regnes som et utfall som ennå ikke er kjent: betalingssiden sier at
 Vipps ikke kunne starte betalingen, og betalingsarbeideren leser betalingen på nytt.
 
-**Rotere en nøkkel.** En ny klienthemmelighet for samme salgsenhet kan lagres når som
-helst; fyll bare inn hemmeligheten, så beholdes de to andre nøklene. En endring av MSN,
-klient-ID eller abonnementsnøkkel — en annen salgsenhet — avvises mens en
-Vipps-betaling pågår, fordi den må fullføres med nøklene den ble laget med: vent til
-betalingene som pågår er ferdige. Å fjerne nøklene avvises av samme grunn.
+**Rotere nøkler.** Nye nøkler for samme salgsenhet — en klienthemmelighet, en klient-ID,
+en abonnementsnøkkel, eller alle tre — kan lagres når som helst, også mens
+Vipps-betalinger pågår; fyll bare inn det som endres, så beholdes de andre nøklene.
+Betalinger som pågår, leses og trekkes under sin salgsenhet med de nye nøklene, så nøkler
+Vipps avviser, byttes uten å vente. En endring av MSN — en annen salgsenhet — avvises
+mens en Vipps-betaling pågår, fordi den må fullføres i den salgsenheten: vent til
+betalingene som pågår er ferdige, eller forlat dem. Å fjerne nøklene avvises av samme
+grunn.
 
 **Å lagre nøklene på nytt setter det som var på, i drift igjen.** Så lenge Vipps avviser
 nøklene, eller de ikke kan åpnes, er ingenting Vipps tilbyr tilgjengelig, men
@@ -337,7 +340,7 @@ testmiljøets), registreres på fakturaen i løpet av sekunder som en Vipps-beta
 - *En frigivelse som aldri blir ferdig.* Når Vipps for godt nekter å frigi et beløp som
   ble reservert og ikke trukket, slutter jobben å spørre: betalingens siste feil sier at
   det må frigis i Vipps-portalen. En slik betaling teller fortsatt som pågående, så
-  salgsenheten og nøklene kan ikke endres før den er ferdig, og den vises på dashbordet
+  salgsenheten kan ikke endres, og nøklene kan ikke fjernes, før den er ferdig, og den vises på dashbordet
   som strandet. Når resten er frigitt i portalen, gir *Forlat* den tilbake til jobben —
   selve betalingen er registrert og forlates aldri — som leser Vipps igjen og lagrer
   frigivelsen.
