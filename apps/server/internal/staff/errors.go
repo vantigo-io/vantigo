@@ -122,6 +122,9 @@ const (
 	codeAbsenceOverlap        = "absence_overlap"
 	codeAbsenceNotRequested   = "absence_not_requested"
 	codeAbsenceNotCancellable = "absence_not_cancellable"
+	// codeAbsenceStatusChange is a change of an absence's type between one
+	// that needs a decision and one that is a notification (review L2).
+	codeAbsenceStatusChange = "absence_status_change"
 	// codeCarryOverRecorded is the plan's own (pre-flight I8): a second
 	// carry-over for one person and the year it comes from.
 	codeCarryOverRecorded = "carry_over_recorded"

@@ -484,7 +484,8 @@ Dette gjelder i dag, gjennom Ansatte-API-et:
   prosentene til sammen er høyst 100 %. En søknad du har sendt teller som om den var
   innvilget, så du kan ikke søke to ganger om samme dag.
 - **Når du ombestemmer deg.** Mens en søknad venter, kan du endre den, fjerne den eller
-  trekke den tilbake (en tilbaketrukket søknad blir stående i historikken). Et registrert
+  trekke den tilbake (en tilbaketrukket søknad blir stående i historikken); for å gjøre
+  den om til en registrering — eller omvendt — fjern den og legg inn den andre. Et registrert
   fravær — også sykefravær — er HRs å endre eller fjerne: slutter sykmeldingen tidligere,
   si fra til HR.
 - **Feriekontoen din** teller i arbeidsdager, mandag til fredag uten helligdager:
@@ -493,11 +494,12 @@ Dette gjelder i dag, gjennom Ansatte-API-et:
   fjor, det du har tatt ut, det du har søkt om og det som står igjen. En søknad som tar
   deg forbi det som står igjen, sendes likevel — kontoen viser den som overtrukket.
 
-Hvem ser fraværet ditt: du, lederen din og HR ser datoene, typen og detaljene; kolleger
-med tilgang til personoversikten ser bare at du er borte en innvilget eller registrert
-dag — aldri typen, en prosent eller en merknad. En type som avslører helse eller
-familieforhold (som svangerskapspermisjon eller en religiøs høytid) viser lederen din
-bare *permisjon*.
+Hvem ser fraværet ditt: du, lederen din og HR ser datoene, statusen, typen og detaljene;
+kolleger med tilgang til personoversikten ser bare dagene du er borte — aldri om det var
+en søknad eller en registrering, typen, en prosent, timer eller en merknad, så en
+sykedag ser ut som en fridag. En type som avslører helse eller familieforhold (som
+svangerskapspermisjon, svangerskapskontroll eller en religiøs høytid) viser lederen din
+bare *permisjon*, uten timene, som all annen permisjon.
 
 ## Dashbordet
 

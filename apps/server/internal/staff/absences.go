@@ -60,26 +60,41 @@ func (a audience) seesAbsence(status string) bool {
 	return !a.onlyColleague() || status == absenceApproved || status == absenceRegistered
 }
 
-// absenceResponse is one absence as a reads it (design §5): the dates and
-// the status to everyone who sees it; the type to the person, the manager
-// and HR — an HR-only type shown as leave to all but the person and
-// staff:personal-data — and as absent to a colleague; percent, hours, note
-// and degree never to a colleague (plan pre-flight I4).
+// absenceResponse is one absence as a reads it (design §5, review C1 and
+// H1). A colleague reads the dates alone — no status, no working days, no
+// type — since which rows start registered (the sick kinds) and which count
+// no working day (the hour types) would otherwise say what an absence is.
+// The person, the manager and HR read the status, the working days, the
+// type and the detail; an HR-only type is shown as leave to all but the
+// person and staff:personal-data, and its row then looks like any other
+// leave (leaveShaped): no hours, the working days of its days, a registered
+// row as approved.
 func absenceResponse(row store.StaffAbsence, kind, visibility, unit string, a audience) gen.StaffAbsence {
 	out := gen.StaffAbsence{
 		Id:       row.ID,
 		PersonId: row.PersonID,
-		Status:   gen.StaffAbsenceStatus(row.Status),
 		FirstDay: openapi_types.Date{Time: civil(row.FirstDay)},
 		LastDay:  openapi_types.Date{Time: civil(row.LastDay)},
 		ShownAs:  gen.StaffAbsenceShownAsAbsent,
 		Revision: row.Revision,
 	}
-	if unit == unitDays {
-		out.WorkingDays = int32(workingDays(civil(row.FirstDay), civil(row.LastDay)))
+	if a.onlyColleague() {
+		return out
 	}
+	asLeave := leaveShaped(visibility, a)
+	status := row.Status
+	if asLeave {
+		status = neutralStatus(status)
+	}
+	st := gen.StaffAbsenceStatus(status)
+	out.Status = &st
+	var days int32
+	if unit == unitDays || asLeave {
+		days = int32(workingDays(civil(row.FirstDay), civil(row.LastDay)))
+	}
+	out.WorkingDays = &days
 	switch {
-	case a.reads(groupAbsenceType) && (visibility == visibilityAbsent || a.readsHROnlyTypes()):
+	case a.reads(groupAbsenceType) && !asLeave:
 		out.ShownAs = gen.StaffAbsenceShownAsType
 		id := row.TypeID
 		out.TypeId = &id
@@ -89,7 +104,7 @@ func absenceResponse(row store.StaffAbsence, kind, visibility, unit string, a au
 	if a.reads(groupAbsenceDetail) {
 		percent := numberOf(row.Percent)
 		out.Percent = &percent
-		if row.Hours.Valid {
+		if row.Hours.Valid && !asLeave {
 			h := numberOf(row.Hours)
 			out.Hours = &h
 		}
@@ -100,6 +115,24 @@ func absenceResponse(row store.StaffAbsence, kind, visibility, unit string, a au
 		out.Note = row.Note
 	}
 	return out
+}
+
+// leaveShaped is whether a reads a row of a type of visibility as "leave":
+// an HR-only type — or one the module cannot place — to a reader of types
+// who does not read HR-only ones (the manager, HR without
+// staff:personal-data).
+func leaveShaped(visibility string, a audience) bool {
+	return a.reads(groupAbsenceType) && !a.readsHROnlyTypes() && visibility != visibilityAbsent
+}
+
+// neutralStatus is a status as a row shown as "leave" carries it: a
+// registration reads as an approval, since only the notification types —
+// an HR-only hour type among them — start registered (review H1).
+func neutralStatus(status string) string {
+	if status == absenceRegistered {
+		return absenceApproved
+	}
+	return status
 }
 
 // absenceValues is a row's fields as an absence event names them, each value
@@ -139,6 +172,16 @@ func (s *server) recordAbsence(ctx context.Context, txq *store.Queries, personID
 		a = absenceValues(*after)
 	}
 	payload, classes := absenceEventPayload(id, b, a, health)
+	// The row's type on each side, so a reader is shown the whole event —
+	// its hours, its status, its kind — by the row's visibility as well as
+	// each type value by its own (review H1).
+	var typeIDs []int64
+	for _, r := range []*store.StaffAbsence{before, after} {
+		if r != nil && !slices.Contains(typeIDs, r.TypeID) {
+			typeIDs = append(typeIDs, r.TypeID)
+		}
+	}
+	payload["typeIds"] = typeIDs
 	return s.recordClassedEvent(ctx, txq, personID, kind, who, payload, classes)
 }
 
@@ -294,6 +337,9 @@ func (s *server) PostStaffAbsences(ctx context.Context, req gen.PostStaffAbsence
 	}
 	if !caller.Manage && (caller.Person == nil || *caller.Person != body.PersonId) {
 		return gen.PostStaffAbsences403JSONResponse(apicommon.ForbiddenBody()), nil
+	}
+	if f := s.unknownProperties(ctx, absenceRequestSchema); f.failed() {
+		return gen.PostStaffAbsences400ApplicationProblemPlusJSONResponse(invalid(invalidAbsenceTitle, f)), nil
 	}
 	p, f := parseAbsence(fieldsOfRequest(body))
 	if f.failed() {
@@ -575,6 +621,10 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 		p, t, err := judgeAbsence(ctx, txq, personID, before.ID, p)
 		if err != nil {
 			return err
+		}
+		if statusFor(t) != before.Status {
+			return refuseConflict(conflict(codeAbsenceStatusChange, "Another kind of absence",
+				"A change keeps a request a request and a registration a registration: a type that needs a decision and one that is a notification are not swapped. Remove this absence and enter the other."))
 		}
 		row, err := txq.UpdateAbsence(ctx, store.UpdateAbsenceParams{
 			ID: before.ID, TypeID: t.ID, FirstDay: dayParam(p.First), LastDay: dayParam(p.Last), Hours: p.Hours,

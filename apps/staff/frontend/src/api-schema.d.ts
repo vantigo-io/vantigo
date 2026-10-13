@@ -55,7 +55,7 @@ export interface paths {
         };
         /**
          * List absences
-         * @description The absences the caller may see, newest first: their own, their reports' today (a manager by the one manager rule), every active person's approved and registered rows to staff:view — shaped as "absent", no type, percent, hours or note — and everyone's to staff:manage and staff:personal-data. A row the caller may not see is left out. personId narrows to one person; from and to to the rows that touch the range.
+         * @description The absences the caller may see, newest first: their own, their reports' today (a manager by the one manager rule), every active person's approved and registered rows to staff:view — shaped as "absent", the dates alone, never matched by a status filter — and everyone's to staff:manage and staff:personal-data. A row the caller may not see is left out. personId narrows to one person; from and to to the rows that touch the range.
          */
         get: operations["getStaffAbsences"];
         put?: never;
@@ -84,7 +84,7 @@ export interface paths {
         get: operations["getStaffAbsencesById"];
         /**
          * Change an absence
-         * @description Replaces an absence's type, days, percent, hours, degree and note, judged as a new one is (the row itself left out of the overlap): the person's while it is requested; a registered row — a sick one included — staff:manage's alone, since ending a sykmelding early or fixing its days is HR's (the person asks). Anything else answers absence_not_requested; anyone but the person and staff:manage the uniform 403. Recorded as absence_updated with each field's before and after.
+         * @description Replaces an absence's type, days, percent, hours, degree and note, judged as a new one is (the row itself left out of the overlap): the person's while it is requested; a registered row — a sick one included — staff:manage's alone, since ending a sykmelding early or fixing its days is HR's (the person asks). A change never moves a row between a type that needs a decision and one that is a notification (absence_status_change). Anything else answers absence_not_requested; anyone but the person and staff:manage the uniform 403. Recorded as absence_updated with each field's before and after.
          */
         put: operations["putStaffAbsencesById"];
         post?: never;
@@ -1462,7 +1462,7 @@ export interface components {
             data: components["schemas"]["StaffPersonListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
-        /** @description An absence as the caller may read it (design §5): the dates and the status to everyone who sees the row; the type to the person, their manager and HR — an HR-only type shown as leave to all but the person and staff:personal-data (shownAs leave, no typeId) and to a colleague as absent; percent, hours, note and degree never to a colleague. A write of a type drawing on the holiday account answers the accounts of the years it touches after it. */
+        /** @description An absence as the caller may read it (design §5). A colleague (staff:view alone) reads the dates and nothing else — no status, no working days, no type (shownAs absent) — so a sickness looks like any other absence. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, the working days of its days, and a registered row as approved. A write of a type drawing on the holiday account answers the accounts of the years it touches after it. */
         StaffAbsence: {
             /** Format: int64 */
             id: number;
@@ -1471,7 +1471,7 @@ export interface components {
              * @description The person.
              */
             personId: number;
-            status: components["schemas"]["StaffAbsenceStatus"];
+            status?: components["schemas"]["StaffAbsenceStatus"];
             /**
              * Format: date
              * @description The first day.
@@ -1484,9 +1484,9 @@ export interface components {
             lastDay: string;
             /**
              * Format: int32
-             * @description The working days from the first to the last day — Monday to Friday without public holidays — whatever the share; an hour row counts none.
+             * @description The working days from the first to the last day — Monday to Friday without public holidays — whatever the share; an hour row counts none, but one shown as leave counts its day. Absent to a colleague.
              */
-            workingDays: number;
+            workingDays?: number;
             shownAs: components["schemas"]["StaffAbsenceShownAs"];
             /**
              * Format: int64
@@ -1560,7 +1560,7 @@ export interface components {
          * @enum {string}
          */
         StaffAbsenceKind: "holiday" | "sick_self" | "sick_certified" | "child_sick" | "leave" | "time_off" | "other";
-        /** @description A new absence for a person: the caller's own, or — staff:manage — anyone's. */
+        /** @description A new absence for a person: the caller's own, or — staff:manage — anyone's. A property this request does not name is refused. */
         StaffAbsenceRequest: {
             /**
              * Format: int64
@@ -2886,7 +2886,7 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, carry_over_recorded, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -3807,7 +3807,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict, absence_not_requested, absence_overlap, or person_erased. */
+            /** @description Conflict — revision_conflict, absence_not_requested, absence_status_change (a change between a type that needs a decision and one that is a notification), absence_overlap, or person_erased. */
             409: {
                 headers: {
                     [name: string]: unknown;

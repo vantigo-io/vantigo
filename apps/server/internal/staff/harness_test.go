@@ -339,6 +339,7 @@ func raw(t *testing.T, r *modtest.Response) map[string]any {
 type problem struct {
 	Code   string              `json:"code"`
 	Title  string              `json:"title"`
+	Detail string              `json:"detail"`
 	Errors map[string][]string `json:"errors"`
 }
 

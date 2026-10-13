@@ -242,12 +242,14 @@ A person has **at most one carry-over from a year**: a second answers
 (`DELETE /api/v1/staff/holiday-adjustments/{id}`; the list is
 `GET /api/v1/staff/people/{id}/holiday-adjustments`) and record it again. A correction
 of an account — a day registered wrongly, say — is an adjustment with
-`reason: "correction"` and a note.
+`reason: "correction"` and a note; an adjustment that is a carry-over names the year
+just before the one it changes.
 
 **Automatic carry-over.** With `autoCarryOver` on in the settings, an account carries
 the year before's remaining days in by itself (`carriedInDerived`), as a forced
-carry-over — but only for years from the one it was turned on in, so turning it on
-never reaches back into years HR already settled. A carry-over recorded by hand for a
+carry-over — but only into a year whose 1 January is on or after the day it was turned
+on: turned on 12 September 2026, it first carries 2026's days into 2027. It never
+reaches into a year already under way, whose carry-in HR settled by hand. A carry-over recorded by hand for a
 year replaces the automatic one.
 
 ## Correct a registered sick absence
@@ -256,7 +258,9 @@ An egenmelding or a sykmelding is registered, not decided, and the employee cann
 change it once it is in: when a sykmelding ends early, or a day was wrong, HR changes
 it (`PUT /api/v1/staff/absences/{id}`, `staff:manage`, with the revision in `If-Match`)
 or removes it (`DELETE /api/v1/staff/absences/{id}`). Each is recorded in the person's
-history. An absence somebody has decided is never removed; it is cancelled or corrected
+history. A change keeps the row a registration: changing a sykmelding into ferie, say,
+is refused (`absence_status_change`) — remove it and enter the ferie. Absence writes
+are `staff:manage`'s; `staff:personal-data` alone does not write them. An absence somebody has decided is never removed; it is cancelled or corrected
 with the decisions, in a later step of the delivery.
 
 ## The care-day fields

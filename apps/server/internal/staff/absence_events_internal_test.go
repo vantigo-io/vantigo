@@ -201,3 +201,35 @@ func TestAdjustmentEvent(t *testing.T) {
 		t.Errorf("after the D erase: %v, want the note blanked and the days kept", p.Fields)
 	}
 }
+
+// A field an event's own map does not class is blanked by every erase, and an
+// absence event carrying no map at all is blanked whole (fail closed, review
+// L1): what the module cannot place is erased rather than kept.
+func TestAbsenceEvent_UnclassedFieldsBlankedByEveryErase(t *testing.T) {
+	t.Parallel()
+	partial := []byte(`{"absenceId":7,"fields":{"firstDay":{"to":"2026-06-08"},"mystery":{"to":"x"}},"classes":{"firstDay":"C"}}`)
+	bare := []byte(`{"absenceId":8,"fields":{"firstDay":{"to":"2026-06-08"},"type":{"to":1001}}}`)
+	fieldsAfter := func(stored []byte, class string) map[string]any {
+		out, _, err := blankPayload(stored, class)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var p struct {
+			Fields map[string]any `json:"fields"`
+		}
+		if err := json.Unmarshal(out, &p); err != nil {
+			t.Fatal(err)
+		}
+		return p.Fields
+	}
+	for _, class := range []string{"D", "E", "A"} {
+		f := fieldsAfter(partial, class)
+		if f["mystery"] != changed || f["firstDay"] == changed {
+			t.Errorf("the %s erase of a partly classed event: %v, want mystery blanked and firstDay kept", class, f)
+		}
+		f = fieldsAfter(bare, class)
+		if f["firstDay"] != changed || f["type"] != changed {
+			t.Errorf("the %s erase of an event without a map: %v, want every field blanked", class, f)
+		}
+	}
+}
