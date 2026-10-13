@@ -327,6 +327,11 @@ verten trygg; stegene nedenfor setter den.
        ssl_reject_handshake on;
        return 444;
    }
+   server {
+       listen 80 default_server;
+       server_name _;
+       return 444;
+   }
 
    server {
        listen 443 ssl;
@@ -347,7 +352,17 @@ verten trygg; stegene nedenfor setter den.
    holder de linjene ute, på bekostning av selve oppstrømsfeilene på denne verten — les
    dem i feilloggen til verten for `APP_URL`, eller behold `error` og behandle den
    loggen som en som inneholder betalingstokener (begrens hvem som leser den, hold den
-   kort). `server`-blokken til `APP_URL` er egen og uendret.
+   kort). `ssl_reject_handshake` krever nginx 1.19.4 eller nyere; på en eldre gir du
+   oppsamleren et eget sertifikat i stedet. Oppsamleren på port 80 betyr noe når proxyen
+   også lytter på 80.
+
+   **Nettstedet til `APP_URL` må ikke kunne nås på den offentlige adressen.** Lytter
+   `server`-blokken dens på samme adresse og port i den samme nginx, kan en klient åpne
+   TLS for `pay.example.com` og sende `Host: vantigo.example.com`: nginx velger
+   `server`-blokk etter `Host`, så forespørselen når blokken til `APP_URL` og hele
+   Vantigo gjennom betalingssidens adresse — oppsamleren hjelper ikke. La blokken til
+   `APP_URL` lytte bare på en intern adresse (`listen 10.0.0.5:443 ssl;`), eller begrens
+   den til egne nett med `allow` og `deny`, eller publiser den fra en annen proxy.
 
    Med Caddy svarer en nettstedsblokk bare for navnene den lister opp — et annet navn
    finner ikke noe nettsted og avvises — og `reverse_proxy` sender oppstrøms
@@ -367,7 +382,15 @@ verten trygg; stegene nedenfor setter den.
    }
    ```
 
-   Caddy skriver oppstrømsfeil til den samme filtrerte tilgangsloggen.
+   Det samme gjelder nettstedet til `APP_URL` i den samme Caddy: Caddy ruter etter
+   `Host`, så en klient som åpner TLS for `pay.example.com` med
+   `Host: vantigo.example.com`, når det. Begrens det nettstedet til egne nett med en
+   `remote_ip`-matcher, eller slå på `strict_sni_host` i den globale innstillingen
+   `servers`, som svarer `421 Misdirected Request` når `Host` ikke stemmer med
+   TLS-servernavnet. Direktivet `log` setter bare opp tilgangsloggen; dokumentasjonen til
+   Caddy sier ikke at en oppstrømsfeil holdes ute av kjøretidsloggen (loggeren `default`,
+   på stderr), så behandle også den loggen som en som inneholder betalingstokener: hev
+   nivået, eller begrens hvem som leser den, og hold den kort.
 5. **Start Vantigo på nytt** med `PUBLIC_BASE_URL` satt; den leses ved oppstart.
 
 **Tillatelseslisten.** På den offentlige verten svarer en forespørsel hvis metode og sti
@@ -401,7 +424,10 @@ curl -i https://pay.example.com/sign-in -H 'Host: vantigo.example.com'
 ```
 
 De to siste må svare 404 (proxyen sendte den offentlige verten likevel) eller avvises av
-proxyen — aldri 200 og innloggingssiden. Åpne deretter en betalingslenke og se i proxyens
+proxyen — aldri 200 og innloggingssiden. Kontrollen med `Host: vantigo.example.com`
+beviser bare noe når nettstedet til `APP_URL` betjenes av den samme proxyen; der er den
+nettopp forespørselen som ville nådd nettstedet til `APP_URL` gjennom den offentlige
+adressen. Åpne deretter en betalingslenke og se i proxyens
 tilgangslogg: linjen for `/pay` har ikke noe `token`.
 
 **Hva som kan gå galt:**
