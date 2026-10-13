@@ -1652,7 +1652,11 @@ Registered over the person's rows, a sykmelding stands over some of them:
   new approved row with the same decision, and ferie it covers whole is cancelled. The
   days return to the account through its arithmetic alone — no adjustment is written.
   One `absence_split` event on each ferie row says so, carrying `demandedOn` and
-  `postponedUnder` (`9 (1)` or `9 (2)`), class E. Sickness that began before a ferie's
+  `postponedUnder` (`9 (1)` or `9 (2)`), class E. A demand is never dated before the
+  sykmelding's first day (400: a demand follows the sickness). Today's § 9 sets no least
+  number of sick days for either paragraph (checked against Lovdata, 2026-10-14), so a
+  single wholly sick day may be postponed; § 9 (2)'s demand is to come "uten ugrunnet
+  opphold" once the work is resumed, which HR judges. Sickness that began before a ferie's
   first day demanded after the last working day before it is
   `holiday_postponement_too_late`; a graded sykmelding — the employee is not wholly
   unable to work — or one over no approved ferie is
@@ -1703,7 +1707,8 @@ care-day fields alone — the withdrawal.
 `PUT /people/{id}/self-certification/withdrawal {until, reason}` (`staff:manage`)
 withdraws a person's right to egenmelding (ftrl. § 8-27) until a day after today and at
 most a year ahead, with a reason of 1–500 characters; `{"until": null}` lifts it. It
-applies from the day it is decided (`withdrawnFrom`), never to days before. The three
+applies from the day it is decided (`withdrawnFrom`), never to days before; re-issuing
+a withdrawal still in force — to extend it, say — keeps that day. The three
 columns are on the person (`self_cert_withdrawn_from`, `_until`, `_reason`, class E). The
 events `self_cert_withdrawn` and `self_cert_restored` carry their fields with their
 classes (E) and the marker `selfCertWithdrawal`, and are listed **only to the readers
@@ -2290,7 +2295,7 @@ the caller's roles find is listed once.
 | `retentionFailing` | manage | Ledger rows the object store has refused at least once (`attempts` ≥ 1) that were queued more than 24 hours ago. One item. The settings' `failingDeletions` counts every refused row, however young. | When the oldest of them was queued. | `retention`; `count` the rows. |
 | `otpThreshold` | manage | By the `ftePercent` in force today summed per person over their employments in force today: someone at 75 % or more, or the people at 20 % or more adding up to 200 % (two full-time equivalents) — OTP-loven § 2 judged without an owner flag (plan reading 17), so the title names the exception, "unless the only such person is the owner". Not shown once `otp` is [acknowledged](#the-thresholds). One item. | Today. | `thresholds`. |
 | `selfApproved` | manage | An approved absence its person approved themselves ([self-approval](#decisions), provisional) that has not ended. One per absence; `id` `selfApproved/<absence id>`. | When it was approved. | The person. |
-| `holidayAffectedBySickness` | manage | Approved ferie a 100 % sykmelding lies over, until four weeks after the ferie's last day: the employee may demand to postpone it ([ferieloven § 9](#a-sykmelding-over-other-rows)). One per ferie row; `id` `holidayAffectedBySickness/<absence id>`. | The ferie's first day. | The person. |
+| `holidayAffectedBySickness` | manage | Approved ferie a 100 % sykmelding lies over, until four weeks after the ferie's last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed: the employee may demand to postpone it ([ferieloven § 9](#a-sykmelding-over-other-rows)). One per ferie row; `id` `holidayAffectedBySickness/<absence id>`. | The ferie's first day. | The person. |
 | `headcountThreshold` | manage | For each of 5, 30 and 50 the `headcount` has crossed — 5 or more, 30 or more, more than 50 — and that is not [acknowledged](#the-thresholds). | Today. | The threshold (`5`, `30`, `50`); `count` the headcount. |
 
 `id` is `<type>/<employment id>` for the employment items, `<type>/<person id>` for

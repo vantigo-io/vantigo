@@ -151,6 +151,16 @@ func TestSelfCertification_TheWithdrawal(t *testing.T) {
 		t.Errorf("%d self_cert_withdrawn events of class E, want 1", n)
 	}
 
+	// Re-issuing a withdrawal in force keeps the day it was decided
+	// (re-check 2): extending it does not open the days between. The day is
+	// moved back by hand, as a withdrawal decided earlier would stand.
+	h.Exec(t, `UPDATE staff.people SET self_cert_withdrawn_from = '2026-09-02' WHERE id = $1`, w.kari.Id)
+	standing = gen.StaffSelfCertification{}
+	do(t, w.hr, http.MethodPut, withdrawalPath(w.kari.Id), map[string]any{"until": "2027-01-31", "reason": "Extended"}, http.StatusOK, &standing)
+	if civilOf(standing.WithdrawnFrom) != "2026-09-02" || civilOf(standing.WithdrawnUntil) != "2027-01-31" {
+		t.Errorf("re-issued: from %s until %s, want from 2026-09-02 until 2027-01-31", civilOf(standing.WithdrawnFrom), civilOf(standing.WithdrawnUntil))
+	}
+	refused(t, w.kariC.Do(http.MethodPost, meAbsencesPath, absence(t, h, "egenmelding", "2026-09-07", "2026-09-07")), http.StatusConflict, "self_certification_withdrawn")
 	standing = gen.StaffSelfCertification{}
 	do(t, w.hr, http.MethodPut, withdrawalPath(w.kari.Id), map[string]any{"until": nil}, http.StatusOK, &standing)
 	if standing.WithdrawnUntil != nil {

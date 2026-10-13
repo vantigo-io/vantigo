@@ -502,8 +502,9 @@ Dette gjelder i dag, gjennom Ansatte-API-et:
   innvilget, så du kan ikke søke to ganger om samme dag.
 - **Syk i ferien.** En sykmelding endrer ikke den innvilgede ferien din av seg selv. Er
   du helt arbeidsufør (100 % sykmelding), kan du kreve at ferien utsettes — med
-  legeerklæring, og senest siste arbeidsdag før ferien når du blir syk før den; si fra
-  til HR, som registrerer det. Ferien deles da rundt sykmeldingen, og dagene går tilbake
+  legeerklæring, og senest siste arbeidsdag før ferien når du blir syk før den, og uten
+  ugrunnet opphold etter at du er tilbake i arbeid når du blir syk i den; si fra til HR,
+  som registrerer det. Ferien deles da rundt sykmeldingen, og dagene går tilbake
   til kontoen din. En sykmelding over en egenmelding erstatter dagene den dekker.
 - **Egenmelding** følger selskapets regler: med lovens minimum tre kalenderdager om
   gangen og fire ganger på tolv måneder. Dager på rad er én egenmelding, og en helg

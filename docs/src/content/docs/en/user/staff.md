@@ -487,7 +487,8 @@ step. What stands today, through the Staff API, is this:
 - **Sick during your holiday.** A sykmelding does not change your approved ferie by
   itself. If you are wholly unable to work (a 100 % sykmelding), you may demand that the
   holiday be postponed — with a legeerklæring, and by your last working day before the
-  holiday when you fall ill before it; tell HR, who records it. The ferie is then split
+  holiday when you fall ill before it, and without undue delay once back at work when
+  you fall ill during it; tell HR, who records it. The ferie is then split
   around the sykmelding and the days return to your account. A sykmelding over an
   egenmelding replaces the days it covers.
 - **Egenmelding** follows the company's policy: under the statutory minimum, three

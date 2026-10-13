@@ -293,7 +293,8 @@ trekke tilbake retten for en periode:
    `withdrawnReason` står der.
 3. Fra i dag og fram til den dagen avvises egenmelding for personen
    (`self_certification_withdrawn`); vedkommende registrerer sykmelding i stedet.
-   Egenmelding for dager før du registrerte tilbaketrekkingen, står seg.
+   Egenmelding for dager før du registrerte tilbaketrekkingen, står seg. Å forlenge en
+   tilbaketrekking som gjelder, beholder dagen du først registrerte den.
 
 For å oppheve den før tiden, send `{"until": null}`. Tilbaketrekkingen og opphevingen
 står i personens historikk for personen selv, HR og `staff:personal-data` — aldri for
@@ -355,8 +356,10 @@ ferien under *ferie berørt av sykdom*.
    svaret viser ferien slik den nå står, og punktet forsvinner fra dashbordet.
 
 Sykdom som begynte **før** ferien, må være krevd senest siste arbeidsdag før den; et
-senere krav avvises (`holiday_postponement_too_late`). Sykdom **i** ferien gir
-erstatningsdager når enn kravet kommer. En sykmelding over ferie som bare er søkt om,
+senere krav avvises (`holiday_postponement_too_late`), og dashbordet slutter å vise en
+slik ferie når den har begynt. Sykdom **i** ferien gir erstatningsdager; den ansatte
+skal kreve dem uten ugrunnet opphold etter at arbeidet er gjenopptatt. Et krav dateres
+aldri før sykmeldingens første dag, og loven krever ikke et minste antall sykedager. En sykmelding over ferie som bare er søkt om,
 lar søknaden stå; godkjenningen avvises da.
 
 ## Omsorgsdagfeltene

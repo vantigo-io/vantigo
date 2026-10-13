@@ -181,6 +181,11 @@ func TestCases_SickLeaveOverFerieStandsBesideIt(t *testing.T) {
 	if a := accountOf(t, w.hr, w.kari.Id, 2026); a.Taken != 10 {
 		t.Errorf("taken = %v, want 10 still", a.Taken)
 	}
+	// A holiday whose sickness began before it, once the holiday has begun,
+	// is past the § 9 (1) deadline: nothing to act on (re-check L3).
+	late := requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-09-07", "2026-09-18"))
+	approved(t, w.bossC, late.Id)
+	register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-09-05", "2026-09-08"))
 	items := ofType(getAttention(t, w.hr), gen.HolidayAffectedBySickness)
 	if len(items) != 1 || items[0].Id != fmt.Sprintf("holidayAffectedBySickness/%d", f.Id) || items[0].EntityId != fmt.Sprint(w.kari.Id) {
 		t.Errorf("HR's items = %+v, want the ferie named once", items)
@@ -216,6 +221,9 @@ func TestCases_PostponingHolidayForSickness(t *testing.T) {
 		t.Errorf("the manager recording a demand: %d, want 403", r.Status)
 	}
 	refused(t, w.hr.Do(http.MethodPost, postponePath(during.Id), map[string]any{"demandedOn": "2026-09-13"}), http.StatusBadRequest, "")
+	// A demand follows the sickness (re-check 1): not before the first sick
+	// day within the holiday.
+	refused(t, w.hr.Do(http.MethodPost, postponePath(during.Id), map[string]any{"demandedOn": "2026-08-25"}), http.StatusBadRequest, "")
 	var out gen.StaffHolidayPostponement
 	do(t, w.hr, http.MethodPost, postponePath(during.Id), map[string]any{"demandedOn": "2026-09-07"}, http.StatusOK, &out)
 	if civilOf(&out.DemandedOn) != "2026-09-07" || len(out.Absences) != 2 {
@@ -242,6 +250,7 @@ func TestCases_PostponingHolidayForSickness(t *testing.T) {
 	approved(t, w.bossC, june.Id)
 	before := register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-06-04", "2026-06-09"))
 	refused(t, w.hr.Do(http.MethodPost, postponePath(before.Id), map[string]any{"demandedOn": "2026-06-08"}), http.StatusConflict, "holiday_postponement_too_late")
+	refused(t, w.hr.Do(http.MethodPost, postponePath(before.Id), map[string]any{"demandedOn": "2026-06-03"}), http.StatusBadRequest, "")
 	do(t, w.hr, http.MethodPost, postponePath(before.Id), map[string]any{"demandedOn": "2026-06-05"}, http.StatusOK, &out)
 	if got := modtest.One[string](t, h.Harness, `SELECT first_day::text || '..' || last_day::text FROM staff.absences WHERE id = $1`, june.Id); got != "2026-06-10..2026-06-12" {
 		t.Errorf("June's ferie = %s, want 2026-06-10..2026-06-12", got)
