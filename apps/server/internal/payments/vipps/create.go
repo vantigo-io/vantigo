@@ -95,8 +95,7 @@ func httpsURL(raw string) bool {
 // A create refused because the reference or the key is already in use (4150,
 // 4020) may be this very request, made by an earlier try whose answer was
 // lost: the payment is then read, and answered as created when it is the
-// one asked for — the same amount and currency; otherwise the outcome is
-// unknown.
+// one asked for (see existing); otherwise the outcome is unknown.
 func (c *Client) Create(ctx context.Context, r payments.CreateRequest) (payments.Created, error) {
 	if err := checkCreate(r); err != nil {
 		return payments.Created{}, err
@@ -148,8 +147,15 @@ func (c *Client) Create(ctx context.Context, r payments.CreateRequest) (payments
 }
 
 // existing answers the payment already held under r's reference as created
-// when it is the one r asks for; anything else is an unknown outcome.
+// when it is the one r asks for — the same amount and currency, still CREATED
+// or AUTHORIZED; anything else is an unknown outcome. A QR is never read
+// back: Vipps does not promise that a read's redirectUrl is the QR's target
+// URL, so the caller polls the reference instead (and may abandon an on-site
+// QR and make a new one).
 func (c *Client) existing(ctx context.Context, r payments.CreateRequest) (payments.Created, error) {
+	if r.Flow == payments.FlowQR {
+		return payments.Created{}, errors.New("vipps: the QR's reference is in use; its code is not read back")
+	}
 	a, err := c.call(ctx, "get", http.MethodGet, paymentPath(r.Reference), nil, "")
 	if err != nil {
 		return payments.Created{}, err
@@ -164,6 +170,9 @@ func (c *Client) existing(ctx context.Context, r payments.CreateRequest) (paymen
 	if *held.Amount != amountOf(r.Amount) {
 		return payments.Created{}, errors.New("vipps: the reference is in use by a payment of another amount")
 	}
+	if s := payments.State(held.State); s != payments.StateCreated && s != payments.StateAuthorized {
+		return payments.Created{}, fmt.Errorf("vipps: the reference is in use by a payment that is %s", held.State)
+	}
 	if held.RedirectURL == "" {
 		return payments.Created{}, errors.New("vipps: the reference is in use, and its payment answers no redirect URL")
 	}
@@ -171,7 +180,7 @@ func (c *Client) existing(ctx context.Context, r payments.CreateRequest) (paymen
 }
 
 // createdOf is the answer to r: the redirect URL, or the QR rendered from
-// the target URL Vipps answered for it.
+// the target URL Vipps answered to its create.
 func createdOf(r payments.CreateRequest, redirectURL string) (payments.Created, error) {
 	if r.Flow != payments.FlowQR {
 		return payments.Created{Reference: r.Reference, RedirectURL: redirectURL}, nil

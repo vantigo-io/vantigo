@@ -207,8 +207,32 @@ func TestVipps_Create(t *testing.T) {
 			t.Fatalf("Create QR: %v", err)
 		}
 		qr.IdempotencyKey = "key-qr-2"
-		if again, err := c.Create(ctx, qr); err != nil || again != firstQR {
-			t.Errorf("4150 on a QR = %+v, %v; want the same QR", again, err)
+		reads := len(requestsTo(vt, http.MethodGet, "/epayment/v1/payments/acme01-10001-1006"))
+		if again, err := c.Create(ctx, qr); err == nil || again == firstQR || payments.IsDefinitiveCreateRefusal(err) {
+			t.Errorf("4150 on a QR = %+v, %v; want an unknown outcome, never a code read back", again, err)
+		}
+		if n := len(requestsTo(vt, http.MethodGet, "/epayment/v1/payments/acme01-10001-1006")) - reads; n != 0 {
+			t.Errorf("a QR's reference in use was read %d times", n)
+		}
+
+		// A payment held in a state no payer can still approve is not this
+		// request's to answer.
+		for _, state := range []string{vippstest.Expired, vippstest.Aborted, vippstest.Terminated} {
+			reference := "acme01-held-" + strings.ToLower(state)
+			vt.Script(reference, state)
+			if _, err := c.Create(ctx, redirectRequest(reference, "key-1-"+reference, 12345)); err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			if p, err := c.Get(ctx, reference); err != nil || p.State != payments.State(state) {
+				t.Fatalf("Get = %+v, %v; want %s", p, err, state)
+			}
+			if again, err := c.Create(ctx, redirectRequest(reference, "key-2-"+reference, 12345)); err == nil || payments.IsDefinitiveCreateRefusal(err) {
+				t.Errorf("4150 on a payment %s = %+v, %v; want an unknown outcome", state, again, err)
+			}
+		}
+		authorized(t, vt, c, "acme01-held-authorized", 12345)
+		if again, err := c.Create(ctx, redirectRequest("acme01-held-authorized", "key-2", 12345)); err != nil || again.RedirectURL == "" {
+			t.Errorf("4150 on an authorized payment = %+v, %v; want it read back", again, err)
 		}
 
 		for name, call := range map[string]func() error{
