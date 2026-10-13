@@ -231,9 +231,9 @@ func caseFieldGroup(name string) fieldGroup {
 	switch name {
 	case "firstDay", "lastDay", "closedAt", "maxBenefitEstimate", "doneAt", "waived", "mergedCaseId":
 		return groupAbsenceDetail
-	case "accommodationNote":
+	case "accommodationNote", "mergedAccommodationNote":
 		return groupAccommodation
-	case "note", "waivedReason":
+	case "note", "waivedReason", "mergedNotes":
 		return groupHealth
 	}
 	return groupNobody

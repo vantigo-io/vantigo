@@ -180,8 +180,14 @@ func (s *server) reconcileCases(ctx context.Context, txq *store.Queries, who act
 	return nil
 }
 
-// appendNote is b after a, a blank line between, bounded to limit
-// characters; either alone when the other is empty.
+// continuedNote is what a merged note ends with when the case taken in's
+// note no longer fits: the whole of it is in case_merged.
+const continuedNote = "\n\n… continued in the case's history"
+
+// appendNote is b after a, a blank line between, when it fits limit
+// characters; else a with a pointer to the history, which carries b whole —
+// a note is the employer's aml. § 4-6 record and is never cut. Either alone
+// when the other is empty.
 func appendNote(a, b *string, limit int) *string {
 	switch {
 	case a == nil:
@@ -189,28 +195,36 @@ func appendNote(a, b *string, limit int) *string {
 	case b == nil:
 		return a
 	}
-	joined := []rune(*a + "\n\n" + *b)
-	if len(joined) > limit {
-		joined = joined[:limit]
+	joined := *a + "\n\n" + *b
+	if utf8.RuneCountInString(joined) <= limit {
+		return &joined
 	}
-	v := string(joined)
-	return &v
+	pointed := *a + continuedNote
+	if utf8.RuneCountInString(pointed) <= limit {
+		return &pointed
+	}
+	return a
 }
 
 // mergeCase carries what case from held onto the case into that took its
 // rows (review M3): each milestone's done day or waiver where into's has
 // neither, the milestones' notes and the accommodation note appended, the
 // estimate where into has none; recorded as case_merged on into, class E,
-// naming from.
+// naming from and carrying from's notes whole (mergedNotes,
+// mergedAccommodationNote), so whatever no longer fits is kept there.
 func (s *server) mergeCase(ctx context.Context, txq *store.Queries, who actor, personID, into int64, from store.StaffSickCase, now time.Time) error {
 	milestones, err := txq.CaseMilestones(ctx, []int64{into, from.ID})
 	if err != nil {
 		return fmt.Errorf("staff: read cases %d and %d's milestones: %w", into, from.ID, err)
 	}
 	theirs := map[string]store.StaffSickCaseMilestone{}
+	theirNotes := map[string]string{}
 	for _, m := range milestones {
 		if m.CaseID == from.ID {
 			theirs[m.Kind] = m
+			if m.Note != nil {
+				theirNotes[m.Kind] = *m.Note
+			}
 		}
 	}
 	for _, m := range milestones {
@@ -245,8 +259,14 @@ func (s *server) mergeCase(ctx context.Context, txq *store.Queries, who actor, p
 	}); err != nil {
 		return fmt.Errorf("staff: carry case %d's notes: %w", from.ID, err)
 	}
-	return s.recordCaseEvent(ctx, txq, personID, into, eventCaseMerged, "", who, nil,
-		map[string]json.RawMessage{"mergedCaseId": caseValue(from.ID)})
+	merged := map[string]json.RawMessage{"mergedCaseId": caseValue(from.ID)}
+	if len(theirNotes) > 0 {
+		merged["mergedNotes"] = caseValue(theirNotes)
+	}
+	if from.AccommodationNote != nil {
+		merged["mergedAccommodationNote"] = caseValue(*from.AccommodationNote)
+	}
+	return s.recordCaseEvent(ctx, txq, personID, into, eventCaseMerged, "", who, nil, merged)
 }
 
 // setCaseRows names case id on every row of chain that names another.
