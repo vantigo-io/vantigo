@@ -534,13 +534,21 @@ func TestAttention_PaymentTypes(t *testing.T) {
 
 		h := workerReady(t)
 		carried := plantReservation(t, h, issuedAcme(t, h).ID, "capturing", "2500")
-		foreign := plantReservation(t, h, issuedAcme(t, h).ID, "capture_unknown", "2500")
+		foreign := plantReservation(t, h, issuedAcme(t, h).ID, "capturing", "2500")
 		setAttempt(t, h, foreign, "msn = '999999'")
+		// A capture of unknown outcome under another sales unit is one item,
+		// paymentCaptureUnknown, never a second as stranded.
+		foreignUnknown := plantReservation(t, h, issuedAcme(t, h).ID, "capture_unknown", "2500")
+		setAttempt(t, h, foreignUnknown, "msn = '999999'")
 		parked := plantParkedCreate(t, h, issuedAcme(t, h).ID)
 		want := []string{fmt.Sprintf("paymentReservationStranded/%d", attemptIDOf(t, h, foreign)),
 			fmt.Sprintf("paymentReservationStranded/%d", attemptIDOf(t, h, parked))}
-		if got := itemIDs(ofType(attentionOf(t, payer(t, h)), "paymentReservationStranded")); !slices.Equal(got, want) {
+		all := attentionOf(t, payer(t, h))
+		if got := itemIDs(ofType(all, "paymentReservationStranded")); !slices.Equal(got, want) {
 			t.Errorf("another sales unit and a parked create = %v, want %v (not %s, which the worker carries)", got, want, carried)
+		}
+		if got := itemIDs(ofType(all, "paymentCaptureUnknown")); !slices.Equal(got, []string{fmt.Sprintf("paymentCaptureUnknown/%d", attemptIDOf(t, h, foreignUnknown))}) {
+			t.Errorf("the foreign capture of unknown outcome = %v, want it once as paymentCaptureUnknown", got)
 		}
 		abandoned(t, h, attemptIDOf(t, h, parked))
 		if got := itemIDs(ofType(attentionOf(t, payer(t, h)), "paymentReservationStranded")); !slices.Equal(got, want[:1]) {

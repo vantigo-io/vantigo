@@ -147,7 +147,8 @@ ORDER BY a.id;
 -- when Vipps is switched off or its sales unit is no longer the stored one,
 -- which the caller judges — and every attempt parked for a person: a create
 -- given up, or a release Vipps refuses for good (next_poll_at NULL on a row
--- the worker would otherwise poll).
+-- the worker would otherwise poll). An attempt AttentionCaptureUnknown
+-- already reports is skipped by the caller: one item per attempt.
 SELECT a.id, a.invoice_id, a.msn, (a.next_poll_at IS NULL)::boolean AS parked,
     coalesce(a.authorized_at, a.created_at)::timestamptz AS occurred_at, i.buyer_name
 FROM invoices.payment_attempts a

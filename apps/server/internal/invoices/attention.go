@@ -207,8 +207,13 @@ func (s *server) attentionPayments(ctx context.Context, q *store.Queries, now ti
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the Vipps captures of unknown outcome: %w", err)
 	}
+	// reported is every attempt already an item, so an attempt is one item:
+	// a capture of unknown outcome stranded under another sales unit or the
+	// switch is paymentCaptureUnknown alone.
+	reported := map[int64]bool{}
 	for _, r := range unknown {
 		add(gen.PaymentCaptureUnknown, r.ID, r.InvoiceID, r.BuyerName, r.OccurredAt)
+		reported[r.ID] = true
 	}
 	failed, err := q.AttentionCaptureFailed(ctx, now.Add(-captureFailedWindow))
 	if err != nil {
@@ -236,7 +241,7 @@ func (s *server) attentionPayments(ctx context.Context, q *store.Queries, now ti
 			return nil, fmt.Errorf("invoices: read the Vipps credentials: %w", err)
 		}
 		for _, r := range candidates {
-			if r.Parked || !enabled || r.Msn != stored {
+			if !reported[r.ID] && (r.Parked || !enabled || r.Msn != stored) {
 				add(gen.PaymentReservationStranded, r.ID, r.InvoiceID, r.BuyerName, r.OccurredAt)
 			}
 		}

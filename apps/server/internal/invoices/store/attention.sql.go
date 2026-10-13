@@ -445,7 +445,8 @@ type AttentionStrandedCandidatesRow struct {
 // when Vipps is switched off or its sales unit is no longer the stored one,
 // which the caller judges — and every attempt parked for a person: a create
 // given up, or a release Vipps refuses for good (next_poll_at NULL on a row
-// the worker would otherwise poll).
+// the worker would otherwise poll). An attempt AttentionCaptureUnknown
+// already reports is skipped by the caller: one item per attempt.
 func (q *Queries) AttentionStrandedCandidates(ctx context.Context) ([]AttentionStrandedCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, attentionStrandedCandidates)
 	if err != nil {
