@@ -433,8 +433,9 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   payments of invoices: `PUBLIC_BASE_URL`, where the pay page is reachable from the
   internet, and `INVOICES_VIPPS_ENABLED` (default on) and `INVOICES_VIPPS_BASE_URL`
   (default `https://api.vipps.no`). Publishing the pay page — its host, the proxy and
-  keeping the pay link's token out of the proxy's log — is its own procedure
-  ([The public host](/en/admin/payments/#the-public-host)).
+  keeping the pay link's token out of the proxy's logs — is its own procedure
+  ([The public host](/en/admin/payments/#the-public-host)); the proxy in front of the
+  public host must send `Host` as the public host name, a constant, never the client's.
 - `vantigo.env.example` also documents `STAFF_IMPORT_MAX_ROWS`, how many people one
   Staff import takes and one Staff export writes
   ([Staff](/en/admin/staff/#import-and-export-the-register)), and the Staff retention
