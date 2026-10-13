@@ -490,6 +490,15 @@ func TestQuickInvoice_RequestIdReplays(t *testing.T) {
 	if res.Status != http.StatusConflict || problemOf(t, res).Code != "request_id_reused" {
 		t.Errorf("the id with another body = %d %s, want 409 request_id_reused", res.Status, res.Body)
 	}
+	// The refusal names the invoice the id already issued, so a client that
+	// lost the first answer can lead to it rather than issue a second (Task 14 review).
+	var reused struct {
+		InvoiceID *int64 `json:"invoiceId"`
+	}
+	res.JSON(&reused)
+	if reused.InvoiceID == nil || *reused.InvoiceID != first.Invoice.ID {
+		t.Errorf("request_id_reused's invoiceId = %v, want the first's invoice %d", reused.InvoiceID, first.Invoice.ID)
+	}
 
 	refusedID := "6f1c1d2e-8a8b-4c3d-9e0f-998877665544"
 	refused := quickBody(customerNoAddress, line("Utrykning", 1, 950, vat25))

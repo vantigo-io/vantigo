@@ -542,8 +542,9 @@ brukes: oppdater arbeidet eller endre linjen, og utsted på nytt
 
 Hurtigfakturaen er for en jobb som er gjort ferdig på stedet, på et nettbrett eller en
 telefon. Åpne **Hurtigfaktura** i sidemenyen; den tilbys den som har både
-`invoices:create` og `invoices:issue`, og alle andre som åpner den, får vite at det ikke
-er tillatt. Deretter:
+`invoices:create` og `invoices:issue` (med `invoices:access`). Den som mangler dem og åpner
+adressen, får siden **Tilgang nektet**; skjermbildets eget *Ikke tillatt* vises bare hvis
+rettighetene dine endres mens du er logget inn. Deretter:
 
 1. Velg **Kunde** ved å søke etter den (dette krever `customers:view`). Kundens adresse
    vises under — den primære fakturaadressen, ellers den primære postadressen. En kunde
@@ -571,11 +572,13 @@ ikke kan brukes, eller noe annet som avviser en vanlig utstedelse — beholdes i
 ingen utkast blir liggende igjen og ingen nummer brukes. Skjermbildet sier hvorfor med
 ord, på linjen det gjelder der det er en, og tilbyr **Åpne kunden** når kjøperens adresse
 eller organisasjonsnummer mangler. Rett opp og utsted på nytt. Faller forbindelsen etter
-at du valgte **Utsted**, sier skjermbildet *Svaret kom ikke tilbake*; velg **Prøv igjen**,
-som sender den samme hurtigfakturaen på nytt og aldri lager en til — du får den som
-allerede er utstedt. Så snart du endrer noe i skjemaet, er neste **Utsted** en ny
-hurtigfaktura. Er den samme hurtigfakturaen sendt før med annet innhold, sier
-skjermbildet det: start en ny hurtigfaktura for å utstede en til.
+at du valgte **Utsted**, sier skjermbildet *Svaret kom ikke tilbake* og tilbyr bare
+**Prøv igjen**, som sender den samme hurtigfakturaen på nytt og aldri lager en til — du
+får den som allerede er utstedt. Skjemaet kan ikke endres mens det sendes; endrer du det
+etter at svaret ble borte, lages en ny faktura, slik skjermbildet advarer om. Er fakturaen
+allerede utstedt fra dette skjemaet — det første svaret ble borte og noe annet ble sendt
+— sier skjermbildet *En faktura er allerede utstedt fra dette skjemaet* og tilbyr **Last
+ned PDF**, **Åpne fakturaen** og **Ny hurtigfaktura**; ingenting mer utstedes fra det.
 
 En hurtigfaktura kunden betaler senere — i banken med KID, eller via en betalingslenke
 de åpner etter at du har dratt — er et vanlig kredittsalg. Betalt med Vipps på stedet,

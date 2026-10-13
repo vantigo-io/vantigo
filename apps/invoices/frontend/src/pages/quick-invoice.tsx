@@ -95,7 +95,11 @@ type PaymentStep =
     };
 
 /** Why the last issue did not land: a refusal in words, or an answer that never came back. */
-type Failure = { kind: "lost" } | { kind: "refused"; words: string; customerLink: boolean };
+type Failure =
+  | { kind: "lost" }
+  | { kind: "refused"; words: string; customerLink: boolean }
+  /** The request id issued an invoice already (409 request_id_reused): that invoice, never a second. */
+  | { kind: "alreadyIssued"; invoiceId: number };
 
 const addressLine = (a: CustomerAddress) =>
   [a.line1, a.line2, [a.postalCode, a.city].filter(Boolean).join(" "), a.country].filter(Boolean).join(", ");
@@ -181,8 +185,11 @@ const QuickInvoice = ({ meta, canCreateCustomers }: { meta: InvoicesMeta; canCre
     if (alive.current) setPayment(next);
   };
 
+  // A change after a lost answer is a new invoice, as the lost alert says:
+  // the buttons come back with a new id.
   const changed = () => {
     requestId.current = null;
+    setFailure((current) => (current?.kind === "lost" ? null : current));
   };
 
   const address = useQuery({
@@ -319,6 +326,11 @@ const QuickInvoice = ({ meta, canCreateCustomers }: { meta: InvoicesMeta; canCre
         return;
       }
       const code = refusalCode(error);
+      const issuedBefore = refusalProblem(error).invoiceId;
+      if (code === "request_id_reused" && typeof issuedBefore === "number") {
+        setFailure({ kind: "alreadyIssued", invoiceId: issuedBefore });
+        return;
+      }
       setFailure({
         kind: "refused",
         words: refusalMessage(error, t, date),
@@ -366,7 +378,10 @@ const QuickInvoice = ({ meta, canCreateCustomers }: { meta: InvoicesMeta; canCre
   );
 
   const vatOptions = meta.vatCodes.map((c) => ({ value: String(c.id), label: `${c.code} ${c.name}` }));
-  const blocked = !meta.storageAvailable || customerId === null;
+  // While an answer may have been lost only "Try again" sends — the same body
+  // and id — and once the id issued an invoice nothing more is sent from it.
+  const blocked =
+    !meta.storageAvailable || customerId === null || failure?.kind === "lost" || failure?.kind === "alreadyIssued";
 
   if (issued) {
     return (
@@ -443,133 +458,161 @@ const QuickInvoice = ({ meta, canCreateCustomers }: { meta: InvoicesMeta; canCre
           {t("storageUnavailableHint")}
         </Alert>
       )}
-      <Card withBorder>
-        <Stack gap="sm">
-          <Group align="flex-end">
-            <div style={{ flex: 1 }}>
-              <CustomerPicker
-                value={customerId}
-                selected={customerId !== null ? { id: customerId, name: customerName } : undefined}
-                required
-                error={errors.customerId}
-                onChange={(id) => {
-                  changed();
-                  setCustomerId(id);
-                  setCustomerName(undefined);
-                }}
-              />
-            </div>
-            {canCreateCustomers && (
-              <Button variant="default" leftSection={<IconPlus size={16} />} onClick={() => setCreatingCustomer(true)}>
-                {t("quick.newCustomer")}
-              </Button>
-            )}
-          </Group>
-          {customerId !== null && address.isSuccess && (
-            <div>
-              <Text size="sm" fw={500}>
-                {t("quick.address")}
-              </Text>
-              {address.data ? (
-                <Text size="sm">{addressLine(address.data)}</Text>
-              ) : (
-                <Text size="sm" c="dimmed">
-                  {t("quick.noAddress")}
-                </Text>
+      <fieldset disabled={issue.isPending} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <Stack gap="md">
+          <Card withBorder>
+            <Stack gap="sm">
+              <Group align="flex-end">
+                <div style={{ flex: 1 }}>
+                  <CustomerPicker
+                    value={customerId}
+                    selected={customerId !== null ? { id: customerId, name: customerName } : undefined}
+                    required
+                    error={errors.customerId}
+                    onChange={(id) => {
+                      changed();
+                      setCustomerId(id);
+                      setCustomerName(undefined);
+                    }}
+                  />
+                </div>
+                {canCreateCustomers && (
+                  <Button
+                    variant="default"
+                    leftSection={<IconPlus size={16} />}
+                    onClick={() => setCreatingCustomer(true)}
+                  >
+                    {t("quick.newCustomer")}
+                  </Button>
+                )}
+              </Group>
+              {customerId !== null && address.isSuccess && (
+                <div>
+                  <Text size="sm" fw={500}>
+                    {t("quick.address")}
+                  </Text>
+                  {address.data ? (
+                    <Text size="sm">{addressLine(address.data)}</Text>
+                  ) : (
+                    <Text size="sm" c="dimmed">
+                      {t("quick.noAddress")}
+                    </Text>
+                  )}
+                </div>
               )}
-            </div>
-          )}
-          <TextInput
-            label={t("yourReference")}
-            value={yourReference}
-            error={errors.yourReference}
-            onChange={(e) => {
-              changed();
-              setYourReference(e.currentTarget.value);
-            }}
-          />
-        </Stack>
-      </Card>
-      <Card withBorder>
-        <Stack gap="sm">
-          <Text fw={500}>{t("quick.lines")}</Text>
-          {lines.map((l, i) => (
-            <Group key={l.key} align="flex-start" wrap="wrap" gap="xs">
               <TextInput
-                style={{ flex: 3, minWidth: 200 }}
-                aria-label={t("lineDescription", { n: i + 1 })}
-                placeholder={t("description")}
-                value={l.description}
-                error={errors[`lines[${i}].description`]}
-                onChange={(e) => setLine(l.key, { description: e.currentTarget.value })}
-              />
-              <NumberInput
-                style={{ flex: 1, minWidth: 90 }}
-                aria-label={t("lineQuantity", { n: i + 1 })}
-                placeholder={t("quantity")}
-                decimalScale={3}
-                min={0}
-                value={l.quantity}
-                error={errors[`lines[${i}].quantity`]}
-                onChange={(v) => setLine(l.key, { quantity: v })}
-              />
-              <TextInput
-                style={{ flex: 1, minWidth: 80 }}
-                aria-label={t("lineUnit", { n: i + 1 })}
-                placeholder={t("unit")}
-                value={l.unit}
-                error={errors[`lines[${i}].unit`]}
-                onChange={(e) => setLine(l.key, { unit: e.currentTarget.value })}
-              />
-              <NumberInput
-                style={{ flex: 1, minWidth: 110 }}
-                aria-label={t("lineUnitPrice", { n: i + 1 })}
-                placeholder={t("unitPrice")}
-                decimalScale={4}
-                min={0}
-                value={l.unitPrice}
-                error={errors[`lines[${i}].unitPrice`]}
-                onChange={(v) => setLine(l.key, { unitPrice: v })}
-              />
-              <Select
-                style={{ flex: 2, minWidth: 160 }}
-                aria-label={t("lineVatCode", { n: i + 1 })}
-                data={vatOptions}
-                value={l.vatCodeId === null ? null : String(l.vatCodeId)}
-                error={errors[`lines[${i}].vatCodeId`]}
-                onChange={(v) => setLine(l.key, { vatCodeId: v === null ? null : Number(v) })}
-              />
-              <ActionIcon
-                variant="subtle"
-                color="red"
-                mt={6}
-                aria-label={t("removeLine", { n: i + 1 })}
-                disabled={lines.length === 1}
-                onClick={() => {
+                label={t("yourReference")}
+                value={yourReference}
+                error={errors.yourReference}
+                onChange={(e) => {
                   changed();
-                  setErrors({});
-                  setLines((current) => current.filter((x) => x.key !== l.key));
+                  setYourReference(e.currentTarget.value);
                 }}
-              >
-                <IconTrash size={16} />
-              </ActionIcon>
-            </Group>
-          ))}
-          <Group>
-            <Button
-              variant="light"
-              leftSection={<IconPlus size={16} />}
-              disabled={lines.length >= MAX_LINES}
-              onClick={() => {
-                changed();
-                setLines((current) => [...current, newLine(defaultVat)]);
-              }}
+              />
+            </Stack>
+          </Card>
+          <Card withBorder>
+            <Stack gap="sm">
+              <Text fw={500}>{t("quick.lines")}</Text>
+              {lines.map((l, i) => (
+                <Group key={l.key} align="flex-start" wrap="wrap" gap="xs">
+                  <TextInput
+                    style={{ flex: 3, minWidth: 200 }}
+                    aria-label={t("lineDescription", { n: i + 1 })}
+                    placeholder={t("description")}
+                    value={l.description}
+                    error={errors[`lines[${i}].description`]}
+                    onChange={(e) => setLine(l.key, { description: e.currentTarget.value })}
+                  />
+                  <NumberInput
+                    style={{ flex: 1, minWidth: 90 }}
+                    aria-label={t("lineQuantity", { n: i + 1 })}
+                    placeholder={t("quantity")}
+                    decimalScale={3}
+                    min={0}
+                    value={l.quantity}
+                    error={errors[`lines[${i}].quantity`]}
+                    onChange={(v) => setLine(l.key, { quantity: v })}
+                  />
+                  <TextInput
+                    style={{ flex: 1, minWidth: 80 }}
+                    aria-label={t("lineUnit", { n: i + 1 })}
+                    placeholder={t("unit")}
+                    value={l.unit}
+                    error={errors[`lines[${i}].unit`]}
+                    onChange={(e) => setLine(l.key, { unit: e.currentTarget.value })}
+                  />
+                  <NumberInput
+                    style={{ flex: 1, minWidth: 110 }}
+                    aria-label={t("lineUnitPrice", { n: i + 1 })}
+                    placeholder={t("unitPrice")}
+                    decimalScale={4}
+                    min={0}
+                    value={l.unitPrice}
+                    error={errors[`lines[${i}].unitPrice`]}
+                    onChange={(v) => setLine(l.key, { unitPrice: v })}
+                  />
+                  <Select
+                    style={{ flex: 2, minWidth: 160 }}
+                    aria-label={t("lineVatCode", { n: i + 1 })}
+                    data={vatOptions}
+                    value={l.vatCodeId === null ? null : String(l.vatCodeId)}
+                    error={errors[`lines[${i}].vatCodeId`]}
+                    onChange={(v) => setLine(l.key, { vatCodeId: v === null ? null : Number(v) })}
+                  />
+                  <ActionIcon
+                    variant="subtle"
+                    color="red"
+                    mt={6}
+                    aria-label={t("removeLine", { n: i + 1 })}
+                    disabled={lines.length === 1}
+                    onClick={() => {
+                      changed();
+                      setErrors({});
+                      setLines((current) => current.filter((x) => x.key !== l.key));
+                    }}
+                  >
+                    <IconTrash size={16} />
+                  </ActionIcon>
+                </Group>
+              ))}
+              <Group>
+                <Button
+                  variant="light"
+                  leftSection={<IconPlus size={16} />}
+                  disabled={lines.length >= MAX_LINES}
+                  onClick={() => {
+                    changed();
+                    setLines((current) => [...current, newLine(defaultVat)]);
+                  }}
+                >
+                  {t("addLine")}
+                </Button>
+              </Group>
+            </Stack>
+          </Card>
+        </Stack>
+      </fieldset>
+      {failure?.kind === "alreadyIssued" && (
+        <Alert color="yellow" icon={<IconAlertCircle size={16} />} title={t("quick.alreadyIssued")}>
+          <Group gap="xs">
+            <PdfButton
+              size="xs"
+              url={pdfUrl(failure.invoiceId)}
+              mode="download"
+              leftSection={<IconDownload size={14} />}
             >
-              {t("addLine")}
+              {t("downloadPdf")}
+            </PdfButton>
+            <Button size="xs" variant="default" onClick={() => navigate(invoiceLinkOptions(failure.invoiceId))}>
+              {t("quick.openInvoice")}
+            </Button>
+            <Button size="xs" variant="subtle" onClick={reset}>
+              {t("quick.another")}
             </Button>
           </Group>
-        </Stack>
-      </Card>
+        </Alert>
+      )}
       {failure?.kind === "lost" && (
         <Alert color="yellow" icon={<IconAlertCircle size={16} />} title={t("quick.lostTitle")}>
           <Stack gap="xs" align="flex-start">
