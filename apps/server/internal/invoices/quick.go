@@ -225,8 +225,12 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 	}
 	// After the commit, a merge that ran in the window follows the document
 	// (quickFollowMerge); then the PDF is stored once (D7), as the issue does.
-	issued = s.quickFollowMerge(ctx, issued)
-	issued = s.storeAfterIssue(ctx, q, issued)
+	// Both run without the request's cancellation: the invoice is committed,
+	// and a client that hangs up now must not leave it on a customer merged
+	// away or without its stored PDF.
+	afterCommit := context.WithoutCancel(ctx)
+	issued = s.quickFollowMerge(afterCommit, issued)
+	issued = s.storeAfterIssue(afterCommit, q, issued)
 	resp, err := s.invoiceResponse(ctx, q, issued, nil)
 	if err != nil {
 		return nil, err
@@ -276,7 +280,7 @@ func (s *server) quickFollowMerge(ctx context.Context, inv store.InvoicesInvoice
 	if into == inv.CustomerID {
 		return inv
 	}
-	moved := inv
+	moved, repointed := inv, false
 	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		locked, err := lockInvoice(ctx, txq, inv.ID)
 		if err != nil {
@@ -293,12 +297,17 @@ func (s *server) quickFollowMerge(ctx context.Context, inv store.InvoicesInvoice
 		if err != nil {
 			return fmt.Errorf("invoices: re-point quick invoice %d to customer %d: %w", inv.ID, into, err)
 		}
+		repointed = true
 		return nil
 	})
 	if err != nil {
 		s.deps.Logger.ErrorContext(ctx, "invoices: a quick invoice issued to a customer merged away was not moved to the survivor",
 			"invoice_id", inv.ID, "customer_id", inv.CustomerID, "survivor_id", into, "error", err.Error())
 		return inv
+	}
+	if repointed {
+		s.deps.Logger.InfoContext(ctx, "invoices: a quick invoice issued to a customer merged away was moved to the survivor",
+			"invoice_id", inv.ID, "from_customer_id", inv.CustomerID, "into_customer_id", into)
 	}
 	return moved
 }
@@ -337,7 +346,7 @@ func (s *server) quickReplay(ctx context.Context, q *store.Queries, id uuid.UUID
 	if err != nil {
 		return nil, nil, fmt.Errorf("invoices: read quick invoice %d: %w", kept.InvoiceID, err)
 	}
-	inv = s.quickFollowMerge(ctx, inv)
+	inv = s.quickFollowMerge(context.WithoutCancel(ctx), inv)
 	resp, err := s.invoiceResponse(ctx, q, inv, nil)
 	if err != nil {
 		return nil, nil, err
