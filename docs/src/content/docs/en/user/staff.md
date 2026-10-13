@@ -544,13 +544,20 @@ shown to them at all, so nothing in how it was entered gives it away.
 
 **Home**, the dashboard, has a **Staff** card for those with `staff:view` or
 `staff:manage`: the number of people employed today, and below it the full-time
-equivalents in force today, how many start and how many end within 30 days, and — when
-there are any — the records with no employment at all. Press the card to open Staff.
-With `staff:access` alone you have the Staff app under **Modules** and no card.
+equivalents in force today, how many start and how many end within 30 days, how many
+people are away today — on any approved or registered absence, whatever its type —
+and, when there are any, the records with no employment at all. Press the card to open
+Staff. With `staff:access` alone you have the Staff app under **Modules** and no card.
+The open sick-leave cases and the sick-leave rate over the last twelve months are
+read through the API by `staff:manage`, `staff:approve` and `staff:personal-data`
+alone, never by `staff:view`.
 
 Staff's items join the other apps' in **Needs attention**, each worded in your
-language. Most are HR's (`staff:manage`); a manager sees the probation item for the
-people they manage, and the reassessment is `staff:personal-data`'s:
+language. Most are HR's (`staff:manage`); a manager sees the probation, the requests
+and the sick-leave follow-up items for the people they manage, `staff:approve` the
+requests and the follow-ups of everyone, and the reassessment and the confidential
+requests are `staff:personal-data`'s. A request of a confidential (HR-only) absence
+type is counted only for `staff:personal-data`:
 
 | Item | It means | Opens |
 | --- | --- | --- |
@@ -563,6 +570,13 @@ people they manage, and the reassessment is `staff:personal-data`'s:
 | Documents not deleted | The document store has refused to delete documents for more than a day. | Staff settings |
 | OTP threshold | By the percentages employed today, the company needs an occupational pension scheme — unless the only such person is the owner. | Staff settings |
 | 5, 30 or more than 50 employees | The headcount has crossed a threshold that brings a duty: a whistleblowing routine and a safety representative at 5, a working environment committee at 30, the duty to report on equality above 50. | Staff settings |
+| Absence requests await your decision | Requests you decide are waiting, counted. | Absence |
+| Confidential requests waiting over a week | Requests of a confidential absence type have waited more than seven days — your own included, so the only holder of `staff:personal-data` sees their own request wait for someone who may decide it. | Absence |
+| Sick-leave follow-up due | A follow-up of an open sick-leave case — the plan, a dialogue meeting, NAV's activity requirement — falls due within a week or has passed, and is neither done nor waived. A short case raises none. | The person |
+| Holiday left from last year | In January: someone has holiday left from last year and no carry-over is recorded. Record the carry-over, or settle it. | The person |
+| Too little holiday in the main period | From April to September: someone has fewer approved holiday days between 1 June and 30 September than their scheme's main period (three weeks under the Holiday Act). | The person |
+| Approved their own absence | Someone approved their own absence, as the only decider there was. | The person |
+| Sick during approved holiday | A 100 % sykmelding lies over approved ferie: the employee may demand to postpone it. | The person |
 
 An item goes away when what it asks for is done. A threshold's item stays until HR
 acknowledges the threshold — once, for good — under [Thresholds](#thresholds) in the
@@ -699,6 +713,13 @@ your name and the file's SHA-256 hash, so the file payroll received can be recog
 later. The codes of the three appointment forms added in 2025 (hired out, and on call)
 are not verified against Skatteetaten's code list — the card says so: check them with
 your payroll system before you rely on them.
+
+To the right of the employment columns the file carries the month's absence: holiday,
+egenmelding, sykmelding, child-sick (and the days of it beyond the employer's ten),
+leave and other days, and the hours of time off. After an employment's row come its
+**leave rows**, one per leave the a-melding reports — a leave longer than fourteen
+days, shorter leaves that together pass fourteen days in twelve months, and every
+permittering — with the leave's id, days, description and percent.
 
 ### Retention
 

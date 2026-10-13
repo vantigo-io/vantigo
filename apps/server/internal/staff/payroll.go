@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -119,8 +120,20 @@ func readPayroll(ctx context.Context, q *store.Queries) (payrollInput, error) {
 	for _, d := range departments {
 		in.Departments[d.ID] = d
 	}
+	// Every approved and registered absence (delivery B, Task 6): a leave
+	// reported in the month is named by its whole days, however long ago it
+	// began or however far ahead it is known to end.
+	if in.Absences, err = q.AbsencesBetween(ctx, store.AbsencesBetweenParams{FromDay: dayParam(allDaysFrom), ToDay: dayParam(allDaysTo)}); err != nil {
+		return in, fmt.Errorf("staff: read the absences for payroll: %w", err)
+	}
 	return in, nil
 }
+
+// allDaysFrom and allDaysTo bound a read of every absence there is.
+var (
+	allDaysFrom = time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)
+	allDaysTo   = time.Date(9999, time.December, 31, 0, 0, 0, 0, time.UTC)
+)
 
 // GetStaffPayrollExport Export a month for payroll
 // (GET /api/v1/staff/payroll/export)

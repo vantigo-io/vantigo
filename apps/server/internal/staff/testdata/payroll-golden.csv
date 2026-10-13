@@ -1,4 +1,5 @@
-﻿Employee number;Name;Employment number;Business unit org number;Start;End;End reason;Occupation code;Full-time hours;FTE percent;FTE changed;Working hours scheme;Appointment form;Remuneration type;Salary changed;Department;Cost centre;Seniority date;Pay grade
-P-1;Kari Nordmann;P-1-1;923609016;2024-01-01;;;2512105;37,50;80,00;2026-03-01;ikkeSkift;fast;monthly;2026-03-01;SALG;4200;;
-P-2;Ola Hansen;P-2-1;923609016;2026-01-01;2026-09-15;kontraktEngasjementEllerVikariatErUtloept;9321101;37,50;50,00;2026-01-01;ikkeSkift;midlertidig;hourly;2026-01-01;LAGER;5100;;
-P-3;Siri Berg;P-3-1;923609016;2026-09-14;;;;36,50;100,00;2026-09-14;skift365;fastAnsattUtleid;monthly;2026-09-14;;;2020-05-01;52
+﻿Employee number;Name;Employment number;Business unit org number;Start;End;End reason;Occupation code;Full-time hours;FTE percent;FTE changed;Working hours scheme;Appointment form;Remuneration type;Salary changed;Department;Cost centre;Seniority date;Pay grade;Leave ID;Leave start;Leave end;Leave description;Leave percent;Holiday days;Self-certified sick days;Certified sick days;Child sick days;Child sick days beyond employer;Leave days;Time off hours;Other days
+P-1;Kari Nordmann;P-1-1;923609016;2024-01-01;;;2512105;37,50;80,00;2026-03-01;ikkeSkift;fast;monthly;2026-03-01;SALG;4200;;;;;;;;;;;;;11,00;;
+P-1;Kari Nordmann;P-1-1;;;;;;;;;;;;;;;;;1001;2026-08-24;2026-09-30;permisjonMedForeldrepenger;50,00;;;;;;;;
+P-2;Ola Hansen;P-2-1;923609016;2026-01-01;2026-09-15;kontraktEngasjementEllerVikariatErUtloept;9321101;37,50;50,00;2026-01-01;ikkeSkift;midlertidig;hourly;2026-01-01;LAGER;5100;;;;;;;;;;2,50;;;;2,00;
+P-3;Siri Berg;P-3-1;923609016;2026-09-14;;;;36,50;100,00;2026-09-14;skift365;fastAnsattUtleid;monthly;2026-09-14;;;2020-05-01;52;;;;;;;;;;;8,00;;

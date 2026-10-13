@@ -90,10 +90,14 @@ func TestReadAttention_ReadsOnlyWhatTheCallerNeeds(t *testing.T) {
 		items   int
 	}{
 		{"a linked caller who manages nobody", callerContext{Person: &nobody, Today: today}, 3, 0},
-		{"a manager", callerContext{Person: &manager, Today: today}, 4, 1},
-		// staff:manage's statements include the self-approved absences and the
-		// ferie affected by sickness (delivery B).
-		{"staff:manage", callerContext{Manage: true, Today: today}, 8, -1},
+		// A manager's include the requests they decide and the open cases'
+		// milestones (delivery B, Task 6) — the oldest request only when one
+		// waits.
+		{"a manager", callerContext{Person: &manager, Today: today}, 6, 1},
+		// staff:manage's statements include the self-approved absences, the
+		// ferie affected by sickness, the requests and the milestones
+		// (delivery B); in October no holiday item is read.
+		{"staff:manage", callerContext{Manage: true, Today: today}, 10, -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -102,7 +106,7 @@ func TestReadAttention_ReadsOnlyWhatTheCallerNeeds(t *testing.T) {
 			}
 			defer func() { _ = tx.Rollback(ctx) }()
 			db := &countingDB{DBTX: tx}
-			items, err := s.readAttention(ctx, store.New(db), &tc.caller, map[string]time.Time{})
+			items, err := s.readAttention(ctx, store.New(db), &tc.caller, map[string]time.Time{}, false)
 			if err != nil {
 				t.Fatal(err)
 			}

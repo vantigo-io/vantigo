@@ -509,13 +509,14 @@ values.
 ### Deleting a person
 
 `DELETE /people/{id}` (`staff:manage`) is the hard delete of a person **created in
-error**: one with no employment, no user link, no document, and named as nobody's
-manager — neither a department's nor on anyone's terms — and not under a
-[legal hold](#the-legal-hold). An [erased](#the-erased-state) person is
+error**: one with no employment, no user link, no document, no absence and no holiday
+adjustment, and named as nobody's manager — neither a department's nor on anyone's
+terms — and not under a [legal hold](#the-legal-hold). An absence or an adjustment is
+the history of an employment, which the delete would take with the person. An [erased](#the-erased-state) person is
 `person_erased` (409) and a held one `legal_hold` (409), judged before what names
 them; anything else is `person_in_use` (409), whose
-detail says what names the person — "has documents" among the reasons; the person
-stays. The delete takes the person's row
+detail says what names the person — "has documents", "has absences" and "has holiday
+adjustments" among the reasons; the person stays. The delete takes the person's row
 and then the manager-graph lock before it judges, so no write can start naming the
 person between the check and the delete, and a foreign key that refuses anyway is still
 `person_in_use`. In one transaction it removes the next of kin, the roles and the
@@ -1749,10 +1750,18 @@ a-melding as leave.
 ## The personal-data exports
 
 A person's data in one JSON file (design S16): `exportedAt`, the `person` — every field
-of the record — their `nextOfKin`, `roles`, `employments` (each `{employment, terms}`,
-the terms oldest first), the self-service `link`, the `documents`' metadata (the files
-themselves are read through `GET /documents/{id}`) and every event of their history,
-oldest first. Both exports read it all in **one** REPEATABLE READ snapshot, so its parts
+of the record, the [care-day fields](#the-care-day-fields) included — their
+`nextOfKin`, `roles`, `employments` (each `{employment, terms}`, the terms oldest
+first), the self-service `link`, the `documents`' metadata (the files themselves are
+read through `GET /documents/{id}`), every absence (`absences`, newest first, in any
+status), the [holiday adjustments](#adjustments-and-carry-over) (`holidayAdjustments`),
+every [sick-leave case](#sick-leave-cases) with its milestones (`cases`), this year's
+[care days](#care-days) (`careDays`), the standing of
+[egenmelding](#egenmelding) today with the [withdrawal](#the-withdrawal)
+(`selfCertification`) and every event of their history, oldest first. Each absence
+array is shaped as the file's reader reads it: the complete file whole, the person's
+own copy as the person reads their own — both read every type as itself, a milestone's
+note, the care-day fields and the withdrawal. Both exports read it all in **one** REPEATABLE READ snapshot, so its parts
 agree with each other, build it in memory — one person's data is one response, and it is
 never refused for size — and answer it as an attachment named
 `staff-<employeeNumber>-personal-data.json`, `Content-Type: application/json`, with its
@@ -1799,7 +1808,11 @@ The header names are the contract's own field names, matched without regard to c
 | First employment | `startDate`, `businessUnit`, `employmentType`, `temporaryGround`, `expectedEndDate`, `ftePercent`, `appointmentForm`, `workingHoursScheme`, `fullTimeHoursPerWeek`, `occupationCode`, `title`, `department`, `location`, `managerEmployeeNumber` | no | yes | on a create only |
 | Export-only | `status`, `currentTitle`, `currentDepartment`, `currentBusinessUnit`, `currentLocation`, `currentManagerEmployeeNumber`, `currentFtePercent`, `nationalIdOnFile` | yes | no | ignored |
 
-HR's notes are in none of them. A column named `error` — what a failed-rows file adds
+HR's notes are in none of them, nor are the [care-day fields](#the-care-day-fields)
+(plan Task 6): the register's file is a bulk copy that travels to spreadsheets, and the
+fields are a family's circumstances — one of them, `chronicallyIllChildren`, borders on
+health data (open question 8) — kept to the person's form, where HR types them one
+person at a time. An import keeps what HR typed. A column named `error` — what a failed-rows file adds
 — is ignored too, so a failed-rows file imports as it is.
 
 ### The export
@@ -1974,16 +1987,71 @@ The scheme, the end reason and the appointment form are written as the codes in
 
 The **sealed identifiers are never read** (design reading 9): the national identity
 number and the bank account are not in the file, nor anything derived from them —
-payroll already holds them. The leave and absence columns are delivery B's and will be
-**appended to the right** of `Pay grade`, so a payroll system's mapping of these
-columns keeps working.
+payroll already holds them.
+
+**The absence columns** (delivery B) are appended **to the right** of `Pay grade`, so a
+payroll system's mapping of the first nineteen keeps working (plan reading 8). They are
+fixed per kind, not one per type, and read every **approved or registered** absence; a
+request, a refusal and a cancel count nothing.
+
+| Column | On | Source |
+| --- | --- | --- |
+| `Leave ID` | a leave row | The leave's id: its first row's id, the a-melding `permisjonId`, the same every month the leave is reported. |
+| `Leave start`, `Leave end` | a leave row | The leave's whole first and last day — before or after the month, a last day ahead when it is known. |
+| `Leave description` | a leave row | The type's [a-melding description](#the-a-meldings-leave-descriptions). |
+| `Leave percent` | a leave row | The leave's percent, always filled (> 0 and ≤ 100; 100 for a type without one). |
+| `Holiday days` | the employment's row | Working days of ferie, by percent. |
+| `Self-certified sick days` | the employment's row | Working days of egenmelding. |
+| `Certified sick days` | the employment's row | Working days of sykmelding, by degree. |
+| `Child sick days` | the employment's row | Working days of a child's sickness (care days). |
+| `Child sick days beyond employer` | the employment's row | Of those, the ones beyond the employer's ten of the year — the year's care days numbered from 1 January, a day before the right's four weeks numbering none (ftrl. § 9-8): what NAV refunds. |
+| `Leave days` | the employment's row | Working days of leave, by percent. |
+| `Time off hours` | the employment's row | The hours of time off (avspasering). |
+| `Other days` | the employment's row | Working days of the other day types, by percent. |
+
+A total counts the working days — Monday to Friday, not a public holiday — of the
+employment within the month, each by the row's share; it is blank when nothing was
+counted. A sick day **beside a percentage leave** counts degree × (100 − the leave's
+percent) / 100 (Revision 3 M1). **Approved ferie and a 100 % sykmelding on the same
+day count once, as sick**: the day is not a holiday day, until HR records the
+employee's [demand to postpone](#a-sykmelding-over-other-rows) and the ferie is split.
+An hour row of another kind than time off counts in no total. A person with two
+employments in force has their absence on each, since it is from both.
+
+**The leave rows.** After an employment's row comes one row per **leave** the
+a-melding reports that touches the employment's days in the month, ordered by start: it
+repeats the employee number, the name and the employment number and fills the leave's
+five cells alone. A leave is a chain of approved or registered rows of one `leave`-kind
+type with a description and one percent, each starting no later than the day after the
+one before ended — so a leave extended by a second row is one leave under its first
+row's id. Skatteetaten's rules decide which are reported
+([Permisjon](https://www.skatteetaten.no/bedrift-og-organisasjon/arbeidsgiver/a-meldingen/veiledning/arbeidsforholdet/opplysninger-om-arbeidsforholdet/permisjon/),
+[Permittering](https://www.skatteetaten.no/bedrift-og-organisasjon/arbeidsgiver/a-meldingen/veiledning/arbeidsforholdet/opplysninger-om-arbeidsforholdet/permittering/)):
+
+- a leave **longer than fourteen days**, whole or partial;
+- a leave of fourteen days or fewer **when the person's leaves within the twelve months
+  to the month's end together pass fourteen days**;
+- **permittering**, whatever its length;
+- **never a child's sickness**: omsorgsdager are not leave, and no child-sick type
+  carries a description; nor svangerskapspenger, which no type models.
+
+**The descriptions' spellings** were checked on 2026-10-14: the a-melding's XSD types
+`beskrivelse` as a plain string (`PermisjonsOgPermitteringsBeskrivelse`, NAV's
+`a-arbeidsforhold` schema), so the values live in the kodeliste, and the seven the
+types use — `permisjonMedForeldrepenger`, `permisjonVedMilitaertjeneste`,
+`utdanningspermisjonLovfestet`, `utdanningspermisjonIkkeLovfestet`,
+`andreLovfestedePermisjoner`, `andreIkkeLovfestedePermisjoner`, `permittering` — are
+spelt the same in every NAV source that maps them (`fp-abakus`, `k9-abakus`,
+`fp-oversikt`, `medlemskap-oppslag`). Skatteetaten's kodeliste file itself could not be
+reached. **Before the export is wired to a payroll system**, compare the seven against
+the kodeliste that system validates with.
 
 **The order of work.** The parameters and the actor are judged first; everything the
 file is built from — the people's numbers and names, the employments, their terms, the
-business units and the departments — is read in **one REPEATABLE READ snapshot**; the
+business units, the departments and every approved or registered absence — is read in **one REPEATABLE READ snapshot**; the
 rows and the file are built in memory; then the export is recorded as the
 installation's **`payroll_exported`** event, naming the exporter, with `month`,
-`format`, `rows` and `sha256` — the hex SHA-256 of the very bytes answered, so the file
+`format`, `rows` (the leave rows counted) and `sha256` — the hex SHA-256 of the very bytes answered, so the file
 payroll received can be recognised later (reading 13). The event carries no personal
 data, so it has no payload class, and it is kept as the export's lineage: its hash. A
 file whose export could not be recorded is not answered. The file is served as
@@ -2002,12 +2070,15 @@ The register keeps what the law lets it keep, and the retention run erases the r
   employments, terms other than pay, roles, the link, the history's kinds and dates.
   Kept.
 - **D** — personnel administration: contact and address, the sealed identifiers, the
-  care-day fields, HR's notes, the terms' notes, the next of kin, and documents of
-  class D. Erased a grace period after the last employment ended.
-- **E** — health: health documents (a restricted category) and the values of their
-  events. Erased a longer period after the last employment ended, until delivery B
-  gives health documents a sick case's schedule; the self-certification withdrawal is
-  E on B's schedule, and no erase reaches it before B.
+  care-day fields, HR's notes, the terms' notes, the next of kin, absences' and
+  holiday adjustments' notes, and documents of class D. Erased a grace period after
+  the last employment ended.
+- **E** — health: a sick-leave case's notes, estimate and milestones' facts, a sick
+  row's type and degree, a child-sick row's type, the withdrawal of egenmelding, health
+  documents (a restricted category) and the health fields of the events about them.
+  Erased on [three schedules of their own](#what-is-due) — a closed case's, a year's
+  child-sick rows', a lapsed withdrawal's — whatever the employment, and what none of
+  them owns a longer period after the last employment ended.
 - **F** — the legal hold, which stops every erase and is erased by none.
 
 ### The classes, column by column
@@ -2031,14 +2102,28 @@ holds every payload field to its column's class, and a third holds this table to
 | `employment_terms` | D | `note` |
 | `identity_links` | C | every column: `id`, `person_id`, `provider`, `external_id`, `state`, `managed`, `blocked_reason`, `last_error`, `attempts`, `next_attempt_at`, `lease_id`, `lease_until`, `last_synced_at`, `last_spec_hash`, `created_at`, `updated_at` |
 | `documents` | the category's | every column: `id`, `person_id`, `category_id`, `employment_id`, `object_key`, `file_name`, `content_type`, `size_bytes`, `valid_to`, `signed_at`, `uploaded_by_user_id`, `case_id`, `revision`, `created_at`, `updated_at` — a document is erased whole, by its [category's](#categories-and-classes) class |
+| `absences` | C | `id`, `person_id`, `type_id`, `first_day`, `last_day`, `hours`, `percent`, `status`, `case_id`, `requested_by_user_id`, `decided_by_user_id`, `decided_at`, `self_approved`, `revision`, `created_at`, `updated_at` — the type is C on the column; the health erase writes the reserved `absent` in place of a sick or child-sick one |
+| `absences` | D | `note`, `decision_note` |
+| `absences` | E | `degree_percent` |
+| `holiday_adjustments` | C | `id`, `person_id`, `year`, `days`, `reason`, `from_year`, `by_user_id`, `created_at`, `updated_at` |
+| `holiday_adjustments` | D | `note` |
+| `sick_cases` | C | `id`, `person_id`, `first_day`, `last_day`, `closed_at`, `revision`, `created_at`, `updated_at` |
+| `sick_cases` | E | `accommodation_note`, `max_benefit_estimate` |
+| `sick_case_milestones` | C | `id`, `case_id`, `kind`, `due_date`, `revision`, `created_at`, `updated_at` |
+| `sick_case_milestones` | E | `done_at`, `done_by_user_id`, `waived`, `waived_reason`, `waived_by_user_id`, `note` — `waived` cannot be null and is erased to `false` |
+| `absence_types` | C | every column: `id`, `key`, `name_en`, `name_nb`, `kind`, `unit`, `paid`, `draws_holiday`, `allows_percent`, `needs_decision`, `visibility`, `amelding_leave`, `seeded`, `hidden`, `sort`, `revision`, `created_at`, `updated_at` |
+| `holiday_schemes` | C | every column: `id`, `name`, `entitlement_virkedager`, `extra_from_60_virkedager`, `main_period_virkedager`, `after_september_virkedager`, `max_carry_over_virkedager`, `is_default`, `seeded`, `archived_at`, `revision`, `created_at`, `updated_at` |
 
 Ids, foreign keys, revisions and timestamps are C: they say that a row existed and
 when. An event's `payload_classes` are its fields' classes (`fieldClasses` in
-`events.go`, held to the columns above); a document's event takes its category's.
+`events.go`, held to the columns above); a document's event takes its category's; an
+absence, adjustment, case or withdrawal event carries its own map of each field's
+class ([the absence events](#the-absence-events)), and the types beside its fields
+(`typeIds`) carry theirs (`typeClasses`).
 
 ### What is due
 
-The run asks three questions, each over what remains, "today" being the settings'
+The run asks six questions, each over what remains, "today" being the settings'
 time zone's civil day:
 
 - **D** — a person not yet erased, not held, with **at least one employment and every
@@ -2046,7 +2131,22 @@ time zone's civil day:
   employment, or with one that has not ended, is never erased.
 - **health** — a person, erased or not, not held, whose every employment ended before
   today minus `healthRetentionDays` (default 365), with a document in a restricted
-  category still on file, or a value of class E in an event not yet replaced.
+  category filed under no case still on file, or a value of class E not yet replaced in
+  an event no other schedule owns. The other schedules own the events of a row in a
+  case or of a child-sick row, of a ferie split for a sykmelding in a case (the event
+  names it, `sickAbsenceId`), of a case that exists, and of the withdrawal; what none
+  owns — the events of a row deleted, of a case merged away — stays here.
+- **cases** — a sick-leave case, of a person not held, **whatever their employment**,
+  closed — by HR, or sixteen days after its last day, whichever came first — before
+  today minus `healthRetentionDays` (spec open question 1: 365 days, built as
+  designed), with something of class E left: a value of the case's or its milestones'
+  E columns, a row still of a sick type or with a degree, a document filed under it, or
+  a health field of an event it owns.
+- **childSick** — a person, not held, with a child-sick row whose year ended before
+  today minus `healthRetentionDays` (plan reading 21).
+- **withdrawal** — a person, not held, whose [withdrawal](#the-withdrawal) of
+  egenmelding lapsed before today minus `healthRetentionDays`, or — none in force —
+  whose withdrawal events still hold a value, the latest recorded before then.
 - **A** — per **employment**: ended in a year more than five years before this one
   (ended in 2020, due from 1 January 2026; ended in 2021, not before 2027), of a person
   not held, erased or not, with something of class A still there — a pay column set on
@@ -2066,8 +2166,18 @@ since the cycle chose the person is seen there:
   of kin, deletes their documents of class D, replaces every value of class D in their
   history's payloads, and sets `erased_at` — the person is then
   [read-only](#the-erased-state).
-- **health** deletes their documents in restricted categories and replaces the values
-  of their health documents' events.
+- **health** deletes their documents in restricted categories filed under no case and
+  replaces the class E values of the events no other schedule owns.
+- **cases**, for each due case, erases its class E columns and its milestones' (the
+  case keeps its id, its days and when HR closed it; a milestone its kind and date),
+  writes the reserved `absent` type in place of its rows' sick type and nulls their
+  degree, deletes the documents filed under it, and replaces the health fields — and
+  the `typeIds` of class E — of the events it owns: its own, those of the cases it took
+  in by a merge, its rows', and those of a ferie split for one of its rows.
+- **childSick** writes `absent` in place of the due rows' type and replaces the health
+  fields of their events.
+- **withdrawal** nulls `self_cert_withdrawn_from`, `_until` and `_reason` and replaces
+  the values of the withdrawal's events.
 - **A**, for each due employment, nulls its pay columns on every terms row, deletes its
   documents of class A, and replaces the values of class A in its events and every
   value of the deleted documents' events. The erase of the person's **last**
@@ -2088,7 +2198,7 @@ A deleted document's row goes and its object's key is queued in the
 the object store.
 
 When anything was erased, the transaction records one **`erased`** event for the
-person, `{"kinds": [{"kind": "D" | "health" | "A", "count": n}]}`, its actor the
+person, `{"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal", "count": n}]}`, its actor the
 installation (`system`) when the worker ran it and the caller when
 [`POST /retention/run`](#running-it-by-hand) did. `count` is the items the kind
 removed: each column value nulled, each row deleted (a next of kin, a document) and
@@ -2097,7 +2207,8 @@ person, even when it found nothing to remove (count 0); an A count sums the pers
 due employments. The event touches no class, so no later erase rewrites it. It is
 listed as the [hold's kinds](#the-history) are — not to a manager, to the person as its
 kind with an empty payload — and its kinds are read by `staff:manage` and
-`staff:personal-data`, the `health` entry by `staff:personal-data` alone.
+`staff:personal-data`, the `health`, `cases`, `childSick` and `withdrawal` entries — each
+says the person's health was on file — by `staff:personal-data` alone.
 
 The run is **idempotent**: a second run finds nothing due and writes nothing. That is
 what makes "once per civil day" hold whatever the poll and the clock do.
@@ -2129,8 +2240,9 @@ its one attempt through the same code.
 ### The worker
 
 `staff-retention` runs every `STAFF_WORKERS_POLL` (default `1h`, at least `1m`) unless
-`STAFF_RETENTION_ENABLED=0`, in worker mode and in api mode with
-`WORKERS_IN_PROCESS=1`. Each poll:
+`STAFF_RETENTION_ENABLED=0` — which stops every schedule, the cases' included: they
+run in the same cycle, and there is no worker of their own (plan reading 5) — in worker
+mode and in api mode with `WORKERS_IN_PROCESS=1`. Each poll:
 
 1. **An erase cycle under the lease**: the session advisory lock
    `0x5354414646524554` (the ASCII `STAFFRET`), taken with `pg_try_advisory_lock` on one
@@ -2244,14 +2356,17 @@ erasure.
 The dashboard's two reads (design S20). Both are read in one snapshot — the people,
 every employment with its terms, the departments, and the manager graph built from
 those same rows, each table read once — and judged in Go on today, the day in the
-settings' [time zone](#the-business-time-zone). The absence figures and
-items arrive with delivery B, the account items with C.
+settings' [time zone](#the-business-time-zone). The account items arrive with
+delivery C.
 
 ### The figures
 
 `GET /stats` is `staff:view`'s or `staff:manage`'s, judged in the module; anyone else
-gets the uniform 403 (the `GET /people` rule). An employment is **in force** on a day
-when it started on or before it and has not ended before it (the end day is still
+gets the uniform 403 (the `GET /people` rule). The two **sick figures** are present for
+a caller who also holds `staff:manage`, `staff:approve` or `staff:personal-data`, and
+absent for anyone else — a holder of `staff:view` alone among them (plan reading 14, a
+spec amendment; open question 3's interim default). An employment is **in force** on a
+day when it started on or before it and has not ended before it (the end day is still
 worked).
 
 | Figure | Rule |
@@ -2261,15 +2376,21 @@ worked).
 | `startingSoon` | Employments whose start is after today and no later than today + 30 days. |
 | `endingSoon` | Employments in force today whose end is today or no later than today + 30 days. |
 | `peopleWithoutEmployment` | People not erased with no employment at all. |
+| `onLeaveToday` | People with an employment in force today and an approved or registered absence of whole days covering today, of **any** kind — a figure without the sick ones would, beside the calendar's bars a colleague reads as "absent", tell them who is sick. A request counts nothing, so no HR-only request is counted. |
+| `openSickCases` | Sick-leave cases not closed by HR whose last day is at most sixteen days ago. Sick figure. |
+| `sickAbsenceRate` | The sick-leave rate over the twelve months ending today, in percent to two decimals (reading 7): over every working day of every employment in force, the day's sick share — egenmelding whole, sykmelding by its degree, beside a percentage leave degree × (100 − the leave's percent) / 100, a ferie day under a 100 % sykmelding sick — times the `ftePercent` in force, divided by those working days times the same percentage. Child sickness is not the employee's and counts nothing. Sick figure. |
 
 ### Attention items
 
 `GET /stats/attention` is `staff:access`'s and shaped per caller: `staff:manage`'s
-items, `staff:personal-data`'s and a manager's for the employments they manage today
-(by the dashboard's manager rule below); a caller with none of these gets `[]`, never a
-403. A caller with neither `staff:manage` nor `staff:personal-data` is judged as a
-manager on the employments, their terms and the departments alone, and gets `[]` at
-once when they manage nobody today; a manager's read adds only their reports' names.
+items, `staff:personal-data`'s, `staff:approve`'s and a manager's for the employments
+they manage today (by the dashboard's manager rule below); a caller with none of these
+gets `[]`, never a 403. A caller with none of `staff:manage`, `staff:personal-data` and
+`staff:approve` is judged as a manager on the employments, their terms and the
+departments alone, and gets `[]` at once when they manage nobody today; a manager's
+read adds only their reports' names, the requests they decide and the open cases'
+milestones. Every count and item shown to a caller without `staff:personal-data`
+leaves out the requests of an HR-only type, so none reveals one.
 
 The **dashboard's manager rule** is the [manager rule](#managers-and-the-org-view) —
 the one the Manager audience and the org view read, a manager who has left skipped
@@ -2294,17 +2415,23 @@ the caller's roles find is listed once.
 | `reassessmentDue` | personal-data | An erased person not yet reassessed, every employment ended, the last end twelve months ago or more ([the reassessment](#the-reassessment)). | The due day. | The person. |
 | `retentionFailing` | manage | Ledger rows the object store has refused at least once (`attempts` ≥ 1) that were queued more than 24 hours ago. One item. The settings' `failingDeletions` counts every refused row, however young. | When the oldest of them was queued. | `retention`; `count` the rows. |
 | `otpThreshold` | manage | By the `ftePercent` in force today summed per person over their employments in force today: someone at 75 % or more, or the people at 20 % or more adding up to 200 % (two full-time equivalents) — OTP-loven § 2 judged without an owner flag (plan reading 17), so the title names the exception, "unless the only such person is the owner". Not shown once `otp` is [acknowledged](#the-thresholds). One item. | Today. | `thresholds`. |
-| `selfApproved` | manage | An approved absence its person approved themselves ([self-approval](#decisions), provisional) that has not ended. One per absence; `id` `selfApproved/<absence id>`. | When it was approved. | The person. |
+| `selfApproved` | manage | An approved absence of a type of visibility `absent` its person approved themselves ([self-approval](#decisions), provisional) that has not ended — never an HR-only type's, which staff:manage without staff:personal-data must not be told of. One per absence; `id` `selfApproved/<absence id>`. | When it was approved. | The person. |
 | `holidayAffectedBySickness` | manage | Approved ferie a 100 % sykmelding lies over, until four weeks after the ferie's last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed: the employee may demand to postpone it ([ferieloven § 9](#a-sykmelding-over-other-rows)). One per ferie row; `id` `holidayAffectedBySickness/<absence id>`. | The ferie's first day. | The person. |
 | `headcountThreshold` | manage | For each of 5, 30 and 50 the `headcount` has crossed — 5 or more, 30 or more, more than 50 — and that is not [acknowledged](#the-thresholds). | Today. | The threshold (`5`, `30`, `50`); `count` the headcount. |
+| `absenceAwaitingDecision` | a decider: approve, manage, a manager today of the person; an HR-only type's requests personal-data alone | The requests the caller decides — the [approvals inbox](#the-approvals-inbox)'s count, never their own (but the self-approver's). A request of an HR-only type counts for `staff:personal-data` alone. One item; `id` `absenceAwaitingDecision`. | When the oldest was made. | `approvals`; `count` the requests. |
+| `hrOnlyAwaitingDecision` | personal-data (never manage without it) | Requests of an HR-only type undecided for more than seven days — the caller's own included, so the only holder of `staff:personal-data`, whose own request nobody may decide ([decisions](#decisions)), sees it stall (open question 9). One item; `id` `hrOnlyAwaitingDecision`. | The oldest's seventh day. | `approvals`; `count` the requests. |
+| `sickMilestoneDue` | manage, approve; a manager today of the person | A [milestone](#the-arbeidsgiverperiode-and-the-milestones) due — the case open and lasted to within a week of the date, neither done nor waived (pre-flight I5) — dated within seven days or past. The end of the arbeidsgiverperiode is a date, never an action, and raises none; a three-day case raises none. One per milestone; `id` `sickMilestoneDue/<case id>/<kind>`. | The milestone's date. | The person. |
+| `holidayUntaken` | manage | In January: a person with an employment in force today whose [holiday account](#the-holiday-account) for last year has days remaining and no carry-over from it recorded — a carry-in [automatic carry-over](#adjustments-and-carry-over) derives counts as recorded (pre-flight M6). One per person. | 1 January. | The person. |
+| `mainPeriodShort` | manage | From 1 April to 30 September (reading 23): a person with an employment in force today that began before 1 June, with fewer approved ferie working days in 1 June – 30 September than that employment's scheme's main period converted — 18 virkedager are 15 days (ferieloven § 7 (1)). One per person. | 1 April. | The person. |
 
 `id` is `<type>/<employment id>` for the employment items, `<type>/<person id>` for
 the person items, `retentionFailing`, `otpThreshold` and `headcountThreshold/<key>`.
 `title` is the person's display name — class C, so it survives the erase — with the
 employment number after it, in brackets, on an employment item of a person who has
-more than one; for the last three types it is an English sentence. The host words
-every type from its own catalog, in the reader's language, and links a person's item to
-their page and the other three to Settings.
+more than one; for the three installation types it is an English sentence, and for the
+two request counts the type's name. The host words every type from its own catalog, in
+the reader's language, and links a person's item to their page, the two request counts
+to the Absence page and the other three to Settings.
 
 ### The thresholds
 

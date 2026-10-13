@@ -191,6 +191,12 @@ func TestStats_TheFigures(t *testing.T) {
 	h.Exec(t, `UPDATE staff.people SET erased_at = $1 WHERE id = ANY($2)`, h.Now(), []int64{erased, erasedBare})
 
 	got := getStats(t, hr)
+	// Nobody is away and nobody sick: HR, a reader of the sick figures
+	// (Task 6), reads them as nothing.
+	if got.OpenSickCases == nil || *got.OpenSickCases != 0 || got.SickAbsenceRate == nil || *got.SickAbsenceRate != 0 {
+		t.Errorf("sick figures = %v %v, want 0 and 0", got.OpenSickCases, got.SickAbsenceRate)
+	}
+	got.OpenSickCases, got.SickAbsenceRate = nil, nil
 	want := gen.StaffStats{Headcount: 6, FteSum: 4.25, StartingSoon: 1, EndingSoon: 2, PeopleWithoutEmployment: 1}
 	if got != want {
 		t.Errorf("stats = %+v, want %+v", got, want)

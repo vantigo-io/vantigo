@@ -76,14 +76,34 @@ func TestPayroll_TheGoldenMonth(t *testing.T) {
 	do(t, pd, http.MethodPut, nationalIDPath(kari), map[string]any{"kind": "fodselsnummer", "value": number}, http.StatusOK, nil)
 	do(t, pd, http.MethodPut, bankAccountPath(kari), map[string]any{"kind": "bban", "value": "12345678903"}, http.StatusOK, nil)
 
-	_, olaJob := hire("P-2", "Ola", "Hansen", "2026-01-01", terms("employmentType", "midlertidig", "temporaryGround", "a",
+	ola, olaJob := hire("P-2", "Ola", "Hansen", "2026-01-01", terms("employmentType", "midlertidig", "temporaryGround", "a",
 		"ftePercent", 50, "occupationCode", "9321101", "remunerationType", "hourly", "departmentId", stores.Id,
 		"payComponents", pay("Timelønn", 250, "hourly")))
 	do(t, hr, http.MethodPost, endPath(olaJob), map[string]any{"endDate": "2026-09-15", "endReason": "contract_ended"}, http.StatusOK, nil)
 
-	hire("P-3", "Siri", "Berg", "2026-09-14", terms("appointmentForm", "fast_utleid", "hiredOutTo", "Kunde AS",
+	siri, _ := hire("P-3", "Siri", "Berg", "2026-09-14", terms("appointmentForm", "fast_utleid", "hiredOutTo", "Kunde AS",
 		"workingHoursScheme", "shift_365", "remunerationType", "monthly", "seniorityDate", "2020-05-01", "payGrade", "52",
 		"payComponents", pay("Base", 48000, "monthly")))
+
+	// Delivery B's absence (Task 6): Kari's foreldrepermisjon at 50 % from
+	// 24 August, continued from 12 September to the month's end — one leave
+	// over fourteen days, under its first row's id, its whole days; Ola's
+	// 50 % sykmelding and two hours' avspasering; Siri's ten-day welfare
+	// leave, counted in her leave days but too short to be a leave row.
+	absenceOf := func(person int64, key, first, last string, kv ...any) int64 {
+		var out struct {
+			ID int64 `json:"id"`
+		}
+		body := with(map[string]any{"personId": person, "typeId": typeID(t, h, key), "firstDay": first, "lastDay": last}, kv...)
+		do(t, hr, http.MethodPost, absencesPath, body, http.StatusCreated, &out)
+		h.Exec(t, `UPDATE staff.absences SET status = 'approved' WHERE id = $1 AND status = 'requested'`, out.ID)
+		return out.ID
+	}
+	absenceOf(kari, "foreldrepermisjon", "2026-08-24", "2026-09-11", "percent", 50)
+	absenceOf(kari, "foreldrepermisjon", "2026-09-12", "2026-09-30", "percent", 50)
+	absenceOf(ola, "sykmelding", "2026-09-07", "2026-09-11", "degreePercent", 50)
+	absenceOf(ola, "avspasering", "2026-09-03", "2026-09-03", "hours", 2)
+	absenceOf(siri, "velferdspermisjon", "2026-09-21", "2026-09-30")
 
 	_, perJob := hire("P-4", "Per", "Ferdig", "2025-01-01", terms())
 	do(t, hr, http.MethodPost, endPath(perJob), map[string]any{"endDate": "2026-08-31", "endReason": "employee_resigned"}, http.StatusOK, nil)
@@ -116,7 +136,7 @@ func TestPayroll_TheGoldenMonth(t *testing.T) {
 
 	sum := sha256.Sum256(r.Body)
 	payload := payrollEvent(t, h, hrID)
-	for key, want := range map[string]any{"month": "2026-09", "format": "csv", "rows": float64(3), "sha256": hex.EncodeToString(sum[:])} {
+	for key, want := range map[string]any{"month": "2026-09", "format": "csv", "rows": float64(4), "sha256": hex.EncodeToString(sum[:])} {
 		if payload[key] != want {
 			t.Errorf("payroll_exported %s = %v, want %v", key, payload[key], want)
 		}

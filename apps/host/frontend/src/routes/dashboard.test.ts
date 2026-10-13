@@ -590,15 +590,22 @@ describe("the dashboard's staff card", () => {
   it("shows the headcount, the full-time equivalents and who starts and ends soon", () => {
     const t = (key: string, values?: Record<string, unknown>) => `${key}:${JSON.stringify(values)}`;
     const formatNumber = (value: number) => value.toFixed(2);
-    const stats = { headcount: 12, fteSum: 10.5, startingSoon: 2, endingSoon: 1, peopleWithoutEmployment: 0 };
+    const stats = {
+      headcount: 12,
+      fteSum: 10.5,
+      startingSoon: 2,
+      endingSoon: 1,
+      peopleWithoutEmployment: 0,
+      onLeaveToday: 4,
+    };
 
     expect(staffKpi(undefined, formatNumber, t)).toEqual({ value: "—", hint: undefined });
     expect(staffKpi(stats, formatNumber, t)).toEqual({
       value: 12,
-      hint: 'dashboard.staffKpiHint:{"fte":"10.50","starting":2,"ending":1}',
+      hint: 'dashboard.staffKpiHint:{"fte":"10.50","starting":2,"ending":1} · dashboard.staffOnLeaveTodayHint:{"count":4}',
     });
     expect(staffKpi({ ...stats, peopleWithoutEmployment: 3 }, formatNumber, t).hint).toBe(
-      'dashboard.staffKpiHint:{"fte":"10.50","starting":2,"ending":1} · dashboard.staffWithoutEmploymentHint:{"count":3}',
+      'dashboard.staffKpiHint:{"fte":"10.50","starting":2,"ending":1} · dashboard.staffOnLeaveTodayHint:{"count":4} · dashboard.staffWithoutEmploymentHint:{"count":3}',
     );
   });
 
@@ -608,8 +615,9 @@ describe("the dashboard's staff card", () => {
       expect(i18n.t("dashboard.staffKpiHint", { ns: "host", lng, fte: "4,25", starting: 2, ending: 1 })).toContain(
         "4,25",
       );
-      for (const count of [1, 3]) {
+      for (const count of [0, 1, 3]) {
         expect(i18n.t("dashboard.staffWithoutEmploymentHint", { ns: "host", lng, count })).toContain(String(count));
+        expect(i18n.t("dashboard.staffOnLeaveTodayHint", { ns: "host", lng, count })).toContain(String(count));
       }
     }
   });
@@ -629,11 +637,22 @@ describe("the dashboard's staff attention items", () => {
     "temporaryConverts",
     "reportsWithoutManager",
     "reassessmentDue",
+    // Delivery B's absence items about a person (Task 6).
+    "sickMilestoneDue",
+    "holidayUntaken",
+    "mainPeriodShort",
+    "selfApproved",
+    "holidayAffectedBySickness",
   ];
+  // The requests waiting a decision: the approvals inbox's.
+  const approvalTypes = ["absenceAwaitingDecision", "hrOnlyAwaitingDecision"];
 
   it("opens the person's page for an item about a person, and Settings for the ledger and the thresholds", () => {
     for (const type of personTypes) {
       expect(attentionHref({ module: "staff", type, entityId: "1042" })).toBe("/staff/people/1042");
+    }
+    for (const type of approvalTypes) {
+      expect(attentionHref({ module: "staff", type, entityId: "approvals" })).toBe("/staff/absence");
     }
     expect(attentionHref({ module: "staff", type: "retentionFailing", entityId: "retention" })).toBe("/staff/settings");
     expect(attentionHref({ module: "staff", type: "otpThreshold", entityId: "thresholds" })).toBe("/staff/settings");
@@ -665,6 +684,19 @@ describe("the dashboard's staff attention items", () => {
         format,
       ),
     ).toBe("dashboard.staffHeadcountThreshold30:30 or more…:31");
+    expect(
+      attentionTitle(
+        {
+          module: "staff",
+          type: "absenceAwaitingDecision",
+          entityId: "approvals",
+          title: "absenceAwaitingDecision",
+          count: 3,
+        },
+        t,
+        format,
+      ),
+    ).toBe("dashboard.staffAbsenceAwaitingDecision:absenceAwaitingDecision:3");
     expect(attentionTitleKey({ module: "staff", type: "headcountThreshold", entityId: "7" })).toBeUndefined();
     expect(
       attentionTitle({ module: "staff", type: "somethingNew", entityId: "1", title: "As written" }, t, format),
@@ -676,6 +708,7 @@ describe("the dashboard's staff attention items", () => {
       ...personTypes.map((type) => attentionTitleKey({ module: "staff", type })),
       attentionTitleKey({ module: "staff", type: "retentionFailing" }),
       attentionTitleKey({ module: "staff", type: "otpThreshold" }),
+      ...approvalTypes.map((type) => attentionTitleKey({ module: "staff", type })),
       ...["5", "30", "50"].map((entityId) =>
         attentionTitleKey({ module: "staff", type: "headcountThreshold", entityId }),
       ),

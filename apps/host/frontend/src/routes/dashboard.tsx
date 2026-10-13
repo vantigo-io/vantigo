@@ -160,6 +160,8 @@ interface StaffStats {
   startingSoon: number;
   endingSoon: number;
   peopleWithoutEmployment: number;
+  /** People away today on an approved or registered absence, any kind (delivery B). */
+  onLeaveToday?: number;
 }
 
 interface AttentionItem {
@@ -354,7 +356,16 @@ const staffPersonAttentionTypes = [
   "temporaryConverts",
   "reportsWithoutManager",
   "reassessmentDue",
+  // Delivery B's absence items about a person.
+  "sickMilestoneDue",
+  "holidayUntaken",
+  "mainPeriodShort",
+  "selfApproved",
+  "holidayAffectedBySickness",
 ];
+
+/** Staff's attention types about the requests waiting a decision: the approvals inbox's (delivery B). */
+const staffApprovalAttentionTypes = ["absenceAwaitingDecision", "hrOnlyAwaitingDecision"];
 
 /** The four project-economy attention types, which all link to the Economy tab. */
 const projectEconomyAttentionTypes = ["budgetWarning", "budgetExceeded", "milestoneReady", "milestoneOverdue"];
@@ -442,9 +453,11 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     return "/invoices";
   }
   if (item.module === "staff") {
-    // Six types carry the person's id and open their page; the deletion
-    // ledger and the thresholds are dealt with in Settings.
+    // The types about a person carry their id and open their page; the
+    // requests waiting a decision open the Absence page's approvals; the
+    // deletion ledger and the thresholds are dealt with in Settings.
     if (staffPersonAttentionTypes.includes(item.type)) return `/staff/people/${encodeURIComponent(item.entityId)}`;
+    if (staffApprovalAttentionTypes.includes(item.type)) return "/staff/absence";
     if (["retentionFailing", "otpThreshold", "headcountThreshold"].includes(item.type)) return "/staff/settings";
     return "/staff";
   }
@@ -493,6 +506,13 @@ const staffAttentionTitleKeys: Record<string, string> = {
   reassessmentDue: "dashboard.staffReassessmentDue",
   retentionFailing: "dashboard.staffRetentionFailing",
   otpThreshold: "dashboard.staffOtpThreshold",
+  sickMilestoneDue: "dashboard.staffSickMilestoneDue",
+  holidayUntaken: "dashboard.staffHolidayUntaken",
+  mainPeriodShort: "dashboard.staffMainPeriodShort",
+  selfApproved: "dashboard.staffSelfApproved",
+  holidayAffectedBySickness: "dashboard.staffHolidayAffectedBySickness",
+  absenceAwaitingDecision: "dashboard.staffAbsenceAwaitingDecision",
+  hrOnlyAwaitingDecision: "dashboard.staffHrOnlyAwaitingDecision",
 };
 
 const staffHeadcountThresholdKeys: Record<string, string> = {
@@ -727,9 +747,9 @@ export const invoicesKpi = (
 
 /**
  * The Staff card's figures (design S20): the headcount today, and as the
- * hint the full-time equivalents and who starts and ends within thirty days —
- * with the records that never got an employment named only while there are
- * any, since zero is the ordinary case.
+ * hint the full-time equivalents and who starts and ends within thirty days,
+ * the people away today (delivery B) — with the records that never got an
+ * employment named only while there are any, since zero is the ordinary case.
  */
 export const staffKpi = (
   stats: StaffStats | undefined,
@@ -737,11 +757,15 @@ export const staffKpi = (
   t: (key: string, values?: Record<string, unknown>) => string,
 ) => {
   if (!stats) return { value: "—", hint: undefined };
-  const hint = t("dashboard.staffKpiHint", {
+  const figures = t("dashboard.staffKpiHint", {
     fte: formatNumber(stats.fteSum, { maximumFractionDigits: 2 }),
     starting: stats.startingSoon,
     ending: stats.endingSoon,
   });
+  const hint =
+    stats.onLeaveToday === undefined
+      ? figures
+      : `${figures} · ${t("dashboard.staffOnLeaveTodayHint", { count: stats.onLeaveToday })}`;
   return {
     value: stats.headcount,
     hint: stats.peopleWithoutEmployment

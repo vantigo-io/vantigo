@@ -18,7 +18,8 @@ Hver modul er en **app** med sin egen sidemeny: Kunder, Prosjekter, Timer, Utleg
 Ansatte, Fakturaer, Kommunikasjon, Produkter og Energi. App-velgeren i toppfeltet lister appene
 du kan åpne; **Hjem** er dashbordet, der hver app du bruker viser sitt eget kort med
 tallene som trenger oppmerksomheten din — Ansattes, hvor mange som er ansatt i dag med
-årsverkene og hvem som begynner og slutter snart, for `staff:view` eller `staff:manage`
+årsverkene, hvem som begynner og slutter snart og hvem som er borte i dag, for
+`staff:view` eller `staff:manage`
 ([dashbordet](/nb/user/staff/#dashbordet)). Listen **Trenger oppfølging** samler det i
 appene som venter på noen — også fra Fakturaer: forfalte fakturaer, penger som skal
 tilbake på en faktura, og, med `invoices:payments`, banklinjer i avvikskøen, purringer
@@ -29,8 +30,10 @@ eller som ble refundert i Vipps-portalen — hver med lenke til fakturaen sin
 ([kortet på dashbordet](/nb/user/invoices/#kortet-på-dashbordet)); og fra Ansatte:
 arbeidsavtaler som ikke er signert, prøvetider som går ut, midlertidige arbeidsforhold
 over ett eller tre år, personer uten leder, nye vurderinger som skal gjøres, dokumenter
-lageret ikke vil slette, og terskler for antall ansatte og tjenestepensjon som ikke er
-bekreftet.
+lageret ikke vil slette, terskler for antall ansatte og tjenestepensjon som ikke er
+bekreftet, og fraværspunktene: søknader som venter på din avgjørelse,
+sykefraværsoppfølging som forfaller, ferie igjen fra i fjor eller for lite ferie i
+hovedferien, fravær noen godkjente selv, og sykdom i godkjent ferie.
 
 Inne i en app lister sidemenyen appens områder. Mange av dem vises bare til den som har
 den tilhørende rettigheten — og noen få, som **Hurtigfaktura** i Fakturaer, bare til den

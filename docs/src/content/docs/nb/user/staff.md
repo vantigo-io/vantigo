@@ -546,13 +546,19 @@ ikke for lederen i det hele tatt, så ingenting ved hvordan den ble lagt inn, r�
 
 **Hjem**, dashbordet, har et **Ansatte**-kort for den som har `staff:view` eller
 `staff:manage`: hvor mange som er ansatt i dag, og under det årsverkene i dag, hvor
-mange som begynner og hvor mange som slutter innen 30 dager, og — når det finnes noen —
+mange som begynner og hvor mange som slutter innen 30 dager, hvor mange som er borte i
+dag — på godkjent eller registrert fravær, uansett type — og, når det finnes noen,
 oppføringene uten noe arbeidsforhold. Trykk på kortet for å åpne Ansatte. Med bare
-`staff:access` har du Ansatte-appen under **Moduler** og ikke noe kort.
+`staff:access` har du Ansatte-appen under **Moduler** og ikke noe kort. De åpne
+sykefraværssakene og sykefraværet de siste tolv månedene leses gjennom API-et bare av
+`staff:manage`, `staff:approve` og `staff:personal-data`, aldri av `staff:view`.
 
 Punktene fra Ansatte kommer i **Trenger oppfølging** sammen med de andre appenes, hvert
-formulert på ditt språk. De fleste er HRs (`staff:manage`); en leder ser punktet om
-prøvetid for sine egne folk, og den nye vurderingen er `staff:personal-data` sin:
+formulert på ditt språk. De fleste er HRs (`staff:manage`); en leder ser punktene om
+prøvetid, søknader og sykefraværsoppfølging for sine egne folk, `staff:approve`
+søknadene og oppfølgingen for alle, og den nye vurderingen og de fortrolige søknadene
+er `staff:personal-data` sine. En søknad om en fortrolig (bare HR) fraværstype telles
+bare for `staff:personal-data`:
 
 | Punkt | Det betyr | Åpner |
 | --- | --- | --- |
@@ -565,6 +571,13 @@ prøvetid for sine egne folk, og den nye vurderingen er `staff:personal-data` si
 | Dokumenter ikke slettet | Dokumentlageret har nektet å slette dokumenter i over et døgn. | Ansatteinnstillinger |
 | OTP-terskelen | Etter stillingsprosentene i dag skal virksomheten ha tjenestepensjon — med mindre den eneste det gjelder er eieren. | Ansatteinnstillinger |
 | 5, 30 eller flere enn 50 ansatte | Antallet ansatte har passert en terskel som gir en plikt: varslingsrutine og verneombud fra 5, arbeidsmiljøutvalg fra 30, aktivitets- og redegjørelsesplikten over 50. | Ansatteinnstillinger |
+| Fraværssøknader venter på din avgjørelse | Søknader du avgjør, venter, talt opp. | Fravær |
+| Fortrolige søknader har ventet over en uke | Søknader om en fortrolig fraværstype har ventet i mer enn sju dager — også dine egne, så den eneste med `staff:personal-data` ser sin egen søknad vente på noen som kan avgjøre den. | Fravær |
+| Oppfølging av sykefravær forfaller | Et oppfølgingspunkt i en åpen sykefraværssak — planen, et dialogmøte, NAVs aktivitetskrav — forfaller innen en uke eller har passert, og er verken gjort eller fraveket. En kort sak gir ingen. | Personen |
+| Ferie igjen fra i fjor | I januar: noen har ferie igjen fra i fjor, og ingen overføring er registrert. Registrer overføringen, eller gjør den opp. | Personen |
+| For lite ferie i hovedferien | Fra april til september: noen har færre godkjente feriedager mellom 1. juni og 30. september enn ferieordningens hovedferie (tre uker etter ferieloven). | Personen |
+| Godkjente sitt eget fravær | Noen godkjente sitt eget fravær, som den eneste som kunne avgjøre det. | Personen |
+| Syk i godkjent ferie | En 100 % sykmelding ligger over godkjent ferie: den ansatte kan kreve å få den utsatt. | Personen |
 
 Et punkt forsvinner når det det ber om, er gjort. Punktet for en terskel står til HR
 bekrefter terskelen — én gang, for godt — under [Terskler](#terskler) i
@@ -700,6 +713,13 @@ filens SHA-256-sjekksum, så filen lønn fikk, kan kjennes igjen senere. Kodene 
 ansettelsesformene som kom i 2025 (utleid, og tilkallingsvikar) er ikke kontrollert mot
 Skatteetatens kodeliste — kortet sier fra: sjekk dem med lønnssystemet før du stoler på
 dem.
+
+Til høyre for kolonnene om arbeidsforholdet har filen månedens fravær: ferie,
+egenmelding, sykmelding, sykt barn (og dagene av det utover arbeidsgiverens ti),
+permisjon og andre dager, og timene med avspasering. Etter et arbeidsforholds rad
+kommer **permisjonsradene**, én per permisjon a-meldingen skal ha — en permisjon over
+fjorten dager, kortere permisjoner som til sammen passerer fjorten dager på tolv
+måneder, og all permittering — med permisjonens id, dager, beskrivelse og prosent.
 
 ### Oppbevaring
 

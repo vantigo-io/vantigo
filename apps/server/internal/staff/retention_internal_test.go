@@ -14,8 +14,14 @@ import (
 
 // classedTables are the tables columnClasses covers (plan, Global
 // Constraints "Classes on every column"): the person, their next of kin and
-// roles, their employments and terms, their link and their documents.
-var classedTables = []string{"people", "next_of_kin", "person_roles", "employments", "employment_terms", "identity_links", "documents"}
+// roles, their employments and terms, their link and their documents — and
+// delivery B's absence tables (Task 6): the absences, the holiday
+// adjustments, the sick-leave cases and their milestones, and the types and
+// schemes they name.
+var classedTables = []string{
+	"people", "next_of_kin", "person_roles", "employments", "employment_terms", "identity_links", "documents",
+	"absences", "holiday_adjustments", "sick_cases", "sick_case_milestones", "absence_types", "holiday_schemes",
+}
 
 // Every column of the tables the erase reaches has a class, and every class
 // names a column that exists: a migration that adds a column without saying
@@ -65,8 +71,8 @@ func TestColumnClasses_EveryColumnIsClassed(t *testing.T) {
 			}
 		case !slices.Contains([]string{"A", "C", "D", "E", "F"}, class):
 			t.Errorf("column %s is class %q, want one of A, C, D, E, F", column, class)
-		case (class == "D" || class == "A") && !wholeTable(table, class) && !nullable[column]:
-			t.Errorf("column %s is class %s and NOT NULL: the erase could not null it", column, class)
+		case (class == "D" || class == "A" || class == "E") && !wholeTable(table, class) && !nullable[column] && erasedTo[column] == "":
+			t.Errorf("column %s is class %s and NOT NULL with no erased value: the erase could not null it", column, class)
 		}
 	}
 	// The A erase is per employment (plan reading 4), so a column of class A

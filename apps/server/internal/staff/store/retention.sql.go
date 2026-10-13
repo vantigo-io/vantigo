@@ -12,6 +12,62 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const caseDocuments = `-- name: CaseDocuments :many
+SELECT id, object_key FROM staff.documents WHERE case_id = $1 ORDER BY id
+`
+
+type CaseDocumentsRow struct {
+	ID        int64
+	ObjectKey string
+}
+
+// CaseDocuments is the documents filed under a case, which its erase deletes.
+func (q *Queries) CaseDocuments(ctx context.Context, caseID *int64) ([]CaseDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, caseDocuments, caseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CaseDocumentsRow
+	for rows.Next() {
+		var i CaseDocumentsRow
+		if err := rows.Scan(&i.ID, &i.ObjectKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const caseRowIDs = `-- name: CaseRowIDs :many
+SELECT id FROM staff.absences WHERE case_id = $1 ORDER BY id
+`
+
+// CaseRowIDs is the ids of a case's rows: the events the case's erase owns
+// name one of them.
+func (q *Queries) CaseRowIDs(ctx context.Context, caseID *int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, caseRowIDs, caseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const claimObjectDeletion = `-- name: ClaimObjectDeletion :one
 UPDATE staff.object_deletions SET claimed_until = $1::timestamptz
 WHERE object_key = $2
@@ -35,6 +91,131 @@ func (q *Queries) ClaimObjectDeletion(ctx context.Context, arg ClaimObjectDeleti
 	var attempts int32
 	err := row.Scan(&attempts)
 	return attempts, err
+}
+
+const dueCasesE = `-- name: DueCasesE :many
+SELECT c.id, c.person_id
+FROM staff.sick_cases c
+JOIN staff.people p ON p.id = c.person_id
+WHERE NOT p.legal_hold
+  AND ($1::bigint IS NULL OR c.person_id = $1::bigint)
+  AND least(coalesce((c.closed_at AT TIME ZONE $2::text)::date, c.last_day + 17), c.last_day + 17) < $3::date
+  AND (
+      EXISTS (
+          SELECT 1 FROM jsonb_each(to_jsonb(c)) j
+          WHERE j.key = ANY($4::text[]) AND j.value NOT IN ('null'::jsonb, 'false'::jsonb))
+      OR EXISTS (
+          SELECT 1 FROM staff.sick_case_milestones m, jsonb_each(to_jsonb(m)) j
+          WHERE m.case_id = c.id AND j.key = ANY($5::text[]) AND j.value NOT IN ('null'::jsonb, 'false'::jsonb))
+      OR EXISTS (
+          SELECT 1 FROM staff.absences a
+          WHERE a.case_id = c.id AND (a.type_id <> $6::bigint OR a.degree_percent IS NOT NULL))
+      OR EXISTS (SELECT 1 FROM staff.documents d WHERE d.case_id = c.id)
+      OR EXISTS (
+          SELECT 1 FROM staff.events ev
+          WHERE ev.person_id = c.person_id AND 'E' = ANY(ev.payload_classes)
+            AND ((ev.payload ->> 'caseId')::bigint = c.id
+                 OR (ev.payload ->> 'absenceId')::bigint IN (SELECT a.id FROM staff.absences a WHERE a.case_id = c.id)
+                 OR (ev.payload ->> 'sickAbsenceId')::bigint IN (SELECT a.id FROM staff.absences a WHERE a.case_id = c.id))
+            AND (
+                EXISTS (
+                    SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
+                    WHERE f.value <> to_jsonb($7::text)
+                      AND coalesce(ev.payload -> 'classes' ->> f.key, 'E') = 'E')
+                OR EXISTS (
+                    SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
+                    WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
+                      AND ti.id::bigint <> $6::bigint))))
+ORDER BY least(coalesce((c.closed_at AT TIME ZONE $2::text)::date, c.last_day + 17), c.last_day + 17), c.id
+LIMIT $8
+`
+
+type DueCasesEParams struct {
+	PersonID         *int64
+	Zone             string
+	Cutoff           pgtype.Date
+	CaseColumns      []string
+	MilestoneColumns []string
+	AbsentID         int64
+	Blanked          string
+	RowLimit         int32
+}
+
+type DueCasesERow struct {
+	ID       int64
+	PersonID int64
+}
+
+// DueCasesE is the sick-leave cases whose health content is due (design
+// S15, delivery B Task 6): closed — by HR, or sixteen days after their last
+// day, whichever came first — before @cutoff (today minus
+// healthRetentionDays), whatever the person's employment, of a person not
+// held, with something of class E left: a value of the case's or its
+// milestones' class E columns (@case_columns, @milestone_columns, from
+// columnClasses) not yet erased, a row still of a sick type or with a degree,
+// a document filed under it, or a health field of an event it owns not yet
+// replaced. Oldest close first.
+func (q *Queries) DueCasesE(ctx context.Context, arg DueCasesEParams) ([]DueCasesERow, error) {
+	rows, err := q.db.Query(ctx, dueCasesE,
+		arg.PersonID,
+		arg.Zone,
+		arg.Cutoff,
+		arg.CaseColumns,
+		arg.MilestoneColumns,
+		arg.AbsentID,
+		arg.Blanked,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DueCasesERow
+	for rows.Next() {
+		var i DueCasesERow
+		if err := rows.Scan(&i.ID, &i.PersonID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const dueChildSickRows = `-- name: DueChildSickRows :many
+SELECT a.id FROM staff.absences a
+JOIN staff.absence_types t ON t.id = a.type_id AND t.kind = 'child_sick'
+WHERE a.person_id = $1 AND make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $2::date
+ORDER BY a.id
+`
+
+type DueChildSickRowsParams struct {
+	PersonID int64
+	Cutoff   pgtype.Date
+}
+
+// DueChildSickRows is one person's child-sick rows due, as DuePeopleChildSick
+// judges them.
+func (q *Queries) DueChildSickRows(ctx context.Context, arg DueChildSickRowsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, dueChildSickRows, arg.PersonID, arg.Cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const dueEmploymentsA = `-- name: DueEmploymentsA :many
@@ -172,6 +353,48 @@ func (q *Queries) DueObjectDeletions(ctx context.Context, arg DueObjectDeletions
 	return items, nil
 }
 
+const duePeopleChildSick = `-- name: DuePeopleChildSick :many
+SELECT a.person_id
+FROM staff.absences a
+JOIN staff.absence_types t ON t.id = a.type_id AND t.kind = 'child_sick'
+JOIN staff.people p ON p.id = a.person_id
+WHERE NOT p.legal_hold
+  AND ($1::bigint IS NULL OR a.person_id = $1::bigint)
+  AND make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $2::date
+GROUP BY a.person_id
+ORDER BY min(a.last_day), a.person_id
+LIMIT $3
+`
+
+type DuePeopleChildSickParams struct {
+	PersonID *int64
+	Cutoff   pgtype.Date
+	RowLimit int32
+}
+
+// DuePeopleChildSick is the people with a child-sick row whose year ended
+// before @cutoff — healthRetentionDays after 31 December of its last day's
+// year (plan reading 21) — not held, whatever the employment.
+func (q *Queries) DuePeopleChildSick(ctx context.Context, arg DuePeopleChildSickParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, duePeopleChildSick, arg.PersonID, arg.Cutoff, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var person_id int64
+		if err := rows.Scan(&person_id); err != nil {
+			return nil, err
+		}
+		items = append(items, person_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const duePeopleD = `-- name: DuePeopleD :many
 
 SELECT p.id
@@ -239,21 +462,41 @@ WHERE NOT p.legal_hold
       EXISTS (
           SELECT 1 FROM staff.documents d
           JOIN staff.document_categories c ON c.id = d.category_id
-          WHERE d.person_id = p.id AND c.retention_class = 'E')
+          WHERE d.person_id = p.id AND c.retention_class = 'E' AND d.case_id IS NULL)
       OR EXISTS (
           SELECT 1 FROM staff.events ev
           WHERE ev.person_id = p.id AND 'E' = ANY(ev.payload_classes)
-            AND EXISTS (
-                SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
-                WHERE f.value <> to_jsonb($3::text))))
+            -- The events a sick-leave case, a child-sick row or the
+            -- withdrawal owns are on their own schedules (delivery B,
+            -- retention.go's ownedHealthEvent); whatever none owns stays here.
+            AND NOT (
+                (ev.payload ? 'absenceId' AND EXISTS (
+                    SELECT 1 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+                    WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND (a.case_id IS NOT NULL OR t.kind = 'child_sick')))
+                OR (ev.payload ? 'sickAbsenceId' AND EXISTS (
+                    SELECT 1 FROM staff.absences a
+                    WHERE a.id = (ev.payload ->> 'sickAbsenceId')::bigint AND a.case_id IS NOT NULL))
+                OR (ev.payload ? 'caseId' AND EXISTS (
+                    SELECT 1 FROM staff.sick_cases c WHERE c.id = (ev.payload ->> 'caseId')::bigint))
+                OR ev.payload ? 'selfCertWithdrawal')
+            AND (
+                EXISTS (
+                    SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
+                    WHERE f.value <> to_jsonb($3::text)
+                      AND (NOT ev.payload ? 'classes' OR coalesce(ev.payload -> 'classes' ->> f.key, 'E') = 'E'))
+                OR EXISTS (
+                    SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
+                    WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
+                      AND ti.id::bigint <> $4::bigint))))
 ORDER BY (SELECT max(e.end_date) FROM staff.employments e WHERE e.person_id = p.id), p.id
-LIMIT $4
+LIMIT $5
 `
 
 type DuePeopleHealthParams struct {
 	PersonID *int64
 	Cutoff   pgtype.Date
 	Blanked  string
+	AbsentID int64
 	RowLimit int32
 }
 
@@ -266,6 +509,63 @@ func (q *Queries) DuePeopleHealth(ctx context.Context, arg DuePeopleHealthParams
 	rows, err := q.db.Query(ctx, duePeopleHealth,
 		arg.PersonID,
 		arg.Cutoff,
+		arg.Blanked,
+		arg.AbsentID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const duePeopleWithdrawal = `-- name: DuePeopleWithdrawal :many
+SELECT p.id
+FROM staff.people p
+WHERE NOT p.legal_hold
+  AND ($1::bigint IS NULL OR p.id = $1::bigint)
+  AND (
+      p.self_cert_withdrawn_until < $2::date
+      OR ((p.self_cert_withdrawn_until IS NULL OR p.self_cert_withdrawn_until < $2::date)
+          AND (SELECT max(ev.at) FROM staff.events ev
+               WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal') < $3::timestamptz
+          AND EXISTS (
+              SELECT 1 FROM staff.events ev, jsonb_each(ev.payload -> 'fields') f
+              WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal'
+                AND f.value <> to_jsonb($4::text))))
+ORDER BY p.id
+LIMIT $5
+`
+
+type DuePeopleWithdrawalParams struct {
+	PersonID *int64
+	Cutoff   pgtype.Date
+	CutoffAt time.Time
+	Blanked  string
+	RowLimit int32
+}
+
+// DuePeopleWithdrawal is the people whose withdrawal of egenmelding is due
+// (delivery B Task 6): not held, and either a withdrawal on file that lapsed
+// before @cutoff, or — none in force since — withdrawal events with a value
+// not yet replaced whose latest was recorded before @cutoff_at.
+func (q *Queries) DuePeopleWithdrawal(ctx context.Context, arg DuePeopleWithdrawalParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, duePeopleWithdrawal,
+		arg.PersonID,
+		arg.Cutoff,
+		arg.CutoffAt,
 		arg.Blanked,
 		arg.RowLimit,
 	)
@@ -419,6 +719,41 @@ func (q *Queries) MarkPersonErased(ctx context.Context, arg MarkPersonErasedPara
 	return err
 }
 
+const mergedCaseIDs = `-- name: MergedCaseIDs :many
+SELECT DISTINCT (ev.payload -> 'fields' -> 'mergedCaseId' ->> 'to')::bigint AS merged_case_id
+FROM staff.events ev
+WHERE ev.person_id = $1 AND ev.kind = 'case_merged'
+  AND (ev.payload ->> 'caseId')::bigint = ANY($2::bigint[])
+  AND jsonb_typeof(ev.payload -> 'fields' -> 'mergedCaseId' -> 'to') = 'number'
+`
+
+type MergedCaseIDsParams struct {
+	PersonID *int64
+	CaseIds  []int64
+}
+
+// MergedCaseIDs is the cases @case_ids took in by a merge (case_merged's
+// mergedCaseId): their events are the survivor's to erase.
+func (q *Queries) MergedCaseIDs(ctx context.Context, arg MergedCaseIDsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, mergedCaseIDs, arg.PersonID, arg.CaseIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var merged_case_id int64
+		if err := rows.Scan(&merged_case_id); err != nil {
+			return nil, err
+		}
+		items = append(items, merged_case_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const oldestPendingDeletion = `-- name: OldestPendingDeletion :one
 SELECT created_at FROM staff.object_deletions ORDER BY created_at, id LIMIT 1
 `
@@ -436,7 +771,7 @@ const personDocumentsOfClass = `-- name: PersonDocumentsOfClass :many
 SELECT d.id, d.object_key
 FROM staff.documents d
 JOIN staff.document_categories c ON c.id = d.category_id
-WHERE d.person_id = $1 AND c.retention_class = $2::text
+WHERE d.person_id = $1 AND c.retention_class = $2::text AND d.case_id IS NULL
 ORDER BY d.id
 `
 
@@ -451,7 +786,8 @@ type PersonDocumentsOfClassRow struct {
 }
 
 // PersonDocumentsOfClass is a person's documents in categories of one
-// retention class, the D and the health erases' rows to delete.
+// retention class, the D and the health erases' rows to delete — but those
+// filed under a sick-leave case, which the case's schedule deletes.
 func (q *Queries) PersonDocumentsOfClass(ctx context.Context, arg PersonDocumentsOfClassParams) ([]PersonDocumentsOfClassRow, error) {
 	rows, err := q.db.Query(ctx, personDocumentsOfClass, arg.PersonID, arg.Class)
 	if err != nil {
@@ -535,6 +871,27 @@ func (q *Queries) RetentionLedgerState(ctx context.Context) (RetentionLedgerStat
 	return i, err
 }
 
+const setCaseRowsAbsent = `-- name: SetCaseRowsAbsent :execrows
+UPDATE staff.absences SET type_id = $1::bigint, revision = revision + 1, updated_at = $2::timestamptz
+WHERE case_id = $3 AND type_id <> $1::bigint
+`
+
+type SetCaseRowsAbsentParams struct {
+	AbsentID int64
+	Now      time.Time
+	CaseID   *int64
+}
+
+// SetCaseRowsAbsent writes the reserved absent type in place of the sick
+// type of a case's rows (plan reading 12): the days stay, class C.
+func (q *Queries) SetCaseRowsAbsent(ctx context.Context, arg SetCaseRowsAbsentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setCaseRowsAbsent, arg.AbsentID, arg.Now, arg.CaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setEventPayload = `-- name: SetEventPayload :exec
 UPDATE staff.events SET payload = $1 WHERE id = $2
 `
@@ -548,5 +905,22 @@ type SetEventPayloadParams struct {
 // the history, which keeps its kind, actor, instant and classes.
 func (q *Queries) SetEventPayload(ctx context.Context, arg SetEventPayloadParams) error {
 	_, err := q.db.Exec(ctx, setEventPayload, arg.Payload, arg.ID)
+	return err
+}
+
+const setRowsAbsent = `-- name: SetRowsAbsent :exec
+UPDATE staff.absences SET type_id = $1::bigint, revision = revision + 1, updated_at = $2::timestamptz
+WHERE id = ANY($3::bigint[])
+`
+
+type SetRowsAbsentParams struct {
+	AbsentID int64
+	Now      time.Time
+	Ids      []int64
+}
+
+// SetRowsAbsent writes the reserved absent type on @ids.
+func (q *Queries) SetRowsAbsent(ctx context.Context, arg SetRowsAbsentParams) error {
+	_, err := q.db.Exec(ctx, setRowsAbsent, arg.AbsentID, arg.Now, arg.Ids)
 	return err
 }

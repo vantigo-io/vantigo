@@ -397,9 +397,11 @@ A person has the right to a copy of the personal data held about them (GDPR art.
    ([the user guide](/en/user/staff/#download-a-persons-data);
    `GET /api/v1/staff/people/{id}/personal-data`). The answer is a download,
    `staff-<employee number>-personal-data.json`: the person's record with every field
-   group, the national identity number and the bank account in full, HR's notes, the
-   next of kin, the roles, every employment with its terms (pay and notes included), the
-   user link, the documents' list and the whole history.
+   group and the care-day fields, the national identity number and the bank account in
+   full, HR's notes, the next of kin, the roles, every employment with its terms (pay
+   and notes included), the user link, the documents' list, every absence, the holiday
+   adjustments, every sick-leave case with its milestones and their notes, this year's
+   care days, the standing of egenmelding with any withdrawal, and the whole history.
 2. Download each document the file lists from the person's **Documents** tab (or
    `GET /api/v1/staff/documents/{id}`); the file carries their metadata, not their
    bytes.
@@ -564,6 +566,28 @@ as it is. The full column list and the codes are in
 appointment forms added in 2025 (hired out, and on call) are not verified against
 Skatteetaten's code list: check them with your payroll system before you rely on them.
 
+**The absence columns.** To the right of the pay grade come thirteen more, so a
+payroll mapping of the first nineteen keeps working. On each employment's row, the
+month's totals in working days, each by its share: **Holiday days**, **Self-certified
+sick days**, **Certified sick days** (by the degree), **Child sick days** and of those
+the **Child sick days beyond employer** — beyond the ten the employer bears in the
+year, what NAV refunds — **Leave days**, **Time off hours** and **Other days**. Only
+approved and registered absence counts. Two rules to know: a sick day beside a
+percentage leave counts degree × (100 − the leave's percent) / 100, and approved ferie
+under a 100 % sykmelding counts once, **as sick**, until you record the employee's
+demand to postpone it ([Postpone holiday for sickness](#postpone-holiday-for-sickness)).
+
+After an employment's row come its **leave rows**: one per leave the a-melding reports
+(Skatteetaten's *Permisjon*), with **Leave ID**, **Leave start**, **Leave end**,
+**Leave description** and **Leave percent**. A leave is reported when it lasts more than
+fourteen days, or when the person's leaves in the last twelve months together pass
+fourteen days; permittering always; a child's sickness never. A leave extended by a
+new row keeps its first row's id, the id the a-melding knows it by. Before you wire
+the file to a payroll system, check the seven description values against the
+kodeliste that system uses: they were checked against NAV's sources on 2026-10-14,
+but Skatteetaten's own kodeliste could not be reached ([the
+reference](/en/reference/staff/#the-payroll-export)).
+
 The national identity number and the bank account are **not** in the file: payroll
 already holds them, so the export never reads them.
 
@@ -588,8 +612,16 @@ become due. What is due, and what each erase removes, is in
   correspondence, other) — is erased **`retentionGraceDays`** (default 90) after the
   person's last employment ended. The person is then marked erased, and the record is
   read-only.
-- **Health documents** — those in a restricted category — are deleted
-  **`healthRetentionDays`** (default 365) after the last employment ended.
+- **Sick-leave data** is erased on its own schedule, **whatever the person's
+  employment** — a current employee's included: a sick-leave case's notes, estimate and
+  milestones' facts, its rows' sick type (which becomes *Absent*) and degree, the
+  documents filed under it, and what its history says of the sickness go
+  **`healthRetentionDays`** (default 365) after the case closed — closed by you, or
+  sixteen days after its last day. A child-sick row's type goes the same period after
+  the end of its year, and a withdrawal of egenmelding the same period after it
+  lapsed. The days stay: who was away when is kept.
+- **Other health documents** — those in a restricted category not filed under a case —
+  are deleted **`healthRetentionDays`** after the last employment ended.
 - **Pay** — an employment's pay terms, seniority date and pay grade, its contracts and
   attests, and the pay in its history — is erased **five years after the year the
   employment ended**, employment by employment: a person who has come back keeps the
@@ -621,8 +653,9 @@ The worker runs unless `STAFF_RETENTION_ENABLED=0`, every `STAFF_WORKERS_POLL` (
 an hourly look erases each day's due people once. Several replicas take turns through a
 lock; one runs the erase at a time.
 
-Turned off, nothing is erased on a schedule and the objects queued for deletion wait;
-the run by hand below still works.
+Turned off, nothing is erased on a schedule — **the sick-leave cases' erase
+included**: it runs in the same cycle, with no worker of its own — and the objects
+queued for deletion wait; the run by hand below still works.
 
 ### Run it by hand
 

@@ -26,3 +26,41 @@ SELECT
     coalesce(min(created_at), @before::timestamptz)::timestamptz AS oldest
 FROM staff.object_deletions
 WHERE attempts >= 1 AND created_at < @before::timestamptz;
+
+-- name: AbsencesBetween :many
+-- AbsencesBetween is every approved or registered absence touching
+-- @from_day..@to_day with what its type says of it: what the payroll file's
+-- totals and leave rows, the sick-leave rate and the holiday items count
+-- (delivery B Task 6). A request, a refusal and a cancel count nothing.
+SELECT a.id, a.person_id, a.type_id, a.first_day, a.last_day, a.hours, a.percent, a.degree_percent, a.status,
+       t.kind, t.unit, t.allows_percent, t.amelding_leave
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.status IN ('approved', 'registered')
+  AND a.first_day <= @to_day::date AND a.last_day >= @from_day::date
+ORDER BY a.person_id, a.first_day, a.id;
+
+-- name: CountOpenSickCases :one
+-- CountOpenSickCases is the cases open on @today: not closed by HR, and
+-- whose last day is at most sixteen days before it (reading 5).
+SELECT count(*)::int AS open FROM staff.sick_cases
+WHERE closed_at IS NULL AND last_day + 16 >= @today::date;
+
+-- name: OpenCaseMilestones :many
+-- OpenCaseMilestones is the milestones of the cases open on @today that are
+-- neither done nor waived and have a date, with their case's last day and
+-- person: the attention item sickMilestoneDue judges them.
+SELECT m.case_id, m.kind, m.due_date, c.person_id, c.last_day, p.display_name
+FROM staff.sick_case_milestones m
+JOIN staff.sick_cases c ON c.id = m.case_id
+JOIN staff.people p ON p.id = c.person_id
+WHERE c.closed_at IS NULL AND c.last_day + 16 >= @today::date
+  AND m.due_date IS NOT NULL AND m.done_at IS NULL AND NOT m.waived
+ORDER BY m.due_date, m.case_id, m.kind;
+
+-- name: StalledHROnlyRequests :one
+-- StalledHROnlyRequests is the requests of an HR-only type made before
+-- @before and still undecided, and when the oldest was made (@before when
+-- there is none): the attention item hrOnlyAwaitingDecision.
+SELECT count(*)::int AS waiting, coalesce(min(a.created_at), @before::timestamptz)::timestamptz AS oldest
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.status = 'requested' AND t.visibility <> 'absent' AND a.created_at < @before::timestamptz;

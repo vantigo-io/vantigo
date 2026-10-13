@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"regexp"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
@@ -52,30 +53,43 @@ type payrollInput struct {
 	Terms       map[int64][]store.StaffEmploymentTerm // by employment, oldest first
 	Units       map[int64]store.StaffBusinessUnit
 	Departments map[int64]store.StaffDepartment
+	// Absences is every approved and registered absence (delivery B): the
+	// month's totals, the year's child-sick days before it and the leaves
+	// whose chains reach into it are all judged on them.
+	Absences []store.AbsencesBetweenRow
 }
 
 // payrollColumns is the file's header (plan, Exact values): sentence-case
 // English, the Expenses style, in this order. Delivery B appends the leave
 // and absence columns after Pay grade — to the right, so a payroll system's
-// import mapping of these nineteen keeps working — and payrollRow.cells
-// grows with it.
+// import mapping of the first nineteen keeps working (plan Task 6, reading
+// 8): a leave's five cells, filled on its own row, then the month's totals
+// per kind, fixed, filled on the employment's.
 var payrollColumns = []string{
 	"Employee number", "Name", "Employment number", "Business unit org number", "Start", "End", "End reason",
 	"Occupation code", "Full-time hours", "FTE percent", "FTE changed", "Working hours scheme", "Appointment form",
 	"Remuneration type", "Salary changed", "Department", "Cost centre", "Seniority date", "Pay grade",
+	"Leave ID", "Leave start", "Leave end", "Leave description", "Leave percent",
+	"Holiday days", "Self-certified sick days", "Certified sick days", "Child sick days",
+	"Child sick days beyond employer", "Leave days", "Time off hours", "Other days",
 }
 
-// payrollRow is one employment's line of the file, every cell as the file
-// carries it: dates ISO, numbers with the decimal comma, the codes
-// Skatteetaten's, a value there is none of the empty string. Delivery B's
-// leave and absence cells go after PayGrade, and its rows per leave over
-// fourteen days (S18) beside these.
+// payrollRow is one line of the file, every cell as the file carries it:
+// dates ISO, numbers with the decimal comma, the codes Skatteetaten's, a
+// value there is none of — a total of nothing included — the empty string.
+// An employment's line fills the A1 cells and the month's totals; a leave's
+// line (S18) repeats the employment's three keys and fills the leave cells.
 type payrollRow struct {
 	EmployeeNumber, Name, EmploymentNumber, BusinessUnitOrgNumber  string
 	Start, End, EndReason                                          string
 	OccupationCode, FullTimeHours, FTEPercent, FTEChanged          string
 	WorkingHoursScheme, AppointmentForm, RemunerationType          string
 	SalaryChanged, Department, CostCentre, SeniorityDate, PayGrade string
+
+	LeaveID, LeaveStart, LeaveEnd, LeaveDescription, LeavePercent string
+
+	HolidayDays, SelfCertifiedSickDays, CertifiedSickDays, ChildSickDays string
+	ChildSickBeyondEmployer, LeaveDays, TimeOffHours, OtherDays          string
 }
 
 // cells is the row in payrollColumns' order.
@@ -84,6 +98,9 @@ func (r payrollRow) cells() []string {
 		r.EmployeeNumber, r.Name, r.EmploymentNumber, r.BusinessUnitOrgNumber, r.Start, r.End, r.EndReason,
 		r.OccupationCode, r.FullTimeHours, r.FTEPercent, r.FTEChanged, r.WorkingHoursScheme, r.AppointmentForm,
 		r.RemunerationType, r.SalaryChanged, r.Department, r.CostCentre, r.SeniorityDate, r.PayGrade,
+		r.LeaveID, r.LeaveStart, r.LeaveEnd, r.LeaveDescription, r.LeavePercent,
+		r.HolidayDays, r.SelfCertifiedSickDays, r.CertifiedSickDays, r.ChildSickDays,
+		r.ChildSickBeyondEmployer, r.LeaveDays, r.TimeOffHours, r.OtherDays,
 	}
 }
 
@@ -109,6 +126,14 @@ func payrollTermsDay(e store.StaffEmployment, m payrollMonth) time.Time {
 // row being dated the start — still has its row, its terms cells blank.
 func payrollRows(in payrollInput, m payrollMonth) []payrollRow {
 	var out []payrollRow
+	absences := map[int64][]store.AbsencesBetweenRow{}
+	for _, a := range in.Absences {
+		absences[a.PersonID] = append(absences[a.PersonID], a)
+	}
+	employments := map[int64][]store.StaffEmployment{}
+	for _, e := range in.Employments {
+		employments[e.PersonID] = append(employments[e.PersonID], e)
+	}
 	for _, e := range in.Employments {
 		if !inPayrollMonth(e, m) {
 			continue
@@ -136,7 +161,16 @@ func payrollRows(in payrollInput, m payrollMonth) []payrollRow {
 		if t := termsInForce(e, chain, on); t != nil {
 			payrollTerms(&r, *t, chain, on, in.Departments)
 		}
+		rows := absences[e.PersonID]
+		payrollTotals(&r, rows, employments[e.PersonID], e, m)
 		out = append(out, r)
+		for _, l := range reportedLeaves(rows, e, m) {
+			out = append(out, payrollRow{
+				EmployeeNumber: r.EmployeeNumber, Name: r.Name, EmploymentNumber: r.EmploymentNumber,
+				LeaveID: strconv.FormatInt(l.ID, 10), LeaveStart: l.First.Format(time.DateOnly), LeaveEnd: l.Last.Format(time.DateOnly),
+				LeaveDescription: l.Description, LeavePercent: payrollNumber(l.Percent),
+			})
+		}
 	}
 	slices.SortStableFunc(out, func(a, b payrollRow) int {
 		return cmp.Or(cmp.Compare(a.EmployeeNumber, b.EmployeeNumber), cmp.Compare(a.EmploymentNumber, b.EmploymentNumber))
@@ -188,4 +222,179 @@ func payrollTerms(r *payrollRow, t store.StaffEmploymentTerm, chain []store.Staf
 	}
 	r.SeniorityDate = date(civilPtr(t.SeniorityDate))
 	r.PayGrade = text(t.PayGrade)
+}
+
+// payrollNumber is hundredths as the file carries a number, two decimals and
+// the decimal comma.
+func payrollNumber(hundredths int64) string {
+	v := float64(hundredths) / 100
+	return formatCSVDecimal(&v)
+}
+
+// payrollTotal is a total in hundredths of a percent of a day, as days in
+// the file — the empty cell for none.
+func payrollTotal(shares int64) string {
+	if shares == 0 {
+		return ""
+	}
+	return payrollNumber(shares / 100)
+}
+
+// payrollDays is the days of e in m: from the later of the month's first
+// day and the start to the earlier of its last day and the end.
+func payrollDays(e store.StaffEmployment, m payrollMonth) (time.Time, time.Time) {
+	from, to := later(m.First, civil(e.StartDate)), m.Last
+	if e.EndDate.Valid {
+		to = earlier(to, e.EndDate.Time)
+	}
+	return from, to
+}
+
+// payrollTotals fills r's totals for the month (plan Task 6, reading 8):
+// over each working day of e within m, each kind's share (sharesOn); the
+// hours of time off; and of the child-sick days, those beyond the
+// employer's ten of the year (ftrl. § 9-8) — the year's care days counted
+// in order from 1 January, a day before the right's four weeks counting
+// none. A person with two employments in force has their absence on each,
+// as it is from both.
+func payrollTotals(r *payrollRow, rows []store.AbsencesBetweenRow, employments []store.StaffEmployment, e store.StaffEmployment, m payrollMonth) {
+	if len(rows) == 0 {
+		return
+	}
+	from, to := payrollDays(e, m)
+	var sum dayShares
+	var hours int64
+	for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
+		for _, a := range rows {
+			if a.Kind == kindTimeOff && a.Unit == "hours" && civil(a.FirstDay).Equal(d) {
+				hours += hundredthsOfNumeric(a.Hours)
+			}
+		}
+		if !worksOn(d) {
+			continue
+		}
+		s := sharesOn(rows, d)
+		sum.Holiday += s.Holiday
+		sum.SelfSick += s.SelfSick
+		sum.CertifiedSick += s.CertifiedSick
+		sum.ChildSick += s.ChildSick
+		sum.Leave += s.Leave
+		sum.Other += s.Other
+	}
+	beyond := childSickBeyondEmployer(rows, employments, from, to)
+	r.HolidayDays, r.SelfCertifiedSickDays, r.CertifiedSickDays = payrollTotal(sum.Holiday), payrollTotal(sum.SelfSick), payrollTotal(sum.CertifiedSick)
+	r.ChildSickDays, r.ChildSickBeyondEmployer = payrollTotal(sum.ChildSick), payrollTotal(int64(beyond)*wholeDay)
+	r.LeaveDays, r.OtherDays = payrollTotal(sum.Leave), payrollTotal(sum.Other)
+	if hours > 0 {
+		r.TimeOffHours = payrollNumber(hours)
+	}
+}
+
+// childSickBeyondEmployer is the care days from..to that are beyond the
+// employer's ten of their year: each working day of a child-sick row on or
+// after the right to care days, numbered from 1 January.
+func childSickBeyondEmployer(rows []store.AbsencesBetweenRow, employments []store.StaffEmployment, from, to time.Time) int {
+	spans := employmentSpans(employments)
+	jan1 := time.Date(from.Year(), time.January, 1, 0, 0, 0, 0, time.UTC)
+	n, beyond := 0, 0
+	for d := jan1; !d.After(to); d = d.AddDate(0, 0, 1) {
+		if !worksOn(d) {
+			continue
+		}
+		child := false
+		for _, a := range rows {
+			if a.Kind == kindChildSick && covers(a, d) {
+				child = true
+				break
+			}
+		}
+		if !child {
+			continue
+		}
+		if right := careDayRight(spans, d); right == nil || d.Before(*right) {
+			continue
+		}
+		n++
+		if n > careDaysEmployerBears && !d.Before(from) {
+			beyond++
+		}
+	}
+	return beyond
+}
+
+// leave is one leave as the a-melding reports it (Skatteetaten,
+// "Permisjon"): a chain of rows of one leave type with an a-melding
+// description and one percent, each starting no later than the day after
+// the one before ended — the same leave under its first row's id — with its
+// whole first and last day.
+type leave struct {
+	ID          int64
+	First, Last time.Time
+	Description string
+	TypeID      int64
+	Percent     int64 // hundredths of a percent
+}
+
+// leavesOf is the person's leaves, from rows.
+func leavesOf(rows []store.AbsencesBetweenRow) []leave {
+	var parts []store.AbsencesBetweenRow
+	for _, a := range rows {
+		if a.Kind == kindLeave && a.Unit != "hours" && a.AmeldingLeave != nil {
+			parts = append(parts, a)
+		}
+	}
+	slices.SortStableFunc(parts, func(a, b store.AbsencesBetweenRow) int {
+		return cmp.Or(cmp.Compare(a.TypeID, b.TypeID), cmp.Compare(hundredthsOfNumeric(a.Percent), hundredthsOfNumeric(b.Percent)),
+			civil(a.FirstDay).Compare(civil(b.FirstDay)), cmp.Compare(a.ID, b.ID))
+	})
+	var out []leave
+	for _, a := range parts {
+		percent := int64(wholeDay)
+		if a.Percent.Valid {
+			percent = hundredthsOfNumeric(a.Percent)
+		}
+		if n := len(out); n > 0 {
+			l := &out[n-1]
+			if l.TypeID == a.TypeID && l.Percent == percent && !civil(a.FirstDay).After(l.Last.AddDate(0, 0, 1)) {
+				l.Last = maxTime(l.Last, civil(a.LastDay))
+				continue
+			}
+		}
+		out = append(out, leave{ID: a.ID, First: civil(a.FirstDay), Last: civil(a.LastDay), Description: *a.AmeldingLeave, TypeID: a.TypeID, Percent: percent})
+	}
+	slices.SortStableFunc(out, func(a, b leave) int { return cmp.Or(a.First.Compare(b.First), cmp.Compare(a.ID, b.ID)) })
+	return out
+}
+
+// The a-melding's reporting rules for leave (Skatteetaten, "Permisjon" and
+// "Permittering"; Revision 2 Q4d).
+const (
+	leaveReportedOverDays = 14
+	descriptionLayOff     = "permittering"
+)
+
+// reportedLeaves is the leaves of rows the file reports on e's lines in m:
+// those touching e's days in the month, and — a leave of fourteen days or
+// fewer — only when the person's leaves within the twelve months to the
+// month's end together pass fourteen days. Permittering is reported
+// whatever its length. A child's sickness is never a leave: its kind is not
+// leave, and no child-sick type carries a description.
+func reportedLeaves(rows []store.AbsencesBetweenRow, e store.StaffEmployment, m payrollMonth) []leave {
+	leaves := leavesOf(rows)
+	windowFrom := m.Last.AddDate(-1, 0, 1)
+	total := 0
+	for _, l := range leaves {
+		total += calendarDays(maxTime(l.First, windowFrom), minTime(l.Last, m.Last))
+	}
+	from, to := payrollDays(e, m)
+	var out []leave
+	for _, l := range leaves {
+		if l.First.After(to) || l.Last.Before(from) {
+			continue
+		}
+		if l.Description == descriptionLayOff || calendarDays(l.First, l.Last) > leaveReportedOverDays || total > leaveReportedOverDays {
+			out = append(out, l)
+		}
+	}
+	return out
 }

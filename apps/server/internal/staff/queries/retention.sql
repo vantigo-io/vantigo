@@ -43,14 +43,151 @@ WHERE NOT p.legal_hold
       EXISTS (
           SELECT 1 FROM staff.documents d
           JOIN staff.document_categories c ON c.id = d.category_id
-          WHERE d.person_id = p.id AND c.retention_class = 'E')
+          WHERE d.person_id = p.id AND c.retention_class = 'E' AND d.case_id IS NULL)
       OR EXISTS (
           SELECT 1 FROM staff.events ev
           WHERE ev.person_id = p.id AND 'E' = ANY(ev.payload_classes)
-            AND EXISTS (
-                SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
-                WHERE f.value <> to_jsonb(@blanked::text))))
+            -- The events a sick-leave case, a child-sick row or the
+            -- withdrawal owns are on their own schedules (delivery B,
+            -- retention.go's ownedHealthEvent); whatever none owns stays here.
+            AND NOT (
+                (ev.payload ? 'absenceId' AND EXISTS (
+                    SELECT 1 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+                    WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND (a.case_id IS NOT NULL OR t.kind = 'child_sick')))
+                OR (ev.payload ? 'sickAbsenceId' AND EXISTS (
+                    SELECT 1 FROM staff.absences a
+                    WHERE a.id = (ev.payload ->> 'sickAbsenceId')::bigint AND a.case_id IS NOT NULL))
+                OR (ev.payload ? 'caseId' AND EXISTS (
+                    SELECT 1 FROM staff.sick_cases c WHERE c.id = (ev.payload ->> 'caseId')::bigint))
+                OR ev.payload ? 'selfCertWithdrawal')
+            AND (
+                EXISTS (
+                    SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
+                    WHERE f.value <> to_jsonb(@blanked::text)
+                      AND (NOT ev.payload ? 'classes' OR coalesce(ev.payload -> 'classes' ->> f.key, 'E') = 'E'))
+                OR EXISTS (
+                    SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
+                    WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
+                      AND ti.id::bigint <> @absent_id::bigint))))
 ORDER BY (SELECT max(e.end_date) FROM staff.employments e WHERE e.person_id = p.id), p.id
+LIMIT @row_limit;
+
+-- name: DueCasesE :many
+-- DueCasesE is the sick-leave cases whose health content is due (design
+-- S15, delivery B Task 6): closed — by HR, or sixteen days after their last
+-- day, whichever came first — before @cutoff (today minus
+-- healthRetentionDays), whatever the person's employment, of a person not
+-- held, with something of class E left: a value of the case's or its
+-- milestones' class E columns (@case_columns, @milestone_columns, from
+-- columnClasses) not yet erased, a row still of a sick type or with a degree,
+-- a document filed under it, or a health field of an event it owns not yet
+-- replaced. Oldest close first.
+SELECT c.id, c.person_id
+FROM staff.sick_cases c
+JOIN staff.people p ON p.id = c.person_id
+WHERE NOT p.legal_hold
+  AND (sqlc.narg(person_id)::bigint IS NULL OR c.person_id = sqlc.narg(person_id)::bigint)
+  AND least(coalesce((c.closed_at AT TIME ZONE @zone::text)::date, c.last_day + 17), c.last_day + 17) < @cutoff::date
+  AND (
+      EXISTS (
+          SELECT 1 FROM jsonb_each(to_jsonb(c)) j
+          WHERE j.key = ANY(@case_columns::text[]) AND j.value NOT IN ('null'::jsonb, 'false'::jsonb))
+      OR EXISTS (
+          SELECT 1 FROM staff.sick_case_milestones m, jsonb_each(to_jsonb(m)) j
+          WHERE m.case_id = c.id AND j.key = ANY(@milestone_columns::text[]) AND j.value NOT IN ('null'::jsonb, 'false'::jsonb))
+      OR EXISTS (
+          SELECT 1 FROM staff.absences a
+          WHERE a.case_id = c.id AND (a.type_id <> @absent_id::bigint OR a.degree_percent IS NOT NULL))
+      OR EXISTS (SELECT 1 FROM staff.documents d WHERE d.case_id = c.id)
+      OR EXISTS (
+          SELECT 1 FROM staff.events ev
+          WHERE ev.person_id = c.person_id AND 'E' = ANY(ev.payload_classes)
+            AND ((ev.payload ->> 'caseId')::bigint = c.id
+                 OR (ev.payload ->> 'absenceId')::bigint IN (SELECT a.id FROM staff.absences a WHERE a.case_id = c.id)
+                 OR (ev.payload ->> 'sickAbsenceId')::bigint IN (SELECT a.id FROM staff.absences a WHERE a.case_id = c.id))
+            AND (
+                EXISTS (
+                    SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
+                    WHERE f.value <> to_jsonb(@blanked::text)
+                      AND coalesce(ev.payload -> 'classes' ->> f.key, 'E') = 'E')
+                OR EXISTS (
+                    SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
+                    WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
+                      AND ti.id::bigint <> @absent_id::bigint))))
+ORDER BY least(coalesce((c.closed_at AT TIME ZONE @zone::text)::date, c.last_day + 17), c.last_day + 17), c.id
+LIMIT @row_limit;
+
+-- name: CaseRowIDs :many
+-- CaseRowIDs is the ids of a case's rows: the events the case's erase owns
+-- name one of them.
+SELECT id FROM staff.absences WHERE case_id = @case_id ORDER BY id;
+
+-- name: SetCaseRowsAbsent :execrows
+-- SetCaseRowsAbsent writes the reserved absent type in place of the sick
+-- type of a case's rows (plan reading 12): the days stay, class C.
+UPDATE staff.absences SET type_id = @absent_id::bigint, revision = revision + 1, updated_at = @now::timestamptz
+WHERE case_id = @case_id AND type_id <> @absent_id::bigint;
+
+-- name: CaseDocuments :many
+-- CaseDocuments is the documents filed under a case, which its erase deletes.
+SELECT id, object_key FROM staff.documents WHERE case_id = @case_id ORDER BY id;
+
+-- name: MergedCaseIDs :many
+-- MergedCaseIDs is the cases @case_ids took in by a merge (case_merged's
+-- mergedCaseId): their events are the survivor's to erase.
+SELECT DISTINCT (ev.payload -> 'fields' -> 'mergedCaseId' ->> 'to')::bigint AS merged_case_id
+FROM staff.events ev
+WHERE ev.person_id = @person_id AND ev.kind = 'case_merged'
+  AND (ev.payload ->> 'caseId')::bigint = ANY(@case_ids::bigint[])
+  AND jsonb_typeof(ev.payload -> 'fields' -> 'mergedCaseId' -> 'to') = 'number';
+
+-- name: DuePeopleChildSick :many
+-- DuePeopleChildSick is the people with a child-sick row whose year ended
+-- before @cutoff — healthRetentionDays after 31 December of its last day's
+-- year (plan reading 21) — not held, whatever the employment.
+SELECT a.person_id
+FROM staff.absences a
+JOIN staff.absence_types t ON t.id = a.type_id AND t.kind = 'child_sick'
+JOIN staff.people p ON p.id = a.person_id
+WHERE NOT p.legal_hold
+  AND (sqlc.narg(person_id)::bigint IS NULL OR a.person_id = sqlc.narg(person_id)::bigint)
+  AND make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @cutoff::date
+GROUP BY a.person_id
+ORDER BY min(a.last_day), a.person_id
+LIMIT @row_limit;
+
+-- name: DueChildSickRows :many
+-- DueChildSickRows is one person's child-sick rows due, as DuePeopleChildSick
+-- judges them.
+SELECT a.id FROM staff.absences a
+JOIN staff.absence_types t ON t.id = a.type_id AND t.kind = 'child_sick'
+WHERE a.person_id = @person_id AND make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @cutoff::date
+ORDER BY a.id;
+
+-- name: SetRowsAbsent :exec
+-- SetRowsAbsent writes the reserved absent type on @ids.
+UPDATE staff.absences SET type_id = @absent_id::bigint, revision = revision + 1, updated_at = @now::timestamptz
+WHERE id = ANY(@ids::bigint[]);
+
+-- name: DuePeopleWithdrawal :many
+-- DuePeopleWithdrawal is the people whose withdrawal of egenmelding is due
+-- (delivery B Task 6): not held, and either a withdrawal on file that lapsed
+-- before @cutoff, or — none in force since — withdrawal events with a value
+-- not yet replaced whose latest was recorded before @cutoff_at.
+SELECT p.id
+FROM staff.people p
+WHERE NOT p.legal_hold
+  AND (sqlc.narg(person_id)::bigint IS NULL OR p.id = sqlc.narg(person_id)::bigint)
+  AND (
+      p.self_cert_withdrawn_until < @cutoff::date
+      OR ((p.self_cert_withdrawn_until IS NULL OR p.self_cert_withdrawn_until < @cutoff::date)
+          AND (SELECT max(ev.at) FROM staff.events ev
+               WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal') < @cutoff_at::timestamptz
+          AND EXISTS (
+              SELECT 1 FROM staff.events ev, jsonb_each(ev.payload -> 'fields') f
+              WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal'
+                AND f.value <> to_jsonb(@blanked::text))))
+ORDER BY p.id
 LIMIT @row_limit;
 
 -- name: DueEmploymentsA :many
@@ -117,11 +254,12 @@ LIMIT 1;
 
 -- name: PersonDocumentsOfClass :many
 -- PersonDocumentsOfClass is a person's documents in categories of one
--- retention class, the D and the health erases' rows to delete.
+-- retention class, the D and the health erases' rows to delete — but those
+-- filed under a sick-leave case, which the case's schedule deletes.
 SELECT d.id, d.object_key
 FROM staff.documents d
 JOIN staff.document_categories c ON c.id = d.category_id
-WHERE d.person_id = @person_id AND c.retention_class = @class::text
+WHERE d.person_id = @person_id AND c.retention_class = @class::text AND d.case_id IS NULL
 ORDER BY d.id;
 
 -- name: EmploymentDocumentsA :many

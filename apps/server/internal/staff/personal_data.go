@@ -48,6 +48,16 @@ type personalDataSnapshot struct {
 	link        *store.PersonLinkRow
 	documents   []store.ListPersonDocumentsRow
 	events      []store.ListAllPersonEventsRow
+	// Delivery B (Task 6): every absence, the adjustments, the cases with
+	// their milestones, this year's care days and the standing of
+	// egenmelding today — the withdrawal with it, which both files' readers
+	// (the person, staff:personal-data) read as care-day readers.
+	absences    []store.PersonAbsencesRow
+	adjustments []store.StaffHolidayAdjustment
+	cases       []store.StaffSickCase
+	milestones  []store.StaffSickCaseMilestone
+	careDays    gen.StaffCareDays
+	selfCert    gen.StaffSelfCertification
 }
 
 // readPersonalData reads one person's file on q, which is a snapshot's: the
@@ -103,6 +113,32 @@ func readPersonalData(ctx context.Context, q *store.Queries, id int64, today tim
 	}
 	if out.events, err = q.ListAllPersonEvents(ctx, &id); err != nil {
 		return out, fmt.Errorf("staff: list person %d's history: %w", id, err)
+	}
+	if out.absences, err = q.PersonAbsences(ctx, id); err != nil {
+		return out, fmt.Errorf("staff: list person %d's absences: %w", id, err)
+	}
+	if out.adjustments, err = q.ListHolidayAdjustments(ctx, id); err != nil {
+		return out, fmt.Errorf("staff: list person %d's holiday adjustments: %w", id, err)
+	}
+	if out.cases, err = q.PersonCases(ctx, id); err != nil {
+		return out, fmt.Errorf("staff: list person %d's cases: %w", id, err)
+	}
+	ids = ids[:0]
+	for _, c := range out.cases {
+		ids = append(ids, c.ID)
+	}
+	if out.milestones, err = q.CaseMilestones(ctx, ids); err != nil {
+		return out, fmt.Errorf("staff: list person %d's milestones: %w", id, err)
+	}
+	row, err := settings(ctx, q)
+	if err != nil {
+		return out, err
+	}
+	if out.selfCert, err = selfCertResponse(ctx, q, row, id, today, everything); err != nil {
+		return out, err
+	}
+	if out.careDays, err = careDaysResponse(ctx, q, id, today.Year(), today); err != nil {
+		return out, err
 	}
 	return out, nil
 }
@@ -161,8 +197,13 @@ func personalDataPerson(f personalDataSnapshot, a audience, opened *openedSealed
 		Country:           shown(a, "country", row.Country),
 		Notes:             shown(a, "notes", row.Notes),
 		ErasedAt:          shown(a, "erasedAt", row.ErasedAt),
-		ReassessedAt:      shown(a, "reassessedAt", row.ReassessedAt),
-		LegalHold:         shown(a, "legalHold", legalHoldOf(row)),
+		// The care-day fields (Task 6): the person's own data, read by both
+		// files' audiences — the person and staff:personal-data.
+		ChildrenUnder12:        shown(a, "childrenUnder12", int32Of(row.ChildrenUnder12)),
+		SoleCarer:              shown(a, "soleCarer", row.SoleCarer),
+		ChronicallyIllChildren: shown(a, "chronicallyIllChildren", int32Of(row.ChronicallyIllChildren)),
+		ReassessedAt:           shown(a, "reassessedAt", row.ReassessedAt),
+		LegalHold:              shown(a, "legalHold", legalHoldOf(row)),
 		NationalId: gen.StaffPersonalDataNationalId{
 			OnFile: row.NationalIDOnFile,
 			Kind:   enumOf[gen.StaffNationalIdKind](row.NationalIDKind),
@@ -185,13 +226,22 @@ func personalDataPerson(f personalDataSnapshot, a audience, opened *openedSealed
 // user as the directory named them after the snapshot, and each event as
 // event makes it.
 func personalDataResponse(f personalDataSnapshot, a audience, opened *openedSealed, user *gen.StaffPersonUser,
-	today, exportedAt time.Time, event func(store.ListAllPersonEventsRow) gen.StaffEvent,
+	today, exportedAt time.Time, event func(store.ListAllPersonEventsRow) gen.StaffEvent, tag absenceTagger,
 ) gen.StaffPersonalData {
 	return gen.StaffPersonalData{
-		ExportedAt: exportedAt,
-		Person:     personalDataPerson(f, a, opened),
-		NextOfKin:  mapRows(f.nextOfKin, nextOfKinResponse),
-		Roles:      mapRows(f.roles, personRoleResponse),
+		Absences: mapRows(f.absences, func(r store.PersonAbsencesRow) gen.StaffAbsence {
+			return absenceResponse(r.StaffAbsence, r.Kind, r.Visibility, r.Unit, a, tag)
+		}),
+		HolidayAdjustments: mapRows(f.adjustments, adjustmentResponse),
+		Cases: mapRows(f.cases, func(c store.StaffSickCase) gen.StaffCase {
+			return caseResponse(c, f.milestones, a, today)
+		}),
+		CareDays:          f.careDays,
+		SelfCertification: f.selfCert,
+		ExportedAt:        exportedAt,
+		Person:            personalDataPerson(f, a, opened),
+		NextOfKin:         mapRows(f.nextOfKin, nextOfKinResponse),
+		Roles:             mapRows(f.roles, personRoleResponse),
 		Employments: mapRows(f.employments, func(e store.StaffEmployment) gen.StaffPersonalDataEmployment {
 			chain := f.chains[e.ID]
 			return gen.StaffPersonalDataEmployment{Employment: employmentResponse(e, chain, today, a), Terms: termsListResponse(chain, a)}
@@ -309,7 +359,7 @@ func (s *server) GetStaffPeopleByIdPersonalData(ctx context.Context, req gen.Get
 		return nil, fmt.Errorf("staff: record the export of person %d's data: %w", req.Id, err)
 	}
 	return personalDataDownload{
-		body:     personalDataResponse(f, everything, &opened, user, caller.Today, exportedAt, wholeEvent),
+		body:     personalDataResponse(f, everything, &opened, user, caller.Today, exportedAt, wholeEvent, s.absenceTag),
 		fileName: personalDataFileName(f.person.EmployeeNumber),
 	}, nil
 }
@@ -344,7 +394,7 @@ func (s *server) GetStaffMeExport(ctx context.Context, _ gen.GetStaffMeExportReq
 		}
 	}
 	return personalDataDownload{
-		body:     personalDataResponse(f, selfAudience, nil, user, caller.Today, exportedAt, selfEvent),
+		body:     personalDataResponse(f, selfAudience, nil, user, caller.Today, exportedAt, selfEvent, s.absenceTag),
 		fileName: personalDataFileName(f.person.EmployeeNumber),
 	}, nil
 }

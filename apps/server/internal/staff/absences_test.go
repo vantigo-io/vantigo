@@ -544,17 +544,32 @@ func TestAbsences_TheEraseKeepsDatesAndTypes(t *testing.T) {
 			WHERE kind = $1 AND (payload->>'absenceId')::bigint = $2`, kind, id)
 		return raw
 	}
-	leaver := func(given, end string) (int64, int64, int64) {
+	// The sick rows' cases are on their own schedule (Task 6): the recent
+	// leaver's closed in April 2026, under healthRetentionDays ago.
+	leaver := func(given, end, sickFirst, sickLast string) (int64, int64, int64) {
 		p, e := employed(t, w.hr, given, "2020-01-01", terms())
 		ferie := register(t, w.hr, p.Id, absence(t, h, "ferie", "2024-06-03", "2024-06-07", "note", "Sommer"))
-		sick := register(t, w.hr, p.Id, absence(t, h, "sykmelding", "2024-09-02", "2024-09-06", "degreePercent", 50))
+		sick := register(t, w.hr, p.Id, absence(t, h, "sykmelding", sickFirst, sickLast, "degreePercent", 50))
 		endEmployment(t, w.hr, e.Id, end)
 		return p.Id, ferie.Id, sick.Id
 	}
-	_, recentFerie, recentSick := leaver("Nylig", "2026-05-01")
-	_, oldFerie, oldSick := leaver("Gammel", "2024-12-31")
+	recent, recentFerie, recentSick := leaver("Nylig", "2026-05-01", "2026-04-06", "2026-04-10")
+	_, oldFerie, oldSick := leaver("Gammel", "2024-12-31", "2024-09-02", "2024-09-06")
+	do(t, w.hr, http.MethodPost, adjustmentsPath(recent), map[string]any{"year": 2025, "days": 2, "reason": "correction", "note": "Avtalt"},
+		http.StatusCreated, nil)
 	runCycle(t, h)
 	runCycle(t, h)
+	// The D erase nulls the absences' notes and the adjustments' — class D
+	// columns of B's tables (Task 6) — and keeps their days and types.
+	if n := h.Count(t, `SELECT count(*) FROM staff.absences WHERE person_id = $1 AND (note IS NOT NULL OR decision_note IS NOT NULL)`, recent); n != 0 {
+		t.Errorf("%d of the erased leaver's absences keep a note", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.holiday_adjustments WHERE person_id = $1 AND note IS NULL AND days = 2`, recent); n != 1 {
+		t.Error("the erased leaver's adjustment keeps its note, or lost its days")
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.absences WHERE id = $1 AND type_id = $2`, recentFerie, typeID(t, h, "ferie")); n != 1 {
+		t.Error("the D erase changed a ferie row's type")
+	}
 
 	kept := func(name string, f map[string]any, fields ...string) {
 		for _, k := range fields {

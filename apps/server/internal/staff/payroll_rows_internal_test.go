@@ -246,6 +246,8 @@ func TestPayrollRows_AnEmploymentWithoutTermsKeepsItsRow(t *testing.T) {
 	}
 	cells := rows[0].cells()
 	want := []string{"K-1", "Kari Nordmann", "K-1-1", "923609016", "2026-01-01", "", "", "", "", "", "", "", "", "", "", "", "", "", ""}
+	// Delivery B's thirteen absence cells, blank: no absence in the month.
+	want = append(want, make([]string, 13)...)
 	if !slices.Equal(cells, want) {
 		t.Errorf("cells = %q, want %q", cells, want)
 	}
@@ -275,6 +277,7 @@ func TestPayrollRows_EveryCell(t *testing.T) {
 		"2512105", "36,50", "62,50", "2026-01-01", "skift365", "midlertidigAnsattSomTilkallingsvikar", "hourly",
 		"2026-01-01", "", "4200", "2019-05-01", "52",
 	}
+	want = append(want, make([]string, 13)...)
 	if got := rows[0].cells(); !slices.Equal(got, want) {
 		t.Errorf("cells = %q\nwant    %q", got, want)
 	}
@@ -350,7 +353,8 @@ func TestPayrollRows_OrderAndNames(t *testing.T) {
 }
 
 // The header is the plan's, in sentence-case English, in this order; delivery
-// B's leave and absence columns are appended after Pay grade.
+// B's leave and absence columns are appended after Pay grade
+// (TestPayrollColumns_TheAbsenceColumnsGoRight).
 func TestPayrollColumns(t *testing.T) {
 	t.Parallel()
 	want := []string{
@@ -358,10 +362,10 @@ func TestPayrollColumns(t *testing.T) {
 		"Occupation code", "Full-time hours", "FTE percent", "FTE changed", "Working hours scheme", "Appointment form",
 		"Remuneration type", "Salary changed", "Department", "Cost centre", "Seniority date", "Pay grade",
 	}
-	if !slices.Equal(payrollColumns, want) {
-		t.Errorf("payrollColumns = %q, want %q", payrollColumns, want)
+	if len(payrollColumns) < len(want) || !slices.Equal(payrollColumns[:len(want)], want) {
+		t.Errorf("payrollColumns = %q, want to begin %q", payrollColumns, want)
 	}
-	if n := len(payrollRow{}.cells()); n != len(want) {
-		t.Errorf("a row has %d cells, want %d", n, len(want))
+	if n := len(payrollRow{}.cells()); n != len(payrollColumns) {
+		t.Errorf("a row has %d cells, want %d", n, len(payrollColumns))
 	}
 }

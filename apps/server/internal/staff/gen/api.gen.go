@@ -371,9 +371,12 @@ func (e StaffEndReason) Valid() bool {
 
 // Defines values for StaffErasedKindKind.
 const (
-	StaffErasedKindKindA      StaffErasedKindKind = "A"
-	StaffErasedKindKindD      StaffErasedKindKind = "D"
-	StaffErasedKindKindHealth StaffErasedKindKind = "health"
+	StaffErasedKindKindA          StaffErasedKindKind = "A"
+	StaffErasedKindKindCases      StaffErasedKindKind = "cases"
+	StaffErasedKindKindChildSick  StaffErasedKindKind = "childSick"
+	StaffErasedKindKindD          StaffErasedKindKind = "D"
+	StaffErasedKindKindHealth     StaffErasedKindKind = "health"
+	StaffErasedKindKindWithdrawal StaffErasedKindKind = "withdrawal"
 )
 
 // Valid indicates whether the value is a known member of the StaffErasedKindKind enum.
@@ -381,9 +384,15 @@ func (e StaffErasedKindKind) Valid() bool {
 	switch e {
 	case StaffErasedKindKindA:
 		return true
+	case StaffErasedKindKindCases:
+		return true
+	case StaffErasedKindKindChildSick:
+		return true
 	case StaffErasedKindKindD:
 		return true
 	case StaffErasedKindKindHealth:
+		return true
+	case StaffErasedKindKindWithdrawal:
 		return true
 	default:
 		return false
@@ -695,15 +704,20 @@ func (e StaffSelfCertPolicy) Valid() bool {
 
 // Defines values for StaffStatsAttentionItemType.
 const (
+	AbsenceAwaitingDecision   StaffStatsAttentionItemType = "absenceAwaitingDecision"
 	ContractOverdue           StaffStatsAttentionItemType = "contractOverdue"
 	HeadcountThreshold        StaffStatsAttentionItemType = "headcountThreshold"
 	HolidayAffectedBySickness StaffStatsAttentionItemType = "holidayAffectedBySickness"
+	HolidayUntaken            StaffStatsAttentionItemType = "holidayUntaken"
+	HrOnlyAwaitingDecision    StaffStatsAttentionItemType = "hrOnlyAwaitingDecision"
+	MainPeriodShort           StaffStatsAttentionItemType = "mainPeriodShort"
 	OtpThreshold              StaffStatsAttentionItemType = "otpThreshold"
 	ProbationEnding           StaffStatsAttentionItemType = "probationEnding"
 	ReassessmentDue           StaffStatsAttentionItemType = "reassessmentDue"
 	ReportsWithoutManager     StaffStatsAttentionItemType = "reportsWithoutManager"
 	RetentionFailing          StaffStatsAttentionItemType = "retentionFailing"
 	SelfApproved              StaffStatsAttentionItemType = "selfApproved"
+	SickMilestoneDue          StaffStatsAttentionItemType = "sickMilestoneDue"
 	TemporaryConverts         StaffStatsAttentionItemType = "temporaryConverts"
 	TemporaryNoticeDue        StaffStatsAttentionItemType = "temporaryNoticeDue"
 )
@@ -711,11 +725,19 @@ const (
 // Valid indicates whether the value is a known member of the StaffStatsAttentionItemType enum.
 func (e StaffStatsAttentionItemType) Valid() bool {
 	switch e {
+	case AbsenceAwaitingDecision:
+		return true
 	case ContractOverdue:
 		return true
 	case HeadcountThreshold:
 		return true
 	case HolidayAffectedBySickness:
+		return true
+	case HolidayUntaken:
+		return true
+	case HrOnlyAwaitingDecision:
+		return true
+	case MainPeriodShort:
 		return true
 	case OtpThreshold:
 		return true
@@ -728,6 +750,8 @@ func (e StaffStatsAttentionItemType) Valid() bool {
 	case RetentionFailing:
 		return true
 	case SelfApproved:
+		return true
+	case SickMilestoneDue:
 		return true
 	case TemporaryConverts:
 		return true
@@ -1600,11 +1624,11 @@ type StaffEndReason string
 type StaffErasedKind struct {
 	Count int64 `json:"count"`
 
-	// Kind D — the personnel administration, a grace period after the last employment ended; health — the health documents, healthRetentionDays after it; A — one employment's pay terms, its contract and attest documents and the pay in its events, five years after the year it ended.
+	// Kind D — the personnel administration, a grace period after the last employment ended; health — the health documents not filed under a sick-leave case and the health content of the history no case owns, healthRetentionDays after it; A — one employment's pay terms, its contract and attest documents and the pay in its events, five years after the year it ended; cases — a closed sick-leave case's health content (its notes, its milestones' facts, its rows' sick type and degree, its documents and its events' health fields), healthRetentionDays after the case closed, whatever the employment; childSick — a year's child-sick rows' type and their events' health fields, healthRetentionDays after the year ended; withdrawal — a withdrawal of egenmelding and its events, healthRetentionDays after it lapsed.
 	Kind StaffErasedKindKind `json:"kind"`
 }
 
-// StaffErasedKindKind D — the personnel administration, a grace period after the last employment ended; health — the health documents, healthRetentionDays after it; A — one employment's pay terms, its contract and attest documents and the pay in its events, five years after the year it ended.
+// StaffErasedKindKind D — the personnel administration, a grace period after the last employment ended; health — the health documents not filed under a sick-leave case and the health content of the history no case owns, healthRetentionDays after it; A — one employment's pay terms, its contract and attest documents and the pay in its events, five years after the year it ended; cases — a closed sick-leave case's health content (its notes, its milestones' facts, its rows' sick type and degree, its documents and its events' health fields), healthRetentionDays after the case closed, whatever the employment; childSick — a year's child-sick rows' type and their events' health fields, healthRetentionDays after the year ended; withdrawal — a withdrawal of egenmelding and its events, healthRetentionDays after it lapsed.
 type StaffErasedKindKind string
 
 // StaffErasedPerson An erased person whose names and birth date match a new person's (POST /people/similar-erased), so a rehire is a choice rather than a duplicate made by accident.
@@ -2387,8 +2411,16 @@ type StaffPersonUser struct {
 	Id          openapi_types.UUID `json:"id"`
 }
 
-// StaffPersonalData A person's data in one file (design S16): the record, the next of kin, the roles, every employment with its terms, the self-service link, the documents' metadata (the files themselves are read through the documents' own downloads) and every event, read in one snapshot. exportedAt is when it was made. GET /people/{id}/personal-data's is the complete file, the sealed values opened and the events whole; GET /me/export's is the person's own, without the sealed values, HR's notes and the terms' notes, its events shaped as the person reads their history.
+// StaffPersonalData A person's data in one file (design S16): the record, the next of kin, the roles, every employment with its terms, the self-service link, the documents' metadata (the files themselves are read through the documents' own downloads), every absence, the holiday adjustments, every sick-leave case with its milestones, this year's care days, the standing of egenmelding today and every event, read in one snapshot. exportedAt is when it was made. GET /people/{id}/personal-data's is the complete file, the sealed values opened and the events whole; GET /me/export's is the person's own, without the sealed values, HR's notes and the terms' notes, its events shaped as the person reads their history and its absence, cases and care days as the person reads them.
 type StaffPersonalData struct {
+	// Absences Every absence of the person, in any status, newest first.
+	Absences []StaffAbsence `json:"absences"`
+
+	// CareDays A person's care days (omsorgsdager) for a year (design S11, ftrl. § 9-6 and § 9-8). Using more than the entitlement is shown (exceeded), never refused.
+	CareDays StaffCareDays `json:"careDays"`
+
+	// Cases Every sick-leave case of the person with its milestones, newest first.
+	Cases       []StaffCase                   `json:"cases"`
 	Documents   []StaffDocument               `json:"documents"`
 	Employments []StaffPersonalDataEmployment `json:"employments"`
 
@@ -2396,13 +2428,19 @@ type StaffPersonalData struct {
 	Events     []StaffEvent `json:"events"`
 	ExportedAt time.Time    `json:"exportedAt"`
 
+	// HolidayAdjustments Every adjustment of the person's holiday account, newest year first.
+	HolidayAdjustments []StaffHolidayAdjustment `json:"holidayAdjustments"`
+
 	// Link A person's self-service link to a user (design S24, §3.6) — the link that makes the user the person themselves to this module, and nothing else. linked is false, and every other field absent, when the person is linked to nobody.
 	Link      StaffPersonLink  `json:"link"`
 	NextOfKin []StaffNextOfKin `json:"nextOfKin"`
 
-	// Person The person's record in a personal-data file — every field of theirs, each absent when not set. notes, erasedAt, legalHold and reassessedAt are in the complete file only.
+	// Person The person's record in a personal-data file — every field of theirs, each absent when not set, the care-day fields included. notes, erasedAt, legalHold and reassessedAt are in the complete file only.
 	Person StaffPersonalDataPerson `json:"person"`
 	Roles  []StaffPersonRole       `json:"roles"`
+
+	// SelfCertification A person's standing under the self-certification policy today (design S10, §4 Egenmelding): the limits by the policy's name, the occurrences and calendar days used in the rolling year ending today — a run of contiguous egenmelding days, days off between included, being one occurrence — and the withdrawal.
+	SelfCertification StaffSelfCertification `json:"selfCertification"`
 }
 
 // StaffPersonalDataBankAccount The bank account on file. value, the whole number, is in the complete file only.
@@ -2427,17 +2465,23 @@ type StaffPersonalDataNationalId struct {
 	Value   *string              `json:"value,omitempty"`
 }
 
-// StaffPersonalDataPerson The person's record in a personal-data file — every field of theirs, each absent when not set. notes, erasedAt, legalHold and reassessedAt are in the complete file only.
+// StaffPersonalDataPerson The person's record in a personal-data file — every field of theirs, each absent when not set, the care-day fields included. notes, erasedAt, legalHold and reassessedAt are in the complete file only.
 type StaffPersonalDataPerson struct {
 	// BankAccount The bank account on file. value, the whole number, is in the complete file only.
-	BankAccount    *StaffPersonalDataBankAccount `json:"bankAccount,omitempty"`
-	BirthDate      *openapi_types.Date           `json:"birthDate,omitempty"`
-	City           *string                       `json:"city,omitempty"`
-	Country        *string                       `json:"country,omitempty"`
-	DisplayName    string                        `json:"displayName"`
-	EmployeeNumber string                        `json:"employeeNumber"`
-	ErasedAt       *time.Time                    `json:"erasedAt,omitempty"`
-	FamilyName     string                        `json:"familyName"`
+	BankAccount *StaffPersonalDataBankAccount `json:"bankAccount,omitempty"`
+	BirthDate   *openapi_types.Date           `json:"birthDate,omitempty"`
+
+	// ChildrenUnder12 The children the person cares for through the year they turn twelve, as HR typed it (plan reading 29).
+	ChildrenUnder12 *int32 `json:"childrenUnder12,omitempty"`
+
+	// ChronicallyIllChildren The chronically ill or disabled children with NAV's extra-days decision, through the year they turn eighteen.
+	ChronicallyIllChildren *int32     `json:"chronicallyIllChildren,omitempty"`
+	City                   *string    `json:"city,omitempty"`
+	Country                *string    `json:"country,omitempty"`
+	DisplayName            string     `json:"displayName"`
+	EmployeeNumber         string     `json:"employeeNumber"`
+	ErasedAt               *time.Time `json:"erasedAt,omitempty"`
+	FamilyName             string     `json:"familyName"`
 
 	// Gender female, male, other or unspecified — what the equality report (ARP) counts.
 	Gender    *StaffGender `json:"gender,omitempty"`
@@ -2459,6 +2503,9 @@ type StaffPersonalDataPerson struct {
 	PreferredLanguage StaffLanguage `json:"preferredLanguage"`
 	PrivateEmail      *string       `json:"privateEmail,omitempty"`
 	ReassessedAt      *time.Time    `json:"reassessedAt,omitempty"`
+
+	// SoleCarer Whether the person is alone in caring for the children (ftrl. § 9-6).
+	SoleCarer *bool `json:"soleCarer,omitempty"`
 
 	// Status Where the person stands today, in the business time zone: active (an employment has started and not ended — the end day itself is still worked), upcoming (none active, one starting later; date is the earliest such start), ended (every employment ended before today; date is the latest end) or none (no employment yet).
 	Status      StaffPersonStatus `json:"status"`
@@ -2664,7 +2711,7 @@ type StaffSimilarErasedRequest struct {
 	GivenName  string             `json:"givenName"`
 }
 
-// StaffStats The dashboard's figures for the register (design S20), judged on today in the settings' time zone and read in one snapshot. The absence figures arrive with delivery B.
+// StaffStats The dashboard's figures for the register (design S20), judged on today in the settings' time zone and read in one snapshot. The sick figures, openSickCases and sickAbsenceRate, are present for a caller holding staff:manage, staff:approve or staff:personal-data and absent for anyone else (plan reading 14).
 type StaffStats struct {
 	// EndingSoon Employments in force today whose end falls within the next thirty days, today included.
 	EndingSoon int32 `json:"endingSoon"`
@@ -2675,8 +2722,17 @@ type StaffStats struct {
 	// Headcount People with at least one employment in force today — started on or before today and not ended before it. Each person counts once.
 	Headcount int32 `json:"headcount"`
 
+	// OnLeaveToday People with an employment in force today who are away today — an approved or registered absence of whole days covering today, of any type. Every kind counts, so the figure says no more than the calendar's bars show a colleague; a request counts nothing.
+	OnLeaveToday int32 `json:"onLeaveToday"`
+
+	// OpenSickCases Sick-leave cases open today — not closed by HR, and whose last day is at most sixteen days ago. staff:manage, staff:approve and staff:personal-data only.
+	OpenSickCases *int32 `json:"openSickCases,omitempty"`
+
 	// PeopleWithoutEmployment People not erased who have no employment at all — a record created and never completed.
 	PeopleWithoutEmployment int32 `json:"peopleWithoutEmployment"`
+
+	// SickAbsenceRate The sick-leave rate over the twelve months ending today, in percent to two decimals — the working days lost to egenmelding and sykmelding, each by its degree (beside a percentage leave, degree × (100 − the leave's percent) / 100) and by the full-time percentage in force, divided by the working days agreed — every working day of an employment in force, by its full-time percentage. Child-sick days are not sickness of the employee and do not count. staff:manage, staff:approve and staff:personal-data only.
+	SickAbsenceRate *float64 `json:"sickAbsenceRate,omitempty"`
 
 	// StartingSoon Employments starting after today and within the next thirty days.
 	StartingSoon int32 `json:"startingSoon"`
@@ -2684,12 +2740,12 @@ type StaffStats struct {
 
 // StaffStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares. The host words the sentence from `type`; `title` is the name of the thing — a person's name — or, for the three items about the installation, an English sentence the host replaces. "Today" is the day in the settings' time zone; a date-only occurredAt is that day at midnight UTC.
 //
-// Eleven types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie”s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt the ferie”s first day. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
+// Sixteen types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie”s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt the ferie”s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, so the only holder of staff:personal-data sees their own request stall, which nobody else may decide; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
 type StaffStatsAttentionItem struct {
-	// Count How many the item stands for — the failing ledger rows, or the headcount of a threshold. Absent on the other types.
+	// Count How many the item stands for — the failing ledger rows, the headcount of a threshold, or the requests waiting. Absent on the other types.
 	Count *int32 `json:"count,omitempty"`
 
-	// EntityId The person's id, or the literal 'retention' or 'thresholds', or the headcount threshold ('5', '30', '50').
+	// EntityId The person's id, or the literal 'retention', 'thresholds' or 'approvals', or the headcount threshold ('5', '30', '50').
 	EntityId   string                      `json:"entityId"`
 	Id         string                      `json:"id"`
 	OccurredAt time.Time                   `json:"occurredAt"`
