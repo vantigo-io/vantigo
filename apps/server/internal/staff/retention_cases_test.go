@@ -243,3 +243,115 @@ func TestRetention_ThePersonsHealthEraseLeavesTheCase(t *testing.T) {
 		t.Errorf("the recent case's row's type = %d, want sykmelding", got)
 	}
 }
+
+// What a case owns reaches past its rows of today: the events of a case it
+// took in by a merge, a ferie split for one of its rows (sickAbsenceId), and
+// a row deleted from it — whose events name the case (rowCaseId) — are
+// erased with it.
+func TestRetention_TheCaseEraseReachesWhatItOwns(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	first := register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2025-03-03", "2025-03-07"))
+	firstCase := caseOfRow(t, h, first.Id)
+	later := register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2025-04-07", "2025-04-11"))
+	laterCase := caseOfRow(t, h, later.Id)
+	if laterCase == firstCase {
+		t.Fatal("the two rows share a case before the bridge")
+	}
+	// A row between them joins the two cases: the later is merged into the
+	// first.
+	register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2025-03-10", "2025-03-28"))
+	if caseOfRow(t, h, later.Id) != firstCase {
+		t.Fatal("the bridge did not merge the cases")
+	}
+	// A row added to the case and deleted again: its events name the case.
+	extra := register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2025-04-14", "2025-04-15"))
+	do(t, w.hr, http.MethodDelete, absencePath(extra.Id), nil, http.StatusNoContent, nil)
+	// Ferie over a sykmelding of the case, postponed on demand.
+	holiday := register(t, w.hr, w.kari.Id, absence(t, h, "ferie", "2025-04-16", "2025-04-25"))
+	h.Exec(t, `UPDATE staff.absences SET status = 'approved' WHERE id = $1`, holiday.Id)
+	sick := register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2025-04-21", "2025-04-25"))
+	do(t, w.hr, http.MethodPost, postponePath(sick.Id), map[string]any{"demandedOn": "2025-04-22"}, http.StatusOK, nil)
+
+	runCycle(t, h)
+	if f := eventFields(t, h, "case_opened", "caseId", laterCase); f["firstDay"] != "changed" {
+		t.Errorf("the merged-in case's case_opened = %v, want its fields changed", f)
+	}
+	if f := eventFields(t, h, "absence_deleted", "absenceId", extra.Id); f["type"] != "changed" {
+		t.Errorf("the deleted row's absence_deleted = %v, want its type changed", f)
+	}
+	if f := eventFields(t, h, "absence_split", "absenceId", holiday.Id); f["demandedOn"] != "changed" || f["postponedUnder"] != "changed" {
+		t.Errorf("the ferie's absence_split = %v, want the demand changed", f)
+	}
+	if f := eventFields(t, h, "absence_split", "absenceId", holiday.Id); f["firstDay"] == "changed" {
+		t.Error("the ferie's absence_split lost its days")
+	}
+}
+
+// A sick row's events that no case owns any more — the case removed with
+// its only row — are erased by their own instant: sixteen days and
+// healthRetentionDays after they were recorded, whatever the employment.
+func TestRetention_OrphanedSickEventsGoByTheirInstant(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	sick := register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2025-03-03", "2025-03-07"))
+	gone := caseOfRow(t, h, sick.Id)
+	do(t, w.hr, http.MethodDelete, absencePath(sick.Id), nil, http.StatusNoContent, nil)
+	if n := h.Count(t, `SELECT count(*) FROM staff.sick_cases WHERE id = $1`, gone); n != 0 {
+		t.Fatal("the case outlived its only row")
+	}
+	runCycle(t, h)
+	if f := eventFields(t, h, "absence_registered", "absenceId", sick.Id); f["type"] == "changed" {
+		t.Fatal("an orphaned event recorded today was erased")
+	}
+	setClock(t, h, h.Now().AddDate(0, 0, 365+16+1))
+	runCycle(t, h)
+	for _, c := range []struct {
+		kind, key string
+		id        int64
+	}{
+		{"absence_registered", "absenceId", sick.Id}, {"absence_deleted", "absenceId", sick.Id}, {"case_opened", "caseId", gone},
+	} {
+		if f := eventFields(t, h, c.kind, c.key, c.id); f["type"] != "changed" && f["firstDay"] != "changed" {
+			t.Errorf("%s = %v, want its health fields changed", c.kind, f)
+		}
+	}
+	if counts := kindCounts(firstErased(t, h, w.kari.Id)); counts["cases"] == 0 {
+		t.Errorf("the erased kinds = %v, want cases", counts)
+	}
+}
+
+// The withdrawal's schedule judges its columns and its events apart: a
+// withdrawal that lapsed long ago is erased with its old events, while an
+// event recorded since keeps its values until healthRetentionDays have run
+// from it.
+func TestRetention_TheWithdrawalsEventsByTheirInstant(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	h.Exec(t, `UPDATE staff.people SET self_cert_withdrawn_until = '2025-01-31', self_cert_withdrawn_from = '2024-11-01',
+		self_cert_withdrawn_reason = 'Old' WHERE id = $1`, w.kari.Id)
+	insert := func(at time.Time, reason string) int64 {
+		return modtest.One[int64](t, h.Harness, `INSERT INTO staff.events (person_id, kind, actor_kind, at, payload, payload_classes)
+			VALUES ($1, 'self_cert_withdrawn', 'system', $2,
+				jsonb_build_object('selfCertWithdrawal', true, 'fields', jsonb_build_object('reason', jsonb_build_object('to', $3::text)),
+					'classes', jsonb_build_object('reason', 'E')), '{E}') RETURNING id`, w.kari.Id, at, reason)
+	}
+	old := insert(time.Date(2024, time.November, 1, 9, 0, 0, 0, time.UTC), "Old")
+	recent := insert(h.Now().Add(-time.Hour), "Recent")
+	runCycle(t, h)
+	reason := func(id int64) string {
+		return modtest.One[string](t, h.Harness, `SELECT (payload->'fields'->'reason')::text FROM staff.events WHERE id = $1`, id)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.people WHERE id = $1 AND self_cert_withdrawn_until IS NULL`, w.kari.Id); n != 1 {
+		t.Error("the long-lapsed withdrawal's columns are kept")
+	}
+	if got := reason(old); got != `"changed"` {
+		t.Errorf("the old event's reason = %s, want changed", got)
+	}
+	if got := reason(recent); got == `"changed"` {
+		t.Error("an event recorded an hour ago was erased")
+	}
+}

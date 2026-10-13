@@ -575,14 +575,23 @@ year, what NAV refunds — **Leave days**, **Time off hours** and **Other days**
 approved and registered absence counts. Two rules to know: a sick day beside a
 percentage leave counts degree × (100 − the leave's percent) / 100, and approved ferie
 under a 100 % sykmelding counts once, **as sick**, until you record the employee's
-demand to postpone it ([Postpone holiday for sickness](#postpone-holiday-for-sickness)).
+demand to postpone it ([Postpone holiday for sickness](#postpone-holiday-for-sickness));
+a graded sykmelding or an egenmelding over ferie counts as holiday alone, since no
+sykepenger are paid on a holiday day. Child-sick days count by their percent.
+
+**A person with two employments at once**: the day totals are on each employment's
+row, the child-sick days beyond the employer's ten on the main one alone (the highest
+position percentage, ties to the lowest employment number). An absence does not say
+which employment it is from, so **a leave's row repeats on every employment in force —
+check such a person's leave rows by hand** before payroll reports them.
 
 After an employment's row come its **leave rows**: one per leave the a-melding reports
 (Skatteetaten's *Permisjon*), with **Leave ID**, **Leave start**, **Leave end**,
 **Leave description** and **Leave percent**. A leave is reported when it lasts more than
 fourteen days, or when the person's leaves in the last twelve months together pass
 fourteen days; permittering always; a child's sickness never. A leave extended by a
-new row keeps its first row's id, the id the a-melding knows it by. Before you wire
+new row — the next day, or after a weekend or public holiday — stays one leave
+under the lowest id of its rows, the id the a-melding knows it by. Before you wire
 the file to a payroll system, check the seven description values against the
 kodeliste that system uses: they were checked against NAV's sources on 2026-10-14,
 but Skatteetaten's own kodeliste could not be reached ([the

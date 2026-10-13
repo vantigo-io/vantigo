@@ -582,15 +582,25 @@ utover de ti arbeidsgiveren dekker i året, det NAV refunderer — **Leave days*
 godkjent og registrert fravær teller. To regler å kjenne: en sykedag ved siden av en
 prosentpermisjon teller grad × (100 − permisjonens prosent) / 100, og godkjent ferie
 under en 100 % sykmelding teller én gang, **som syk**, til du registrerer den ansattes
-krav om å utsette den ([Utsett ferie ved sykdom](#utsett-ferie-ved-sykdom)).
+krav om å utsette den ([Utsett ferie ved sykdom](#utsett-ferie-ved-sykdom)); en
+gradert sykmelding eller en egenmelding i ferien teller bare som ferie, siden det ikke
+betales sykepenger på en feriedag. Sykt barn-dager teller etter prosenten.
+
+**En person med to arbeidsforhold samtidig**: dagsummene står på hvert arbeidsforholds
+rad, sykt barn-dagene utover arbeidsgiverens ti bare på hovedarbeidsforholdet (høyest
+stillingsprosent, ved likhet det laveste arbeidsforholdsnummeret). Et fravær sier ikke
+hvilket arbeidsforhold det gjelder, så **en permisjonsrad gjentas på hvert
+arbeidsforhold som gjelder — sjekk slike personers permisjonsrader for hånd** før
+lønnssystemet rapporterer dem.
 
 Etter et arbeidsforholds rad kommer **permisjonsradene**: én per permisjon a-meldingen
 skal ha (Skatteetatens *Permisjon*), med **Leave ID**, **Leave start**, **Leave end**,
 **Leave description** og **Leave percent**. En permisjon rapporteres når den varer mer
 enn fjorten dager, eller når personens permisjoner de siste tolv månedene til sammen
 passerer fjorten dager; permittering alltid; sykt barn aldri. En permisjon som
-forlenges med en ny rad, beholder den første radens id, den id-en a-meldingen kjenner
-den under. Før du kobler filen til et lønnssystem, sjekk de sju beskrivelsesverdiene
+forlenges med en ny rad — dagen etter, eller etter en helg eller helligdag — er fortsatt
+én permisjon under den laveste id-en blant radene, den id-en a-meldingen kjenner den
+under. Før du kobler filen til et lønnssystem, sjekk de sju beskrivelsesverdiene
 mot kodelisten det systemet bruker: de ble sjekket mot NAVs kilder 14.10.2026, men
 Skatteetatens egen kodeliste var ikke tilgjengelig
 ([referansen](/en/reference/staff/#the-payroll-export)).

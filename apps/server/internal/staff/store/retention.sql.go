@@ -115,6 +115,7 @@ WHERE NOT p.legal_hold
           SELECT 1 FROM staff.events ev
           WHERE ev.person_id = c.person_id AND 'E' = ANY(ev.payload_classes)
             AND ((ev.payload ->> 'caseId')::bigint = c.id
+                 OR (ev.payload ->> 'rowCaseId')::bigint = c.id
                  OR (ev.payload ->> 'absenceId')::bigint IN (SELECT a.id FROM staff.absences a WHERE a.case_id = c.id)
                  OR (ev.payload ->> 'sickAbsenceId')::bigint IN (SELECT a.id FROM staff.absences a WHERE a.case_id = c.id))
             AND (
@@ -478,6 +479,8 @@ WHERE NOT p.legal_hold
                     WHERE a.id = (ev.payload ->> 'sickAbsenceId')::bigint AND a.case_id IS NOT NULL))
                 OR (ev.payload ? 'caseId' AND EXISTS (
                     SELECT 1 FROM staff.sick_cases c WHERE c.id = (ev.payload ->> 'caseId')::bigint))
+                OR (ev.payload ? 'rowCaseId' AND EXISTS (
+                    SELECT 1 FROM staff.sick_cases c WHERE c.id = (ev.payload ->> 'rowCaseId')::bigint))
                 OR ev.payload ? 'selfCertWithdrawal')
             AND (
                 EXISTS (
@@ -531,6 +534,79 @@ func (q *Queries) DuePeopleHealth(ctx context.Context, arg DuePeopleHealthParams
 	return items, nil
 }
 
+const duePeopleOrphanedSickEvents = `-- name: DuePeopleOrphanedSickEvents :many
+SELECT DISTINCT ev.person_id::bigint AS person_id
+FROM staff.events ev
+JOIN staff.people p ON p.id = ev.person_id
+WHERE NOT p.legal_hold
+  AND ($1::bigint IS NULL OR ev.person_id = $1::bigint)
+  AND 'E' = ANY(ev.payload_classes) AND ev.at < $2::timestamptz
+  AND (ev.payload ? 'absenceId' OR ev.payload ? 'caseId' OR ev.payload ? 'rowCaseId' OR ev.payload ? 'sickAbsenceId')
+  AND NOT ev.payload ? 'selfCertWithdrawal'
+  AND NOT (
+      (ev.payload ? 'absenceId' AND EXISTS (
+          SELECT 1 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+          WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND (a.case_id IS NOT NULL OR t.kind = 'child_sick')))
+      OR (ev.payload ? 'sickAbsenceId' AND EXISTS (
+          SELECT 1 FROM staff.absences a
+          WHERE a.id = (ev.payload ->> 'sickAbsenceId')::bigint AND a.case_id IS NOT NULL))
+      OR (ev.payload ? 'caseId' AND EXISTS (
+          SELECT 1 FROM staff.sick_cases c WHERE c.id = (ev.payload ->> 'caseId')::bigint))
+      OR (ev.payload ? 'rowCaseId' AND EXISTS (
+          SELECT 1 FROM staff.sick_cases c WHERE c.id = (ev.payload ->> 'rowCaseId')::bigint)))
+  AND (
+      EXISTS (
+          SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
+          WHERE f.value <> to_jsonb($3::text)
+            AND coalesce(ev.payload -> 'classes' ->> f.key, 'E') = 'E')
+      OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
+          WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
+            AND ti.id::bigint <> $4::bigint))
+ORDER BY person_id
+LIMIT $5
+`
+
+type DuePeopleOrphanedSickEventsParams struct {
+	PersonID *int64
+	CutoffAt time.Time
+	Blanked  string
+	AbsentID int64
+	RowLimit int32
+}
+
+// DuePeopleOrphanedSickEvents is the people, not held, whatever their
+// employment, with an absence or case event (a key absenceId, caseId,
+// rowCaseId or sickAbsenceId) that nothing owns any more — its row, its case
+// and the sykmelding it names gone — recorded before @cutoff_at (sixteen days
+// and healthRetentionDays ago: the latest its case could have closed), with
+// a health value not yet replaced (Task 6 review).
+func (q *Queries) DuePeopleOrphanedSickEvents(ctx context.Context, arg DuePeopleOrphanedSickEventsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, duePeopleOrphanedSickEvents,
+		arg.PersonID,
+		arg.CutoffAt,
+		arg.Blanked,
+		arg.AbsentID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var person_id int64
+		if err := rows.Scan(&person_id); err != nil {
+			return nil, err
+		}
+		items = append(items, person_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const duePeopleWithdrawal = `-- name: DuePeopleWithdrawal :many
 SELECT p.id
 FROM staff.people p
@@ -539,11 +615,9 @@ WHERE NOT p.legal_hold
   AND (
       p.self_cert_withdrawn_until < $2::date
       OR ((p.self_cert_withdrawn_until IS NULL OR p.self_cert_withdrawn_until < $2::date)
-          AND (SELECT max(ev.at) FROM staff.events ev
-               WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal') < $3::timestamptz
           AND EXISTS (
               SELECT 1 FROM staff.events ev, jsonb_each(ev.payload -> 'fields') f
-              WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal'
+              WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal' AND ev.at < $3::timestamptz
                 AND f.value <> to_jsonb($4::text))))
 ORDER BY p.id
 LIMIT $5
@@ -558,9 +632,10 @@ type DuePeopleWithdrawalParams struct {
 }
 
 // DuePeopleWithdrawal is the people whose withdrawal of egenmelding is due
-// (delivery B Task 6): not held, and either a withdrawal on file that lapsed
-// before @cutoff, or — none in force since — withdrawal events with a value
-// not yet replaced whose latest was recorded before @cutoff_at.
+// (delivery B Task 6), not held: a withdrawal on file that lapsed before
+// @cutoff, or — none in force since — a withdrawal event recorded before
+// @cutoff_at with a value not yet replaced. An event is judged by its own
+// instant: one recorded since keeps its values until its own time has run.
 func (q *Queries) DuePeopleWithdrawal(ctx context.Context, arg DuePeopleWithdrawalParams) ([]int64, error) {
 	rows, err := q.db.Query(ctx, duePeopleWithdrawal,
 		arg.PersonID,
@@ -809,7 +884,7 @@ func (q *Queries) PersonDocumentsOfClass(ctx context.Context, arg PersonDocument
 }
 
 const personEventsOfClass = `-- name: PersonEventsOfClass :many
-SELECT id, payload, payload_classes
+SELECT id, at, payload, payload_classes
 FROM staff.events
 WHERE person_id = $1 AND $2::text = ANY(payload_classes)
 ORDER BY id
@@ -822,6 +897,7 @@ type PersonEventsOfClassParams struct {
 
 type PersonEventsOfClassRow struct {
 	ID             int64
+	At             time.Time
 	Payload        []byte
 	PayloadClasses []string
 }
@@ -838,7 +914,12 @@ func (q *Queries) PersonEventsOfClass(ctx context.Context, arg PersonEventsOfCla
 	var items []PersonEventsOfClassRow
 	for rows.Next() {
 		var i PersonEventsOfClassRow
-		if err := rows.Scan(&i.ID, &i.Payload, &i.PayloadClasses); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.Payload,
+			&i.PayloadClasses,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

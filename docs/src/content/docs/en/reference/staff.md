@@ -1996,41 +1996,51 @@ request, a refusal and a cancel count nothing.
 
 | Column | On | Source |
 | --- | --- | --- |
-| `Leave ID` | a leave row | The leave's id: its first row's id, the a-melding `permisjonId`, the same every month the leave is reported. |
+| `Leave ID` | a leave row | The leave's id: the lowest id among its rows, the a-melding `permisjonId` — it stays as rows are added to the chain, so it is the same every month the leave is reported. |
 | `Leave start`, `Leave end` | a leave row | The leave's whole first and last day — before or after the month, a last day ahead when it is known. |
 | `Leave description` | a leave row | The type's [a-melding description](#the-a-meldings-leave-descriptions). |
 | `Leave percent` | a leave row | The leave's percent, always filled (> 0 and ≤ 100; 100 for a type without one). |
 | `Holiday days` | the employment's row | Working days of ferie, by percent. |
 | `Self-certified sick days` | the employment's row | Working days of egenmelding. |
 | `Certified sick days` | the employment's row | Working days of sykmelding, by degree. |
-| `Child sick days` | the employment's row | Working days of a child's sickness (care days). |
-| `Child sick days beyond employer` | the employment's row | Of those, the ones beyond the employer's ten of the year — the year's care days numbered from 1 January, a day before the right's four weeks numbering none (ftrl. § 9-8): what NAV refunds. |
+| `Child sick days` | the employment's row | Working days of a child's sickness (care days), by percent. |
+| `Child sick days beyond employer` | the main employment's row | Of the year's care days, summed from 1 January by percent — a day before the right's four weeks counting none (ftrl. § 9-8) — the part of this month's beyond the employer's ten: what NAV refunds. The person's, so on one row: the main employment, the highest full-time percentage in force, ties to the lowest employment number. |
 | `Leave days` | the employment's row | Working days of leave, by percent. |
 | `Time off hours` | the employment's row | The hours of time off (avspasering). |
 | `Other days` | the employment's row | Working days of the other day types, by percent. |
 
 A total counts the working days — Monday to Friday, not a public holiday — of the
 employment within the month, each by the row's share; it is blank when nothing was
-counted. A sick day **beside a percentage leave** counts degree × (100 − the leave's
-percent) / 100 (Revision 3 M1). **Approved ferie and a 100 % sykmelding on the same
-day count once, as sick**: the day is not a holiday day, until HR records the
-employee's [demand to postpone](#a-sykmelding-over-other-rows) and the ferie is split.
-An hour row of another kind than time off counts in no total. A person with two
-employments in force has their absence on each, since it is from both.
+counted. A sick day **beside leave** counts degree × (100 − the leaves' percent) / 100,
+the leaves summed and capped at a whole day, so sickness on a day of 100 % leave counts
+nothing (Revision 3 M1). **A ferie day is a holiday day and counts no sickness** — no
+sykepenger are paid on a holiday day, and an egenmelding cannot interrupt one — so a
+graded sykmelding or an egenmelding over ferie counts as holiday alone; **a 100 %
+sykmelding over approved ferie counts the day once, as sick**, and not as holiday,
+until HR records the employee's [demand to postpone](#a-sykmelding-over-other-rows)
+and the ferie is split (Revision 3 H1). An hour row of another kind than time off
+counts in no total. **Concurrent employments**: a person with two employments in force
+has the day totals on each — the absence is from both — and the days beyond the
+employer's ten on the main one alone. An absence names no employment (a later
+delivery's), so the file cannot tell which employment a leave is from: **its leave
+rows repeat on every employment in force**, and payroll must check them by hand for
+such a person.
 
 **The leave rows.** After an employment's row comes one row per **leave** the
 a-melding reports that touches the employment's days in the month, ordered by start: it
 repeats the employee number, the name and the employment number and fills the leave's
 five cells alone. A leave is a chain of approved or registered rows of one `leave`-kind
-type with a description and one percent, each starting no later than the day after the
-one before ended — so a leave extended by a second row is one leave under its first
-row's id. Skatteetaten's rules decide which are reported
+type with a description and one percent, each starting no later than the next working
+day after the one before ended — a weekend or a public holiday between two rows does
+not end it — so a leave extended by a second row is one leave, under the lowest id of
+its rows. Skatteetaten's rules decide which are reported
 ([Permisjon](https://www.skatteetaten.no/bedrift-og-organisasjon/arbeidsgiver/a-meldingen/veiledning/arbeidsforholdet/opplysninger-om-arbeidsforholdet/permisjon/),
 [Permittering](https://www.skatteetaten.no/bedrift-og-organisasjon/arbeidsgiver/a-meldingen/veiledning/arbeidsforholdet/opplysninger-om-arbeidsforholdet/permittering/)):
 
 - a leave **longer than fourteen days**, whole or partial;
 - a leave of fourteen days or fewer **when the person's leaves within the twelve months
-  to the month's end together pass fourteen days**;
+  to the month's end together pass fourteen days** — each calendar day counted once,
+  however many leaves lie on it;
 - **permittering**, whatever its length;
 - **never a child's sickness**: omsorgsdager are not leave, and no child-sick type
   carries a description; nor svangerskapspenger, which no type models.
@@ -2045,6 +2055,10 @@ spelt the same in every NAV source that maps them (`fp-abakus`, `k9-abakus`,
 `fp-oversikt`, `medlemskap-oppslag`). Skatteetaten's kodeliste file itself could not be
 reached. **Before the export is wired to a payroll system**, compare the seven against
 the kodeliste that system validates with.
+
+The file reads every approved or registered absence of the installation, so a leave's
+whole days are known however long ago it began; bounding that read to the leaves that
+can reach the month is a later improvement, not a correctness matter.
 
 **The order of work.** The parameters and the actor are judged first; everything the
 file is built from — the people's numbers and names, the employments, their terms, the
@@ -2134,8 +2148,10 @@ time zone's civil day:
   category filed under no case still on file, or a value of class E not yet replaced in
   an event no other schedule owns. The other schedules own the events of a row in a
   case or of a child-sick row, of a ferie split for a sykmelding in a case (the event
-  names it, `sickAbsenceId`), of a case that exists, and of the withdrawal; what none
-  owns — the events of a row deleted, of a case merged away — stays here.
+  names it, `sickAbsenceId`), of a case that exists or of a row in one (an absence
+  event names its row's case, `rowCaseId`, so a row deleted from a case stays the
+  case's), and of the withdrawal; what none
+  owns stays here too.
 - **cases** — a sick-leave case, of a person not held, **whatever their employment**,
   closed — by HR, or sixteen days after its last day, whichever came first — before
   today minus `healthRetentionDays` (spec open question 1: 365 days, built as
@@ -2146,7 +2162,13 @@ time zone's civil day:
   today minus `healthRetentionDays` (plan reading 21).
 - **withdrawal** — a person, not held, whose [withdrawal](#the-withdrawal) of
   egenmelding lapsed before today minus `healthRetentionDays`, or — none in force —
-  whose withdrawal events still hold a value, the latest recorded before then.
+  with a withdrawal event recorded before then that still holds a value.
+- **orphaned sick events** — reported as `cases` — a person, not held, whatever their
+  employment, with an absence or case event that nothing owns any more (its row, its
+  case and the sykmelding it names all gone: a case removed with its only row, a case
+  merged away before the merge was recorded), recorded more than `healthRetentionDays`
+  and sixteen days ago — the latest its case could have closed — that still holds a
+  health value.
 - **A** — per **employment**: ended in a year more than five years before this one
   (ended in 2020, due from 1 January 2026; ended in 2021, not before 2027), of a person
   not held, erased or not, with something of class A still there — a pay column set on
@@ -2176,8 +2198,11 @@ since the cycle chose the person is seen there:
   in by a merge, its rows', and those of a ferie split for one of its rows.
 - **childSick** writes `absent` in place of the due rows' type and replaces the health
   fields of their events.
-- **withdrawal** nulls `self_cert_withdrawn_from`, `_until` and `_reason` and replaces
-  the values of the withdrawal's events.
+- **withdrawal** nulls `self_cert_withdrawn_from`, `_until` and `_reason` when the
+  withdrawal on file lapsed before the cutoff, and replaces the values of the
+  withdrawal's events recorded before it — each event by its own instant, so one
+  recorded since waits for its own time.
+- **orphaned sick events** have their health fields replaced, as a case's would be.
 - **A**, for each due employment, nulls its pay columns on every terms row, deletes its
   documents of class A, and replaces the values of class A in its events and every
   value of the deleted documents' events. The erase of the person's **last**
@@ -2378,7 +2403,7 @@ worked).
 | `peopleWithoutEmployment` | People not erased with no employment at all. |
 | `onLeaveToday` | People with an employment in force today and an approved or registered absence of whole days covering today, of **any** kind — a figure without the sick ones would, beside the calendar's bars a colleague reads as "absent", tell them who is sick. A request counts nothing, so no HR-only request is counted. |
 | `openSickCases` | Sick-leave cases not closed by HR whose last day is at most sixteen days ago. Sick figure. |
-| `sickAbsenceRate` | The sick-leave rate over the twelve months ending today, in percent to two decimals (reading 7): over every working day of every employment in force, the day's sick share — egenmelding whole, sykmelding by its degree, beside a percentage leave degree × (100 − the leave's percent) / 100, a ferie day under a 100 % sykmelding sick — times the `ftePercent` in force, divided by those working days times the same percentage. Child sickness is not the employee's and counts nothing. Sick figure. |
+| `sickAbsenceRate` | The sick-leave rate over the twelve months ending today, in percent to two decimals (reading 7), as SSB and NAV count it: the working days lost — over every working day of every employment in force, the day's sick share, counted as in [the payroll file](#the-payroll-export) (by degree, beside leave the part left, a ferie day sick only under a 100 % sykmelding), times the `ftePercent` in force — over the working days agreed: the same days by the same percentage, less the share of each that was holiday or leave. Child sickness is not the employee's and counts nothing. Sick figure. |
 
 ### Attention items
 

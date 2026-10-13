@@ -374,8 +374,12 @@ type retentionPlan struct {
 	// HR is dated in, the instant healthRetentionDays before now, the
 	// reserved absent type, and the class E columns of a case and of its
 	// milestones.
-	zone             string
-	healthCutoffAt   time.Time
+	zone           string
+	healthCutoffAt time.Time
+	// orphanCutoffAt is sixteen days before healthCutoffAt: an event no
+	// case owns any more is due by it, as its case — which closed sixteen
+	// days after its last row at the latest — would have been.
+	orphanCutoffAt   time.Time
 	absentID         int64
 	caseColumns      []string
 	milestoneColumns []string
@@ -401,6 +405,7 @@ func (s *server) planRetention(ctx context.Context, q *store.Queries) (retention
 		aFields:          fieldsOfClass("A"),
 		zone:             zoneOf(row).String(),
 		healthCutoffAt:   now.AddDate(0, 0, -int(row.HealthRetentionDays)),
+		orphanCutoffAt:   now.AddDate(0, 0, -int(row.HealthRetentionDays)-caseJoinDays),
 		absentID:         absentID,
 		caseColumns:      columnsOf("sick_cases", healthClass),
 		milestoneColumns: columnsOf("sick_case_milestones", healthClass),
@@ -419,6 +424,12 @@ func (p retentionPlan) dueCases(person *int64, limit int32) store.DueCasesEParam
 	return store.DueCasesEParams{
 		PersonID: person, Zone: p.zone, Cutoff: dayParam(p.healthCutoff), CaseColumns: p.caseColumns,
 		MilestoneColumns: p.milestoneColumns, AbsentID: p.absentID, Blanked: changed, RowLimit: limit,
+	}
+}
+
+func (p retentionPlan) dueOrphans(person *int64, limit int32) store.DuePeopleOrphanedSickEventsParams {
+	return store.DuePeopleOrphanedSickEventsParams{
+		PersonID: person, CutoffAt: p.orphanCutoffAt, Blanked: changed, AbsentID: p.absentID, RowLimit: limit,
 	}
 }
 
@@ -482,7 +493,11 @@ func (s *server) eraseCycle(ctx context.Context, conn *pgxpool.Conn, who actor) 
 	for _, row := range cases {
 		people = append(people, row.PersonID)
 	}
-	people = slices.Concat(people, childSick, withdrawal)
+	orphans, err := q.DuePeopleOrphanedSickEvents(ctx, plan.dueOrphans(nil, retentionBatch))
+	if err != nil {
+		return nil, fmt.Errorf("staff: select the people with orphaned sick events due: %w", err)
+	}
+	people = slices.Concat(people, childSick, withdrawal, orphans)
 	var due []int64
 	for _, id := range people {
 		if !slices.Contains(due, id) && len(due) < retentionBatch {
@@ -666,9 +681,12 @@ func (s *server) eraseHealth(ctx context.Context, txq *store.Queries, personID i
 // ownedHealthEvents is whether an event's health content is on one of
 // delivery B's own schedules (Task 6) rather than the person's: an event of
 // a row in a case or of a child-sick row, of a ferie split for a sykmelding
-// in a case (sickAbsenceId), of a case that exists, or of the withdrawal.
-// DuePeopleHealth's predicate, the same rule in SQL. What none owns — the
-// events of a row deleted, of a case merged away — stays the person's.
+// in a case (sickAbsenceId), of a case that exists or of a row in one
+// (rowCaseId, so a row deleted from a case stays the case's), or of the
+// withdrawal. DuePeopleHealth's predicate, the same rule in SQL. What none
+// owns — an orphan: the events of a case removed with its rows, of a case
+// merged away — is the person's, and erased by its own instant besides
+// (eraseOrphans).
 func ownedHealthEvents(ctx context.Context, txq *store.Queries, personID int64) (func(eventIDs) bool, error) {
 	rows, err := txq.PersonAbsences(ctx, personID)
 	if err != nil {
@@ -701,6 +719,8 @@ func ownedHealthEvents(ctx context.Context, txq *store.Queries, personID int64) 
 			return true
 		case ids.CaseID != nil && existing[*ids.CaseID]:
 			return true
+		case ids.RowCaseID != nil && existing[*ids.RowCaseID]:
+			return true
 		}
 		return false
 	}, nil
@@ -719,6 +739,23 @@ func (s *server) eraseAbsenceHealth(ctx context.Context, tx pgx.Tx, txq *store.Q
 	var count int64
 	for _, c := range cases {
 		n, err := s.eraseCase(ctx, tx, txq, personID, c.ID, plan, now)
+		if err != nil {
+			return nil, err
+		}
+		count += n
+	}
+	orphans, err := txq.DuePeopleOrphanedSickEvents(ctx, plan.dueOrphans(&personID, 1))
+	if err != nil {
+		return nil, fmt.Errorf("staff: judge person %d's orphaned sick events: %w", personID, err)
+	}
+	if len(orphans) == 1 {
+		owned, err := ownedHealthEvents(ctx, txq, personID)
+		if err != nil {
+			return nil, err
+		}
+		n, err := s.blankEvents(ctx, txq, personID, healthClass, func(ids eventIDs) bool {
+			return ids.sickFamily() && !owned(ids) && ids.At.Before(plan.orphanCutoffAt)
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -745,11 +782,21 @@ func (s *server) eraseAbsenceHealth(ctx context.Context, tx pgx.Tx, txq *store.Q
 		return nil, fmt.Errorf("staff: judge person %d's withdrawal: %w", personID, err)
 	}
 	if len(withdrawal) == 1 {
-		n, err := eraseColumns(ctx, tx, "people", healthClass, "id = $1", personID, now)
+		// The columns when the withdrawal on file lapsed before the cutoff;
+		// each event by its own instant.
+		w, err := txq.PersonSelfCertWithdrawal(ctx, personID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("staff: read person %d's withdrawal: %w", personID, err)
 		}
-		e, err := s.blankEvents(ctx, txq, personID, healthClass, func(ids eventIDs) bool { return ids.Withdrawal })
+		var n int64
+		if w.SelfCertWithdrawnUntil.Valid && w.SelfCertWithdrawnUntil.Time.Before(plan.healthCutoff) {
+			if n, err = eraseColumns(ctx, tx, "people", healthClass, "id = $1", personID, now); err != nil {
+				return nil, err
+			}
+		}
+		e, err := s.blankEvents(ctx, txq, personID, healthClass, func(ids eventIDs) bool {
+			return ids.Withdrawal && ids.At.Before(plan.healthCutoffAt)
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -815,6 +862,7 @@ func (s *server) eraseCase(ctx context.Context, tx pgx.Tx, txq *store.Queries, p
 	}
 	e, err := s.blankEvents(ctx, txq, personID, healthClass, func(ids eventIDs) bool {
 		return (ids.CaseID != nil && slices.Contains(ownCases, *ids.CaseID)) ||
+			(ids.RowCaseID != nil && slices.Contains(ownCases, *ids.RowCaseID)) ||
 			(ids.AbsenceID != nil && slices.Contains(rows, *ids.AbsenceID)) ||
 			(ids.SickAbsenceID != nil && slices.Contains(rows, *ids.SickAbsenceID))
 	})
@@ -938,8 +986,18 @@ type eventIDs struct {
 	DocumentID    *int64 `json:"documentId"`
 	AbsenceID     *int64 `json:"absenceId"`
 	CaseID        *int64 `json:"caseId"`
+	RowCaseID     *int64 `json:"rowCaseId"`
 	SickAbsenceID *int64 `json:"sickAbsenceId"`
 	Withdrawal    bool   `json:"selfCertWithdrawal"`
+	// At is when the event was recorded, from its row rather than its
+	// payload: the withdrawal's and the orphaned events' erases judge by it.
+	At time.Time `json:"-"`
+}
+
+// sickFamily is whether an event is about an absence or a case: an orphan
+// of one is erased by its own instant.
+func (e eventIDs) sickFamily() bool {
+	return !e.Withdrawal && (e.AbsenceID != nil || e.CaseID != nil || e.RowCaseID != nil || e.SickAbsenceID != nil)
 }
 
 // blankEvents replaces class's values in the person's events whose
@@ -959,7 +1017,11 @@ func (s *server) blankEvents(ctx context.Context, txq *store.Queries, personID i
 	var count int64
 	for _, row := range rows {
 		var ids eventIDs
-		if err := json.Unmarshal(row.Payload, &ids); err != nil || !include(ids) {
+		if err := json.Unmarshal(row.Payload, &ids); err != nil {
+			continue
+		}
+		ids.At = row.At
+		if !include(ids) {
 			continue
 		}
 		payload, rewritten, err := blankPayload(row.Payload, class, absentID)

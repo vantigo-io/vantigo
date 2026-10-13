@@ -59,6 +59,8 @@ WHERE NOT p.legal_hold
                     WHERE a.id = (ev.payload ->> 'sickAbsenceId')::bigint AND a.case_id IS NOT NULL))
                 OR (ev.payload ? 'caseId' AND EXISTS (
                     SELECT 1 FROM staff.sick_cases c WHERE c.id = (ev.payload ->> 'caseId')::bigint))
+                OR (ev.payload ? 'rowCaseId' AND EXISTS (
+                    SELECT 1 FROM staff.sick_cases c WHERE c.id = (ev.payload ->> 'rowCaseId')::bigint))
                 OR ev.payload ? 'selfCertWithdrawal')
             AND (
                 EXISTS (
@@ -103,6 +105,7 @@ WHERE NOT p.legal_hold
           SELECT 1 FROM staff.events ev
           WHERE ev.person_id = c.person_id AND 'E' = ANY(ev.payload_classes)
             AND ((ev.payload ->> 'caseId')::bigint = c.id
+                 OR (ev.payload ->> 'rowCaseId')::bigint = c.id
                  OR (ev.payload ->> 'absenceId')::bigint IN (SELECT a.id FROM staff.absences a WHERE a.case_id = c.id)
                  OR (ev.payload ->> 'sickAbsenceId')::bigint IN (SELECT a.id FROM staff.absences a WHERE a.case_id = c.id))
             AND (
@@ -171,9 +174,10 @@ WHERE id = ANY(@ids::bigint[]);
 
 -- name: DuePeopleWithdrawal :many
 -- DuePeopleWithdrawal is the people whose withdrawal of egenmelding is due
--- (delivery B Task 6): not held, and either a withdrawal on file that lapsed
--- before @cutoff, or — none in force since — withdrawal events with a value
--- not yet replaced whose latest was recorded before @cutoff_at.
+-- (delivery B Task 6), not held: a withdrawal on file that lapsed before
+-- @cutoff, or — none in force since — a withdrawal event recorded before
+-- @cutoff_at with a value not yet replaced. An event is judged by its own
+-- instant: one recorded since keeps its values until its own time has run.
 SELECT p.id
 FROM staff.people p
 WHERE NOT p.legal_hold
@@ -181,13 +185,49 @@ WHERE NOT p.legal_hold
   AND (
       p.self_cert_withdrawn_until < @cutoff::date
       OR ((p.self_cert_withdrawn_until IS NULL OR p.self_cert_withdrawn_until < @cutoff::date)
-          AND (SELECT max(ev.at) FROM staff.events ev
-               WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal') < @cutoff_at::timestamptz
           AND EXISTS (
               SELECT 1 FROM staff.events ev, jsonb_each(ev.payload -> 'fields') f
-              WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal'
+              WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal' AND ev.at < @cutoff_at::timestamptz
                 AND f.value <> to_jsonb(@blanked::text))))
 ORDER BY p.id
+LIMIT @row_limit;
+
+-- name: DuePeopleOrphanedSickEvents :many
+-- DuePeopleOrphanedSickEvents is the people, not held, whatever their
+-- employment, with an absence or case event (a key absenceId, caseId,
+-- rowCaseId or sickAbsenceId) that nothing owns any more — its row, its case
+-- and the sykmelding it names gone — recorded before @cutoff_at (sixteen days
+-- and healthRetentionDays ago: the latest its case could have closed), with
+-- a health value not yet replaced (Task 6 review).
+SELECT DISTINCT ev.person_id::bigint AS person_id
+FROM staff.events ev
+JOIN staff.people p ON p.id = ev.person_id
+WHERE NOT p.legal_hold
+  AND (sqlc.narg(person_id)::bigint IS NULL OR ev.person_id = sqlc.narg(person_id)::bigint)
+  AND 'E' = ANY(ev.payload_classes) AND ev.at < @cutoff_at::timestamptz
+  AND (ev.payload ? 'absenceId' OR ev.payload ? 'caseId' OR ev.payload ? 'rowCaseId' OR ev.payload ? 'sickAbsenceId')
+  AND NOT ev.payload ? 'selfCertWithdrawal'
+  AND NOT (
+      (ev.payload ? 'absenceId' AND EXISTS (
+          SELECT 1 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+          WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND (a.case_id IS NOT NULL OR t.kind = 'child_sick')))
+      OR (ev.payload ? 'sickAbsenceId' AND EXISTS (
+          SELECT 1 FROM staff.absences a
+          WHERE a.id = (ev.payload ->> 'sickAbsenceId')::bigint AND a.case_id IS NOT NULL))
+      OR (ev.payload ? 'caseId' AND EXISTS (
+          SELECT 1 FROM staff.sick_cases c WHERE c.id = (ev.payload ->> 'caseId')::bigint))
+      OR (ev.payload ? 'rowCaseId' AND EXISTS (
+          SELECT 1 FROM staff.sick_cases c WHERE c.id = (ev.payload ->> 'rowCaseId')::bigint)))
+  AND (
+      EXISTS (
+          SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
+          WHERE f.value <> to_jsonb(@blanked::text)
+            AND coalesce(ev.payload -> 'classes' ->> f.key, 'E') = 'E')
+      OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
+          WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
+            AND ti.id::bigint <> @absent_id::bigint))
+ORDER BY person_id
 LIMIT @row_limit;
 
 -- name: DueEmploymentsA :many
@@ -291,7 +331,7 @@ ORDER BY document_id;
 -- PersonEventsOfClass is a person's events whose payload touches one
 -- retention class (payload_classes, written for the erase alone), oldest
 -- first, for the erase to replace that class's values in.
-SELECT id, payload, payload_classes
+SELECT id, at, payload, payload_classes
 FROM staff.events
 WHERE person_id = @person_id AND @class::text = ANY(payload_classes)
 ORDER BY id;
