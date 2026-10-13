@@ -43,6 +43,17 @@ SET next_poll_at = sqlc.narg(next_poll_at)::timestamptz, last_error = sqlc.narg(
     lease_id = NULL, lease_until = NULL
 WHERE id = @id AND lease_id = @lease_id::text;
 
+-- name: RegistrationFailedAttempt :execrows
+-- RegistrationFailedAttempt ends a claim whose registration of money Vipps
+-- shows captured failed: the state and the reservation kept, why in
+-- @last_error, registration_failed_at set — attention's flag, which a later
+-- failing call's last_error does not clear — one more failure in a row, read
+-- again at @next_poll_at.
+UPDATE invoices.payment_attempts
+SET next_poll_at = @next_poll_at::timestamptz, last_error = sqlc.narg(last_error),
+    registration_failed_at = @now::timestamptz, failures = failures + 1, lease_id = NULL, lease_until = NULL
+WHERE id = @id AND lease_id = @lease_id::text;
+
 -- name: CountCaptureAttempt :execrows
 -- CountCaptureAttempt counts the Capture about to be sent, in the commit
 -- before it, the capture key the call will carry already stored: the trigger
@@ -133,7 +144,8 @@ UPDATE invoices.payment_attempts
 SET state = 'captured', captured_amount = @captured_amount, captured_at = @now::timestamptz,
     reserved_amount = NULL, release_pending = @release_pending,
     refund_watch_until = @refund_watch_until::timestamptz, finished_at = @now::timestamptz,
-    next_poll_at = @next_poll_at::timestamptz, last_error = NULL, failures = 0, lease_id = NULL, lease_until = NULL
+    next_poll_at = @next_poll_at::timestamptz, last_error = NULL, registration_failed_at = NULL,
+    failures = 0, lease_id = NULL, lease_until = NULL
 WHERE id = @id AND lease_id = @lease_id::text AND state IN ('capturing', 'capture_unknown', 'capture_failed', 'cancelling');
 
 -- name: FailAttemptCapture :execrows

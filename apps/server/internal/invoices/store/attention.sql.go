@@ -72,18 +72,13 @@ LEFT JOIN LATERAL (
     FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
 ) pd ON true
 WHERE a.state = 'capture_failed' AND a.finished_at >= $1::timestamptz
-  AND NOT starts_with(coalesce(a.last_error, ''), $2::text)
+  AND a.registration_failed_at IS NULL
   AND i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0) > 0
   AND NOT EXISTS (
       SELECT 1 FROM invoices.payment_attempts b
       WHERE b.invoice_id = a.invoice_id AND b.id <> a.id AND b.state = 'captured' AND b.captured_at >= a.finished_at)
 ORDER BY a.id
 `
-
-type AttentionCaptureFailedParams struct {
-	Since              time.Time
-	RegistrationFailed string
-}
 
 type AttentionCaptureFailedRow struct {
 	ID         int64
@@ -97,8 +92,8 @@ type AttentionCaptureFailedRow struct {
 // whose invoice is still open — gross less the issued credit notes and the
 // live payments above zero — and of which no later attempt captured; one
 // whose registration failed is paymentCaptureUnknown's instead.
-func (q *Queries) AttentionCaptureFailed(ctx context.Context, arg AttentionCaptureFailedParams) ([]AttentionCaptureFailedRow, error) {
-	rows, err := q.db.Query(ctx, attentionCaptureFailed, arg.Since, arg.RegistrationFailed)
+func (q *Queries) AttentionCaptureFailed(ctx context.Context, since time.Time) ([]AttentionCaptureFailedRow, error) {
+	rows, err := q.db.Query(ctx, attentionCaptureFailed, since)
 	if err != nil {
 		return nil, err
 	}
@@ -127,8 +122,7 @@ SELECT a.id, a.invoice_id, coalesce(a.authorized_at, a.created_at)::timestamptz 
 FROM invoices.payment_attempts a
 JOIN invoices.invoices i ON i.id = a.invoice_id
 WHERE a.state = 'capture_unknown'
-   OR (a.state IN ('capturing', 'capture_failed', 'cancelling')
-       AND starts_with(coalesce(a.last_error, ''), $1::text))
+   OR (a.state IN ('capturing', 'capture_failed', 'cancelling') AND a.registration_failed_at IS NOT NULL)
 ORDER BY a.id
 `
 
@@ -141,11 +135,10 @@ type AttentionCaptureUnknownRow struct {
 
 // AttentionCaptureUnknown is paymentCaptureUnknown's attempts (D12, D16):
 // every capture whose outcome is unknown, and every attempt whose money
-// Vipps shows captured but whose registration failed — its last_error
-// starting with @registration_failed, the worker's own words — with the
-// invoice's buyer name.
-func (q *Queries) AttentionCaptureUnknown(ctx context.Context, registrationFailed string) ([]AttentionCaptureUnknownRow, error) {
-	rows, err := q.db.Query(ctx, attentionCaptureUnknown, registrationFailed)
+// Vipps shows captured but whose registration failed (registration_failed_at,
+// cleared only by the registration) — with the invoice's buyer name.
+func (q *Queries) AttentionCaptureUnknown(ctx context.Context) ([]AttentionCaptureUnknownRow, error) {
+	rows, err := q.db.Query(ctx, attentionCaptureUnknown)
 	if err != nil {
 		return nil, err
 	}

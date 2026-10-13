@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/bankfile/bankfiletest"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/payments/vipps/vippstest"
 )
 
 // The races of a Vipps capture (invoices payments and reminders design D16,
@@ -419,4 +421,57 @@ func TestVippsAbandon_RacesCapture(t *testing.T) {
 			t.Errorf("Postgres broke %d deadlock(s)", after-before)
 		}
 	})
+}
+
+// TestVippsAbandon_LeaseRunsOut (review): an abandon whose read of Vipps
+// is answered after its lease ran out — the worker meanwhile claimed the
+// attempt, counted and sent its capture and registered it — finds the
+// attempt moved and is refused; the capture is registered once.
+func TestVippsAbandon_LeaseRunsOut(t *testing.T) {
+	h := workerReady(t, modtest.WithPoolMaxConns(2))
+	inv, ref := unknownAttempt(t, h)
+	id := attemptOf(t, h, ref).ID
+	h.Advance(time.Hour)
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+	// The abandon's read: Vipps shows the payment ended, nothing captured —
+	// an answer that is stale by the time it is acted on.
+	h.vipps.Fail(vippstest.OpGet, vippstest.Failure{Times: 1, Body: []byte(`{"reference":"` + ref +
+		`","pspReference":"x","state":"TERMINATED","amount":{"currency":"NOK","value":250000},"aggregate":{` +
+		`"authorizedAmount":{"currency":"NOK","value":250000},"capturedAmount":{"currency":"NOK","value":0},` +
+		`"cancelledAmount":{"currency":"NOK","value":0},"refundedAmount":{"currency":"NOK","value":0}},` +
+		`"paymentMethod":{"type":"WALLET"}}`)})
+	read, release := make(chan struct{}), make(chan struct{})
+	var once, freed sync.Once
+	free := func() { freed.Do(func() { close(release) }) }
+	t.Cleanup(free) // a failing test still lets the abandon go
+	defer invoices.SetAbandonAfterRead(func() {
+		once.Do(func() { close(read); <-release })
+	})()
+	abandon := startAbandon(vippsManager(t, h), id)
+	select {
+	case <-read:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the abandon never read Vipps")
+	}
+	h.Advance(3 * time.Minute) // the abandon's lease runs out
+	for range 3 {
+		if _, err := invoices.NewPaymentWorker(h.Deps()).ProcessOne(context.Background()); err != nil {
+			t.Fatalf("a claim: %v", err)
+		}
+	}
+	if a := attemptOf(t, h, ref); a.State != "captured" || a.CaptureAttempts == 0 {
+		t.Fatalf("the worker's claim = %s, %d captures; want captured", a.State, a.CaptureAttempts)
+	}
+	free()
+	refusedAs(t, "the abandon", finished(t, "the abandon", abandon, http.StatusConflict), "attempt_not_abandonable")
+	if a := attemptOf(t, h, ref); a.State != "captured" || text(a.Captured) != "2500.00" {
+		t.Errorf("the attempt = %s captured %s, want captured 2500.00, intact", a.State, text(a.Captured))
+	}
+	if got := vippsPaymentsOf(t, h, inv.ID); len(got) != 1 {
+		t.Errorf("the Vipps payments = %v, want one", got)
+	}
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("Postgres broke %d deadlock(s)", after-before)
+	}
 }

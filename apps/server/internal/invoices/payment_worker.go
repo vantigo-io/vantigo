@@ -122,11 +122,6 @@ const (
 	maxPaymentBackoff = 10 * time.Minute
 )
 
-// registrationFailed starts the last_error of an attempt whose captured
-// money could not be registered; attention's paymentCaptureUnknown finds it
-// by these words.
-const registrationFailed = "The capture could not be registered: "
-
 // paymentWorkerLease is the lease a claim takes. A test shortens it
 // (export_test.go).
 var paymentWorkerLease = paymentWorkerDefaultLease
@@ -743,11 +738,24 @@ func (c *paymentClaim) register(ctx context.Context, capturedMinor int64) error 
 		// state and reservation, says why, and is tried again.
 		c.w.logger().ErrorContext(ctx, "invoices: a Vipps capture could not be registered; it is tried again",
 			"worker", paymentWorkerName, "attempt_id", c.row.ID, "error", err.Error())
-		if rerr := c.retry(ctx, registrationFailed+err.Error(), 0); rerr != nil && !errors.Is(rerr, errClaimLost) {
+		if rerr := c.registrationFailed(ctx, "The capture could not be registered: "+err.Error()); rerr != nil && !errors.Is(rerr, errClaimLost) {
 			return errors.Join(err, rerr)
 		}
 	}
 	return err
+}
+
+// registrationFailed ends a claim whose registration failed: the state and
+// the reservation kept, why recorded, registration_failed_at set for
+// attention, and the registration tried again on the backoff.
+func (c *paymentClaim) registrationFailed(ctx context.Context, reason string) error {
+	return c.attemptTx(ctx, false, nil, nil, func(ctx context.Context, txq *store.Queries, _ store.InvoicesPaymentAttempt, _ store.InvoicesInvoice) error {
+		n, err := txq.RegistrationFailedAttempt(ctx, store.RegistrationFailedAttemptParams{
+			NextPollAt: c.now.Add(paymentBackoff(c.row.Failures + 1)), LastError: lastError(reason), Now: c.now,
+			ID: c.row.ID, LeaseID: c.lease,
+		})
+		return one(n, err, "record the failed registration of", c.row.ID)
+	})
 }
 
 // release releases what Vipps authorized and did not capture — a
@@ -839,6 +847,8 @@ func (c *paymentClaim) watch(ctx context.Context) error {
 	p, err := c.provider.Get(ctx, c.row.Reference)
 	if err != nil {
 		if over {
+			c.w.logger().WarnContext(ctx, "invoices: the refund watch ends on a read Vipps failed; a refund made since is not seen",
+				"worker", paymentWorkerName, "attempt_id", c.row.ID, "error", err.Error())
 			return c.rescheduleAs(ctx, time.Time{}, err.Error(), true, 0)
 		}
 		return c.retry(ctx, err.Error(), 0)

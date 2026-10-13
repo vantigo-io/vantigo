@@ -285,7 +285,9 @@ first. Money Vipps shows captured is registered as a payment of the invoice and 
 abandon refused; a payment Vipps still holds capturable is refused until it is released
 in the portal; a payment request Vipps knows and has not ended is handed back to the
 worker. Only then is the attempt abandoned: its reserved amount released, who, when and
-why recorded. A capture discovered later is registered by hand. The rules are in [the
+why recorded. When Vipps answers too slowly, or another manager handed the payment back
+meanwhile, the worker may have taken it over: the abandon is refused — read the payment
+again. A capture discovered later is registered by hand. The rules are in [the
 reference](/en/reference/invoices/#abandon).
 
 **Verify:** a test payment of a small invoice, approved in the Vipps app (or the test
