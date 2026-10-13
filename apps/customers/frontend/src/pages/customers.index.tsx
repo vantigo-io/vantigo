@@ -27,7 +27,7 @@ import {
   IconUpload,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   ContentSkeleton,
   EmptyState,
@@ -54,7 +54,6 @@ import { TagBadge } from "../components/tag-badge";
 import "../i18n";
 import { isReadOnlyCustomer } from "../lib/customer-read-only";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
-import { CustomerImportModal } from "./-customer-import-modal";
 import { ManageGroupsModal } from "./-manage-groups-modal";
 import { ManageTagsModal } from "./-manage-tags-modal";
 
@@ -127,7 +126,7 @@ export const CustomersPage = ({
   canEdit?: boolean;
   /** `customers:view`: download the list, as filtered and sorted, as the customers file. */
   canExport?: boolean;
-  /** `customers:create`, `customers:update` and `customers:view` — the import operation's own rule. */
+  /** `customers:import` and `customers:view` — the import's own rule (customers import wizard design D4); puts Import in the header, a link to the import page. */
   canImport?: boolean;
   /** customers:merge — the create and edit forms' duplicate-identity conflict suggests a merge (merge design D4). */
   canMerge?: boolean;
@@ -216,7 +215,6 @@ export const CustomersPage = ({
     if (create) navigate({ search: listSearch, replace: true });
   };
 
-  const [importOpened, setImportOpened] = useState(false);
   const [exporting, setExporting] = useState(false);
   // The list as it stands — its filters and sort from the URL, never its page —
   // saved as the customers file. A refusal (the 5000-row cap) is the server's
@@ -270,7 +268,7 @@ export const CustomersPage = ({
               </Button>
             )}
             {canImport && (
-              <Button variant="default" leftSection={<IconUpload size={16} />} onClick={() => setImportOpened(true)}>
+              <Button component={Link} to="/customers/import" variant="default" leftSection={<IconUpload size={16} />}>
                 {t("importCustomers")}
               </Button>
             )}
@@ -282,7 +280,6 @@ export const CustomersPage = ({
       />
 
       <CustomerFormModal state={modalState} onClose={closeModal} canMerge={canMerge} />
-      <CustomerImportModal opened={importOpened} onClose={() => setImportOpened(false)} />
       <ManageTagsModal
         opened={manageTagsOpened}
         onClose={() => setManageTagsOpened(false)}

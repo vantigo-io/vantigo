@@ -3,6 +3,7 @@ import { notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { setUnauthorizedHandler } from "../api/request";
 import { CustomersPage } from "./customers.index";
@@ -15,6 +16,11 @@ const router = vi.hoisted(() => ({
 vi.mock("@tanstack/react-router", () => ({
   useSearch: () => router.search,
   useNavigate: () => router.navigate,
+  Link: ({ children, to, ...rest }: { children: ReactNode; to: string }) => (
+    <a href={to} {...rest}>
+      {children}
+    </a>
+  ),
 }));
 
 const jsonResponse = (body: unknown) =>
@@ -176,20 +182,20 @@ describe("CustomersPage", () => {
     renderPage();
     await screen.findByText("Equinor");
     expect(screen.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Import" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Import" })).not.toBeInTheDocument();
     cleanup();
 
     // Each on its own: one capability must never switch on the other's button.
     renderPage({ canExport: true });
     await screen.findByText("Equinor");
     expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Import" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Import" })).not.toBeInTheDocument();
     cleanup();
 
+    // Import is a link to the import pages (customers import wizard design D8).
     renderPage({ canImport: true });
-    await userEvent.click(await screen.findByRole("button", { name: "Import" }));
+    expect(await screen.findByRole("link", { name: "Import" })).toHaveAttribute("href", "/customers/import");
     expect(screen.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
-    expect(await screen.findByRole("dialog")).toHaveTextContent("Import customers");
   });
 
   it("keeps the create form closed on an ordinary list URL", async () => {

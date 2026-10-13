@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { downloadCustomersCsv, downloadImportTemplate, importCustomers, isSessionExpired } from "./import-export";
+import { downloadCustomersCsv, downloadImportTemplate, isSessionExpired } from "./import-export";
 import { setAuthStateClearer, setUnauthorizedHandler } from "./request";
 
 afterEach(() => {
@@ -102,57 +102,5 @@ describe("downloadImportTemplate", () => {
     // A stray % is a URIError to decodeURIComponent; the download itself is fine.
     vi.stubGlobal("fetch", answer("attachment; filename=\"mal.csv\"; filename*=UTF-8''kunde%E0%A4%A-mal.csv"));
     expect((await downloadImportTemplate()).fileName).toBe("mal.csv");
-  });
-});
-
-describe("importCustomers", () => {
-  it("sends the file as the part named file, with both flags, and fills in an omitted column with null", async () => {
-    // Literally the server's body: a row-level error has no column key at all.
-    const fetchMock = vi.fn(
-      async () =>
-        new Response(
-          JSON.stringify({
-            dryRun: true,
-            rows: 1,
-            created: 0,
-            updated: 0,
-            failed: 1,
-            errors: [{ row: 1, message: "This row has 1 cells, but the header has 2" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const file = new File(["name\r\nA\r\n"], "kunder.csv", { type: "text/csv" });
-
-    const result = await importCustomers(file, { dryRun: true, allowDuplicateIdentity: true });
-
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("/api/v1/customers/import?dryRun=true&allowDuplicateIdentity=true");
-    expect(init.method).toBe("POST");
-    expect(((init.body as FormData).get("file") as File).name).toBe("kunder.csv");
-    expect(new Headers(init.headers).has("Content-Type")).toBe(false);
-    expect(result.errors).toEqual([{ row: 1, column: null, message: "This row has 1 cells, but the header has 2" }]);
-  });
-
-  it("hands the caller's signal to the request, so an abandoned check can be called off", async () => {
-    const fetchMock = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ dryRun: true, rows: 0, created: 0, updated: 0, failed: 0, errors: [] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const controller = new AbortController();
-
-    await importCustomers(new File(["name\r\n"], "kunder.csv"), {
-      dryRun: true,
-      allowDuplicateIdentity: false,
-      signal: controller.signal,
-    });
-
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(init.signal).toBe(controller.signal);
   });
 });

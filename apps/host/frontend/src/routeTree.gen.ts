@@ -79,6 +79,8 @@ import { Route as CustomersCustomerIdInvoicesRouteImport } from './routes/custom
 import { Route as CustomersCustomerIdProjectsRouteImport } from './routes/customers/$customerId.projects'
 import { Route as CustomersContactsIndexRouteImport } from './routes/customers/contacts/index'
 import { Route as CustomersContactsContactIdRouteImport } from './routes/customers/contacts/$contactId'
+import { Route as CustomersImportIndexRouteImport } from './routes/customers/import.index'
+import { Route as CustomersImportImportIdRouteImport } from './routes/customers/import.$importId'
 import { Route as EnergyMeteringPointsIndexRouteImport } from './routes/energy/metering-points/index'
 import { Route as EnergyMeteringPointsMeteringPointIdRouteImport } from './routes/energy/metering-points/$meteringPointId'
 import { Route as ExpensesClaimsClaimIdRouteImport } from './routes/expenses/claims.$claimId'
@@ -453,6 +455,16 @@ const CustomersContactsContactIdRoute =
     path: '/contacts/$contactId',
     getParentRoute: () => CustomersRoute,
   } as any)
+const CustomersImportIndexRoute = CustomersImportIndexRouteImport.update({
+  id: '/import/',
+  path: '/import/',
+  getParentRoute: () => CustomersRoute,
+} as any)
+const CustomersImportImportIdRoute = CustomersImportImportIdRouteImport.update({
+  id: '/import/$importId',
+  path: '/import/$importId',
+  getParentRoute: () => CustomersRoute,
+} as any)
 const EnergyMeteringPointsIndexRoute =
   EnergyMeteringPointsIndexRouteImport.update({
     id: '/metering-points/',
@@ -616,6 +628,7 @@ export interface FileRoutesByFullPath {
   '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
+  '/customers/import/$importId': typeof CustomersImportImportIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
@@ -630,6 +643,7 @@ export interface FileRoutesByFullPath {
   '/staff/people/$id': typeof StaffPeopleIdRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
+  '/customers/import/': typeof CustomersImportIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
@@ -691,6 +705,7 @@ export interface FileRoutesByTo {
   '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
+  '/customers/import/$importId': typeof CustomersImportImportIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
@@ -705,6 +720,7 @@ export interface FileRoutesByTo {
   '/staff/people/$id': typeof StaffPeopleIdRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts': typeof CustomersContactsIndexRoute
+  '/customers/import': typeof CustomersImportIndexRoute
   '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
   '/invoices/payments': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
@@ -781,6 +797,7 @@ export interface FileRoutesById {
   '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
+  '/customers/import/$importId': typeof CustomersImportImportIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
@@ -795,6 +812,7 @@ export interface FileRoutesById {
   '/staff/people/$id': typeof StaffPeopleIdRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
+  '/customers/import/': typeof CustomersImportIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
@@ -872,6 +890,7 @@ export interface FileRouteTypes {
     | '/customers/$customerId/invoices'
     | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
+    | '/customers/import/$importId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
     | '/invoices/reminder-runs/$runId'
@@ -886,6 +905,7 @@ export interface FileRouteTypes {
     | '/staff/people/$id'
     | '/customers/$customerId/'
     | '/customers/contacts/'
+    | '/customers/import/'
     | '/energy/metering-points/'
     | '/invoices/payments/'
     | '/projects/$projectId/'
@@ -947,6 +967,7 @@ export interface FileRouteTypes {
     | '/customers/$customerId/invoices'
     | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
+    | '/customers/import/$importId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
     | '/invoices/reminder-runs/$runId'
@@ -961,6 +982,7 @@ export interface FileRouteTypes {
     | '/staff/people/$id'
     | '/customers/$customerId'
     | '/customers/contacts'
+    | '/customers/import'
     | '/energy/metering-points'
     | '/invoices/payments'
     | '/projects/$projectId'
@@ -1036,6 +1058,7 @@ export interface FileRouteTypes {
     | '/customers/$customerId/invoices'
     | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
+    | '/customers/import/$importId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
     | '/invoices/reminder-runs/$runId'
@@ -1050,6 +1073,7 @@ export interface FileRouteTypes {
     | '/staff/people/$id'
     | '/customers/$customerId/'
     | '/customers/contacts/'
+    | '/customers/import/'
     | '/energy/metering-points/'
     | '/invoices/payments/'
     | '/projects/$projectId/'
@@ -1574,6 +1598,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CustomersContactsContactIdRouteImport
       parentRoute: typeof CustomersRoute
     }
+    '/customers/import/': {
+      id: '/customers/import/'
+      path: '/import'
+      fullPath: '/customers/import/'
+      preLoaderRoute: typeof CustomersImportIndexRouteImport
+      parentRoute: typeof CustomersRoute
+    }
+    '/customers/import/$importId': {
+      id: '/customers/import/$importId'
+      path: '/import/$importId'
+      fullPath: '/customers/import/$importId'
+      preLoaderRoute: typeof CustomersImportImportIdRouteImport
+      parentRoute: typeof CustomersRoute
+    }
     '/energy/metering-points/': {
       id: '/energy/metering-points/'
       path: '/metering-points'
@@ -1746,7 +1784,9 @@ interface CustomersRouteChildren {
   CustomersFollowUpsRoute: typeof CustomersFollowUpsRoute
   CustomersIndexRoute: typeof CustomersIndexRoute
   CustomersContactsContactIdRoute: typeof CustomersContactsContactIdRoute
+  CustomersImportImportIdRoute: typeof CustomersImportImportIdRoute
   CustomersContactsIndexRoute: typeof CustomersContactsIndexRoute
+  CustomersImportIndexRoute: typeof CustomersImportIndexRoute
 }
 
 const CustomersRouteChildren: CustomersRouteChildren = {
@@ -1754,7 +1794,9 @@ const CustomersRouteChildren: CustomersRouteChildren = {
   CustomersFollowUpsRoute: CustomersFollowUpsRoute,
   CustomersIndexRoute: CustomersIndexRoute,
   CustomersContactsContactIdRoute: CustomersContactsContactIdRoute,
+  CustomersImportImportIdRoute: CustomersImportImportIdRoute,
   CustomersContactsIndexRoute: CustomersContactsIndexRoute,
+  CustomersImportIndexRoute: CustomersImportIndexRoute,
 }
 
 const CustomersRouteWithChildren = CustomersRoute._addFileChildren(
