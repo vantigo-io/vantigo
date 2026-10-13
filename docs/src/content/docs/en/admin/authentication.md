@@ -302,6 +302,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `APP_ENV` | `production` or `development`; only development relaxes anything | `production` |
 | `APP_URL` | Public origin (scheme + host [+ port]); no path | **required** |
 | `APP_BASE_PATH` | Path prefix on a shared domain, e.g. `/vantigo` | empty (domain root) |
+| `PUBLIC_BASE_URL` | The `https` URL the Invoices pay page is reachable at from the internet: an origin and `APP_BASE_PATH`, nothing else, and never `APP_URL`'s host name on another port; on a host of its own only the pay page's allowlist is served there. Unset, there are no pay links ([The public host](/en/admin/payments/#the-public-host)) | unset |
 | `PORT` | Listen port | `8080` |
 | `DATABASE_URL` | Runtime connection, the least-privilege role | **required** |
 | `MIGRATIONS_DATABASE_URL` | Connection `migrate` uses (the owner role) | `DATABASE_URL` |
@@ -372,6 +373,8 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `PEPPOL_TIMEOUT` | Budget for one lookup end to end (DNS and SMP together) | `10s` |
 | `INVOICES_EHF_ENABLED` | On/off switch for sending invoices as EHF over Peppol; also needs `PEPPOL_LOOKUP_ENABLED=1`, access-point credentials and the seller's Peppol id ([E-invoicing](/en/admin/e-invoicing/)) | `1` |
 | `INVOICES_STORECOVE_BASE_URL` | Base URL of the Storecove access point's API — an absolute http or https URL, any trailing slash trimmed; point it at a mock host for a test (Storecove's sandbox is the same host with a sandbox key) | `https://api.storecove.com/api/v2/` |
+| `INVOICES_VIPPS_ENABLED` | On/off switch for Vipps MobilePay payments of invoices; also needs the sales unit's credentials, and pay links `PUBLIC_BASE_URL` ([Payments](/en/admin/payments/)) | `1` |
+| `INVOICES_VIPPS_BASE_URL` | Base URL of the Vipps MobilePay API — an absolute http or https URL, any trailing slash trimmed; `https://apitest.vipps.no` is Vipps' test environment | `https://api.vipps.no` |
 | `STAFF_IMPORT_MAX_ROWS` | People one Staff import takes and one Staff export writes, from `5000` to `20000` — one number for both, so an export always imports back (above 20000 people an export would outgrow the import's 5 MiB file) ([Staff](/en/admin/staff/#import-and-export-the-register)) | `5000` |
 | `STAFF_RETENTION_ENABLED` | On/off switch for the Staff retention worker, `staff-retention`, which erases what the retention rules no longer let the register keep and finishes deleting documents' files; off, nothing is erased on a schedule and `POST /retention/run` still runs it by hand ([Staff](/en/admin/staff/#retention)) | `1` |
 | `STAFF_WORKERS_POLL` | How often the Staff workers look: an erase cycle of at most fifty people and a pass over the deletion ledger; a duration of at least `1m` | `1h` |

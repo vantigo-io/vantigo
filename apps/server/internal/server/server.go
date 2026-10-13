@@ -89,7 +89,7 @@ func New(o Options) http.Handler {
 		o.Logger.Warn("TRUSTED_PROXY_HOPS is set without TRUSTED_PROXY_CIDRS; forwarded headers are trusted from any peer")
 	}
 
-	return httpx.Chain(root,
+	middleware := []func(http.Handler) http.Handler{
 		httpx.Forwarded(o.Config.TrustedProxyHops, o.Config.TrustedProxyCIDRs),
 		httpx.RequestID,
 		httpx.RequestLog(o.Logger, o.Config.BasePath),
@@ -99,7 +99,17 @@ func New(o Options) http.Handler {
 			ReportOnly:       o.Config.CSPReportOnly,
 			HSTS:             !o.Config.IsDevelopment(),
 		}),
-		security.HostFilter(security.AllowedHosts(o.Config.AppHostname)),
+		security.HostFilter(security.AllowedHosts(o.Config.AppHostname, o.Config.PublicHostname)),
 		httpx.StripBasePath(o.Config.BasePath),
-	)
+	}
+	// PUBLIC_BASE_URL on a host of its own (payments port design D14): on it
+	// the server serves only the pay page's allowlist, matched on
+	// base-relative paths, so the gate runs after StripBasePath. On the same
+	// host there is no gate: the operator has published APP_URL itself. The
+	// public origin is deliberately not a trusted CSRF origin: the proxy
+	// preserves Host, so the pay page's POST is same-origin already.
+	if o.Config.PublicHostname != "" && o.Config.PublicHostname != o.Config.AppHostname {
+		middleware = append(middleware, security.PublicHostGate(o.Config.PublicHostname, security.PayRoutes()))
+	}
+	return httpx.Chain(root, middleware...)
 }

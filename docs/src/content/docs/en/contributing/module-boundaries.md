@@ -96,6 +96,15 @@ Communications' outbox is the working example.
    other.
 6. **Never reach around the boundary.** Do not call another module's HTTP endpoints
    from inside the process, and do not reach into another module's schema.
+
+   **The public host is the platform's.** When `PUBLIC_BASE_URL` names a host of its
+   own, `security.PublicHostGate` (`internal/security/publichost.go`) answers 404 on it
+   to every method and path not on `security.PayRoutes()`, before any module's router
+   sees the request. A module's anonymous operation is reachable on the public host only
+   when that platform list names it — today the Invoices pay page's three operations and
+   the Vipps webhook — so a module adds a public operation by changing the platform's
+   list, in the same change and with its test (`TestPublicHostGate`), never by mounting
+   anything of its own there.
 7. **Frontend packages are isolated too.** A module frontend package (for instance
    `@vantigo/products-ui`) never imports from another module's package or from the
    host app; only the host composes them. Shared UI lives in

@@ -8,6 +8,8 @@ sources:
   - apps/server/internal/invoices/bankimport.go
   - apps/server/internal/invoices/bankaccounts.go
   - apps/server/internal/invoices/reminder_worker.go
+  - apps/server/internal/payments
+  - apps/server/internal/security/publichost.go
 ---
 
 Vantigo reads the bank's own record of the money that arrived on the seller's account: a
@@ -182,3 +184,126 @@ letters under a 60-second lease and never send one twice on purpose.
   the customer's mail program can tell it is the same letter. If the process instead stalls past the
   letter's 60-second lease in that window, someone may withdraw the letter meanwhile:
   it was mailed but is recorded `withdrawn`, and the worker logs a warning naming it.
+
+## The public host
+
+A customer pays an invoice with Vipps MobilePay from a **pay page**: the link printed on
+the invoice opens it, and the page creates the payment only when the customer presses
+the button, because a Vipps payment request lives ten minutes and an invoice's term is
+weeks. The customer is on the internet, not signed in to Vantigo, so the pay page must
+be reachable from the internet — while the rest of Vantigo, its sign-in included, need
+not be. `PUBLIC_BASE_URL` names where the pay page is reachable; unset (the default),
+there are no pay links. On-site QR payments need no public host: the tablet that shows
+the QR is signed in on `APP_URL`.
+
+**Preconditions:** a TLS-terminating reverse proxy in front of Vantigo
+([Transport security](/en/admin/transport-security/)) and a host name for the pay page
+with its certificate.
+
+1. **Choose the host.** Recommended: a host of its own, such as `pay.example.com`, with
+   the **same base path** as `APP_URL` — `PUBLIC_BASE_URL=https://pay.example.com` when
+   `APP_BASE_PATH` is unset, `https://pay.example.com/vantigo` when it is `/vantigo`.
+   On that host Vantigo serves only what the pay page needs and answers 404 to
+   everything else. The alternative is `APP_URL`'s own origin: then there is no second
+   host and nothing is filtered, so publishing the pay page means publishing all of
+   Vantigo — the sign-in, the API and the documentation — to the internet.
+   Configuration refuses, at start-up, a `PUBLIC_BASE_URL` that is not `https`, carries a
+   user, a query or a fragment, has a path other than `APP_BASE_PATH`, or names
+   `APP_URL`'s host name on another port (the host filter and the gate compare host names
+   without the port, so the two could not be told apart).
+2. **Route it to Vantigo with `Host` preserved.** The proxy forwards the public host to the
+   same Vantigo process as `APP_URL`, keeping the `Host` header: `X-Forwarded-Host` is
+   never honoured, and the pay page's requests are same-origin only because `Host` is
+   the public host. The host filter admits the public host beside `APP_URL`'s and
+   loopback, and nothing else
+   ([Host header filtering](/en/admin/transport-security/#host-header-filtering)).
+3. **Trust the proxy.** Set `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` to the proxy in
+   front ([Forwarded headers and HTTPS](/en/admin/authentication/#forwarded-headers-and-https)).
+   The pay page's operations are anonymous and rate-limited by the client's address;
+   without the two settings every payer arrives from the proxy's address and shares one
+   bucket, so a handful of customers paying at once are refused.
+4. **Keep `/pay`'s query out of the proxy's access log.** The pay link is
+   `PUBLIC_BASE_URL/pay?token=…`, and the token is what lets anyone holding it pay the
+   invoice and see its amount. Vantigo's own request log writes the path and never the
+   query, and every response carries `Referrer-Policy: no-referrer`; the pay page then
+   reads the invoice with `POST /api/v1/invoices/pay/read`, the token in the body, so it
+   never reaches an API URL. What remains is the proxy's access log of the page request
+   itself. With nginx, log the path without the query for that one location:
+
+   ```nginx
+   log_format vantigo_pay '$remote_addr [$time_local] "$request_method $uri $server_protocol" '
+                          '$status $body_bytes_sent "$http_user_agent"';
+
+   server {
+       server_name pay.example.com;
+       # ...listen, ssl_certificate...
+       location = /pay {
+           access_log /var/log/nginx/vantigo-pay.log vantigo_pay;
+           proxy_set_header Host $host;
+           proxy_pass http://vantigo:8080;
+       }
+       location / {
+           proxy_set_header Host $host;
+           proxy_pass http://vantigo:8080;
+       }
+   }
+   ```
+
+   (`$uri` is the path alone; `$request` would carry the query. Under a base path the
+   location is `= /vantigo/pay`.) With Caddy, delete the token from the logged URI:
+
+   ```text
+   pay.example.com {
+       log {
+           format filter {
+               request>uri query {
+                   delete token
+               }
+           }
+       }
+       reverse_proxy vantigo:8080
+   }
+   ```
+
+5. **Restart** Vantigo with `PUBLIC_BASE_URL` set; it is read at start-up.
+
+**The allowlist.** On the public host, a request whose method and path are not on this
+list answers 404 — a problem document under `/api/`, an empty body elsewhere — before
+any routing (`security.PublicHostGate`); the same request on `APP_URL`'s host is served as
+before. Paths are relative to the base path.
+
+| Method | Path |
+| --- | --- |
+| `GET`, `HEAD` | `/pay` (the pay page; any query) |
+| `GET`, `HEAD` | `/assets/…` (the page's bundle), `/favicon.png` |
+| `POST` | `/api/v1/invoices/pay/read` (the page's read; the token in the body) |
+| `POST` | `/api/v1/invoices/pay/attempts` (a payment started) |
+| `GET` | `/api/v1/invoices/pay/attempts/{reference}` (its status) |
+| `POST` | `/api/v1/invoices/vipps/webhooks` (Vipps' notifications) |
+| `GET` | `/api/v1/identity/system/status` (the page's maintenance check) |
+| `GET`, `HEAD` | `/health/…` (probes) |
+
+**Verify** from outside, against the public host:
+
+```sh
+curl -i https://pay.example.com/sign-in            # 404
+curl -i https://pay.example.com/api/v1/identity/me # 404, a problem document
+curl -i 'https://pay.example.com/pay?token=x'      # 200, the pay page
+curl -i https://vantigo.example.com/sign-in        # 200 on APP_URL's host
+```
+
+Then open a pay link and check the proxy's access log: the line for `/pay` carries no
+`token`.
+
+**What can go wrong:**
+
+- **Every request to the public host answers 400** "The request host is not allowed":
+  `PUBLIC_BASE_URL` is unset or names another host than the one the proxy forwards — or
+  the proxy rewrites `Host`.
+- **The pay page is a blank page or its requests answer 404**: the proxy serves the
+  public host under another path than `APP_BASE_PATH`, or strips the base path itself.
+- **Payers are refused with 429 while few are paying**: `TRUSTED_PROXY_HOPS` and
+  `TRUSTED_PROXY_CIDRS` are not set, so every payer shares the proxy's bucket.
+- **`/sign-in` answers 200 on the public host**: `PUBLIC_BASE_URL` names `APP_URL`'s own
+  host, so there is no gate — or the proxy sends the public host's requests with
+  `APP_URL`'s `Host`.

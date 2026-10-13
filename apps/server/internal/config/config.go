@@ -113,7 +113,22 @@ type Config struct {
 	// AppHostname is AppOrigin's host without port or IPv6 brackets.
 	AppHostname string
 	// BasePath is "" at the domain root, otherwise "/prefix" with no trailing slash.
-	BasePath         string
+	BasePath string
+	// PublicBaseURL is PUBLIC_BASE_URL (payments port design D14): the https
+	// URL the pay page is reachable at from the internet — PublicOrigin
+	// followed by BasePath, no trailing slash — or "" when unset, and with it
+	// pay links and webhooks are unavailable. Its path is BasePath, because
+	// the SPA's index is rendered once for that base path and StripBasePath
+	// strips only it.
+	PublicBaseURL string
+	// PublicOrigin is PublicBaseURL's scheme://host[:port], lower-case.
+	PublicOrigin string
+	// PublicHostname is PublicOrigin's host without port or IPv6 brackets.
+	// When it differs from AppHostname the host filter admits it too and, on
+	// it, the public host gate serves only the pay page's allowlist. It is
+	// never AppHostname on another port: both compare host names without the
+	// port, so the two could never be told apart.
+	PublicHostname   string
 	Port             int
 	TrustedProxyHops int
 	CSPReportOnly    bool
@@ -262,6 +277,19 @@ type Config struct {
 	// tenant's: an operator points it at the sandbox or a mock host, and an
 	// invoices:manage holder cannot aim the client anywhere.
 	InvoicesStorecoveBaseURL string
+	// InvoicesVippsEnabled is the on/off switch for Vipps MobilePay payments
+	// (INVOICES_VIPPS_ENABLED, payments port design D1). Default ON, like
+	// INVOICES_EHF_ENABLED: an installation still needs the sales unit's
+	// credentials, and pay links PUBLIC_BASE_URL, before anything is paid. A 0
+	// turns the feature off: every operation that would call the provider
+	// answers 503 payments_unavailable and the payment worker is never handed
+	// to the runner.
+	InvoicesVippsEnabled bool
+	// InvoicesVippsBaseURL is the origin the Vipps MobilePay adapter calls
+	// (INVOICES_VIPPS_BASE_URL), default the production API; no trailing
+	// slash. The operator's, never the tenant's: an operator points it at
+	// Vipps' test environment or a mock host.
+	InvoicesVippsBaseURL string
 
 	// StaffImportMaxRows is how many people one Staff import takes and one
 	// Staff export writes (STAFF_IMPORT_MAX_ROWS, staff records plan Task 3),
@@ -423,6 +451,7 @@ func Load(env map[string]string) (*Config, error) {
 
 	c.AppOrigin, c.AppHostname = appOrigin(&p, env)
 	c.BasePath = basePath(&p, env)
+	c.PublicBaseURL, c.PublicOrigin, c.PublicHostname = publicBaseURL(&p, env, c.AppOrigin, c.BasePath)
 	c.Port = integer(&p, env, "PORT", 8080, 1, 65535)
 	c.TrustedProxyHops = integer(&p, env, "TRUSTED_PROXY_HOPS", 0, 0, 10)
 	c.ShutdownTimeout = duration(&p, env, "SHUTDOWN_TIMEOUT", 30*time.Second)
@@ -466,6 +495,7 @@ func Load(env map[string]string) (*Config, error) {
 	customersAnonymisation(&p, env, c)
 	customersImport(&p, env, c)
 	invoicesEhf(&p, env, c)
+	invoicesVipps(&p, env, c)
 	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 20000)
 	staffWorkers(&p, env, c)
 
@@ -550,6 +580,51 @@ func basePath(p *problems, env map[string]string) string {
 		}
 	}
 	return v
+}
+
+// publicBaseURL validates PUBLIC_BASE_URL (payments port design D14) and
+// returns it with its origin and host name, or three empty strings when it is
+// unset or invalid (reported). https only; an origin and APP_BASE_PATH and
+// nothing else — no user, query or fragment, its path normalised equal to
+// basePath; its host APP_URL's or another, but never APP_URL's host name on
+// another port: the host filter and the public host gate compare host names
+// without the port, so the two could never be told apart.
+func publicBaseURL(p *problems, env map[string]string, appOrigin, basePath string) (base, origin, hostname string) {
+	v := env["PUBLIC_BASE_URL"]
+	if v == "" {
+		return "", "", ""
+	}
+	u, err := url.Parse(v)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		p.add("PUBLIC_BASE_URL", "must be an absolute https URL")
+		return "", "", ""
+	}
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		p.add("PUBLIC_BASE_URL", "must carry no user, query or fragment")
+		return "", "", ""
+	}
+	if NormalizeBasePath(u.Path) != basePath {
+		p.add("PUBLIC_BASE_URL", "its path must equal APP_BASE_PATH (%q)", basePath)
+		return "", "", ""
+	}
+	origin, hostname = strings.ToLower(u.Scheme+"://"+u.Host), strings.ToLower(u.Hostname())
+	if app, err := url.Parse(appOrigin); err == nil && appOrigin != "" &&
+		strings.ToLower(app.Hostname()) == hostname && effectivePort(app) != effectivePort(u) {
+		p.add("PUBLIC_BASE_URL", "must not be APP_URL's host name on another port: the host filter compares host names without the port, so the two could not be told apart; use APP_URL's origin or another host name")
+		return "", "", ""
+	}
+	return origin + basePath, origin, hostname
+}
+
+// effectivePort is u's port, or its scheme's default when it names none.
+func effectivePort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	if u.Scheme == "https" {
+		return "443"
+	}
+	return "80"
 }
 
 // defaultBrregBaseURL is data.brreg.no, Brønnøysundregisteret's public
@@ -710,6 +785,19 @@ const defaultStorecoveBaseURL = "https://api.storecove.com/api/v2/"
 func invoicesEhf(p *problems, env map[string]string, c *Config) {
 	c.InvoicesEhfEnabled = boolean(p, env, "INVOICES_EHF_ENABLED", true)
 	c.InvoicesStorecoveBaseURL = httpBaseURL(p, env, "INVOICES_STORECOVE_BASE_URL", defaultStorecoveBaseURL)
+}
+
+// defaultVippsBaseURL is Vipps MobilePay's production API (payments port
+// design D13); the test environment is https://apitest.vipps.no, set
+// explicitly by an operator who wants it.
+const defaultVippsBaseURL = "https://api.vipps.no"
+
+// invoicesVipps loads the Invoices Vipps MobilePay settings (payments port
+// design D1): the switch, on by default, and the base URL, validated by
+// httpBaseURL as INVOICES_STORECOVE_BASE_URL is.
+func invoicesVipps(p *problems, env map[string]string, c *Config) {
+	c.InvoicesVippsEnabled = boolean(p, env, "INVOICES_VIPPS_ENABLED", true)
+	c.InvoicesVippsBaseURL = httpBaseURL(p, env, "INVOICES_VIPPS_BASE_URL", defaultVippsBaseURL)
 }
 
 // isNumericPort reports whether port is all ASCII digits, at least one:

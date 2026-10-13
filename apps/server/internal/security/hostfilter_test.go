@@ -49,3 +49,31 @@ func TestHostFilter(t *testing.T) {
 		})
 	}
 }
+
+// With PUBLIC_BASE_URL on a host of its own, the filter admits both hosts and
+// loopback, and still refuses a third (payments port design D14).
+func TestHostFilter_AdmitsThePublicHost(t *testing.T) {
+	allowed := AllowedHosts("vantigo.example.com", "Pay.Example.com", "", "vantigo.example.com")
+	if want := []string{"vantigo.example.com", "pay.example.com", "localhost", "127.0.0.1", "::1"}; !slices.Equal(allowed, want) {
+		t.Errorf("AllowedHosts = %v, want %v", allowed, want)
+	}
+	filter := HostFilter(allowed)
+	for host, want := range map[string]int{
+		"vantigo.example.com":  http.StatusOK,
+		"pay.example.com":      http.StatusOK,
+		"PAY.example.com:443":  http.StatusOK,
+		"127.0.0.1:8080":       http.StatusOK,
+		"other.example.com":    http.StatusBadRequest,
+		"pay.example.com.evil": http.StatusBadRequest,
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		filter(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})).ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("Host %q: status %d, want %d", host, rec.Code, want)
+		}
+	}
+}

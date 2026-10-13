@@ -138,6 +138,18 @@ Tillatelseslisten utledes fra vertsnavnet i `APP_URL` pluss `localhost`, `127.0.
 og `::1`; en forespørsel som bærer en annen `Host` besvares med et 400-problem før den
 når applikasjonen. Porten ignoreres i sammenligningen.
 
+Når `PUBLIC_BASE_URL` angir en egen vert, slippes også den offentlige verten for
+betalingssiden i Faktura inn — og på den serverer serveren bare betalingssidens
+tillatelsesliste: alt annet svarer 404 før rutingen, et problemdokument under `/api/` og
+et tomt innhold ellers, mens den samme forespørselen på verten til `APP_URL` betjenes som
+før. Innloggingen, resten av API-et og dokumentasjonen kan derfor aldri nås gjennom den
+offentlige verten. Når `PUBLIC_BASE_URL` er opprinnelsen til `APP_URL` selv, finnes det
+ingen egen vert og ingen slik filtrering. Listen, hvorfor den er som den er, og hvordan
+du kontrollerer den, står under [Innbetalinger](/nb/admin/payments/#den-offentlige-verten).
+Den offentlige opprinnelsen legges ikke til blant de klarerte opprinnelsene i
+beskyttelsen mot forespørsler på tvers av opprinnelser: proxyen bevarer `Host`, så
+betalingssidens forespørsler er allerede fra samme opprinnelse.
+
 Loopback står på den listen med vilje. Containerens helsesjekk kjører
 `vantigo healthcheck`, som prober `http://127.0.0.1:$PORT/health/ready` i prosessen
 med den bokstavelige adressen i `Host`-hodet, og vertsfiltreringen kjører før
