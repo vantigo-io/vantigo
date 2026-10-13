@@ -559,10 +559,14 @@ de åpner etter at du har dratt — er et vanlig kredittsalg. Betalt med Vipps p
 eller med betalingslenken eller QR-koden vist kunden der, er det kontantsalg, som
 Invoices bare tillater uten kassasystem som kontantfaktura med kjøperen navngitt, gjennom
 betaling på stedet
-([betalingslenker og betaling på stedet](#betalingslenker-og-betaling-på-stedet)). Inntil
-betaling på stedet tilbys, utstedes fakturaen og du får beskjed om at betaling på stedet
-ikke er tilgjengelig. Hurtigfakturaens eget skjermbilde kommer med Vipps i appen; forespørselen
-bak den er på plass nå ([hurtigfakturaen](/en/reference/invoices/#the-quick-invoice)).
+([ta imot betaling på stedet](#ta-imot-betaling-på-stedet)). Ber du om **betaling på
+stedet** når du utsteder, utstedes fakturaen og en Vipps-QR-kode lages for kunden i samme
+slengen; kan QR-koden ikke lages — betaling på stedet er slått av, kjøperen er ikke
+navngitt med adresse eller organisasjonsnummer, Vipps avviser — utstedes fakturaen like
+fullt, og du får vite hvorfor. Å utstede på nytt etter at forbindelsen falt, lager aldri en
+QR-kode til: du får beskjed om den som allerede er laget. Hurtigfakturaens eget
+skjermbilde kommer med Vipps i appen; forespørselen bak den er på plass nå
+([hurtigfakturaen](/en/reference/invoices/#the-quick-invoice)).
 
 ## Laste ned PDF-en
 
@@ -1391,6 +1395,53 @@ prøve igjen senere, og å trekke tilbake lenken og lage en ny begynner på nytt
 
 Hver Vipps-betaling som er startet for en faktura, vises på den, med status og beløp,
 enten den kom fra betalingssiden eller ble tatt på stedet.
+
+### Ta imot betaling på stedet
+
+Når jobben er gjort og kunden vil betale der og da, kan den som har `invoices:issue`, ta
+imot en **Vipps-betaling på stedet**: kunden skanner en QR-kode med Vipps-appen og
+godkjenner betalingen, og Vantigo registrerer den på fakturaen av seg selv.
+Skjermbildet viser QR-koden og følger betalingen til den er betalt, avbrutt eller utløpt;
+en QR-kode lever i ti minutter og skrives aldri ut.
+
+En betaling ved overlevering er kontantsalg — betaling med Vipps regnes som kontanter —
+selv om kunden får en faktura. En virksomhet kan bare ta imot kontantsalg uten
+kassasystem ved å skrive en kontantfaktura for hvert salg, og bare hvis den hovedsakelig
+selger på kreditt til kunder den kjenner: et butikk- eller disksalg krever et
+produkterklært kassasystem. Derfor lar Vantigo deg bare ta imot betaling på stedet når:
+
+- betaling på stedet er slått på, med merknaden om kontantsalg bekreftet av en leder
+  ([betalingslenker og betaling på stedet](#betalingslenker-og-betaling-på-stedet));
+- fakturaen er utstedt — aldri et utkast eller en kreditnota — og navngir kjøperen, med
+  adresse eller organisasjonsnummer, og kunden ikke er anonymisert. Navngi kjøperen
+  sannferdig: Vantigo sjekker at opplysningene finnes, ikke at de er riktige;
+- betalingen gjelder hele beløpet som står åpent, og ingen annen betaling på stedet for
+  fakturaen pågår. En betalingsforespørsel Vantigo har gitt opp, sperrer for en ny til en
+  leder har forlatt den ([når en Vipps-betaling trenger deg](#når-en-vipps-betaling-trenger-deg)).
+
+Det finnes ingen måte å ta imot en betaling uten faktura, for en kunde uten navn eller
+bare mot kvittering. Å vise kunden betalingslenken eller QR-koden på stedet er det samme
+kontantsalget, og derfor vises lenken bare på skjermen mens betaling på stedet er slått
+på. En kunde som betaler senere, hjemme, gjør et vanlig kredittsalg.
+
+Du kan avbryte en forespørsel kunden ikke har godkjent; en som er godkjent, fullføres og
+registreres.
+
+### Dagens Vipps-betalinger og avstemming
+
+Alle med `invoices:access` kan liste **én dags Vipps-betalinger** — tidspunktet,
+fakturaen, kjøperen, beløpet og om det ble betalt på stedet eller via en betalingslenke,
+med dagens summer — på skjermen eller som en CSV-fil til et regneark.
+Betalingslenke-betalinger er med, siden Vantigo ikke kan vite hvor kunden var da de
+betalte.
+
+Når en dag er over, sammenligner den som har `invoices:payments`, den med
+Vipps-oppgjøret og **registrerer dagen som avstemt**, med en merknad om noe trengte en
+forklaring. Registreringen beholder summene slik de var da, og hvem som registrerte den
+og når; den kan aldri endres eller registreres to ganger. En betaling som registreres
+senere for den dagen, vises i listen ved siden av registreringen. I dag kan ikke avstemmes
+før dagen er over. Skjermbildene kommer med Vipps i appen; forespørslene bak dem er på
+plass nå ([dagens Vipps-betalinger](/en/reference/invoices/#the-days-vipps-payments)).
 
 ### Når en Vipps-betaling trenger deg
 

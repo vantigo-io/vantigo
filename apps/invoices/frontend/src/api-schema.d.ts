@@ -1042,6 +1042,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{id}/payment-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a Vipps payment on site
+         * @description Takes a Vipps payment on site (invoices payments and reminders design D17): the customer, standing in front of the caller, scans a one-time QR code. On-site payment is kontantsalg, which Vantigo offers only as a kontantfaktura, under hard rules that no setting relaxes. Judged on the pool and then again under the invoice's lock, in order: on_site_payments_unavailable (on-site payment is not available — INVOICES_VIPPS_ENABLED, Vipps credentials stored and not refused, and the payment settings' switch, which is turned on only with the kontantsalg acknowledgement); 404 when there is no document; credit_note_no_payments; invoice_draft; buyer_identity_missing (the stored buyer snapshot has no name, or neither an organisation number nor a complete address — line 1, city, country and for NO the postal code — or the customer was anonymised); payment_request_active (the invoice has a live on-site request — created, authorized, being captured or of unknown outcome — or one the payments worker gave up on, which a manager abandons first); invoice_settled, invoice_fully_credited, invoice_handed_off, payment_in_progress, amount_out_of_range (the open amount below 1.00 or above 650 000.00), too_many_attempts. Then the payment attempt is inserted creating, flow on_site, by the caller, for the whole open amount, with its idempotency keys; after the commit, outside any lock, Vipps is asked for a QR payment with the customer present and the QR code's target URL, rendered here. 201 with the request; 502 provider_failed when Vipps refused it (the attempt failed) or its outcome is unknown (the attempt left creating for the payments worker, which still holds the invoice's one request); 503 payments_unavailable when the stored keys cannot be opened, were refused or replaced meanwhile.
+         */
+        post: operations["postInvoicesByIdPaymentRequests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/payment-requests/{attemptId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an on-site payment request
+         * @description An on-site payment request's state (D17), as the tablet polls it every two seconds: the attempt's state as the payments worker knows it, and capturedAt once the payment is captured and registered. It reads the database only, never Vipps. 404 unless attemptId is an on-site attempt of the invoice.
+         */
+        get: operations["getInvoicesByIdPaymentRequestsByAttemptId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/payment-requests/{attemptId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an on-site payment request
+         * @description Cancels an on-site payment request (D17): the attempt alone is locked, and a request Vipps created and the customer has not been seen to approve is moved to cancelling, due at once — the payments worker cancels it at Vipps, releasing anything the customer approved meanwhile, and records it cancelled. A request already over (cancelling, cancelled, aborted, expired, terminated, failed, abandoned) is answered as it stands, nothing changed. 409 payment_request_active for one Vipps has not confirmed yet (creating — the payments worker finds out) and for one approved, being captured or captured: the payment is being completed, never cancelled. 404 unless attemptId is an on-site attempt of the invoice.
+         */
+        post: operations["postInvoicesByIdPaymentRequestsByAttemptIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/vipps-payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a day's Vipps payments
+         * @description One Oslo day's Vipps payments (invoices payments and reminders design D17 rule 4, M15): every attempt captured from that day's midnight to the next, in Oslo, oldest first — the time, the invoice, the buyer, the amount and the flow, pay-link payments with the on-site ones — with the count and the totals per flow, and the day's reconciliation when one is recorded. It takes no lock.
+         */
+        get: operations["getInvoicesVippsPayments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/vipps-payments.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export a day's Vipps payments as CSV
+         * @description The day's Vipps payments as a file (D17 rule 4; plan reading 15): the rows of GET /invoices/vipps-payments in the module's CSV form (GET /invoices/export.csv) — UTF-8 with a byte order mark, semicolons, the decimal comma, CRLF after every row, RFC 4180 quoting, the formula guard on the text columns only. The header row is Date;Time;Invoice number;Buyer;Flow;Amount;Reference, the date and time of the capture in Oslo (YYYY-MM-DD, HH:MM:SS).
+         */
+        get: operations["getInvoicesVippsPaymentsCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/vipps-payments/reconciliations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile a day's Vipps payments
+         * @description Records that a day's Vipps payments were reconciled against the Vipps settlement (D17 rule 4, M15; bokføringsforskriften § 5-4-5's daily count, built in though it is uncertain whether it binds a kontantfaktura): one statement inserts the totals as they stand — the payments captured that Oslo day, the total and the totals per flow — with the caller, the time and the note. No lock is taken. The record is immutable; a capture dated that day later changes the list, never the record. 409 day_not_over for today or a later day, day_already_reconciled when the day has a record.
+         */
+        post: operations["postInvoicesVippsPaymentsReconciliations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/{id}/hold": {
         parameters: {
             query?: never;
@@ -3402,6 +3522,27 @@ export interface components {
             qrSvg?: string;
             url?: string;
         };
+        /** @description An on-site Vipps payment request (invoices payments and reminders design D17): attemptId and reference are the payment attempt's, expiresAt when Vipps ends the request unanswered (ten minutes after it was made). qrSvg is Vipps' one-time QR code for the customer standing at the counter to scan — the target URL Vipps answered to the create, rendered by Vantigo as SVG markup, never an image fetched from Vipps; show it as an image, <img src="data:image/svg+xml;base64,…">, never inlined, and never print it. It is answered only by the request that made the payment: a quick invoice's replay reports the live request without it. */
+        InvoicesOnSitePayment: {
+            /** Format: int64 */
+            attemptId: number;
+            /** Format: date-time */
+            expiresAt: string;
+            qrSvg?: string;
+            reference: string;
+        };
+        /** @description POST /invoices/{id}/payment-requests' body (D17): flow is on_site, the one flow made here. Nothing else is taken — the amount is always the invoice's whole open amount, and the buyer is the invoice's own. */
+        InvoicesOnSitePaymentRequestBody: {
+            /** @enum {string} */
+            flow: "on_site";
+        };
+        /** @description An on-site payment request's state as the tablet polls it (D17): the attempt's state as the payments worker knows it — created while the customer has not answered, authorized and capturing while the money is taken, captured (with capturedAt) once it is registered as a payment of the invoice, cancelling and cancelled after a cancel, aborted, expired or terminated when Vipps ended it, failed or capture_failed when it could not be made or captured. */
+        InvoicesOnSitePaymentStatus: {
+            /** Format: date-time */
+            capturedAt?: string;
+            /** @enum {string} */
+            state: "creating" | "created" | "authorized" | "capturing" | "capture_unknown" | "captured" | "cancelling" | "cancelled" | "aborted" | "expired" | "terminated" | "capture_failed" | "failed" | "abandoned";
+        };
         /** @description A Vipps payment created for the pay page (invoices payments and reminders design D15, D16): reference is the attempt's — <prefix>-<invoice number>-<attempt id> — and redirectUrl the address at Vipps the page opens at once, unchanged. Vipps sends the payer back to PUBLIC_BASE_URL/pay?attempt=<reference>&nonce=<nonce>, the nonce granting only the reading of this attempt's state — never the pay link's token. */
         InvoicesPayAttemptCreated: {
             redirectUrl: string;
@@ -3537,6 +3678,62 @@ export interface components {
             /** Format: double */
             vatAmountNok: number;
             vatCategory: string;
+        };
+        /** @description A day's Vipps payments reconciled (invoices payments and reminders design D17 rule 4, M15 — bokføringsforskriften § 5-4-5's daily count): the totals as they stood when it was recorded — payments, total, onSiteTotal and payLinkTotal — by whom, when and with what note. Recorded once and never changed: a capture dated that day later changes the day's list, not the record. */
+        InvoicesVippsDayReconciliation: {
+            /** Format: date */
+            day: string;
+            note: string;
+            /** Format: double */
+            onSiteTotal: number;
+            /** Format: double */
+            payLinkTotal: number;
+            /** Format: int32 */
+            payments: number;
+            /** Format: date-time */
+            reconciledAt: string;
+            /** Format: uuid */
+            reconciledBy: string;
+            /** Format: double */
+            total: number;
+        };
+        /** @description POST /invoices/vipps-payments/reconciliations' body (D17): day is the Oslo day reconciled, before today; note, trimmed, at most 500 characters, absent is empty. */
+        InvoicesVippsDayReconciliationRequest: {
+            /** Format: date */
+            day: string;
+            note?: string;
+        };
+        /** @description One Vipps payment of the day's list (D17): the attempt and its reference at Vipps, the invoice and its number, the buyer as the invoice names it (blank once the customer was anonymised), the flow — on_site, or pay_link, which is listed too since Vantigo cannot know where the customer stood — the amount captured and when. */
+        InvoicesVippsPayment: {
+            /** Format: double */
+            amount: number;
+            /** Format: int64 */
+            attemptId: number;
+            buyerName: string;
+            /** Format: date-time */
+            capturedAt: string;
+            /** @enum {string} */
+            flow: "pay_link" | "on_site";
+            /** Format: int64 */
+            invoiceId: number;
+            /** Format: int64 */
+            invoiceNumber: number;
+            reference: string;
+        };
+        /** @description One Oslo day's Vipps payments (D17 rule 4): every payment captured on that day, oldest first, count and the totals — total, onSiteTotal, payLinkTotal — and the day's reconciliation once one is recorded. */
+        InvoicesVippsPaymentsDay: {
+            /** Format: int32 */
+            count: number;
+            /** Format: date */
+            date: string;
+            /** Format: double */
+            onSiteTotal: number;
+            /** Format: double */
+            payLinkTotal: number;
+            payments: components["schemas"]["InvoicesVippsPayment"][];
+            reconciliation?: components["schemas"]["InvoicesVippsDayReconciliation"];
+            /** Format: double */
+            total: number;
         };
         /** @description The VAT code each kind of work is invoiced at (invoices work design D6) — the settings' defaults, which the uninvoiced view's wizard pre-fills, each the id of a code. All three are 1 (code 3, 25 %) until changed. */
         InvoicesWorkVatCodes: {
@@ -3741,7 +3938,7 @@ export interface components {
             /** Format: int32 */
             vatCodeId: number;
         };
-        /** @description POST /invoices/quick's body (invoices payments and reminders design D17): an invoice for customerId with one to ten lines, created and issued in one step. Every field is judged by a draft's rules (D4, D5). deliveryDate is today (Oslo) when omitted; an omitted paymentTermsDays is the billing profile's terms, else the settings' default, and an omitted yourReference the profile's buyer reference. note is at most 1000 characters, yourReference 100. payOnSite asks for a Vipps payment request on site after the issue; on-site payment is not offered yet, so it is answered paymentRequestError on_site_payments_unavailable beside the issued invoice. */
+        /** @description POST /invoices/quick's body (invoices payments and reminders design D17): an invoice for customerId with one to ten lines, created and issued in one step. Every field is judged by a draft's rules (D4, D5). deliveryDate is today (Oslo) when omitted; an omitted paymentTermsDays is the billing profile's terms, else the settings' default, and an omitted yourReference the profile's buyer reference. note is at most 1000 characters, yourReference 100. payOnSite asks for a Vipps payment request on site after the issue, as POST /invoices/{id}/payment-requests makes it; it is answered paymentRequest, or paymentRequestError beside the issued invoice when the request could not be made. Only the request that issues the invoice makes one: a replay never does. */
         InvoicesQuickInvoiceRequest: {
             /** Format: int32 */
             customerId: number;
@@ -3759,9 +3956,10 @@ export interface components {
             requestId?: string;
             yourReference?: string;
         };
-        /** @description The quick invoice's answer (D17): the issued invoice, and — when the request asked payOnSite and no payment request could be made — paymentRequestError, the refusal the request met; the invoice is issued either way. */
+        /** @description The quick invoice's answer (D17): the issued invoice, and — when the request asked payOnSite — paymentRequest, the on-site payment request made with its QR, or paymentRequestError, the refusal the request met (on_site_payments_unavailable, buyer_identity_missing, provider_failed, …); the invoice is issued either way. A replay (200) answers paymentRequest with the invoice's live on-site request, read and never made, without its QR, and no paymentRequestError. */
         InvoicesQuickInvoiceResponse: {
             invoice: components["schemas"]["InvoicesInvoiceResponse"];
+            paymentRequest?: components["schemas"]["InvoicesOnSitePayment"];
             paymentRequestError?: components["schemas"]["InvoicesConflictProblem"];
         };
         /** @description One (SAF-T code, category, rate) of the journal's VAT, credit notes signed negative. */
@@ -6311,7 +6509,7 @@ export interface operations {
                     "application/json": components["schemas"]["InvoicesQuickInvoiceResponse"];
                 };
             };
-            /** @description Created — the issued invoice, with paymentRequestError when payOnSite could not be honoured. */
+            /** @description Created — the issued invoice, with paymentRequest or paymentRequestError when payOnSite asked for one. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -7690,6 +7888,358 @@ export interface operations {
             };
             /** @description Bad Gateway — provider_failed; Vipps could not be read. Nothing changed. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdPaymentRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesOnSitePaymentRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Created — the request and its QR code. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesOnSitePayment"];
+                };
+            };
+            /** @description Bad Request — flow is not on_site. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — on_site_payments_unavailable, credit_note_no_payments, invoice_draft, buyer_identity_missing, payment_request_active, invoice_settled, invoice_fully_credited, invoice_handed_off, payment_in_progress, amount_out_of_range, too_many_attempts or payments_unavailable (no credentials). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Bad Gateway — provider_failed; Vipps refused the payment, or did not answer and the payments worker finds out. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — payments_unavailable; the stored keys cannot be opened, were refused or were replaced while the request was made. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesByIdPaymentRequestsByAttemptId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                attemptId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesOnSitePaymentStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no on-site request of this invoice has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postInvoicesByIdPaymentRequestsByAttemptIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                attemptId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the request's state after the cancel. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesOnSitePaymentStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no on-site request of this invoice has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — payment_request_active; the request is not yet confirmed by Vipps, or the customer approved it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesVippsPayments: {
+        parameters: {
+            query: {
+                /** @description The Oslo day, YYYY-MM-DD. */
+                date: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesVippsPaymentsDay"];
+                };
+            };
+            /** @description Bad Request — date missing or not a calendar date. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getInvoicesVippsPaymentsCsv: {
+        parameters: {
+            query: {
+                /** @description The Oslo day, YYYY-MM-DD. */
+                date: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named vipps-payments-<date>.csv, and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — date missing or not a calendar date. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoicesVippsPaymentsReconciliations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesVippsDayReconciliationRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — the record. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesVippsDayReconciliation"];
+                };
+            };
+            /** @description Bad Request — day missing or not a calendar date, or a note over 500 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — day_not_over or day_already_reconciled. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1116,14 +1116,106 @@ The PDF is stored after the commit, as an issue's is. The answer is 201
 `{invoice, paymentRequestError?}`: the issued invoice, an ordinary invoice in the
 ordinary series with terms and a due date like any other; a replay is 200 with the same
 `invoice` and no `paymentRequestError`. `payOnSite: true` asks for a
-Vipps payment on site; on-site payment is not offered yet, so the invoice is issued and
-`paymentRequestError` carries `on_site_payments_unavailable`. It gets a pay link at
+Vipps payment on site once the invoice is committed, through the on-site request's own
+path ([Paid on site — kontantsalg](#paid-on-site--kontantsalg)), with a clock read of its
+own: the answer carries `paymentRequest` (`{attemptId, reference, qrSvg, expiresAt}`), or
+`paymentRequestError` — the refusal the request met, `on_site_payments_unavailable`,
+`buyer_identity_missing`, `provider_failed` and the rest, or a codeless 500-status problem
+when it failed unexpectedly (logged) — and the invoice is issued either way. Only the
+request that issues the invoice makes one: **a replay never makes a second request**; it
+answers the invoice's live on-site request — read, never made, and without `qrSvg`,
+which only the request that made it is answered — as `paymentRequest`, so a client that
+lost the first answer knows a QR exists (it can poll it, or cancel it and make a new one
+on the invoice). It gets a pay link at
 issue only when on-site payment is available; otherwise the e-mail send makes one
 ([Pay links](#pay-links)). A quick invoice paid later —
 by KID through the bank, or by a pay link once the tradesperson has left — is a **credit
 sale**; paid on site with Vipps it is kontantsalg, which Invoices offers only as a
-kontantfaktura ([Vipps payments](#vipps-payments)). Meta answers
+kontantfaktura ([Paid on site — kontantsalg](#paid-on-site--kontantsalg)). Meta answers
 `capabilities.canQuickInvoice`, `invoices:create` and `invoices:issue` both.
+
+#### Paid on site — kontantsalg
+
+A sale paid at handover is **kontantsalg** whatever document it carries: Vipps at
+delivery is "kontanter" (bokføringsforskriften § 5-3-1 c; Skattedirektoratet's statement
+of 29.06.2017), so a quick invoice paid on site does not become a credit sale by being an
+invoice (payments and reminders design D17, research R4 §9). Kontantsalg must be
+registered in a declared kassasystem (bokføringsloven § 10 a) unless an exemption fits,
+and the one that fits a business invoicing identified customers is the **kontantfaktura**
+(§ 5-4-1 tredje ledd), which Skattedirektoratet reads narrowly (07.01.2019): for a
+business that ordinarily sells on credit to identified customers, never for retail or
+counter sales, with a full delkapittel 5-1 invoice naming the buyer by address or
+organisation number for every such sale, whatever the amount. Skatteetaten makes the
+same condition **the supplier's**: software on which a cash sale can be registered
+without the buyer's name and address is a kassasystem. So Invoices offers on-site
+payment only through one request, and holds it to five hard rules that no setting
+relaxes, each enforced by the server:
+
+1. **On-site payment is available.** `paymentsAvailable`'s on-site answer — the
+   `INVOICES_VIPPS_ENABLED` switch, Vipps credentials stored and not refused, and the
+   payment settings' `on_site_payments_enabled` — never the setting alone; the setting is
+   turned on only with the kontantsalg acknowledgement (a 400 without it, and
+   `ck_payment_settings_on_site` in the database). Judged on the pool before any provider
+   is built and again under the invoice's lock: 409 `on_site_payments_unavailable`.
+2. **The buyer is identified before any payment starts**, on an **issued invoice**
+   only: 409 `credit_note_no_payments` and `invoice_draft`; then, on the stored snapshot
+   under the lock, a non-empty `buyer_name` and `buyerComplete` (an organisation number,
+   or line 1, city and country, and the postal code for NO) and the customer not in
+   `invoices.erased_customers` — an anonymisation blanks the snapshot after the issue —
+   else 409 `buyer_identity_missing`. The quick invoice requires `customerId`, and no
+   operation of the contract takes a payment without an issued invoice: **there is no
+   anonymous, "kontantkunde" or receipt-only path**. What it cannot check is that the
+   name and address are true; the acknowledgement puts that on the user.
+3. **One payment, one invoice.** The request takes no amount: the attempt is always the
+   invoice's **whole open amount**. One live on-site attempt per invoice
+   (`ux_payment_attempts_on_site_live`: `creating`, `created`, `authorized`, `capturing`,
+   `capture_unknown`) — judged under the lock, 409 `payment_request_active`, with the
+   index as the last word (a unique violation on it is answered the same). A create the
+   payments worker gave up on (`creating` or `created`, never polled again) holds the
+   invoice too, and the refusal says a manager must abandon it first ([Abandon](#abandon)).
+4. **The notice.** On-site payment is off until an `invoices:manage` holder turns it on
+   with the kontantsalg acknowledgement, recorded with who and when
+   ([Credentials and payment settings](#credentials-and-payment-settings)); the settings
+   card shows its text in full.
+5. **The time of every payment, a daily list and its reconciliation**
+   ([The day's Vipps payments](#the-days-vipps-payments)).
+
+What remains **advisory**: a user can open the issued PDF — which prints the pay link's
+QR for a customer at home — and hold it up on site; Invoices cannot prevent that, and the
+notice says that showing the pay link or its QR on site is the same kontantsalg. The app
+shows no pay link or QR on screen unless on-site payment is enabled ([Pay
+links](#pay-links)). On-site payment is not limited to business buyers.
+
+**The request.** `POST /{id}/payment-requests` (`invoices:issue`) `{flow: "on_site"}`
+(400 for any other flow): on-site availability on the pool, then an attempt's create
+([Payment attempts](#payment-attempts)) — one transaction locks the invoice and judges,
+in order, `on_site_payments_unavailable`, `credit_note_no_payments`, `invoice_draft`,
+`buyer_identity_missing`, `payment_request_active`, then the facts every flow shares
+(`invoice_settled`, `invoice_fully_credited`, `invoice_handed_off`,
+`payment_in_progress`, `amount_out_of_range`, `too_many_attempts`), shares the
+credentials row and compares its version (a retryable 503 `payments_unavailable`), and
+inserts the attempt `creating` with `flow = on_site`, `created_by_user_id` the caller and
+its idempotency keys; after the commit, outside any lock, Vipps is asked for a QR
+(`userFlow: QR`, `customerInteraction: CUSTOMER_PRESENT`, `qrFormat: TEXT/TARGETURL`) and
+the code of the target URL it answers is rendered by the server (`payments/qrsvg`) —
+never an image fetched from Vipps. 201 `{attemptId, reference, qrSvg, expiresAt}`; the
+client shows `qrSvg` only as `<img src="data:image/svg+xml;base64,…">`, never inlined,
+and never prints it. A definitive refusal fails the attempt (502 `provider_failed`, and
+a new request may follow); an unknown outcome — no answer, or a QR whose reference or key
+Vipps says is in use (4150, 4020), which is never read back because a read's
+`redirectUrl` is not promised to be the QR's target — is 502 `provider_failed` too and
+leaves the attempt `creating` for the payments worker, holding the invoice's one request
+until it ends or is abandoned.
+
+`GET /{id}/payment-requests/{attemptId}` (`invoices:issue`) answers `{state,
+capturedAt?}` from the database only — the tablet polls it every two seconds; 404 unless
+the attempt is an on-site attempt of that invoice. `POST
+/{id}/payment-requests/{attemptId}/cancel` (`invoices:issue`) locks the attempt alone: a
+`created` request moves to `cancelling`, due at once, and the payments worker cancels it
+at Vipps — releasing anything the customer approved meanwhile — and records it
+`cancelled`; a request already over is answered as it stands; one Vipps has not confirmed
+yet (`creating`) or that the customer approved (`authorized`, `capturing`,
+`capture_unknown`, `captured`, `capture_failed`) is refused 409 `payment_request_active`.
 
 ## Credit notes
 
@@ -3851,6 +3943,34 @@ changes no money; past the 30 days it ends the watch, with a warning in the log 
 refund made since is not seen. There is no column for "seen" and
 nothing to acknowledge: the item is the stored refund on a payment still live.
 
+### The day's Vipps payments
+
+Every attempt records `authorized_at` and `captured_at`. `GET /vipps-payments?date=`
+(`invoices:access`) lists one **Oslo day**'s Vipps payments — every attempt with a
+captured amount whose `captured_at` falls from that day's midnight in Oslo to the next
+(23 or 25 hours on a clock change), oldest first: the attempt and its reference, the
+invoice and its number, the buyer as the snapshot names it (blank once anonymised), the
+flow and the amount captured. **Pay-link payments are listed with the on-site ones**:
+Invoices cannot know where the customer stood. The answer carries `count`, `total`,
+`onSiteTotal` and `payLinkTotal`, and the day's `reconciliation` once one is recorded; a
+missing or impossible `date` is a 400. `GET /vipps-payments.csv?date=` is the same rows
+as a file in the module's CSV form ([The CSV export](#the-csv-export)) — a byte order
+mark, semicolons, the decimal comma, CRLF, RFC 4180 quoting, the formula guard on the
+buyer and the reference — with the header `Date;Time;Invoice number;Buyer;Flow;Amount;Reference`,
+the capture's date and time in Oslo, served as `vipps-payments-<date>.csv` and never
+cached.
+
+**The reconciliation.** `POST /vipps-payments/reconciliations` (`invoices:payments`)
+`{day, note?}` records, in `invoices.vipps_day_reconciliations`, that the day was
+reconciled against the Vipps settlement: one insert sums the day as it stands —
+`payments`, `total`, `on_site_total`, `pay_link_total` — with the caller, the time and the
+note (trimmed, at most 500 characters). It takes no lock. 409 **`day_not_over`** for today
+or a later day in Oslo; 409 **`day_already_reconciled`** when the day has a record. The
+record is immutable (a trigger refuses any update or delete): a capture registered later
+and dated that day changes the list, never the record, and the list shows both. It is
+built in as bokføringsforskriften § 5-4-5's daily count, which arguably reaches
+kontantfaktura sales (R4 §9.6 item 4 — uncertain).
+
 ## The journal
 
 `GET /invoices/journal?from&to` lists the issued documents with an issue date in the
@@ -4347,6 +4467,9 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `POST /pay/read` | anonymous; 60 per client per 10 minutes | 400 without a token; 404 an unknown token |
 | `POST /pay/attempts` | anonymous; 10 per client per 10 minutes | 400 on `acceptTerms` or `token`; 404; 409 with `reason`: `invoice_settled`, `invoice_fully_credited`, `invoice_handed_off`, `payment_in_progress`, `amount_out_of_range`, `pay_links_unavailable`; 409 `payments_unavailable` (no credentials), `too_many_attempts` (five live attempts of the link); 503 `payments_unavailable` (keys unreadable, refused or replaced; in a payer's words); 502 `provider_failed` |
 | `GET /pay/attempts/{reference}` | anonymous; 400 per client per 10 minutes | 400 without `nonce`; 404 unless the nonce is the attempt's |
+| `POST /{id}/payment-requests` | `invoices:issue` | 400 on `flow`; 409 `on_site_payments_unavailable`; 404; then under the lock 409 `on_site_payments_unavailable`, `credit_note_no_payments`, `invoice_draft`, `buyer_identity_missing`, `payment_request_active`, `invoice_settled`, `invoice_fully_credited`, `invoice_handed_off`, `payment_in_progress`, `amount_out_of_range`, `too_many_attempts`, `payments_unavailable` (no credentials); 503 `payments_unavailable` (keys unreadable, refused or replaced); 502 `provider_failed` |
+| `GET /{id}/payment-requests/{attemptId}` | `invoices:issue` | 404 unless an on-site attempt of the invoice |
+| `POST /{id}/payment-requests/{attemptId}/cancel` | `invoices:issue` | 404 unless an on-site attempt of the invoice; 409 `payment_request_active` |
 | `POST /{id}/hold` | `invoices:payments` | 400 on `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; then under the lock 409 `invoice_on_hold` |
 | `POST /{id}/hold/lift` | `invoices:payments` | 400 on `chargesAllowed` (absent or not a boolean) or `note`; 404; 409 `invoice_not_on_hold` |
 | `POST /{id}/collection` | `invoices:payments` | 400 on `handedOn` (missing or after today), `agency`, `agencyReference` or `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; 400 on `handedOn` before the issue date; then under the lock 409 `invoice_settled`, `invoice_handed_off`, `invoice_not_delivered` (unless `acknowledgeNotDelivered`) |
@@ -4371,6 +4494,9 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `PUT /bank-accounts/{account}/format` | `invoices:manage` | 400 on `format`; 404 an account never imported |
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |
 | `GET /export.csv` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, more than 5000 rows |
+| `GET /vipps-payments` | | 400 `date` missing or not a calendar date |
+| `GET /vipps-payments.csv` | | 400 `date` missing or not a calendar date |
+| `POST /vipps-payments/reconciliations` | `invoices:payments` | 400 on `day` or `note`; 409 `day_not_over`, `day_already_reconciled` |
 | `GET /collection-export.csv` | `invoices:payments` | 400 neither or both of `handedFrom`/`handedTo` and `invoiceId`, one date alone, `handedFrom` after `handedTo`, more than 500 `invoiceId`s or one that is not an issued invoice, more than 500 rows |
 | `GET /stats/attention` | | none: the items for `invoices:payments` are left out for a caller without it |
 | `GET /stats/summary` | | 400 `from` after `to` |
