@@ -465,6 +465,7 @@ type InvoicesReminder struct {
 	WithdrawnAt         *time.Time
 	WithdrawnByUserID   *uuid.UUID
 	WithdrawalReason    *string
+	PayLinkID           *int64
 }
 
 type InvoicesReminderPrintBatch struct {
