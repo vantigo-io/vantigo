@@ -634,13 +634,17 @@ func (s *server) blankEvents(ctx context.Context, txq *store.Queries, personID i
 	if err != nil {
 		return 0, fmt.Errorf("staff: read person %d's events of class %s: %w", personID, class, err)
 	}
+	absentID, err := txq.AbsentTypeID(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("staff: read the reserved absent type: %w", err)
+	}
 	var count int64
 	for _, row := range rows {
 		var ids eventIDs
 		if err := json.Unmarshal(row.Payload, &ids); err != nil || !include(ids) {
 			continue
 		}
-		payload, rewritten, err := blankPayload(row.Payload, class)
+		payload, rewritten, err := blankPayload(row.Payload, class, absentID)
 		if err != nil {
 			return 0, fmt.Errorf("staff: erase event %d's values of class %s: %w", row.ID, class, err)
 		}
@@ -662,7 +666,13 @@ func (s *server) blankEvents(ctx context.Context, txq *store.Queries, personID i
 // other event field by field, by fieldClasses. It answers whether anything
 // changed: a value already replaced is left, so an erase run twice writes
 // nothing the second time.
-func blankPayload(stored []byte, class string) ([]byte, bool, error) {
+//
+// An absence event's typeIds — the row's types beside its fields, by which a
+// reader is shown the whole event — are erased by their own classes
+// (typeClasses, leak 3): each one of class's is replaced with absentID, the
+// reserved type the erase writes in place of a sick one; an entry without a
+// class is replaced by every erase (fail closed).
+func blankPayload(stored []byte, class string, absentID int64) ([]byte, bool, error) {
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(stored, &payload); err != nil {
 		return nil, false, err
@@ -708,8 +718,38 @@ func blankPayload(stored []byte, class string) ([]byte, bool, error) {
 			rewritten = true
 		}
 	}
+	fieldsRewritten := rewritten
+	if raw, ok := payload["typeIds"]; ok && absence {
+		var ids []int64
+		var classes []string
+		if err := json.Unmarshal(raw, &ids); err != nil {
+			return nil, false, err
+		}
+		if rawClasses, ok := payload["typeClasses"]; ok {
+			if err := json.Unmarshal(rawClasses, &classes); err != nil {
+				return nil, false, err
+			}
+		}
+		idsRewritten := false
+		for i, id := range ids {
+			if (i >= len(classes) || classes[i] == class) && id != absentID {
+				ids[i] = absentID
+				idsRewritten = true
+			}
+		}
+		if idsRewritten {
+			if payload["typeIds"], err = json.Marshal(ids); err != nil {
+				return nil, false, err
+			}
+			rewritten = true
+		}
+	}
 	if !rewritten {
 		return stored, false, nil
+	}
+	if !fieldsRewritten {
+		out, err := json.Marshal(payload)
+		return out, true, err
 	}
 	if payload["fields"], err = json.Marshal(fields); err != nil {
 		return nil, false, err

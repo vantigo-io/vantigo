@@ -498,7 +498,8 @@ the details; colleagues with access to the directory see only the days you are a
 never whether it was a request or a registration, the type, a percentage, hours or a
 note, so a sick day looks like a day off. A type that reveals health or family matters
 (such as pregnancy leave, an antenatal check-up or a religious holiday) shows your
-manager only *leave*, without its hours, like any other leave.
+manager only *leave*, without its hours, like any other leave — and its history is not
+shown to them at all, so nothing in how it was entered gives it away.
 
 ## The dashboard
 

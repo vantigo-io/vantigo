@@ -783,13 +783,16 @@ type PaginatedResponseOfStaffPersonListItem struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
-// StaffAbsence An absence as the caller may read it (design §5). A colleague (staff:view alone) reads the dates and nothing else — no status, no working days, no type (shownAs absent) — so a sickness looks like any other absence. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, the working days of its days, and a registered row as approved. A write of a type drawing on the holiday account answers the accounts of the years it touches after it.
+// StaffAbsence An absence as the caller may read it (design §5). A colleague (staff:view alone) reads the dates and nothing else — no status, no working days, no type (shownAs absent) — so a sickness looks like any other absence. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, the working days of its days, a registered row as approved (a status filter matches it so too), no revision, and none of its events listed to them — they read its dates already, and the events' count and kinds would tell a notification from a request. A write of a type drawing on the holiday account answers the accounts of the years it touches after it.
 type StaffAbsence struct {
 	// Accounts On a write of a type drawing on the holiday account: the account of each year the row touches, after the write.
 	Accounts *[]StaffHolidayAccount `json:"accounts,omitempty"`
 
 	// DegreePercent A sykmelding's degree.
 	DegreePercent *float64 `json:"degreePercent,omitempty"`
+
+	// Etag In place of the revision, to staff:manage without staff:personal-data — who writes every row but reads an HR-only one as leave — on every row alike: an opaque tag, sent back quoted in If-Match, that changes with the row and tells nothing of how often it has.
+	Etag *string `json:"etag,omitempty"`
 
 	// FirstDay The first day.
 	FirstDay openapi_types.Date `json:"firstDay"`
@@ -813,8 +816,8 @@ type StaffAbsence struct {
 	// PersonId The person.
 	PersonId int64 `json:"personId"`
 
-	// Revision The revision a change sends back in If-Match.
-	Revision int32 `json:"revision"`
+	// Revision The revision a change sends back in If-Match — to the person and to staff:manage with staff:personal-data only, who write the row and read it as it is. Nobody else is sent it: a registration stays at revision 1 and a decided request moves past it, so the number would tell which rows are notifications.
+	Revision *int32 `json:"revision,omitempty"`
 
 	// ShownAs How the caller is shown the row's type: type (typeId names it), leave (an HR-only type to a manager or HR without staff:personal-data), or absent (a colleague, who reads no type).
 	ShownAs StaffAbsenceShownAs `json:"shownAs"`
@@ -2692,7 +2695,7 @@ type GetStaffAbsencesParams struct {
 
 // PutStaffAbsencesByIdParams defines parameters for PutStaffAbsencesById.
 type PutStaffAbsencesByIdParams struct {
-	// IfMatch The revision the absence was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	// IfMatch The revision the absence was read at, bare (3) or quoted ("3") — or, for staff:manage without staff:personal-data, the etag it was read with, quoted. A revision or an etag that has moved on, or a bare revision from a caller who is sent etags, is a 409 revision_conflict that names no revision.
 	IfMatch string `json:"If-Match"`
 }
 

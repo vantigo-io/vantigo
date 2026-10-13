@@ -127,6 +127,26 @@ func (s *server) recordClassedEvent(ctx context.Context, txq *store.Queries, per
 // hr_only — which an absence event's type values are shaped by.
 type typeVisibilities map[int64]string
 
+// plain is the types shown as themselves to every reader of types: those of
+// visibility absent.
+func (t typeVisibilities) plain() []int64 {
+	out := []int64{}
+	for id, v := range t {
+		if v == visibilityAbsent {
+			out = append(out, id)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// hidesLeaveRows is whether the absence events of a row a reads as "leave"
+// are left out of the history a reads (leak 2): to a reader of types who
+// does not read HR-only ones. They read the row's dates already; the
+// events' count and kinds — one registration, against a request and its
+// decision — would tell the HR-only notification from an HR-only request.
+func (a audience) hidesLeaveRows() bool { return a.reads(groupAbsenceType) && !a.readsHROnlyTypes() }
+
 // readTypeVisibilities is every type's visibility, hidden ones included.
 func readTypeVisibilities(ctx context.Context, q *store.Queries) (typeVisibilities, error) {
 	rows, err := q.ListAbsenceTypes(ctx, true)

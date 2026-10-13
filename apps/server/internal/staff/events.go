@@ -365,20 +365,24 @@ func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffP
 		if !a.seesEvents() {
 			return notFound()
 		}
+		if types, err = readTypeVisibilities(ctx, q); err != nil {
+			return err
+		}
+		hide, plain := a.hidesLeaveRows(), types.plain()
 		if total, err = q.CountPersonEvents(ctx, store.CountPersonEventsParams{
 			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds,
+			HideLeaveRows: hide, PlainTypeIds: plain,
 		}); err != nil {
 			return fmt.Errorf("staff: count person %d's events: %w", req.Id, err)
 		}
 		rows, err = q.ListPersonEvents(ctx, store.ListPersonEventsParams{
 			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds,
-			PageSize: pageSize, PageOffset: (page - 1) * pageSize,
+			HideLeaveRows: hide, PlainTypeIds: plain, PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 		})
 		if err != nil {
 			return fmt.Errorf("staff: list person %d's events: %w", req.Id, err)
 		}
-		types, err = readTypeVisibilities(ctx, q)
-		return err
+		return nil
 	})
 	if _, ok := asRefusal(err); ok {
 		return gen.GetStaffPeopleByIdEvents404Response{}, nil

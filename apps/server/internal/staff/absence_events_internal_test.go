@@ -96,7 +96,7 @@ func TestAbsenceEvent_BlankedByItsOwnMap(t *testing.T) {
 		return p.Fields
 	}
 
-	out, rewritten, err := blankPayload(stored(t, ferie), "D")
+	out, rewritten, err := blankPayload(stored(t, ferie), "D", 1023)
 	if err != nil || !rewritten {
 		t.Fatalf("the D erase of a ferie event: rewritten %v, err %v", rewritten, err)
 	}
@@ -104,11 +104,11 @@ func TestAbsenceEvent_BlankedByItsOwnMap(t *testing.T) {
 	if f["note"] != changed || f["type"] == changed || f["firstDay"] == changed {
 		t.Errorf("after the D erase: %v, want the note blanked and the type and the date kept", f)
 	}
-	if _, rewritten, _ := blankPayload(stored(t, ferie), "E"); rewritten {
+	if _, rewritten, _ := blankPayload(stored(t, ferie), "E", 1023); rewritten {
 		t.Errorf("the health erase rewrote a ferie event (classes %v)", ferieClasses)
 	}
 
-	out, rewritten, err = blankPayload(stored(t, sick), "E")
+	out, rewritten, err = blankPayload(stored(t, sick), "E", 1023)
 	if err != nil || !rewritten {
 		t.Fatalf("the health erase of a sick event: rewritten %v, err %v", rewritten, err)
 	}
@@ -116,7 +116,7 @@ func TestAbsenceEvent_BlankedByItsOwnMap(t *testing.T) {
 	if f["type"] != changed || f["degree"] != changed || f["firstDay"] == changed {
 		t.Errorf("after the health erase: %v, want the type and the degree blanked and the date kept", f)
 	}
-	if _, rewritten, _ := blankPayload(stored(t, sick), "D"); rewritten {
+	if _, rewritten, _ := blankPayload(stored(t, sick), "D", 1023); rewritten {
 		t.Error("the D erase rewrote a sick event, which holds nothing of class D")
 	}
 }
@@ -189,7 +189,7 @@ func TestAdjustmentEvent(t *testing.T) {
 	if _, ok := hr["note"].(map[string]any); !ok {
 		t.Errorf("HR reads the note as %v, want its value", hr["note"])
 	}
-	out, rewritten, err := blankPayload(stored(t, payload), "D")
+	out, rewritten, err := blankPayload(stored(t, payload), "D", 1023)
 	if err != nil || !rewritten {
 		t.Fatalf("D erase: rewritten %v err %v", rewritten, err)
 	}
@@ -210,7 +210,7 @@ func TestAbsenceEvent_UnclassedFieldsBlankedByEveryErase(t *testing.T) {
 	partial := []byte(`{"absenceId":7,"fields":{"firstDay":{"to":"2026-06-08"},"mystery":{"to":"x"}},"classes":{"firstDay":"C"}}`)
 	bare := []byte(`{"absenceId":8,"fields":{"firstDay":{"to":"2026-06-08"},"type":{"to":1001}}}`)
 	fieldsAfter := func(stored []byte, class string) map[string]any {
-		out, _, err := blankPayload(stored, class)
+		out, _, err := blankPayload(stored, class, 1023)
 		if err != nil {
 			t.Fatal(err)
 		}

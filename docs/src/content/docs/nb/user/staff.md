@@ -499,7 +499,8 @@ kolleger med tilgang til personoversikten ser bare dagene du er borte — aldri 
 en søknad eller en registrering, typen, en prosent, timer eller en merknad, så en
 sykedag ser ut som en fridag. En type som avslører helse eller familieforhold (som
 svangerskapspermisjon, svangerskapskontroll eller en religiøs høytid) viser lederen din
-bare *permisjon*, uten timene, som all annen permisjon.
+bare *permisjon*, uten timene, som all annen permisjon — og historikken for den vises
+ikke for lederen i det hele tatt, så ingenting ved hvordan den ble lagt inn, røper den.
 
 ## Dashbordet
 

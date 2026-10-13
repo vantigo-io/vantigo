@@ -27,14 +27,29 @@ func (q *Queries) AbsenceTypeInUse(ctx context.Context, id int64) (bool, error) 
 	return in_use, err
 }
 
+const absentTypeID = `-- name: AbsentTypeID :one
+SELECT id FROM staff.absence_types WHERE key = 'absent'
+`
+
+// AbsentTypeID is the reserved type the health erase writes in place of a
+// sick or child-sick one (plan reading 12).
+func (q *Queries) AbsentTypeID(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, absentTypeID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const countAbsences = `-- name: CountAbsences :one
-SELECT count(*) FROM staff.absences a
+SELECT count(*) FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE ($1::bigint IS NULL OR a.person_id = $1::bigint)
   AND ($2::date IS NULL OR a.last_day >= $2::date)
   AND ($3::date IS NULL OR a.first_day <= $3::date)
-  AND ($4::text IS NULL OR a.status = $4::text)
-  AND ($5::boolean OR a.person_id = ANY($6::bigint[])
-       OR (a.person_id = ANY($7::bigint[]) AND a.status IN ('approved', 'registered')
+  AND ($4::text IS NULL OR $4::text =
+       CASE WHEN $5::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM $6::bigint
+                 AND a.status = 'registered' THEN 'approved' ELSE a.status END)
+  AND ($7::boolean OR a.person_id = ANY($8::bigint[])
+       OR (a.person_id = ANY($9::bigint[]) AND a.status IN ('approved', 'registered')
            AND $4::text IS NULL))
 `
 
@@ -43,6 +58,8 @@ type CountAbsencesParams struct {
 	FromDay      pgtype.Date
 	ToDay        pgtype.Date
 	Status       *string
+	Neutral      bool
+	SelfID       *int64
 	Everyone     bool
 	FullIds      []int64
 	ColleagueIds []int64
@@ -55,6 +72,8 @@ func (q *Queries) CountAbsences(ctx context.Context, arg CountAbsencesParams) (i
 		arg.FromDay,
 		arg.ToDay,
 		arg.Status,
+		arg.Neutral,
+		arg.SelfID,
 		arg.Everyone,
 		arg.FullIds,
 		arg.ColleagueIds,
@@ -383,12 +402,14 @@ FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE ($1::bigint IS NULL OR a.person_id = $1::bigint)
   AND ($2::date IS NULL OR a.last_day >= $2::date)
   AND ($3::date IS NULL OR a.first_day <= $3::date)
-  AND ($4::text IS NULL OR a.status = $4::text)
-  AND ($5::boolean OR a.person_id = ANY($6::bigint[])
-       OR (a.person_id = ANY($7::bigint[]) AND a.status IN ('approved', 'registered')
+  AND ($4::text IS NULL OR $4::text =
+       CASE WHEN $5::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM $6::bigint
+                 AND a.status = 'registered' THEN 'approved' ELSE a.status END)
+  AND ($7::boolean OR a.person_id = ANY($8::bigint[])
+       OR (a.person_id = ANY($9::bigint[]) AND a.status IN ('approved', 'registered')
            AND $4::text IS NULL))
 ORDER BY a.first_day DESC, a.id DESC
-LIMIT $9 OFFSET $8
+LIMIT $11 OFFSET $10
 `
 
 type ListAbsencesParams struct {
@@ -396,6 +417,8 @@ type ListAbsencesParams struct {
 	FromDay      pgtype.Date
 	ToDay        pgtype.Date
 	Status       *string
+	Neutral      bool
+	SelfID       *int64
 	Everyone     bool
 	FullIds      []int64
 	ColleagueIds []int64
@@ -415,13 +438,18 @@ type ListAbsencesRow struct {
 // and registered rows of @colleague_ids' — a colleague is shown that a
 // person is away, never a request or a refusal — and those never under a
 // status filter: a colleague reads no status, and asking for the registered
-// rows must not pick out who was sick (review C1).
+// rows must not pick out who was sick (review C1). With @neutral — a caller
+// who reads an HR-only type as leave, on every row but their own
+// (@self_id) — a status filter matches such a row by the status it is shown
+// as, a registration as an approval (leak 2).
 func (q *Queries) ListAbsences(ctx context.Context, arg ListAbsencesParams) ([]ListAbsencesRow, error) {
 	rows, err := q.db.Query(ctx, listAbsences,
 		arg.PersonID,
 		arg.FromDay,
 		arg.ToDay,
 		arg.Status,
+		arg.Neutral,
+		arg.SelfID,
 		arg.Everyone,
 		arg.FullIds,
 		arg.ColleagueIds,
