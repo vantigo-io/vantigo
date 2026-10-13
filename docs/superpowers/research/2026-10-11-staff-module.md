@@ -419,10 +419,16 @@ sensitive permission with an access log.
 Svangerskapskontroll, svangerskapspermisjon (12 weeks before birth), omsorgspermisjon
 (2 weeks for the other parent), fødselspermisjon (6 weeks), foreldrepermisjon (12
 months plus 12 per parent, delvis by agreement within 3 years), ammefri, sykt barn
-(omsorgsdager: 10 per year, 15 with three or more children, doubled for a sole carer,
-+10 per chronically ill child; employer pays the first ten), pleie av nærstående,
+(omsorgsdager: 10 per year, 15 with three or more children, doubled for a sole carer
+to 20 or 30; +10 per chronically ill or disabled child, or +20 for a sole carer, such a
+child counting through the year they turn 18 and toward the number of children; four
+weeks' employment; employer bears the first ten, refunded from day 11 — ftrl. §§ 9-6,
+9-8, corrected 2026-10-13), pleie av nærstående,
 utdanningspermisjon (statutory or not), militærtjeneste, offentlige verv, religiøse
-høytider (2 days), and non-statutory velferdspermisjon and permittering. The
+høytider (2 days), and non-statutory velferdspermisjon and permittering. (Corrected 2026-10-13: the
+a-melding's descriptions are six plus permittering; `velferdspermisjon` expired
+31.12.2022 and is reported as `andreIkkeLovfestedePermisjoner` or
+`andreLovfestedePermisjoner` by its basis.) The
 foreldrepenger quota arithmetic is NAV's (the 59 versus 61 weeks at 80 % figure is
 **UNCERTAIN**).
 
