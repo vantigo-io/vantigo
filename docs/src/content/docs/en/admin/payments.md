@@ -325,6 +325,11 @@ rule is what makes the public host safe; the steps below set it.
        ssl_reject_handshake on;
        return 444;
    }
+   server {
+       listen 80 default_server;
+       server_name _;
+       return 444;
+   }
 
    server {
        listen 443 ssl;
@@ -344,8 +349,18 @@ rule is what makes the public host safe; the steps below set it.
    request: "GET /pay?token=…""), at the `error` level: `crit` above keeps those lines out,
    at the cost of the upstream errors themselves on this host — read them in the
    `APP_URL` host's error log, or keep `error` and treat that log as holding pay tokens
-   (restrict who reads it, keep it short). `APP_URL`'s own `server` block is separate and
-   unchanged.
+   (restrict who reads it, keep it short). `ssl_reject_handshake` needs nginx 1.19.4 or
+   later; on an older one, give the catch-all a certificate of its own instead. The port-80
+   catch-all matters when the proxy also listens on 80.
+
+   **`APP_URL`'s own site must not be reachable on the public address.** If its
+   `server` block listens on the same address and port in the same nginx, a client can
+   open TLS for `pay.example.com` and send `Host: vantigo.example.com`: nginx picks the
+   `server` block by `Host`, so the request reaches `APP_URL`'s block and the whole of
+   Vantigo through the pay page's address — the catch-all does not help. Make
+   `APP_URL`'s block listen only on an internal address (`listen 10.0.0.5:443 ssl;`), or
+   restrict it to your own networks with `allow` and `deny`, or publish it from another
+   proxy altogether.
 
    With Caddy, a site block answers only the names it lists — any other name finds no
    site and is refused — and `reverse_proxy` sends the upstream the site's own host, so
@@ -364,7 +379,15 @@ rule is what makes the public host safe; the steps below set it.
    }
    ```
 
-   Caddy writes upstream errors to the same filtered access log.
+   The same holds for `APP_URL`'s site in the same Caddy: Caddy routes by `Host`, so a
+   client opening TLS for `pay.example.com` with `Host: vantigo.example.com` reaches it.
+   Restrict that site to your own networks with a `remote_ip` matcher, or turn on
+   `strict_sni_host` in the `servers` global option, which answers `421 Misdirected
+   Request` when `Host` does not match the TLS server name. The `log` directive
+   configures only the access log; Caddy's documentation does not say that an upstream
+   failure stays out of its runtime log (the `default` logger, on stderr), so treat that
+   log as holding pay tokens too: raise its level, or restrict who reads it and keep it
+   short.
 5. **Restart** Vantigo with `PUBLIC_BASE_URL` set; it is read at start-up.
 
 **The allowlist.** On the public host, a request whose method and path are not on this
@@ -398,7 +421,9 @@ curl -i https://pay.example.com/sign-in -H 'Host: vantigo.example.com'
 ```
 
 The last two must answer 404 (the proxy sent the public host regardless) or be refused
-by the proxy — never 200 and the sign-in page. Then open a pay link and check the proxy's
+by the proxy — never 200 and the sign-in page. The `Host: vantigo.example.com` check
+proves something only when `APP_URL`'s site is served by the same proxy; there it is
+exactly the request that would reach `APP_URL`'s site through the public address. Then open a pay link and check the proxy's
 access log: the line for `/pay` carries no `token`.
 
 **What can go wrong:**
