@@ -69,18 +69,22 @@ var absenceEventKinds = []string{
 	eventAbsenceRequested, eventAbsenceRegistered, eventAbsenceUpdated, eventAbsenceDeleted, eventAbsenceCancelled,
 	eventAbsenceApproved, eventAbsenceSelfApproved, eventAbsenceRejected, eventAbsenceCorrected,
 	eventAbsenceSplit,
-	eventCaseOpened, eventCaseUpdated, eventCaseClosed, eventMilestoneDone, eventMilestoneWaived, eventMilestoneNoteUpdated,
+	eventCaseOpened, eventCaseUpdated, eventCaseClosed, eventCaseMerged, eventMilestoneDone, eventMilestoneWaived,
 }
 
 // The sick-leave case's events (Task 5): every field class E, each carrying
 // the case's types (typeIds) as an absence event does, listed to everyone who
 // reads the person's history and shaped per §5's case rows — the
 // accommodation note to the person, the manager and HR, a milestone's note
-// to the person and staff:personal-data alone.
+// and a waiver's reason to the person and staff:personal-data alone. A
+// milestone's note's own event is not of the absence family (review L4):
+// touching E, it is listed to the health group's readers alone. case_merged
+// names the case a merge took in (mergedCaseId).
 const (
 	eventCaseOpened           = "case_opened"
 	eventCaseUpdated          = "case_updated"
 	eventCaseClosed           = "case_closed"
+	eventCaseMerged           = "case_merged"
 	eventMilestoneDone        = "milestone_done"
 	eventMilestoneWaived      = "milestone_waived"
 	eventMilestoneNoteUpdated = "milestone_note_updated"
@@ -104,6 +108,11 @@ var careEventKinds = []string{eventSelfCertWithdrawn, eventSelfCertRestored}
 const (
 	fieldType   = "type"
 	fieldDegree = "degree"
+	// The employee's demand to postpone holiday for sickness and the
+	// paragraph it falls under (ferieloven § 9 (1) or (2)), on an
+	// absence_split event of the ferie it split (Task 5 review H1).
+	fieldDemandedOn     = "demandedOn"
+	fieldPostponedUnder = "postponedUnder"
 )
 
 // absenceFieldClass is the class of an absence event's field (Global
@@ -115,6 +124,10 @@ func absenceFieldClass(name string, health bool) string {
 	switch name {
 	case "note", "decisionNote":
 		return "D"
+	case fieldDemandedOn, fieldPostponedUnder:
+		// The demand to postpone holiday for sickness (ferieloven § 9) says
+		// the person was sick: class E whatever the row.
+		return "E"
 	case fieldType, fieldDegree:
 		if health {
 			return "E"
@@ -209,16 +222,18 @@ func readTypeVisibilities(ctx context.Context, q *store.Queries) (typeVisibiliti
 }
 
 // caseFieldGroup is a case event field's group (design §5's case rows): the
-// days, the close, the estimate and the milestones' facts the case's
-// readers'; the accommodation note its own group's; a milestone's note the
-// health group's; a name it does not know nobody's.
+// days, the close, the estimate, a merge and the milestones' facts the
+// case's readers'; the accommodation note its own group's; a milestone's
+// note and a waiver's reason — never a diagnosis, yet free text about a
+// sickness (review L5) — the health group's; a name it does not know
+// nobody's.
 func caseFieldGroup(name string) fieldGroup {
 	switch name {
-	case "firstDay", "lastDay", "closedAt", "maxBenefitEstimate", "doneAt", "waived", "waivedReason":
+	case "firstDay", "lastDay", "closedAt", "maxBenefitEstimate", "doneAt", "waived", "mergedCaseId":
 		return groupAbsenceDetail
 	case "accommodationNote":
 		return groupAccommodation
-	case "note":
+	case "note", "waivedReason":
 		return groupHealth
 	}
 	return groupNobody
@@ -242,7 +257,7 @@ func absenceFieldGroup(name string) fieldGroup {
 		return groupAbsence
 	case fieldType:
 		return groupAbsenceType
-	case "percent", "hours", "note", fieldDegree, "decisionNote":
+	case "percent", "hours", "note", fieldDegree, "decisionNote", fieldDemandedOn, fieldPostponedUnder:
 		return groupAbsenceDetail
 	}
 	return groupNobody

@@ -216,6 +216,55 @@ func (q *Queries) GetSickCase(ctx context.Context, id int64) (StaffSickCase, err
 	return i, err
 }
 
+const holidayAffectedBySickness = `-- name: HolidayAffectedBySickness :many
+SELECT DISTINCT f.id, f.person_id, f.first_day, p.display_name
+FROM staff.absences f
+JOIN staff.absence_types ft ON ft.id = f.type_id AND ft.kind = 'holiday'
+JOIN staff.people p ON p.id = f.person_id
+JOIN staff.absences s ON s.person_id = f.person_id AND s.status = 'registered'
+    AND s.first_day <= f.last_day AND s.last_day >= f.first_day
+    AND (s.degree_percent IS NULL OR s.degree_percent = 100)
+JOIN staff.absence_types st ON st.id = s.type_id AND st.kind = 'sick_certified'
+WHERE f.status = 'approved' AND f.last_day + 28 >= $1::date
+ORDER BY f.first_day, f.id
+`
+
+type HolidayAffectedBySicknessRow struct {
+	ID          int64
+	PersonID    int64
+	FirstDay    pgtype.Date
+	DisplayName string
+}
+
+// HolidayAffectedBySickness is every approved ferie row a 100 % sykmelding
+// lies over, until four weeks after the ferie's last day: the employee may
+// demand to postpone it (ferieloven § 9), which HR records — the attention
+// item holidayAffectedBySickness.
+func (q *Queries) HolidayAffectedBySickness(ctx context.Context, today pgtype.Date) ([]HolidayAffectedBySicknessRow, error) {
+	rows, err := q.db.Query(ctx, holidayAffectedBySickness, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []HolidayAffectedBySicknessRow
+	for rows.Next() {
+		var i HolidayAffectedBySicknessRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.FirstDay,
+			&i.DisplayName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertSickCase = `-- name: InsertSickCase :one
 INSERT INTO staff.sick_cases (person_id, first_day, last_day, created_at, updated_at)
 VALUES ($1, $2, $3, $4::timestamptz, $4::timestamptz)
@@ -533,20 +582,22 @@ func (q *Queries) PersonCaseExists(ctx context.Context, arg PersonCaseExistsPara
 }
 
 const personSelfCertWithdrawal = `-- name: PersonSelfCertWithdrawal :one
-SELECT self_cert_withdrawn_until, self_cert_withdrawn_reason FROM staff.people WHERE id = $1
+SELECT self_cert_withdrawn_from, self_cert_withdrawn_until, self_cert_withdrawn_reason FROM staff.people WHERE id = $1
 `
 
 type PersonSelfCertWithdrawalRow struct {
+	SelfCertWithdrawnFrom   pgtype.Date
 	SelfCertWithdrawnUntil  pgtype.Date
 	SelfCertWithdrawnReason *string
 }
 
 // PersonSelfCertWithdrawal is the withdrawal of the person's right to
-// egenmelding: the last day and the reason, null when none.
+// egenmelding: the day it was decided, its last day and the reason, null
+// when none.
 func (q *Queries) PersonSelfCertWithdrawal(ctx context.Context, id int64) (PersonSelfCertWithdrawalRow, error) {
 	row := q.db.QueryRow(ctx, personSelfCertWithdrawal, id)
 	var i PersonSelfCertWithdrawalRow
-	err := row.Scan(&i.SelfCertWithdrawnUntil, &i.SelfCertWithdrawnReason)
+	err := row.Scan(&i.SelfCertWithdrawnFrom, &i.SelfCertWithdrawnUntil, &i.SelfCertWithdrawnReason)
 	return i, err
 }
 
@@ -705,6 +756,48 @@ func (q *Queries) SetMilestoneDue(ctx context.Context, arg SetMilestoneDueParams
 	return err
 }
 
+const setMilestoneFacts = `-- name: SetMilestoneFacts :exec
+UPDATE staff.sick_case_milestones SET
+    done_at = $1,
+    done_by_user_id = $2,
+    waived = $3,
+    waived_reason = $4,
+    waived_by_user_id = $5,
+    note = $6,
+    revision = revision + 1,
+    updated_at = $7::timestamptz
+WHERE case_id = $8 AND kind = $9
+`
+
+type SetMilestoneFactsParams struct {
+	DoneAt         *time.Time
+	DoneByUserID   *uuid.UUID
+	Waived         bool
+	WaivedReason   *string
+	WaivedByUserID *uuid.UUID
+	Note           *string
+	Now            time.Time
+	CaseID         int64
+	Kind           string
+}
+
+// SetMilestoneFacts writes a milestone's done day, waiver and note as a
+// merge carries them over from the case it took in.
+func (q *Queries) SetMilestoneFacts(ctx context.Context, arg SetMilestoneFactsParams) error {
+	_, err := q.db.Exec(ctx, setMilestoneFacts,
+		arg.DoneAt,
+		arg.DoneByUserID,
+		arg.Waived,
+		arg.WaivedReason,
+		arg.WaivedByUserID,
+		arg.Note,
+		arg.Now,
+		arg.CaseID,
+		arg.Kind,
+	)
+	return err
+}
+
 const setMilestoneNote = `-- name: SetMilestoneNote :one
 UPDATE staff.sick_case_milestones SET note = $1, revision = revision + 1, updated_at = $2::timestamptz
 WHERE case_id = $3 AND kind = $4
@@ -745,15 +838,20 @@ func (q *Queries) SetMilestoneNote(ctx context.Context, arg SetMilestoneNotePara
 }
 
 const setSelfCertWithdrawal = `-- name: SetSelfCertWithdrawal :exec
-UPDATE staff.people SET self_cert_withdrawn_until = $1, self_cert_withdrawn_reason = $2, updated_at = $3::timestamptz
-WHERE id = $4
+UPDATE staff.people SET
+    self_cert_withdrawn_until = $1,
+    self_cert_withdrawn_reason = $2,
+    self_cert_withdrawn_from = $3,
+    updated_at = $4::timestamptz
+WHERE id = $5
 `
 
 type SetSelfCertWithdrawalParams struct {
-	Until  pgtype.Date
-	Reason *string
-	Now    time.Time
-	ID     int64
+	Until   pgtype.Date
+	Reason  *string
+	FromDay pgtype.Date
+	Now     time.Time
+	ID      int64
 }
 
 // SetSelfCertWithdrawal records or lifts the withdrawal of a person's right
@@ -762,6 +860,7 @@ func (q *Queries) SetSelfCertWithdrawal(ctx context.Context, arg SetSelfCertWith
 	_, err := q.db.Exec(ctx, setSelfCertWithdrawal,
 		arg.Until,
 		arg.Reason,
+		arg.FromDay,
 		arg.Now,
 		arg.ID,
 	)

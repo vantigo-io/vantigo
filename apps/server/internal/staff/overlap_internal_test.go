@@ -45,12 +45,12 @@ func TestOverlap(t *testing.T) {
 }
 
 // The sickness exceptions (design S9, §3.5, plan Task 5, readings 24 and 25,
-// Task 3 review L5): a sykmelding over approved ferie stands — a 100 % one
-// splits the ferie, a graded one stands beside it — and over an egenmelding,
-// which it trims; an egenmelding over a sykmelding is refused; over a
-// requested ferie it is refused like any overlap. A graded sykmelding and a
-// leave allowing a share stand together when the degree and the percent sum
-// to at most 100 % (L5); two sykmeldinger never do.
+// Task 5 review H1, M1, M2): a sykmelding stands over ferie — approved or
+// requested, which it leaves as it is (a request is then refused at its
+// approval) — and over an egenmelding, which it trims; an egenmelding over a
+// sykmelding is refused. A sykmelding of any degree stands beside leave that
+// allows a share while that leave leaves part of the day (under 100 %); two
+// sykmeldinger never share a day.
 func TestOverlapSickness(t *testing.T) {
 	t.Parallel()
 	row := func(kind, status string, allows bool, share int64) overlapRow {
@@ -61,23 +61,27 @@ func TestOverlapSickness(t *testing.T) {
 	for _, c := range []struct {
 		name      string
 		candidate overlapRow
-		existing  overlapRow
+		existing  []overlapRow
 		refused   bool
 	}{
-		{"a 100 % sykmelding over approved ferie", sick, row(kindHoliday, absenceApproved, false, wholeDay), false},
-		{"a graded sykmelding over approved ferie", graded, row(kindHoliday, absenceApproved, false, wholeDay), false},
-		{"a sykmelding over requested ferie", sick, row(kindHoliday, absenceRequested, false, wholeDay), true},
-		{"a sykmelding over an egenmelding", sick, row(kindSickSelf, absenceRegistered, false, wholeDay), false},
-		{"an egenmelding over a sykmelding", row(kindSickSelf, absenceRegistered, false, wholeDay), sick, true},
-		{"ferie over a sykmelding", row(kindHoliday, absenceRequested, false, wholeDay), graded, true},
-		{"a 50 % sykmelding beside a 50 % leave", graded, row("leave", absenceApproved, true, 5000), false},
-		{"a 50 % leave beside a 50 % sykmelding", row("leave", absenceRequested, true, 5000), graded, false},
-		{"a 50 % sykmelding beside a 60 % leave", graded, row("leave", absenceApproved, true, 6000), true},
-		{"a 100 % sykmelding beside a 50 % leave", sick, row("leave", absenceApproved, true, 5000), true},
-		{"two 50 % sykmeldinger", graded, graded, true},
-		{"a 50 % sykmelding beside a leave without a share", graded, row("leave", absenceApproved, false, wholeDay), true},
+		{"a 100 % sykmelding over approved ferie", sick, []overlapRow{row(kindHoliday, absenceApproved, false, wholeDay)}, false},
+		{"a graded sykmelding over approved ferie", graded, []overlapRow{row(kindHoliday, absenceApproved, false, wholeDay)}, false},
+		{"a sykmelding over requested ferie", sick, []overlapRow{row(kindHoliday, absenceRequested, false, wholeDay)}, false},
+		{"a sykmelding over an egenmelding", sick, []overlapRow{row(kindSickSelf, absenceRegistered, false, wholeDay)}, false},
+		{"an egenmelding over a sykmelding", row(kindSickSelf, absenceRegistered, false, wholeDay), []overlapRow{sick}, true},
+		{"ferie over a sykmelding", row(kindHoliday, absenceRequested, false, wholeDay), []overlapRow{graded}, true},
+		{"a 50 % sykmelding beside a 50 % leave", graded, []overlapRow{row("leave", absenceApproved, true, 5000)}, false},
+		{"a 50 % leave beside a 50 % sykmelding", row("leave", absenceRequested, true, 5000), []overlapRow{graded}, false},
+		{"a 50 % sykmelding beside a 60 % leave", graded, []overlapRow{row("leave", absenceApproved, true, 6000)}, false},
+		{"a 100 % sykmelding beside a 50 % leave", sick, []overlapRow{row("leave", absenceApproved, true, 5000)}, false},
+		{"a sykmelding beside a 100 % leave", graded, []overlapRow{row("leave", absenceApproved, true, wholeDay)}, true},
+		{"a sykmelding beside two leaves filling the day", graded, []overlapRow{row("leave", absenceApproved, true, 6000), row("leave", absenceApproved, true, 4000)}, true},
+		{"a 100 % leave beside a sykmelding", row("leave", absenceRequested, true, wholeDay), []overlapRow{graded}, true},
+		{"a 40 % leave beside a sykmelding and a 60 % leave", row("leave", absenceRequested, true, 4000), []overlapRow{graded, row("leave", absenceApproved, true, 6000)}, true},
+		{"two 50 % sykmeldinger", graded, []overlapRow{graded}, true},
+		{"a 50 % sykmelding beside a leave without a share", graded, []overlapRow{row("leave", absenceApproved, false, wholeDay)}, true},
 	} {
-		if got := overlapRefused(c.candidate, []overlapRow{c.existing}); got != c.refused {
+		if got := overlapRefused(c.candidate, c.existing); got != c.refused {
 			t.Errorf("%s: refused = %v, want %v", c.name, got, c.refused)
 		}
 	}

@@ -150,7 +150,11 @@ UPDATE staff.documents SET case_id = sqlc.narg('case_id')::bigint WHERE id = @id
 -- name: SetSelfCertWithdrawal :exec
 -- SetSelfCertWithdrawal records or lifts the withdrawal of a person's right
 -- to egenmelding (ftrl. § 8-27).
-UPDATE staff.people SET self_cert_withdrawn_until = @until, self_cert_withdrawn_reason = @reason, updated_at = @now::timestamptz
+UPDATE staff.people SET
+    self_cert_withdrawn_until = @until,
+    self_cert_withdrawn_reason = @reason,
+    self_cert_withdrawn_from = @from_day,
+    updated_at = @now::timestamptz
 WHERE id = @id;
 
 -- name: ChildSickRows :many
@@ -182,5 +186,36 @@ RETURNING *;
 
 -- name: PersonSelfCertWithdrawal :one
 -- PersonSelfCertWithdrawal is the withdrawal of the person's right to
--- egenmelding: the last day and the reason, null when none.
-SELECT self_cert_withdrawn_until, self_cert_withdrawn_reason FROM staff.people WHERE id = @id;
+-- egenmelding: the day it was decided, its last day and the reason, null
+-- when none.
+SELECT self_cert_withdrawn_from, self_cert_withdrawn_until, self_cert_withdrawn_reason FROM staff.people WHERE id = @id;
+
+-- name: SetMilestoneFacts :exec
+-- SetMilestoneFacts writes a milestone's done day, waiver and note as a
+-- merge carries them over from the case it took in.
+UPDATE staff.sick_case_milestones SET
+    done_at = @done_at,
+    done_by_user_id = @done_by_user_id,
+    waived = @waived,
+    waived_reason = @waived_reason,
+    waived_by_user_id = @waived_by_user_id,
+    note = @note,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE case_id = @case_id AND kind = @kind;
+
+-- name: HolidayAffectedBySickness :many
+-- HolidayAffectedBySickness is every approved ferie row a 100 % sykmelding
+-- lies over, until four weeks after the ferie's last day: the employee may
+-- demand to postpone it (ferieloven § 9), which HR records — the attention
+-- item holidayAffectedBySickness.
+SELECT DISTINCT f.id, f.person_id, f.first_day, p.display_name
+FROM staff.absences f
+JOIN staff.absence_types ft ON ft.id = f.type_id AND ft.kind = 'holiday'
+JOIN staff.people p ON p.id = f.person_id
+JOIN staff.absences s ON s.person_id = f.person_id AND s.status = 'registered'
+    AND s.first_day <= f.last_day AND s.last_day >= f.first_day
+    AND (s.degree_percent IS NULL OR s.degree_percent = 100)
+JOIN staff.absence_types st ON st.id = s.type_id AND st.kind = 'sick_certified'
+WHERE f.status = 'approved' AND f.last_day + 28 >= @today::date
+ORDER BY f.first_day, f.id;

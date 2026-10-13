@@ -107,12 +107,16 @@ func TestMilestones(t *testing.T) {
 		{"one day short of that", true, "2026-10-25", false},
 		{"a long case, closed", false, "2026-11-20", false},
 	} {
-		if got := milestoneDue(c.open, day(t, c.last), &plan); got != c.due {
+		if got := milestoneDue(c.open, false, day(t, c.last), &plan); got != c.due {
 			t.Errorf("%s: the follow-up plan due = %v, want %v", c.name, got, c.due)
 		}
 	}
-	if milestoneDue(true, day(t, "2026-12-31"), nil) {
+	if milestoneDue(true, false, day(t, "2026-12-31"), nil) {
 		t.Error("a milestone with no date is due")
+	}
+	// Done or waived, it is due no more (review L7).
+	if milestoneDue(true, true, day(t, "2026-10-26"), &plan) {
+		t.Error("a milestone done or waived is still due")
 	}
 }
 

@@ -299,12 +299,13 @@ func absenceValues(row store.StaffAbsence) map[string]json.RawMessage {
 // types are the row's types on either side, whose kinds say which are health
 // data.
 func (s *server) recordAbsence(ctx context.Context, txq *store.Queries, personID int64, kind string, who actor, id int64, before, after *store.StaffAbsence, types ...store.StaffAbsenceType) error {
-	return s.recordAbsenceWith(ctx, txq, personID, kind, who, id, before, after, nil, types...)
+	return s.recordAbsenceWith(ctx, txq, personID, kind, who, id, before, after, nil, nil, types...)
 }
 
 // recordAbsenceWith is recordAbsence with extra keys on the payload — ids, not
-// fields: the row a split inserted.
-func (s *server) recordAbsenceWith(ctx context.Context, txq *store.Queries, personID int64, kind string, who actor, id int64, before, after *store.StaffAbsence, extra map[string]any, types ...store.StaffAbsenceType) error {
+// fields: the row a split inserted — and added fields beside the row's own
+// after it: the demand a postponement records.
+func (s *server) recordAbsenceWith(ctx context.Context, txq *store.Queries, personID int64, kind string, who actor, id int64, before, after *store.StaffAbsence, extra map[string]any, added map[string]json.RawMessage, types ...store.StaffAbsenceType) error {
 	health := slices.ContainsFunc(types, func(t store.StaffAbsenceType) bool { return healthKind(t.Kind) })
 	var b, a map[string]json.RawMessage
 	if before != nil {
@@ -312,6 +313,12 @@ func (s *server) recordAbsenceWith(ctx context.Context, txq *store.Queries, pers
 	}
 	if after != nil {
 		a = absenceValues(*after)
+	}
+	if len(added) > 0 && a == nil {
+		a = map[string]json.RawMessage{}
+	}
+	for k, v := range added {
+		a[k] = v
 	}
 	payload, classes := absenceEventPayload(id, b, a, health)
 	// The row's type on each side, so a reader is shown the whole event —
@@ -713,9 +720,10 @@ func (s *server) GetStaffAbsencesById(ctx context.Context, req gen.GetStaffAbsen
 	return gen.GetStaffAbsencesById200JSONResponse(out), nil
 }
 
-// lockAbsence takes the absence under its person's lock, notFound when it is
-// gone, no longer the person's, or no longer of the kind — HR-only or not —
-// the caller's authority was judged on (hrOnly).
+// lockAbsence takes the absence under its person's lock, and its type FOR
+// KEY SHARE; notFound when it is gone, no longer the person's, or no longer
+// of the kind — HR-only or not — the caller's authority was judged on
+// (hrOnly).
 func lockAbsence(ctx context.Context, txq *store.Queries, id, personID int64, hrOnly bool) (store.StaffAbsence, store.StaffAbsenceType, error) {
 	row, err := txq.LockAbsence(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && row.PersonID != personID) {
@@ -723,7 +731,10 @@ func lockAbsence(ctx context.Context, txq *store.Queries, id, personID int64, hr
 	} else if err != nil {
 		return row, store.StaffAbsenceType{}, fmt.Errorf("staff: lock absence %d: %w", id, err)
 	}
-	t, err := txq.GetAbsenceType(ctx, row.TypeID)
+	// FOR KEY SHARE, as a new row's type is read (Task 4 re-check): a
+	// change of the type's own waits, so its visibility does not move
+	// between this judgment and the write.
+	t, err := txq.ShareAbsenceType(ctx, row.TypeID)
 	if err != nil {
 		return row, t, fmt.Errorf("staff: read absence type %d: %w", row.TypeID, err)
 	}

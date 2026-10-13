@@ -21,8 +21,9 @@ import (
 // refunded from day eleven (ftrl. § 9-8) — from day one when the only
 // qualifying children are over twelve with extra days, which the reference
 // states for payroll and this module does not model. The right needs four
-// weeks' employment (§ 9-8). Using more than the entitlement is shown, never
-// refused.
+// weeks' employment (§ 9-8), judged for each day used on the unbroken
+// employment it lies in; a day before it is no care day. Using more than the
+// entitlement is shown, never refused.
 
 // The care-day numbers of ftrl. § 9-6: 10 days for one or two children, 15
 // for three or more, both doubled for a sole carer; 10 more per chronically
@@ -83,22 +84,33 @@ func careDaysResponse(ctx context.Context, q *store.Queries, personID int64, yea
 	if err != nil {
 		return out, fmt.Errorf("staff: read person %d's child-sick rows: %w", personID, err)
 	}
-	used := 0
-	for _, r := range rows {
-		used += workingDays(later(civil(r.FirstDay), from), earlier(civil(r.LastDay), to))
-	}
-	employer, beyond := careDaySplit(used)
-	out.Entitlement, out.Used, out.Remaining = int32(entitlement), int32(used), int32(entitlement-used)
-	out.Exceeded = used > entitlement
-	out.EmployerPaid, out.BeyondEmployer = int32(employer), int32(beyond)
 	employments, err := q.ListPersonEmployments(ctx, personID)
 	if err != nil {
 		return out, fmt.Errorf("staff: read person %d's employments: %w", personID, err)
 	}
-	if e, ok := employmentOn(employments, today); ok {
-		eligible := civil(e.StartDate).AddDate(0, 0, 7*careDaysEmploymentWeeks)
-		out.EligibleFrom = &openapi_types.Date{Time: eligible}
-		out.Eligible = !today.Before(eligible)
+	spans := employmentSpans(employments)
+	// Each working day is a care day only once the right has come (§ 9-8):
+	// a day in the first four weeks is counted apart.
+	used, ineligible := 0, 0
+	for _, r := range rows {
+		for d := later(civil(r.FirstDay), from); !d.After(earlier(civil(r.LastDay), to)); d = d.AddDate(0, 0, 1) {
+			if !worksOn(d) {
+				continue
+			}
+			if right := careDayRight(spans, d); right != nil && !d.Before(*right) {
+				used++
+			} else {
+				ineligible++
+			}
+		}
+	}
+	employer, beyond := careDaySplit(used)
+	out.Entitlement, out.Used, out.IneligibleDays, out.Remaining = int32(entitlement), int32(used), int32(ineligible), int32(entitlement-used)
+	out.Exceeded = used > entitlement
+	out.EmployerPaid, out.BeyondEmployer = int32(employer), int32(beyond)
+	if right := careDayRight(spans, today); right != nil {
+		out.EligibleFrom = &openapi_types.Date{Time: *right}
+		out.Eligible = !today.Before(*right)
 	}
 	return out, nil
 }
@@ -193,4 +205,56 @@ func (s *server) GetStaffMeCareDays(ctx context.Context, req gen.GetStaffMeCareD
 		return nil, err
 	}
 	return gen.GetStaffMeCareDays200JSONResponse(out), nil
+}
+
+// unbrokenStart is the first day of the unbroken employment on lies in:
+// the employment in force on it, and every one before that it continues —
+// one in force the day before another began (ftrl. § 9-8's four weeks are
+// four weeks with the employer, review L10); nil when none is in force on
+// it.
+func unbrokenStart(employments []daySpan, on time.Time) *time.Time {
+	var start *time.Time
+	for _, e := range employments {
+		if !e.First.After(on) && !e.Last.Before(on) && (start == nil || e.First.Before(*start)) {
+			first := e.First
+			start = &first
+		}
+	}
+	for changed := start != nil; changed; {
+		changed = false
+		day := start.AddDate(0, 0, -1)
+		for _, e := range employments {
+			if !e.First.After(day) && !e.Last.Before(day) && e.First.Before(*start) {
+				first := e.First
+				start, changed = &first, true
+			}
+		}
+	}
+	return start
+}
+
+// employmentSpans is employments as their days, an open one to the end of
+// time.
+func employmentSpans(employments []store.StaffEmployment) []daySpan {
+	out := make([]daySpan, 0, len(employments))
+	for _, e := range employments {
+		last := time.Date(9999, time.December, 31, 0, 0, 0, 0, time.UTC)
+		if e.EndDate.Valid {
+			last = e.EndDate.Time
+		}
+		out = append(out, daySpan{First: civil(e.StartDate), Last: last})
+	}
+	return out
+}
+
+// careDayRight is the first day of the right to care days on the unbroken
+// employment on lies in — four weeks after its start — nil when none is in
+// force on it.
+func careDayRight(spans []daySpan, on time.Time) *time.Time {
+	start := unbrokenStart(spans, on)
+	if start == nil {
+		return nil
+	}
+	from := start.AddDate(0, 0, 7*careDaysEmploymentWeeks)
+	return &from
 }

@@ -42,3 +42,29 @@ func TestCareDaySplit(t *testing.T) {
 		}
 	}
 }
+
+// The four weeks' employment care days need (ftrl. § 9-8, review L10) count
+// from the start of the unbroken employment a day lies in: an employment
+// that began the day after another ended continues it; a gap of a day
+// breaks it.
+func TestUnbrokenStart(t *testing.T) {
+	t.Parallel()
+	open := func(first string) daySpan { return daySpan{First: day(t, first), Last: day(t, "9999-12-31")} }
+	for _, c := range []struct {
+		name        string
+		employments []daySpan
+		on          string
+		want        string
+	}{
+		{"one employment", []daySpan{open("2026-09-01")}, "2026-09-14", "2026-09-01"},
+		{"the day after another ended", []daySpan{selfDays(t, "2026-01-01", "2026-08-31"), open("2026-09-01")}, "2026-09-14", "2026-01-01"},
+		{"a day's gap", []daySpan{selfDays(t, "2026-01-01", "2026-08-30"), open("2026-09-01")}, "2026-09-14", "2026-09-01"},
+		{"overlapping ones", []daySpan{open("2026-09-01"), selfDays(t, "2025-03-01", "2026-09-10")}, "2026-09-14", "2025-03-01"},
+		{"no employment that day", []daySpan{selfDays(t, "2026-01-01", "2026-08-31")}, "2026-09-14", ""},
+	} {
+		got := unbrokenStart(c.employments, day(t, c.on))
+		if (got == nil) != (c.want == "") || (got != nil && !got.Equal(day(t, c.want))) {
+			t.Errorf("%s: start = %v, want %q", c.name, got, c.want)
+		}
+	}
+}

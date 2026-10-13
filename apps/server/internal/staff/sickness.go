@@ -2,6 +2,7 @@ package staff
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -22,9 +23,11 @@ import (
 // withdrawal. Under the person's lock, before the row is written, an
 // egenmelding is judged against the policy (self_certification.go), the
 // withdrawal and the months of employment, and against its case's sixteenth
-// day; after a sick row is written, a sykmelding splits the approved ferie
-// and trims the egenmelding it lies over, and the person's cases are derived
-// again from their sick rows (cases.go). Ending or fixing a registered sick
+// day; after a sick row is written, a sykmelding trims the egenmelding it
+// lies over, and the person's cases are derived again from their sick rows
+// (cases.go). Approved ferie under a sykmelding stays as it is until HR
+// records the employee's demand to postpone it (ferieloven § 9, Task 5
+// review H1: postponeHoliday); meanwhile HR's attention list names it. Ending or fixing a registered sick
 // row is HR's job (plan pre-flight M8): the person asks.
 
 // selfCertRefusal is the 409 of an egenmelding refused, with its reason and
@@ -97,7 +100,9 @@ func judgeSelfCertification(ctx context.Context, txq *store.Queries, settings st
 	if err != nil {
 		return fmt.Errorf("staff: read person %d's withdrawal: %w", personID, err)
 	}
-	if w.SelfCertWithdrawnUntil.Valid && !w.SelfCertWithdrawnUntil.Time.Before(p.First) {
+	// From the day the withdrawal was decided (review L1) until its last day.
+	if w.SelfCertWithdrawnUntil.Valid && !w.SelfCertWithdrawnUntil.Time.Before(p.First) &&
+		(!w.SelfCertWithdrawnFrom.Valid || !p.First.Before(w.SelfCertWithdrawnFrom.Time)) {
 		return selfCertRefusal(codeSelfCertWithdrawn, "Egenmelding withdrawn",
 			fmt.Sprintf("HR has withdrawn the right to egenmelding until %s.", w.SelfCertWithdrawnUntil.Time.Format(time.DateOnly)))
 	}
@@ -118,7 +123,7 @@ func judgeSelfCertification(ctx context.Context, txq *store.Queries, settings st
 		return err
 	}
 	limits := limitsOf(policy)
-	switch judgeSelfCert(limits, self, daySpan{First: p.First, Last: p.Last}) {
+	switch judgeSelfCert(limits, self, daySpan{First: p.First, Last: p.Last}, sykmeldingDays(spans)) {
 	case selfCertOverOccurrence:
 		return selfCertRefusal(codeSelfCertExhausted, "Egenmelding used up",
 			fmt.Sprintf("One egenmelding is at most %d calendar days, days off between included.", limits.DaysPerOccurrence))
@@ -151,42 +156,49 @@ func judgeSickness(ctx context.Context, txq *store.Queries, settings store.Staff
 	return judgeSelfCertification(ctx, txq, settings, personID, exclude, p)
 }
 
+// sykmeldingDays is the days of spans' sykmeldinger, which join the
+// egenmelding on either side into one occurrence (review M4).
+func sykmeldingDays(spans []sickSpan) []daySpan {
+	var out []daySpan
+	for _, sp := range spans {
+		if sp.Kind == kindSickCertified {
+			out = append(out, daySpan{First: sp.First, Last: sp.Last})
+		}
+	}
+	return out
+}
+
 // afterSickWrite is what a write of a sick row — or of a row that was one —
-// does next under the person's lock: a sykmelding splits the approved ferie
-// and trims the egenmelding it lies over, then the person's cases are
-// derived again. row is the sick row as written, nil after a deletion.
+// does next under the person's lock: a sykmelding trims the egenmelding it
+// lies over, then the person's cases are derived again. row is the sick row
+// as written, nil after a deletion.
 func (s *server) afterSickWrite(ctx context.Context, txq *store.Queries, who actor, personID int64, row *store.StaffAbsence, t store.StaffAbsenceType) error {
 	if row != nil && t.Kind == kindSickCertified {
-		if err := s.carveUnder(ctx, txq, who, personID, *row); err != nil {
+		if err := s.trimUnder(ctx, txq, who, personID, *row); err != nil {
 			return err
 		}
 	}
 	return s.reconcileCases(ctx, txq, who, personID)
 }
 
-// carveUnder splits or trims the rows sykmelding sick lies over (readings 24,
-// 25, 29): approved ferie under a 100 % one — split around it, cancelled
-// when wholly covered, so its days return to the account — and every
-// egenmelding — trimmed, removed when wholly covered. A graded sykmelding
-// stands beside the ferie.
-func (s *server) carveUnder(ctx context.Context, txq *store.Queries, who actor, personID int64, sick store.StaffAbsence) error {
+// trimUnder trims every egenmelding sykmelding sick lies over — removed when
+// wholly covered (reading 24).
+func (s *server) trimUnder(ctx context.Context, txq *store.Queries, who actor, personID int64, sick store.StaffAbsence) error {
 	rows, err := txq.OverlappingAbsences(ctx, store.OverlappingAbsencesParams{
 		PersonID: personID, Exclude: sick.ID, FirstDay: sick.FirstDay, LastDay: sick.LastDay,
 	})
 	if err != nil {
 		return fmt.Errorf("staff: read person %d's absences: %w", personID, err)
 	}
-	whole := shareOf(kindSickCertified, sick.Percent, sick.DegreePercent) == wholeDay
 	for _, r := range rows {
-		ferie := r.Kind == kindHoliday && r.StaffAbsence.Status == absenceApproved
-		if (!ferie || !whole) && r.Kind != kindSickSelf {
+		if r.Kind != kindSickSelf {
 			continue
 		}
 		t, err := txq.GetAbsenceType(ctx, r.StaffAbsence.TypeID)
 		if err != nil {
 			return fmt.Errorf("staff: read absence type %d: %w", r.StaffAbsence.TypeID, err)
 		}
-		if err := s.carve(ctx, txq, who, personID, r.StaffAbsence, t, civil(sick.FirstDay), civil(sick.LastDay)); err != nil {
+		if _, err := s.carve(ctx, txq, who, personID, r.StaffAbsence, t, civil(sick.FirstDay), civil(sick.LastDay), nil); err != nil {
 			return err
 		}
 	}
@@ -196,45 +208,184 @@ func (s *server) carveUnder(ctx context.Context, txq *store.Queries, who actor, 
 // carve takes first..last out of row: the part before stays on the row, the
 // part after becomes a new row with the row's decision, and a row with
 // neither is cancelled (ferie) or removed (an egenmelding). One
-// absence_split event says so, by the row's own type.
-func (s *server) carve(ctx context.Context, txq *store.Queries, who actor, personID int64, row store.StaffAbsence, t store.StaffAbsenceType, first, last time.Time) error {
+// absence_split event says so, by the row's own type, with added's fields.
+// It answers the rows of row's left after it.
+func (s *server) carve(ctx context.Context, txq *store.Queries, who actor, personID int64, row store.StaffAbsence, t store.StaffAbsenceType, first, last time.Time, added map[string]json.RawMessage) ([]store.StaffAbsence, error) {
 	rowFirst, rowLast := civil(row.FirstDay), civil(row.LastDay)
 	before, after := rowFirst.Before(first), rowLast.After(last)
 	now := s.deps.Clock()
 	var extra map[string]any
+	var left []store.StaffAbsence
 	if after {
 		start := last.AddDate(0, 0, 1)
 		if !before {
 			moved, err := txq.SetAbsenceDays(ctx, store.SetAbsenceDaysParams{FirstDay: dayParam(start), LastDay: row.LastDay, Now: now, ID: row.ID})
 			if err != nil {
-				return fmt.Errorf("staff: trim absence %d: %w", row.ID, err)
+				return nil, fmt.Errorf("staff: trim absence %d: %w", row.ID, err)
 			}
-			return s.recordAbsence(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, &moved, t)
+			return []store.StaffAbsence{moved}, s.recordAbsenceWith(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, &moved, nil, added, t)
 		}
 		piece, err := txq.InsertSplitAbsence(ctx, store.InsertSplitAbsenceParams{FirstDay: dayParam(start), Now: now, Source: row.ID})
 		if err != nil {
-			return fmt.Errorf("staff: split absence %d: %w", row.ID, err)
+			return nil, fmt.Errorf("staff: split absence %d: %w", row.ID, err)
 		}
 		extra = map[string]any{"splitAbsenceId": piece.ID}
+		left = append(left, piece)
 	}
 	if before {
 		cut, err := txq.SetAbsenceDays(ctx, store.SetAbsenceDaysParams{FirstDay: row.FirstDay, LastDay: dayParam(first.AddDate(0, 0, -1)), Now: now, ID: row.ID})
 		if err != nil {
-			return fmt.Errorf("staff: trim absence %d: %w", row.ID, err)
+			return nil, fmt.Errorf("staff: trim absence %d: %w", row.ID, err)
 		}
-		return s.recordAbsenceWith(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, &cut, extra, t)
+		return append([]store.StaffAbsence{cut}, left...), s.recordAbsenceWith(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, &cut, extra, added, t)
 	}
 	if t.Kind == kindSickSelf {
 		if err := txq.DeleteAbsence(ctx, row.ID); err != nil {
-			return fmt.Errorf("staff: delete absence %d: %w", row.ID, err)
+			return nil, fmt.Errorf("staff: delete absence %d: %w", row.ID, err)
 		}
-		return s.recordAbsence(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, nil, t)
+		return nil, s.recordAbsenceWith(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, nil, nil, added, t)
 	}
 	cancelled, err := txq.SetAbsenceStatus(ctx, store.SetAbsenceStatusParams{ID: row.ID, Status: absenceCancelled, Now: now})
 	if err != nil {
-		return fmt.Errorf("staff: cancel absence %d: %w", row.ID, err)
+		return nil, fmt.Errorf("staff: cancel absence %d: %w", row.ID, err)
 	}
-	return s.recordAbsence(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, &cancelled, t)
+	return []store.StaffAbsence{cancelled}, s.recordAbsenceWith(ctx, txq, personID, eventAbsenceSplit, who, row.ID, &row, &cancelled, nil, added, t)
+}
+
+// ---- Postponing holiday for sickness ---------------------------------------
+
+// The refusal codes of a demand to postpone holiday (ferieloven § 9).
+const (
+	codePostponementNotApplicable = "holiday_postponement_not_applicable"
+	codePostponementTooLate       = "holiday_postponement_too_late"
+)
+
+// The paragraphs a postponement falls under: sickness before the holiday
+// (§ 9 (1)) and during it (§ 9 (2)).
+const (
+	postponedBefore = "9 (1)"
+	postponedDuring = "9 (2)"
+)
+
+// lastWorkingDayBefore is the last working day before d.
+func lastWorkingDayBefore(d time.Time) time.Time {
+	day := d.AddDate(0, 0, -1)
+	for !worksOn(day) {
+		day = day.AddDate(0, 0, -1)
+	}
+	return day
+}
+
+// postponementRefusal is the 409 of a demand that cannot postpone holiday.
+func postponementRefusal(code, title, detail string) error {
+	return refuseConflict(conflict(code, title, detail))
+}
+
+// PostStaffAbsencesByIdPostponeHoliday Postpone holiday for sickness
+// (POST /api/v1/staff/absences/{id}/postpone-holiday)
+//
+// staff:manage records the employee's demand, made with a legeerklæring, to
+// postpone the approved ferie a 100 % sykmelding lies over (ferieloven § 9):
+// sickness before the holiday must have been demanded by the last working
+// day before it (§ 9 (1)), sickness during it gives replacement days (§ 9
+// (2)). Each ferie row is split around the sykmelding (carve) under the
+// person's lock, its absence_split event carrying the demand.
+func (s *server) PostStaffAbsencesByIdPostponeHoliday(ctx context.Context, req gen.PostStaffAbsencesByIdPostponeHolidayRequestObject) (gen.PostStaffAbsencesByIdPostponeHolidayResponseObject, error) {
+	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
+	if err != nil {
+		return nil, err
+	}
+	demanded := caller.Today
+	if req.Body != nil && req.Body.DemandedOn != nil {
+		demanded = req.Body.DemandedOn.Time
+	}
+	if demanded.After(caller.Today) {
+		return gen.PostStaffAbsencesByIdPostponeHoliday400ApplicationProblemPlusJSONResponse(invalid(invalidAbsenceTitle,
+			fieldErrors{errs: fieldError("demandedOn", "A demand is made on a day that has come")})), nil
+	}
+	current, _, err := readAbsenceFor(ctx, store.New(s.deps.Pool), caller, req.Id)
+	if _, ok := asRefusal(err); ok {
+		return gen.PostStaffAbsencesByIdPostponeHoliday404Response{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	who, err := s.actorFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	personID := current.StaffAbsence.PersonID
+	var out gen.StaffHolidayPostponement
+	err = s.withPersonLock(ctx, personID, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		sick, t, err := lockAbsence(ctx, txq, req.Id, personID, hrOnlyType(current.Visibility))
+		if err != nil {
+			return err
+		}
+		if t.Kind != kindSickCertified || sick.Status != absenceRegistered || shareOf(t.Kind, sick.Percent, sick.DegreePercent) != wholeDay {
+			return postponementRefusal(codePostponementNotApplicable, "Nothing to postpone",
+				"Holiday is postponed for a 100 % sykmelding only: the employee is then wholly unable to work (ferieloven § 9).")
+		}
+		rows, err := txq.OverlappingAbsences(ctx, store.OverlappingAbsencesParams{
+			PersonID: personID, Exclude: sick.ID, FirstDay: sick.FirstDay, LastDay: sick.LastDay,
+		})
+		if err != nil {
+			return fmt.Errorf("staff: read person %d's absences: %w", personID, err)
+		}
+		sickFirst := civil(sick.FirstDay)
+		var ferie []store.StaffAbsence
+		for _, r := range rows {
+			if r.Kind != kindHoliday || r.StaffAbsence.Status != absenceApproved {
+				continue
+			}
+			if f := civil(r.StaffAbsence.FirstDay); sickFirst.Before(f) && demanded.After(lastWorkingDayBefore(f)) {
+				return postponementRefusal(codePostponementTooLate, "Demanded too late",
+					fmt.Sprintf("Sickness that began before the holiday is to be demanded by the last working day before it, %s (ferieloven § 9 (1)).",
+						lastWorkingDayBefore(f).Format(time.DateOnly)))
+			}
+			ferie = append(ferie, r.StaffAbsence)
+		}
+		if len(ferie) == 0 {
+			return postponementRefusal(codePostponementNotApplicable, "Nothing to postpone", "This sykmelding lies over no approved ferie.")
+		}
+		out = gen.StaffHolidayPostponement{DemandedOn: openapi_types.Date{Time: demanded}, Absences: []gen.StaffAbsence{}}
+		a, err := personAudience(ctx, txq, caller, personID)
+		if err != nil {
+			return err
+		}
+		for _, f := range ferie {
+			ft, err := txq.ShareAbsenceType(ctx, f.TypeID)
+			if err != nil {
+				return fmt.Errorf("staff: read absence type %d: %w", f.TypeID, err)
+			}
+			under := postponedDuring
+			if sickFirst.Before(civil(f.FirstDay)) {
+				under = postponedBefore
+			}
+			left, err := s.carve(ctx, txq, who, personID, f, ft, sickFirst, civil(sick.LastDay), map[string]json.RawMessage{
+				fieldDemandedOn: caseValue(demanded.Format(time.DateOnly)), fieldPostponedUnder: caseValue(under),
+			})
+			if err != nil {
+				return err
+			}
+			for _, r := range left {
+				out.Absences = append(out.Absences, absenceResponse(r, ft.Kind, ft.Visibility, ft.Unit, a, s.absenceTag))
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, errPersonNotFound) {
+		return gen.PostStaffAbsencesByIdPostponeHoliday404Response{}, nil
+	}
+	if r, ok := asRefusal(err); ok {
+		if r.status == http.StatusConflict {
+			return gen.PostStaffAbsencesByIdPostponeHoliday409ApplicationProblemPlusJSONResponse(r.problem), nil
+		}
+		return gen.PostStaffAbsencesByIdPostponeHoliday404Response{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return gen.PostStaffAbsencesByIdPostponeHoliday200JSONResponse(out), nil
 }
 
 // ---- The standing and the withdrawal ---------------------------------------
@@ -253,11 +404,11 @@ const invalidWithdrawalTitle = "Invalid withdrawal"
 func selfCertResponse(ctx context.Context, q *store.Queries, settings store.StaffSetting, personID int64, today time.Time, a audience) (gen.StaffSelfCertification, error) {
 	policy := policyOf(settings)
 	limits := limitsOf(policy)
-	_, self, err := personSickSpans(ctx, q, personID, 0)
+	spans, self, err := personSickSpans(ctx, q, personID, 0)
 	if err != nil {
 		return gen.StaffSelfCertification{}, err
 	}
-	occurrences, days := selfCertUsed(self, today)
+	occurrences, days := selfCertUsed(self, sykmeldingDays(spans), today)
 	out := gen.StaffSelfCertification{
 		PersonId: personID, Policy: gen.StaffSelfCertPolicy(policy.Policy), DaysPerOccurrence: int32(limits.DaysPerOccurrence),
 		OccurrencesUsed: int32(occurrences), DaysUsed: int32(days),
@@ -284,6 +435,7 @@ func selfCertResponse(ctx context.Context, q *store.Queries, settings store.Staf
 		}
 		if w.SelfCertWithdrawnUntil.Valid {
 			out.WithdrawnUntil = &openapi_types.Date{Time: w.SelfCertWithdrawnUntil.Time}
+			out.WithdrawnFrom = dateOf(w.SelfCertWithdrawnFrom)
 			out.WithdrawnReason = w.SelfCertWithdrawnReason
 		}
 	}
@@ -406,7 +558,11 @@ func (s *server) PutStaffPeopleByIdSelfCertificationWithdrawal(ctx context.Conte
 		if err != nil {
 			return fmt.Errorf("staff: read person %d's withdrawal: %w", req.Id, err)
 		}
-		if err := txq.SetSelfCertWithdrawal(ctx, store.SetSelfCertWithdrawalParams{Until: until, Reason: reason, Now: s.deps.Clock(), ID: req.Id}); err != nil {
+		var from pgtype.Date
+		if until.Valid {
+			from = dayParam(caller.Today)
+		}
+		if err := txq.SetSelfCertWithdrawal(ctx, store.SetSelfCertWithdrawalParams{Until: until, Reason: reason, FromDay: from, Now: s.deps.Clock(), ID: req.Id}); err != nil {
 			return fmt.Errorf("staff: write person %d's withdrawal: %w", req.Id, err)
 		}
 		values := func(u pgtype.Date, r *string) map[string]any {

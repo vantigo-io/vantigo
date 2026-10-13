@@ -67,6 +67,9 @@ type attentionInput struct {
 	// selfApproved is the approved absences their persons approved
 	// themselves that have not ended (delivery B, Task 4).
 	selfApproved []store.SelfApprovedAbsencesRow
+	// affected is the approved ferie a 100 % sykmelding lies over (Task 5
+	// review H1).
+	affected []store.HolidayAffectedBySicknessRow
 }
 
 // attentionFor is the caller's items, oldest first, then by type and id, each
@@ -84,6 +87,7 @@ func attentionFor(in attentionInput, c *callerContext) []gen.StaffStatsAttention
 		items = append(items, in.retentionFailing()...)
 		items = append(items, in.thresholds(c.Today)...)
 		items = append(items, in.selfApprovedItems()...)
+		items = append(items, in.holidayAffectedItems()...)
 	}
 	if c.PersonalData {
 		items = append(items, in.reassessmentDue(c.Today)...)
@@ -354,6 +358,20 @@ func (in attentionInput) selfApprovedItems() []gen.StaffStatsAttentionItem {
 	return out
 }
 
+// holidayAffectedItems is one item per approved ferie a 100 % sykmelding
+// lies over, until four weeks after the ferie's last day (Task 5 review H1):
+// the employee may demand to postpone it (ferieloven § 9), which HR records.
+// staff:manage's alone — it says the person was sick, which HR reads; never
+// a colleague's. entityId the person, keyed by the ferie, named by the
+// person, occurredAt the ferie's first day.
+func (in attentionInput) holidayAffectedItems() []gen.StaffStatsAttentionItem {
+	out := make([]gen.StaffStatsAttentionItem, 0, len(in.affected))
+	for _, r := range in.affected {
+		out = append(out, personItem(gen.HolidayAffectedBySickness, r.ID, r.PersonID, r.DisplayName, civil(r.FirstDay)))
+	}
+	return out
+}
+
 // retentionFailing is the one item about the deletion ledger: rows the store
 // has refused at least once, queued more than a day ago.
 func (in attentionInput) retentionFailing() []gen.StaffStatsAttentionItem {
@@ -480,6 +498,9 @@ func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerC
 		}
 		if in.selfApproved, err = q.SelfApprovedAbsences(ctx, dayParam(c.Today)); err != nil {
 			return nil, fmt.Errorf("staff: read the self-approved absences: %w", err)
+		}
+		if in.affected, err = q.HolidayAffectedBySickness(ctx, dayParam(c.Today)); err != nil {
+			return nil, fmt.Errorf("staff: read the ferie affected by sickness: %w", err)
 		}
 	}
 	return attentionFor(in, c), nil
